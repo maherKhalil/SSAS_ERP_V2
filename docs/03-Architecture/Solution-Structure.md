@@ -221,6 +221,8 @@ Responsibilities
 
 The Host project shall not contain business logic.
 
+As the composition root, the Host may reference the approved Platform, HR, and GL API and Infrastructure projects for runtime composition only.
+
 ---
 
 # BuildingBlocks
@@ -618,17 +620,23 @@ Secrets shall never be committed to source control.
 
 # Module Registration
 
-Every module exposes
+Every module exposes explicit registration extensions.
 
 ```
 
-AddModule()
+Infrastructure
 
-UseModule()
+Add{Module}Infrastructure(IServiceCollection, IConfiguration)
+
+API
+
+Map{Module}Endpoints(IEndpointRouteBuilder)
 
 ```
 
-The Host project discovers and registers modules during application startup.
+Infrastructure extensions register DbContexts, repositories, Unit of Work implementations, and external adapters. API extensions map endpoints. The Host invokes the known module registrations during application startup and coordinates configuration and middleware only.
+
+Reflection-based runtime module discovery is not used in V1.
 
 ---
 
@@ -646,7 +654,7 @@ No module may directly reference another module's Infrastructure project.
 
 No module may directly query another module's database tables.
 
-Cross-module communication shall occur only through published contracts or domain events.
+Cross-module business communication must use approved public contracts, integration events, or explicitly authorized module-facing abstractions. Direct references to another module's internal Domain, Application, API, or Infrastructure assemblies are forbidden.
 
 ---
 

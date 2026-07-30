@@ -204,6 +204,12 @@ Forbidden dependencies:
 
 ---
 
+## Composition Root Exception
+
+SSAS.Host.API may reference approved Platform, HR, and GL API and Infrastructure projects solely for dependency injection, configuration, middleware coordination, and endpoint mapping. This exception does not permit business logic in the Host. Module API projects must not reference Infrastructure. Module Application and Domain projects must not reference Host or Infrastructure. Cross-module business communication must use approved public contracts, integration events, or explicitly authorized module-facing abstractions. Direct references to another module's internal Domain, Application, API, or Infrastructure assemblies are forbidden.
+
+---
+
 # AI Coding Guidelines
 
 AI coding agents shall:
@@ -243,7 +249,7 @@ Any deviation from these principles requires approval from the Solution Architec
 
 # Related Documents
 
-- All ADRs (001–011)
+- All accepted ADRs (001-012)
 - Solution Architecture Document
 - Development Standards
 - Coding Standards

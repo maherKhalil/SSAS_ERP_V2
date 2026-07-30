@@ -1,13 +1,12 @@
 ---
 id: ADR-011
-title: Adopt Repository Pattern and Unit of Work
+title: Adopt the Unit of Work Pattern
 category: Architecture Decision Record
 version: 1.0
 status: Accepted
 date: YYYY-MM-DD
 owner: Solution Architecture Team
 tags:
-  - repository
   - unit-of-work
   - persistence
 depends_on:
@@ -18,7 +17,7 @@ used_by:
   - All Modules
 ---
 
-# ADR-011: Adopt Repository Pattern and Unit of Work
+# ADR-011: Adopt the Unit of Work Pattern
 
 ---
 
@@ -32,51 +31,17 @@ used_by:
 
 Business logic must remain independent from Entity Framework Core.
 
-Repositories abstract persistence.
+ADR-010 defines repositories as the aggregate persistence abstraction.
 
-Unit of Work coordinates transactions across repositories.
+Unit of Work coordinates transactions across those repositories.
 
 ---
 
 # Decision
 
-SSAS ERP V2 shall use:
+SSAS ERP V2 shall use the **Unit of Work Pattern**.
 
-- Repository Pattern
-- Unit of Work Pattern
-
-Repositories encapsulate aggregate persistence.
-
-Unit of Work coordinates commits.
-
----
-
-# Repository Responsibilities
-
-Repositories shall:
-
-- Load aggregates.
-- Save aggregates.
-- Execute queries.
-- Hide EF Core implementation.
-
-Repositories shall NOT contain business logic.
-
----
-
-# Repository Rules
-
-One repository per aggregate root.
-
-Examples:
-
-EmployeeRepository
-
-CompanyRepository
-
-JournalRepository
-
-InvoiceRepository
+Repositories encapsulate aggregate persistence under ADR-010. Unit of Work coordinates commits and transaction boundaries.
 
 ---
 
@@ -138,7 +103,7 @@ Complex reporting belongs in dedicated query services.
 
 # Dependency Inversion
 
-Application depends on:
+Application depends on the abstractions defined by ADR-010 and this ADR:
 
 ```
 IEmployeeRepository

@@ -15,3 +15,8 @@ Every significant architectural decision must be documented before implementatio
 | ADR-005 | Multi-Tenancy | Accepted |
 | ADR-006 | JWT Authentication | Accepted |
 | ADR-007 | Angular Frontend | Accepted |
+| ADR-008 | Entity Framework Core | Accepted |
+| ADR-009 | Domain Events | Accepted |
+| ADR-010 | Repository Pattern | Accepted |
+| ADR-011 | Unit of Work | Accepted |
+| ADR-012 | Runtime Module Composition | Accepted |

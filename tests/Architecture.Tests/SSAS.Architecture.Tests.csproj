@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Contracts\SSAS.BuildingBlocks.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Infrastructure\SSAS.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\SSAS.BuildingBlocks.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\Host\SSAS.Host.API\SSAS.Host.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.API\SSAS.GL.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Application\SSAS.GL.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Domain\SSAS.GL.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.API\SSAS.HR.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Application\SSAS.HR.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Contracts\SSAS.HR.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Domain\SSAS.HR.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Infrastructure\SSAS.HR.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.API\SSAS.Platform.API.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Application\SSAS.Platform.Application.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

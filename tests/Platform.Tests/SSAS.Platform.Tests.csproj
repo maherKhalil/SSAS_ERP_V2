@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.API\SSAS.Platform.API.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Application\SSAS.Platform.Application.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

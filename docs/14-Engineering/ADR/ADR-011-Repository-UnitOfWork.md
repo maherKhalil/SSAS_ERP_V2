@@ -1,5 +1,5 @@
 ---
-id: ADR-010
+id: ADR-011
 title: Adopt Repository Pattern and Unit of Work
 category: Architecture Decision Record
 version: 1.0
@@ -18,7 +18,7 @@ used_by:
   - All Modules
 ---
 
-# ADR-010: Adopt Repository Pattern and Unit of Work
+# ADR-011: Adopt Repository Pattern and Unit of Work
 
 ---
 

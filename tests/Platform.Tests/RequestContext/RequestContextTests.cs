@@ -48,6 +48,21 @@ public sealed class RequestContextTests
   }
 
   [Fact]
+  public void Current_tenant_does_not_allow_a_request_header_to_override_a_validated_tenant_claim()
+  {
+    var tenantId = Guid.NewGuid();
+    var context = new DefaultHttpContext
+    {
+      User = CreateAuthenticatedUser(new Claim(JwtClaimTypes.TenantId, tenantId.ToString()))
+    };
+    context.Request.Headers["X-Tenant-Id"] = Guid.NewGuid().ToString();
+
+    var currentTenant = new CurrentTenant(new HttpContextAccessor { HttpContext = context });
+
+    Assert.Equal(tenantId, currentTenant.TenantId);
+  }
+
+  [Fact]
   public void Current_contexts_do_not_return_identity_or_tenant_data_for_an_unauthenticated_request()
   {
     var context = new DefaultHttpContext();

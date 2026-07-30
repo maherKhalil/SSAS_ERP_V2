@@ -1,0 +1,13 @@
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+TestResults/
+coverage/
+*.user
+*.suo
+*.rsuser
+*.nupkg
+*.snupkg
+.dotnet-cli-home/

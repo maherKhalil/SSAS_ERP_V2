@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj" />
+    <ProjectReference Include="..\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

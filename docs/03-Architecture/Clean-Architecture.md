@@ -129,3 +129,9 @@ Repositories never contain validation.
 Controllers never access Entity Framework directly.
 
 Only Application Services coordinate use cases.
+
+---
+
+# Composition Root Exception
+
+SSAS.Host.API is the outermost composition root and may reference approved module API and Infrastructure projects solely to register concrete implementations and map endpoints. This exception does not permit business logic in the Host, Infrastructure references from module API projects, or Host and Infrastructure dependencies from Application or Domain projects.

@@ -1,13 +1,14 @@
-using Asp.Versioning;
 using System.Globalization;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Options;
-using Microsoft.OpenApi.Models;
 using Serilog;
 using SSAS.GL.API;
+using SSAS.Host.API.Authentication;
+using SSAS.Host.API.Authorization;
 using SSAS.Host.API.Configuration;
+using SSAS.Host.API.Diagnostics;
+using SSAS.Host.API.Errors;
 using SSAS.HR.API;
 using SSAS.Platform.API;
+using SSAS.Platform.Infrastructure.RequestContext;
 
 Log.Logger = new LoggerConfiguration()
   .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
@@ -17,74 +18,31 @@ try
 {
   var builder = WebApplication.CreateBuilder(args);
 
-  builder.Host.UseSerilog((context, services, loggerConfiguration) => loggerConfiguration
-    .ReadFrom.Configuration(context.Configuration)
-    .ReadFrom.Services(services)
-    .Enrich.FromLogContext());
+  builder.ConfigureHostSerilog();
 
   builder.Services
-    .AddOptions<ApplicationOptions>()
-    .BindConfiguration(ApplicationOptions.SectionName)
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
-
-  builder.Services
+    .AddHostApplicationOptions()
+    .AddPlatformRequestContext()
+    .AddHostJwtAuthentication(builder.Configuration, builder.Environment)
+    .AddHostPermissionAuthorization()
+    .AddHostProblemDetails()
+    .AddHostApiInfrastructure()
     .AddPlatformModule()
     .AddHrModule()
     .AddGlModule();
 
-  builder.Services.AddProblemDetails(options =>
-  {
-    options.CustomizeProblemDetails = context =>
-      context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
-  });
-
-  builder.Services
-    .AddApiVersioning(options =>
-    {
-      options.DefaultApiVersion = new ApiVersion(1, 0);
-      options.AssumeDefaultVersionWhenUnspecified = true;
-      options.ReportApiVersions = true;
-    })
-    .AddApiExplorer(options =>
-    {
-      options.GroupNameFormat = "'v'VVV";
-      options.SubstituteApiVersionInUrl = true;
-    });
-
-  builder.Services.AddEndpointsApiExplorer();
-  builder.Services.AddSwaggerGen(options =>
-  {
-    options.SwaggerDoc("v1", new OpenApiInfo
-    {
-      Title = "SSAS ERP API",
-      Version = "v1"
-    });
-  });
-
-  builder.Services
-    .AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live", "ready"]);
-
   var app = builder.Build();
 
-  app.UseSerilogRequestLogging();
+  app.UseCorrelationId();
+  app.UseSerilogRequestLogging(options => options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    diagnosticContext.Set("CorrelationId", httpContext.Response.Headers[CorrelationIdMiddleware.HeaderName].ToString()));
   app.UseExceptionHandler();
   app.UseHttpsRedirection();
+  app.UseAuthentication();
+  app.UseAuthorization();
   app.UseSwagger();
   app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "SSAS ERP API v1"));
-
-  app.MapGet("/", (IOptions<ApplicationOptions> options, IHostEnvironment environment) => Results.Ok(new
-    {
-      application = options.Value.Name,
-      version = options.Value.Version,
-      environment = environment.EnvironmentName
-    }))
-    .WithName("ApplicationInformation");
-
-  app.MapHealthChecks("/health");
-  app.MapHealthChecks("/health/live", new() { Predicate = registration => registration.Tags.Contains("live") });
-  app.MapHealthChecks("/health/ready", new() { Predicate = registration => registration.Tags.Contains("ready") });
+  app.MapHostEndpoints();
 
   app.Run();
 }
@@ -96,4 +54,8 @@ catch (Exception exception)
 finally
 {
   Log.CloseAndFlush();
+}
+
+public partial class Program
+{
 }

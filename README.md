@@ -54,6 +54,22 @@ dotnet test SSAS.ERP.sln
 dotnet test tests/Architecture.Tests/SSAS.Architecture.Tests.csproj
 ```
 
+## Operational Endpoints
+
+| Endpoint | Purpose | Expected response |
+|----------|---------|-------------------|
+| `/` | Application information | `200 OK` |
+| `/swagger/index.html` | OpenAPI user interface | `200 OK` |
+| `/health/live` | Process liveness | `200 OK` |
+| `/health/ready` | Configured infrastructure readiness | `200 OK` |
+
+## Security Configuration
+
+JWT configuration uses the `Jwt:Issuer`, `Jwt:Audience`, `Jwt:SigningKey`, and
+`Jwt:ClockSkewSeconds` keys. The committed development signing key is an
+explicit non-secret placeholder and is rejected outside Development. Supply a
+real signing key through environment variables or the deployment secret store.
+
 ## Contribution Workflow
 
 Read the required documentation before changing code. Work on a focused branch,

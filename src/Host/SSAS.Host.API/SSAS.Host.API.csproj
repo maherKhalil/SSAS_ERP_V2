@@ -3,6 +3,7 @@
   <ItemGroup>
     <PackageReference Include="Asp.Versioning.Mvc" />
     <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Swashbuckle.AspNetCore" />
@@ -10,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Platform\SSAS.Platform.API\SSAS.Platform.API.csproj" />
+    <ProjectReference Include="..\..\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\HR\SSAS.HR.API\SSAS.HR.API.csproj" />
     <ProjectReference Include="..\..\Modules\Finance\SSAS.GL.API\SSAS.GL.API.csproj" />
   </ItemGroup>

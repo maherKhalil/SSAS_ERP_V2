@@ -10,7 +10,8 @@ public static class PermissionAuthorizationServiceCollectionExtensions
 
     services.AddAuthorization();
     services.AddSingleton<IAuthorizationPolicyProvider, PermissionAuthorizationPolicyProvider>();
-    services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
+    services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+    services.AddScoped<IAuthorizationHandler, RoleAuthorizationHandler>();
 
     return services;
   }

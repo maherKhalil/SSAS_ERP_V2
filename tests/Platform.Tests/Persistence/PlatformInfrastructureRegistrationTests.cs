@@ -1,0 +1,90 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using SSAS.BuildingBlocks.Application.Abstractions.Diagnostics;
+using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
+using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.Platform.Application.Abstractions.Persistence;
+using SSAS.Platform.Application.Abstractions.Queries;
+using SSAS.Platform.Infrastructure;
+using SSAS.Platform.Infrastructure.Persistence;
+
+namespace SSAS.Platform.Tests.Persistence;
+
+public sealed class PlatformInfrastructureRegistrationTests
+{
+  [Fact]
+  public void Platform_persistence_is_module_qualified_scoped_and_uses_one_context_per_scope()
+  {
+    var services = new ServiceCollection();
+    services.AddSingleton<ICurrentUser, TestRequestContext>();
+    services.AddSingleton<ICurrentTenant, TestRequestContext>();
+    services.AddSingleton<ICorrelationContext, TestRequestContext>();
+    services.AddSingleton<IRequestMetadata, TestRequestContext>();
+    services.AddSingleton<IDateTimeProvider, TestRequestContext>();
+    var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    {
+      ["ConnectionStrings:Platform"] =
+        "Server=localhost;Database=not-opened;Integrated Security=True;TrustServerCertificate=True;Encrypt=False"
+    }).Build();
+
+    services.AddPlatformInfrastructure(configuration);
+
+    AssertScoped<PlatformDbContext>(services);
+    AssertScoped<IIdentityRepository>(services);
+    AssertScoped<ITenantUserRepository>(services);
+    AssertScoped<IRoleRepository>(services);
+    AssertScoped<ITenantUserReadService>(services);
+    AssertScoped<IRoleReadService>(services);
+    AssertScoped<IPlatformUnitOfWork>(services);
+    Assert.DoesNotContain(services, descriptor => descriptor.ServiceType == typeof(IUnitOfWork));
+
+    using var provider = services.BuildServiceProvider();
+    using var scope = provider.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    AssertUsesContext(scope.ServiceProvider.GetRequiredService<IIdentityRepository>(), context);
+    AssertUsesContext(scope.ServiceProvider.GetRequiredService<ITenantUserRepository>(), context);
+    AssertUsesContext(scope.ServiceProvider.GetRequiredService<IRoleRepository>(), context);
+    AssertUsesContext(scope.ServiceProvider.GetRequiredService<ITenantUserReadService>(), context);
+    AssertUsesContext(scope.ServiceProvider.GetRequiredService<IRoleReadService>(), context);
+    Assert.Same(
+      scope.ServiceProvider.GetRequiredService<IPlatformUnitOfWork>(),
+      scope.ServiceProvider.GetRequiredService<IPlatformUnitOfWork>());
+  }
+
+  private static void AssertScoped<TService>(IEnumerable<ServiceDescriptor> services)
+  {
+    Assert.Contains(services, descriptor =>
+      descriptor.ServiceType == typeof(TService) && descriptor.Lifetime == ServiceLifetime.Scoped);
+  }
+
+  private static void AssertUsesContext(object service, PlatformDbContext expectedContext)
+  {
+    var contextField = service.GetType()
+      .GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+      .Single(field => field.FieldType == typeof(PlatformDbContext));
+    Assert.Same(expectedContext, contextField.GetValue(service));
+  }
+
+  private sealed class TestRequestContext :
+    ICurrentUser,
+    ICurrentTenant,
+    ICorrelationContext,
+    IRequestMetadata,
+    IDateTimeProvider
+  {
+    public string? UserId => "actor";
+    public string? UserName => null;
+    public string? Email => null;
+    public Guid? CompanyId => null;
+    public string? SessionId => null;
+    public string? TokenId => null;
+    public IReadOnlyCollection<string> Roles => [];
+    public IReadOnlyCollection<string> Permissions => [];
+    public Guid? TenantId => Guid.NewGuid();
+    public string CorrelationId => "correlation";
+    public string? RequestId => "request";
+    public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
+  }
+}

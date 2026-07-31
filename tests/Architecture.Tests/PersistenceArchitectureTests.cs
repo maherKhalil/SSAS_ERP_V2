@@ -25,6 +25,45 @@ public sealed class PersistenceArchitectureTests
     Assert.Empty(violations);
   }
 
+  [Fact]
+  public void Application_boundaries_do_not_expose_iqueryable()
+  {
+    var violations = ProductionSourceFiles()
+      .Where(path => path.Contains(".Application", StringComparison.Ordinal))
+      .Where(path => File.ReadAllText(path).Contains("IQueryable", StringComparison.Ordinal))
+      .ToArray();
+
+    Assert.Empty(violations);
+  }
+
+  [Fact]
+  public void Platform_identity_access_has_no_physical_delete_operation()
+  {
+    var violations = ProductionSourceFiles()
+      .Where(path => path.Contains($"{Path.DirectorySeparatorChar}Platform{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => Regex.IsMatch(
+        File.ReadAllText(path),
+        @"\bDelete(?:Identity|TenantUser|Role)(?:Async|Command|Handler)?\b|(?:Identities|TenantUsers|Roles)\.Remove\s*\(",
+        RegexOptions.CultureInvariant))
+      .ToArray();
+
+    Assert.Empty(violations);
+  }
+
+  [Fact]
+  public void Platform_source_does_not_log_secrets_tokens_or_raw_claims()
+  {
+    var violations = ProductionSourceFiles()
+      .Where(path => path.Contains($"{Path.DirectorySeparatorChar}Platform{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => Regex.IsMatch(
+        File.ReadAllText(path),
+        @"Log(?:Trace|Debug|Information|Warning|Error|Critical)\s*\([^;]*(?:password|secret|token|claims?)",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase))
+      .ToArray();
+
+    Assert.Empty(violations);
+  }
+
   private static IEnumerable<string> ProductionSourceFiles() => Directory
     .EnumerateFiles(FindRepositoryRoot(), "*.cs", SearchOption.AllDirectories)
     .Where(path => path.Contains($"{Path.DirectorySeparatorChar}src{Path.DirectorySeparatorChar}", StringComparison.Ordinal));

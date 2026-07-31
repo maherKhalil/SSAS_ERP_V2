@@ -20,6 +20,7 @@ public static class RequestContextServiceCollectionExtensions
     services.AddScoped<ICurrentTenant>(serviceProvider => serviceProvider.GetRequiredService<CurrentTenant>());
     services.AddScoped<CorrelationContext>();
     services.AddScoped<ICorrelationContext>(serviceProvider => serviceProvider.GetRequiredService<CorrelationContext>());
+    services.AddScoped<IRequestMetadata, RequestMetadata>();
     services.AddSingleton<IDateTimeProvider, UtcDateTimeProvider>();
     services.AddSingleton<Microsoft.AspNetCore.Identity.IPasswordHasher<object>, Microsoft.AspNetCore.Identity.PasswordHasher<object>>();
     services.AddSingleton<IPasswordHashingService, AspNetPasswordHashingService>();

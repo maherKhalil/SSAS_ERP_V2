@@ -8,6 +8,7 @@ using SSAS.Host.API.Diagnostics;
 using SSAS.Host.API.Errors;
 using SSAS.HR.API;
 using SSAS.Platform.API;
+using SSAS.Platform.Infrastructure;
 using SSAS.Platform.Infrastructure.RequestContext;
 
 Log.Logger = new LoggerConfiguration()
@@ -23,6 +24,7 @@ try
   builder.Services
     .AddHostApplicationOptions()
     .AddPlatformRequestContext()
+    .AddPlatformInfrastructure(builder.Configuration)
     .AddHostJwtAuthentication(builder.Configuration, builder.Environment)
     .AddHostPermissionAuthorization()
     .AddHostProblemDetails()

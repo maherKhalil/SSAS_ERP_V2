@@ -2,6 +2,11 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <ProjectReference Include="..\SSAS.Platform.Application\SSAS.Platform.Application.csproj" />
     <ProjectReference Include="..\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj" />
     <ProjectReference Include="..\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />

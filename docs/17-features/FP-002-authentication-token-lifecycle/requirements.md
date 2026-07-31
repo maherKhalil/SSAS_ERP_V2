@@ -1,8 +1,8 @@
 ---
 document_id: FP-002-REQ
 title: Authentication Requirements
-status: Draft
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # Requirements

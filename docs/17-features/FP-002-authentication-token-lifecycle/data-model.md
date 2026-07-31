@@ -1,13 +1,13 @@
 ---
 document_id: FP-002-DATA
 title: Authentication Data Model
-status: Draft
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # Data Model
 
-Proposed `platform` tables:
+Approved `platform` tables:
 
 ## AuthenticationAccounts
 

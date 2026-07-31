@@ -1,8 +1,8 @@
 ---
 document_id: FP-002-AUTH
 title: Authentication and Token Model
-status: Draft
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # Authentication Model
@@ -33,11 +33,11 @@ Reuse of a consumed token issues nothing, marks the approved scope compromised, 
 
 Use ASP.NET Core `PasswordHasher`, including versioned hashes and rehash after successful verification when needed. Do not use low-level PBKDF2 APIs directly for ordinary application password storage.
 
-## Draft password baseline
+## Approved password baseline
 
 Minimum 12 characters, support at least 64, permit spaces/Unicode, no character-class composition rule, no routine periodic expiry, and block common or compromised passwords.
 
-## Draft Angular storage
+## Approved Angular storage
 
 Keep access tokens in memory. Prefer a Secure, HttpOnly, SameSite refresh cookie with CSRF protection. Do not place refresh tokens in localStorage.
 

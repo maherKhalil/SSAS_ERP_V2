@@ -1,8 +1,8 @@
 ---
 document_id: FP-002
 title: Authentication and Token Lifecycle
-status: Draft
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 sprint: Sprint-01
 module: Platform
 depends_on: [FP-001, ADR-006]
@@ -26,8 +26,8 @@ Define password authentication, account setup, post-authentication tenant select
 
 ## Status
 
-Draft. All blocking decisions in `decisions-required.md` must be approved before implementation.
+Approved for implementation. The authoritative decisions are recorded in `decisions-approved.md`.
 
 ## Documents
 
-`requirements.md`, `business-rules.md`, `domain-model.md`, `authentication-model.md`, `api-contracts.md`, `data-model.md`, `acceptance-criteria.md`, `test-scenarios.md`, `decisions-required.md`, and `traceability-matrix.md`.
+`requirements.md`, `business-rules.md`, `domain-model.md`, `authentication-model.md`, `api-contracts.md`, `data-model.md`, `acceptance-criteria.md`, `test-scenarios.md`, `decisions-approved.md`, `decisions-approved.md`, and `traceability-matrix.md`.

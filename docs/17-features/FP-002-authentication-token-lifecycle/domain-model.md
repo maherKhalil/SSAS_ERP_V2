@@ -1,15 +1,15 @@
 ---
 document_id: FP-002-DOM
 title: Authentication Domain Model
-status: Draft
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # Domain Model
 
 ## AuthenticationAccount aggregate
 
-Proposed one-to-one aggregate for the FP-001 Identity:
+Approved one-to-one aggregate for the FP-001 Identity:
 
 - IdentityId
 - global login identifier and normalized value
@@ -48,6 +48,6 @@ Purpose-bound single-use records for invitation and password reset:
 
 Short-lived proof of successful primary authentication. It permits only membership discovery and tenant selection and is never accepted by business APIs.
 
-## Proposed repositories
+## Repository contracts
 
 `IAuthenticationAccountRepository`, `IAuthenticationSessionRepository`, and `IAccountActionTokenRepository`. No generic repository or exposed `IQueryable`.

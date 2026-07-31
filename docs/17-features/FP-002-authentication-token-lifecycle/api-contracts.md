@@ -1,13 +1,13 @@
 ---
 document_id: FP-002-API
 title: Authentication API Contracts
-status: Draft
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # API Contracts
 
-Proposed routes:
+Approved V1 routes:
 
 ```http
 POST /api/platform/auth/login

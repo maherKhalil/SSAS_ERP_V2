@@ -4,5 +4,8 @@ namespace SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 
 public interface IDomainEventConsumer
 {
-  Task HandleAsync(DomainEvent domainEvent, CancellationToken cancellationToken = default);
+  Task HandleAsync(
+    DomainEvent domainEvent,
+    DomainEventDispatchMetadata metadata,
+    CancellationToken cancellationToken = default);
 }

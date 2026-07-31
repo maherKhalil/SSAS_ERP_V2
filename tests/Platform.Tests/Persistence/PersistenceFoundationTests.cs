@@ -33,7 +33,7 @@ public sealed class PersistenceFoundationTests
   {
     await using var scope = await PersistenceTestScope.CreateAsync();
     var aggregate = new TestAggregate("commit");
-    aggregate.Raise(new TestDomainEvent(Guid.NewGuid(), scope.Clock.UtcNow, "test-correlation"));
+    aggregate.Raise(new TestDomainEvent(Guid.NewGuid(), scope.Clock.UtcNow));
     scope.Context.Aggregates.Add(aggregate);
 
     await using var transaction = await scope.UnitOfWork.BeginTransactionAsync();
@@ -49,7 +49,7 @@ public sealed class PersistenceFoundationTests
   {
     await using var scope = await PersistenceTestScope.CreateAsync();
     var aggregate = new TestAggregate(null!);
-    aggregate.Raise(new TestDomainEvent(Guid.NewGuid(), scope.Clock.UtcNow, "test-correlation"));
+    aggregate.Raise(new TestDomainEvent(Guid.NewGuid(), scope.Clock.UtcNow));
     scope.Context.Aggregates.Add(aggregate);
 
     await Assert.ThrowsAsync<DbUpdateException>(() => scope.UnitOfWork.SaveChangesAsync());
@@ -63,7 +63,7 @@ public sealed class PersistenceFoundationTests
   {
     await using var scope = await PersistenceTestScope.CreateAsync();
     var aggregate = new TestAggregate("rollback");
-    aggregate.Raise(new TestDomainEvent(Guid.NewGuid(), scope.Clock.UtcNow, "test-correlation"));
+    aggregate.Raise(new TestDomainEvent(Guid.NewGuid(), scope.Clock.UtcNow));
     scope.Context.Aggregates.Add(aggregate);
 
     await using var transaction = await scope.UnitOfWork.BeginTransactionAsync();
@@ -91,7 +91,7 @@ public sealed class PersistenceFoundationTests
   {
     await using var scope = await PersistenceTestScope.CreateAsync();
     var aggregate = new TestAggregate("cancelled");
-    aggregate.Raise(new TestDomainEvent(Guid.NewGuid(), scope.Clock.UtcNow, "test-correlation"));
+    aggregate.Raise(new TestDomainEvent(Guid.NewGuid(), scope.Clock.UtcNow));
     scope.Context.Aggregates.Add(aggregate);
     using var cancellationSource = new CancellationTokenSource();
     cancellationSource.Cancel();
@@ -249,8 +249,8 @@ public sealed class PersistenceFoundationTests
     public void Raise(DomainEvent domainEvent) => RaiseDomainEvent(domainEvent);
   }
 
-  private sealed record TestDomainEvent(Guid EventId, DateTimeOffset OccurredAt, string CorrelationId)
-    : DomainEvent(EventId, OccurredAt, CorrelationId);
+  private sealed record TestDomainEvent(Guid EventId, DateTimeOffset OccurredUtc)
+    : DomainEvent(EventId, OccurredUtc);
 
   private sealed class RecordingDomainEventDispatcher : IDomainEventDispatcher
   {

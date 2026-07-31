@@ -22,3 +22,14 @@ version: 1.0
 - **BRULE-AUTH-0013:** An invitation activates only its intended identity and membership.
 - **BRULE-AUTH-0014:** Administrators never create, view, or communicate passwords.
 - **BRULE-AUTH-0015:** Private signing keys and production secrets never enter source control.
+
+## Sprint-01 Milestone 2 interpretation
+
+- A new password-based Identity receives a server-generated exact `local:{guid}` subject; login email is never the subject.
+- Global `LoginEmail` and tenant-specific `TenantUser.Email` remain independent.
+- Invitations create or target only a pending membership and never stage or assign roles.
+- Invitation completion for an existing verified active account activates only the intended pending membership and does not change password or security version.
+- `PendingSetup`, `Active`, and `Disabled` are the only authentication-account statuses. Temporary lockout is represented by failed-attempt state and `LockoutEndUtc`.
+- Action-token lookup uses a public selector; the raw secret is verified against the exact purpose using a fixed-time hash comparison.
+- Failed-login concurrency retries are bounded to three attempts and can never produce authentication success.
+- Raw invitation and reset tokens may leave the issuing command only once through an explicitly sensitive internal result. They are not public API DTOs.

@@ -37,10 +37,13 @@ Invitation draft:
 ```json
 {
   "email": "user@example.com",
-  "displayName": "Example User",
-  "roleIds": []
+  "displayName": "Example User"
 }
 ```
+
+Under `DEC-AUTH-0025`, an invitation creates or targets a `Pending` membership and does not stage or assign roles. No role identifiers are stored in the invitation or its account-action token. Authorized administrators assign roles after membership activation.
+
+Inviting an already active membership is rejected. A deactivated membership is restored only through the approved reactivation operation. First-tenant-administrator provisioning remains part of tenant provisioning rather than this invitation flow.
 
 ## Tenant selection
 

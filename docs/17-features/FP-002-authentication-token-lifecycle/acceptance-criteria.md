@@ -29,3 +29,9 @@ version: 1.0
 - **AC-AUTH-0020:** Secrets never appear in logs or telemetry.
 - **AC-AUTH-0021:** Concurrent refresh permits at most one successful rotation.
 - **AC-AUTH-0022:** Signing-key overlap supports controlled rotation.
+
+## Sprint-01 Milestone 2 applicability
+
+Milestone 2 directly covers the credential and account-action portions of `AC-AUTH-0001`, `AC-AUTH-0009`, `AC-AUTH-0013`, `AC-AUTH-0014`, `AC-AUTH-0015`, `AC-AUTH-0016`, `AC-AUTH-0017`, and `AC-AUTH-0020`.
+
+`AC-AUTH-0002` through `AC-AUTH-0008`, `AC-AUTH-0010` through `AC-AUTH-0012`, `AC-AUTH-0018`, `AC-AUTH-0019`, `AC-AUTH-0021`, and `AC-AUTH-0022` remain package acceptance criteria for later FP-002 milestones.

@@ -29,10 +29,10 @@ User onboarding is invitation-based.
 - An authorized administrator creates the invitation.
 - The invitation is delivered to the global login email.
 - The user proves ownership by consuming a single-use invitation token.
-- The user sets the initial password.
+- A new or `PendingSetup` account sets the initial password. An existing verified `Active` account does not change its password during invitation completion.
 - Administrators never create, view, or communicate passwords.
 - Email verification is mandatory for password accounts.
-- Accepting an invitation for an existing Identity links or activates only the intended tenant membership.
+- Accepting an invitation for an existing Identity links or activates only the intended tenant membership and discloses no cross-tenant membership data.
 
 ## DEC-AUTH-0004 — Password policy
 
@@ -251,3 +251,123 @@ Before production support access is enabled, it must have:
 - explicit target-tenant selection;
 - no tenant-role elevation;
 - immutable support-action auditing.
+
+## DEC-AUTH-0023 — Local Identity subject
+
+For a new password-based Identity, generate an immutable server-owned subject in this format:
+
+```text
+local:{guid}
+```
+
+The GUID is cryptographically random and consistently formatted with the `N` format.
+
+Example:
+
+```text
+local:72e4872ef9c947e9b4339c27e9478869
+```
+
+The subject is exact and case-sensitive. Login email is never used as the Identity subject, changing login email never changes the subject, and callers cannot supply the subject. An existing `AuthenticationAccount` always reuses its existing Identity.
+
+## DEC-AUTH-0024 — Login-email normalization
+
+The display `LoginEmail` is trimmed and preserves its trimmed display casing.
+
+`NormalizedLoginEmail` is calculated using:
+
+```text
+Trim().ToUpperInvariant()
+```
+
+Provider-specific transformations, including dot removal, plus-alias removal, or Gmail-specific normalization, are prohibited.
+
+`NormalizedLoginEmail` is stored as `NVARCHAR(320)` using `Latin1_General_100_BIN2` collation and has one global unique index.
+
+`TenantUser.Email` remains tenant-specific and independent from the global login email.
+
+## DEC-AUTH-0025 — Invitation membership and roles
+
+Milestone 2 invitations create or target a `Pending` `TenantUser` membership.
+
+- Invitations do not stage or assign roles.
+- No role identifiers are stored in `AccountActionToken`.
+- No roles are assigned before membership activation.
+- Authorized administrators assign roles after membership activation.
+- Inviting an already `Active` membership is rejected.
+- A `Deactivated` membership is restored only through the existing approved `TenantUser` reactivation workflow, not through invitation.
+- First-tenant-administrator provisioning remains part of tenant provisioning, not this milestone.
+
+## DEC-AUTH-0026 — Existing-account invitations
+
+For a new `AuthenticationAccount`, invitation completion requires a password, validates the password policy, hashes the password, verifies `LoginEmail`, activates the account, and activates the intended pending membership.
+
+For an existing verified `Active` `AuthenticationAccount`, invitation completion activates only the intended pending membership. It does not request or change a password and does not increment the security version.
+
+For an existing `PendingSetup` account without a password, completion requires initial password setup.
+
+The operation must not reveal to a tenant administrator whether the email already belongs to another tenant or disclose cross-tenant membership data.
+
+## DEC-AUTH-0027 — Authentication-account status
+
+Approved account statuses are:
+
+- `PendingSetup`;
+- `Active`;
+- `Disabled`.
+
+Temporary lockout is not an account status. It is represented by `FailedAttemptCount` and `LockoutEndUtc`. An account automatically becomes eligible again after `LockoutEndUtc` when every other eligibility rule passes.
+
+## DEC-AUTH-0028 — Compromised-password check
+
+Define `ICompromisedPasswordChecker` in Platform Application. Its production implementation uses a deployment-provided, versioned offline compromised/common-password dataset.
+
+- Password setup and reset require no network call.
+- Raw passwords are never written to the dataset or logs.
+- Production startup validation fails when checking is enabled but the approved dataset is missing or invalid.
+- Development and tests may use explicit test implementations.
+- An unavailable required production dataset causes password setup or reset to fail safely.
+- Package and dataset licensing must be documented.
+- The check must never be silently disabled in production.
+
+## DEC-AUTH-0029 — Action-token format
+
+Action tokens use this format:
+
+```text
+<public-selector>.<secret>
+```
+
+The public selector is a cryptographically random GUID used only to locate the candidate record. The secret contains 32 cryptographically random bytes and is Base64Url encoded. It is returned exactly once.
+
+The stored hash is SHA-256, persisted as a fixed 32-byte binary value, and calculated over a canonical domain-separated value containing the token purpose, public selector, and raw secret.
+
+Verification loads by public selector, validates the exact purpose, recomputes the hash, and compares it using `CryptographicOperations.FixedTimeEquals`.
+
+The raw token is never stored, logged, audited, or published.
+
+## DEC-AUTH-0030 — Token-delivery boundary
+
+Milestone 2 does not implement email delivery or public token APIs.
+
+Issuing commands may return the raw invitation or reset token exactly once through an explicitly sensitive internal result. That result:
+
+- must not be serialized by an HTTP endpoint;
+- must not appear in logs, telemetry, exceptions, or domain events;
+- is intended for a later notification-delivery adapter;
+- must be structurally distinguishable from ordinary DTOs.
+
+Actual email delivery belongs to a later notification-integration milestone.
+
+## DEC-AUTH-0031 — Failed-login concurrency
+
+Failed-attempt updates use optimistic concurrency with a bounded retry.
+
+- Reread and reapply the failed attempt after a rowversion conflict.
+- Attempt no more than three retries.
+- Never convert a persistence conflict into authentication success.
+- After retry exhaustion, return the same generic authentication failure.
+- Emit only safe internal diagnostics.
+- Endpoint rate limiting remains an additional later protection.
+
+SQL Server tests must cover concurrent failed attempts and the transition into lockout.

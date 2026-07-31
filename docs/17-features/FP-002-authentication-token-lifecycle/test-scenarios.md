@@ -7,26 +7,85 @@ version: 1.0
 
 # Test Scenarios
 
-## Domain/Application
+## Credential and account-action core
 
-Invitation activation; expired/wrong-purpose action tokens; password verification and rehash; lockout; password change/reset; independent sessions; single-session and all-session revocation.
+- **TS-AUTH-0001:** Complete an invitation for a new password account, verify the global login email, activate the account, and activate only the intended pending membership.
+- **TS-AUTH-0002:** Complete an invitation for an existing verified active account without requesting or changing its password or security version.
+- **TS-AUTH-0003:** Complete an invitation for an existing `PendingSetup` account by setting its initial password.
+- **TS-AUTH-0004:** Reject invitation of an already active membership and require the separate approved reactivation workflow for a deactivated membership.
+- **TS-AUTH-0005:** Verify that invitation issuance and completion store no role identifiers and assign no roles.
+- **TS-AUTH-0006:** Generate a new password-based Identity subject as exact `local:{guid}` in `N` format and reject caller control of the subject.
+- **TS-AUTH-0007:** Preserve a stable local Identity subject when login email changes in a later approved workflow.
+- **TS-AUTH-0008:** Normalize global login email with trim and `ToUpperInvariant()` while preserving trimmed display casing and applying no provider-specific transformation.
+- **TS-AUTH-0009:** Verify a correct password and return only internal credential success without issuing a token.
+- **TS-AUTH-0010:** Return the same generic credential failure for unknown identifier, wrong password, disabled account, and locked account.
+- **TS-AUTH-0011:** Rehash a password after successful verification when the framework requests rehashing without changing password-changed time or security version.
+- **TS-AUTH-0012:** Lock an account after five consecutive failed attempts for the configured fifteen-minute duration.
+- **TS-AUTH-0013:** Make the account eligible after lockout expiry and reset failed-attempt state after successful verification.
+- **TS-AUTH-0014:** Reread and reapply concurrent failed attempts with no more than three optimistic-concurrency retries, never returning success after a conflict.
+- **TS-AUTH-0015:** Reject a password found by the approved compromised/common-password checker and fail safely when its required production dataset is unavailable.
+- **TS-AUTH-0016:** Request password reset without disclosing whether an eligible account exists.
+- **TS-AUTH-0017:** Complete password reset once, replace the password hash, clear lockout state, and increment security version.
+- **TS-AUTH-0018:** Reject expired, consumed, revoked, malformed, or wrong-purpose invitation and reset tokens.
+- **TS-AUTH-0019:** Keep the current session, revoke other sessions, and increment security version after authenticated password change.
 
 ## Tenant selection
 
-Automatic one-membership selection; explicit multiple-membership selection; inactive membership exclusion; arbitrary tenant rejection; selection transaction blocked from business APIs; one-tenant claim issuance.
+- **TS-AUTH-0020:** Automatically select the only eligible active tenant membership.
+- **TS-AUTH-0021:** Require explicit selection when multiple eligible active memberships exist.
+- **TS-AUTH-0022:** Exclude pending and deactivated memberships from tenant selection.
+- **TS-AUTH-0023:** Reject a tenant selection for which the authenticated Identity has no eligible membership.
+- **TS-AUTH-0024:** Prevent a tenant-selection transaction from accessing tenant business APIs and reject expired, replayed, or revoked transactions.
+- **TS-AUTH-0025:** Issue an access token containing exactly one tenant and only that membership's roles and permissions.
 
-## Token lifecycle
+## Session and token lifecycle
 
-JWT issuance/validation; refresh rotation; reuse detection; idle and absolute expiry; disabled user/membership/tenant rejection; concurrent refresh; client binding; signing-key overlap.
+- **TS-AUTH-0030:** Issue and validate an RS256 access token with approved issuer, audience, lifetime, `kid`, required claims, and exact claim values.
+- **TS-AUTH-0031:** Issue a client-, session-, identity-, and tenant-bound refresh token and rotate it after one successful use.
+- **TS-AUTH-0032:** Detect reuse of a consumed refresh token, compromise the session, revoke descendants, and require reauthentication for that session.
+- **TS-AUTH-0033:** Enforce session idle and absolute expiry without extending absolute expiry during refresh.
+- **TS-AUTH-0034:** Reject login or refresh when the account, membership, tenant, session, or client is ineligible.
+- **TS-AUTH-0035:** Permit at most one successful concurrent refresh with no reuse grace window.
+- **TS-AUTH-0036:** Reject refresh from a client that does not match the session and refresh-token binding.
+- **TS-AUTH-0037:** Validate controlled signing-key overlap while issuing new tokens only with the current key.
+- **TS-AUTH-0038:** Enforce the configured active-session limit by revoking the oldest active session and preserving history.
+- **TS-AUTH-0039:** Log out the current session without revoking unrelated sessions.
+- **TS-AUTH-0040:** Revoke all active sessions for an Identity during logout-all or approved security reset.
+- **TS-AUTH-0041:** List only safe session metadata and revoke one selected session without exposing token material.
+- **TS-AUTH-0042:** Reject refresh when the current account security version differs from the session or refresh state.
 
-## API/security
+## API and security
 
-Generic login failure; reset enumeration prevention; rate limits; CSRF protection for cookie refresh/logout; correlation ID without secrets; only documented anonymous endpoints.
+- **TS-AUTH-0050:** Return indistinguishable public login failures without account enumeration.
+- **TS-AUTH-0051:** Return the same accepted reset-request response for existing and unknown login identifiers.
+- **TS-AUTH-0052:** Apply the approved endpoint rate limit by normalized login identifier and trusted network signal.
+- **TS-AUTH-0053:** Enforce Secure, HttpOnly, SameSite=Strict refresh cookies and anti-CSRF protection for refresh and logout.
+- **TS-AUTH-0054:** Include correlation metadata without logging passwords, raw tokens, hashes, JWTs, or full claims collections.
+- **TS-AUTH-0055:** Permit anonymous access only to explicitly documented authentication endpoints.
+- **TS-AUTH-0056:** Verify that a Milestone 2 sensitive raw-token result cannot be serialized as an ordinary HTTP response DTO.
 
 ## SQL Server
 
-Migration from empty database; unique normalized login; exact unique token hashes; retained token history; atomic refresh concurrency; restricted deletes; rowversion conflict mapping.
+- **TS-AUTH-0060:** Apply the Platform migration chain to an empty SQL Server database and upgrade a database containing `InitialIdentityAccess`.
+- **TS-AUTH-0061:** Enforce one AuthenticationAccount per Identity and one globally unique binary-collated normalized login email.
+- **TS-AUTH-0062:** Store exact fixed 32-byte action-token hashes and no raw invitation, reset, or refresh-token column.
+- **TS-AUTH-0063:** Preserve consumed and revoked action-token history.
+- **TS-AUTH-0064:** Preserve concurrent failed attempts and enforce the lockout transition using SQL Server rowversion and bounded retry.
+- **TS-AUTH-0065:** Permit at most one successful concurrent action-token consumption.
+- **TS-AUTH-0066:** Preserve refresh-token rotation history, permit at most one successful atomic refresh, and detect subsequent reuse.
+- **TS-AUTH-0067:** Enforce restricted deletes for Identity, AuthenticationAccount, TenantUser, action-token, session, and refresh-token relationships.
+- **TS-AUTH-0068:** Verify that global AuthenticationAccount and AccountActionToken records receive no tenant query filter or automatic TenantId assignment.
 
-## Architecture
+## Architecture and scope
 
-Domain/Application EF-free; no generic repository; no HR/GL dependency; no secrets in source.
+- **TS-AUTH-0070:** Keep Domain and Application free of EF Core, SQL Server, ASP.NET Core, HTTP, and cryptographic framework dependencies.
+- **TS-AUTH-0071:** Define only aggregate-specific repositories and expose no generic repository or `IQueryable` boundary.
+- **TS-AUTH-0072:** Keep Platform authentication independent from HR and GL implementations.
+- **TS-AUTH-0073:** Scan source, configuration, logs, exceptions, events, and test artifacts for committed production secrets or sensitive-value logging.
+- **TS-AUTH-0074:** Verify that Milestone 2 introduces no session, refresh-token, JWT-issuance, tenant-selection, HTTP endpoint, cookie, CSRF, RS256, logout/session API, Angular, immutable-audit-store, or platform-support-authentication implementation.
+
+## Milestone applicability
+
+Milestone 2 implements `TS-AUTH-0001` through `TS-AUTH-0018`, `TS-AUTH-0054`, `TS-AUTH-0056`, `TS-AUTH-0060` through `TS-AUTH-0065`, `TS-AUTH-0067`, `TS-AUTH-0068`, and `TS-AUTH-0070` through `TS-AUTH-0074` where those scenarios concern `AuthenticationAccount` or `AccountActionToken`.
+
+All tenant-selection, session, refresh, JWT, HTTP, cookie/CSRF, signing-key, and authenticated-password-change scenarios remain assigned to later FP-002 milestones.

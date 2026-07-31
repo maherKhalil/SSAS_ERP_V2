@@ -30,4 +30,23 @@ Approved for implementation. The authoritative decisions are recorded in `decisi
 
 ## Documents
 
-`requirements.md`, `business-rules.md`, `domain-model.md`, `authentication-model.md`, `api-contracts.md`, `data-model.md`, `acceptance-criteria.md`, `test-scenarios.md`, `decisions-approved.md`, `decisions-approved.md`, and `traceability-matrix.md`.
+`requirements.md`, `business-rules.md`, `domain-model.md`, `authentication-model.md`, `api-contracts.md`, `data-model.md`, `acceptance-criteria.md`, `test-scenarios.md`, `decisions-approved.md`, and `traceability-matrix.md`.
+
+## Sprint-01 Milestone 2 boundary
+
+Milestone 2 implements only the credential and account-action core:
+
+- `AuthenticationAccount`;
+- `AccountActionToken`;
+- invitation and initial account setup core;
+- password credential verification without token issuance;
+- failed-attempt and lockout behavior;
+- password-reset core;
+- password hashing, verification, and rehash outcomes;
+- secure action-token generation;
+- persistence through the existing `PlatformDbContext` and `IPlatformUnitOfWork`;
+- SQL Server migrations and automated tests.
+
+Milestone 2 does not implement `AuthenticationSession`, `RefreshTokenRecord`, JWT issuance, tenant-selection transactions, HTTP authentication endpoints, cookies, CSRF, RS256 signing, logout/session APIs, Angular authentication, immutable audit storage, or App Owner/App Support authentication.
+
+The authoritative Milestone 2 clarifications are `DEC-AUTH-0023` through `DEC-AUTH-0031` in `decisions-approved.md`.

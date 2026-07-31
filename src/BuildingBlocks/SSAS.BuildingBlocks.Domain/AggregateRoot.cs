@@ -1,6 +1,6 @@
 namespace SSAS.BuildingBlocks.Domain;
 
-public abstract class AggregateRoot<TId> : Entity<TId>
+public abstract class AggregateRoot<TId> : Entity<TId>, IHasDomainEvents
   where TId : notnull
 {
   private readonly List<DomainEvent> domainEvents = [];
@@ -26,4 +26,6 @@ public abstract class AggregateRoot<TId> : Entity<TId>
 
     return events;
   }
+
+  public void ClearDomainEvents() => domainEvents.Clear();
 }

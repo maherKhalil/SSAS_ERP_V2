@@ -1,6 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <ProjectReference Include="..\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
     <ProjectReference Include="..\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
     <ProjectReference Include="..\SSAS.BuildingBlocks.Contracts\SSAS.BuildingBlocks.Contracts.csproj" />

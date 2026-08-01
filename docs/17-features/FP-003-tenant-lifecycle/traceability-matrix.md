@@ -39,10 +39,12 @@ module: Platform
 | FP-001 decisions | DEC-IAM-0001, DEC-IAM-0003, DEC-IAM-0004, DEC-IAM-0012, DEC-IAM-0013, DEC-IAM-0017, DEC-IAM-0018 | Separate Platform authorization, tenant selection eligibility, suspension denial, event/audit dependency, no destructive identity-history behavior |
 | FP-001 rules and requirements | BRULE-IAM-0002, BRULE-IAM-0003, BRULE-IAM-0007, BRULE-IAM-0015, BRULE-IAM-0022; FR-IAM-0114, FR-IAM-0116, FR-IAM-0117, FR-IAM-0123 | Active-tenant prerequisite, trusted TenantId, no tenant-role Platform authority, no request override |
 | FP-001 acceptance and tests | AC-IAM-0006, AC-IAM-0007, AC-IAM-0016, AC-IAM-0021; TS-IAM-0020 through TS-IAM-0024 | Tenant selection includes only active lifecycle status; suspended tenant is ineligible |
-| FP-002 decisions | DEC-AUTH-0008, DEC-AUTH-0013, DEC-AUTH-0020, DEC-AUTH-0021, DEC-AUTH-0022 | Session and selection workflows consume current eligibility; audit and support-authentication boundaries remain separate |
+| FP-002 decisions | DEC-AUTH-0008, DEC-AUTH-0013, DEC-AUTH-0020, DEC-AUTH-0021, DEC-AUTH-0022, DEC-AUTH-0057 | Session and selection workflows consume current eligibility; FP-002 Milestone 4 performs one scoped live eligibility lookup for every ordinary tenant-scoped request and keeps logout separately available; audit and support-authentication boundaries remain separate |
 | FP-002 rules and requirements | BR-AUTH-0002, BR-AUTH-0007; BRULE-AUTH-0004, BRULE-AUTH-0011; FR-AUTH-0103 through FR-AUTH-0105, FR-AUTH-0110, FR-AUTH-0120 | FP-003 supplies trusted tenant status for discovery, session creation, and refresh |
 | FP-002 acceptance and tests | AC-AUTH-0002 through AC-AUTH-0004, AC-AUTH-0018; TS-AUTH-0020 through TS-AUTH-0024, TS-AUTH-0034 | Only Active tenants are eligible; suspended tenant decisions are tested |
 
 ## Deferred traceability
 
 Subscription, billing, company provisioning, first-administrator provisioning, branding, localization, notification delivery, tenant UI, Platform-support authentication, immutable audit storage, authentication sessions, refresh tokens, JWT issuance, and public Tenant endpoints require their own approved feature packages or later milestones.
+
+FP-002 Milestone 4 provides cross-package implementation coverage for `DEC-TEN-0010`, `SEC-TEN-0208`, `AC-TEN-0019`, and `TS-TEN-0044` through `DEC-AUTH-0057`, `FR-AUTH-0145`, `SEC-AUTH-0227`, `NFR-AUTH-0315`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109` without changing FP-003 identifiers or ownership.

@@ -105,7 +105,7 @@ The authorization rule is:
 - high-risk operations perform a live current-status check;
 - performance mechanisms such as event-driven cache invalidation may be added later only with an approved stale-state bound and invalidation design.
 
-Before ordinary tenant APIs are production-enabled, a centralized current-status authorization policy must be implemented and tested. Middleware and JWT changes are outside the first implementation milestone.
+FP-002 Milestone 4 implements and tests this centralized policy under `DEC-AUTH-0057`. Every ordinary tenant-scoped authenticated business request performs one scoped live eligibility lookup; role and permission authorization permits only current Active status. TenantStatus is not copied into the JWT. Logout uses a separate authenticated policy so a current session can still be revoked after suspension. These Host/API and JWT changes remain outside the first FP-003 implementation milestone and are owned by FP-002.
 
 ## Concurrency and event timing
 

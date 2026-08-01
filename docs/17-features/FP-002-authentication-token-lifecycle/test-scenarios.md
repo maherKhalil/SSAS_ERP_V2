@@ -103,10 +103,43 @@ version: 1.0
 - **TS-AUTH-0089:** Permit at most one successful concurrent refresh; treat the losing verified use as reuse, compromise only the owning session, and revoke its unconsumed descendants.
 - **TS-AUTH-0090:** Verify that reveal-once refresh-token and selection-proof results cannot be serialized as ordinary DTOs or exposed through commands, persistence, logs, telemetry, exceptions, events, or debugger displays.
 
+## Milestone 4 transport-security scenarios
+
+- **TS-AUTH-0091:** Verify exactly the four approved routes, request bodies, server-bound ClientId, successful statuses, and Problem Details code/status mappings.
+- **TS-AUTH-0092:** Verify credential, no-membership, locked, disabled, selection, refresh, CSRF/Origin, rate-limit, and temporary-service failures disclose no internal cause.
+- **TS-AUTH-0093:** Issue and validate the exact singleton claim set, invariant identifier formats, canonical TenantId, random N-format JTI, exact ClientId, and distinct ordinally sorted role/permission values.
+- **TS-AUTH-0094:** Reject duplicate required claims, duplicate role/permission values, prohibited claim data, and an access token whose compact encoding would exceed 8192 bytes without truncation.
+- **TS-AUTH-0095:** Load an active deployment-mounted X.509 RSA signing certificate and retained verification certificates, enforce 2048-bit minimum, and fail Production startup for missing, invalid, expired, or insufficient-lifetime material.
+- **TS-AUTH-0096:** Verify Development uses only an announced ephemeral process-local RSA key and deterministic tests use only test-owned RSA keys, with no production generation or symmetric fallback.
+- **TS-AUTH-0097:** Derive `kid` exactly from certificate DER bytes and reject missing, unknown, disabled, or duplicate identifiers without probing unrelated keys.
+- **TS-AUTH-0098:** Validate one immutable issuance snapshot and old/new rollout overlap across instances for at least token lifetime plus 30-second skew, rejecting early retirement metadata.
+- **TS-AUTH-0099:** Reject unsigned, HMAC, algorithm-substitution, bad-signature, wrong-issuer, wrong-audience, expired, premature, malformed, and invalid-claim JWTs with `MapInboundClaims = false` and no `Jwt:SigningKey` path.
+- **TS-AUTH-0100:** Verify refresh-cookie creation, successful-refresh replacement, logout deletion, and terminal-failure deletion use exact name, path, Domain omission, Secure, HttpOnly, SameSite, and expiry behavior.
+- **TS-AUTH-0101:** Accept only exact equal CSRF cookie/header state with valid signature, expiry, session, refresh-selector, and `ssas-erp-web` binding; reject tampering, replay after rotation, mismatch, and expiry.
+- **TS-AUTH-0102:** Verify Production Data Protection uses the shared persistent encrypted key ring and fails startup for an unavailable directory, protection certificate, or secret configuration.
+- **TS-AUTH-0103:** Require JSON-only login/selection, exact Origin on all four routes, and restrictive credentialed CORS; reject wildcard, non-HTTPS, path/query/fragment, and unapproved origins.
+- **TS-AUTH-0104:** Verify direct mode ignores forwarded headers, trusted-proxy mode honors only known forwarders with the approved limit, and invalid Production proxy configuration fails startup.
+- **TS-AUTH-0105:** Enforce login limits of 30/minute by trusted IP and 5/15 minutes by HMAC(normalized email + IP), zero queue, generic 429, and Retry-After.
+- **TS-AUTH-0106:** Enforce selection 10/proof lifetime, refresh 10/minute, and logout 5/minute partitions with trusted IP and verified state while exposing no raw partition input or HMAC value.
+- **TS-AUTH-0107:** Verify Production requires explicit shared gateway/distributed enforcement mode while Development/Test remains operable with approved process-local limiters and no database counter table.
+- **TS-AUTH-0108:** Perform exactly one scoped live FP-003 lookup per ordinary tenant request; allow only Active and deny Provisioning, Suspended, Archived, and missing while allowing authenticated logout for a suspended tenant.
+- **TS-AUTH-0109:** Verify TenantStatus is absent from the JWT and account, session, membership, role, and permission changes may remain stale no longer than the 15-minute access-token lifetime unless a high-risk policy checks live state.
+- **TS-AUTH-0110:** Force access-token issuance failure during session creation and refresh and verify SQL rollback, no usable token, no success event dispatch, and no cookie write.
+- **TS-AUTH-0111:** Verify successful issuance precedes commit, success events follow commit, cookies follow commit, and simulated post-commit cookie failure produces documented ambiguity without automatic retry or grace window.
+- **TS-AUTH-0112:** Logout with validated current-session context, exact binding checks, `UserLogout`, current-session-only revocation, idempotent absent/terminal handling, cookie clearing, and 204; reject any request SessionId and expose no logout-all.
+- **TS-AUTH-0113:** Apply `AddUserLogoutSessionRevocationReason` on SQL Server, accept `UserLogout`, preserve all existing reasons and data, and verify the migration changes only the reason constraint.
+- **TS-AUTH-0114:** Return only TenantId, TenantUserId, and FP-003 TenantName as TenantDisplayName for eligible memberships owned by the verified Identity, with proof reveal-once in JSON and every prohibited field absent.
+- **TS-AUTH-0115:** Verify all authentication responses emit no-store, no-cache, no-referrer, and nosniff headers and exclude sensitive bodies, headers, cookies, commands, results, and model-state values from logs, exceptions, compression, and examples.
+- **TS-AUTH-0116:** Validate generated OpenAPI for exact four-route visibility, Bearer security, anonymous classifications, refresh-cookie description, X-XSRF-TOKEN, response schemas, statuses/codes, and absence of sensitive values.
+- **TS-AUTH-0117:** Verify Milestone 4 creates no table for signing keys, access tokens, CSRF, rate limits, OpenAPI, CORS, or proxies and introduces no migration other than the approved constraint change.
+- **TS-AUTH-0118:** Run API, Application, architecture, SQL Server, concurrency, security, key-rotation, configuration, and end-to-end authentication suites with only the approved Milestone 4 surface enabled.
+
 ## Milestone applicability
 
 Milestone 2 implements `TS-AUTH-0001` through `TS-AUTH-0018`, `TS-AUTH-0054`, `TS-AUTH-0056`, `TS-AUTH-0060` through `TS-AUTH-0065`, `TS-AUTH-0067`, `TS-AUTH-0068`, and `TS-AUTH-0070` through `TS-AUTH-0074` where those scenarios concern `AuthenticationAccount` or `AccountActionToken`.
 
 Milestone 3 implements the tenant-selection and internal session/refresh portions of `TS-AUTH-0020` through `TS-AUTH-0024`, `TS-AUTH-0031` through `TS-AUTH-0036`, `TS-AUTH-0038`, `TS-AUTH-0040`, `TS-AUTH-0042`, `TS-AUTH-0060`, `TS-AUTH-0062`, `TS-AUTH-0066` through `TS-AUTH-0068`, `TS-AUTH-0070` through `TS-AUTH-0073`, and `TS-AUTH-0075` through `TS-AUTH-0090`.
 
-JWT, HTTP, cookie/CSRF, signing-key, logout/session-administration API, and authenticated-password-change scenarios remain assigned to later FP-002 milestones.
+Milestone 4 implements `TS-AUTH-0025`, `TS-AUTH-0030`, `TS-AUTH-0037`, `TS-AUTH-0039`, `TS-AUTH-0050`, `TS-AUTH-0052` through `TS-AUTH-0055`, the applicable existing session/refresh/concurrency/security scenarios, and `TS-AUTH-0091` through `TS-AUTH-0118`.
+
+Authenticated password change, password-reset and invitation HTTP delivery, session listing, revoke-another-session, logout-all, Angular authentication, immutable audit storage, Platform-support authentication, MFA, external providers, native clients, notification delivery, JWKS, and additional high-risk business policies remain later work.

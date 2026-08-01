@@ -128,3 +128,19 @@ Migration `AddAuthenticationSessionsAndTenantSelection` adds only:
 They use the existing PlatformDbContext, `platform` schema, Platform SQL Server connection, `platform.__EFMigrationsHistory`, and IPlatformUnitOfWork. The migration upgrades Milestone 2 without inventing Tenant data, weakening same-tenant constraints, or introducing JWT, cookie, notification, audit-store, or Platform-support tables.
 
 Parameterized raw SQL is approved only for the canonical lock acquisitions: AuthenticationAccount, selection transaction when applicable, membership, Tenant, session, and refresh token. Rowversion and unique constraints are concurrency backstops; transaction failures roll back selection consumption, session creation, token consumption, and replacement insertion together.
+
+## Sprint-01 Milestone 4 persistence boundary
+
+The only Milestone 4 schema change is constraint-only migration `AddUserLogoutSessionRevocationReason`. It changes the existing `AuthenticationSessions` revocation-reason check constraint to add exact `UserLogout` while preserving `SessionLimitExceeded`, `PasswordReset`, `SecurityStateChanged`, `IdentityIneligible`, `MembershipIneligible`, `TenantIneligible`, and `Administrative` and all existing rows.
+
+Milestone 4 adds no table or column for:
+
+- signing or verification keys;
+- access tokens or JWT claims;
+- refresh-cookie or CSRF transport state;
+- Data Protection keys;
+- rate-limit counters or partitions;
+- allowed origins, CORS, proxy, or forwarded-header configuration;
+- OpenAPI metadata.
+
+Signing certificates, Data Protection key-ring material, allowed origins, proxy configuration, HMAC partition secrets, and distributed rate enforcement remain deployment/provider-owned. Development and Test rate counters remain process-local. CSRF state is protected and transported through the approved cookie/header design rather than persisted in SQL Server.

@@ -73,3 +73,23 @@ Milestone 3 implements the internal tenant-selection and authentication-session 
 Milestone 3 does not implement authentication HTTP endpoints, access-token/JWT issuance, RS256 keys, claims construction, ASP.NET Core authentication changes, cookies, CSRF, endpoint rate limiting, Angular authentication, public logout or session-management endpoints, authenticated password change, notification delivery, immutable audit storage, Platform-support authentication, MFA, external providers, or native clients.
 
 The authoritative Milestone 3 clarifications are `DEC-AUTH-0032` through `DEC-AUTH-0047` in `decisions-approved.md`.
+
+## Sprint-01 Milestone 4 boundary
+
+Milestone 4 implements the authentication transport-security slice:
+
+- exactly `POST /api/platform/auth/login`, `/select-tenant`, `/refresh`, and `/logout` with fixed server-side `ssas-erp-web` ClientId and generic approved Problem Details;
+- default 15-minute RS256 access tokens with the exact approved claims, 8192-byte compact limit, permission-primary authorization, strict validation, and no symmetric fallback;
+- deployment-mounted X.509 signing and rollover verification certificates, derived `kid`, 30-second clock skew, startup validation, and overlap;
+- the exact secure rotating refresh cookie and signed session-and-refresh-bound Data Protection CSRF cookie/header design;
+- exact Origin, restrictive CORS, direct/trusted-proxy, and endpoint-specific zero-queue rate-limit policies, including required shared production enforcement;
+- centralized live FP-003 Active-Tenant authorization for every ordinary tenant request;
+- access-token issuance before SQL commit, success-event dispatch after commit, cookie writes after commit, and explicit transport ambiguity;
+- current-session-only logout with `UserLogout` and no logout-all;
+- selection summaries containing only TenantId, TenantUserId, and FP-003 TenantName as TenantDisplayName;
+- no-store response controls, sensitive logging prohibitions, and exact OpenAPI contracts;
+- only the constraint migration `AddUserLogoutSessionRevocationReason`, with no new persistence table.
+
+The authoritative Milestone 4 clarifications are `DEC-AUTH-0048` through `DEC-AUTH-0063` in `decisions-approved.md`.
+
+Deferred beyond Milestone 4 are Angular authentication, browser route guards and frontend token storage implementation, session listing, revoke-another-session, logout-all, authenticated password change, password-reset/invitation email delivery and public routes, Platform-support authentication, MFA, external identity providers, OAuth/OIDC provider behavior, JWKS, native/mobile clients, service authentication, API keys, impersonation, notification delivery, immutable audit storage, full live validation of all non-Tenant authorization state on every ordinary request, and high-risk business-operation policies beyond the reusable foundation.

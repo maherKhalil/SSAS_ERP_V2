@@ -88,3 +88,7 @@ An already issued token does not override current non-Active status. Before ordi
 ### AC-TEN-0020 — Focused milestone scope
 
 The first implementation milestone introduces no subscription, company, branding, configuration, notification, authentication-session, refresh-token, JWT-issuance, tenant endpoint, Angular, or immutable-audit-store implementation.
+
+## FP-002 Milestone 4 cross-package coverage
+
+`AC-TEN-0019` is implemented by the FP-002 Milestone 4 centralized live-Tenant authorization foundation under `DEC-AUTH-0057`, `AC-AUTH-0045`, and `TS-AUTH-0108`. FP-003 remains the authoritative lifecycle and eligibility source; FP-002 owns the Host/API authorization integration.

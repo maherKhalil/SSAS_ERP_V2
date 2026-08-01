@@ -70,4 +70,4 @@ module: Platform
 
 The first milestone implements `TS-TEN-0001` through `TS-TEN-0038` where infrastructure exists, excluding any HTTP-specific assertion other than verifying endpoint absence.
 
-`TS-TEN-0040` through `TS-TEN-0044` remain package-level scenarios for a later approved API and authorization milestone.
+FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization.

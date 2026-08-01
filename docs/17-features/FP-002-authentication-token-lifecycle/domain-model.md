@@ -43,7 +43,7 @@ Represents one independently revocable global authentication session, does not i
 
 Status is exactly `Active`, `Revoked`, or `Compromised`. The only transitions are Active to Revoked and Active to Compromised; both terminal states retain history. Expiration is computed from status plus idle and absolute timestamps rather than persisted as another status.
 
-Approved revocation reasons are exactly `SessionLimitExceeded`, `PasswordReset`, `SecurityStateChanged`, `IdentityIneligible`, `MembershipIneligible`, `TenantIneligible`, and `Administrative`.
+Approved revocation reasons are exactly `SessionLimitExceeded`, `PasswordReset`, `SecurityStateChanged`, `IdentityIneligible`, `MembershipIneligible`, `TenantIneligible`, `Administrative`, and `UserLogout`.
 
 The aggregate owns `RefreshTokenRecord` children. It controls rotation, family history, predecessor/replacement linkage, verified-reuse handling, active-descendant revocation, refresh timestamps, and compromise. A child may have its own rowversion concurrency backstop without becoming an aggregate.
 
@@ -107,3 +107,15 @@ Milestone 2 implements only `AuthenticationAccount` and `AccountActionToken`. It
 Milestone 3 implements `VerifiedIdentity`, `AuthenticationSession` with RefreshTokenRecord children, `TenantSelectionTransaction`, dedicated pre-tenant membership discovery, and FP-003 Tenant eligibility integration. It uses the existing PlatformDbContext and IPlatformUnitOfWork.
 
 It does not implement access-token/JWT issuance, HTTP endpoints, cookies, CSRF, Angular authentication, public logout or session administration, authenticated password change, notification delivery, immutable audit persistence, Platform-support authentication, MFA, or external identity providers.
+
+## Sprint-01 Milestone 4 model
+
+Milestone 4 adds no aggregate and no persisted access-token, signing-key, CSRF, CORS, proxy, OpenAPI, or rate-limit entity.
+
+Application owns framework-neutral trusted projections and `IAccessTokenIssuer`. Session creation and refresh coordinate token issuance inside the existing transaction and commit only after issuance succeeds. `RevokeCurrentAuthenticationSessionCommand` obtains session identity from trusted validated current-session context, locks AuthenticationAccount before AuthenticationSession, verifies every immutable binding, and invokes the existing aggregate revocation transition with `UserLogout`.
+
+The Host authentication infrastructure owns X.509/RS256 key access, JWT serialization and validation, cookies, Data Protection, Origin/CORS, trusted proxies, rate limiting, security response headers, and OpenAPI. These concerns do not enter Domain entities, events, or Application HTTP contracts.
+
+Tenant-selection summaries are safe Application projections containing exactly TenantId, TenantUserId, and TenantDisplayName sourced from FP-003 TenantName for an eligible Active membership owned by the verified Identity. The selection proof remains a separate reveal-once sensitive result.
+
+Every ordinary tenant authorization policy composes the existing role or permission requirement with one scoped live FP-003 eligibility result. This is an authorization service boundary, not aggregate behavior, and TenantStatus is not copied into AuthenticationSession or JWT state.

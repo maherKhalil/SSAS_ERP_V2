@@ -62,3 +62,30 @@ Milestone 3 implements the internal tenant-selection, session, refresh-token, se
 Milestone 3 does not claim access-token/JWT issuance, HTTP or browser transport security, signing-key implementation, public logout/session administration, authenticated password change, notification delivery, Angular authentication, or Platform-support authentication.
 
 Immutable audit persistence, platform-support authentication, external providers, passwordless flows, concrete MFA, Angular authentication, and notification delivery remain deferred as approved.
+
+## Sprint-01 Milestone 4 authoritative traceability
+
+| Capability | Approved decisions | Functional requirements | Security and non-functional requirements | Acceptance criteria | Focused scenarios |
+|---|---|---|---|---|---|
+| Exact routes, requests, statuses, and generic failures | DEC-AUTH-0048 | FR-AUTH-0136 | SEC-AUTH-0217, NFR-AUTH-0318 | AC-AUTH-0036 | TS-AUTH-0091, TS-AUTH-0092 |
+| Exact claims, authorization values, and token-size cap | DEC-AUTH-0049 | FR-AUTH-0137 | SEC-AUTH-0218 | AC-AUTH-0037 | TS-AUTH-0093, TS-AUTH-0094 |
+| Production X.509 RS256 provider | DEC-AUTH-0050 | FR-AUTH-0138 | SEC-AUTH-0219, SEC-AUTH-0232, NFR-AUTH-0311, NFR-AUTH-0317 | AC-AUTH-0038 | TS-AUTH-0095, TS-AUTH-0096 |
+| Derived kid and deployment rollover | DEC-AUTH-0051 | FR-AUTH-0139 | SEC-AUTH-0220, NFR-AUTH-0312, NFR-AUTH-0317 | AC-AUTH-0039 | TS-AUTH-0097, TS-AUTH-0098 |
+| Strict RS256 JWT validation | DEC-AUTH-0052 | FR-AUTH-0140 | SEC-AUTH-0221 | AC-AUTH-0040 | TS-AUTH-0099 |
+| Refresh-cookie lifecycle | DEC-AUTH-0053 | FR-AUTH-0141 | SEC-AUTH-0222 | AC-AUTH-0041 | TS-AUTH-0100 |
+| Signed CSRF and Data Protection | DEC-AUTH-0054 | FR-AUTH-0142 | SEC-AUTH-0223, SEC-AUTH-0232, NFR-AUTH-0313, NFR-AUTH-0317 | AC-AUTH-0042 | TS-AUTH-0101, TS-AUTH-0102 |
+| Endpoint-specific rate limits and shared production enforcement | DEC-AUTH-0055 | FR-AUTH-0143 | SEC-AUTH-0226, NFR-AUTH-0314, NFR-AUTH-0317 | AC-AUTH-0043 | TS-AUTH-0105, TS-AUTH-0106, TS-AUTH-0107 |
+| CORS, Origin, and trusted client IP | DEC-AUTH-0056 | FR-AUTH-0144 | SEC-AUTH-0224, SEC-AUTH-0225, NFR-AUTH-0317 | AC-AUTH-0044 | TS-AUTH-0103, TS-AUTH-0104 |
+| Live FP-003 tenant eligibility | DEC-AUTH-0057 | FR-AUTH-0145 | SEC-AUTH-0227, NFR-AUTH-0315 | AC-AUTH-0045 | TS-AUTH-0108, TS-AUTH-0109 |
+| Pre-commit access-token issuance and transport ambiguity | DEC-AUTH-0058 | FR-AUTH-0146 | SEC-AUTH-0228, NFR-AUTH-0316 | AC-AUTH-0046, AC-AUTH-0051 | TS-AUTH-0110, TS-AUTH-0111 |
+| Current-session logout and UserLogout persistence | DEC-AUTH-0059 | FR-AUTH-0147, FR-AUTH-0151 | SEC-AUTH-0229, NFR-AUTH-0319 | AC-AUTH-0047, AC-AUTH-0051 | TS-AUTH-0112, TS-AUTH-0113 |
+| Eligible tenant-selection summary | DEC-AUTH-0060 | FR-AUTH-0148 | SEC-AUTH-0217 | AC-AUTH-0048 | TS-AUTH-0114 |
+| Sensitive HTTP response and observability controls | DEC-AUTH-0061 | FR-AUTH-0149 | SEC-AUTH-0230 | AC-AUTH-0049 | TS-AUTH-0115 |
+| Safe exact OpenAPI contract | DEC-AUTH-0062 | FR-AUTH-0150 | SEC-AUTH-0231, NFR-AUTH-0318 | AC-AUTH-0050 | TS-AUTH-0116 |
+| Milestone 4 persistence boundary and quality | DEC-AUTH-0063 | FR-AUTH-0151 | NFR-AUTH-0319 | AC-AUTH-0051 | TS-AUTH-0117, TS-AUTH-0118 |
+
+Milestone 4 covers all new identifiers `FR-AUTH-0136` through `FR-AUTH-0151`, `SEC-AUTH-0217` through `SEC-AUTH-0232`, `NFR-AUTH-0311` through `NFR-AUTH-0319`, `AC-AUTH-0036` through `AC-AUTH-0051`, and `TS-AUTH-0091` through `TS-AUTH-0118`. Every `DEC-AUTH-0048` through `DEC-AUTH-0063` decision appears exactly once in this authoritative decision column.
+
+The resulting FP-002 definition totals are 51 functional requirements, 32 security requirements, 19 non-functional requirements, 51 acceptance criteria, 103 test scenarios, and 63 approved decisions.
+
+Angular authentication, browser route guards and storage implementation, session listing, revoke-another-session, logout-all, authenticated password change, password-reset/invitation HTTP delivery, Platform-support authentication, MFA, external identity providers, OAuth/OIDC provider behavior, JWKS, native/mobile clients, service authentication, API keys, impersonation, notification delivery, immutable audit storage, full live validation of all non-Tenant authorization state on every ordinary request, and additional high-risk business policies remain deferred and are not traced as delivered by Milestone 4.

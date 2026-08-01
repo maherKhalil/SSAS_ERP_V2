@@ -48,3 +48,18 @@ version: 1.0
 - A maximum of ten active unexpired sessions per Identity is enforced transactionally by locking the AuthenticationAccount and revoking deterministic oldest sessions before new-session creation.
 - Successful password reset revokes every active session for the Identity in the same transaction that advances SecurityVersion, consumes the reset token, replaces the hash, and clears lockout.
 - Locked persistence operations follow AuthenticationAccount, selection transaction, membership, Tenant, session, then refresh-token lock order. Ambiguous refresh commits are not retried.
+
+## Sprint-01 Milestone 4 interpretation
+
+- The public surface is exactly login, tenant selection, refresh, and current-session logout under `/api/platform/auth`; ClientId is never accepted from the caller and is exact `ssas-erp-web`.
+- Access tokens default to 15 minutes, use only RS256, contain the exact approved singleton and repeated claims, reject duplicate or oversized claims, and contain no identity display, tenant display/status, company, billing, subscription, password, or complete security-state data.
+- Permission claims are the primary business-authorization mechanism; role claims support exact-role policies. Both use exact distinct ordinal values derived from current trusted tenant state at issuance.
+- Production signing keys and Data Protection state are deployment-owned. Missing or invalid required production cryptographic configuration prevents startup; no symmetric or insecure local fallback is allowed.
+- The refresh value remains only in the exact Secure, HttpOnly, SameSite Strict host cookie. Refresh and logout require exact signed session-and-refresh-bound CSRF state, and both cookies rotate or clear together as approved.
+- Login, selection, refresh, and logout validate exact Origin, restrictive CORS, trusted client-IP provenance, and their exact zero-queue rate limits. Public failures remain generic.
+- Every ordinary tenant-scoped authenticated business request validates live FP-003 status and permits only Active; logout is separately authorized so current suspended-tenant sessions can still be revoked.
+- Access-token issuance succeeds before commit, events dispatch after commit, and cookies write after commit. Post-commit cookie failure is transport ambiguity and never creates automatic retry or a refresh grace window.
+- Current-session logout trusts only validated claims, revokes only that session with `UserLogout`, is outwardly idempotent, clears refresh and CSRF cookies, and never acts as logout-all.
+- Tenant-selection summaries use only TenantId, TenantUserId, and FP-003 TenantName as TenantDisplayName for an eligible membership owned by the verified Identity.
+- Authentication responses are non-cacheable, non-referring, nosniff, uncompressed, and excluded from sensitive body/header/cookie/token/proof logging and realistic OpenAPI examples.
+- Milestone 4 adds no persistence table. Its only schema change is the `AddUserLogoutSessionRevocationReason` constraint migration.

@@ -611,3 +611,137 @@ Approve these safe events:
 Events may contain safe identifiers, timestamps, exact ClientId, and a lifecycle reason or outcome category. They contain no raw refresh token, raw tenant-selection proof, secret hash, login email, password data, JWT, claims collection, cookie, or HTTP context.
 
 Correlation, request, actor, and trace metadata remain external dispatch metadata. Immutable security-audit persistence remains deferred and is a production-release blocker.
+
+## DEC-AUTH-0048 — Approved HTTP routes and responses
+
+Milestone 4 exposes exactly:
+
+```http
+POST /api/platform/auth/login
+POST /api/platform/auth/select-tenant
+POST /api/platform/auth/refresh
+POST /api/platform/auth/logout
+```
+
+These routes supersede the former Draft `/api/auth/*` routes. Login accepts only `loginEmail` and `password`. Tenant selection accepts only `selectionProof`, `tenantId`, and positive `tenantUserId`. Refresh and logout have no JSON request body. `ClientId` is never caller-supplied; the server binds exact `ssas-erp-web`.
+
+Successful authenticated login, selection, and refresh return 200; tenant-selection-required returns 200; logout returns 204. Approved Problem Details mappings are: malformed request 400 `request.invalid`; generic credential, no-membership, lockout, or disabled failure 401 `authentication.failed`; generic selection failure 401 `authentication.selection_failed`; generic refresh failure 401 `authentication.refresh_failed`; CSRF or Origin rejection 403 `authentication.request_rejected`; rate limiting 429 `rate_limit.exceeded`; and unavailable signing or persistence 503 `service.unavailable`. `NoEligibleMembership` uses the generic authentication 401. Internal causes are never disclosed.
+
+## DEC-AUTH-0049 — Access-token claim model
+
+JWT access tokens have a default 15-minute lifetime and contain exactly one occurrence of `iss`, `aud`, `sub`, `jti`, `iat`, `nbf`, `exp`, `identity_id`, `tenant_id`, `tenant_user_id`, `session_id`, `client_id`, and `security_version`. They contain zero or more `role` and `permission` claims.
+
+- `sub` is immutable `Identity.Subject`, not `IdentityId`.
+- `jti` is a cryptographically random Guid in `N` format.
+- Numeric identifiers use invariant positive Int64 text; `tenant_id` uses canonical nonempty Guid format.
+- `client_id` is exact `ssas-erp-web`.
+- Role and permission values are exact, distinct, and ordinally sorted.
+- Validation rejects duplicate critical claims and duplicate role or permission values.
+- Issuance rejects rather than truncates oversized claims; the maximum compact encoded JWT size is 8192 bytes.
+
+Permission claims are the primary business-authorization mechanism. Role claims support approved exact-role policies. Tokens contain no login or tenant email, user display name, TenantName, TenantStatus, CompanyId, subscription or billing information, password data, or complete security-state object.
+
+## DEC-AUTH-0050 — Production RS256 key source
+
+Use RS256 only. Production uses one deployment-mounted X.509 signing certificate containing an RSA private key plus retained public verification certificates during rollover. The private-key password is supplied through deployment secret configuration; ordinary appsettings contain only nonsecret paths, identifiers, and policy metadata. RSA keys are at least 2048 bits.
+
+There is no symmetric fallback, hard-coded or generated production key, private key in source control, or raw key material in appsettings. Production startup fails when active key material is missing or invalid. Development may use an ephemeral process-local RSA key and must clearly report that restart invalidates development access tokens. Tests use deterministic test-only RSA keys. The provider is abstracted so a future HSM, KMS, or Azure Key Vault provider does not change Application code.
+
+## DEC-AUTH-0051 — Key identifier and rotation
+
+The key identifier is:
+
+```text
+kid = Base64Url(SHA-256(DER-encoded certificate bytes))
+```
+
+Exactly one signing key is active, while one or more enabled verification keys may coexist. Missing, unknown, disabled, or duplicate `kid` is rejected without trying unrelated keys. One immutable provider snapshot determines both signing key and `kid` for an issuance operation.
+
+Deployment rotation distributes the new verification certificate to every instance, verifies recognition of old and new `kid` values, activates the new signing certificate, keeps the old verification certificate enabled for at least the 15-minute access-token lifetime plus the 30-second clock skew after the final old-key issuance, and retires it only after that overlap.
+
+Startup validation rejects duplicate `kid`, unknown active `kid`, an active key without a private RSA key, an undersized key, an inactive or expired active certificate, an active certificate expiring before `now + token lifetime + clock skew`, and verification-key retirement metadata that ends overlap too early.
+
+## DEC-AUTH-0052 — Strict JWT validation
+
+JWT validation sets `RequireSignedTokens = true`, `RequireExpirationTime = true`, `ValidateIssuer = true`, `ValidateAudience = true`, `ValidateIssuerSigningKey = true`, `ValidateLifetime = true`, and `MapInboundClaims = false`; validates exact issuer, exact audience, signature, lifetime, and `nbf`; permits only RS256; requires a known enabled `kid`; and uses 30 seconds of clock skew. Unsigned, HMAC, algorithm-substitution, malformed, expired, and invalid-claim tokens are rejected.
+
+Exact required claim cardinality and formatting are validated before trusted request context is constructed. The active authentication path contains no `Jwt:SigningKey`, `SymmetricSecurityKey`, HMAC fallback, or symmetric test fixture.
+
+## DEC-AUTH-0053 — Refresh cookie
+
+The refresh cookie is exactly `__Secure-ssas-refresh` with `Secure = true`, `HttpOnly = true`, `SameSite = Strict`, omitted Domain, Path `/api/platform/auth`, and `Max-Age` plus `Expires` equal to the current refresh-token expiry.
+
+It is host-only, never returned in JSON, never available to JavaScript, replaced after every successful refresh, and cleared after logout or a generic terminal refresh failure. Creation, replacement, and deletion use identical name, path, Domain omission, Secure, HttpOnly, and SameSite attributes. Development uses HTTPS; local HTTP support never sets `Secure = false`.
+
+## DEC-AUTH-0054 — CSRF and Data Protection
+
+Use a signed session-and-refresh-bound double-submit design. The cookie is exact `__Secure-ssas-xsrf`; the header is exact `X-XSRF-TOKEN`. The cookie is Secure, JavaScript-readable (`HttpOnly = false`), SameSite Strict, host-only, and scoped to `/api/platform/auth`.
+
+An ASP.NET Core Data Protection time-limited protector protects format version, refresh-token PublicId, AuthenticationSessionId, exact ClientId, a cryptographically random nonce, and expiry. Validation requires exact cookie/header equality, a valid unexpired signature, exact session and refresh-selector binding, and exact `ssas-erp-web`. CSRF state rotates with every successful refresh-token rotation and is cleared whenever the refresh cookie is cleared.
+
+CSRF is required for refresh and logout. Login and tenant selection instead require JSON-only content, exact accepted Origin, restrictive CORS, and rate limiting.
+
+Production uses a deployment-mounted shared persistent Data Protection key-ring encrypted with a deployment-provided X.509 certificate. The key ring, certificate password, and other secrets do not enter source control or ordinary appsettings. Production startup fails when the shared key ring or protection certificate is unavailable.
+
+## DEC-AUTH-0055 — Rate limiting
+
+All authentication limiters queue zero requests and return generic 429 `rate_limit.exceeded` with `Retry-After`.
+
+- Login: 30 requests per minute per trusted client IP, plus 5 per 15 minutes per HMAC(normalized login email + trusted IP).
+- Tenant selection: 10 requests during one five-minute proof lifetime per HMAC(selection PublicId + trusted IP).
+- Refresh: 10 requests per minute per verified session partition plus trusted IP.
+- Logout: 5 requests per minute per validated session partition plus trusted IP.
+
+Partition keys and logs contain no raw email, proof, selector, refresh token, cookie, session secret, or HMAC partition value. HMAC partitioning uses a deployment secret. Development and tests may use ASP.NET Core process-local rate limiting. Production also requires an approved shared API gateway or distributed provider and explicit startup configuration declaring the upstream enforcement mode; no database rate-limit table is introduced.
+
+## DEC-AUTH-0056 — CORS, Origin, and trusted proxies
+
+Production CORS uses explicit exact HTTPS origins. Wildcards, wildcard-with-credentials, and origins containing paths, query strings, or fragments are invalid. Credentials are allowed only for configured origins, and comparison is exact by scheme, host, and port. Login, tenant selection, refresh, and logout validate Origin. Referer is only a controlled fallback when Origin is absent and the approved browser policy permits it.
+
+Direct network mode disables forwarded headers and uses the direct remote IP. Trusted-proxy mode enables forwarded headers only with explicit `KnownProxies` or `KnownNetworks`, uses `ForwardLimit = 1` unless separately approved, and accepts forwarded client IP only after trusted-proxy validation. Production startup fails for empty allowed origins, a non-exact-HTTPS or wildcard origin, or proxy mode without trusted proxies/networks. Environment origin and proxy values remain deployment configuration, not committed customer data.
+
+## DEC-AUTH-0057 — Live tenant eligibility authorization
+
+Every ordinary tenant-scoped authenticated business request performs centralized live tenant eligibility validation through the FP-003 contract. Only `Active` authorizes ordinary tenant business access; `Provisioning`, `Suspended`, `Archived`, and missing tenants are denied. There is one scoped tenant-eligibility lookup per tenant-scoped request, and tenant role and permission policies include this prerequisite.
+
+Logout uses a separate authentication policy so a suspended-tenant session can still be revoked. Eligibility is never inferred from token claims alone and TenantStatus is not added to the JWT. Account disablement, session revocation, membership deactivation, role removal, and permission removal may remain stale for at most the 15-minute access-token lifetime unless a future high-risk policy requires a live check.
+
+## DEC-AUTH-0058 — Access-token issuance and transaction order
+
+Access-token issuance completes before the SQL transaction commits. Session creation and refresh open the existing Application transaction, apply Domain changes, persist or flush inside the still-open transaction when identity keys are required, build the trusted claims projection, issue the RS256 token, roll back on issuance failure, commit only after issuance succeeds, dispatch success events only after final commit, and write HTTP cookies only after database commit.
+
+No access token represents rolled-back session or refresh state, no event is dispatched after issuance rollback, and no cookie is written before commit. Cookie delivery cannot be atomic with SQL commit; post-commit cookie failure is an accepted transport ambiguity. A retry with the old refresh token may trigger the approved reuse-compromise behavior. There is no refresh grace window and ambiguous refresh results are not automatically retried.
+
+`IAccessTokenIssuer` is a framework-neutral Application abstraction. Its RS256/JWT implementation remains in Host authentication infrastructure.
+
+## DEC-AUTH-0059 — User logout
+
+Add the revocation reason `UserLogout` and implement `RevokeCurrentAuthenticationSessionCommand`. The request has no SessionId; session identity comes only from validated access-token claims and trusted current-session context.
+
+The command locks AuthenticationAccount before AuthenticationSession, verifies Identity, Tenant, TenantUser, ClientId, session, and SecurityVersion binding, revokes only the current session with `UserLogout`, and is outwardly idempotent when the current session is absent or terminal. It clears refresh and CSRF cookies and returns 204. Logout-all is not implemented.
+
+The approved constraint-only migration `AddUserLogoutSessionRevocationReason` changes only the AuthenticationSessions revocation-reason constraint. It adds no table.
+
+## DEC-AUTH-0060 — Tenant selection summary
+
+The selection summary contains exactly `TenantId`, `TenantUserId`, and `TenantDisplayName`. `TenantDisplayName` comes from FP-003 `Tenant.TenantName` and is returned only for an eligible Active membership belonging to the verified Identity.
+
+It contains no membership display name as tenant label, TenantCode, legal name, billing or subscription details, role or permission data, or user email. The reveal-once selection proof is returned in JSON and is never stored in a cookie.
+
+## DEC-AUTH-0061 — Sensitive HTTP responses
+
+Every authentication response includes `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer`, and `X-Content-Type-Options: nosniff`.
+
+Request and response bodies, authentication request/command/sensitive-result objects, Authorization headers, cookie values, tokens, and proofs are never logged. Model-state output never echoes a password or selection proof, and exception details contain no token or proof. OpenAPI contains no realistic token-shaped example. Authentication responses are excluded from response compression if compression is introduced.
+
+## DEC-AUTH-0062 — OpenAPI contract
+
+OpenAPI exposes all four authentication routes and documents HTTP Bearer JWT security, refresh-cookie behavior through descriptions rather than response-schema values, `X-XSRF-TOKEN` for refresh and logout, authenticated and tenant-selection-required schemas, approved Problem Details statuses and codes, and logout as Bearer-authenticated.
+
+Login, tenant selection, and refresh are anonymous to ASP.NET authentication; refresh still requires its cookie, Origin, CSRF, and rate-limit validation. OpenAPI exposes no refresh token, CSRF secret, internal command, sensitive Application wrapper, real token example, or private signing information.
+
+## DEC-AUTH-0063 — Milestone 4 persistence boundary
+
+Milestone 4 adds no table for signing keys, access tokens, CSRF, rate limiting, OpenAPI, CORS, or proxy configuration. Signing keys remain deployment/provider-owned. CSRF state is cryptographically protected and transported through the approved cookie/header design. Development/Test rate counters are process-local; production requires external shared enforcement.
+
+The only approved migration is `AddUserLogoutSessionRevocationReason`, which changes only the existing AuthenticationSessions revocation-reason check constraint to include `UserLogout`.

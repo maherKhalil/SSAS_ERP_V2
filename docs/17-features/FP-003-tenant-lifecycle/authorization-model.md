@@ -66,6 +66,8 @@ For an ineligible Tenant:
 - authenticated business authorization denies ordinary access according to the approved centralized status-enforcement policy;
 - lifecycle status is not inferred from a JWT claim supplied by the client.
 
+FP-002 Milestone 4 implements the centralized ordinary-tenant authorization prerequisite through `DEC-AUTH-0057`: every ordinary tenant-scoped authenticated business request performs one scoped live `ITenantAuthenticationEligibilityReadService` lookup and authorizes only current `Active` status. Tenant role and permission policies include this requirement. TenantStatus remains absent from the JWT, and logout uses a separate authenticated policy so a session belonging to a newly suspended tenant can still be revoked.
+
 ## Auditing
 
 Lifecycle events contain domain facts. Correlation ID, request ID, trace ID, and authenticated actor metadata remain outside Domain and use the existing event-dispatch metadata boundary.

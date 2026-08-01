@@ -187,6 +187,15 @@ public sealed class IdentityAccessApplicationTests
     public Task<TenantUser?> GetByIdAsync(long tenantUserId, CancellationToken cancellationToken = default) =>
       Task.FromResult(values.SingleOrDefault(item => item.Id == tenantUserId));
 
+    public Task<TenantUser?> GetByIdentityIdAsync(long identityId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(values.SingleOrDefault(item => item.IdentityId == identityId));
+
+    public Task<TenantUser?> GetByTrustedInvitationBindingAsync(
+      Guid tenantId,
+      long tenantUserId,
+      CancellationToken cancellationToken = default) => Task.FromResult(
+        values.SingleOrDefault(item => item.TenantId == tenantId && item.Id == tenantUserId));
+
     public Task<bool> EmailExistsAsync(
       string normalizedEmail,
       long? excludingTenantUserId = null,

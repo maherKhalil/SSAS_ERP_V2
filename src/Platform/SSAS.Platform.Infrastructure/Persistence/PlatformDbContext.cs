@@ -3,6 +3,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Roles;
 using SSAS.Platform.Domain.TenantUsers;
 using PlatformIdentity = SSAS.Platform.Domain.Identities.Identity;
@@ -24,6 +25,10 @@ public sealed class PlatformDbContext(
   public DbSet<TenantUserRoleAssignment> TenantUserRoleAssignments => Set<TenantUserRoleAssignment>();
 
   public DbSet<RolePermissionAssignment> RolePermissionAssignments => Set<RolePermissionAssignment>();
+
+  public DbSet<AuthenticationAccount> AuthenticationAccounts => Set<AuthenticationAccount>();
+
+  public DbSet<AccountActionToken> AccountActionTokens => Set<AccountActionToken>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {

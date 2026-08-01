@@ -104,7 +104,15 @@ public sealed class PlatformIdentityAccessPersistenceTests
 
         var tables = await ReadPlatformTableNamesAsync(context);
         Assert.Equal(
-          ["Identities", "RolePermissionAssignments", "Roles", "TenantUserRoleAssignments", "TenantUsers"],
+          [
+            "AccountActionTokens",
+            "AuthenticationAccounts",
+            "Identities",
+            "RolePermissionAssignments",
+            "Roles",
+            "TenantUserRoleAssignments",
+            "TenantUsers"
+          ],
           tables.Where(name => !name.StartsWith("__", StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal));
         Assert.Contains("__EFMigrationsHistory", tables);
         Assert.Equal(1, await ReadInt32Async(
@@ -306,7 +314,11 @@ public sealed class PlatformIdentityAccessPersistenceTests
     await using var reader = await command.ExecuteReaderAsync();
     while (await reader.ReadAsync())
     {
-      indexes.Add(reader.GetString(0), reader.GetString(1));
+      var tableName = reader.GetString(0);
+      var filter = reader.GetString(1);
+      indexes[tableName] = indexes.TryGetValue(tableName, out var existing)
+        ? string.Concat(existing, "; ", filter)
+        : filter;
     }
 
     return indexes;

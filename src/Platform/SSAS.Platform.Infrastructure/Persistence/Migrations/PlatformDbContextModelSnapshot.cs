@@ -22,6 +22,194 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("SSAS.Platform.Domain.Authentication.AccountActionToken", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("AccountActionTokenId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("AuthenticationAccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("ConsumedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ExpiresUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("IdentityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("IssuedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("RevokedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset?>("RevokedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("TenantUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("secretHash")
+                        .IsRequired()
+                        .HasColumnType("binary(32)")
+                        .HasColumnName("SecretHash")
+                        .IsFixedLength();
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthenticationAccountId");
+
+                    b.HasIndex("IdentityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("secretHash")
+                        .IsUnique();
+
+                    b.HasIndex("Purpose", "AuthenticationAccountId")
+                        .IsUnique()
+                        .HasFilter("[ConsumedUtc] IS NULL AND [RevokedUtc] IS NULL AND [TenantUserId] IS NULL");
+
+                    b.HasIndex("TenantId", "TenantUserId");
+
+                    b.HasIndex("Purpose", "TenantId", "TenantUserId")
+                        .IsUnique()
+                        .HasFilter("[ConsumedUtc] IS NULL AND [RevokedUtc] IS NULL AND [TenantUserId] IS NOT NULL");
+
+                    b.ToTable("AccountActionTokens", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_AccountActionTokens_Expiry", "[ExpiresUtc] > [IssuedUtc]");
+
+                            t.HasCheckConstraint("CK_AccountActionTokens_OwnershipBinding", "([Purpose] = N'Invitation' AND [TenantId] IS NOT NULL AND [TenantUserId] IS NOT NULL) OR ([Purpose] = N'PasswordReset' AND [TenantId] IS NULL AND [TenantUserId] IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Authentication.AuthenticationAccount", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("AuthenticationAccountId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EmailVerifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("FailedAttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<long>("IdentityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LockoutEndUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LoginEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("NormalizedLoginEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTimeOffset?>("PasswordChangedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<long>("SecurityVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("passwordHash")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)")
+                        .HasColumnName("PasswordHash");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdentityId")
+                        .IsUnique();
+
+                    b.HasIndex("NormalizedLoginEmail")
+                        .IsUnique();
+
+                    b.ToTable("AuthenticationAccounts", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_AuthenticationAccounts_PasswordHashStatus", "([Status] = N'PendingSetup' AND [PasswordHash] IS NULL AND [EmailVerifiedUtc] IS NULL AND [PasswordChangedUtc] IS NULL) OR ([Status] IN (N'Active', N'Disabled') AND [PasswordHash] IS NOT NULL AND [EmailVerifiedUtc] IS NOT NULL AND [PasswordChangedUtc] IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Identities.Identity", b =>
                 {
                     b.Property<long>("Id")
@@ -284,6 +472,36 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         .HasFilter("[RemovedUtc] IS NULL");
 
                     b.ToTable("TenantUserRoleAssignments", "platform");
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Authentication.AccountActionToken", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Authentication.AuthenticationAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AuthenticationAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.Platform.Domain.Identities.Identity", null)
+                        .WithMany()
+                        .HasForeignKey("IdentityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.Platform.Domain.TenantUsers.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "TenantUserId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Authentication.AuthenticationAccount", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Identities.Identity", null)
+                        .WithOne()
+                        .HasForeignKey("SSAS.Platform.Domain.Authentication.AuthenticationAccount", "IdentityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SSAS.Platform.Domain.Roles.RolePermissionAssignment", b =>

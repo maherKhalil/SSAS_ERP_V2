@@ -55,6 +55,8 @@ public sealed class ProjectDependencyArchitectureTests
   }
 
   [Fact]
+  [Trait("NonFunctional", "NFR-AUTH-0303")]
+  [Trait("Scenario", "TS-AUTH-0072")]
   public void Business_modules_do_not_directly_reference_one_another()
   {
     var violations = Graph.Projects

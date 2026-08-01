@@ -12,6 +12,7 @@ using SSAS.Platform.Application.Identities;
 using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Application.Roles;
 using SSAS.Platform.Application.TenantUsers;
+using SSAS.Platform.Application.Tenants;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
@@ -48,8 +49,11 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IRoleRepository, RoleRepository>();
     services.AddScoped<IAuthenticationAccountRepository, AuthenticationAccountRepository>();
     services.AddScoped<IAccountActionTokenRepository, AccountActionTokenRepository>();
+    services.AddScoped<ITenantRepository, TenantRepository>();
     services.AddScoped<ITenantUserReadService, TenantUserReadService>();
     services.AddScoped<IRoleReadService, RoleReadService>();
+    services.AddScoped<ITenantReadService, TenantReadService>();
+    services.AddScoped<ITenantAuthenticationEligibilityReadService, TenantAuthenticationEligibilityReadService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
 
@@ -118,6 +122,14 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<VerifyPasswordCredentialsCommandHandler>();
     services.AddScoped<IssuePasswordResetCommandHandler>();
     services.AddScoped<CompletePasswordResetCommandHandler>();
+    services.AddScoped<CreateTenantCommandHandler>();
+    services.AddScoped<ActivateTenantCommandHandler>();
+    services.AddScoped<SuspendTenantCommandHandler>();
+    services.AddScoped<ReactivateTenantCommandHandler>();
+    services.AddScoped<ArchiveTenantCommandHandler>();
+    services.AddScoped<GetTenantQueryHandler>();
+    services.AddScoped<ListTenantsQueryHandler>();
+    services.AddScoped<GetTenantAuthenticationEligibilityQueryHandler>();
 
     return services;
   }

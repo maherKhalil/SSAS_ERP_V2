@@ -111,7 +111,8 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "RolePermissionAssignments",
             "Roles",
             "TenantUserRoleAssignments",
-            "TenantUsers"
+            "TenantUsers",
+            "Tenants"
           ],
           tables.Where(name => !name.StartsWith("__", StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal));
         Assert.Contains("__EFMigrationsHistory", tables);

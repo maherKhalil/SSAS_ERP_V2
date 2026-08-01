@@ -16,6 +16,18 @@ public sealed class AuthenticationAccountRepository(PlatformDbContext dbContext)
     CancellationToken cancellationToken = default) => dbContext.AuthenticationAccounts
       .SingleOrDefaultAsync(account => account.IdentityId == identityId, cancellationToken);
 
+  public Task<AuthenticationAccount?> GetByIdForUpdateAsync(
+    long authenticationAccountId,
+    CancellationToken cancellationToken = default) => dbContext.AuthenticationAccounts
+      .FromSqlInterpolated($"SELECT * FROM [platform].[AuthenticationAccounts] WITH (UPDLOCK, HOLDLOCK) WHERE [AuthenticationAccountId] = {authenticationAccountId}")
+      .SingleOrDefaultAsync(cancellationToken);
+
+  public Task<AuthenticationAccount?> GetByIdentityIdForUpdateAsync(
+    long identityId,
+    CancellationToken cancellationToken = default) => dbContext.AuthenticationAccounts
+      .FromSqlInterpolated($"SELECT * FROM [platform].[AuthenticationAccounts] WITH (UPDLOCK, HOLDLOCK) WHERE [IdentityId] = {identityId}")
+      .SingleOrDefaultAsync(cancellationToken);
+
   public Task<AuthenticationAccount?> GetByNormalizedLoginEmailAsync(
     string normalizedLoginEmail,
     CancellationToken cancellationToken = default) => dbContext.AuthenticationAccounts

@@ -17,4 +17,12 @@ public sealed class AuthenticationPolicyOptions
   public TimeSpan InvitationLifetime { get; set; } = TimeSpan.FromHours(24);
 
   public TimeSpan PasswordResetLifetime { get; set; } = TimeSpan.FromMinutes(30);
+
+  public TimeSpan SessionIdleLifetime { get; set; } = TimeSpan.FromDays(30);
+
+  public TimeSpan SessionAbsoluteLifetime { get; set; } = TimeSpan.FromDays(90);
+
+  public TimeSpan TenantSelectionLifetime { get; set; } = TimeSpan.FromMinutes(5);
+
+  public int MaximumActiveSessions { get; set; } = 10;
 }

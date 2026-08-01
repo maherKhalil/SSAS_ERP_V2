@@ -49,11 +49,14 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IRoleRepository, RoleRepository>();
     services.AddScoped<IAuthenticationAccountRepository, AuthenticationAccountRepository>();
     services.AddScoped<IAccountActionTokenRepository, AccountActionTokenRepository>();
+    services.AddScoped<IAuthenticationSessionRepository, AuthenticationSessionRepository>();
+    services.AddScoped<ITenantSelectionTransactionRepository, TenantSelectionTransactionRepository>();
     services.AddScoped<ITenantRepository, TenantRepository>();
     services.AddScoped<ITenantUserReadService, TenantUserReadService>();
     services.AddScoped<IRoleReadService, RoleReadService>();
     services.AddScoped<ITenantReadService, TenantReadService>();
     services.AddScoped<ITenantAuthenticationEligibilityReadService, TenantAuthenticationEligibilityReadService>();
+    services.AddScoped<IIdentityTenantMembershipReadService, IdentityTenantMembershipReadService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
 
@@ -68,6 +71,14 @@ public static class PlatformInfrastructureServiceCollectionExtensions
         "Failed-attempt concurrency retries must be between zero and three.")
       .Validate(options => options.InvitationLifetime > TimeSpan.Zero && options.PasswordResetLifetime > TimeSpan.Zero,
         "Action-token lifetimes must be positive.")
+      .Validate(options => options.SessionIdleLifetime > TimeSpan.Zero &&
+        options.SessionAbsoluteLifetime > TimeSpan.Zero &&
+        options.SessionIdleLifetime <= options.SessionAbsoluteLifetime,
+        "Session lifetimes must be positive and idle lifetime cannot exceed absolute lifetime.")
+      .Validate(options => options.TenantSelectionLifetime > TimeSpan.Zero,
+        "Tenant-selection lifetime must be positive.")
+      .Validate(options => options.MaximumActiveSessions is >= 1 and <= AuthenticationPolicy.DefaultMaximumActiveSessions,
+        "Maximum active sessions must be between one and the approved maximum.")
       .ValidateOnStart();
     services.AddSingleton(provider =>
     {
@@ -79,8 +90,27 @@ public static class PlatformInfrastructureServiceCollectionExtensions
         options.LockoutDuration,
         options.FailedAttemptConcurrencyRetries,
         options.InvitationLifetime,
-        options.PasswordResetLifetime);
+        options.PasswordResetLifetime,
+        options.SessionIdleLifetime,
+        options.SessionAbsoluteLifetime,
+        options.TenantSelectionLifetime,
+        options.MaximumActiveSessions);
     });
+
+    services.AddOptions<AuthenticationClientOptions>()
+      .Bind(configuration.GetSection(AuthenticationClientOptions.SectionName))
+      .Validate(options => options.AllowedClientIds is { Length: > 0 }, "Authentication client allowlist cannot be empty.")
+      .Validate(options => options.AllowedClientIds is { Length: > 0 } && options.AllowedClientIds.All(clientId =>
+          !string.IsNullOrWhiteSpace(clientId) &&
+          clientId.Length <= AuthenticationClientId.MaximumLength &&
+          string.Equals(clientId, clientId.Trim(), StringComparison.Ordinal)),
+        "Authentication client identifiers must be exact, nonblank, and within the approved length.")
+      .Validate(options => options.AllowedClientIds is { Length: > 0 } &&
+        options.AllowedClientIds.Contains(AuthenticationClientId.V1Web, StringComparer.Ordinal),
+        "The V1 production client ssas-erp-web must be allowlisted.")
+      .ValidateOnStart();
+    services.AddSingleton<IAuthenticationClientRegistry, AuthenticationClientRegistry>();
+    services.AddSingleton<IAuthenticationTokenService, AuthenticationTokenService>();
 
     services.AddOptions<PasswordHasherOptions>()
       .Bind(configuration.GetSection("Authentication:PasswordHasher"))
@@ -122,6 +152,10 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<VerifyPasswordCredentialsCommandHandler>();
     services.AddScoped<IssuePasswordResetCommandHandler>();
     services.AddScoped<CompletePasswordResetCommandHandler>();
+    services.AddScoped<AuthenticationSessionCreator>();
+    services.AddScoped<BeginTenantAccessCommandHandler>();
+    services.AddScoped<SelectTenantCommandHandler>();
+    services.AddScoped<RefreshAuthenticationSessionCommandHandler>();
     services.AddScoped<CreateTenantCommandHandler>();
     services.AddScoped<ActivateTenantCommandHandler>();
     services.AddScoped<SuspendTenantCommandHandler>();

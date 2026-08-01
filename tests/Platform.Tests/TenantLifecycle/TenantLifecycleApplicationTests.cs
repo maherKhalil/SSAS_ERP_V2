@@ -280,6 +280,10 @@ public sealed class TenantLifecycleApplicationTests
       cancellationToken.ThrowIfCancellationRequested();
       return Task.FromResult(TenantAuthenticationEligibilityResult.FromStatus(tenantId, TenantStatus.Active));
     }
+
+    public Task<TenantAuthenticationEligibilityResult> GetEligibilityForUpdateAsync(
+      Guid tenantId,
+      CancellationToken cancellationToken = default) => GetEligibilityAsync(tenantId, cancellationToken);
   }
 
   private sealed class TestCurrentUser(string? userId, IReadOnlyCollection<string>? roles = null) : ICurrentUser

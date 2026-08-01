@@ -3,23 +3,164 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Identities;
+using SSAS.Platform.Domain.Tenants;
 using SSAS.Platform.Domain.TenantUsers;
 using SSAS.Platform.Domain.ValueObjects;
+using SSAS.Platform.Infrastructure.Identity;
 using SSAS.Platform.Infrastructure.Persistence;
+using SSAS.Platform.Infrastructure.Persistence.Queries;
+using SSAS.Platform.Infrastructure.Persistence.Repositories;
 
 namespace SSAS.Integration.Tests;
 
 public sealed class PlatformAuthenticationPersistenceTests
 {
   private const string InitialMigration = "20260731170937_InitialIdentityAccess";
+  private const string TenantLifecycleMigration = "20260801085259_AddTenantLifecycle";
+
+  [Fact]
+  [Trait("Scenario", "TS-AUTH-0060")]
+  [Trait("Scenario", "TS-AUTH-0067")]
+  public async Task Session_migration_upgrades_rolls_back_and_reapplies_without_deferred_tables()
+  {
+    await using var database = await SqlTestDatabase.CreateAsync(migrate: false);
+    await using var context = database.CreateContext(Guid.NewGuid());
+    var migrator = context.GetService<IMigrator>();
+
+    await migrator.MigrateAsync(TenantLifecycleMigration);
+    var before = await ReadPlatformTablesAsync(context);
+    Assert.DoesNotContain("AuthenticationSessions", before);
+    Assert.DoesNotContain("RefreshTokenRecords", before);
+    Assert.DoesNotContain("TenantSelectionTransactions", before);
+
+    await migrator.MigrateAsync();
+    var applied = await ReadPlatformTablesAsync(context);
+    Assert.Contains("AuthenticationSessions", applied);
+    Assert.Contains("RefreshTokenRecords", applied);
+    Assert.Contains("TenantSelectionTransactions", applied);
+    Assert.DoesNotContain(applied, table => table is "AccessTokens" or "SigningKeys" or "AuthenticationAuditStore");
+
+    await migrator.MigrateAsync(TenantLifecycleMigration);
+    var rolledBack = await ReadPlatformTablesAsync(context);
+    Assert.DoesNotContain("AuthenticationSessions", rolledBack);
+    Assert.DoesNotContain("RefreshTokenRecords", rolledBack);
+    Assert.DoesNotContain("TenantSelectionTransactions", rolledBack);
+
+    await migrator.MigrateAsync();
+    Assert.Empty(await context.Database.GetPendingMigrationsAsync());
+    Assert.Equal(3, await ReadInt32Async(context,
+      "SELECT COUNT(*) FROM sys.triggers WHERE name IN (N'TR_AuthenticationSessions_PreventDelete', N'TR_RefreshTokenRecords_PreventDelete', N'TR_TenantSelectionTransactions_PreventDelete')"));
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-AUTH-0062")]
+  [Trait("Scenario", "TS-AUTH-0067")]
+  [Trait("Scenario", "TS-AUTH-0068")]
+  public async Task Session_migration_models_global_ownership_hash_only_storage_rowversions_and_delete_guards()
+  {
+    await using var database = await SqlTestDatabase.CreateAsync();
+    await using var context = database.CreateContext(Guid.NewGuid());
+
+    Assert.Empty(await context.Database.GetPendingMigrationsAsync());
+    var model = context.GetService<IDesignTimeModel>().Model;
+    var sessionType = model.FindEntityType(typeof(AuthenticationSession));
+    var refreshType = model.FindEntityType(typeof(RefreshTokenRecord));
+    var selectionType = model.FindEntityType(typeof(TenantSelectionTransaction));
+    Assert.NotNull(sessionType);
+    Assert.NotNull(refreshType);
+    Assert.NotNull(selectionType);
+    Assert.Null(sessionType.GetQueryFilter());
+    Assert.Null(refreshType.GetQueryFilter());
+    Assert.Null(selectionType.GetQueryFilter());
+    Assert.True(sessionType.FindProperty(nameof(AuthenticationSession.RowVersion))?.IsConcurrencyToken);
+    Assert.True(refreshType.FindProperty(nameof(RefreshTokenRecord.RowVersion))?.IsConcurrencyToken);
+    Assert.True(selectionType.FindProperty(nameof(TenantSelectionTransaction.RowVersion))?.IsConcurrencyToken);
+    Assert.Equal("binary(32)", refreshType.FindProperty("secretHash")?.GetColumnType());
+    Assert.Equal("binary(32)", selectionType.FindProperty("secretHash")?.GetColumnType());
+
+    var tables = await ReadPlatformTablesAsync(context);
+    Assert.Contains("AuthenticationSessions", tables);
+    Assert.Contains("RefreshTokenRecords", tables);
+    Assert.Contains("TenantSelectionTransactions", tables);
+    Assert.Equal(3, await ReadInt32Async(context,
+      "SELECT COUNT(*) FROM sys.triggers WHERE name IN (N'TR_AuthenticationSessions_PreventDelete', N'TR_RefreshTokenRecords_PreventDelete', N'TR_TenantSelectionTransactions_PreventDelete')"));
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-AUTH-0066")]
+  [Trait("Scenario", "TS-AUTH-0089")]
+  [Trait("Acceptance", "AC-AUTH-0021")]
+  [Trait("Acceptance", "AC-AUTH-0031")]
+  public async Task Repeated_concurrent_refresh_rotates_once_and_verified_loser_compromises_only_owning_session()
+  {
+    await using var database = await SqlTestDatabase.CreateAsync();
+    var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+
+    for (var iteration = 0; iteration < 3; iteration++)
+    {
+      var seed = await CreateRefreshSessionSeedAsync(database, iteration, clientId);
+      await using var firstContext = database.CreateContext(seed.TenantId);
+      await using var secondContext = database.CreateContext(seed.TenantId);
+      var firstHandler = CreateRefreshHandler(database, firstContext);
+      var secondHandler = CreateRefreshHandler(database, secondContext);
+
+      var attempts = await Task.WhenAll(
+        firstHandler.HandleAsync(new RefreshAuthenticationSessionCommand(
+          new SensitiveAuthenticationTokenInput(seed.RawRefreshToken), clientId)),
+        secondHandler.HandleAsync(new RefreshAuthenticationSessionCommand(
+          new SensitiveAuthenticationTokenInput(seed.RawRefreshToken), clientId)));
+
+      Assert.Single(attempts.Where(result => result.IsSuccess));
+      Assert.Single(attempts.Where(result => result.IsFailure &&
+        result.Error.Code == "AuthenticationSession.RefreshFailed"));
+      await using var verification = database.CreateContext(seed.TenantId);
+      var session = await verification.AuthenticationSessions
+        .Include(value => value.RefreshTokenRecords)
+        .SingleAsync(value => value.Id == seed.AuthenticationSessionId);
+      Assert.Equal(AuthenticationSessionStatus.Compromised, session.Status);
+      Assert.Equal(2, session.RefreshTokenRecords.Count);
+      Assert.Single(session.RefreshTokenRecords.Where(token => token.ConsumedUtc.HasValue));
+      Assert.Single(session.RefreshTokenRecords.Where(token => token.RevokedUtc.HasValue));
+    }
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-AUTH-0088")]
+  [Trait("Acceptance", "AC-AUTH-0034")]
+  public async Task Concurrent_selection_consumption_creates_exactly_one_session()
+  {
+    await using var database = await SqlTestDatabase.CreateAsync();
+    var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var seed = await CreateSelectionSeedAsync(database, clientId);
+    await using var firstContext = database.CreateContext(seed.TenantId);
+    await using var secondContext = database.CreateContext(seed.TenantId);
+    var firstHandler = CreateSelectionHandler(database, firstContext);
+    var secondHandler = CreateSelectionHandler(database, secondContext);
+
+    var attempts = await Task.WhenAll(
+      firstHandler.HandleAsync(new SelectTenantCommand(
+        new SensitiveAuthenticationTokenInput(seed.RawSelectionProof), clientId, seed.TenantUserId, seed.TenantId)),
+      secondHandler.HandleAsync(new SelectTenantCommand(
+        new SensitiveAuthenticationTokenInput(seed.RawSelectionProof), clientId, seed.TenantUserId, seed.TenantId)));
+
+    Assert.Single(attempts.Where(result => result.IsSuccess));
+    Assert.Single(attempts.Where(result => result.IsFailure &&
+      result.Error.Code == "Authentication.TenantSelectionFailed"));
+    await using var verification = database.CreateContext(seed.TenantId);
+    Assert.Single(await verification.AuthenticationSessions.AsNoTracking().ToArrayAsync());
+    Assert.Single(await verification.RefreshTokenRecords.AsNoTracking().ToArrayAsync());
+    Assert.NotNull((await verification.TenantSelectionTransactions.AsNoTracking().SingleAsync()).ConsumedUtc);
+  }
 
   [Fact]
   [Trait("NonFunctional", "NFR-AUTH-0304")]
@@ -299,6 +440,180 @@ public sealed class PlatformAuthenticationPersistenceTests
     }
   }
 
+  private static RefreshAuthenticationSessionCommandHandler CreateRefreshHandler(
+    SqlTestDatabase database,
+    PlatformDbContext context)
+  {
+    var tenantEligibility = new TenantAuthenticationEligibilityReadService(context);
+    return new RefreshAuthenticationSessionCommandHandler(
+      new AuthenticationAccountRepository(context),
+      new AuthenticationSessionRepository(context),
+      new IdentityTenantMembershipReadService(context, tenantEligibility),
+      new AuthenticationClientRegistry(Options.Create(new AuthenticationClientOptions())),
+      new AuthenticationTokenService(),
+      new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()),
+      new AuthenticationPolicy(),
+      database.Clock);
+  }
+
+  private static SelectTenantCommandHandler CreateSelectionHandler(
+    SqlTestDatabase database,
+    PlatformDbContext context)
+  {
+    var tenantEligibility = new TenantAuthenticationEligibilityReadService(context);
+    var unitOfWork = new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher());
+    var sessionRepository = new AuthenticationSessionRepository(context);
+    var tokenService = new AuthenticationTokenService();
+    var policy = new AuthenticationPolicy();
+    return new SelectTenantCommandHandler(
+      new AuthenticationAccountRepository(context),
+      new TenantSelectionTransactionRepository(context),
+      new IdentityTenantMembershipReadService(context, tenantEligibility),
+      new AuthenticationClientRegistry(Options.Create(new AuthenticationClientOptions())),
+      tokenService,
+      new AuthenticationSessionCreator(sessionRepository, unitOfWork, tokenService, policy),
+      unitOfWork,
+      database.Clock);
+  }
+
+  private static async Task<SelectionSeed> CreateSelectionSeedAsync(
+    SqlTestDatabase database,
+    AuthenticationClientId clientId)
+  {
+    var tenant = Tenant.Create(
+      TenantCode.Create("SELECTION").Value,
+      TenantName.Create("Selection Tenant").Value,
+      "integration-actor",
+      Guid.NewGuid(),
+      database.Clock.UtcNow).Value;
+    long identityId;
+    long accountSecurityVersion;
+    await using (var globalContext = database.CreateContext(Guid.NewGuid()))
+    {
+      globalContext.Tenants.Add(tenant);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      Assert.True(tenant.Activate("integration-actor", Guid.NewGuid(), database.Clock.UtcNow.AddMinutes(1)).IsSuccess);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+
+      var identity = Identity.Create(AuthenticationSubject.Create($"local:{Guid.NewGuid():N}").Value);
+      globalContext.Identities.Add(identity);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      var account = AuthenticationAccount.CreatePending(
+        identity.Id,
+        LoginEmail.Create("selection@example.com").Value);
+      globalContext.AuthenticationAccounts.Add(account);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      Assert.True(account.CompleteInitialSetup("integration-password-hash", Guid.NewGuid(), database.Clock.UtcNow).IsSuccess);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      identityId = identity.Id;
+      accountSecurityVersion = account.SecurityVersion;
+    }
+
+    long tenantUserId;
+    await using (var tenantContext = database.CreateContext(tenant.Id))
+    {
+      var membership = TenantUser.CreateActive(
+        identityId,
+        tenant.Id,
+        EmailAddress.Create("selection.member@example.com").Value,
+        UserDisplayName.Create("Selection Member").Value,
+        Guid.NewGuid(),
+        database.Clock.UtcNow);
+      tenantContext.TenantUsers.Add(membership);
+      Assert.True((await SaveAsync(tenantContext)).IsSuccess);
+      tenantUserId = membership.Id;
+    }
+
+    var tokenService = new AuthenticationTokenService();
+    var generated = tokenService.GenerateTenantSelectionProof(identityId, accountSecurityVersion, clientId);
+    var raw = generated.SensitiveProof.RevealOnce().Value;
+    await using (var authenticationContext = database.CreateContext(tenant.Id))
+    {
+      authenticationContext.TenantSelectionTransactions.Add(TenantSelectionTransaction.Create(
+        generated.PublicId,
+        identityId,
+        clientId.Value,
+        accountSecurityVersion,
+        generated.SecretHash,
+        database.Clock.UtcNow,
+        database.Clock.UtcNow.AddMinutes(5),
+        Guid.NewGuid()));
+      Assert.True((await SaveAsync(authenticationContext)).IsSuccess);
+    }
+
+    return new SelectionSeed(tenant.Id, tenantUserId, raw);
+  }
+
+  private static async Task<RefreshSessionSeed> CreateRefreshSessionSeedAsync(
+    SqlTestDatabase database,
+    int iteration,
+    AuthenticationClientId clientId)
+  {
+    var tenant = Tenant.Create(
+      TenantCode.Create($"AUTH{iteration}").Value,
+      TenantName.Create($"Authentication Tenant {iteration}").Value,
+      "integration-actor",
+      Guid.NewGuid(),
+      database.Clock.UtcNow).Value;
+    long identityId;
+    long accountSecurityVersion;
+    await using (var globalContext = database.CreateContext(Guid.NewGuid()))
+    {
+      globalContext.Tenants.Add(tenant);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      Assert.True(tenant.Activate("integration-actor", Guid.NewGuid(), database.Clock.UtcNow.AddMinutes(1)).IsSuccess);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+
+      var identity = Identity.Create(AuthenticationSubject.Create($"local:{Guid.NewGuid():N}").Value);
+      globalContext.Identities.Add(identity);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      var account = AuthenticationAccount.CreatePending(
+        identity.Id,
+        LoginEmail.Create($"refresh.{iteration}@example.com").Value);
+      globalContext.AuthenticationAccounts.Add(account);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      Assert.True(account.CompleteInitialSetup("integration-password-hash", Guid.NewGuid(), database.Clock.UtcNow).IsSuccess);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      identityId = identity.Id;
+      accountSecurityVersion = account.SecurityVersion;
+    }
+
+    long tenantUserId;
+    await using (var tenantContext = database.CreateContext(tenant.Id))
+    {
+      var membership = TenantUser.CreateActive(
+        identityId,
+        tenant.Id,
+        EmailAddress.Create($"refresh.member.{iteration}@example.com").Value,
+        UserDisplayName.Create($"Refresh Member {iteration}").Value,
+        Guid.NewGuid(),
+        database.Clock.UtcNow);
+      tenantContext.TenantUsers.Add(membership);
+      Assert.True((await SaveAsync(tenantContext)).IsSuccess);
+      tenantUserId = membership.Id;
+    }
+
+    await using var authenticationContext = database.CreateContext(tenant.Id);
+    var session = AuthenticationSession.Create(
+      identityId,
+      tenantUserId,
+      tenant.Id,
+      clientId.Value,
+      Guid.NewGuid(),
+      accountSecurityVersion,
+      database.Clock.UtcNow,
+      database.Clock.UtcNow.AddDays(30),
+      database.Clock.UtcNow.AddDays(90));
+    authenticationContext.AuthenticationSessions.Add(session);
+    Assert.True((await SaveAsync(authenticationContext)).IsSuccess);
+    var tokenService = new AuthenticationTokenService();
+    var generated = tokenService.GenerateRefreshToken(session.Id, session.TokenFamilyId, clientId);
+    var raw = generated.SensitiveToken.RevealOnce().Value;
+    session.CreateInitialRefreshToken(generated.PublicId, generated.SecretHash, database.Clock.UtcNow, Guid.NewGuid());
+    Assert.True((await SaveAsync(authenticationContext)).IsSuccess);
+    return new RefreshSessionSeed(tenant.Id, session.Id, raw);
+  }
+
   private static async Task VerifyAccountUniquenessAsync(SqlTestDatabase database, Guid tenantId, Seed seed)
   {
     await using (var sameIdentity = database.CreateContext(tenantId))
@@ -448,6 +763,10 @@ public sealed class PlatformAuthenticationPersistenceTests
   }
 
   private sealed record Seed(long IdentityId, long AccountId, long TenantUserId);
+
+  private sealed record RefreshSessionSeed(Guid TenantId, long AuthenticationSessionId, string RawRefreshToken);
+
+  private sealed record SelectionSeed(Guid TenantId, long TenantUserId, string RawSelectionProof);
 
   private sealed class NoOpDomainEventDispatcher : IDomainEventDispatcher
   {

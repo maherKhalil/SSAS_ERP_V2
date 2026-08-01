@@ -13,4 +13,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SSAS.Platform.Infrastructure" />
+    <InternalsVisibleTo Include="SSAS.Platform.Tests" />
+    <InternalsVisibleTo Include="SSAS.Integration.Tests" />
+  </ItemGroup>
+
 </Project>

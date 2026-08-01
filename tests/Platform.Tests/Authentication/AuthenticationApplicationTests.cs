@@ -182,7 +182,8 @@ public sealed class AuthenticationApplicationTests
       new VerifyPasswordCredentialsCommand(" login@example.com ", "Long password with spaces 123"));
 
     Assert.True(result.IsSuccess);
-    Assert.Equal(identity.Id, result.Value.IdentityId);
+    Assert.Equal(identity.Id, result.Value.VerifiedIdentity.IdentityId);
+    Assert.Equal(account.SecurityVersion, result.Value.VerifiedIdentity.SecurityVersion);
     Assert.Equal(securityVersion, account.SecurityVersion);
     Assert.Equal(passwordChangedUtc, account.PasswordChangedUtc);
     Assert.Equal(1, scope.PasswordHasher.HashCount);
@@ -433,6 +434,8 @@ public sealed class AuthenticationApplicationTests
 
     public FakeActionTokenRepository ActionTokens { get; }
 
+    public FakeAuthenticationSessionRepository Sessions { get; } = new();
+
     public FakeUnitOfWork UnitOfWork { get; } = new();
 
     public FakePasswordHasher PasswordHasher { get; } = new();
@@ -517,6 +520,7 @@ public sealed class AuthenticationApplicationTests
     public CompletePasswordResetCommandHandler CreateResetCompletionHandler() => new(
       Accounts,
       ActionTokens,
+      Sessions,
       UnitOfWork,
       ActionTokenService,
       PasswordHasher,
@@ -599,6 +603,14 @@ public sealed class AuthenticationApplicationTests
       CancellationToken cancellationToken = default) =>
       Task.FromResult(Values.SingleOrDefault(item => item.IdentityId == identityId));
 
+    public Task<AuthenticationAccount?> GetByIdForUpdateAsync(
+      long authenticationAccountId,
+      CancellationToken cancellationToken = default) => GetByIdAsync(authenticationAccountId, cancellationToken);
+
+    public Task<AuthenticationAccount?> GetByIdentityIdForUpdateAsync(
+      long identityId,
+      CancellationToken cancellationToken = default) => GetByIdentityIdAsync(identityId, cancellationToken);
+
     public Task<AuthenticationAccount?> GetByNormalizedLoginEmailAsync(
       string normalizedLoginEmail,
       CancellationToken cancellationToken = default) =>
@@ -615,6 +627,37 @@ public sealed class AuthenticationApplicationTests
     {
       SetId(account, Values.Count + 1);
       Values.Add(account);
+      return Task.CompletedTask;
+    }
+  }
+
+  private sealed class FakeAuthenticationSessionRepository : IAuthenticationSessionRepository
+  {
+    public List<AuthenticationSession> Values { get; } = [];
+
+    public Task<RefreshTokenSessionLocator?> GetRefreshTokenLocatorAsync(
+      Guid refreshTokenPublicId,
+      CancellationToken cancellationToken = default) => Task.FromResult<RefreshTokenSessionLocator?>(null);
+
+    public Task<AuthenticationSession?> GetByRefreshTokenForUpdateAsync(
+      long authenticationSessionId,
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult(Values.SingleOrDefault(session => session.Id == authenticationSessionId));
+
+    public Task<IReadOnlyList<AuthenticationSession>> ListActiveUnexpiredByIdentityForUpdateAsync(
+      long identityId,
+      DateTimeOffset utcNow,
+      CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthenticationSession>>(
+        Values.Where(session => session.IdentityId == identityId && session.IsUsable(utcNow)).ToArray());
+
+    public Task<IReadOnlyList<AuthenticationSession>> ListActiveByIdentityForUpdateAsync(
+      long identityId,
+      CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthenticationSession>>(
+        Values.Where(session => session.IdentityId == identityId && session.Status == AuthenticationSessionStatus.Active).ToArray());
+
+    public Task AddAsync(AuthenticationSession session, CancellationToken cancellationToken = default)
+    {
+      Values.Add(session);
       return Task.CompletedTask;
     }
   }

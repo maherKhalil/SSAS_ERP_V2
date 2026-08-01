@@ -10,6 +10,7 @@ namespace SSAS.Platform.Application.Authentication;
 public sealed class CompletePasswordResetCommandHandler(
   IAuthenticationAccountRepository authenticationAccountRepository,
   IAccountActionTokenRepository actionTokenRepository,
+  IAuthenticationSessionRepository authenticationSessionRepository,
   IPlatformUnitOfWork unitOfWork,
   IActionTokenService actionTokenService,
   IPasswordHashingService passwordHashingService,
@@ -33,7 +34,7 @@ public sealed class CompletePasswordResetCommandHandler(
       return Result.Failure(AuthenticationErrors.InvalidActionToken);
     }
 
-    var account = await authenticationAccountRepository.GetByIdAsync(actionToken.AuthenticationAccountId, cancellationToken);
+    var account = await authenticationAccountRepository.GetByIdForUpdateAsync(actionToken.AuthenticationAccountId, cancellationToken);
     if (account is null || account.IdentityId != actionToken.IdentityId || !account.CanIssuePasswordReset)
     {
       return Result.Failure(AuthenticationErrors.InvalidActionToken);
@@ -53,6 +54,20 @@ public sealed class CompletePasswordResetCommandHandler(
     if (resetResult.IsFailure || consumeResult.IsFailure)
     {
       return Result.Failure(AuthenticationErrors.InvalidActionToken);
+    }
+
+    var sessions = await authenticationSessionRepository.ListActiveByIdentityForUpdateAsync(account.IdentityId, cancellationToken);
+    foreach (var session in sessions)
+    {
+      var revokeResult = session.Revoke(
+        AuthenticationSessionRevocationReason.PasswordReset,
+        null,
+        Guid.NewGuid(),
+        now);
+      if (revokeResult.IsFailure)
+      {
+        return Result.Failure(AuthenticationErrors.InvalidActionToken);
+      }
     }
 
     var saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);

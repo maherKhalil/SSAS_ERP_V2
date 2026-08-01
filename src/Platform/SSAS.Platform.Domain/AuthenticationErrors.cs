@@ -17,4 +17,11 @@ public static class AuthenticationErrors
   public static readonly Error SensitiveTokenConsumed = new("AccountActionToken.SensitiveValueConsumed", "The sensitive token value is no longer available.");
   public static readonly Error ActiveMembershipCannotBeInvited = new("Invitation.ActiveMembership", "The membership cannot be invited.");
   public static readonly Error DeactivatedMembershipRequiresReactivation = new("Invitation.DeactivatedMembership", "The membership requires the approved reactivation workflow.");
+  public static readonly Error InvalidAuthenticationSession = new("AuthenticationSession.Invalid", "The authentication session operation is invalid.");
+  public static readonly Error GenericRefreshFailure = new("AuthenticationSession.RefreshFailed", "Refresh failed.");
+  public static readonly Error GenericTenantSelectionFailure = new("Authentication.TenantSelectionFailed", "Tenant selection failed.");
+  public static readonly Error InvalidRefreshToken = GenericRefreshFailure;
+  public static readonly Error InvalidTenantSelection = GenericTenantSelectionFailure;
+  public static readonly Error NoEligibleMembership = new("Authentication.NoEligibleMembership", "No eligible tenant membership is available.");
+  public static readonly Error InvalidClientId = new("Authentication.InvalidClientId", "The authentication client is invalid.");
 }

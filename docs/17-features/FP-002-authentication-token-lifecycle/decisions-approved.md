@@ -371,3 +371,243 @@ Failed-attempt updates use optimistic concurrency with a bounded retry.
 - Endpoint rate limiting remains an additional later protection.
 
 SQL Server tests must cover concurrent failed attempts and the transition into lockout.
+
+## DEC-AUTH-0032 — Trusted tenant eligibility source
+
+FP-003 is the authoritative source for tenant authentication eligibility. Milestone 3 consumes `ITenantAuthenticationEligibilityReadService` during automatic tenant resolution, explicit tenant selection, authentication-session creation, and refresh-token rotation.
+
+Only `TenantStatus.Active` is authentication-eligible. `Provisioning`, `Suspended`, `Archived`, and missing tenants are ineligible. Membership status alone is insufficient, and callers cannot supply or override eligibility. Subscription, billing, company, and role state are not tenant lifecycle state. Ordinary tenant repositories do not bypass tenant filters for this purpose.
+
+This decision resolves the previous Milestone 3 tenant-lifecycle blocker.
+
+## DEC-AUTH-0033 — Verified Identity capability
+
+Successful credential verification returns an internal, non-user-constructible `VerifiedIdentity` capability containing only:
+
+- `IdentityId`;
+- `SecurityVersion`.
+
+`BeginTenantAccessCommand` accepts `VerifiedIdentity`, not a raw IdentityId. Ordinary callers cannot create the capability from an arbitrary identifier. It remains internal to the authentication Application boundary, is not persisted, and is never serialized through an HTTP endpoint. It contains no password, email, tenant, role, permission, token, or claims. The current account security version is revalidated before session creation.
+
+`CredentialVerificationResult` is updated to expose this capability rather than a caller-reusable raw IdentityId.
+
+## DEC-AUTH-0034 — V1 client identifier
+
+The exact V1 browser client identifier is:
+
+```text
+ssas-erp-web
+```
+
+Comparison is exact, ordinal, and case-sensitive. Client identifiers have a maximum length of 64 characters; surrounding whitespace is invalid rather than trimmed. Values are stored with binary SQL collation and validated against a deployment-owned allowlist. The production allowlist contains `ssas-erp-web` for the V1 Angular client, and arbitrary caller-supplied values are rejected.
+
+`ClientId` is immutable on tenant-selection transactions, sessions, and refresh-token records. Every selection and refresh validates exact equality. Native mobile and desktop identifiers remain deferred and require separate approval.
+
+## DEC-AUTH-0035 — Session status model
+
+Persist exactly these `AuthenticationSession` statuses:
+
+- `Active`;
+- `Revoked`;
+- `Compromised`.
+
+Permitted transitions are `Active` to `Revoked` and `Active` to `Compromised`. `Revoked` and `Compromised` are terminal.
+
+Expiration is computed rather than persisted as another status. A session is currently usable only when its status is `Active`, current trusted UTC is earlier than `IdleExpiresUtc`, and current trusted UTC is earlier than `AbsoluteExpiresUtc`.
+
+Approved Milestone 3 revocation reasons are exactly:
+
+- `SessionLimitExceeded`;
+- `PasswordReset`;
+- `SecurityStateChanged`;
+- `IdentityIneligible`;
+- `MembershipIneligible`;
+- `TenantIneligible`;
+- `Administrative`.
+
+Compromise uses status `Compromised`. Malformed tokens and ClientId mismatch do not revoke an otherwise valid session. Revocation history is retained and physical deletion is prohibited.
+
+## DEC-AUTH-0036 — Authentication session binding
+
+Every `AuthenticationSession` is immutably bound to exactly one `IdentityId`, `TenantUserId`, `TenantId`, `ClientId`, and `TokenFamilyId`.
+
+The TenantUser must belong to both the Identity and Tenant, the membership must be `Active`, and the Tenant must be authentication-eligible through FP-003. An arbitrary client-supplied TenantId cannot grant access.
+
+Sessions are global authentication records. They do not implement `ITenantOwnedEntity` and receive no ordinary tenant query filter. Isolation is enforced through narrow repositories, exact identity and membership predicates, composite foreign keys, and ClientId binding.
+
+## DEC-AUTH-0037 — Membership discovery
+
+Use the dedicated pre-tenant read contract `IIdentityTenantMembershipReadService` with operations to:
+
+- list eligible memberships for one trusted IdentityId;
+- get one eligible membership by IdentityId, TenantUserId, and TenantId.
+
+IdentityId is mandatory in every operation and SQL predicate. Results are safe immutable tenant-selection projections and include only `TenantUserStatus.Active`; `Pending` and `Deactivated` are excluded. Tenant eligibility is validated through FP-003.
+
+The contract exposes neither `IQueryable` nor TenantUser aggregates, never returns another Identity's membership, and is not a generic cross-tenant bypass. Ordinary tenant repositories do not use `IgnoreQueryFilters` for discovery. A narrowly scoped Infrastructure implementation may bypass the ordinary tenant filter only inside this approved service.
+
+## DEC-AUTH-0038 — Tenant selection transaction
+
+`TenantSelectionTransaction` is a separate persisted aggregate containing:
+
+- `TenantSelectionTransactionId`;
+- `PublicId`;
+- `IdentityId`;
+- `ClientId`;
+- `SecurityVersionAtAuthentication`;
+- `SecretHash`;
+- `CreatedUtc`;
+- `ExpiresUtc`;
+- `ConsumedUtc`;
+- `RevokedUtc`;
+- audit metadata;
+- `RowVersion`.
+
+It has a five-minute lifetime, is single-use and purpose-bound to tenant selection, and is bound to exact ClientId. SecurityVersion is revalidated before selection. The proof is not accepted by tenant business APIs. Successful selection consumes it; failed membership or tenant validation does not.
+
+Replay, expiry, revocation, concurrent consumption, malformed proof, or ClientId mismatch returns one generic selection failure. Selection consumption and session creation occur in one transaction.
+
+## DEC-AUTH-0039 — Tenant selection proof format
+
+Use:
+
+```text
+<public-selector>.<secret>
+```
+
+The selector is a cryptographically random Guid in `N` format: exactly 32 characters and persisted as `UNIQUEIDENTIFIER`. The secret is exactly 32 cryptographically random bytes encoded with canonical Base64Url as exactly 43 characters. The presented proof is exactly 76 characters and contains exactly one separator. Null, whitespace, malformed, oversized, noncanonical, and multi-separator values are rejected before database lookup.
+
+The stored hash is SHA-256, exactly 32 bytes, and persisted as `BINARY(32)`. Its canonical input is:
+
+```text
+UTF8(
+  "SSAS.ERP.TenantSelectionTransaction.v1" + "\0" +
+  publicId:N + "\0" +
+  identityId using invariant decimal + "\0" +
+  securityVersion using invariant decimal + "\0" +
+  exact ClientId + "\0" +
+  canonical Base64Url secret
+)
+```
+
+Verification loads by selector, validates exact ClientId, recomputes the hash, compares it using `CryptographicOperations.FixedTimeEquals`, and validates expiry, status, SecurityVersion, and ownership.
+
+Raw selection proofs are reveal-once sensitive results. They never appear in persistence, logs, telemetry, exceptions, events, ordinary DTOs, or command representations.
+
+## DEC-AUTH-0040 — Refresh token format
+
+Use:
+
+```text
+<public-selector>.<secret>
+```
+
+The selector is a cryptographically random Guid in `N` format: exactly 32 characters and persisted as `UNIQUEIDENTIFIER`. The secret is exactly 32 cryptographically random bytes encoded with canonical Base64Url as exactly 43 characters. The presented token is exactly 76 characters and contains exactly one separator. Null, whitespace, malformed, oversized, noncanonical, and multi-separator values are rejected before database lookup.
+
+The stored hash is SHA-256, exactly 32 bytes, and persisted as `BINARY(32)`. Its canonical input is:
+
+```text
+UTF8(
+  "SSAS.ERP.RefreshToken.v1" + "\0" +
+  publicId:N + "\0" +
+  authenticationSessionId using invariant decimal + "\0" +
+  tokenFamilyId:N + "\0" +
+  exact ClientId + "\0" +
+  canonical Base64Url secret
+)
+```
+
+Verification uses indexed selector lookup, exact ClientId validation, fixed-time hash comparison, exact session and family binding, and lifecycle and expiry validation.
+
+Raw refresh tokens are reveal-once sensitive results. They never appear in persistence, logs, telemetry, exceptions, domain events, ordinary DTOs, or command debugger and `ToString` representations.
+
+## DEC-AUTH-0041 — Refresh token ownership
+
+`AuthenticationSession` is the aggregate root. `RefreshTokenRecord` is its child entity; no `IRefreshTokenRecordRepository` exists.
+
+The session owns token rotation, token-family history, replacement linkage, reuse detection, active-descendant revocation, refresh timestamps, and compromise transitions. `IAuthenticationSessionRepository` may load the owning session by refresh-token selector through the approved locked persistence operation.
+
+A RefreshTokenRecord may use an independent SQL rowversion as a concurrency backstop without becoming a separate aggregate.
+
+## DEC-AUTH-0042 — Refresh lifetime and rotation
+
+The approved default session idle lifetime is 30 days and absolute lifetime is 90 days. Both are configurable, and refresh never extends absolute expiration.
+
+For every issued refresh token:
+
+```text
+ExpiresUtc = min(Session.IdleExpiresUtc, Session.AbsoluteExpiresUtc)
+```
+
+Successful refresh:
+
+1. Validates account, membership, tenant, session, ClientId, SecurityVersion, token purpose, selector, secret, and expiry.
+2. Consumes the submitted token.
+3. Sets `LastRefreshedUtc` to captured trusted current UTC.
+4. Sets the new idle expiration to `min(now + configured idle lifetime, AbsoluteExpiresUtc)`.
+5. Creates exactly one replacement refresh token.
+6. Links the predecessor to its replacement.
+7. Commits all changes atomically.
+
+Failed persistence rolls back token consumption and replacement creation. An ambiguous refresh persistence result is not automatically retried.
+
+## DEC-AUTH-0043 — Refresh reuse
+
+Verified reuse of a consumed refresh token returns generic refresh failure, marks the affected AuthenticationSession `Compromised`, records the triggering RefreshTokenRecord, revokes every unconsumed descendant in that session, and emits safe compromise and reuse-detected events. It does not revoke unrelated sessions.
+
+A consumed ancestor remains reuse-detectable while its session history is retained, even after that token's original expiry. There is no reuse grace window.
+
+Concurrent use of one refresh token permits at most one successful rotation. The losing verified use follows this reuse-compromise behavior.
+
+## DEC-AUTH-0044 — Session limit
+
+The configurable maximum is ten active sessions per Identity.
+
+Enforcement opens one SQL Server transaction, locks the AuthenticationAccount row for the Identity, lists currently active and unexpired sessions, orders them by `CreatedUtc` and then `AuthenticationSessionId`, revokes enough oldest sessions to make room, creates the new session and its first refresh token, and commits once.
+
+Old sessions use revocation reason `SessionLimitExceeded` and emit a safe event for a future notification consumer. Notification delivery is not included in Milestone 3. Platform-support sessions require a separate later policy.
+
+## DEC-AUTH-0045 — Password reset session revocation
+
+After AuthenticationSession exists, successful password-reset completion atomically:
+
+- increments SecurityVersion;
+- revokes every active session for the Identity using `PasswordReset`;
+- consumes the reset token;
+- replaces the password hash;
+- clears lockout state;
+- commits all account, reset-token, and session changes.
+
+No public revoke-all command is required in Milestone 3. A failed reset commit neither revokes sessions nor consumes the reset token.
+
+## DEC-AUTH-0046 — Concurrency and lock order
+
+Use SQL Server transactions with narrowly scoped parameterized locked reads. The canonical lock order is:
+
+1. AuthenticationAccount.
+2. TenantSelectionTransaction, when applicable.
+3. TenantUser membership.
+4. Tenant.
+5. AuthenticationSession.
+6. RefreshTokenRecord.
+
+Concurrent refresh and selection consumption permit at most one success. Session revocation racing with refresh is serialized. Membership and Tenant eligibility are revalidated under the transaction when racing with session creation or refresh. SecurityVersion changes serialize through the AuthenticationAccount lock. Absolute expiration uses one captured trusted UTC value after required locks. Replacement insertion failure rolls back predecessor consumption.
+
+Rowversion and unique constraints remain backstops. Ambiguous refresh commits are not retried automatically, and persistence conflicts map to generic external failures without exposing SQL details. Raw SQL is allowed only for these approved parameterized lock-acquisition operations.
+
+## DEC-AUTH-0047 — Session and selection events
+
+Approve these safe events:
+
+- `TenantSelectionRequired`;
+- `TenantMembershipSelected`;
+- `AuthenticationSessionCreated`;
+- `AuthenticationSessionRefreshed`;
+- `AuthenticationSessionRevoked`;
+- `AuthenticationSessionCompromised`;
+- `RefreshTokenReuseDetected`;
+- `SessionLimitOldestSessionRevoked`.
+
+Events may contain safe identifiers, timestamps, exact ClientId, and a lifecycle reason or outcome category. They contain no raw refresh token, raw tenant-selection proof, secret hash, login email, password data, JWT, claims collection, cookie, or HTTP context.
+
+Correlation, request, actor, and trace metadata remain external dispatch metadata. Immutable security-audit persistence remains deferred and is a production-release blocker.

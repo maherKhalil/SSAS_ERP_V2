@@ -23,7 +23,7 @@ DELETE /api/platform/auth/sessions/{sessionId}
 POST /api/platform/auth/sessions/revoke-all
 ```
 
-These are package-level V1 contracts. None of these routes is implemented in Sprint-01 Milestone 2.
+These are package-level V1 contracts. None of these routes is implemented in Sprint-01 Milestone 2 or Milestone 3.
 
 Login returns either:
 
@@ -49,3 +49,11 @@ Invitation completion behavior is defined before the route is implemented:
 - active memberships cannot be invited;
 - deactivated memberships use the existing reactivation workflow;
 - invitations contain no role identifiers and assign no roles.
+
+## Sprint-01 Milestone 3 delivery boundary
+
+Milestone 3 remains an internal Domain, Application, and SQL Server slice. It exposes no login, tenant-selection, refresh, logout, session, password-reset, or invitation HTTP endpoint and introduces no controller, endpoint mapper, cookie, CSRF behavior, JWT response, access-token response, claims construction, or ASP.NET Core authentication change.
+
+Successful credential verification returns only an internal non-serializable `VerifiedIdentity`. Tenant-selection proofs and refresh tokens are reveal-once sensitive internal results structurally separated from ordinary DTOs; they are not HTTP response contracts in this milestone.
+
+The exact V1 ClientId `ssas-erp-web` is an internal validated binding value. Its documentation here does not authorize a caller-controlled transport field or native-client identifier.

@@ -23,10 +23,42 @@ version: 1.0
 | Auditability and secret protection | BR-AUTH-0009, BRULE-AUTH-0008, BRULE-AUTH-0015 | SEC-AUTH-0202, SEC-AUTH-0203, SEC-AUTH-0209, NFR-AUTH-0307 | AC-AUTH-0009, AC-AUTH-0020 | TS-AUTH-0054, TS-AUTH-0062, TS-AUTH-0063, TS-AUTH-0073 |
 | Persistence, architecture, and delivery quality | BRULE-AUTH-0006, BRULE-AUTH-0008, BRULE-AUTH-0012, BRULE-AUTH-0013, BRULE-AUTH-0015 | SEC-AUTH-0202, SEC-AUTH-0205, SEC-AUTH-0207, SEC-AUTH-0209, NFR-AUTH-0301, NFR-AUTH-0302, NFR-AUTH-0303, NFR-AUTH-0304, NFR-AUTH-0305, NFR-AUTH-0306, NFR-AUTH-0307 | AC-AUTH-0009, AC-AUTH-0020, AC-AUTH-0021 | TS-AUTH-0060, TS-AUTH-0061, TS-AUTH-0062, TS-AUTH-0063, TS-AUTH-0064, TS-AUTH-0065, TS-AUTH-0066, TS-AUTH-0067, TS-AUTH-0068, TS-AUTH-0070, TS-AUTH-0071, TS-AUTH-0072, TS-AUTH-0073, TS-AUTH-0074 |
 
+## Previously approved decision traceability
+
+| Decision area | Approved decisions | Mapped capability rows |
+|---|---|---|
+| Global account, credential, and password controls | DEC-AUTH-0001, DEC-AUTH-0002, DEC-AUTH-0004, DEC-AUTH-0005, DEC-AUTH-0006, DEC-AUTH-0023, DEC-AUTH-0024, DEC-AUTH-0027, DEC-AUTH-0028, DEC-AUTH-0031 | Global account and local Identity; credential verification and lockout |
+| Invitation, reset, and action-token controls | DEC-AUTH-0003, DEC-AUTH-0016, DEC-AUTH-0017, DEC-AUTH-0025, DEC-AUTH-0026, DEC-AUTH-0029, DEC-AUTH-0030 | Invitation and account setup; password reset; auditability and secret protection |
+| Access-token, signing-key, and browser controls | DEC-AUTH-0007, DEC-AUTH-0014, DEC-AUTH-0019 | Tenant-scoped access token; public API protection |
+| Session, refresh, security-version, and password-change controls | DEC-AUTH-0008, DEC-AUTH-0009, DEC-AUTH-0010, DEC-AUTH-0011, DEC-AUTH-0012, DEC-AUTH-0020 | Refresh lifecycle; session lifecycle; password change |
+| Tenant-selection controls | DEC-AUTH-0013 | Tenant resolution and selection |
+| Explicitly deferred authentication capabilities | DEC-AUTH-0015, DEC-AUTH-0018, DEC-AUTH-0021, DEC-AUTH-0022 | Deferred client, MFA, immutable-audit, and platform-support scope |
+
+## Sprint-01 Milestone 3 authoritative traceability
+
+| Capability | Approved decisions | Functional requirements | Security and non-functional requirements | Acceptance criteria | Focused scenarios |
+|---|---|---|---|---|---|
+| Verified identity, membership discovery, and FP-003 eligibility | DEC-AUTH-0032, DEC-AUTH-0033, DEC-AUTH-0037 | FR-AUTH-0103, FR-AUTH-0104, FR-AUTH-0105, FR-AUTH-0120, FR-AUTH-0126 | SEC-AUTH-0213, SEC-AUTH-0216, NFR-AUTH-0301, NFR-AUTH-0302, NFR-AUTH-0303 | AC-AUTH-0002, AC-AUTH-0003, AC-AUTH-0004, AC-AUTH-0018, AC-AUTH-0023, AC-AUTH-0024, AC-AUTH-0027 | TS-AUTH-0020, TS-AUTH-0021, TS-AUTH-0022, TS-AUTH-0023, TS-AUTH-0087 |
+| Exact ClientId and immutable session binding | DEC-AUTH-0034, DEC-AUTH-0036 | FR-AUTH-0125, FR-AUTH-0127, FR-AUTH-0134 | SEC-AUTH-0215, NFR-AUTH-0304 | AC-AUTH-0025, AC-AUTH-0026 | TS-AUTH-0036, TS-AUTH-0083 |
+| Tenant-selection transaction and proof | DEC-AUTH-0038, DEC-AUTH-0039 | FR-AUTH-0105, FR-AUTH-0128 | SEC-AUTH-0202, SEC-AUTH-0203, SEC-AUTH-0206, SEC-AUTH-0207, SEC-AUTH-0214, NFR-AUTH-0304, NFR-AUTH-0310 | AC-AUTH-0003, AC-AUTH-0028, AC-AUTH-0034, AC-AUTH-0035 | TS-AUTH-0024, TS-AUTH-0080, TS-AUTH-0082, TS-AUTH-0088, TS-AUTH-0090 |
+| Session status, expiration, ownership, and revocation | DEC-AUTH-0035, DEC-AUTH-0036 | FR-AUTH-0127, FR-AUTH-0131 | SEC-AUTH-0203, NFR-AUTH-0305, NFR-AUTH-0309 | AC-AUTH-0026 | TS-AUTH-0033, TS-AUTH-0077, TS-AUTH-0078, TS-AUTH-0084 |
+| Refresh ownership, format, lifetime, and atomic rotation | DEC-AUTH-0040, DEC-AUTH-0041, DEC-AUTH-0042 | FR-AUTH-0107, FR-AUTH-0108, FR-AUTH-0110, FR-AUTH-0129 | SEC-AUTH-0202, SEC-AUTH-0203, SEC-AUTH-0206, SEC-AUTH-0207, SEC-AUTH-0212, SEC-AUTH-0214, NFR-AUTH-0304, NFR-AUTH-0305, NFR-AUTH-0309, NFR-AUTH-0310 | AC-AUTH-0007, AC-AUTH-0009, AC-AUTH-0029, AC-AUTH-0030, AC-AUTH-0035 | TS-AUTH-0031, TS-AUTH-0033, TS-AUTH-0042, TS-AUTH-0062, TS-AUTH-0066, TS-AUTH-0079, TS-AUTH-0081, TS-AUTH-0090 |
+| Verified reuse and session compromise | DEC-AUTH-0043 | FR-AUTH-0109, FR-AUTH-0130 | SEC-AUTH-0212, SEC-AUTH-0214, NFR-AUTH-0308, NFR-AUTH-0309 | AC-AUTH-0008, AC-AUTH-0021, AC-AUTH-0031, AC-AUTH-0034 | TS-AUTH-0032, TS-AUTH-0035, TS-AUTH-0066, TS-AUTH-0089 |
+| Ten-session limit and deterministic oldest revocation | DEC-AUTH-0044 | FR-AUTH-0132 | SEC-AUTH-0203, NFR-AUTH-0305, NFR-AUTH-0308 | AC-AUTH-0032, AC-AUTH-0034 | TS-AUTH-0038, TS-AUTH-0075, TS-AUTH-0076, TS-AUTH-0085 |
+| Password-reset session revocation | DEC-AUTH-0045 | FR-AUTH-0117, FR-AUTH-0124, FR-AUTH-0133 | SEC-AUTH-0201, SEC-AUTH-0205, SEC-AUTH-0212, NFR-AUTH-0308 | AC-AUTH-0014, AC-AUTH-0033, AC-AUTH-0034 | TS-AUTH-0017, TS-AUTH-0040, TS-AUTH-0086 |
+| Canonical lock order and race serialization | DEC-AUTH-0046 | FR-AUTH-0135 | SEC-AUTH-0212, SEC-AUTH-0216, NFR-AUTH-0304, NFR-AUTH-0308 | AC-AUTH-0021, AC-AUTH-0034 | TS-AUTH-0085, TS-AUTH-0086, TS-AUTH-0087, TS-AUTH-0088, TS-AUTH-0089 |
+| Safe session and selection events | DEC-AUTH-0047 | FR-AUTH-0128, FR-AUTH-0129, FR-AUTH-0130, FR-AUTH-0132 | SEC-AUTH-0203, SEC-AUTH-0214, NFR-AUTH-0307 | AC-AUTH-0020, AC-AUTH-0035 | TS-AUTH-0054, TS-AUTH-0073, TS-AUTH-0090 |
+
 ## Sprint-01 Milestone 2 coverage
 
 Milestone 2 implements the rows for global account and local Identity, credential verification and lockout, invitation and account setup, password reset, and the applicable persistence, architecture, audit-ready event, and secret-protection requirements.
 
 Tenant selection, sessions, refresh tokens, JWT issuance and validation, HTTP and browser security, signing-key rotation, authenticated password change, and end-to-end tenant eligibility remain assigned to later FP-002 milestones.
+
+## Sprint-01 Milestone 3 coverage
+
+Milestone 3 implements the internal tenant-selection, session, refresh-token, session-limit, password-reset session-revocation, and concurrency rows above. FP-003 is the authoritative tenant eligibility source. `DEC-AUTH-0032` through `DEC-AUTH-0047` are fully mapped to requirements, acceptance criteria, and focused scenarios.
+
+Milestone 3 does not claim access-token/JWT issuance, HTTP or browser transport security, signing-key implementation, public logout/session administration, authenticated password change, notification delivery, Angular authentication, or Platform-support authentication.
 
 Immutable audit persistence, platform-support authentication, external providers, passwordless flows, concrete MFA, Angular authentication, and notification delivery remain deferred as approved.

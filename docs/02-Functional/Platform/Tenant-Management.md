@@ -8,6 +8,10 @@ Status
 
 Draft
 
+Lifecycle authority
+
+Approved FP-003 (`docs/17-features/FP-003-tenant-lifecycle/`) supersedes this Draft wherever this document describes Tenant identity, status, lifecycle transitions, authentication eligibility, deletion, lifecycle persistence, or lifecycle authorization boundaries. The remaining company, first-administrator, subscription, billing, branding, localization, configuration, contact, notification, and broad onboarding material below is deferred and non-authoritative until covered by an approved feature package.
+
 ---
 
 # Requirement References
@@ -52,14 +56,14 @@ Support Administrator
 
 - Create Tenant
 - View Tenant
-- Update Tenant
+- Update Tenant display information (deferred; TenantName mutability is governed by FP-003)
 - Suspend Tenant
 - Reactivate Tenant
 - Archive Tenant
-- Assign Subscription
-- Configure Branding
-- Configure Localization
-- Configure Default Settings
+- Assign Subscription (deferred and non-authoritative)
+- Configure Branding (deferred and non-authoritative)
+- Configure Localization (deferred and non-authoritative)
+- Configure Default Settings (deferred and non-authoritative)
 
 ---
 
@@ -95,17 +99,19 @@ Branding
 
 # Business Validations
 
-Tenant Code must be unique.
+Tenant Code is globally unique by the exact FP-003 normalization and BIN2 comparison rules.
 
-Tenant Name must be unique.
+Tenant Name is not globally unique. It is mutable only through an approved Tenant update operation.
 
-A suspended tenant cannot authenticate.
+Only an existing Active Tenant is authentication-eligible; Provisioning, Suspended, Archived, and missing Tenants are ineligible.
 
-Archived tenants are read-only.
+Archived is terminal and retained. Physical deletion is prohibited.
 
 ---
 
-# Workflow
+# Deferred workflow (non-authoritative)
+
+The workflow below is not part of FP-003. Tenant creation in FP-003 creates only a Tenant in Provisioning; activation creates no company or first administrator.
 
 Create Tenant
 
@@ -139,7 +145,9 @@ Send Welcome Email
 
 ---
 
-# API
+# Draft API (superseded for lifecycle)
+
+No Tenant HTTP endpoint is included in the first FP-003 implementation milestone. Any later endpoint follows the approved FP-003 contracts and Platform-level authorization boundary.
 
 GET    /api/platform/tenants
 
@@ -149,7 +157,7 @@ POST   /api/platform/tenants
 
 PUT    /api/platform/tenants/{id}
 
-DELETE /api/platform/tenants/{id}
+POST   /api/platform/tenants/{id}/archive
 
 ---
 
@@ -167,6 +175,8 @@ TBL-PLT-Configuration
 
 # Permissions
 
+The identifiers below are Draft and non-authoritative. Exact Platform lifecycle permission identifiers are deferred by FP-003; ordinary tenant roles never authorize Tenant lifecycle operations. No Tenant-delete permission exists.
+
 PER-PLT-ViewTenant
 
 PER-PLT-CreateTenant
@@ -175,7 +185,6 @@ PER-PLT-EditTenant
 
 PER-PLT-SuspendTenant
 
-PER-PLT-DeleteTenant
 
 ---
 
@@ -193,7 +202,9 @@ Subscription Changed
 
 ---
 
-# Acceptance Criteria
+# Deferred acceptance criteria (non-authoritative)
+
+These broad onboarding criteria are outside FP-003 and require later approved feature packages.
 
 ✓ Tenant is created successfully.
 

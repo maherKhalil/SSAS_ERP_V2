@@ -7,4 +7,8 @@ public interface ITenantAuthenticationEligibilityReadService
   Task<TenantAuthenticationEligibilityResult> GetEligibilityAsync(
     Guid tenantId,
     CancellationToken cancellationToken = default);
+
+  Task<TenantAuthenticationEligibilityResult> GetEligibilityForUpdateAsync(
+    Guid tenantId,
+    CancellationToken cancellationToken = default);
 }

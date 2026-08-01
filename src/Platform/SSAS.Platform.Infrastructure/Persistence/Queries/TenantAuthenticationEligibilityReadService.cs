@@ -18,4 +18,14 @@ public sealed class TenantAuthenticationEligibilityReadService(PlatformDbContext
       .SingleOrDefaultAsync(cancellationToken);
     return TenantAuthenticationEligibilityResult.FromStatus(tenantId, status);
   }
+
+  public async Task<TenantAuthenticationEligibilityResult> GetEligibilityForUpdateAsync(
+    Guid tenantId,
+    CancellationToken cancellationToken = default)
+  {
+    var tenant = await dbContext.Tenants
+      .FromSqlInterpolated($"SELECT * FROM [platform].[Tenants] WITH (UPDLOCK, HOLDLOCK) WHERE [TenantId] = {tenantId}")
+      .SingleOrDefaultAsync(cancellationToken);
+    return TenantAuthenticationEligibilityResult.FromStatus(tenantId, tenant?.Status);
+  }
 }

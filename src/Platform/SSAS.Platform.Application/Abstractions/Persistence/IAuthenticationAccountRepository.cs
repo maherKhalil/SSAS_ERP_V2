@@ -8,6 +8,10 @@ public interface IAuthenticationAccountRepository
 
   Task<AuthenticationAccount?> GetByIdentityIdAsync(long identityId, CancellationToken cancellationToken = default);
 
+  Task<AuthenticationAccount?> GetByIdForUpdateAsync(long authenticationAccountId, CancellationToken cancellationToken = default);
+
+  Task<AuthenticationAccount?> GetByIdentityIdForUpdateAsync(long identityId, CancellationToken cancellationToken = default);
+
   Task<AuthenticationAccount?> GetByNormalizedLoginEmailAsync(
     string normalizedLoginEmail,
     CancellationToken cancellationToken = default);

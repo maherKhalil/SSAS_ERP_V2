@@ -74,6 +74,9 @@ public sealed class AuthenticationAccount : AggregateRoot<long>, IAuditableEntit
   public bool CanIssuePasswordReset =>
     Status == AuthenticationAccountStatus.Active && EmailVerifiedUtc.HasValue && passwordHash is not null;
 
+  public bool IsAuthenticationEligible =>
+    Status == AuthenticationAccountStatus.Active && EmailVerifiedUtc.HasValue && passwordHash is not null;
+
   public Result CompleteInitialSetup(
     string newPasswordHash,
     Guid eventId,

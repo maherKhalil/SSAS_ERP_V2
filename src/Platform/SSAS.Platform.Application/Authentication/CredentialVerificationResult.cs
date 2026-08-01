@@ -1,3 +1,3 @@
 namespace SSAS.Platform.Application.Authentication;
 
-public sealed record CredentialVerificationResult(long IdentityId);
+public sealed record CredentialVerificationResult(VerifiedIdentity VerifiedIdentity);

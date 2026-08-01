@@ -8,6 +8,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="SSAS.Platform.Application" />
     <InternalsVisibleTo Include="SSAS.Platform.Infrastructure" />
+    <InternalsVisibleTo Include="SSAS.Platform.Tests" />
+    <InternalsVisibleTo Include="SSAS.Integration.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

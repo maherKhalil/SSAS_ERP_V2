@@ -105,7 +105,7 @@ public sealed class TenantLifecycleArchitectureTests
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
       .Select(property => $"{type.Name}.{property.Name}")).ToArray();
 
-    Assert.Equal(5, eventTypes.Length);
+    Assert.Equal(7, eventTypes.Length);
     Assert.Empty(unsafeProperties);
   }
 
@@ -113,11 +113,11 @@ public sealed class TenantLifecycleArchitectureTests
   [Trait("Acceptance", "AC-TEN-0020")]
   [Trait("Scenario", "TS-TEN-0032")]
   [Trait("Scenario", "TS-TEN-0034")]
-  public void Milestone_contains_no_deferred_tenant_endpoint_or_authentication_implementation()
+  public void Milestone_contains_no_deferred_tenant_endpoint_or_post_session_implementation()
   {
     var files = PlatformSourceFiles().ToArray();
     var deferredDeclaration = new Regex(
-      @"\b(?:class|record|interface)\s+\w*(?:AuthenticationSession|RefreshToken|TenantSelection|JwtIssuer|AccessTokenIssuer|TenantController|Subscription|Billing|CompanyProvision)\w*\b",
+      @"\b(?:class|record|interface)\s+\w*(?:JwtIssuer|AccessTokenIssuer|TenantController|Subscription|Billing|CompanyProvision)\w*\b",
       RegexOptions.CultureInvariant);
 
     Assert.Empty(files.Where(path => deferredDeclaration.IsMatch(File.ReadAllText(path))));

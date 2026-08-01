@@ -17,7 +17,7 @@ namespace SSAS.Integration.Tests;
 public sealed class PlatformIdentityAccessPersistenceTests
 {
   [Fact]
-  public async Task Initial_migration_enforces_platform_iam_persistence_invariants()
+  public async Task Complete_platform_migration_chain_enforces_current_iam_persistence_invariants()
   {
     var databaseName = $"SSAS_ERP_FP001_{Guid.NewGuid():N}";
     var connectionString = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
@@ -107,9 +107,12 @@ public sealed class PlatformIdentityAccessPersistenceTests
           [
             "AccountActionTokens",
             "AuthenticationAccounts",
+            "AuthenticationSessions",
             "Identities",
+            "RefreshTokenRecords",
             "RolePermissionAssignments",
             "Roles",
+            "TenantSelectionTransactions",
             "TenantUserRoleAssignments",
             "TenantUsers",
             "Tenants"

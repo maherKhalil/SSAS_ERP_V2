@@ -33,6 +33,12 @@ public sealed class PlatformDbContext(
 
   public DbSet<Tenant> Tenants => Set<Tenant>();
 
+  public DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
+
+  public DbSet<RefreshTokenRecord> RefreshTokenRecords => Set<RefreshTokenRecord>();
+
+  public DbSet<TenantSelectionTransaction> TenantSelectionTransactions => Set<TenantSelectionTransaction>();
+
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
     modelBuilder.ApplyConfigurationsFromAssembly(typeof(PlatformDbContext).Assembly);
@@ -42,9 +48,19 @@ public sealed class PlatformDbContext(
   public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
   {
     PreventTenantDeletion();
+    PreventAuthenticationHistoryDeletion();
     PreventIdentityOwnershipChanges();
     PromoteAssignmentOwners();
     return base.SaveChangesAsync(cancellationToken);
+  }
+
+  private void PreventAuthenticationHistoryDeletion()
+  {
+    if (ChangeTracker.Entries().Any(entry =>
+      entry.State == EntityState.Deleted && entry.Entity is AuthenticationSession or RefreshTokenRecord or TenantSelectionTransaction))
+    {
+      throw new InvalidOperationException("Authentication session, refresh-token, and tenant-selection history cannot be physically deleted.");
+    }
   }
 
   private void PreventTenantDeletion()

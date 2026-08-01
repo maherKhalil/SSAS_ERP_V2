@@ -42,7 +42,10 @@ public sealed class AuthenticationMilestoneArchitectureTests
       typeof(CompleteInvitationCommandHandler),
       typeof(VerifyPasswordCredentialsCommandHandler),
       typeof(IssuePasswordResetCommandHandler),
-      typeof(CompletePasswordResetCommandHandler)
+      typeof(CompletePasswordResetCommandHandler),
+      typeof(BeginTenantAccessCommandHandler),
+      typeof(SelectTenantCommandHandler),
+      typeof(RefreshAuthenticationSessionCommandHandler)
     };
 
     Assert.All(handlers, handler =>
@@ -109,14 +112,14 @@ public sealed class AuthenticationMilestoneArchitectureTests
 
   [Fact]
   [Trait("Scenario", "TS-AUTH-0074")]
-  public void Milestone_two_contains_no_deferred_authentication_implementation_or_http_endpoint()
+  public void Milestone_three_contains_no_deferred_access_token_or_http_endpoint()
   {
     var platformFiles = Directory
       .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform"), "*.cs", SearchOption.AllDirectories)
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .ToArray();
     const string deferredDeclaration =
-      @"\b(?:class|record|interface)\s+(?:\w)*(?:AuthenticationSession|RefreshToken|TenantSelection|JwtIssuer|AccessTokenIssuer|Logout|SigningKey|Csrf|Cookie)(?:\w)*\b";
+      @"\b(?:class|record|interface)\s+(?:\w)*(?:JwtIssuer|AccessTokenIssuer|Logout|SigningKey|Csrf|Cookie)(?:\w)*\b";
     var deferred = platformFiles
       .Where(path => Regex.IsMatch(File.ReadAllText(path), deferredDeclaration, RegexOptions.CultureInvariant))
       .ToArray();

@@ -1,15 +1,27 @@
+using System.Net;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Host.API.Authentication;
+using SSAS.Host.API.Authorization;
+using SSAS.Host.API.Configuration;
+using SSAS.Platform.API;
+using SSAS.Platform.API.Authentication;
 using SSAS.Platform.Application.Authentication;
+using SSAS.Platform.Domain;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Identities;
@@ -17,9 +29,11 @@ using SSAS.Platform.Domain.Tenants;
 using SSAS.Platform.Domain.TenantUsers;
 using SSAS.Platform.Domain.ValueObjects;
 using SSAS.Platform.Infrastructure.Identity;
+using SSAS.Platform.Infrastructure;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
+using SSAS.Platform.Infrastructure.RequestContext;
 
 namespace SSAS.Integration.Tests;
 
@@ -27,6 +41,74 @@ public sealed class PlatformAuthenticationPersistenceTests
 {
   private const string InitialMigration = "20260731170937_InitialIdentityAccess";
   private const string TenantLifecycleMigration = "20260801085259_AddTenantLifecycle";
+  private const string AuthenticationSessionsMigration = "20260801111512_AddAuthenticationSessionsAndTenantSelection";
+  private const string UserLogoutMigration = "20260801135811_AddUserLogoutSessionRevocationReason";
+
+  [Fact]
+  [Trait("Scenario", "TS-AUTH-0113")]
+  [Trait("Acceptance", "AC-AUTH-0051")]
+  public async Task User_logout_constraint_migration_upgrades_downgrades_reapplies_and_retains_session_data()
+  {
+    await using var database = await SqlTestDatabase.CreateAsync(migrate: false);
+    await using (var migrationContext = database.CreateContext(Guid.NewGuid()))
+      await migrationContext.GetService<IMigrator>().MigrateAsync(AuthenticationSessionsMigration);
+    var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var seed = await CreateRefreshSessionSeedAsync(database, 91, clientId);
+
+    await using (var upgradeContext = database.CreateContext(seed.TenantId))
+      await upgradeContext.GetService<IMigrator>().MigrateAsync(UserLogoutMigration);
+    await using (var acceptedContext = database.CreateContext(seed.TenantId))
+    {
+      await acceptedContext.Database.ExecuteSqlInterpolatedAsync($$"""
+        UPDATE [platform].[AuthenticationSessions]
+        SET [Status] = N'Revoked', [RevokedUtc] = SYSUTCDATETIME(), [RevocationReason] = N'UserLogout'
+        WHERE [AuthenticationSessionId] = {{seed.AuthenticationSessionId}}
+        """);
+      Assert.Equal("UserLogout", await acceptedContext.Database.SqlQueryRaw<string>(
+        "SELECT [RevocationReason] AS [Value] FROM [platform].[AuthenticationSessions] WHERE [AuthenticationSessionId] = {0}",
+        seed.AuthenticationSessionId).SingleAsync());
+    }
+
+    await using (var invalidContext = database.CreateContext(seed.TenantId))
+    {
+      await Assert.ThrowsAsync<SqlException>(() => invalidContext.Database.ExecuteSqlInterpolatedAsync($$"""
+        UPDATE [platform].[AuthenticationSessions]
+        SET [RevocationReason] = N'InvalidReason'
+        WHERE [AuthenticationSessionId] = {{seed.AuthenticationSessionId}}
+        """));
+    }
+
+    await using (var prepareDowngrade = database.CreateContext(seed.TenantId))
+      await prepareDowngrade.Database.ExecuteSqlInterpolatedAsync($$"""
+        UPDATE [platform].[AuthenticationSessions]
+        SET [RevocationReason] = N'Administrative'
+        WHERE [AuthenticationSessionId] = {{seed.AuthenticationSessionId}}
+        """);
+    await using (var downgradeContext = database.CreateContext(seed.TenantId))
+      await downgradeContext.GetService<IMigrator>().MigrateAsync(AuthenticationSessionsMigration);
+    await using (var retainedContext = database.CreateContext(seed.TenantId))
+    {
+      Assert.Equal(1, await retainedContext.Database.SqlQueryRaw<int>(
+        "SELECT COUNT(*) AS [Value] FROM [platform].[AuthenticationSessions] WHERE [AuthenticationSessionId] = {0}",
+        seed.AuthenticationSessionId).SingleAsync());
+      await Assert.ThrowsAsync<SqlException>(() => retainedContext.Database.ExecuteSqlInterpolatedAsync($$"""
+        UPDATE [platform].[AuthenticationSessions]
+        SET [RevocationReason] = N'UserLogout'
+        WHERE [AuthenticationSessionId] = {{seed.AuthenticationSessionId}}
+        """));
+    }
+
+    await using (var reapplyContext = database.CreateContext(seed.TenantId))
+    {
+      await reapplyContext.GetService<IMigrator>().MigrateAsync(UserLogoutMigration);
+      await reapplyContext.Database.ExecuteSqlInterpolatedAsync($$"""
+        UPDATE [platform].[AuthenticationSessions]
+        SET [RevocationReason] = N'UserLogout'
+        WHERE [AuthenticationSessionId] = {{seed.AuthenticationSessionId}}
+        """);
+      Assert.Empty(await reapplyContext.Database.GetPendingMigrationsAsync());
+    }
+  }
 
   [Fact]
   [Trait("Scenario", "TS-AUTH-0060")]
@@ -160,6 +242,94 @@ public sealed class PlatformAuthenticationPersistenceTests
     Assert.Single(await verification.AuthenticationSessions.AsNoTracking().ToArrayAsync());
     Assert.Single(await verification.RefreshTokenRecords.AsNoTracking().ToArrayAsync());
     Assert.NotNull((await verification.TenantSelectionTransactions.AsNoTracking().SingleAsync()).ConsumedUtc);
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-AUTH-0110")]
+  [Trait("Acceptance", "AC-AUTH-0046")]
+  public async Task Access_token_issuance_failure_rolls_back_login_selection_and_refresh_state()
+  {
+    await using var loginDatabase = await SqlTestDatabase.CreateAsync();
+    var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var failedIssuer = new FailingAccessTokenIssuer();
+
+    var loginSeed = await CreateSelectionSeedAsync(loginDatabase, clientId);
+    await using (var loginContext = loginDatabase.CreateContext(loginSeed.TenantId))
+    {
+      var account = await loginContext.AuthenticationAccounts.AsNoTracking().SingleAsync();
+      var tenantEligibility = new TenantAuthenticationEligibilityReadService(loginContext);
+      var memberships = new IdentityTenantMembershipReadService(loginContext, tenantEligibility);
+      var unitOfWork = new PlatformUnitOfWork(loginContext, new NoOpDomainEventDispatcher());
+      var sessionRepository = new AuthenticationSessionRepository(loginContext);
+      var tokenService = new AuthenticationTokenService();
+      var policy = new AuthenticationPolicy();
+      var creator = new AuthenticationSessionCreator(
+        sessionRepository,
+        unitOfWork,
+        tokenService,
+        new AccessTokenClaimsProvider(loginContext),
+        failedIssuer,
+        policy);
+      var handler = new BeginTenantAccessCommandHandler(
+        new AuthenticationAccountRepository(loginContext),
+        new TenantSelectionTransactionRepository(loginContext),
+        memberships,
+        new AuthenticationClientRegistry(Options.Create(new AuthenticationClientOptions())),
+        tokenService,
+        creator,
+        unitOfWork,
+        policy,
+        loginDatabase.Clock);
+
+      var result = await handler.HandleAsync(new BeginTenantAccessCommand(
+        new VerifiedIdentity(account.IdentityId, account.SecurityVersion), clientId));
+
+      Assert.True(result.IsFailure);
+      Assert.Equal("Authentication.AccessTokenUnavailable", result.Error.Code);
+    }
+    await using (var loginVerification = loginDatabase.CreateContext(loginSeed.TenantId))
+    {
+      Assert.Empty(await loginVerification.AuthenticationSessions.AsNoTracking().ToArrayAsync());
+      Assert.Empty(await loginVerification.RefreshTokenRecords.AsNoTracking().ToArrayAsync());
+    }
+
+    await using var selectionDatabase = await SqlTestDatabase.CreateAsync();
+    var selectionSeed = await CreateSelectionSeedAsync(selectionDatabase, clientId);
+    await using (var selectionContext = selectionDatabase.CreateContext(selectionSeed.TenantId))
+    {
+      var result = await CreateSelectionHandler(selectionDatabase, selectionContext, failedIssuer).HandleAsync(
+        new SelectTenantCommand(new SensitiveAuthenticationTokenInput(selectionSeed.RawSelectionProof),
+          clientId, selectionSeed.TenantUserId, selectionSeed.TenantId));
+      Assert.True(result.IsFailure);
+      Assert.Equal("Authentication.AccessTokenUnavailable", result.Error.Code);
+    }
+    await using (var selectionVerification = selectionDatabase.CreateContext(selectionSeed.TenantId))
+    {
+      var selectionPublicId = Guid.ParseExact(selectionSeed.RawSelectionProof[..32], "N");
+      Assert.Null((await selectionVerification.TenantSelectionTransactions.AsNoTracking()
+        .SingleAsync(value => value.PublicId == selectionPublicId)).ConsumedUtc);
+      Assert.DoesNotContain(await selectionVerification.AuthenticationSessions.AsNoTracking().ToArrayAsync(),
+        value => value.TenantId == selectionSeed.TenantId);
+    }
+
+    await using var refreshDatabase = await SqlTestDatabase.CreateAsync();
+    var refreshSeed = await CreateRefreshSessionSeedAsync(refreshDatabase, 93, clientId);
+    await using (var refreshContext = refreshDatabase.CreateContext(refreshSeed.TenantId))
+    {
+      var result = await CreateRefreshHandler(refreshDatabase, refreshContext, failedIssuer).HandleAsync(
+        new RefreshAuthenticationSessionCommand(new SensitiveAuthenticationTokenInput(refreshSeed.RawRefreshToken), clientId));
+      Assert.True(result.IsFailure);
+      Assert.Equal("Authentication.AccessTokenUnavailable", result.Error.Code);
+    }
+    await using (var refreshVerification = refreshDatabase.CreateContext(refreshSeed.TenantId))
+    {
+      var session = await refreshVerification.AuthenticationSessions.Include(value => value.RefreshTokenRecords)
+        .SingleAsync(value => value.Id == refreshSeed.AuthenticationSessionId);
+      Assert.Equal(AuthenticationSessionStatus.Active, session.Status);
+      Assert.Single(session.RefreshTokenRecords);
+      Assert.Null(session.RefreshTokenRecords.Single().ConsumedUtc);
+      Assert.Null(session.RefreshTokenRecords.Single().RevokedUtc);
+    }
   }
 
   [Fact]
@@ -442,7 +612,8 @@ public sealed class PlatformAuthenticationPersistenceTests
 
   private static RefreshAuthenticationSessionCommandHandler CreateRefreshHandler(
     SqlTestDatabase database,
-    PlatformDbContext context)
+    PlatformDbContext context,
+    IAccessTokenIssuer? accessTokenIssuer = null)
   {
     var tenantEligibility = new TenantAuthenticationEligibilityReadService(context);
     return new RefreshAuthenticationSessionCommandHandler(
@@ -451,6 +622,8 @@ public sealed class PlatformAuthenticationPersistenceTests
       new IdentityTenantMembershipReadService(context, tenantEligibility),
       new AuthenticationClientRegistry(Options.Create(new AuthenticationClientOptions())),
       new AuthenticationTokenService(),
+      new AccessTokenClaimsProvider(context),
+      accessTokenIssuer ?? new TestAccessTokenIssuer(),
       new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()),
       new AuthenticationPolicy(),
       database.Clock);
@@ -458,7 +631,8 @@ public sealed class PlatformAuthenticationPersistenceTests
 
   private static SelectTenantCommandHandler CreateSelectionHandler(
     SqlTestDatabase database,
-    PlatformDbContext context)
+    PlatformDbContext context,
+    IAccessTokenIssuer? accessTokenIssuer = null)
   {
     var tenantEligibility = new TenantAuthenticationEligibilityReadService(context);
     var unitOfWork = new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher());
@@ -471,7 +645,8 @@ public sealed class PlatformAuthenticationPersistenceTests
       new IdentityTenantMembershipReadService(context, tenantEligibility),
       new AuthenticationClientRegistry(Options.Create(new AuthenticationClientOptions())),
       tokenService,
-      new AuthenticationSessionCreator(sessionRepository, unitOfWork, tokenService, policy),
+      new AuthenticationSessionCreator(sessionRepository, unitOfWork, tokenService,
+        new AccessTokenClaimsProvider(context), accessTokenIssuer ?? new TestAccessTokenIssuer(), policy),
       unitOfWork,
       database.Clock);
   }
@@ -720,9 +895,18 @@ public sealed class PlatformAuthenticationPersistenceTests
     return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
   }
 
-  private sealed class SqlTestDatabase(string connectionString) : IAsyncDisposable
+  private sealed class SqlTestDatabase : IAsyncDisposable
   {
+    private readonly string connectionString;
+
+    private SqlTestDatabase(string connectionString)
+    {
+      this.connectionString = connectionString;
+      ConnectionString = connectionString;
+    }
+
     public MutableClock Clock { get; } = new(new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero));
+    public string ConnectionString { get; }
 
     public static async Task<SqlTestDatabase> CreateAsync(bool migrate = true)
     {
@@ -772,6 +956,174 @@ public sealed class PlatformAuthenticationPersistenceTests
   {
     public Task DispatchAsync(IReadOnlyCollection<DomainEvent> domainEvents, CancellationToken cancellationToken = default) =>
       Task.CompletedTask;
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-AUTH-0112")]
+  [Trait("Scenario", "TS-AUTH-0118")]
+  [Trait("Acceptance", "AC-AUTH-0047")]
+  public async Task Logout_racing_refresh_serializes_and_leaves_no_usable_refresh_token()
+  {
+    await using var database = await SqlTestDatabase.CreateAsync();
+    var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var seed = await CreateRefreshSessionSeedAsync(database, 92, clientId);
+    CurrentAuthenticationSession current;
+    await using (var readContext = database.CreateContext(seed.TenantId))
+    {
+      var session = await readContext.AuthenticationSessions.AsNoTracking()
+        .SingleAsync(value => value.Id == seed.AuthenticationSessionId);
+      var account = await readContext.AuthenticationAccounts.AsNoTracking()
+        .SingleAsync(value => value.IdentityId == session.IdentityId);
+      current = new CurrentAuthenticationSession(
+        session.IdentityId,
+        session.TenantId,
+        session.TenantUserId,
+        session.Id,
+        clientId,
+        account.SecurityVersion);
+    }
+
+    await using var refreshContext = database.CreateContext(seed.TenantId);
+    await using var logoutContext = database.CreateContext(seed.TenantId);
+    var refresh = CreateRefreshHandler(database, refreshContext);
+    var logout = new RevokeCurrentAuthenticationSessionCommandHandler(
+      new FixedCurrentAuthenticationSession(current),
+      new AuthenticationAccountRepository(logoutContext),
+      new AuthenticationSessionRepository(logoutContext),
+      new PlatformUnitOfWork(logoutContext, new NoOpDomainEventDispatcher()),
+      database.Clock);
+
+    var refreshTask = refresh.HandleAsync(new RefreshAuthenticationSessionCommand(
+      new SensitiveAuthenticationTokenInput(seed.RawRefreshToken), clientId));
+    var logoutTask = logout.HandleAsync(new RevokeCurrentAuthenticationSessionCommand());
+    await Task.WhenAll(refreshTask, logoutTask);
+    var refreshResult = await refreshTask;
+    var logoutResult = await logoutTask;
+
+    Assert.True(logoutResult.IsSuccess);
+    Assert.True(refreshResult.IsSuccess ||
+      refreshResult.Error.Code == "AuthenticationSession.RefreshFailed");
+    await using var verification = database.CreateContext(seed.TenantId);
+    var final = await verification.AuthenticationSessions.Include(value => value.RefreshTokenRecords)
+      .SingleAsync(value => value.Id == seed.AuthenticationSessionId);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, final.Status);
+    Assert.Equal(AuthenticationSessionRevocationReason.UserLogout, final.RevocationReason);
+    Assert.DoesNotContain(final.RefreshTokenRecords, token => token.IsActive(database.Clock.UtcNow));
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-AUTH-0112")]
+  [Trait("Scenario", "TS-AUTH-0118")]
+  public async Task Concurrent_http_refresh_and_logout_use_validated_transport_and_sql_serialization()
+  {
+    await using var database = await SqlTestDatabase.CreateAsync();
+    var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var seed = await CreateRefreshSessionSeedAsync(database, 94, clientId);
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
+    builder.WebHost.UseTestServer();
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+      ["ConnectionStrings:Platform"] = database.ConnectionString,
+      ["Jwt:Issuer"] = "https://integration.ssas.local",
+      ["Jwt:Audience"] = "ssas-integration",
+      ["Jwt:AccessTokenLifetime"] = "00:15:00",
+      ["Jwt:ClockSkewSeconds"] = "30",
+      ["Jwt:MaximumEncodedTokenSize"] = "8192",
+      ["AuthenticationTransport:AllowedOrigins:0"] = "https://app.integration.test",
+      ["AuthenticationTransport:ProxyMode"] = "Direct",
+      ["Authentication:CompromisedPasswords:Enabled"] = "false"
+    });
+    builder.Services
+      .AddPlatformRequestContext()
+      .AddPlatformInfrastructure(builder.Configuration)
+      .AddHostJwtAuthentication(builder.Configuration, builder.Environment)
+      .AddHostAuthenticationTransport(builder.Configuration, builder.Environment)
+      .AddHostPermissionAuthorization()
+      .AddHostProblemDetails()
+      .AddPlatformModule();
+    await using var application = builder.Build();
+    application.UseExceptionHandler();
+    application.UseCors(AuthenticationTransportServiceCollectionExtensions.CorsPolicy);
+    application.UseAuthentication();
+    application.UseAuthorization();
+    application.MapPlatformAuthenticationEndpoints();
+    await application.StartAsync();
+
+    string accessToken;
+    string csrfValue;
+    await using (var scope = application.Services.CreateAsyncScope())
+    {
+      var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+      var session = await context.AuthenticationSessions.AsNoTracking()
+        .Include(value => value.RefreshTokenRecords)
+        .SingleAsync(value => value.Id == seed.AuthenticationSessionId);
+      var account = await context.AuthenticationAccounts.AsNoTracking()
+        .SingleAsync(value => value.IdentityId == session.IdentityId);
+      var claims = await scope.ServiceProvider.GetRequiredService<IAccessTokenClaimsProvider>().GetClaimsAsync(
+        session.Id,
+        session.IdentityId,
+        session.TenantUserId,
+        session.TenantId,
+        clientId,
+        account.SecurityVersion);
+      Assert.True(claims.IsSuccess);
+      var issued = scope.ServiceProvider.GetRequiredService<IAccessTokenIssuer>().Issue(claims.Value, DateTimeOffset.UtcNow);
+      Assert.True(issued.IsSuccess);
+      accessToken = issued.Value.AccessToken.RevealOnce().Value;
+      csrfValue = scope.ServiceProvider.GetRequiredService<AuthenticationCsrfService>().Create(
+        seed.RawRefreshToken,
+        session.Id,
+        session.RefreshTokenRecords.Single().ExpiresUtc);
+    }
+
+    using var client = application.GetTestClient();
+    using var refreshRequest = AuthenticationRequest("refresh", seed.RawRefreshToken, csrfValue);
+    using var logoutRequest = AuthenticationRequest("logout", seed.RawRefreshToken, csrfValue);
+    logoutRequest.Headers.Authorization = new("Bearer", accessToken);
+    var refreshTask = client.SendAsync(refreshRequest);
+    var logoutTask = client.SendAsync(logoutRequest);
+    await Task.WhenAll(refreshTask, logoutTask);
+    using var refreshResponse = await refreshTask;
+    using var logoutResponse = await logoutTask;
+
+    Assert.Equal(HttpStatusCode.NoContent, logoutResponse.StatusCode);
+    Assert.Contains(refreshResponse.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Unauthorized });
+    Assert.Equal("no-store", logoutResponse.Headers.CacheControl?.ToString());
+    Assert.Equal("no-store", refreshResponse.Headers.CacheControl?.ToString());
+    await using var verification = database.CreateContext(seed.TenantId);
+    var final = await verification.AuthenticationSessions.Include(value => value.RefreshTokenRecords)
+      .SingleAsync(value => value.Id == seed.AuthenticationSessionId);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, final.Status);
+    Assert.Equal(AuthenticationSessionRevocationReason.UserLogout, final.RevocationReason);
+    Assert.DoesNotContain(final.RefreshTokenRecords, token => token.IsActive(database.Clock.UtcNow));
+  }
+
+  private static HttpRequestMessage AuthenticationRequest(string operation, string refreshToken, string csrfValue)
+  {
+    var request = new HttpRequestMessage(HttpMethod.Post, $"https://localhost/api/platform/auth/{operation}");
+    request.Headers.Add("Origin", "https://app.integration.test");
+    request.Headers.Add(AuthenticationCsrfService.HeaderName, csrfValue);
+    request.Headers.TryAddWithoutValidation("Cookie",
+      $"{AuthenticationEndpointRouteBuilderExtensions.RefreshCookieName}={refreshToken}; {AuthenticationCsrfService.CookieName}={csrfValue}");
+    return request;
+  }
+
+  private sealed class TestAccessTokenIssuer : IAccessTokenIssuer
+  {
+    public Result<IssuedAccessToken> Issue(AccessTokenClaims claims, DateTimeOffset issuedUtc) =>
+      Result.Success(new IssuedAccessToken(new SensitiveAccessToken("integration-access-token"), issuedUtc.AddMinutes(15)));
+  }
+
+  private sealed class FailingAccessTokenIssuer : IAccessTokenIssuer
+  {
+    public Result<IssuedAccessToken> Issue(AccessTokenClaims claims, DateTimeOffset issuedUtc) =>
+      Result.Failure<IssuedAccessToken>(AuthenticationErrors.AccessTokenIssuanceUnavailable);
+  }
+
+  private sealed class FixedCurrentAuthenticationSession(CurrentAuthenticationSession value)
+    : ICurrentAuthenticationSession
+  {
+    public CurrentAuthenticationSession? Value { get; } = value;
   }
 
   private sealed class TestCurrentUser : ICurrentUser

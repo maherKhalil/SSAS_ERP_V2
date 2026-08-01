@@ -10,6 +10,10 @@ public static class JwtClaimTypes
 
   public const string TenantId = "tenant_id";
 
+  public const string IdentityId = "identity_id";
+
+  public const string TenantUserId = "tenant_user_id";
+
   public const string CompanyId = "company_id";
 
   public const string Role = "role";
@@ -17,6 +21,10 @@ public static class JwtClaimTypes
   public const string Permission = "permission";
 
   public const string SessionId = "session_id";
+
+  public const string ClientId = "client_id";
+
+  public const string SecurityVersion = "security_version";
 
   public const string JwtId = "jti";
 }

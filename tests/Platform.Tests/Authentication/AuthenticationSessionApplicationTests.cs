@@ -194,6 +194,28 @@ public sealed class AuthenticationSessionApplicationTests
     Assert.NotNull(session.RefreshTokenRecords.Single(token => token.PublicId != predecessor.PublicId).RevokedUtc);
   }
 
+  [Fact]
+  public async Task Current_session_logout_revokes_only_the_bound_session_and_is_terminally_idempotent()
+  {
+    var fixture = new Fixture();
+    var membership = fixture.AddEligibleMembership();
+    var session = NewPersistedSession(701, fixture.Account.IdentityId, membership, Now);
+    fixture.Sessions.Values.Add(session);
+    var current = new FakeCurrentAuthenticationSession(new CurrentAuthenticationSession(
+      fixture.Account.IdentityId, membership.TenantId, membership.TenantUserId,
+      session.Id, Client, fixture.Account.SecurityVersion));
+    var handler = new RevokeCurrentAuthenticationSessionCommandHandler(
+      current, fixture.Accounts, fixture.Sessions, fixture.UnitOfWork, new TestClock());
+
+    var first = await handler.HandleAsync(new RevokeCurrentAuthenticationSessionCommand());
+    var second = await handler.HandleAsync(new RevokeCurrentAuthenticationSessionCommand());
+
+    Assert.True(first.IsSuccess);
+    Assert.True(second.IsSuccess);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, session.Status);
+    Assert.Equal(AuthenticationSessionRevocationReason.UserLogout, session.RevocationReason);
+  }
+
   private static AuthenticationSession NewPersistedSession(
     long id,
     long identityId,
@@ -223,7 +245,8 @@ public sealed class AuthenticationSessionApplicationTests
       Assert.True(Account.CompleteInitialSetup("test-password-hash", Guid.NewGuid(), Now).IsSuccess);
       Accounts.Value = Account;
       Capability = new VerifiedIdentity(Account.IdentityId, Account.SecurityVersion);
-      Creator = new AuthenticationSessionCreator(Sessions, UnitOfWork, TokenService, Policy);
+      Creator = new AuthenticationSessionCreator(Sessions, UnitOfWork, TokenService,
+        new FakeClaimsProvider(), new FakeAccessTokenIssuer(), Policy);
     }
 
     public AuthenticationAccount Account { get; }
@@ -261,6 +284,8 @@ public sealed class AuthenticationSessionApplicationTests
       Memberships,
       new AllowedClientRegistry(),
       TokenService,
+      new FakeClaimsProvider(),
+      new FakeAccessTokenIssuer(),
       UnitOfWork,
       Policy,
       new TestClock());
@@ -304,6 +329,8 @@ public sealed class AuthenticationSessionApplicationTests
   {
     public List<AuthenticationSession> Values { get; } = [];
     public RefreshTokenSessionLocator? Locator { get; set; }
+    public Task<AuthenticationSession?> GetByIdForUpdateAsync(long id, CancellationToken cancellationToken = default) =>
+      Task.FromResult(Values.SingleOrDefault(value => value.Id == id));
     public Task<RefreshTokenSessionLocator?> GetRefreshTokenLocatorAsync(Guid publicId, CancellationToken cancellationToken = default) => Task.FromResult(Locator);
     public Task<AuthenticationSession?> GetByRefreshTokenForUpdateAsync(long id, CancellationToken cancellationToken = default) => Task.FromResult(Values.SingleOrDefault(value => value.Id == id));
     public Task<IReadOnlyList<AuthenticationSession>> ListActiveUnexpiredByIdentityForUpdateAsync(long identityId, DateTimeOffset utcNow, CancellationToken cancellationToken = default) =>
@@ -336,6 +363,26 @@ public sealed class AuthenticationSessionApplicationTests
   private sealed class AllowedClientRegistry : IAuthenticationClientRegistry
   {
     public bool IsAllowed(AuthenticationClientId clientId) => clientId == Client;
+  }
+
+  private sealed class FakeClaimsProvider : IAccessTokenClaimsProvider
+  {
+    public Task<Result<AccessTokenClaims>> GetClaimsAsync(long authenticationSessionId, long identityId,
+      long tenantUserId, Guid tenantId, AuthenticationClientId clientId, long securityVersion,
+      CancellationToken cancellationToken = default) => Task.FromResult(Result.Success(new AccessTokenClaims(
+        "test-subject", identityId, tenantId, tenantUserId, authenticationSessionId, clientId, securityVersion, [], [])));
+  }
+
+  private sealed class FakeAccessTokenIssuer : IAccessTokenIssuer
+  {
+    public Result<IssuedAccessToken> Issue(AccessTokenClaims claims, DateTimeOffset issuedUtc) =>
+      Result.Success(new IssuedAccessToken(new SensitiveAccessToken("test-access-token"), issuedUtc.AddMinutes(15)));
+  }
+
+  private sealed class FakeCurrentAuthenticationSession(CurrentAuthenticationSession value)
+    : ICurrentAuthenticationSession
+  {
+    public CurrentAuthenticationSession? Value { get; } = value;
   }
 
   private sealed class FakeUnitOfWork : IPlatformUnitOfWork

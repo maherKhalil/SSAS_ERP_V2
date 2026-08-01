@@ -74,7 +74,7 @@ public sealed class VerifyPasswordCredentialsCommandHandler(
 
     var saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);
     return saveResult.IsFailure
-      ? GenericFailure()
+      ? Result.Failure<CredentialVerificationResult>(saveResult.Error)
       : Result.Success(new CredentialVerificationResult(new VerifiedIdentity(account.IdentityId, account.SecurityVersion)));
   }
 

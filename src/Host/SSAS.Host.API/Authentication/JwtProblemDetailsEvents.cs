@@ -10,6 +10,7 @@ public static class JwtProblemDetailsEvents
   {
     return new JwtBearerEvents
     {
+      OnTokenValidated = StrictAccessTokenValidator.ValidateAsync,
       OnChallenge = async context =>
       {
         if (context.Response.HasStarted)
@@ -18,18 +19,33 @@ public static class JwtProblemDetailsEvents
         }
 
         context.HandleResponse();
+        ApplyAuthenticationResponseSecurity(context.Response);
         context.Response.Headers[HeaderNames.WWWAuthenticate] = JwtBearerDefaults.AuthenticationScheme;
         await ProblemDetailsWriter.WriteAsync(
           context.HttpContext,
           StatusCodes.Status401Unauthorized,
           "Authentication is required.",
-          "https://httpstatuses.com/401");
+          "https://httpstatuses.com/401",
+          "authentication.failed");
       },
-      OnForbidden = context => ProblemDetailsWriter.WriteAsync(
-        context.HttpContext,
-        StatusCodes.Status403Forbidden,
-        "You are not permitted to perform this action.",
-        "https://httpstatuses.com/403")
+      OnForbidden = context =>
+      {
+        ApplyAuthenticationResponseSecurity(context.Response);
+        return ProblemDetailsWriter.WriteAsync(
+          context.HttpContext,
+          StatusCodes.Status403Forbidden,
+          "You are not permitted to perform this action.",
+          "https://httpstatuses.com/403",
+          "authorization.forbidden");
+      }
     };
+  }
+
+  private static void ApplyAuthenticationResponseSecurity(HttpResponse response)
+  {
+    response.Headers.CacheControl = "no-store";
+    response.Headers.Pragma = "no-cache";
+    response.Headers["Referrer-Policy"] = "no-referrer";
+    response.Headers["X-Content-Type-Options"] = "nosniff";
   }
 }

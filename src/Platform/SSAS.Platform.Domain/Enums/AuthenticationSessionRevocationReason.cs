@@ -8,5 +8,6 @@ public enum AuthenticationSessionRevocationReason
   IdentityIneligible = 4,
   MembershipIneligible = 5,
   TenantIneligible = 6,
-  Administrative = 7
+  Administrative = 7,
+  UserLogout = 8
 }

@@ -13,6 +13,8 @@ public sealed class RefreshAuthenticationSessionCommandHandler(
   IIdentityTenantMembershipReadService membershipReadService,
   IAuthenticationClientRegistry clientRegistry,
   IAuthenticationTokenService tokenService,
+  IAccessTokenClaimsProvider claimsProvider,
+  IAccessTokenIssuer accessTokenIssuer,
   IPlatformUnitOfWork unitOfWork,
   AuthenticationPolicy policy,
   IDateTimeProvider clock)
@@ -80,10 +82,13 @@ public sealed class RefreshAuthenticationSessionCommandHandler(
     if (token.ConsumedUtc.HasValue)
     {
       var compromised = session.MarkCompromised(token, Guid.NewGuid(), Guid.NewGuid(), now);
-      if (compromised.IsFailure || (await unitOfWork.SaveChangesAsync(cancellationToken)).IsFailure)
+      if (compromised.IsFailure)
       {
         return GenericFailure();
       }
+
+      var compromiseSave = await unitOfWork.SaveChangesAsync(cancellationToken);
+      if (compromiseSave.IsFailure) return Result.Failure<RefreshSucceeded>(compromiseSave.Error);
 
       await transaction.CommitAsync(cancellationToken);
       return GenericFailure();
@@ -102,9 +107,31 @@ public sealed class RefreshAuthenticationSessionCommandHandler(
       now,
       policy.SessionIdleLifetime,
       Guid.NewGuid());
-    if (rotated.IsFailure || (await unitOfWork.SaveChangesAsync(cancellationToken)).IsFailure)
+    if (rotated.IsFailure)
     {
       return GenericFailure();
+    }
+
+    var rotationSave = await unitOfWork.SaveChangesAsync(cancellationToken);
+    if (rotationSave.IsFailure) return Result.Failure<RefreshSucceeded>(rotationSave.Error);
+
+    var claims = await claimsProvider.GetClaimsAsync(
+      session.Id,
+      session.IdentityId,
+      session.TenantUserId,
+      session.TenantId,
+      command.ClientId,
+      session.SecurityVersionAtCreation,
+      cancellationToken);
+    if (claims.IsFailure)
+    {
+      return Result.Failure<RefreshSucceeded>(AuthenticationErrors.AccessTokenIssuanceUnavailable);
+    }
+
+    var accessToken = accessTokenIssuer.Issue(claims.Value, now);
+    if (accessToken.IsFailure)
+    {
+      return Result.Failure<RefreshSucceeded>(AuthenticationErrors.AccessTokenIssuanceUnavailable);
     }
 
     await transaction.CommitAsync(cancellationToken);
@@ -114,7 +141,9 @@ public sealed class RefreshAuthenticationSessionCommandHandler(
       session.TenantUserId,
       session.TenantId,
       command.ClientId,
-      generated.SensitiveToken));
+      generated.SensitiveToken,
+      rotated.Value.ExpiresUtc,
+      accessToken.Value));
   }
 
   private async Task<Result<RefreshSucceeded>> RevokeAndFailAsync(
@@ -127,10 +156,13 @@ public sealed class RefreshAuthenticationSessionCommandHandler(
     if (session.Status == AuthenticationSessionStatus.Active)
     {
       var revoked = session.Revoke(reason, null, Guid.NewGuid(), utcNow);
-      if (revoked.IsFailure || (await unitOfWork.SaveChangesAsync(cancellationToken)).IsFailure)
+      if (revoked.IsFailure)
       {
         return GenericFailure();
       }
+
+      var revokeSave = await unitOfWork.SaveChangesAsync(cancellationToken);
+      if (revokeSave.IsFailure) return Result.Failure<RefreshSucceeded>(revokeSave.Error);
 
       await transaction.CommitAsync(cancellationToken);
     }

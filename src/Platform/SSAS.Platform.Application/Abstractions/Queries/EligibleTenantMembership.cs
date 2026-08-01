@@ -4,4 +4,4 @@ public sealed record EligibleTenantMembership(
   long IdentityId,
   long TenantUserId,
   Guid TenantId,
-  string DisplayName);
+  string TenantDisplayName);

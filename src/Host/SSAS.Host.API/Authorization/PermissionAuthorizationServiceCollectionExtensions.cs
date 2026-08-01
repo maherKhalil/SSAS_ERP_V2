@@ -12,6 +12,7 @@ public static class PermissionAuthorizationServiceCollectionExtensions
     services.AddSingleton<IAuthorizationPolicyProvider, PermissionAuthorizationPolicyProvider>();
     services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
     services.AddScoped<IAuthorizationHandler, RoleAuthorizationHandler>();
+    services.AddScoped<LiveTenantEligibilityAuthorization>();
 
     return services;
   }

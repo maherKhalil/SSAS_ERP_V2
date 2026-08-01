@@ -62,7 +62,7 @@ public sealed class SelectTenantCommandHandler(
     var created = await sessionCreator.CreateAsync(account, eligibility.Membership!, command.ClientId, now, cancellationToken);
     if (created.IsFailure)
     {
-      return GenericFailure();
+      return Result.Failure<SessionCreated>(created.Error);
     }
 
     var consumed = selection.Consume(
@@ -79,7 +79,7 @@ public sealed class SelectTenantCommandHandler(
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
     if (saved.IsFailure)
     {
-      return GenericFailure();
+      return Result.Failure<SessionCreated>(saved.Error);
     }
 
     await transaction.CommitAsync(cancellationToken);

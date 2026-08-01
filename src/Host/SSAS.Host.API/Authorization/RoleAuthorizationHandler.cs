@@ -4,13 +4,18 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 
 namespace SSAS.Host.API.Authorization;
 
-public sealed class RoleAuthorizationHandler(ICurrentTenant currentTenant) : AuthorizationHandler<RoleRequirement>
+public sealed class RoleAuthorizationHandler(
+  ICurrentTenant currentTenant,
+  LiveTenantEligibilityAuthorization tenantEligibility,
+  IHttpContextAccessor httpContextAccessor) : AuthorizationHandler<RoleRequirement>
 {
-  protected override Task HandleRequirementAsync(
+  protected override async Task HandleRequirementAsync(
     AuthorizationHandlerContext context,
     RoleRequirement requirement)
   {
     if (TenantAuthorizationContext.HasValidatedTenant(context.User, currentTenant) &&
+      currentTenant.TenantId is { } tenantId &&
+      await tenantEligibility.IsActiveAsync(tenantId, httpContextAccessor.HttpContext?.RequestAborted ?? default) &&
       context.User.Claims.Any(claim =>
         StringComparer.Ordinal.Equals(claim.Type, JwtClaimTypes.Role) &&
         StringComparer.Ordinal.Equals(claim.Value, requirement.Role)))
@@ -18,6 +23,5 @@ public sealed class RoleAuthorizationHandler(ICurrentTenant currentTenant) : Aut
       context.Succeed(requirement);
     }
 
-    return Task.CompletedTask;
   }
 }

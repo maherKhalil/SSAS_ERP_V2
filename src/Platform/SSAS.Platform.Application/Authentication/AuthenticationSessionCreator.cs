@@ -11,6 +11,8 @@ public sealed class AuthenticationSessionCreator(
   IAuthenticationSessionRepository sessionRepository,
   IPlatformUnitOfWork unitOfWork,
   IAuthenticationTokenService tokenService,
+  IAccessTokenClaimsProvider claimsProvider,
+  IAccessTokenIssuer accessTokenIssuer,
   AuthenticationPolicy policy)
 {
   internal async Task<Result<SessionCreated>> CreateAsync(
@@ -71,11 +73,30 @@ public sealed class AuthenticationSessionCreator(
     }
 
     var generated = tokenService.GenerateRefreshToken(session.Id, session.TokenFamilyId, clientId);
-    session.CreateInitialRefreshToken(generated.PublicId, generated.SecretHash, now, Guid.NewGuid());
+    var refreshToken = session.CreateInitialRefreshToken(generated.PublicId, generated.SecretHash, now, Guid.NewGuid());
     var tokenSave = await unitOfWork.SaveChangesAsync(cancellationToken);
     if (tokenSave.IsFailure)
     {
       return Result.Failure<SessionCreated>(tokenSave.Error);
+    }
+
+    var claims = await claimsProvider.GetClaimsAsync(
+      session.Id,
+      session.IdentityId,
+      session.TenantUserId,
+      session.TenantId,
+      clientId,
+      session.SecurityVersionAtCreation,
+      cancellationToken);
+    if (claims.IsFailure)
+    {
+      return Result.Failure<SessionCreated>(AuthenticationErrors.AccessTokenIssuanceUnavailable);
+    }
+
+    var accessToken = accessTokenIssuer.Issue(claims.Value, now);
+    if (accessToken.IsFailure)
+    {
+      return Result.Failure<SessionCreated>(AuthenticationErrors.AccessTokenIssuanceUnavailable);
     }
 
     return Result.Success(new SessionCreated(
@@ -84,7 +105,9 @@ public sealed class AuthenticationSessionCreator(
       session.TenantUserId,
       session.TenantId,
       clientId,
-      generated.SensitiveToken));
+      generated.SensitiveToken,
+      refreshToken.ExpiresUtc,
+      accessToken.Value));
   }
 
   private static DateTimeOffset Min(DateTimeOffset left, DateTimeOffset right) => left <= right ? left : right;

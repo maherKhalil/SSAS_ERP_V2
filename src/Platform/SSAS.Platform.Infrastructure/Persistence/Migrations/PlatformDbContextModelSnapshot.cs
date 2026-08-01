@@ -313,7 +313,7 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_AuthenticationSessions_LifecycleMetadata", "([Status] = N'Active' AND [RevokedUtc] IS NULL AND [RevocationReason] IS NULL AND [CompromisedUtc] IS NULL AND [CompromisedByRefreshTokenRecordId] IS NULL) OR ([Status] = N'Revoked' AND [RevokedUtc] IS NOT NULL AND [RevocationReason] IS NOT NULL AND [CompromisedUtc] IS NULL AND [CompromisedByRefreshTokenRecordId] IS NULL) OR ([Status] = N'Compromised' AND [RevokedUtc] IS NULL AND [RevocationReason] IS NULL AND [CompromisedUtc] IS NOT NULL AND [CompromisedByRefreshTokenRecordId] IS NOT NULL)");
 
-                            t.HasCheckConstraint("CK_AuthenticationSessions_RevocationReason", "[RevocationReason] IS NULL OR [RevocationReason] IN (N'SessionLimitExceeded', N'PasswordReset', N'SecurityStateChanged', N'IdentityIneligible', N'MembershipIneligible', N'TenantIneligible', N'Administrative')");
+                            t.HasCheckConstraint("CK_AuthenticationSessions_RevocationReason", "[RevocationReason] IS NULL OR [RevocationReason] IN (N'SessionLimitExceeded', N'PasswordReset', N'SecurityStateChanged', N'IdentityIneligible', N'MembershipIneligible', N'TenantIneligible', N'Administrative', N'UserLogout')");
 
                             t.HasCheckConstraint("CK_AuthenticationSessions_Status", "[Status] IN (N'Active', N'Revoked', N'Compromised')");
                         });

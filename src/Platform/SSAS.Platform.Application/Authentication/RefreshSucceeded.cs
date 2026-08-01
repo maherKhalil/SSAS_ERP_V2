@@ -6,4 +6,6 @@ public sealed record RefreshSucceeded(
   long TenantUserId,
   Guid TenantId,
   AuthenticationClientId ClientId,
-  SensitiveRefreshToken RefreshToken);
+  SensitiveRefreshToken RefreshToken,
+  DateTimeOffset RefreshTokenExpiresUtc,
+  IssuedAccessToken AccessToken);

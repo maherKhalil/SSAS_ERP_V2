@@ -57,6 +57,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantReadService, TenantReadService>();
     services.AddScoped<ITenantAuthenticationEligibilityReadService, TenantAuthenticationEligibilityReadService>();
     services.AddScoped<IIdentityTenantMembershipReadService, IdentityTenantMembershipReadService>();
+    services.AddScoped<IAccessTokenClaimsProvider, AccessTokenClaimsProvider>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
 
@@ -156,6 +157,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<BeginTenantAccessCommandHandler>();
     services.AddScoped<SelectTenantCommandHandler>();
     services.AddScoped<RefreshAuthenticationSessionCommandHandler>();
+    services.AddScoped<RevokeCurrentAuthenticationSessionCommandHandler>();
     services.AddScoped<CreateTenantCommandHandler>();
     services.AddScoped<ActivateTenantCommandHandler>();
     services.AddScoped<SuspendTenantCommandHandler>();

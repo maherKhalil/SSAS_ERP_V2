@@ -6,6 +6,7 @@ using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Roles;
 using SSAS.Platform.Domain.TenantUsers;
+using SSAS.Platform.Domain.Tenants;
 using PlatformIdentity = SSAS.Platform.Domain.Identities.Identity;
 
 namespace SSAS.Platform.Infrastructure.Persistence;
@@ -30,6 +31,8 @@ public sealed class PlatformDbContext(
 
   public DbSet<AccountActionToken> AccountActionTokens => Set<AccountActionToken>();
 
+  public DbSet<Tenant> Tenants => Set<Tenant>();
+
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
     modelBuilder.ApplyConfigurationsFromAssembly(typeof(PlatformDbContext).Assembly);
@@ -38,9 +41,18 @@ public sealed class PlatformDbContext(
 
   public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
   {
+    PreventTenantDeletion();
     PreventIdentityOwnershipChanges();
     PromoteAssignmentOwners();
     return base.SaveChangesAsync(cancellationToken);
+  }
+
+  private void PreventTenantDeletion()
+  {
+    if (ChangeTracker.Entries<Tenant>().Any(entry => entry.State == EntityState.Deleted))
+    {
+      throw new InvalidOperationException("Tenant rows cannot be physically deleted; use the Archive lifecycle transition.");
+    }
   }
 
   private void PreventIdentityOwnershipChanges()

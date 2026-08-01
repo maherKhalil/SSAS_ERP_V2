@@ -10,6 +10,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.Abstractions.Queries;
 using SSAS.Platform.Application.Authentication;
+using SSAS.Platform.Application.Tenants;
 using SSAS.Platform.Infrastructure;
 using SSAS.Platform.Infrastructure.Identity;
 using SSAS.Platform.Infrastructure.Persistence;
@@ -75,14 +76,25 @@ public sealed class PlatformInfrastructureRegistrationTests
     AssertScoped<IRoleRepository>(services);
     AssertScoped<IAuthenticationAccountRepository>(services);
     AssertScoped<IAccountActionTokenRepository>(services);
+    AssertScoped<ITenantRepository>(services);
     AssertScoped<ITenantUserReadService>(services);
     AssertScoped<IRoleReadService>(services);
+    AssertScoped<ITenantReadService>(services);
+    AssertScoped<ITenantAuthenticationEligibilityReadService>(services);
     AssertScoped<IPlatformUnitOfWork>(services);
     AssertScoped<IssueTenantUserInvitationCommandHandler>(services);
     AssertScoped<CompleteInvitationCommandHandler>(services);
     AssertScoped<VerifyPasswordCredentialsCommandHandler>(services);
     AssertScoped<IssuePasswordResetCommandHandler>(services);
     AssertScoped<CompletePasswordResetCommandHandler>(services);
+    AssertScoped<CreateTenantCommandHandler>(services);
+    AssertScoped<ActivateTenantCommandHandler>(services);
+    AssertScoped<SuspendTenantCommandHandler>(services);
+    AssertScoped<ReactivateTenantCommandHandler>(services);
+    AssertScoped<ArchiveTenantCommandHandler>(services);
+    AssertScoped<GetTenantQueryHandler>(services);
+    AssertScoped<ListTenantsQueryHandler>(services);
+    AssertScoped<GetTenantAuthenticationEligibilityQueryHandler>(services);
     AssertSingleton<IPasswordHashingService>(services);
     AssertSingleton<IActionTokenService>(services);
     AssertSingleton<IAuthenticationDiagnostics>(services);
@@ -98,8 +110,11 @@ public sealed class PlatformInfrastructureRegistrationTests
     AssertUsesContext(scope.ServiceProvider.GetRequiredService<IRoleRepository>(), context);
     AssertUsesContext(scope.ServiceProvider.GetRequiredService<IAuthenticationAccountRepository>(), context);
     AssertUsesContext(scope.ServiceProvider.GetRequiredService<IAccountActionTokenRepository>(), context);
+    AssertUsesContext(scope.ServiceProvider.GetRequiredService<ITenantRepository>(), context);
     AssertUsesContext(scope.ServiceProvider.GetRequiredService<ITenantUserReadService>(), context);
     AssertUsesContext(scope.ServiceProvider.GetRequiredService<IRoleReadService>(), context);
+    AssertUsesContext(scope.ServiceProvider.GetRequiredService<ITenantReadService>(), context);
+    AssertUsesContext(scope.ServiceProvider.GetRequiredService<ITenantAuthenticationEligibilityReadService>(), context);
     Assert.Same(
       scope.ServiceProvider.GetRequiredService<IPlatformUnitOfWork>(),
       scope.ServiceProvider.GetRequiredService<IPlatformUnitOfWork>());

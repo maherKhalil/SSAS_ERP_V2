@@ -8,6 +8,8 @@ public interface IAuthenticationSessionRepository
 
   Task<AuthenticationSession?> GetByRefreshTokenForUpdateAsync(long authenticationSessionId, CancellationToken cancellationToken = default);
 
+  Task<AuthenticationSession?> GetByIdForUpdateAsync(long authenticationSessionId, CancellationToken cancellationToken = default);
+
   Task<IReadOnlyList<AuthenticationSession>> ListActiveUnexpiredByIdentityForUpdateAsync(
     long identityId,
     DateTimeOffset utcNow,

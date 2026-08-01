@@ -1,4 +1,8 @@
 using System.Net;
+using System.Text.Json;
+using System.Text;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
 using SSAS.Host.API.Diagnostics;
 using SSAS.API.Tests.Infrastructure;
 
@@ -7,6 +11,14 @@ namespace SSAS.API.Tests.Infrastructure;
 [Collection(HostIntegrationTestGroup.Name)]
 public sealed class HostEndpointTests(HostWebApplicationFactory factory)
 {
+  [Fact]
+  public void Development_host_uses_an_ephemeral_data_protection_provider()
+  {
+    var provider = factory.Services.GetRequiredService<IDataProtectionProvider>();
+
+    Assert.Contains("Ephemeral", provider.GetType().Name, StringComparison.Ordinal);
+  }
+
   [Fact]
   public async Task Root_propagates_a_valid_correlation_id_to_the_response()
   {
@@ -41,5 +53,95 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
     var response = await factory.CreateClient().GetAsync(path);
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+  }
+
+  [Fact]
+  public async Task OpenApi_exposes_only_the_approved_platform_authentication_routes()
+  {
+    var response = await factory.CreateClient().GetAsync("/swagger/v1/swagger.json");
+    response.EnsureSuccessStatusCode();
+    using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+    var paths = document.RootElement.GetProperty("paths");
+
+    Assert.True(paths.TryGetProperty("/api/platform/auth/login", out _));
+    Assert.True(paths.TryGetProperty("/api/platform/auth/select-tenant", out _));
+    Assert.True(paths.TryGetProperty("/api/platform/auth/refresh", out _));
+    Assert.True(paths.TryGetProperty("/api/platform/auth/logout", out _));
+    Assert.DoesNotContain(paths.EnumerateObject(), path => path.Name.StartsWith("/api/auth/", StringComparison.Ordinal));
+
+    var bearer = document.RootElement.GetProperty("components").GetProperty("securitySchemes").GetProperty("Bearer");
+    Assert.Equal("http", bearer.GetProperty("type").GetString());
+    Assert.Equal("bearer", bearer.GetProperty("scheme").GetString());
+    foreach (var route in new[] { "login", "select-tenant", "refresh", "logout" })
+    {
+      var operation = paths.GetProperty($"/api/platform/auth/{route}").GetProperty("post");
+      var responses = operation.GetProperty("responses");
+      foreach (var status in new[] { "400", "401", "403", "429", "503" })
+        Assert.True(responses.TryGetProperty(status, out _), $"{route} is missing {status}.");
+    }
+
+    var login = paths.GetProperty("/api/platform/auth/login").GetProperty("post");
+    Assert.Equal(2, login.GetProperty("responses").GetProperty("200").GetProperty("content")
+      .GetProperty("application/json").GetProperty("schema").GetProperty("oneOf").GetArrayLength());
+    var refresh = paths.GetProperty("/api/platform/auth/refresh").GetProperty("post");
+    Assert.False(refresh.TryGetProperty("requestBody", out _));
+    Assert.Contains(refresh.GetProperty("parameters").EnumerateArray(), parameter =>
+      parameter.GetProperty("name").GetString() == "X-XSRF-TOKEN" && parameter.GetProperty("required").GetBoolean());
+    var logout = paths.GetProperty("/api/platform/auth/logout").GetProperty("post");
+    Assert.Contains(logout.GetProperty("parameters").EnumerateArray(), parameter =>
+      parameter.GetProperty("name").GetString() == "X-XSRF-TOKEN" && parameter.GetProperty("required").GetBoolean());
+    Assert.Equal("Bearer", logout.GetProperty("security")[0].EnumerateObject().Single().Name);
+    Assert.False(login.TryGetProperty("security", out var loginSecurity) && loginSecurity.GetArrayLength() > 0);
+  }
+
+  [Fact]
+  public async Task Authentication_login_rejects_http_instead_of_redirecting()
+  {
+    using var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/api/platform/auth/login")
+    {
+      Content = new StringContent("{\"loginEmail\":\"user@example.test\",\"password\":\"secret\"}", Encoding.UTF8, "application/json")
+    };
+    request.Headers.Add("Origin", "https://localhost:4200");
+
+    var response = await factory.CreateClient().SendAsync(request);
+
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    await AssertProblemCodeAsync(response, "authentication.request_rejected");
+  }
+
+  [Fact]
+  public async Task Authentication_login_rejects_unknown_input_fields_without_echoing_the_body()
+  {
+    const string body = "{\"loginEmail\":\"user@example.test\",\"password\":\"do-not-echo\",\"clientId\":\"caller-value\"}";
+    using var request = new HttpRequestMessage(HttpMethod.Post, "https://localhost/api/platform/auth/login")
+    {
+      Content = new StringContent(body, Encoding.UTF8, "application/json")
+    };
+    request.Headers.Add("Origin", "https://localhost:4200");
+
+    var response = await factory.CreateClient().SendAsync(request);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    var responseBody = await response.Content.ReadAsStringAsync();
+    Assert.Contains("request.invalid", responseBody, StringComparison.Ordinal);
+    Assert.DoesNotContain("do-not-echo", responseBody, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task Refresh_rejects_missing_csrf_before_application_dispatch()
+  {
+    using var request = new HttpRequestMessage(HttpMethod.Post, "https://localhost/api/platform/auth/refresh");
+    request.Headers.Add("Origin", "https://localhost:4200");
+
+    var response = await factory.CreateClient().SendAsync(request);
+
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    await AssertProblemCodeAsync(response, "authentication.request_rejected");
+  }
+
+  private static async Task AssertProblemCodeAsync(HttpResponseMessage response, string expectedCode)
+  {
+    using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+    Assert.Equal(expectedCode, document.RootElement.GetProperty("code").GetString());
   }
 }

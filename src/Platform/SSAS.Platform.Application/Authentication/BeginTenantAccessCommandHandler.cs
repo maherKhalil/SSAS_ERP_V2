@@ -91,9 +91,12 @@ public sealed class BeginTenantAccessCommandHandler(
       .Select(membership => new TenantMembershipSelectionSummary(
         membership.TenantUserId,
         membership.TenantId,
-        membership.DisplayName))
+        membership.TenantDisplayName))
       .ToArray();
-    return Result.Success<BeginTenantAccessResult>(new TenantSelectionRequired(summaries, generated.SensitiveProof));
+    return Result.Success<BeginTenantAccessResult>(new TenantSelectionRequired(
+      summaries,
+      generated.SensitiveProof,
+      now.Add(policy.TenantSelectionLifetime)));
   }
 
   private static bool Matches(AuthenticationAccount? account, VerifiedIdentity verifiedIdentity) =>

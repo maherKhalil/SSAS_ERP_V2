@@ -112,24 +112,19 @@ public sealed class AuthenticationMilestoneArchitectureTests
 
   [Fact]
   [Trait("Scenario", "TS-AUTH-0074")]
-  public void Milestone_three_contains_no_deferred_access_token_or_http_endpoint()
+  public void Milestone_four_keeps_token_framework_types_out_of_domain_and_application()
   {
     var platformFiles = Directory
-      .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform"), "*.cs", SearchOption.AllDirectories)
+      .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform", "SSAS.Platform.Domain"), "*.cs", SearchOption.AllDirectories)
+      .Concat(Directory.EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform", "SSAS.Platform.Application"), "*.cs", SearchOption.AllDirectories))
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .ToArray();
     const string deferredDeclaration =
-      @"\b(?:class|record|interface)\s+(?:\w)*(?:JwtIssuer|AccessTokenIssuer|Logout|SigningKey|Csrf|Cookie)(?:\w)*\b";
+      @"\b(?:JwtSecurityToken|JsonWebTokenHandler|X509Certificate2|SymmetricSecurityKey|CookieOptions|HttpContext)\b";
     var deferred = platformFiles
       .Where(path => Regex.IsMatch(File.ReadAllText(path), deferredDeclaration, RegexOptions.CultureInvariant))
       .ToArray();
-    var endpointExposure = platformFiles
-      .Where(path => path.Contains($"{Path.DirectorySeparatorChar}SSAS.Platform.API{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-      .Where(path => File.ReadAllText(path).Contains("SSAS.Platform.Application.Authentication", StringComparison.Ordinal))
-      .ToArray();
-
     Assert.Empty(deferred);
-    Assert.Empty(endpointExposure);
   }
 
   [Fact]

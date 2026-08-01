@@ -15,7 +15,7 @@ namespace SSAS.Architecture.Tests;
 public sealed class AuthenticationSessionArchitectureTests
 {
   private static readonly string[] ApprovedQueryFilterBypassFiles =
-    ["IdentityTenantMembershipReadService.cs", "TenantUserRepository.cs"];
+    ["AccessTokenClaimsProvider.cs", "IdentityTenantMembershipReadService.cs", "TenantUserRepository.cs"];
 
   [Fact]
   public void Session_repositories_are_narrow_and_expose_no_delete_or_queryable_boundary()
@@ -95,6 +95,23 @@ public sealed class AuthenticationSessionArchitectureTests
     Assert.Contains("TR_AuthenticationSessions_PreventDelete", source, StringComparison.Ordinal);
     Assert.Contains("TR_RefreshTokenRecords_PreventDelete", source, StringComparison.Ordinal);
     Assert.Contains("TR_TenantSelectionTransactions_PreventDelete", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void User_logout_migration_changes_only_the_existing_revocation_reason_constraint()
+  {
+    var migration = Directory.EnumerateFiles(
+        Path.Combine(FindRepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure", "Persistence", "Migrations"),
+        "*AddUserLogoutSessionRevocationReason.cs")
+      .Single(path => !path.EndsWith(".Designer.cs", StringComparison.Ordinal));
+    var source = File.ReadAllText(migration);
+
+    Assert.Equal(2, Regex.Matches(source, "DropCheckConstraint", RegexOptions.CultureInvariant).Count);
+    Assert.Equal(2, Regex.Matches(source, "AddCheckConstraint", RegexOptions.CultureInvariant).Count);
+    Assert.Contains("UserLogout", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("CreateTable", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("AddColumn", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("DropColumn", source, StringComparison.Ordinal);
   }
 
   private static string FindRepositoryRoot()

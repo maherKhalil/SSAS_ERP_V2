@@ -41,6 +41,22 @@ public sealed class AuthenticationSessionRepository(PlatformDbContext dbContext)
     return session;
   }
 
+  public async Task<AuthenticationSession?> GetByIdForUpdateAsync(
+    long authenticationSessionId,
+    CancellationToken cancellationToken = default)
+  {
+    var session = await dbContext.AuthenticationSessions
+      .FromSqlInterpolated($"SELECT * FROM [platform].[AuthenticationSessions] WITH (UPDLOCK, HOLDLOCK) WHERE [AuthenticationSessionId] = {authenticationSessionId}")
+      .SingleOrDefaultAsync(cancellationToken);
+    if (session is null)
+    {
+      return null;
+    }
+
+    await LoadTokensForUpdateAsync([session], cancellationToken);
+    return session;
+  }
+
   public async Task<IReadOnlyList<AuthenticationSession>> ListActiveUnexpiredByIdentityForUpdateAsync(
     long identityId,
     DateTimeOffset utcNow,

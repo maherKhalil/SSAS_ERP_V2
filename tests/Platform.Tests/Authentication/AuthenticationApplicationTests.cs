@@ -635,6 +635,11 @@ public sealed class AuthenticationApplicationTests
   {
     public List<AuthenticationSession> Values { get; } = [];
 
+    public Task<AuthenticationSession?> GetByIdForUpdateAsync(
+      long authenticationSessionId,
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult(Values.SingleOrDefault(session => session.Id == authenticationSessionId));
+
     public Task<RefreshTokenSessionLocator?> GetRefreshTokenLocatorAsync(
       Guid refreshTokenPublicId,
       CancellationToken cancellationToken = default) => Task.FromResult<RefreshTokenSessionLocator?>(null);

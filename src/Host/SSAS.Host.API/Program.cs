@@ -8,6 +8,7 @@ using SSAS.Host.API.Diagnostics;
 using SSAS.Host.API.Errors;
 using SSAS.HR.API;
 using SSAS.Platform.API;
+using SSAS.Platform.API.Authentication;
 using SSAS.Platform.Infrastructure;
 using SSAS.Platform.Infrastructure.RequestContext;
 
@@ -26,6 +27,7 @@ try
     .AddPlatformRequestContext()
     .AddPlatformInfrastructure(builder.Configuration)
     .AddHostJwtAuthentication(builder.Configuration, builder.Environment)
+    .AddHostAuthenticationTransport(builder.Configuration, builder.Environment)
     .AddHostPermissionAuthorization()
     .AddHostProblemDetails()
     .AddHostApiInfrastructure()
@@ -35,16 +37,21 @@ try
 
   var app = builder.Build();
 
+  app.ConfigureTrustedForwarding(builder.Configuration);
   app.UseCorrelationId();
   app.UseSerilogRequestLogging(options => options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
     diagnosticContext.Set("CorrelationId", httpContext.Response.Headers[CorrelationIdMiddleware.HeaderName].ToString()));
   app.UseExceptionHandler();
-  app.UseHttpsRedirection();
+  app.UseWhen(
+    context => !context.Request.Path.StartsWithSegments("/api/platform/auth"),
+    branch => branch.UseHttpsRedirection());
+  app.UseCors(AuthenticationTransportServiceCollectionExtensions.CorsPolicy);
   app.UseAuthentication();
   app.UseAuthorization();
   app.UseSwagger();
   app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "SSAS ERP API v1"));
   app.MapHostEndpoints();
+  app.MapPlatformAuthenticationEndpoints();
 
   app.Run();
 }

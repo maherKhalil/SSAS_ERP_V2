@@ -8,7 +8,7 @@ public static class ProblemDetailsWriter
 {
   public const string CorrelationIdExtensionName = "correlationId";
 
-  public static async Task WriteAsync(HttpContext context, int statusCode, string title, string type)
+  public static async Task WriteAsync(HttpContext context, int statusCode, string title, string type, string? code = null)
   {
     var problemDetails = new ProblemDetails
     {
@@ -17,14 +17,15 @@ public static class ProblemDetailsWriter
       Type = type
     };
     problemDetails.Extensions[CorrelationIdExtensionName] = GetCorrelationId(context);
+    if (!string.IsNullOrWhiteSpace(code)) problemDetails.Extensions["code"] = code;
     context.Response.StatusCode = statusCode;
 
     var problemDetailsService = context.RequestServices.GetRequiredService<IProblemDetailsService>();
     if (!await problemDetailsService.TryWriteAsync(new ProblemDetailsContext
-      {
-        HttpContext = context,
-        ProblemDetails = problemDetails
-      }))
+    {
+      HttpContext = context,
+      ProblemDetails = problemDetails
+    }))
     {
       await context.Response.WriteAsJsonAsync(problemDetails);
     }

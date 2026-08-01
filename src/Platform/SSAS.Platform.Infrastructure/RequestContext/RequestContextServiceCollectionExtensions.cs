@@ -3,6 +3,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Diagnostics;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.Platform.Application.Authentication;
 
 namespace SSAS.Platform.Infrastructure.RequestContext;
 
@@ -17,6 +18,7 @@ public static class RequestContextServiceCollectionExtensions
     services.AddScoped<ICurrentUser>(serviceProvider => serviceProvider.GetRequiredService<CurrentUser>());
     services.AddScoped<CurrentTenant>();
     services.AddScoped<ICurrentTenant>(serviceProvider => serviceProvider.GetRequiredService<CurrentTenant>());
+    services.AddScoped<ICurrentAuthenticationSession, CurrentAuthenticationSessionAccessor>();
     services.AddScoped<CorrelationContext>();
     services.AddScoped<ICorrelationContext>(serviceProvider => serviceProvider.GetRequiredService<CorrelationContext>());
     services.AddScoped<IRequestMetadata, RequestMetadata>();

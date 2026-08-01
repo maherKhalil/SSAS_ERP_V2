@@ -18,22 +18,19 @@ public sealed class IdentityTenantMembershipReadService(
       .IgnoreQueryFilters()
       .AsNoTracking()
       .Where(user => user.IdentityId == identityId && user.Status == TenantUserStatus.Active)
+      .Join(
+        dbContext.Tenants.AsNoTracking().Where(tenant => tenant.Status == TenantStatus.Active),
+        user => user.TenantId,
+        tenant => tenant.Id,
+        (user, tenant) => new { User = user, Tenant = tenant })
       .ToListAsync(cancellationToken);
-    var eligible = new List<EligibleTenantMembership>(memberships.Count);
-    foreach (var membership in memberships)
-    {
-      var tenant = await tenantEligibilityReadService.GetEligibilityAsync(membership.TenantId, cancellationToken);
-      if (tenant.IsAuthenticationEligible)
-      {
-        eligible.Add(new EligibleTenantMembership(
-          membership.IdentityId,
-          membership.Id,
-          membership.TenantId,
-          membership.DisplayName.Value));
-      }
-    }
-
-    return eligible;
+    return memberships
+      .Select(item => new EligibleTenantMembership(
+        item.User.IdentityId,
+        item.User.Id,
+        item.User.TenantId,
+        item.Tenant.TenantName.Value))
+      .ToArray();
   }
 
   public async Task<IdentityTenantMembershipEligibility> GetMembershipEligibilityForUpdateAsync(
@@ -59,11 +56,12 @@ public sealed class IdentityTenantMembershipReadService(
     }
 
     var tenant = await tenantEligibilityReadService.GetEligibilityForUpdateAsync(tenantId, cancellationToken);
+    var tenantEntity = dbContext.Tenants.Local.SingleOrDefault(item => item.Id == tenantId);
     var projection = new EligibleTenantMembership(
       membership.IdentityId,
       membership.Id,
       membership.TenantId,
-      membership.DisplayName.Value);
+      tenantEntity?.TenantName.Value ?? string.Empty);
     return new IdentityTenantMembershipEligibility(projection, tenant.IsAuthenticationEligible);
   }
 }

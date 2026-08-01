@@ -1,9 +1,13 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.Host.API.Authorization;
+using SSAS.Platform.Application.Abstractions.Queries;
+using SSAS.Platform.Application.Tenants;
+using SSAS.Platform.Domain.Enums;
 
 namespace SSAS.API.Tests.Infrastructure;
 
@@ -20,7 +24,7 @@ public sealed class PermissionAuthorizationTests
       new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
       new Claim(JwtClaimTypes.Permission, "test.permission"));
 
-    await new PermissionAuthorizationHandler(new TestCurrentTenant(TenantId)).HandleAsync(context);
+    await PermissionHandler(new TestCurrentTenant(TenantId)).HandleAsync(context);
 
     Assert.True(context.HasSucceeded);
   }
@@ -31,7 +35,7 @@ public sealed class PermissionAuthorizationTests
     var requirement = new PermissionRequirement("test.permission");
     var context = CreateContext(requirement, new Claim(JwtClaimTypes.TenantId, TenantId.ToString()));
 
-    await new PermissionAuthorizationHandler(new TestCurrentTenant(TenantId)).HandleAsync(context);
+    await PermissionHandler(new TestCurrentTenant(TenantId)).HandleAsync(context);
 
     Assert.False(context.HasSucceeded);
   }
@@ -45,7 +49,7 @@ public sealed class PermissionAuthorizationTests
       new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
       new Claim(JwtClaimTypes.Role, "test.role"));
 
-    await new RoleAuthorizationHandler(new TestCurrentTenant(TenantId)).HandleAsync(context);
+    await RoleHandler(new TestCurrentTenant(TenantId)).HandleAsync(context);
 
     Assert.True(context.HasSucceeded);
   }
@@ -59,7 +63,7 @@ public sealed class PermissionAuthorizationTests
       new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
       new Claim(JwtClaimTypes.Role, "test.other_role"));
 
-    await new RoleAuthorizationHandler(new TestCurrentTenant(TenantId)).HandleAsync(context);
+    await RoleHandler(new TestCurrentTenant(TenantId)).HandleAsync(context);
 
     Assert.False(context.HasSucceeded);
   }
@@ -70,7 +74,7 @@ public sealed class PermissionAuthorizationTests
     var requirement = new PermissionRequirement("test.permission");
     var context = CreateContext(requirement, new Claim(JwtClaimTypes.Permission, "test.permission"));
 
-    await new PermissionAuthorizationHandler(new TestCurrentTenant(null)).HandleAsync(context);
+    await PermissionHandler(new TestCurrentTenant(null)).HandleAsync(context);
 
     Assert.False(context.HasSucceeded);
   }
@@ -84,7 +88,7 @@ public sealed class PermissionAuthorizationTests
       new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
       new Claim(JwtClaimTypes.Permission, "test.permission"));
 
-    await new PermissionAuthorizationHandler(new TestCurrentTenant(Guid.NewGuid())).HandleAsync(context);
+    await PermissionHandler(new TestCurrentTenant(Guid.NewGuid())).HandleAsync(context);
 
     Assert.False(context.HasSucceeded);
   }
@@ -99,7 +103,7 @@ public sealed class PermissionAuthorizationTests
 
     Assert.NotNull(policy);
     Assert.Contains(policy.Requirements, requirement => requirement is PermissionRequirement
-      { Permission: "test.permission" });
+    { Permission: "test.permission" });
   }
 
   [Theory]
@@ -146,6 +150,21 @@ public sealed class PermissionAuthorizationTests
   }
 
   private static PermissionAuthorizationPolicyProvider CreatePolicyProvider() => new(Options.Create(new AuthorizationOptions()));
+
+  private static PermissionAuthorizationHandler PermissionHandler(ICurrentTenant tenant) =>
+    new(tenant, new LiveTenantEligibilityAuthorization(new ActiveTenantEligibility()), new HttpContextAccessor());
+
+  private static RoleAuthorizationHandler RoleHandler(ICurrentTenant tenant) =>
+    new(tenant, new LiveTenantEligibilityAuthorization(new ActiveTenantEligibility()), new HttpContextAccessor());
+
+  private sealed class ActiveTenantEligibility : ITenantAuthenticationEligibilityReadService
+  {
+    public Task<TenantAuthenticationEligibilityResult> GetEligibilityAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(TenantAuthenticationEligibilityResult.FromStatus(tenantId, TenantStatus.Active));
+
+    public Task<TenantAuthenticationEligibilityResult> GetEligibilityForUpdateAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
+      GetEligibilityAsync(tenantId, cancellationToken);
+  }
 
   private sealed class TestCurrentTenant(Guid? tenantId) : ICurrentTenant
   {

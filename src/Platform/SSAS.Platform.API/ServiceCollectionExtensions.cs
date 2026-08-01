@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using SSAS.Platform.API.Authentication;
 
 namespace SSAS.Platform.API;
 
@@ -8,6 +9,7 @@ public static class ServiceCollectionExtensions
   {
     ArgumentNullException.ThrowIfNull(services);
 
+    services.AddScoped<AuthenticationCsrfService>();
     return services;
   }
 }

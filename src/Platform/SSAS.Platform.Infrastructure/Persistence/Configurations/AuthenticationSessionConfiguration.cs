@@ -17,7 +17,7 @@ public sealed class AuthenticationSessionConfiguration : IEntityTypeConfiguratio
       table.HasCheckConstraint("CK_AuthenticationSessions_Status", "[Status] IN (N'Active', N'Revoked', N'Compromised')");
       table.HasCheckConstraint(
         "CK_AuthenticationSessions_RevocationReason",
-        "[RevocationReason] IS NULL OR [RevocationReason] IN (N'SessionLimitExceeded', N'PasswordReset', N'SecurityStateChanged', N'IdentityIneligible', N'MembershipIneligible', N'TenantIneligible', N'Administrative')");
+        "[RevocationReason] IS NULL OR [RevocationReason] IN (N'SessionLimitExceeded', N'PasswordReset', N'SecurityStateChanged', N'IdentityIneligible', N'MembershipIneligible', N'TenantIneligible', N'Administrative', N'UserLogout')");
       table.HasCheckConstraint(
         "CK_AuthenticationSessions_LifecycleMetadata",
         "([Status] = N'Active' AND [RevokedUtc] IS NULL AND [RevocationReason] IS NULL AND [CompromisedUtc] IS NULL AND [CompromisedByRefreshTokenRecordId] IS NULL) OR " +

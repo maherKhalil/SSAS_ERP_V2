@@ -3,6 +3,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using SSAS.Host.API.Errors;
+using SSAS.Host.API.Authentication;
 
 namespace SSAS.Host.API.Configuration;
 
@@ -51,11 +52,18 @@ public static class HostServiceCollectionExtensions
       });
 
     services.AddEndpointsApiExplorer();
-    services.AddSwaggerGen(options => options.SwaggerDoc("v1", new OpenApiInfo
+    services.AddSwaggerGen(options =>
     {
-      Title = "SSAS ERP API",
-      Version = "v1"
-    }));
+      options.SwaggerDoc("v1", new OpenApiInfo { Title = "SSAS ERP API", Version = "v1" });
+      options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+      {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "RS256 access token."
+      });
+      options.OperationFilter<AuthenticationOpenApiOperationFilter>();
+    });
 
     services
       .AddHealthChecks()

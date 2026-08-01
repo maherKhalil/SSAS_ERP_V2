@@ -117,7 +117,7 @@ public sealed class TenantLifecycleArchitectureTests
   {
     var files = PlatformSourceFiles().ToArray();
     var deferredDeclaration = new Regex(
-      @"\b(?:class|record|interface)\s+\w*(?:JwtIssuer|AccessTokenIssuer|TenantController|Subscription|Billing|CompanyProvision)\w*\b",
+      @"\b(?:class|record|interface)\s+\w*(?:TenantController|Subscription|Billing|CompanyProvision)\w*\b",
       RegexOptions.CultureInvariant);
 
     Assert.Empty(files.Where(path => deferredDeclaration.IsMatch(File.ReadAllText(path))));

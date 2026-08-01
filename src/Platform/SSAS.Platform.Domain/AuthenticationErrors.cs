@@ -24,4 +24,6 @@ public static class AuthenticationErrors
   public static readonly Error InvalidTenantSelection = GenericTenantSelectionFailure;
   public static readonly Error NoEligibleMembership = new("Authentication.NoEligibleMembership", "No eligible tenant membership is available.");
   public static readonly Error InvalidClientId = new("Authentication.InvalidClientId", "The authentication client is invalid.");
+  public static readonly Error InvalidAccessTokenClaims = new("Authentication.InvalidAccessTokenClaims", "The access-token claims are invalid.");
+  public static readonly Error AccessTokenIssuanceUnavailable = new("Authentication.AccessTokenUnavailable", "Access-token issuance is unavailable.");
 }

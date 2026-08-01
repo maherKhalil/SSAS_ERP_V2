@@ -12,6 +12,16 @@ public sealed class TenantUserRepository(PlatformDbContext dbContext) : ITenantU
       .Include(user => user.RoleAssignments)
       .SingleOrDefaultAsync(user => user.Id == tenantUserId, cancellationToken);
 
+  public Task<TenantUser?> GetByIdentityIdAsync(long identityId, CancellationToken cancellationToken = default) =>
+    dbContext.TenantUsers.SingleOrDefaultAsync(user => user.IdentityId == identityId, cancellationToken);
+
+  public Task<TenantUser?> GetByTrustedInvitationBindingAsync(
+    Guid tenantId,
+    long tenantUserId,
+    CancellationToken cancellationToken = default) => dbContext.TenantUsers
+      .IgnoreQueryFilters()
+      .SingleOrDefaultAsync(user => user.TenantId == tenantId && user.Id == tenantUserId, cancellationToken);
+
   public Task<bool> EmailExistsAsync(
     string normalizedEmail,
     long? excludingTenantUserId = null,

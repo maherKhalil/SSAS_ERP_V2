@@ -18,6 +18,13 @@ public sealed class AuthenticationSubject : ValueObject
       : Result.Success(new AuthenticationSubject(value));
   }
 
+  public static Result<AuthenticationSubject> CreateLocal(Guid subjectId)
+  {
+    return subjectId == Guid.Empty
+      ? Result.Failure<AuthenticationSubject>(IdentityAccessErrors.InvalidIdentity)
+      : Result.Success(new AuthenticationSubject($"local:{subjectId:N}"));
+  }
+
   public override string ToString() => Value;
 
   protected override IEnumerable<object?> GetEqualityComponents()

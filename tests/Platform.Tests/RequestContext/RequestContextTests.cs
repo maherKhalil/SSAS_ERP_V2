@@ -81,8 +81,8 @@ public sealed class RequestContextTests
     var hash = service.HashPassword("Correct-Horse-Battery-Staple-1");
 
     Assert.NotEqual("Correct-Horse-Battery-Staple-1", hash);
-    Assert.True(service.VerifyPassword(hash, "Correct-Horse-Battery-Staple-1"));
-    Assert.False(service.VerifyPassword(hash, "wrong-password"));
+    Assert.Equal(PasswordVerificationOutcome.Success, service.VerifyPassword(hash, "Correct-Horse-Battery-Staple-1"));
+    Assert.Equal(PasswordVerificationOutcome.Failed, service.VerifyPassword(hash, "wrong-password"));
   }
 
   [Fact]

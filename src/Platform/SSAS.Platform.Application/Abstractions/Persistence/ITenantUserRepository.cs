@@ -6,6 +6,13 @@ public interface ITenantUserRepository
 {
   Task<TenantUser?> GetByIdAsync(long tenantUserId, CancellationToken cancellationToken = default);
 
+  Task<TenantUser?> GetByIdentityIdAsync(long identityId, CancellationToken cancellationToken = default);
+
+  Task<TenantUser?> GetByTrustedInvitationBindingAsync(
+    Guid tenantId,
+    long tenantUserId,
+    CancellationToken cancellationToken = default);
+
   Task<bool> EmailExistsAsync(string normalizedEmail, long? excludingTenantUserId = null, CancellationToken cancellationToken = default);
 
   Task<bool> MembershipExistsAsync(long identityId, CancellationToken cancellationToken = default);

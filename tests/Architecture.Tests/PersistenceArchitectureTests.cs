@@ -5,6 +5,7 @@ namespace SSAS.Architecture.Tests;
 public sealed class PersistenceArchitectureTests
 {
   [Fact]
+  [Trait("Scenario", "TS-AUTH-0071")]
   public void Production_source_does_not_define_a_generic_repository()
   {
     var matches = ProductionSourceFiles()

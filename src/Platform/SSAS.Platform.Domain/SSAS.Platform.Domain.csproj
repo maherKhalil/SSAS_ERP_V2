@@ -5,6 +5,11 @@
     <ProjectReference Include="..\..\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\SSAS.BuildingBlocks.SharedKernel.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SSAS.Platform.Application" />
+    <InternalsVisibleTo Include="SSAS.Platform.Infrastructure" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

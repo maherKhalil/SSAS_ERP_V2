@@ -23,7 +23,7 @@ public sealed class TenantUser : AggregateRoot<long>, IAuditableEntity, ITenantO
     Email = email;
     normalizedEmail = email.NormalizedEmail;
     DisplayName = displayName;
-    Status = TenantUserStatus.Active;
+    Status = TenantUserStatus.Pending;
   }
 
   private TenantUser()
@@ -68,8 +68,34 @@ public sealed class TenantUser : AggregateRoot<long>, IAuditableEntity, ITenantO
     DateTimeOffset occurredUtc)
   {
     var tenantUser = new TenantUser(0, identityId, tenantId, email, displayName);
+    tenantUser.Status = TenantUserStatus.Active;
     tenantUser.RaiseDomainEvent(new TenantUserActivated(eventId, occurredUtc, tenantId, identityId));
     return tenantUser;
+  }
+
+  public static TenantUser CreatePending(
+    long identityId,
+    Guid tenantId,
+    EmailAddress email,
+    UserDisplayName displayName,
+    Guid eventId,
+    DateTimeOffset occurredUtc)
+  {
+    var tenantUser = new TenantUser(0, identityId, tenantId, email, displayName);
+    tenantUser.RaiseDomainEvent(new TenantUserInvited(eventId, occurredUtc, tenantId, identityId));
+    return tenantUser;
+  }
+
+  public Result Activate(Guid eventId, DateTimeOffset occurredUtc)
+  {
+    if (Status != TenantUserStatus.Pending)
+    {
+      return Result.Failure(IdentityAccessErrors.InvalidTenantUserTransition);
+    }
+
+    Status = TenantUserStatus.Active;
+    RaiseDomainEvent(new TenantUserActivated(eventId, occurredUtc, TenantId, IdentityId));
+    return Result.Success();
   }
 
   public Result UpdateProfile(EmailAddress email, UserDisplayName displayName)

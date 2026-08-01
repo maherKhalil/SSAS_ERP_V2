@@ -84,8 +84,29 @@ version: 1.0
 - **TS-AUTH-0073:** Scan source, configuration, logs, exceptions, events, and test artifacts for committed production secrets or sensitive-value logging.
 - **TS-AUTH-0074:** Verify that Milestone 2 introduces no session, refresh-token, JWT-issuance, tenant-selection, HTTP endpoint, cookie, CSRF, RS256, logout/session API, Angular, immutable-audit-store, or platform-support-authentication implementation.
 
+## Milestone 3 focused scenarios
+
+- **TS-AUTH-0075:** Enforce a configurable maximum of ten active unexpired sessions per Identity.
+- **TS-AUTH-0076:** Order active sessions by CreatedUtc then AuthenticationSessionId and atomically revoke enough oldest sessions with `SessionLimitExceeded` before creating a new session.
+- **TS-AUTH-0077:** Default idle expiration to 30 days, compute current usability from trusted UTC, and reject refresh at or after `IdleExpiresUtc`.
+- **TS-AUTH-0078:** Default absolute expiration to 90 days and prove that creation and refresh never extend `AbsoluteExpiresUtc`.
+- **TS-AUTH-0079:** Set every refresh token's `ExpiresUtc` to the minimum of session idle and absolute expiration, including after idle-expiry renewal.
+- **TS-AUTH-0080:** Persist a five-minute tenant-selection transaction using a unique Guid selector and exact `BINARY(32)` canonical hash without storing its raw proof.
+- **TS-AUTH-0081:** Generate, parse, hash, and verify the exact 76-character refresh-token format and reject malformed, oversized, noncanonical, and multi-separator input before lookup.
+- **TS-AUTH-0082:** Generate, parse, hash, and verify the exact 76-character tenant-selection proof format and reject malformed, oversized, noncanonical, and multi-separator input before lookup.
+- **TS-AUTH-0083:** Accept exact allowlisted `ssas-erp-web`, reject whitespace and casing variants, and enforce immutable exact ClientId binding during selection and refresh.
+- **TS-AUTH-0084:** Persist only Active, Revoked, and Compromised session states; permit only the approved transitions and revocation reasons; compute expiration separately; retain terminal history.
+- **TS-AUTH-0085:** Serialize concurrent session creation at the ten-session limit so the committed state never exceeds the limit and deterministic oldest-session revocation occurs once.
+- **TS-AUTH-0086:** Serialize password reset racing with refresh so reset atomically advances SecurityVersion and revokes all sessions or refresh completes first against the prior valid state, without partial changes.
+- **TS-AUTH-0087:** Revalidate FP-003 Tenant eligibility under the approved lock order when suspension races with session creation or refresh, preventing a non-Active Tenant from committing eligible access.
+- **TS-AUTH-0088:** Permit exactly one successful concurrent tenant-selection consumption and create at most one session while every losing request returns generic selection failure.
+- **TS-AUTH-0089:** Permit at most one successful concurrent refresh; treat the losing verified use as reuse, compromise only the owning session, and revoke its unconsumed descendants.
+- **TS-AUTH-0090:** Verify that reveal-once refresh-token and selection-proof results cannot be serialized as ordinary DTOs or exposed through commands, persistence, logs, telemetry, exceptions, events, or debugger displays.
+
 ## Milestone applicability
 
 Milestone 2 implements `TS-AUTH-0001` through `TS-AUTH-0018`, `TS-AUTH-0054`, `TS-AUTH-0056`, `TS-AUTH-0060` through `TS-AUTH-0065`, `TS-AUTH-0067`, `TS-AUTH-0068`, and `TS-AUTH-0070` through `TS-AUTH-0074` where those scenarios concern `AuthenticationAccount` or `AccountActionToken`.
 
-All tenant-selection, session, refresh, JWT, HTTP, cookie/CSRF, signing-key, and authenticated-password-change scenarios remain assigned to later FP-002 milestones.
+Milestone 3 implements the tenant-selection and internal session/refresh portions of `TS-AUTH-0020` through `TS-AUTH-0024`, `TS-AUTH-0031` through `TS-AUTH-0036`, `TS-AUTH-0038`, `TS-AUTH-0040`, `TS-AUTH-0042`, `TS-AUTH-0060`, `TS-AUTH-0062`, `TS-AUTH-0066` through `TS-AUTH-0068`, `TS-AUTH-0070` through `TS-AUTH-0073`, and `TS-AUTH-0075` through `TS-AUTH-0090`.
+
+JWT, HTTP, cookie/CSRF, signing-key, logout/session-administration API, and authenticated-password-change scenarios remain assigned to later FP-002 milestones.

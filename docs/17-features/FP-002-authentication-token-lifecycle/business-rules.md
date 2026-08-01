@@ -33,3 +33,18 @@ version: 1.0
 - Action-token lookup uses a public selector; the raw secret is verified against the exact purpose using a fixed-time hash comparison.
 - Failed-login concurrency retries are bounded to three attempts and can never produce authentication success.
 - Raw invitation and reset tokens may leave the issuing command only once through an explicitly sensitive internal result. They are not public API DTOs.
+
+## Sprint-01 Milestone 3 interpretation
+
+- Successful credential verification yields an internal `VerifiedIdentity` containing only IdentityId and SecurityVersion; callers cannot begin tenant access with a raw IdentityId.
+- Eligible membership discovery always predicates on the verified Identity, includes only active memberships, and requires current FP-003 Tenant status `Active`.
+- The exact V1 ClientId is `ssas-erp-web`; comparison is ordinal and case-sensitive, whitespace is invalid, and the value is immutable throughout selection, session, and refresh history.
+- A tenant-selection transaction is persisted for five minutes, single-use, ClientId-bound, and consumed only with successful session creation.
+- AuthenticationSession status is exactly `Active`, `Revoked`, or `Compromised`. Revoked and Compromised are terminal; idle and absolute expiration are computed separately.
+- Approved revocation reasons are `SessionLimitExceeded`, `PasswordReset`, `SecurityStateChanged`, `IdentityIneligible`, `MembershipIneligible`, `TenantIneligible`, and `Administrative`.
+- AuthenticationSession owns its refresh-token children, replacement chain, reuse detection, descendant revocation, refresh timestamps, and compromise transition.
+- Selection proofs and refresh tokens use exact 76-character canonical selector/secret formats; only fixed 32-byte hashes are persisted and raw values cross the Application boundary once through sensitive results.
+- Refresh-token expiry is `min(Session.IdleExpiresUtc, Session.AbsoluteExpiresUtc)`; refresh updates idle expiry but never absolute expiry.
+- A maximum of ten active unexpired sessions per Identity is enforced transactionally by locking the AuthenticationAccount and revoking deterministic oldest sessions before new-session creation.
+- Successful password reset revokes every active session for the Identity in the same transaction that advances SecurityVersion, consumes the reset token, replaces the hash, and clears lockout.
+- Locked persistence operations follow AuthenticationAccount, selection transaction, membership, Tenant, session, then refresh-token lock order. Ambiguous refresh commits are not retried.

@@ -46,6 +46,16 @@ version: 1.0
 - **FR-AUTH-0123:** Generate claims from trusted server-side state.
 - **FR-AUTH-0124:** Enforce security-version invalidation.
 - **FR-AUTH-0125:** Bind sessions and refresh tokens to an approved client.
+- **FR-AUTH-0126:** Begin tenant access only from an internal VerifiedIdentity, discover memberships using exact Identity ownership, and validate every candidate Tenant through FP-003.
+- **FR-AUTH-0127:** Create one immutable identity-, membership-, tenant-, client-, and token-family-bound AuthenticationSession with its first refresh token.
+- **FR-AUTH-0128:** Persist a five-minute, single-use, ClientId-bound tenant-selection transaction and consume it atomically with successful session creation.
+- **FR-AUTH-0129:** Issue and rotate exact selector/secret refresh tokens, retain predecessor and replacement history, and cap token expiry by session idle and absolute expiration.
+- **FR-AUTH-0130:** Detect verified reuse of any retained consumed refresh token, compromise only its owning session, and revoke its unconsumed descendants.
+- **FR-AUTH-0131:** Maintain AuthenticationSession lifecycle using only Active, Revoked, and Compromised, with computed idle and absolute expiration and retained revocation history.
+- **FR-AUTH-0132:** Enforce at most ten active unexpired sessions per Identity by revoking the oldest sessions before atomically creating a new one.
+- **FR-AUTH-0133:** Complete password reset atomically with SecurityVersion advancement and revocation of every active session for the Identity.
+- **FR-AUTH-0134:** Accept only an allowlisted exact ClientId and bind it immutably across selection transactions, sessions, and refresh records.
+- **FR-AUTH-0135:** Serialize selection, session creation, refresh, revocation, password reset, and eligibility races using the approved transaction and lock order.
 
 ## Security requirements
 
@@ -61,6 +71,10 @@ version: 1.0
 - **SEC-AUTH-0210 — Compromised-password enforcement:** Production password setup and reset use the approved deployment-provided offline compromised/common-password dataset and fail safely when a required dataset is missing or invalid.
 - **SEC-AUTH-0211 — JWT validation:** Tenant access tokens validate signature, issuer, audience, lifetime, and required claims before establishing authenticated tenant context.
 - **SEC-AUTH-0212 — Atomic refresh security:** Refresh rotation and reuse detection are atomic, and a submitted refresh token succeeds at most once.
+- **SEC-AUTH-0213 — Verified authentication capability:** Ordinary callers cannot construct VerifiedIdentity from an arbitrary IdentityId or override its SecurityVersion or tenant eligibility.
+- **SEC-AUTH-0214 — Selection and refresh secret boundary:** Selection proofs and refresh tokens use the approved exact 76-character canonical selector/secret formats, fixed-size hashes, pre-lookup parsing, fixed-time comparison, reveal-once results, and no ordinary serialization or observability.
+- **SEC-AUTH-0215 — Exact client binding:** ClientId is allowlisted, exact, ordinal, case-sensitive, whitespace-rejecting, immutable, and revalidated for every selection and refresh.
+- **SEC-AUTH-0216 — Pre-tenant isolation:** Membership discovery includes trusted IdentityId in every predicate, returns only safe eligible projections, and introduces no generic cross-tenant or ordinary-repository query-filter bypass.
 
 ## Non-functional requirements
 
@@ -71,9 +85,14 @@ version: 1.0
 - **NFR-AUTH-0305 — Configurable security policy:** Password-hashing work factor, password limits, lockout threshold and duration, access/action/refresh-token lifetimes, and session limits are deployment-configurable within validated approved bounds.
 - **NFR-AUTH-0306 — Quality gates:** The full solution build, automated tests, and architecture tests pass with zero introduced warnings or errors.
 - **NFR-AUTH-0307 — Audit-ready events:** FP-002 emits structured, immutable event values suitable for later security-audit persistence without containing secret material.
+- **NFR-AUTH-0308 — Transactional concurrency:** SQL Server integration tests verify the canonical lock order, concurrent session-limit enforcement, selection consumption, refresh/reuse behavior, reset/refresh races, and tenant-suspension races.
+- **NFR-AUTH-0309 — Retained authentication history:** Session revocation and refresh-token family history are retained, use restricted deletion, and expose no routine physical-delete behavior.
+- **NFR-AUTH-0310 — Bounded indexed secret lookup:** Selection and refresh inputs are rejected at exact parser bounds before indexed selector lookup; verification never scans secret hashes.
 
-## Sprint-01 Milestone 2 requirement boundary
+## Sprint-01 milestone boundaries
 
 Milestone 2 implements the credential and account-action portions of `FR-AUTH-0101`, `FR-AUTH-0102`, `FR-AUTH-0116`, `FR-AUTH-0117`, `FR-AUTH-0118`, and `FR-AUTH-0124`, together with the applicable security and non-functional requirements above.
 
-Tenant resolution, access and refresh tokens, sessions, tenant-selection transactions, HTTP authentication endpoints, endpoint rate limiting, browser cookies and CSRF, signing keys, logout/session APIs, Angular authentication, immutable audit storage, and platform-support authentication remain deferred.
+Milestone 3 implements the internal tenant-resolution, selection-transaction, AuthenticationSession, refresh-token, session-limit, password-reset revocation, and concurrency portions of `FR-AUTH-0103` through `FR-AUTH-0110`, `FR-AUTH-0120`, `FR-AUTH-0124`, `FR-AUTH-0125`, and `FR-AUTH-0126` through `FR-AUTH-0135`, together with their applicable security and non-functional requirements. FP-003 supplies the authoritative tenant eligibility fact.
+
+Access-token/JWT issuance, HTTP authentication endpoints, endpoint rate limiting, browser cookies and CSRF, signing-key implementation, logout and session-administration endpoints, authenticated password change, Angular authentication, immutable audit storage, and platform-support authentication remain deferred.

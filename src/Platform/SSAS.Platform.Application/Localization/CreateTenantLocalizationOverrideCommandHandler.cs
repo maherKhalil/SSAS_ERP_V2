@@ -4,6 +4,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Localization;
 using SSAS.BuildingBlocks.Localization.Catalog;
+using SSAS.Platform.Application.Abstractions.Localization;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.Abstractions.Queries;
 using SSAS.Platform.Application.Common;
@@ -17,6 +18,7 @@ public sealed class CreateTenantLocalizationOverrideCommandHandler(
   ITenantLocalizationSettingsRepository settingsRepository,
   ITenantLocalizationOverrideRepository overrideRepository,
   ITenantAuthenticationEligibilityReadService eligibilityReadService,
+  ILocalizationManagementAuditReadiness auditReadiness,
   IPlatformUnitOfWork unitOfWork,
   ILocalizationCatalog catalog,
   ICurrentTenant currentTenant,
@@ -28,7 +30,6 @@ public sealed class CreateTenantLocalizationOverrideCommandHandler(
     CancellationToken cancellationToken = default)
   {
     ArgumentNullException.ThrowIfNull(command);
-    await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
     var execution = ApplicationExecutionContext.GetTenantActor(currentTenant, currentUser);
     if (execution.IsFailure)
     {
@@ -36,10 +37,17 @@ public sealed class CreateTenantLocalizationOverrideCommandHandler(
     }
 
     var (tenantId, actor) = execution.Value;
+    await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
     var eligibility = await eligibilityReadService.GetEligibilityForUpdateAsync(tenantId, cancellationToken);
     if (!eligibility.IsAuthenticationEligible)
     {
       return Result.Failure<LocalizationMutationResult>(LocalizationErrors.TenantIneligible);
+    }
+
+    var audit = await LocalizationManagementAuditGuard.CheckAsync(auditReadiness, cancellationToken);
+    if (audit.IsFailure)
+    {
+      return Result.Failure<LocalizationMutationResult>(audit.Error);
     }
 
     var validated = LocalizationApplicationValidation.GetEditableDefinition(catalog, command.ResourceKey, command.Culture);
@@ -105,5 +113,5 @@ public sealed class CreateTenantLocalizationOverrideCommandHandler(
       localizationOverride.Id,
       localizationOverride.CurrentVersionNumber.Value,
       settings.TenantLocalizationVersion.Value,
-      [.. localizationOverride.RowVersion]);
+      [.. localizationOverride.RowVersion], localizationOverride.CurrentValue, localizationOverride.IsActive);
 }

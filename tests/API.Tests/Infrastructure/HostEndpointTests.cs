@@ -3,8 +3,13 @@ using System.Text.Json;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using SSAS.Host.API.Diagnostics;
 using SSAS.API.Tests.Infrastructure;
+using SSAS.Host.API.Authorization;
+using SSAS.Platform.Application.Abstractions.Queries;
+using SSAS.Platform.Application.Localization;
 
 namespace SSAS.API.Tests.Infrastructure;
 
@@ -53,6 +58,20 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
     var response = await factory.CreateClient().GetAsync(path);
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+  }
+
+  [Fact]
+  public void Readiness_health_and_shared_tenant_eligibility_are_composed()
+  {
+    var registrations = factory.Services.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value.Registrations;
+    var localization = Assert.Single(registrations, registration =>
+      registration.Name == "localization_management_audit_readiness");
+    Assert.Contains("ready", localization.Tags);
+
+    Assert.Contains(typeof(LiveTenantEligibilityAuthorization).GetConstructors().Single().GetParameters(),
+      parameter => parameter.ParameterType == typeof(IRequestTenantEligibility));
+    Assert.Contains(typeof(LocalizationTextResolver).GetConstructors().Single().GetParameters(),
+      parameter => parameter.ParameterType == typeof(IRequestTenantEligibility));
   }
 
   [Fact]
@@ -144,4 +163,5 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
     using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
     Assert.Equal(expectedCode, document.RootElement.GetProperty("code").GetString());
   }
+
 }

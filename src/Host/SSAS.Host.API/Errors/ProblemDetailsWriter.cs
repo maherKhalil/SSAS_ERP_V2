@@ -8,7 +8,13 @@ public static class ProblemDetailsWriter
 {
   public const string CorrelationIdExtensionName = "correlationId";
 
-  public static async Task WriteAsync(HttpContext context, int statusCode, string title, string type, string? code = null)
+  public static async Task WriteAsync(
+    HttpContext context,
+    int statusCode,
+    string title,
+    string type,
+    string? code = null,
+    string? resourceKey = null)
   {
     var problemDetails = new ProblemDetails
     {
@@ -18,6 +24,7 @@ public static class ProblemDetailsWriter
     };
     problemDetails.Extensions[CorrelationIdExtensionName] = GetCorrelationId(context);
     if (!string.IsNullOrWhiteSpace(code)) problemDetails.Extensions["code"] = code;
+    if (!string.IsNullOrWhiteSpace(resourceKey)) problemDetails.Extensions["resourceKey"] = resourceKey;
     context.Response.StatusCode = statusCode;
 
     var problemDetailsService = context.RequestServices.GetRequiredService<IProblemDetailsService>();

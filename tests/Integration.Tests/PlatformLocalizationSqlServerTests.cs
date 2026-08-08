@@ -13,6 +13,7 @@ using SSAS.BuildingBlocks.Localization.Catalog;
 using SSAS.Platform.Application.Localization;
 using SSAS.Platform.Application.Abstractions.Localization;
 using SSAS.Platform.Domain.Localization;
+using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Tenants;
 using SSAS.Platform.Domain.ValueObjects;
 using SSAS.Platform.Infrastructure.Persistence;
@@ -197,7 +198,8 @@ public sealed class PlatformLocalizationSqlServerTests
     var catalog = GeneratedLocalizationCatalog.Instance;
 
     var create = new CreateTenantLocalizationOverrideCommandHandler(
-      settingsRepository, overrideRepository, eligibility, unitOfWork, catalog, currentTenant, currentUser, clock);
+      settingsRepository, overrideRepository, eligibility, ReadyAuditReadiness.Instance,
+      unitOfWork, catalog, currentTenant, currentUser, clock);
     var created = await create.HandleAsync(new(
       "platform.common.validation.required",
       "en",
@@ -214,7 +216,8 @@ public sealed class PlatformLocalizationSqlServerTests
     Assert.Equal(SSAS.Platform.Domain.Localization.LocalizationErrors.OverrideAlreadyExists, duplicate.Error);
 
     var update = new UpdateTenantLocalizationOverrideCommandHandler(
-      settingsRepository, overrideRepository, eligibility, unitOfWork, catalog, currentTenant, currentUser, clock);
+      settingsRepository, overrideRepository, eligibility, ReadyAuditReadiness.Instance,
+      unitOfWork, catalog, currentTenant, currentUser, clock);
     var stale = await update.HandleAsync(new(
       "platform.common.validation.required",
       "en",
@@ -231,7 +234,8 @@ public sealed class PlatformLocalizationSqlServerTests
     Assert.Equal(3, updated.Value.TenantLocalizationVersion);
 
     var restore = new RestoreTenantLocalizationDefaultCommandHandler(
-      settingsRepository, overrideRepository, eligibility, unitOfWork, catalog, currentTenant, currentUser, clock);
+      settingsRepository, overrideRepository, eligibility, ReadyAuditReadiness.Instance,
+      unitOfWork, catalog, currentTenant, currentUser, clock);
     var restored = await restore.HandleAsync(new(
       "platform.common.validation.required",
       "en",
@@ -248,7 +252,8 @@ public sealed class PlatformLocalizationSqlServerTests
     Assert.Equal(4L, await context.TenantLocalizationSettings.Select(settings => settings.TenantLocalizationVersion.Value).SingleAsync());
 
     var undo = new UndoTenantLocalizationOverrideCommandHandler(
-      settingsRepository, overrideRepository, eligibility, unitOfWork, catalog, currentTenant, currentUser, clock);
+      settingsRepository, overrideRepository, eligibility, ReadyAuditReadiness.Instance,
+      unitOfWork, catalog, currentTenant, currentUser, clock);
     var undone = await undo.HandleAsync(new(
       "platform.common.validation.required",
       "en",
@@ -259,12 +264,20 @@ public sealed class PlatformLocalizationSqlServerTests
     Assert.Equal(5, undone.Value.TenantLocalizationVersion);
 
     var history = new GetTenantLocalizationHistoryQueryHandler(
-      new TenantLocalizationHistoryReadService(context), eligibility, currentTenant);
+      new TenantLocalizationHistoryReadService(context), new RequestTenantEligibility(eligibility), currentTenant);
     var historyResult = await history.HandleAsync(new("platform.common.validation.required", "en"));
     Assert.True(historyResult.IsSuccess);
     Assert.Equal([4L, 3L, 2L, 1L], historyResult.Value.Entries.Select(entry => entry.VersionNumber));
     Assert.Equal(1, historyResult.Value.EligibleUndoTargetVersion);
     Assert.Equal(4, dispatcher.Events.Count);
+
+    var administration = await new TenantLocalizationAdministrationReadService(context).ReadAsync(
+      tenantId,
+      LocalizationCulture.English,
+      [ResourceKey.Create("platform.common.validation.required").Value]);
+    Assert.Single(administration);
+    Assert.Equal(4, administration[0].CurrentVersionNumber);
+    Assert.Equal(1, administration[0].EligibleUndoTargetVersion);
 
     using var cache = new LocalizationMemoryCache(clock);
     var overrideReadService = new TenantLocalizationOverrideReadService(context);
@@ -278,7 +291,7 @@ public sealed class PlatformLocalizationSqlServerTests
       overrideReadService,
       new TenantLocalizationVersionReader(context),
       cache,
-      eligibility,
+      new RequestTenantEligibility(eligibility),
       new RecordingLocalizationDiagnostics(),
       currentTenant);
     var effective = await resolver.ResolveAsync(new(
@@ -303,6 +316,7 @@ public sealed class PlatformLocalizationSqlServerTests
         new TenantLocalizationSettingsRepository(context),
         new TenantLocalizationOverrideRepository(context),
         new TenantAuthenticationEligibilityReadService(context),
+        ReadyAuditReadiness.Instance,
         new PlatformUnitOfWork(context, new RecordingDomainEventDispatcher()),
         GeneratedLocalizationCatalog.Instance,
         new TestCurrentTenant(tenantId),
@@ -511,5 +525,196 @@ public sealed class PlatformLocalizationSqlServerTests
     public void RecordDegradedTenant(Guid tenantId)
     {
     }
+  }
+
+  [Theory]
+  [InlineData("create")]
+  [InlineData("update")]
+  [InlineData("undo")]
+  [InlineData("restore")]
+  public async Task Audit_unavailable_leaves_all_localization_sql_state_and_events_unchanged(string operation)
+  {
+    await using var database = await LocalizationSqlDatabase.CreateAsync();
+    var tenantId = await database.CreateActiveTenantAsync($"AUDIT_{operation.ToUpperInvariant()}");
+    await using var context = database.CreateContext(tenantId);
+    var dispatcher = new RecordingDomainEventDispatcher();
+    var settings = new TenantLocalizationSettingsRepository(context);
+    var overrides = new TenantLocalizationOverrideRepository(context);
+    var eligibility = new TenantAuthenticationEligibilityReadService(context);
+    var unitOfWork = new PlatformUnitOfWork(context, dispatcher);
+    var currentTenant = new TestCurrentTenant(tenantId);
+    var currentUser = new TestCurrentUser();
+    var clock = new TestClock();
+    var resourceKey = operation == "create" ? "platform.common.actions.cancel" : "platform.common.actions.save";
+    LocalizationMutationResult? baseline = null;
+
+    if (operation != "create")
+    {
+      var create = new CreateTenantLocalizationOverrideCommandHandler(
+        settings, overrides, eligibility, ReadyAuditReadiness.Instance, unitOfWork,
+        GeneratedLocalizationCatalog.Instance, currentTenant, currentUser, clock);
+      var created = await create.HandleAsync(new(resourceKey, "en", "Store"));
+      Assert.True(created.IsSuccess);
+      baseline = created.Value;
+      if (operation == "undo")
+      {
+        var update = new UpdateTenantLocalizationOverrideCommandHandler(
+          settings, overrides, eligibility, ReadyAuditReadiness.Instance, unitOfWork,
+          GeneratedLocalizationCatalog.Instance, currentTenant, currentUser, clock);
+        var updated = await update.HandleAsync(new(resourceKey, "en", "Keep", baseline.RowVersion));
+        Assert.True(updated.IsSuccess);
+        baseline = updated.Value;
+      }
+    }
+
+    context.ChangeTracker.Clear();
+    var beforeSettingsVersion = await context.TenantLocalizationSettings
+      .Where(item => item.TenantId == tenantId)
+      .Select(item => (long?)item.TenantLocalizationVersion.Value)
+      .SingleOrDefaultAsync();
+    var beforeOverrideCount = await context.TenantLocalizationOverrides.CountAsync();
+    var beforeHistoryCount = await context.TenantLocalizationOverrideVersions.CountAsync();
+    var beforeEventCount = dispatcher.Events.Count;
+
+    Result<LocalizationMutationResult> result = operation switch
+    {
+      "create" => await new CreateTenantLocalizationOverrideCommandHandler(
+        settings, overrides, eligibility, UnavailableAuditReadiness.Instance, unitOfWork,
+        GeneratedLocalizationCatalog.Instance, currentTenant, currentUser, clock)
+        .HandleAsync(new(resourceKey, "en", "Cancel now")),
+      "update" => await new UpdateTenantLocalizationOverrideCommandHandler(
+        settings, overrides, eligibility, UnavailableAuditReadiness.Instance, unitOfWork,
+        GeneratedLocalizationCatalog.Instance, currentTenant, currentUser, clock)
+        .HandleAsync(new(resourceKey, "en", "Changed", baseline!.RowVersion)),
+      "undo" => await new UndoTenantLocalizationOverrideCommandHandler(
+        settings, overrides, eligibility, UnavailableAuditReadiness.Instance, unitOfWork,
+        GeneratedLocalizationCatalog.Instance, currentTenant, currentUser, clock)
+        .HandleAsync(new(resourceKey, "en", 1, baseline!.RowVersion)),
+      "restore" => await new RestoreTenantLocalizationDefaultCommandHandler(
+        settings, overrides, eligibility, UnavailableAuditReadiness.Instance, unitOfWork,
+        GeneratedLocalizationCatalog.Instance, currentTenant, currentUser, clock)
+        .HandleAsync(new(resourceKey, "en", baseline!.RowVersion)),
+      _ => throw new ArgumentOutOfRangeException(nameof(operation))
+    };
+
+    Assert.Equal(LocalizationManagementErrors.AuditReadinessUnavailable, result.Error);
+    context.ChangeTracker.Clear();
+    Assert.Equal(beforeSettingsVersion, await context.TenantLocalizationSettings
+      .Where(item => item.TenantId == tenantId)
+      .Select(item => (long?)item.TenantLocalizationVersion.Value)
+      .SingleOrDefaultAsync());
+    Assert.Equal(beforeOverrideCount, await context.TenantLocalizationOverrides.CountAsync());
+    Assert.Equal(beforeHistoryCount, await context.TenantLocalizationOverrideVersions.CountAsync());
+    Assert.Equal(beforeEventCount, dispatcher.Events.Count);
+  }
+
+  [Fact]
+  public async Task Audit_ready_does_not_bypass_suspended_tenant_locked_eligibility()
+  {
+    await using var database = await LocalizationSqlDatabase.CreateAsync();
+    var tenantId = await database.CreateActiveTenantAsync("AUDIT_SUSPENDED");
+    await using var context = database.CreateContext(tenantId);
+    var tenant = await context.Tenants.SingleAsync(item => item.Id == tenantId);
+    Assert.True(tenant.Suspend(TenantStatusChangeReason.Security, "integration-actor", Guid.NewGuid(), Now.AddMinutes(2)).IsSuccess);
+    await context.SaveChangesAsync();
+    context.ChangeTracker.Clear();
+
+    var handler = new CreateTenantLocalizationOverrideCommandHandler(
+      new TenantLocalizationSettingsRepository(context),
+      new TenantLocalizationOverrideRepository(context),
+      new TenantAuthenticationEligibilityReadService(context),
+      ReadyAuditReadiness.Instance,
+      new PlatformUnitOfWork(context, new RecordingDomainEventDispatcher()),
+      GeneratedLocalizationCatalog.Instance,
+      new TestCurrentTenant(tenantId),
+      new TestCurrentUser(),
+      new TestClock());
+
+    var result = await handler.HandleAsync(new("platform.common.actions.save", "en", "Store"));
+
+    Assert.Equal(SSAS.Platform.Domain.Localization.LocalizationErrors.TenantIneligible, result.Error);
+    Assert.Empty(await context.TenantLocalizationOverrides.ToArrayAsync());
+    Assert.Empty(await context.TenantLocalizationOverrideVersions.ToArrayAsync());
+    Assert.Empty(await context.TenantLocalizationSettings.Where(item => item.TenantId == tenantId).ToArrayAsync());
+  }
+
+  [Fact]
+  public async Task Effective_explicit_batch_is_tenant_isolated_ignores_sensitive_overrides_and_reflects_tenant_version()
+  {
+    await using var database = await LocalizationSqlDatabase.CreateAsync();
+    var firstTenantId = await database.CreateActiveTenantAsync("EFFECTIVE_A");
+    var secondTenantId = await database.CreateActiveTenantAsync("EFFECTIVE_B");
+    var keys = new[] { "platform.common.actions.save", "platform.authentication.errors.authentication_failed" };
+
+    await using (var firstContext = database.CreateContext(firstTenantId))
+    {
+      var create = new CreateTenantLocalizationOverrideCommandHandler(
+        new TenantLocalizationSettingsRepository(firstContext),
+        new TenantLocalizationOverrideRepository(firstContext),
+        new TenantAuthenticationEligibilityReadService(firstContext),
+        ReadyAuditReadiness.Instance,
+        new PlatformUnitOfWork(firstContext, new RecordingDomainEventDispatcher()),
+        GeneratedLocalizationCatalog.Instance,
+        new TestCurrentTenant(firstTenantId),
+        new TestCurrentUser(),
+        new TestClock());
+      var created = await create.HandleAsync(new("platform.common.actions.save", "en", "Tenant A Save"));
+      Assert.True(created.IsSuccess);
+      Assert.Equal(2, created.Value.TenantLocalizationVersion);
+
+      using var cache = new LocalizationMemoryCache(new TestClock());
+      var resolver = new LocalizationTextResolver(
+        GeneratedLocalizationCatalog.Instance,
+        new TenantLocalizationOverrideReadService(firstContext),
+        new TenantLocalizationVersionReader(firstContext),
+        cache,
+        new RequestTenantEligibility(new TenantAuthenticationEligibilityReadService(firstContext)),
+        new RecordingLocalizationDiagnostics(),
+        new TestCurrentTenant(firstTenantId));
+      var result = await resolver.ResolveExplicitBatchAsync(new(keys, "en"));
+
+      Assert.True(result.IsSuccess);
+      Assert.Equal(["platform.authentication.errors.authentication_failed", "platform.common.actions.save"], result.Value.Select(item => item.ResourceKey.Value));
+      Assert.Equal(LocalizationResolutionSource.SystemDefault, result.Value[0].ResolutionSource);
+      Assert.Equal(LocalizationResolutionSource.TenantOverride, result.Value[1].ResolutionSource);
+      Assert.Equal("Tenant A Save", result.Value[1].Text);
+      Assert.Equal(2, result.Value[1].TenantLocalizationVersion!.Value.Value);
+    }
+
+    await using (var secondContext = database.CreateContext(secondTenantId))
+    {
+      using var cache = new LocalizationMemoryCache(new TestClock());
+      var resolver = new LocalizationTextResolver(
+        GeneratedLocalizationCatalog.Instance,
+        new TenantLocalizationOverrideReadService(secondContext),
+        new TenantLocalizationVersionReader(secondContext),
+        cache,
+        new RequestTenantEligibility(new TenantAuthenticationEligibilityReadService(secondContext)),
+        new RecordingLocalizationDiagnostics(),
+        new TestCurrentTenant(secondTenantId));
+      var result = await resolver.ResolveExplicitBatchAsync(new(keys, "en"));
+
+      Assert.True(result.IsSuccess);
+      Assert.All(result.Value, item => Assert.NotEqual(LocalizationResolutionSource.TenantOverride, item.ResolutionSource));
+      Assert.DoesNotContain(result.Value, item => item.Text == "Tenant A Save");
+    }
+  }
+
+  private sealed class ReadyAuditReadiness : ILocalizationManagementAuditReadiness
+  {
+    public static ReadyAuditReadiness Instance { get; } = new();
+
+    public Task<LocalizationManagementAuditReadinessResult> CheckAsync(
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult(LocalizationManagementAuditReadinessResult.Ready);
+  }
+
+  private sealed class UnavailableAuditReadiness : ILocalizationManagementAuditReadiness
+  {
+    public static UnavailableAuditReadiness Instance { get; } = new();
+
+    public Task<LocalizationManagementAuditReadinessResult> CheckAsync(
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult(LocalizationManagementAuditReadinessResult.Unavailable);
   }
 }

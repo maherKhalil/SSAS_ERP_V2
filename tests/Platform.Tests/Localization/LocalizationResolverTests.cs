@@ -12,6 +12,7 @@ using SSAS.Platform.Application.Tenants;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Localization.Events;
 using SSAS.Platform.Infrastructure.Localization;
+using SSAS.Platform.Infrastructure.Persistence.Queries;
 
 namespace SSAS.Platform.Tests.Localization;
 
@@ -70,6 +71,11 @@ public sealed class LocalizationResolverTests
     Assert.Equal(LocalizationResolutionSource.SystemDefault, result.Value[0].ResolutionSource);
     Assert.Equal(LocalizationResolutionSource.TenantOverride, result.Value[1].ResolutionSource);
     Assert.Equal("Stop", result.Value[1].Text);
+    Assert.All(result.Value, item =>
+    {
+      Assert.Equal(GeneratedLocalizationCatalog.Instance.CatalogVersion, item.CatalogVersion);
+      Assert.Equal(1, item.TenantLocalizationVersion!.Value.Value);
+    });
     Assert.Equal(1, fixture.OverrideReader.Calls);
     Assert.Equal(1, fixture.Eligibility.Calls);
     Assert.Equal(1, fixture.VersionReader.Calls);
@@ -249,6 +255,13 @@ public sealed class LocalizationResolverTests
     Assert.Equal(SSAS.BuildingBlocks.Localization.LocalizationErrors.PlaceholderMismatch, unknownPlaceholder.Error);
   }
 
+  [Fact]
+  public void Runtime_effective_batch_limits_are_locked_to_the_approved_bounds()
+  {
+    Assert.Equal(100, LocalizationTextResolver.MaximumExplicitBatchSize);
+    Assert.Equal(250, LocalizationTextResolver.MaximumGroupBatchSize);
+  }
+
   private static TenantLocalizationOverrideReadModel CreateOverride(string key, string value, long version = 1)
   {
     Assert.True(GeneratedLocalizationCatalog.Instance.TryGet(ResourceKey.Create(key).Value, out var definition));
@@ -288,7 +301,7 @@ public sealed class LocalizationResolverTests
       OverrideReader,
       VersionReader,
       Cache,
-      Eligibility,
+      new RequestTenantEligibility(Eligibility),
       Diagnostics,
       CurrentTenant);
 

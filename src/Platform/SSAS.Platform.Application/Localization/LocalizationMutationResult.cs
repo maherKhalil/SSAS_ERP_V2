@@ -4,4 +4,6 @@ public sealed record LocalizationMutationResult(
   Guid OverrideId,
   long CurrentVersionNumber,
   long TenantLocalizationVersion,
-  byte[] RowVersion);
+  byte[] RowVersion,
+  string? Value,
+  bool IsActive);

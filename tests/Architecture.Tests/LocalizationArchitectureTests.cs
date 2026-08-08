@@ -4,8 +4,10 @@ using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Localization;
 using SSAS.Platform.Application.Abstractions.Localization;
 using SSAS.Platform.Application.Abstractions.Persistence;
+using SSAS.Platform.Application.Abstractions.Queries;
 using SSAS.Platform.Application.Localization;
 using SSAS.Platform.Domain.Localization;
+using SSAS.Platform.Infrastructure.Localization;
 
 namespace SSAS.Architecture.Tests;
 
@@ -47,9 +49,12 @@ public sealed class LocalizationArchitectureTests
       typeof(ITenantLocalizationSettingsRepository),
       typeof(ITenantLocalizationOverrideRepository),
       typeof(ITenantLocalizationOverrideReadService),
+      typeof(ITenantLocalizationAdministrationReadService),
       typeof(ITenantLocalizationVersionReader),
       typeof(ILocalizationTextResolver),
-      typeof(ILocalizationTenantCache)
+      typeof(ILocalizationTenantCache),
+      typeof(ILocalizationManagementAuditReadiness),
+      typeof(IRequestTenantEligibility)
     };
     var signatures = boundaryTypes.SelectMany(type => type.GetMethods())
       .SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType).Append(method.ReturnType))
@@ -71,6 +76,7 @@ public sealed class LocalizationArchitectureTests
       typeof(UpdateTenantLocalizationOverrideCommand),
       typeof(UndoTenantLocalizationOverrideCommand),
       typeof(RestoreTenantLocalizationDefaultCommand),
+      typeof(PreviewTenantLocalizationOverrideCommand),
       typeof(GetTenantLocalizationHistoryQuery),
       typeof(LocalizationResolutionRequest),
       typeof(LocalizationExplicitBatchRequest),
@@ -79,6 +85,13 @@ public sealed class LocalizationArchitectureTests
 
     Assert.Empty(commands.SelectMany(type => type.GetProperties())
       .Where(property => Regex.IsMatch(property.Name, "TenantId|Actor|UserId", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)));
+  }
+
+  [Fact]
+  public void Preview_handler_has_no_infrastructure_or_persistence_dependency()
+  {
+    var forbidden = new[] { "Infrastructure", "EntityFrameworkCore", "Data.SqlClient" };
+    Assert.Empty(ForbiddenReferences(typeof(PreviewTenantLocalizationOverrideCommandHandler).Assembly, forbidden));
   }
 
   [Fact]
@@ -110,12 +123,29 @@ public sealed class LocalizationArchitectureTests
   }
 
   [Fact]
-  public void Milestone_one_adds_no_http_openapi_ui_redis_or_mutable_default_catalog()
+  public void Localization_phase_four_adds_only_approved_server_boundaries_and_no_ui_redis_audit_store_or_mutable_default_catalog()
   {
     var root = FindRepositoryRoot();
     var platformApi = SourceFiles(Path.Combine(root, "src", "Platform", "SSAS.Platform.API")).ToArray();
     var host = SourceFiles(Path.Combine(root, "src", "Host")).ToArray();
-    Assert.Empty(platformApi.Concat(host).Where(path => File.ReadAllText(path).Contains("Localization", StringComparison.Ordinal)));
+    var allowedApiFiles = new HashSet<string>(StringComparer.Ordinal)
+    {
+      "LocalizationRowVersionCodec.cs",
+      "LocalizationTransportContracts.cs",
+      "LocalizationApiErrorMapper.cs",
+      "LocalizationEndpointRouteBuilderExtensions.cs",
+      "LocalizationResponseSecurity.cs"
+    };
+    Assert.Empty(platformApi.Where(path => File.ReadAllText(path).Contains("Localization", StringComparison.Ordinal))
+      .Where(path => !allowedApiFiles.Contains(Path.GetFileName(path))));
+    var allowedHostFiles = new HashSet<string>(StringComparer.Ordinal)
+    {
+      "Program.cs",
+      "HostServiceCollectionExtensions.cs",
+      "LocalizationOpenApiOperationFilter.cs"
+    };
+    Assert.Empty(host.Where(path => File.ReadAllText(path).Contains("Localization", StringComparison.Ordinal))
+      .Where(path => !allowedHostFiles.Contains(Path.GetFileName(path))));
 
     var uiRoot = Path.Combine(root, "src", "UI");
     if (Directory.Exists(uiRoot))
@@ -140,7 +170,38 @@ public sealed class LocalizationArchitectureTests
     var migrationSource = File.ReadAllText(migration);
     Assert.DoesNotContain("LocalizationResources", migrationSource, StringComparison.Ordinal);
     Assert.DoesNotContain("LocalizationDefault", migrationSource, StringComparison.Ordinal);
+    Assert.DoesNotContain("Audit", migrationSource, StringComparison.Ordinal);
     Assert.Equal(4, Regex.Matches(migrationSource, "migrationBuilder.CreateTable", RegexOptions.CultureInvariant).Count);
+  }
+
+  [Fact]
+  public void Audit_readiness_is_application_owned_infrastructure_implemented_and_absent_from_domain()
+  {
+    Assert.Equal("SSAS.Platform.Application", typeof(ILocalizationManagementAuditReadiness).Assembly.GetName().Name);
+    Assert.Equal("SSAS.Platform.Infrastructure", typeof(LocalizationManagementAuditReadiness).Assembly.GetName().Name);
+    Assert.DoesNotContain(typeof(TenantLocalizationOverride).Assembly.GetTypes(), type =>
+      type.Name.Contains("AuditReadiness", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public void Every_localization_mutation_handler_retains_locked_tenant_eligibility_and_audit_readiness()
+  {
+    var root = FindRepositoryRoot();
+    var handlers = new[]
+    {
+      "CreateTenantLocalizationOverrideCommandHandler.cs",
+      "UpdateTenantLocalizationOverrideCommandHandler.cs",
+      "UndoTenantLocalizationOverrideCommandHandler.cs",
+      "RestoreTenantLocalizationDefaultCommandHandler.cs"
+    };
+
+    foreach (var handler in handlers)
+    {
+      var source = File.ReadAllText(Path.Combine(
+        root, "src", "Platform", "SSAS.Platform.Application", "Localization", handler));
+      Assert.Contains("GetEligibilityForUpdateAsync", source, StringComparison.Ordinal);
+      Assert.Contains("LocalizationManagementAuditGuard.CheckAsync", source, StringComparison.Ordinal);
+    }
   }
 
   [Fact]
@@ -154,6 +215,22 @@ public sealed class LocalizationArchitectureTests
     Assert.DoesNotContain("LocalizedValue", source, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("PlaceholderValue", source, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotMatch("Log(?:Warning|Error|Information).*\\b(Text|Value|Placeholder)\\b", source);
+  }
+
+  [Fact]
+  public void Phase_five_localization_http_reuses_the_application_resolver_without_ef_or_a_second_fallback_algorithm()
+  {
+    var root = FindRepositoryRoot();
+    var path = Path.Combine(root, "src", "Platform", "SSAS.Platform.API", "Localization", "LocalizationEndpointRouteBuilderExtensions.cs");
+    var source = File.ReadAllText(path);
+
+    Assert.Contains("ILocalizationTextResolver", source, StringComparison.Ordinal);
+    Assert.Contains("ResolveGroupAsync", source, StringComparison.Ordinal);
+    Assert.Contains("ResolveExplicitBatchAsync", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("DbContext", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("DbSet", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("EntityFrameworkCore", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("TenantId", File.ReadAllText(Path.Combine(root, "src", "Platform", "SSAS.Platform.API", "Localization", "LocalizationTransportContracts.cs")), StringComparison.Ordinal);
   }
 
   private static IEnumerable<string> ForbiddenReferences(Assembly assembly, IReadOnlyCollection<string> forbidden) =>

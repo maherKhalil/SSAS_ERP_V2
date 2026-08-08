@@ -9,6 +9,7 @@ using SSAS.Host.API.Errors;
 using SSAS.HR.API;
 using SSAS.Platform.API;
 using SSAS.Platform.API.Authentication;
+using SSAS.Platform.API.Localization;
 using SSAS.Platform.Infrastructure;
 using SSAS.Platform.Infrastructure.RequestContext;
 
@@ -52,6 +53,7 @@ try
   app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "SSAS ERP API v1"));
   app.MapHostEndpoints();
   app.MapPlatformAuthenticationEndpoints();
+  app.MapPlatformLocalizationEndpoints();
 
   app.Run();
 }

@@ -21,7 +21,10 @@ public sealed class PermissionCatalogTests
     { "Platform.Roles.Retire", "Retire tenant roles" },
     { "Platform.RolePermissions.Assign", "Assign permissions to tenant roles" },
     { "Platform.RolePermissions.Remove", "Remove permissions from tenant roles" },
-    { "Platform.Permissions.View", "View the permission catalog" }
+    { "Platform.Permissions.View", "View the permission catalog" },
+    { "Platform.Localization.View", "View localization resources" },
+    { "Platform.Localization.Manage", "Manage localization overrides" },
+    { "Platform.Localization.ViewHistory", "View localization history" }
   };
 
   [Fact]
@@ -57,11 +60,11 @@ public sealed class PermissionCatalogTests
   }
 
   [Fact]
-  public void Catalog_has_exactly_fifteen_permissions_and_no_deferred_operation()
+  public void Catalog_has_exactly_eighteen_permissions_and_no_deferred_operation()
   {
     var identifiers = new PlatformPermissionCatalog().All.Select(item => item.Name.Value).ToArray();
 
-    Assert.Equal(15, identifiers.Length);
+    Assert.Equal(18, identifiers.Length);
     Assert.DoesNotContain(identifiers, identifier =>
       identifier.Contains("Support", StringComparison.OrdinalIgnoreCase) ||
       identifier.Contains("Owner", StringComparison.OrdinalIgnoreCase) ||

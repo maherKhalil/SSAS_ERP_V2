@@ -85,10 +85,13 @@ public sealed class PlatformInfrastructureRegistrationTests
     AssertScoped<IRoleReadService>(services);
     AssertScoped<ITenantReadService>(services);
     AssertScoped<ITenantAuthenticationEligibilityReadService>(services);
+    AssertScoped<IRequestTenantEligibility>(services);
     AssertScoped<ITenantLocalizationHistoryReadService>(services);
     AssertScoped<ITenantLocalizationOverrideReadService>(services);
+    AssertScoped<ITenantLocalizationAdministrationReadService>(services);
     AssertScoped<ITenantLocalizationVersionReader>(services);
     AssertScoped<ILocalizationTextResolver>(services);
+    AssertScoped<ILocalizationManagementAuditReadiness>(services);
     AssertScoped<ILocalizationCatalogActivationService>(services);
     AssertScoped<IPlatformUnitOfWork>(services);
     AssertScoped<IssueTenantUserInvitationCommandHandler>(services);
@@ -109,6 +112,9 @@ public sealed class PlatformInfrastructureRegistrationTests
     AssertScoped<UndoTenantLocalizationOverrideCommandHandler>(services);
     AssertScoped<RestoreTenantLocalizationDefaultCommandHandler>(services);
     AssertScoped<GetTenantLocalizationHistoryQueryHandler>(services);
+    AssertScoped<ListTenantLocalizationResourcesQueryHandler>(services);
+    AssertScoped<GetTenantLocalizationResourceQueryHandler>(services);
+    AssertScoped<PreviewTenantLocalizationOverrideCommandHandler>(services);
     AssertSingleton<IPasswordHashingService>(services);
     AssertSingleton<IActionTokenService>(services);
     AssertSingleton<IAuthenticationDiagnostics>(services);

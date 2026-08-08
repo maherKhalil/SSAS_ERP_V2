@@ -64,8 +64,10 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IRoleReadService, RoleReadService>();
     services.AddScoped<ITenantReadService, TenantReadService>();
     services.AddScoped<ITenantAuthenticationEligibilityReadService, TenantAuthenticationEligibilityReadService>();
+    services.AddScoped<IRequestTenantEligibility, RequestTenantEligibility>();
     services.AddScoped<ITenantLocalizationHistoryReadService, TenantLocalizationHistoryReadService>();
     services.AddScoped<ITenantLocalizationOverrideReadService, TenantLocalizationOverrideReadService>();
+    services.AddScoped<ITenantLocalizationAdministrationReadService, TenantLocalizationAdministrationReadService>();
     services.AddScoped<ITenantLocalizationVersionReader, TenantLocalizationVersionReader>();
     services.AddScoped<IIdentityTenantMembershipReadService, IdentityTenantMembershipReadService>();
     services.AddScoped<IAccessTokenClaimsProvider, AccessTokenClaimsProvider>();
@@ -76,8 +78,12 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddSingleton<ILocalizationDiagnostics, LocalizationDiagnostics>();
     services.AddSingleton<IDomainEventConsumer, LocalizationCacheDomainEventConsumer>();
     services.AddScoped<ILocalizationTextResolver, LocalizationTextResolver>();
+    services.AddScoped<ILocalizationManagementAuditReadiness, LocalizationManagementAuditReadiness>();
     services.AddScoped<ILocalizationCatalogActivationService, LocalizationCatalogActivationService>();
     services.AddHostedService<LocalizationCatalogActivationHostedService>();
+
+    services.AddOptions<LocalizationManagementAuditReadinessOptions>()
+      .Bind(configuration.GetSection(LocalizationManagementAuditReadinessOptions.SectionName));
 
     services.AddOptions<AuthenticationPolicyOptions>()
       .Bind(configuration.GetSection(AuthenticationPolicyOptions.SectionName))
@@ -189,6 +195,9 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<UndoTenantLocalizationOverrideCommandHandler>();
     services.AddScoped<RestoreTenantLocalizationDefaultCommandHandler>();
     services.AddScoped<GetTenantLocalizationHistoryQueryHandler>();
+    services.AddScoped<ListTenantLocalizationResourcesQueryHandler>();
+    services.AddScoped<GetTenantLocalizationResourceQueryHandler>();
+    services.AddScoped<PreviewTenantLocalizationOverrideCommandHandler>();
 
     return services;
   }

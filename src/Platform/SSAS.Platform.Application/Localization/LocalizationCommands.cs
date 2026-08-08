@@ -19,4 +19,4 @@ public sealed record RestoreTenantLocalizationDefaultCommand(
   string Culture,
   byte[] ExpectedRowVersion);
 
-public sealed record GetTenantLocalizationHistoryQuery(string ResourceKey, string Culture);
+public sealed record GetTenantLocalizationHistoryQuery(string ResourceKey, string Culture, int PageNumber = 1, int PageSize = 50);

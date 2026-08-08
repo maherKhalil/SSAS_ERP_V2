@@ -12,13 +12,12 @@ public sealed class LocalizationTextResolver(
   ITenantLocalizationOverrideReadService overrideReadService,
   ITenantLocalizationVersionReader versionReader,
   ILocalizationTenantCache cache,
-  ITenantAuthenticationEligibilityReadService eligibilityReadService,
+  IRequestTenantEligibility eligibility,
   ILocalizationDiagnostics diagnostics,
   ICurrentTenant currentTenant) : ILocalizationTextResolver
 {
   public const int MaximumExplicitBatchSize = 100;
   public const int MaximumGroupBatchSize = 250;
-  private Task<Tenants.TenantAuthenticationEligibilityResult>? eligibilityTask;
   private Task<TenantLocalizationVersionState>? versionStateTask;
 
   public async Task<Result<EffectiveLocalizedText>> ResolveAsync(
@@ -132,9 +131,8 @@ public sealed class LocalizationTextResolver(
     Guid? eligibleTenantId = null;
     if (currentTenant.TenantId is { } tenantId)
     {
-      eligibilityTask ??= eligibilityReadService.GetEligibilityAsync(tenantId, cancellationToken);
-      var eligibility = await eligibilityTask;
-      if (eligibility.IsAuthenticationEligible)
+      var tenantEligibility = await eligibility.GetEligibilityAsync(tenantId, cancellationToken);
+      if (tenantEligibility.IsAuthenticationEligible)
       {
         eligibleTenantId = tenantId;
       }

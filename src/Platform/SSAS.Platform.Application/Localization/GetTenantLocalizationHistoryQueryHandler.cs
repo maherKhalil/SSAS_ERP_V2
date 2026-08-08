@@ -9,7 +9,7 @@ namespace SSAS.Platform.Application.Localization;
 
 public sealed class GetTenantLocalizationHistoryQueryHandler(
   ITenantLocalizationHistoryReadService historyReadService,
-  ITenantAuthenticationEligibilityReadService eligibilityReadService,
+  IRequestTenantEligibility eligibility,
   ICurrentTenant currentTenant)
 {
   public async Task<Result<LocalizationHistoryResult>> HandleAsync(
@@ -21,9 +21,13 @@ public sealed class GetTenantLocalizationHistoryQueryHandler(
     {
       return Result.Failure<LocalizationHistoryResult>(LocalizationErrors.TenantIneligible);
     }
+    if (query.PageNumber < 1 || query.PageSize is < 1 or > 100)
+    {
+      return Result.Failure<LocalizationHistoryResult>(new Error("request.invalid", "The localization request is invalid."));
+    }
 
-    var eligibility = await eligibilityReadService.GetEligibilityAsync(tenantId, cancellationToken);
-    if (!eligibility.IsAuthenticationEligible)
+    var tenantEligibility = await eligibility.GetEligibilityAsync(tenantId, cancellationToken);
+    if (!tenantEligibility.IsAuthenticationEligible)
     {
       return Result.Failure<LocalizationHistoryResult>(LocalizationErrors.TenantIneligible);
     }
@@ -35,7 +39,7 @@ public sealed class GetTenantLocalizationHistoryQueryHandler(
       return Result.Failure<LocalizationHistoryResult>(key.IsFailure ? key.Error : culture.Error);
     }
 
-    var history = await historyReadService.GetAsync(tenantId, key.Value, culture.Value, cancellationToken);
+    var history = await historyReadService.GetAsync(tenantId, key.Value, culture.Value, query.PageNumber, query.PageSize, cancellationToken);
     return history is null
       ? Result.Failure<LocalizationHistoryResult>(LocalizationErrors.OverrideMissing)
       : Result.Success(history);

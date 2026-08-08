@@ -1,0 +1,115 @@
+{
+  "$schema": "localization-catalog.schema.v1.json",
+  "catalogSchemaVersion": 1,
+  "catalogVersion": 1,
+  "neutralFallbacks": {
+    "en": "Text unavailable",
+    "ar": "النص غير متاح"
+  },
+  "resources": [
+    {
+      "resourceKey": "platform.authentication.errors.authentication_failed",
+      "module": "platform",
+      "group": "authentication.errors",
+      "category": "Message",
+      "textFormat": "PlainText",
+      "securityClassification": "SecuritySensitiveNonOverridable",
+      "tenantOverridable": false,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "defaults": {
+        "en": "Authentication failed.",
+        "ar": "فشلت المصادقة."
+      },
+      "description": "Generic non-enumerating authentication failure."
+    },
+    {
+      "resourceKey": "platform.authentication.errors.request_rejected",
+      "module": "platform",
+      "group": "authentication.errors",
+      "category": "Message",
+      "textFormat": "PlainText",
+      "securityClassification": "SecuritySensitiveNonOverridable",
+      "tenantOverridable": false,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "defaults": {
+        "en": "The request could not be completed.",
+        "ar": "تعذر إكمال الطلب."
+      },
+      "description": "Generic protected request failure."
+    },
+    {
+      "resourceKey": "platform.common.actions.cancel",
+      "module": "platform",
+      "group": "common.actions",
+      "category": "Action",
+      "textFormat": "PlainText",
+      "securityClassification": "Ordinary",
+      "tenantOverridable": true,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "defaults": {
+        "en": "Cancel",
+        "ar": "إلغاء"
+      },
+      "description": "Common cancel action."
+    },
+    {
+      "resourceKey": "platform.common.actions.save",
+      "module": "platform",
+      "group": "common.actions",
+      "category": "Action",
+      "textFormat": "PlainText",
+      "securityClassification": "Ordinary",
+      "tenantOverridable": true,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "defaults": {
+        "en": "Save",
+        "ar": "حفظ"
+      },
+      "description": "Common save action."
+    },
+    {
+      "resourceKey": "platform.common.validation.required",
+      "module": "platform",
+      "group": "common.validation",
+      "category": "Validation",
+      "textFormat": "PlainText",
+      "securityClassification": "Ordinary",
+      "tenantOverridable": true,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [
+        "fieldName"
+      ],
+      "defaults": {
+        "en": "{fieldName} is required.",
+        "ar": "حقل {fieldName} مطلوب."
+      },
+      "description": "Required-field validation message."
+    },
+    {
+      "resourceKey": "platform.localization.help.override_description",
+      "module": "platform",
+      "group": "localization.help",
+      "category": "Help",
+      "textFormat": "MultilineText",
+      "securityClassification": "Ordinary",
+      "tenantOverridable": true,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "defaults": {
+        "en": "Enter the tenant-specific text.\nPlain text only.",
+        "ar": "أدخل النص الخاص بالمستأجر.\nيُسمح بالنص فقط."
+      },
+      "description": "Tenant override editing guidance."
+    }
+  ]
+}

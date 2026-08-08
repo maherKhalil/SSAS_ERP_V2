@@ -1,0 +1,105 @@
+using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
+using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Localization;
+using SSAS.BuildingBlocks.Localization.Catalog;
+using SSAS.Platform.Application.Abstractions.Persistence;
+using SSAS.Platform.Application.Abstractions.Queries;
+using SSAS.Platform.Application.Common;
+using SSAS.Platform.Domain;
+using SSAS.Platform.Domain.Localization;
+using LocalizationErrors = SSAS.Platform.Domain.Localization.LocalizationErrors;
+
+namespace SSAS.Platform.Application.Localization;
+
+public sealed class UpdateTenantLocalizationOverrideCommandHandler(
+  ITenantLocalizationSettingsRepository settingsRepository,
+  ITenantLocalizationOverrideRepository overrideRepository,
+  ITenantAuthenticationEligibilityReadService eligibilityReadService,
+  IPlatformUnitOfWork unitOfWork,
+  ILocalizationCatalog catalog,
+  ICurrentTenant currentTenant,
+  ICurrentUser currentUser,
+  IDateTimeProvider clock)
+{
+  public async Task<Result<LocalizationMutationResult>> HandleAsync(
+    UpdateTenantLocalizationOverrideCommand command,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(command);
+    await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+    var execution = ApplicationExecutionContext.GetTenantActor(currentTenant, currentUser);
+    if (execution.IsFailure)
+    {
+      return Result.Failure<LocalizationMutationResult>(execution.Error);
+    }
+
+    var (tenantId, actor) = execution.Value;
+    var eligibility = await eligibilityReadService.GetEligibilityForUpdateAsync(tenantId, cancellationToken);
+    if (!eligibility.IsAuthenticationEligible)
+    {
+      return Result.Failure<LocalizationMutationResult>(LocalizationErrors.TenantIneligible);
+    }
+
+    var validated = LocalizationApplicationValidation.GetEditableDefinition(catalog, command.ResourceKey, command.Culture);
+    if (validated.IsFailure)
+    {
+      return Result.Failure<LocalizationMutationResult>(validated.Error);
+    }
+
+    var text = LocalizationApplicationValidation.GetText(command.Value, validated.Value.Definition);
+    if (text.IsFailure)
+    {
+      return Result.Failure<LocalizationMutationResult>(text.Error);
+    }
+
+    var settings = await settingsRepository.GetOrCreateForUpdateAsync(tenantId, LocalizationCulture.English, cancellationToken);
+    var localizationOverride = await overrideRepository.GetForUpdateAsync(
+      tenantId,
+      validated.Value.ResourceKey,
+      validated.Value.Culture,
+      cancellationToken);
+    if (localizationOverride is null)
+    {
+      return Result.Failure<LocalizationMutationResult>(LocalizationErrors.OverrideMissing);
+    }
+
+    if (!ApplicationExecutionContext.MatchesExpectedVersion(localizationOverride.RowVersion, command.ExpectedRowVersion))
+    {
+      return Result.Failure<LocalizationMutationResult>(IdentityAccessErrors.ConcurrencyConflict);
+    }
+
+    var incremented = settings.IncrementVersion();
+    if (incremented.IsFailure)
+    {
+      return Result.Failure<LocalizationMutationResult>(incremented.Error);
+    }
+
+    var updated = localizationOverride.Update(
+      validated.Value.Definition,
+      text.Value,
+      actor,
+      Guid.NewGuid(),
+      clock.UtcNow,
+      settings.TenantLocalizationVersion,
+      catalog.CatalogVersion);
+    if (updated.IsFailure)
+    {
+      return Result.Failure<LocalizationMutationResult>(updated.Error);
+    }
+
+    var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
+    if (saved.IsFailure)
+    {
+      return Result.Failure<LocalizationMutationResult>(saved.Error);
+    }
+
+    await transaction.CommitAsync(cancellationToken);
+    return Result.Success(new LocalizationMutationResult(
+      localizationOverride.Id,
+      localizationOverride.CurrentVersionNumber.Value,
+      settings.TenantLocalizationVersion.Value,
+      [.. localizationOverride.RowVersion]));
+  }
+}

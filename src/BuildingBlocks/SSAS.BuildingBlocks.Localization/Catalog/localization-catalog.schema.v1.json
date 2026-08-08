@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ssas-erp.local/localization/localization-catalog.schema.v1.json",
+  "title": "SSAS ERP localization catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "catalogSchemaVersion",
+    "catalogVersion",
+    "neutralFallbacks",
+    "resources"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "localization-catalog.schema.v1.json"
+    },
+    "catalogSchemaVersion": {
+      "const": 1
+    },
+    "catalogVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "neutralFallbacks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "en",
+        "ar"
+      ],
+      "properties": {
+        "en": {
+          "const": "Text unavailable"
+        },
+        "ar": {
+          "const": "النص غير متاح"
+        }
+      }
+    },
+    "resources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/resource"
+      }
+    }
+  },
+  "$defs": {
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceKey",
+        "module",
+        "group",
+        "category",
+        "textFormat",
+        "securityClassification",
+        "tenantOverridable",
+        "lifecycle",
+        "resourceVersion",
+        "placeholders",
+        "defaults",
+        "description"
+      ],
+      "properties": {
+        "resourceKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*){2,}$"
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$"
+        },
+        "category": {
+          "enum": [
+            "Action",
+            "Label",
+            "Validation",
+            "Message",
+            "Help"
+          ]
+        },
+        "textFormat": {
+          "enum": [
+            "PlainText",
+            "MultilineText"
+          ]
+        },
+        "securityClassification": {
+          "enum": [
+            "Ordinary",
+            "SecuritySensitiveNonOverridable"
+          ]
+        },
+        "tenantOverridable": {
+          "type": "boolean"
+        },
+        "lifecycle": {
+          "enum": [
+            "Active",
+            "Retired"
+          ]
+        },
+        "resourceVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "placeholders": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+          }
+        },
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "en",
+            "ar"
+          ],
+          "properties": {
+            "en": {
+              "type": "string",
+              "maxLength": 4000
+            },
+            "ar": {
+              "type": "string",
+              "maxLength": 4000
+            }
+          }
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512
+        }
+      }
+    }
+  }
+}

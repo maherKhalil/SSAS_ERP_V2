@@ -519,6 +519,290 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                     b.ToTable("Identities", "platform");
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.Localization.LocalizationCatalogState", b =>
+                {
+                    b.Property<byte>("Id")
+                        .HasColumnType("tinyint")
+                        .HasColumnName("LocalizationCatalogStateId");
+
+                    b.Property<int>("CatalogSchemaVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("HighestActivatedCatalogVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LocalizationCatalogStates", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_LocalizationCatalogStates_Singleton", "[LocalizationCatalogStateId] = 1");
+
+                            t.HasCheckConstraint("CK_LocalizationCatalogStates_Versions", "[CatalogSchemaVersion] > 0 AND [HighestActivatedCatalogVersion] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Localization.TenantLocalizationOverride", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("TenantLocalizationOverrideId");
+
+                    b.Property<long>("CatalogVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("CompatibilityFingerprint")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Culture")
+                        .IsRequired()
+                        .HasColumnType("varchar(2)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("CurrentMultilineTextValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("CurrentPlainTextValue")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<long>("CurrentVersionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("PlaceholderFingerprint")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("ResourceKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<int>("ResourceVersion")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TextFormat")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Culture", "ResourceKey")
+                        .HasDatabaseName("IX_TenantLocalizationOverrides_Tenant_Culture_Resource");
+
+                    b.HasIndex("TenantId", "ResourceKey", "Culture")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantLocalizationOverrides_Tenant_Resource_Culture");
+
+                    b.ToTable("TenantLocalizationOverrides", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrides_Culture", "[Culture] IN ('en', 'ar')");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrides_Format", "[TextFormat] IN ('PlainText', 'MultilineText')");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrides_Value", "([IsActive] = 0 AND [CurrentPlainTextValue] IS NULL AND [CurrentMultilineTextValue] IS NULL) OR ([IsActive] = 1 AND (([TextFormat] = 'PlainText' AND [CurrentPlainTextValue] IS NOT NULL AND [CurrentMultilineTextValue] IS NULL) OR ([TextFormat] = 'MultilineText' AND [CurrentPlainTextValue] IS NULL AND [CurrentMultilineTextValue] IS NOT NULL)))");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrides_Versions", "[CurrentVersionNumber] > 0 AND [CatalogVersion] > 0 AND [ResourceVersion] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Localization.TenantLocalizationOverrideVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("TenantLocalizationOverrideVersionId");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<long>("CatalogVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("CompatibilityFingerprint")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("Culture")
+                        .IsRequired()
+                        .HasColumnType("varchar(2)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MultilineTextValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("OccurredUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("PlaceholderFingerprint")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("PlainTextValue")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<long?>("PriorLogicalVersionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ResourceKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<int>("ResourceVersion")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantLocalizationOverrideId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TextFormat")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<long?>("UndoTargetVersionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("VersionNumber")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantLocalizationOverrideId", "VersionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantLocalizationOverrideVersions_Override_Version");
+
+                    b.HasIndex("TenantId", "ResourceKey", "Culture", "VersionNumber")
+                        .HasDatabaseName("IX_TenantLocalizationOverrideVersions_Tenant_Resource_Culture_Version");
+
+                    b.HasIndex("TenantId", "TenantLocalizationOverrideId", "ResourceKey", "Culture");
+
+                    b.ToTable("TenantLocalizationOverrideVersions", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrideVersions_ChangeType", "[ChangeType] IN ('Created', 'Updated', 'Undone', 'RestoredDefault')");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrideVersions_Culture", "[Culture] IN ('en', 'ar')");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrideVersions_Format", "[TextFormat] IN ('PlainText', 'MultilineText')");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrideVersions_Lineage", "([ChangeType] = 'Created' AND [PriorLogicalVersionNumber] IS NULL AND [UndoTargetVersionNumber] IS NULL) OR ([ChangeType] IN ('Updated', 'RestoredDefault') AND [PriorLogicalVersionNumber] IS NOT NULL AND [UndoTargetVersionNumber] IS NULL) OR ([ChangeType] = 'Undone' AND [UndoTargetVersionNumber] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrideVersions_Value", "([IsActive] = 0 AND [ChangeType] IN ('Undone', 'RestoredDefault') AND [PlainTextValue] IS NULL AND [MultilineTextValue] IS NULL) OR ([IsActive] = 1 AND [ChangeType] IN ('Created', 'Updated', 'Undone') AND (([TextFormat] = 'PlainText' AND [PlainTextValue] IS NOT NULL AND [MultilineTextValue] IS NULL) OR ([TextFormat] = 'MultilineText' AND [PlainTextValue] IS NULL AND [MultilineTextValue] IS NOT NULL)))");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationOverrideVersions_Versions", "[VersionNumber] > 0 AND [CatalogVersion] > 0 AND [ResourceVersion] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Localization.TenantLocalizationSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("TenantDefaultCulture")
+                        .IsRequired()
+                        .HasColumnType("varchar(2)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<long>("TenantLocalizationVersion")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantLocalizationSettings", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_TenantLocalizationSettings_Culture", "[TenantDefaultCulture] IN ('en', 'ar')");
+
+                            t.HasCheckConstraint("CK_TenantLocalizationSettings_Version", "[TenantLocalizationVersion] > 0");
+                        });
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Roles.Role", b =>
                 {
                     b.Property<long>("Id")
@@ -905,6 +1189,34 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.Localization.TenantLocalizationOverride", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Localization.TenantLocalizationOverrideVersion", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Localization.TenantLocalizationOverride", null)
+                        .WithMany("Versions")
+                        .HasForeignKey("TenantId", "TenantLocalizationOverrideId", "ResourceKey", "Culture")
+                        .HasPrincipalKey("TenantId", "Id", "ResourceKey", "Culture")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Localization.TenantLocalizationSettings", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Tenants.Tenant", null)
+                        .WithOne()
+                        .HasForeignKey("SSAS.Platform.Domain.Localization.TenantLocalizationSettings", "TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Roles.RolePermissionAssignment", b =>
                 {
                     b.HasOne("SSAS.Platform.Domain.Roles.Role", null)
@@ -944,6 +1256,11 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("SSAS.Platform.Domain.Authentication.AuthenticationSession", b =>
                 {
                     b.Navigation("RefreshTokenRecords");
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Localization.TenantLocalizationOverride", b =>
+                {
+                    b.Navigation("Versions");
                 });
 
             modelBuilder.Entity("SSAS.Platform.Domain.Roles.Role", b =>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Catalog\localization-catalog.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Catalog\localization-catalog.schema.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Generated\localization-catalog.client.generated.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

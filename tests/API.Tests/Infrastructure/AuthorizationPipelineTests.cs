@@ -19,6 +19,7 @@ using SSAS.Host.API.Diagnostics;
 using SSAS.Platform.Application.Abstractions.Queries;
 using SSAS.Platform.Application.Tenants;
 using SSAS.Platform.Domain.Enums;
+using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.RequestContext;
 
 namespace SSAS.API.Tests.Infrastructure;
@@ -41,7 +42,8 @@ public sealed class AuthorizationPipelineTests : IAsyncLifetime
     var response = await Client.SendAsync(request);
 
     await AssertAuthorizationFailureAsync(response, HttpStatusCode.Unauthorized, "authorization-401");
-    Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+    Assert.Equal("no-store, no-cache", response.Headers.CacheControl?.ToString());
+    Assert.Equal("no-cache", response.Headers.Pragma.ToString());
     Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
     Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
   }
@@ -176,6 +178,7 @@ public sealed class AuthorizationPipelineTests : IAsyncLifetime
       .AddHostProblemDetails();
     tenantEligibility = new MutableTenantEligibility();
     builder.Services.AddSingleton<ITenantAuthenticationEligibilityReadService>(tenantEligibility);
+    builder.Services.AddScoped<IRequestTenantEligibility, RequestTenantEligibility>();
 
     application = builder.Build();
     application.UseCorrelationId();
@@ -276,5 +279,10 @@ public sealed class AuthorizationPipelineTests : IAsyncLifetime
     Assert.Equal(expectedCorrelationId, response.Headers.GetValues(CorrelationIdMiddleware.HeaderName).Single());
     using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
     Assert.Equal(expectedCorrelationId, document.RootElement.GetProperty("correlationId").GetString());
+    Assert.Equal(
+      expectedStatusCode == HttpStatusCode.Unauthorized
+        ? "platform.authentication.errors.authentication_failed"
+        : "platform.authentication.errors.request_rejected",
+      document.RootElement.GetProperty("resourceKey").GetString());
   }
 }

@@ -6,6 +6,9 @@ namespace SSAS.Host.API.Authentication;
 
 public static class JwtProblemDetailsEvents
 {
+  private const string AuthenticationFailedResourceKey = "platform.authentication.errors.authentication_failed";
+  private const string RequestRejectedResourceKey = "platform.authentication.errors.request_rejected";
+
   public static JwtBearerEvents Create()
   {
     return new JwtBearerEvents
@@ -26,7 +29,8 @@ public static class JwtProblemDetailsEvents
           StatusCodes.Status401Unauthorized,
           "Authentication is required.",
           "https://httpstatuses.com/401",
-          "authentication.failed");
+          "authentication.failed",
+          AuthenticationFailedResourceKey);
       },
       OnForbidden = context =>
       {
@@ -36,14 +40,15 @@ public static class JwtProblemDetailsEvents
           StatusCodes.Status403Forbidden,
           "You are not permitted to perform this action.",
           "https://httpstatuses.com/403",
-          "authorization.forbidden");
+          "authorization.forbidden",
+          RequestRejectedResourceKey);
       }
     };
   }
 
   private static void ApplyAuthenticationResponseSecurity(HttpResponse response)
   {
-    response.Headers.CacheControl = "no-store";
+    response.Headers.CacheControl = "no-store, no-cache";
     response.Headers.Pragma = "no-cache";
     response.Headers["Referrer-Policy"] = "no-referrer";
     response.Headers["X-Content-Type-Options"] = "nosniff";

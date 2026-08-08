@@ -12,14 +12,26 @@ public sealed class LocalizationTextResolver(
   ITenantLocalizationOverrideReadService overrideReadService,
   ITenantLocalizationVersionReader versionReader,
   ILocalizationTenantCache cache,
-  ITenantAuthenticationEligibilityReadService eligibilityReadService,
+  IRequestTenantEligibility eligibility,
   ILocalizationDiagnostics diagnostics,
   ICurrentTenant currentTenant) : ILocalizationTextResolver
 {
   public const int MaximumExplicitBatchSize = 100;
   public const int MaximumGroupBatchSize = 250;
-  private Task<Tenants.TenantAuthenticationEligibilityResult>? eligibilityTask;
   private Task<TenantLocalizationVersionState>? versionStateTask;
+
+  public async Task<Result<EffectiveLocalizedText>> ResolveTemplateAsync(
+    LocalizationResolutionRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    var batch = await ResolveTemplateExplicitBatchAsync(
+      new LocalizationExplicitBatchRequest([request.ResourceKey], request.RequestedCulture),
+      cancellationToken);
+    return batch.IsSuccess
+      ? Result.Success(batch.Value[0])
+      : Result.Failure<EffectiveLocalizedText>(batch.Error);
+  }
 
   public async Task<Result<EffectiveLocalizedText>> ResolveAsync(
     LocalizationResolutionRequest request,
@@ -43,9 +55,20 @@ public sealed class LocalizationTextResolver(
       : Result.Failure<EffectiveLocalizedText>(batch.Error);
   }
 
-  public async Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveExplicitBatchAsync(
+  public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveTemplateExplicitBatchAsync(
     LocalizationExplicitBatchRequest request,
-    CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default) =>
+    ResolveExplicitBatchCoreAsync(request, formatPlaceholders: false, cancellationToken);
+
+  public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveExplicitBatchAsync(
+    LocalizationExplicitBatchRequest request,
+    CancellationToken cancellationToken = default) =>
+    ResolveExplicitBatchCoreAsync(request, formatPlaceholders: true, cancellationToken);
+
+  private async Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveExplicitBatchCoreAsync(
+    LocalizationExplicitBatchRequest request,
+    bool formatPlaceholders,
+    CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(request);
     ArgumentNullException.ThrowIfNull(request.ResourceKeys);
@@ -76,12 +99,24 @@ public sealed class LocalizationTextResolver(
       parsed,
       request.RequestedCulture,
       request.PlaceholderValuesByResource,
+      formatPlaceholders,
       cancellationToken);
   }
 
-  public async Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveGroupAsync(
+  public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveTemplateGroupAsync(
     LocalizationGroupBatchRequest request,
-    CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default) =>
+    ResolveGroupCoreAsync(request, formatPlaceholders: false, cancellationToken);
+
+  public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveGroupAsync(
+    LocalizationGroupBatchRequest request,
+    CancellationToken cancellationToken = default) =>
+    ResolveGroupCoreAsync(request, formatPlaceholders: true, cancellationToken);
+
+  private async Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveGroupCoreAsync(
+    LocalizationGroupBatchRequest request,
+    bool formatPlaceholders,
+    CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(request);
     if (string.IsNullOrWhiteSpace(request.Module) || string.IsNullOrWhiteSpace(request.Group) ||
@@ -103,6 +138,7 @@ public sealed class LocalizationTextResolver(
       resources.Select(resource => resource.ResourceKey).ToArray(),
       request.RequestedCulture,
       request.PlaceholderValuesByResource,
+      formatPlaceholders,
       cancellationToken);
   }
 
@@ -110,6 +146,7 @@ public sealed class LocalizationTextResolver(
     IReadOnlyCollection<ResourceKey> resourceKeys,
     string requestedCulture,
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? placeholderValues,
+    bool formatPlaceholders,
     CancellationToken cancellationToken)
   {
     cancellationToken.ThrowIfCancellationRequested();
@@ -132,9 +169,8 @@ public sealed class LocalizationTextResolver(
     Guid? eligibleTenantId = null;
     if (currentTenant.TenantId is { } tenantId)
     {
-      eligibilityTask ??= eligibilityReadService.GetEligibilityAsync(tenantId, cancellationToken);
-      var eligibility = await eligibilityTask;
-      if (eligibility.IsAuthenticationEligible)
+      var tenantEligibility = await eligibility.GetEligibilityAsync(tenantId, cancellationToken);
+      if (tenantEligibility.IsAuthenticationEligible)
       {
         eligibleTenantId = tenantId;
       }
@@ -184,7 +220,7 @@ public sealed class LocalizationTextResolver(
       var values = placeholderValues is not null && placeholderValues.TryGetValue(key.Value, out var supplied)
         ? supplied
         : null;
-      var item = ResolveOne(key, culture.Value, definition, values, overrides, versionState);
+      var item = ResolveOne(key, culture.Value, definition, values, overrides, versionState, formatPlaceholders);
       if (item.IsFailure)
       {
         return Result.Failure<IReadOnlyList<EffectiveLocalizedText>>(item.Error);
@@ -202,7 +238,8 @@ public sealed class LocalizationTextResolver(
     LocalizationResourceDefinition? definition,
     IReadOnlyDictionary<string, string>? placeholderValues,
     IReadOnlyDictionary<string, TenantLocalizationOverrideReadModel?> overrides,
-    TenantLocalizationVersionState? versionState)
+    TenantLocalizationVersionState? versionState,
+    bool formatPlaceholders)
   {
     if (definition is null || definition.Lifecycle != LocalizationResourceLifecycle.Active)
     {
@@ -225,7 +262,7 @@ public sealed class LocalizationTextResolver(
     var compatible = hasOverride && IsCompatible(candidate!, definition);
     if (compatible && candidate!.IsActive && candidate.Value is not null)
     {
-      var formattedOverride = LocalizationPlaceholderFormatter.Format(candidate.Value, definition.Placeholders, placeholderValues);
+      var formattedOverride = Format(candidate.Value, definition.Placeholders, placeholderValues, formatPlaceholders);
       if (formattedOverride.IsFailure)
       {
         return Result.Failure<EffectiveLocalizedText>(formattedOverride.Error);
@@ -249,10 +286,11 @@ public sealed class LocalizationTextResolver(
     var requestedDefault = definition.GetDefault(requestedCulture);
     var useEnglishFallback = requestedCulture.Value == LocalizationCulture.ArabicCode && string.IsNullOrEmpty(requestedDefault);
     var resolvedCulture = useEnglishFallback ? LocalizationCulture.English : requestedCulture;
-    var formattedDefault = LocalizationPlaceholderFormatter.Format(
+    var formattedDefault = Format(
       useEnglishFallback ? definition.EnglishDefault : requestedDefault,
       definition.Placeholders,
-      placeholderValues);
+      placeholderValues,
+      formatPlaceholders);
     if (formattedDefault.IsFailure)
     {
       return Result.Failure<EffectiveLocalizedText>(formattedDefault.Error);
@@ -272,6 +310,15 @@ public sealed class LocalizationTextResolver(
       useEnglishFallback,
       !hasOverride || compatible));
   }
+
+  private static Result<string> Format(
+    string template,
+    PlaceholderSet placeholders,
+    IReadOnlyDictionary<string, string>? placeholderValues,
+    bool formatPlaceholders) =>
+    formatPlaceholders
+      ? LocalizationPlaceholderFormatter.Format(template, placeholders, placeholderValues)
+      : Result.Success(template);
 
   private static bool IsCompatible(
     TenantLocalizationOverrideReadModel candidate,

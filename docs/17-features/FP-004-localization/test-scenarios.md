@@ -84,11 +84,11 @@ module: Platform
 
 ## Focused authorization and cache tests
 
-- **TS-LOC-0062:** View positive for list/get/effective and negative for mutations/history.
+- **TS-LOC-0062:** View positive for list/get and negative for mutations/history; ordinary effective HTTP resolution does not require View.
 - **TS-LOC-0063:** Manage positive for PUT/Preview/Undo/Restore and negative without Manage.
 - **TS-LOC-0064:** ViewHistory positive for history and history denied without it.
-- **TS-LOC-0065:** anonymous management denied; only approved public system-default groups accessible.
-- **TS-LOC-0066:** private Tenant-effective groups denied before trusted Tenant selection.
+- **TS-LOC-0065:** anonymous management and both effective HTTP routes are denied; M2 exposes no public system-default group.
+- **TS-LOC-0066:** effective HTTP requests without trusted Tenant selection are denied.
 - **TS-LOC-0067:** inactive Tenant denied for every operation and safe not-found prevents cross-Tenant disclosure.
 - **TS-LOC-0068:** suspend Tenant after cache population; next path cannot use override.
 - **TS-LOC-0069:** reject unknown/forged TenantId across route/query/header/body and strict DTOs.
@@ -96,15 +96,15 @@ module: Platform
 
 ## Dedicated Milestone 2 route tests
 
-- **TS-LOC-0071:** GET resources verifies exact path/method/auth/View/Tenant/live/filter/paging/schema/status/errors/isolation/OpenAPI.
-- **TS-LOC-0072:** GET resource verifies exact path/method/auth/View/Tenant/live/safe-not-found/projection/errors/OpenAPI.
+- **TS-LOC-0071:** GET resources verifies exact path/method/auth/View/Tenant/live/filter/paging/schema/status/errors/isolation/OpenAPI and raw placeholder-bearing templates without interpolation values.
+- **TS-LOC-0072:** GET resource verifies exact path/method/auth/View/Tenant/live/safe-not-found/projection/errors/OpenAPI and raw placeholder-bearing templates without interpolation values.
 - **TS-LOC-0073:** PUT override verifies exact path/auth/Manage/Tenant/live/strict schema/limits/create-update conflicts/projection/OpenAPI.
 - **TS-LOC-0074:** POST Undo verifies exact path/auth/Manage/Tenant/live/strict lineage/rowversion/exact 409/422 mappings/OpenAPI.
 - **TS-LOC-0075:** POST restore-default verifies exact path/auth/Manage/Tenant/live/strict rowversion/retention/errors/OpenAPI.
 - **TS-LOC-0076:** GET history verifies exact path/auth/ViewHistory/Tenant/live/bounded stable paging/safe projection/OpenAPI.
 - **TS-LOC-0077:** POST preview verifies exact path/auth/Manage/Tenant/live/strict validation/no side effects/safe output/OpenAPI.
-- **TS-LOC-0078:** GET effective verifies exact path/auth/View/Tenant/live/bounds/culture metadata/projection/errors/OpenAPI.
-- **TS-LOC-0079:** POST effective/batch verifies slash path/auth/View/Tenant/live/strict unique bounded keys/projection/errors/OpenAPI.
+- **TS-LOC-0078:** GET effective verifies exact path/auth/trusted live Tenant/no administrative permission for ordinary runtime resolution/bounds/culture metadata/raw effective templates without interpolation/projection/errors/OpenAPI.
+- **TS-LOC-0079:** POST effective/batch verifies slash path/auth/trusted live Tenant/no administrative permission for ordinary runtime resolution/strict unique bounded keys/optional resource-scoped plain-string placeholder values/missing and unknown placeholder failures/projection/errors/OpenAPI.
 
 ## Cache, rollback, audit, and remaining focused gates
 
@@ -126,5 +126,9 @@ module: Platform
 - **TS-LOC-0095:** preserve Unicode without normalization/trim and distinguish visually equivalent sequences.
 - **TS-LOC-0096:** PlainText rejects every control; Multiline permits only CR/LF/TAB and preserves line endings.
 - **TS-LOC-0097:** text culture change does not infer timezone/currency/date/number context.
-- **TS-LOC-0098:** validate all 32 decisions, 28 conflicts, identifiers, references, links, and exact document metadata.
+- **TS-LOC-0098:** validate all 36 decisions, 32 conflicts, identifiers, references, links, and exact document metadata.
 - **TS-LOC-0099:** Milestone 2 ProblemDetails/OpenAPI preserve technical semantics, generic security behavior, and useful requested/resolved culture.
+- **TS-LOC-0100:** accept canonical padded Base64 rowversions and emit canonical Base64; reject malformed Base64, Base64Url, hex, blank, whitespace, noncanonical, and wrong decoded length with `localization.rowversion_invalid`; valid stale rowversion returns `concurrency.conflict` and current value succeeds.
+- **TS-LOC-0101:** deny anonymous effective GET/batch and authenticated callers without trusted Tenant; allow Active trusted Tenant ordinary effective resolution without View; ensure non-Active Tenant receives no override and no arbitrary public catalog group is exposed.
+- **TS-LOC-0102:** with Production audit ready, an authorized mutation may continue; with readiness unavailable it returns 503 `localization.audit_readiness_unavailable` without SQL write, event, cache eviction, submitted-text logging, or internal reason.
+- **TS-LOC-0103:** retain `Persistence.ConcurrencyConflict` internally while localization HTTP maps a valid stale rowversion to HTTP 409 `concurrency.conflict`.

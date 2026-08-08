@@ -9,5 +9,7 @@ public interface ITenantLocalizationHistoryReadService
     Guid tenantId,
     ResourceKey resourceKey,
     LocalizationCulture culture,
+    int pageNumber = 1,
+    int pageSize = 50,
     CancellationToken cancellationToken = default);
 }

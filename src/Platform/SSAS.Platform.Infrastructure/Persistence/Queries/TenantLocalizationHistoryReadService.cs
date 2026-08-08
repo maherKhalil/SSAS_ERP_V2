@@ -8,12 +8,12 @@ namespace SSAS.Platform.Infrastructure.Persistence.Queries;
 public sealed class TenantLocalizationHistoryReadService(PlatformDbContext dbContext)
   : ITenantLocalizationHistoryReadService
 {
-  private const int MaximumHistoryEntries = 100;
-
   public async Task<LocalizationHistoryResult?> GetAsync(
     Guid tenantId,
     ResourceKey resourceKey,
     LocalizationCulture culture,
+    int pageNumber = 1,
+    int pageSize = 50,
     CancellationToken cancellationToken = default)
   {
     var current = await dbContext.TenantLocalizationOverrides.AsNoTracking()
@@ -25,7 +25,7 @@ public sealed class TenantLocalizationHistoryReadService(PlatformDbContext dbCon
       {
         candidate.Id,
         candidate.IsActive,
-        CurrentVersionNumber = candidate.CurrentVersionNumber.Value,
+        candidate.CurrentVersionNumber,
         candidate.RowVersion
       })
       .SingleOrDefaultAsync(cancellationToken);
@@ -34,10 +34,11 @@ public sealed class TenantLocalizationHistoryReadService(PlatformDbContext dbCon
       return null;
     }
 
-    var versions = await dbContext.TenantLocalizationOverrideVersions.AsNoTracking()
+    var query = dbContext.TenantLocalizationOverrideVersions.AsNoTracking()
       .Where(version => version.TenantId == tenantId && version.TenantLocalizationOverrideId == current.Id)
-      .OrderByDescending(version => version.VersionNumber)
-      .Take(MaximumHistoryEntries)
+      .OrderByDescending(version => version.VersionNumber);
+    var totalCount = await query.CountAsync(cancellationToken);
+    var versions = await query.Skip((pageNumber - 1) * pageSize).Take(pageSize)
       .Select(version => new
       {
         VersionNumber = version.VersionNumber.Value,
@@ -67,16 +68,21 @@ public sealed class TenantLocalizationHistoryReadService(PlatformDbContext dbCon
       version.ResourceVersion,
       version.ActorId,
       version.OccurredUtc)).ToArray();
-    var eligibleTarget = versions.FirstOrDefault(version => version.VersionNumber == current.CurrentVersionNumber)
-      ?.PriorLogicalVersionNumber;
+    var eligibleTarget = await dbContext.TenantLocalizationOverrideVersions.AsNoTracking()
+      .Where(version => version.TenantLocalizationOverrideId == current.Id && version.VersionNumber == current.CurrentVersionNumber)
+      .Select(version => version.PriorLogicalVersionNumber.HasValue ? version.PriorLogicalVersionNumber.Value.Value : (long?)null)
+      .SingleOrDefaultAsync(cancellationToken);
     return new LocalizationHistoryResult(
       current.Id,
       resourceKey.Value,
       culture.Value,
       current.IsActive,
-      current.CurrentVersionNumber,
+      current.CurrentVersionNumber.Value,
       eligibleTarget,
       [.. current.RowVersion],
-      entries);
+      entries,
+      pageNumber,
+      pageSize,
+      totalCount);
   }
 }

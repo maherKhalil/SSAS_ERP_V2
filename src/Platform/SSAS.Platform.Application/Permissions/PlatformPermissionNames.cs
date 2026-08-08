@@ -17,4 +17,7 @@ public static class PlatformPermissionNames
   public const string AssignRolePermissions = "Platform.RolePermissions.Assign";
   public const string RemoveRolePermissions = "Platform.RolePermissions.Remove";
   public const string ViewPermissions = "Platform.Permissions.View";
+  public const string ViewLocalization = "Platform.Localization.View";
+  public const string ManageLocalization = "Platform.Localization.Manage";
+  public const string ViewLocalizationHistory = "Platform.Localization.ViewHistory";
 }

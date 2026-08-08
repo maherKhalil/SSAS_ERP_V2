@@ -19,7 +19,7 @@ depends_on:
 
 ## Approval
 
-FP-004 is approved for implementation. The 32 decisions in [decisions-approved.md](decisions-approved.md) are binding. There is no unresolved Milestone 1 implementation blocker. Production management remains subject to the immutable-audit readiness gate and catalog compatibility preflight described below.
+FP-004 is approved for implementation. The 36 decisions in [decisions-approved.md](decisions-approved.md) are binding. There is no unresolved Milestone 1 implementation blocker. Production management remains subject to the immutable-audit readiness gate and catalog compatibility preflight described below.
 
 ## Purpose
 
@@ -56,7 +56,7 @@ Angular remains the approved web framework under ADR-007, but its runtime locali
 
 ## Production gates
 
-Production localization completeness requires both `en` and `ar` defaults for every Active resource. Production startup must reject a local `CatalogVersion` lower than the database's highest activated version. Production management endpoints remain disabled until immutable-audit persistence, retention, and health/readiness are approved and operational. Effective read-only resolution may operate while management is disabled.
+Production localization completeness requires both `en` and `ar` defaults for every Active resource. Production startup must reject a local `CatalogVersion` lower than the database's highest activated version. Production management endpoints remain disabled until immutable-audit persistence, retention, and health/readiness are approved and operational; unavailable readiness is an HTTP 503 service failure. Effective read-only resolution may operate while management is disabled for authenticated trusted live-Tenant callers; M2 exposes no anonymous localization HTTP endpoint.
 
 ## Architecture constraints
 

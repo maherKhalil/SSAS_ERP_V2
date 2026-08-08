@@ -22,7 +22,10 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.RetireRoles, "Retire tenant roles"),
       Define(PlatformPermissionNames.AssignRolePermissions, "Assign permissions to tenant roles"),
       Define(PlatformPermissionNames.RemoveRolePermissions, "Remove permissions from tenant roles"),
-      Define(PlatformPermissionNames.ViewPermissions, "View the permission catalog")
+      Define(PlatformPermissionNames.ViewPermissions, "View the permission catalog"),
+      Define(PlatformPermissionNames.ViewLocalization, "View localization resources"),
+      Define(PlatformPermissionNames.ManageLocalization, "Manage localization overrides"),
+      Define(PlatformPermissionNames.ViewLocalizationHistory, "View localization history")
     }
     .ToDictionary(definition => definition.Name.Value, StringComparer.Ordinal);
 

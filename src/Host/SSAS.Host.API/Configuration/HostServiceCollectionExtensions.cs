@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using SSAS.Host.API.Errors;
 using SSAS.Host.API.Authentication;
+using SSAS.Platform.Infrastructure.Localization;
 
 namespace SSAS.Host.API.Configuration;
 
@@ -63,11 +64,15 @@ public static class HostServiceCollectionExtensions
         Description = "RS256 access token."
       });
       options.OperationFilter<AuthenticationOpenApiOperationFilter>();
+      options.OperationFilter<LocalizationOpenApiOperationFilter>();
     });
 
     services
       .AddHealthChecks()
-      .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live", "ready"]);
+      .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live", "ready"])
+      .AddCheck<LocalizationManagementAuditReadinessHealthCheck>(
+        "localization_management_audit_readiness",
+        tags: ["ready"]);
 
     return services;
   }

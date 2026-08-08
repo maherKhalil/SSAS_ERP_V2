@@ -20,4 +20,10 @@ public sealed record LocalizationHistoryResult(
   long CurrentVersionNumber,
   long? EligibleUndoTargetVersion,
   byte[] RowVersion,
-  IReadOnlyList<LocalizationHistoryEntry> Entries);
+  IReadOnlyList<LocalizationHistoryEntry> Entries,
+  int PageNumber = 1,
+  int PageSize = 50,
+  int TotalCount = 0)
+{
+  public int TotalPages => TotalCount == 0 ? 0 : (int)Math.Ceiling(TotalCount / (double)PageSize);
+}

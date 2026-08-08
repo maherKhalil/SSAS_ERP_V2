@@ -152,18 +152,15 @@ public sealed class PermissionAuthorizationTests
   private static PermissionAuthorizationPolicyProvider CreatePolicyProvider() => new(Options.Create(new AuthorizationOptions()));
 
   private static PermissionAuthorizationHandler PermissionHandler(ICurrentTenant tenant) =>
-    new(tenant, new LiveTenantEligibilityAuthorization(new ActiveTenantEligibility()), new HttpContextAccessor());
+    new(tenant, new LiveTenantEligibilityAuthorization(new ActiveRequestTenantEligibility()), new HttpContextAccessor());
 
   private static RoleAuthorizationHandler RoleHandler(ICurrentTenant tenant) =>
-    new(tenant, new LiveTenantEligibilityAuthorization(new ActiveTenantEligibility()), new HttpContextAccessor());
+    new(tenant, new LiveTenantEligibilityAuthorization(new ActiveRequestTenantEligibility()), new HttpContextAccessor());
 
-  private sealed class ActiveTenantEligibility : ITenantAuthenticationEligibilityReadService
+  private sealed class ActiveRequestTenantEligibility : IRequestTenantEligibility
   {
     public Task<TenantAuthenticationEligibilityResult> GetEligibilityAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
       Task.FromResult(TenantAuthenticationEligibilityResult.FromStatus(tenantId, TenantStatus.Active));
-
-    public Task<TenantAuthenticationEligibilityResult> GetEligibilityForUpdateAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
-      GetEligibilityAsync(tenantId, cancellationToken);
   }
 
   private sealed class TestCurrentTenant(Guid? tenantId) : ICurrentTenant

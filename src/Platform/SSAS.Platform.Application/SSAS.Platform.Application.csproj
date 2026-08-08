@@ -5,6 +5,7 @@
     <ProjectReference Include="..\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\SSAS.BuildingBlocks.Localization\SSAS.BuildingBlocks.Localization.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -4,6 +4,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Domain.Authentication;
+using SSAS.Platform.Domain.Localization;
 using SSAS.Platform.Domain.Roles;
 using SSAS.Platform.Domain.TenantUsers;
 using SSAS.Platform.Domain.Tenants;
@@ -39,6 +40,14 @@ public sealed class PlatformDbContext(
 
   public DbSet<TenantSelectionTransaction> TenantSelectionTransactions => Set<TenantSelectionTransaction>();
 
+  public DbSet<LocalizationCatalogState> LocalizationCatalogStates => Set<LocalizationCatalogState>();
+
+  public DbSet<TenantLocalizationSettings> TenantLocalizationSettings => Set<TenantLocalizationSettings>();
+
+  public DbSet<TenantLocalizationOverride> TenantLocalizationOverrides => Set<TenantLocalizationOverride>();
+
+  public DbSet<TenantLocalizationOverrideVersion> TenantLocalizationOverrideVersions => Set<TenantLocalizationOverrideVersion>();
+
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
     modelBuilder.ApplyConfigurationsFromAssembly(typeof(PlatformDbContext).Assembly);
@@ -49,9 +58,27 @@ public sealed class PlatformDbContext(
   {
     PreventTenantDeletion();
     PreventAuthenticationHistoryDeletion();
+    PreventLocalizationHistoryMutation();
     PreventIdentityOwnershipChanges();
     PromoteAssignmentOwners();
     return base.SaveChangesAsync(cancellationToken);
+  }
+
+  private void PreventLocalizationHistoryMutation()
+  {
+    if (ChangeTracker.Entries<TenantLocalizationOverrideVersion>()
+      .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+    {
+      throw new InvalidOperationException("Tenant localization override versions are immutable and cannot be updated or deleted.");
+    }
+
+    if (ChangeTracker.Entries().Any(entry => entry.State == EntityState.Deleted &&
+      entry.Entity is LocalizationCatalogState or
+        SSAS.Platform.Domain.Localization.TenantLocalizationSettings or
+        TenantLocalizationOverride))
+    {
+      throw new InvalidOperationException("Localization state is retained and cannot be physically deleted.");
+    }
   }
 
   private void PreventAuthenticationHistoryDeletion()

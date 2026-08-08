@@ -26,11 +26,13 @@
     <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
     <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
     <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Infrastructure\SSAS.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Localization\SSAS.BuildingBlocks.Localization.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.API\SSAS.Platform.API.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Application\SSAS.Platform.Application.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />
+    <ProjectReference Include="..\..\tools\SSAS.Localization.CatalogTool\SSAS.Localization.CatalogTool.csproj" />
   </ItemGroup>
 
 </Project>

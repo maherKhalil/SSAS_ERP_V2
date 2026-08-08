@@ -90,6 +90,7 @@ public sealed class TenantLifecycleArchitectureTests
   {
     var eventTypes = typeof(Tenant).Assembly.GetTypes()
       .Where(type => typeof(DomainEvent).IsAssignableFrom(type))
+      .Where(type => type.Namespace == "SSAS.Platform.Domain.Events")
       .Where(type => type.Name.StartsWith("Tenant", StringComparison.Ordinal) &&
         type.Name is not "TenantUserActivated" and
         not "TenantUserDeactivated" and

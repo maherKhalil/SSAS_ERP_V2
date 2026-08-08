@@ -1,0 +1,126 @@
+{
+  "catalogSchemaVersion": 1,
+  "catalogVersion": 1,
+  "neutralFallbacks": {
+    "en": "Text unavailable",
+    "ar": "النص غير متاح"
+  },
+  "resources": [
+    {
+      "resourceKey": "platform.authentication.errors.authentication_failed",
+      "module": "platform",
+      "group": "authentication.errors",
+      "category": "Message",
+      "textFormat": "PlainText",
+      "securityClassification": "SecuritySensitiveNonOverridable",
+      "tenantOverridable": false,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "placeholderFingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compatibilityFingerprint": "b8a07f8682aa31eaaec16f4bc2b7143ade1d509c66a3690af642b3168f5b1061",
+      "defaults": {
+        "en": "Authentication failed.",
+        "ar": "فشلت المصادقة."
+      },
+      "description": "Generic non-enumerating authentication failure."
+    },
+    {
+      "resourceKey": "platform.authentication.errors.request_rejected",
+      "module": "platform",
+      "group": "authentication.errors",
+      "category": "Message",
+      "textFormat": "PlainText",
+      "securityClassification": "SecuritySensitiveNonOverridable",
+      "tenantOverridable": false,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "placeholderFingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compatibilityFingerprint": "2dccbbfa7e31513b9e8f9388afc7c96ec8e5d2f05486ccf056e2c54e3e76ec42",
+      "defaults": {
+        "en": "The request could not be completed.",
+        "ar": "تعذر إكمال الطلب."
+      },
+      "description": "Generic protected request failure."
+    },
+    {
+      "resourceKey": "platform.common.actions.cancel",
+      "module": "platform",
+      "group": "common.actions",
+      "category": "Action",
+      "textFormat": "PlainText",
+      "securityClassification": "Ordinary",
+      "tenantOverridable": true,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "placeholderFingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compatibilityFingerprint": "7731320dea8774f3301ea023fe19518f8842749937fa8b6748b0623830f96ba6",
+      "defaults": {
+        "en": "Cancel",
+        "ar": "إلغاء"
+      },
+      "description": "Common cancel action."
+    },
+    {
+      "resourceKey": "platform.common.actions.save",
+      "module": "platform",
+      "group": "common.actions",
+      "category": "Action",
+      "textFormat": "PlainText",
+      "securityClassification": "Ordinary",
+      "tenantOverridable": true,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "placeholderFingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compatibilityFingerprint": "6cfd93580f9f1d47a474a5c3f9fda354d4293b09a15c4b2277ed4916d8ce9db8",
+      "defaults": {
+        "en": "Save",
+        "ar": "حفظ"
+      },
+      "description": "Common save action."
+    },
+    {
+      "resourceKey": "platform.common.validation.required",
+      "module": "platform",
+      "group": "common.validation",
+      "category": "Validation",
+      "textFormat": "PlainText",
+      "securityClassification": "Ordinary",
+      "tenantOverridable": true,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [
+        "fieldName"
+      ],
+      "placeholderFingerprint": "6cc59071fa79c6403254a803a1b321c5d10188600ebd6744222b43f6fad0c9e6",
+      "compatibilityFingerprint": "c05b1efb6fbfb8130dd4b232b703d93c5aa7fed5470bbeb4199074c3bcd82686",
+      "defaults": {
+        "en": "{fieldName} is required.",
+        "ar": "حقل {fieldName} مطلوب."
+      },
+      "description": "Required-field validation message."
+    },
+    {
+      "resourceKey": "platform.localization.help.override_description",
+      "module": "platform",
+      "group": "localization.help",
+      "category": "Help",
+      "textFormat": "MultilineText",
+      "securityClassification": "Ordinary",
+      "tenantOverridable": true,
+      "lifecycle": "Active",
+      "resourceVersion": 1,
+      "placeholders": [],
+      "placeholderFingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compatibilityFingerprint": "bd27cc903845ac802127adb528ce7f728d4b6090db43beb78a4febc961d9fae2",
+      "defaults": {
+        "en": "Enter the tenant-specific text.\nPlain text only.",
+        "ar": "أدخل النص الخاص بالمستأجر.\nيُسمح بالنص فقط."
+      },
+      "description": "Tenant override editing guidance."
+    }
+  ]
+}

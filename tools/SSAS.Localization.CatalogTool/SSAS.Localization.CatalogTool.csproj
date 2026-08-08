@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Localization\SSAS.BuildingBlocks.Localization.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SSAS.Platform.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\BuildingBlocks\SSAS.BuildingBlocks.Localization\SSAS.BuildingBlocks.Localization.csproj" />
     <ProjectReference Include="..\..\src\Host\SSAS.Host.API\SSAS.Host.API.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Application\SSAS.Platform.Application.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj" />

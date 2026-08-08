@@ -17,6 +17,12 @@ using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Identity;
+using SSAS.BuildingBlocks.Localization.Catalog;
+using SSAS.BuildingBlocks.Localization.Generated;
+using SSAS.Platform.Application.Localization;
+using SSAS.Platform.Application.Abstractions.Localization;
+using SSAS.Platform.Infrastructure.Localization;
+using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 
 namespace SSAS.Platform.Infrastructure;
 
@@ -52,14 +58,26 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IAuthenticationSessionRepository, AuthenticationSessionRepository>();
     services.AddScoped<ITenantSelectionTransactionRepository, TenantSelectionTransactionRepository>();
     services.AddScoped<ITenantRepository, TenantRepository>();
+    services.AddScoped<ITenantLocalizationSettingsRepository, TenantLocalizationSettingsRepository>();
+    services.AddScoped<ITenantLocalizationOverrideRepository, TenantLocalizationOverrideRepository>();
     services.AddScoped<ITenantUserReadService, TenantUserReadService>();
     services.AddScoped<IRoleReadService, RoleReadService>();
     services.AddScoped<ITenantReadService, TenantReadService>();
     services.AddScoped<ITenantAuthenticationEligibilityReadService, TenantAuthenticationEligibilityReadService>();
+    services.AddScoped<ITenantLocalizationHistoryReadService, TenantLocalizationHistoryReadService>();
+    services.AddScoped<ITenantLocalizationOverrideReadService, TenantLocalizationOverrideReadService>();
+    services.AddScoped<ITenantLocalizationVersionReader, TenantLocalizationVersionReader>();
     services.AddScoped<IIdentityTenantMembershipReadService, IdentityTenantMembershipReadService>();
     services.AddScoped<IAccessTokenClaimsProvider, AccessTokenClaimsProvider>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
+    services.AddSingleton<ILocalizationCatalog>(GeneratedLocalizationCatalog.Instance);
+    services.AddSingleton<ILocalizationTenantCache, LocalizationMemoryCache>();
+    services.AddSingleton<ILocalizationDiagnostics, LocalizationDiagnostics>();
+    services.AddSingleton<IDomainEventConsumer, LocalizationCacheDomainEventConsumer>();
+    services.AddScoped<ILocalizationTextResolver, LocalizationTextResolver>();
+    services.AddScoped<ILocalizationCatalogActivationService, LocalizationCatalogActivationService>();
+    services.AddHostedService<LocalizationCatalogActivationHostedService>();
 
     services.AddOptions<AuthenticationPolicyOptions>()
       .Bind(configuration.GetSection(AuthenticationPolicyOptions.SectionName))
@@ -166,6 +184,11 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<GetTenantQueryHandler>();
     services.AddScoped<ListTenantsQueryHandler>();
     services.AddScoped<GetTenantAuthenticationEligibilityQueryHandler>();
+    services.AddScoped<CreateTenantLocalizationOverrideCommandHandler>();
+    services.AddScoped<UpdateTenantLocalizationOverrideCommandHandler>();
+    services.AddScoped<UndoTenantLocalizationOverrideCommandHandler>();
+    services.AddScoped<RestoreTenantLocalizationDefaultCommandHandler>();
+    services.AddScoped<GetTenantLocalizationHistoryQueryHandler>();
 
     return services;
   }

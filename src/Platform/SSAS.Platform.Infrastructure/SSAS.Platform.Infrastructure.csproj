@@ -11,6 +11,7 @@
     <ProjectReference Include="..\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj" />
     <ProjectReference Include="..\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\SSAS.BuildingBlocks.Infrastructure\SSAS.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\SSAS.BuildingBlocks.Localization\SSAS.BuildingBlocks.Localization.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

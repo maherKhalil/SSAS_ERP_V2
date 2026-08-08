@@ -205,6 +205,22 @@ SQL stores the highest successfully activated CatalogVersion for preflight but n
 
 Milestone 2 exposes exactly the nine approved current-Tenant routes, slash-style batch path, no DELETE, no writable TenantId, exact permissions, schemas, limits, projections, ProblemDetails, and OpenAPI.
 
+### FR-LOC-0141 - HTTP rowversion representation
+
+Milestone 2 localization HTTP transports exposed rowversions as canonical padded RFC 4648 Base64 strings compatible with .NET `System.Text.Json` byte-array representation. Expected rowversions must be nonblank, untrimmed, decodable, exact SQL-rowversion length, and canonical; Base64Url, hexadecimal, whitespace, and alternative encodings are request-validation failures.
+
+### FR-LOC-0142 - Effective HTTP authentication boundary
+
+All nine Milestone 2 localization routes are non-anonymous. Effective group and batch HTTP requests require authentication, trusted current Tenant context, and live eligibility, but ordinary runtime effective localization requires no `Platform.Localization.View` permission. Public/pre-Tenant HTTP exposure is deferred and no catalog public metadata or API allowlist is added in Milestone 2.
+
+### FR-LOC-0143 - Localization HTTP concurrency mapping
+
+The existing internal `Persistence.ConcurrencyConflict` remains unchanged. A valid but stale localization expected rowversion maps at the HTTP boundary to HTTP 409 `concurrency.conflict`; malformed or missing required rowversions are request-validation failures.
+
+### FR-LOC-0144 - Audit-readiness service response
+
+Production localization-management mutations fail closed with HTTP 503 `localization.audit_readiness_unavailable` when immutable-audit persistence, retention, or readiness is unavailable. The failure performs no mutation, database write, event, cache eviction, submitted-text logging, or internal-cause disclosure.
+
 ## Security requirements
 
 ### SEC-LOC-0201 - Trusted tenant context
@@ -261,7 +277,7 @@ Preview requires Manage and cannot make a non-overridable resource appear editab
 
 ### SEC-LOC-0214 - Public resolution boundary
 
-Anonymous access is limited to explicitly approved public system-default groups; private Tenant-effective groups require trusted Tenant selection.
+The Milestone 1 engine may support pre-Tenant system defaults, but Milestone 2 exposes no anonymous localization HTTP route. Any future anonymous access requires an explicitly approved public contract; Tenant-effective HTTP groups require trusted Tenant selection.
 
 ### SEC-LOC-0215 - Audit readiness enforcement
 
@@ -278,6 +294,10 @@ Invisible aggregate/resource cases follow the repository-safe not-found conventi
 ### SEC-LOC-0218 - Output culture safety
 
 RequestedCulture and ResolvedCulture report only supported culture values and cannot alter access decisions.
+
+### SEC-LOC-0219 - Milestone 2 HTTP exposure
+
+No Milestone 2 localization HTTP route is anonymous. Effective endpoints require authenticated trusted Tenant context; a non-Active Tenant receives no Tenant override and follows approved eligibility semantics. Arbitrary public catalog exposure is prohibited.
 
 ## Non-functional requirements
 

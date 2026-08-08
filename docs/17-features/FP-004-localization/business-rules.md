@@ -128,3 +128,19 @@ Events carry identifiers/version numbers, not full text. Dispatch envelope metad
 ### BRULE-LOC-0030 - Retirement and replacement
 
 Retired keys remain in lifecycle/history, accept no new overrides, stay out of ordinary groups, and transfer no wording; replacement always uses a new key.
+
+### BRULE-LOC-0031 - HTTP rowversion validation
+
+Localization HTTP accepts and emits only canonical padded RFC 4648 Base64 rowversions. Inputs are not trimmed and must decode to the exact SQL-rowversion length; blank, whitespace, Base64Url, hexadecimal, malformed, wrong-length, and noncanonical values are request-validation failures.
+
+### BRULE-LOC-0032 - Effective HTTP authentication
+
+Every Milestone 2 localization route is non-anonymous. Effective group and batch routes require an authenticated caller, trusted current Tenant, and live eligibility, while ordinary runtime effective resolution has no localization administrative permission requirement.
+
+### BRULE-LOC-0033 - Concurrency transport boundary
+
+Only a valid stale expected rowversion maps to HTTP 409 `concurrency.conflict`; the internal `Persistence.ConcurrencyConflict` error is not renamed. Invalid or missing required rowversions never map to concurrency conflict.
+
+### BRULE-LOC-0034 - Audit readiness availability
+
+Production immutable-audit readiness failure is HTTP 503 `localization.audit_readiness_unavailable`, not 403. It prevents mutation before Domain work, database state change, event, cache eviction, submitted-text logging, or disclosure of the internal reason.

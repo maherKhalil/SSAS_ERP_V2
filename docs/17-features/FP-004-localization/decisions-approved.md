@@ -75,6 +75,14 @@ Culture alone controls direction; per-resource exceptions are deferred pending e
 Framework-neutral timezone/date/number/currency context is independent; no silent inference from `en`/`ar`. Rationale: avoid regional errors.
 ## DEC-LOC-0032 - Resource retirement
 Lifecycle retention/replacement rules are final and require a new key for replacement. Rationale: immutable meaning and traceable history.
+## DEC-LOC-0033 - HTTP rowversion transport
+Milestone 2 transports every exposed localization rowversion as canonical padded RFC 4648 Base64, matching .NET `System.Text.Json` byte-array representation. Inputs must be nonblank, untrimmed, successfully decoded, exact SQL-rowversion length, and canonical; Base64Url and hexadecimal are rejected. Rationale: one interoperable wire representation without changing Domain/Application semantics.
+## DEC-LOC-0034 - Milestone 2 effective HTTP boundary
+All nine Milestone 2 localization routes are non-anonymous. The effective group and batch routes require an authenticated caller with trusted current Tenant context and live eligibility, but no localization administrative permission for ordinary runtime effective resolution. Public/pre-Tenant HTTP exposure, catalog audience metadata, and API allowlists are deferred. Rationale: do not expose arbitrary catalog groups without an approved public contract.
+## DEC-LOC-0035 - Localization concurrency HTTP mapping
+The internal `Persistence.ConcurrencyConflict` error remains unchanged and maps only at the localization HTTP boundary to HTTP 409 `concurrency.conflict`. A malformed rowversion is request validation, not concurrency. Rationale: preserve repository internals while giving clients a stable HTTP contract.
+## DEC-LOC-0036 - Audit-readiness service failure
+When Production immutable-audit readiness is unavailable, an otherwise authorized localization-management mutation fails closed with HTTP 503 `localization.audit_readiness_unavailable`. It is operational, not authorization, and leaks no internal cause or submitted text. Rationale: a granted permission cannot make an unavailable required service ready.
 
 ## Conflict register
 
@@ -108,5 +116,9 @@ Lifecycle retention/replacement rules are final and require a new key for replac
 | CONFLICT-LOC-0026 | ADR-009 payload wording vs dispatcher | FR-LOC-0121 | DEC-LOC-0028 | Deferred with explicit non-blocking dependency | Docs follow-up | ADR wording cleanup |
 | CONFLICT-LOC-0027 | Tenant lifecycle/cache staleness | FR-LOC-0124 | DEC-LOC-0024 | Resolved by approved decision | M1 | reuse live eligibility |
 | CONFLICT-LOC-0028 | migration/catalog rollback | FR-LOC-0134 | DEC-LOC-0025 | Production gate | Production | reviewed rollback package or verified backup procedure |
+| CONFLICT-LOC-0029 | no HTTP rowversion convention | FR-LOC-0141 | DEC-LOC-0033 | Resolved by approved decision | M2 | implement canonical validation/output |
+| CONFLICT-LOC-0030 | public/pre-Tenant HTTP exposure lacks catalog metadata | FR-LOC-0142 | DEC-LOC-0034 | Resolved by approved decision | M2 | future explicitly approved public contract |
+| CONFLICT-LOC-0031 | internal and HTTP concurrency code differ | FR-LOC-0143 | DEC-LOC-0035 | Resolved by approved decision | M2 | boundary mapping only |
+| CONFLICT-LOC-0032 | audit readiness previously resembled authorization denial | FR-LOC-0144 | DEC-LOC-0036 | Resolved by approved decision | M2 | fail-closed operational response |
 
 All prior Milestone 1 blockers are resolved. Deferred items are outside M1 and non-blocking; CONFLICT-LOC-0025 and CONFLICT-LOC-0028 are explicit Production gates.

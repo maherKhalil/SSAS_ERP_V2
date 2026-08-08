@@ -61,4 +61,4 @@ Production activation stores the highest successfully activated CatalogVersion. 
 
 ## Delivery boundary
 
-Milestone 1 supplies backend single/bounded-batch contracts and neutral client JSON only. Milestone 2 supplies HTTP/OpenAPI. Angular runtime/libraries/screens are later; public pre-authentication groups use system defaults, private Tenant-effective groups load only after trusted selection, and Tenant switch clears them.
+Milestone 1 supplies backend single/bounded-batch contracts and neutral client JSON only. Milestone 2 supplies authenticated HTTP/OpenAPI only; it exposes no anonymous pre-Tenant localization route. Angular runtime/libraries/screens are later; pre-authentication system-default use remains an engine capability, private Tenant-effective groups load only after trusted selection, and Tenant switch clears them.

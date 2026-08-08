@@ -106,15 +106,15 @@ GET history enforces auth/ViewHistory/current live Tenant/bounded stable paging/
 ### AC-LOC-0048 - Route: Preview
 POST preview enforces auth/Manage/current live Tenant/strict schema/no side effects/safe output/statuses/codes and OpenAPI.
 ### AC-LOC-0049 - Route: effective
-GET effective enforces auth/View/current live Tenant/bounded selectors/culture metadata/projection/codes and OpenAPI.
+GET effective enforces authentication/trusted live Tenant/bounded selectors/culture metadata/projection/codes and OpenAPI; ordinary runtime resolution does not require View.
 ### AC-LOC-0050 - Route: effective batch
-POST `/effective/batch` enforces auth/View/current live Tenant/strict unique bounded keys/culture/projection/codes and OpenAPI.
+POST `/effective/batch` enforces authentication/trusted live Tenant/strict unique bounded keys/culture/projection/codes and OpenAPI; ordinary runtime resolution does not require View.
 ### AC-LOC-0051 - Permission positives
 Each exact permission succeeds only for its documented operations.
 ### AC-LOC-0052 - Permission negatives
 Missing/wrong permission, ordinary user, anonymous management, Preview/Undo/Restore without Manage, and history without ViewHistory are denied.
 ### AC-LOC-0053 - Public/private boundary
-Anonymous users receive only approved public system-default groups; private Tenant-effective groups require trusted selection.
+Milestone 2 exposes no anonymous localization HTTP route. Effective HTTP requires trusted Tenant selection; future public system-default HTTP groups require an explicitly approved contract.
 ### AC-LOC-0054 - No writable TenantId
 Every future route rejects unknown TenantId and no input channel can alter current scope.
 ### AC-LOC-0055 - SQL uniqueness/coherence
@@ -129,3 +129,11 @@ Values at and above 512/4000 UTF-16 limits, including boundary surrogate pairs, 
 After 60 seconds from last successful SQL validation, Tenant overrides are excluded and health/telemetry reports degradation.
 ### AC-LOC-0060 - Formatting context
 Changing text culture alone changes neither timezone nor currency/number/date context.
+### AC-LOC-0061 - HTTP rowversion contract
+Localization HTTP accepts only canonical padded RFC 4648 Base64 rowversions of exact SQL-rowversion length, emits canonical Base64, rejects Base64Url/hex/blank/whitespace/malformed/wrong-length/noncanonical values with HTTP 400 `localization.rowversion_invalid`, and maps only valid stale values to 409 `concurrency.conflict`.
+### AC-LOC-0062 - Effective HTTP authentication boundary
+All nine M2 routes are non-anonymous. Effective group and batch reject anonymous and untrusted-Tenant callers, permit an Active trusted Tenant without View for ordinary runtime resolution, provide no Tenant override for non-Active Tenant, and expose no arbitrary public catalog group.
+### AC-LOC-0063 - Concurrency transport mapping
+`Persistence.ConcurrencyConflict` remains the internal result and localization HTTP returns HTTP 409 `concurrency.conflict`; malformed or missing required rowversions are request validation, not concurrency.
+### AC-LOC-0064 - Audit readiness availability
+An otherwise authorized Production localization mutation proceeds only when audit readiness succeeds; otherwise it returns HTTP 503 `localization.audit_readiness_unavailable` with no SQL state change, Domain event, cache eviction, submitted-text logging, or internal-cause disclosure.

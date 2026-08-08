@@ -98,7 +98,8 @@ public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory f
     Assert.Equal(["targetVersionNumber", "expectedRowVersion"], RequestProperties(root, paths, "/api/platform/localization/resources/{resourceKey}/overrides/{culture}/undo", "post"));
     Assert.Equal(["expectedRowVersion"], RequestProperties(root, paths, "/api/platform/localization/resources/{resourceKey}/overrides/{culture}/restore-default", "post"));
     Assert.Equal(["resourceKey", "culture", "value"], RequestProperties(root, paths, "/api/platform/localization/preview", "post"));
-    Assert.Equal(["culture", "resourceKeys"], RequestProperties(root, paths, "/api/platform/localization/effective/batch", "post"));
+    Assert.Equal(["culture", "resourceKeys", "placeholderValuesByResource"],
+      RequestProperties(root, paths, "/api/platform/localization/effective/batch", "post"));
 
     foreach (var (path, method) in new[]
     {
@@ -111,14 +112,26 @@ public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory f
     {
       var schema = RequestSchema(root, paths, path, method);
       Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
-      Assert.Equal(schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).Order(),
-        schema.GetProperty("required").EnumerateArray().Select(property => property.GetString()).Order());
+      var required = schema.GetProperty("required").EnumerateArray().Select(property => property.GetString()).Order().ToArray();
+      if (path == "/api/platform/localization/effective/batch")
+      {
+        Assert.Equal(["culture", "resourceKeys"], required);
+      }
+      else
+      {
+        Assert.Equal(schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).Order(), required);
+      }
     }
 
     var batchSchema = RequestSchema(root, paths, "/api/platform/localization/effective/batch", "post");
     Assert.Equal(100, batchSchema.GetProperty("properties").GetProperty("resourceKeys").GetProperty("maxItems").GetInt32());
     Assert.True(batchSchema.GetProperty("properties").GetProperty("resourceKeys").GetProperty("uniqueItems").GetBoolean());
     Assert.Equal(["en", "ar"], batchSchema.GetProperty("properties").GetProperty("culture").GetProperty("enum").EnumerateArray().Select(value => value.GetString()));
+    var placeholderValues = batchSchema.GetProperty("properties").GetProperty("placeholderValuesByResource");
+    Assert.Equal("object", placeholderValues.GetProperty("type").GetString());
+    Assert.Equal(100, placeholderValues.GetProperty("maxProperties").GetInt32());
+    Assert.Equal("string", placeholderValues.GetProperty("additionalProperties").GetProperty("additionalProperties")
+      .GetProperty("type").GetString());
 
     var putSchema = RequestSchema(root, paths, "/api/platform/localization/resources/{resourceKey}/overrides/{culture}", "put");
     var rowVersion = putSchema.GetProperty("properties").GetProperty("expectedRowVersion");
@@ -148,6 +161,14 @@ public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory f
         .GetProperty("schema").GetProperty("$ref").GetString());
     }
     Assert.False(effective.GetProperty("responses").TryGetProperty("503", out _));
+    Assert.False(effective.GetProperty("responses").TryGetProperty("422", out _));
+    Assert.Contains("raw effective localization templates", effective.GetProperty("description").GetString(), StringComparison.Ordinal);
+    Assert.True(paths.GetProperty("/api/platform/localization/effective/batch").GetProperty("post")
+      .GetProperty("responses").TryGetProperty("422", out _));
+
+    var put = paths.GetProperty("/api/platform/localization/resources/{resourceKey}/overrides/{culture}").GetProperty("put");
+    Assert.Equal("#/components/schemas/LocalizationMutationResponse", ResponseSchemaReference(put, "200"));
+    Assert.Equal("#/components/schemas/LocalizationMutationResponse", ResponseSchemaReference(put, "201"));
 
     var problemSchema = root.GetProperty("components").GetProperty("schemas").GetProperty("ProblemDetails");
     Assert.Equal(["code", "correlationId", "resourceKey", "status", "type"], problemSchema.GetProperty("required")
@@ -177,6 +198,10 @@ public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory f
     paths.GetProperty(path).GetProperty(method).GetProperty("parameters").EnumerateArray()
       .Where(parameter => parameter.GetProperty("in").GetString() == "query")
       .Select(parameter => parameter.GetProperty("name").GetString()).Order().ToArray();
+
+  private static string? ResponseSchemaReference(JsonElement operation, string status) =>
+    operation.GetProperty("responses").GetProperty(status).GetProperty("content").GetProperty("application/json")
+      .GetProperty("schema").GetProperty("$ref").GetString();
 
   private sealed class ActiveTenantEligibility : IRequestTenantEligibility
   {

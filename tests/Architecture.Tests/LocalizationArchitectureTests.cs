@@ -225,7 +225,7 @@ public sealed class LocalizationArchitectureTests
     var source = File.ReadAllText(path);
 
     Assert.Contains("ILocalizationTextResolver", source, StringComparison.Ordinal);
-    Assert.Contains("ResolveGroupAsync", source, StringComparison.Ordinal);
+    Assert.Contains("ResolveTemplateGroupAsync", source, StringComparison.Ordinal);
     Assert.Contains("ResolveExplicitBatchAsync", source, StringComparison.Ordinal);
     Assert.DoesNotContain("DbContext", source, StringComparison.Ordinal);
     Assert.DoesNotContain("DbSet", source, StringComparison.Ordinal);

@@ -288,8 +288,18 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
 
   private sealed class Resolver(State state) : ILocalizationTextResolver
   {
+    public Task<Result<EffectiveLocalizedText>> ResolveTemplateAsync(
+      LocalizationResolutionRequest request,
+      CancellationToken cancellationToken = default) =>
+      ResolveAsync(request, cancellationToken);
+
     public Task<Result<EffectiveLocalizedText>> ResolveAsync(LocalizationResolutionRequest request, CancellationToken cancellationToken = default) =>
       Task.FromResult(Result.Failure<EffectiveLocalizedText>(LocalizationResolutionErrors.InvalidGroup));
+
+    public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveTemplateExplicitBatchAsync(
+      LocalizationExplicitBatchRequest request,
+      CancellationToken cancellationToken = default) =>
+      ResolveExplicitBatchAsync(request, cancellationToken);
 
     public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveExplicitBatchAsync(
       LocalizationExplicitBatchRequest request,
@@ -305,7 +315,7 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
         request.ResourceKeys.OrderBy(key => key, StringComparer.Ordinal).Select((key, index) => Item(key, request.RequestedCulture, index == 0)).ToArray()));
     }
 
-    public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveGroupAsync(
+    public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveTemplateGroupAsync(
       LocalizationGroupBatchRequest request,
       CancellationToken cancellationToken = default)
     {
@@ -319,6 +329,11 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
       return Task.FromResult(Result.Success<IReadOnlyList<EffectiveLocalizedText>>(
         [Item("platform.common.actions.cancel", request.RequestedCulture, false), Item("platform.common.actions.save", request.RequestedCulture, true)]));
     }
+
+    public Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveGroupAsync(
+      LocalizationGroupBatchRequest request,
+      CancellationToken cancellationToken = default) =>
+      ResolveTemplateGroupAsync(request, cancellationToken);
 
     private static EffectiveLocalizedText Item(string key, string culture, bool overrideValue)
     {

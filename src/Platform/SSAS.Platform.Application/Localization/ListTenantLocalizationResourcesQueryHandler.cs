@@ -45,7 +45,7 @@ public sealed class ListTenantLocalizationResourcesQueryHandler(
     var overrides = definitions.Length == 0 ? [] : await administrationReadService.ReadAsync(
       tenantId, culture.Value, definitions.Select(item => item.ResourceKey).ToArray(), cancellationToken);
     var overridesByKey = overrides.ToDictionary(item => item.ResourceKey, StringComparer.Ordinal);
-    var resolved = definitions.Length == 0 ? Result.Success<IReadOnlyList<EffectiveLocalizedText>>([]) : await resolver.ResolveExplicitBatchAsync(
+    var resolved = definitions.Length == 0 ? Result.Success<IReadOnlyList<EffectiveLocalizedText>>([]) : await resolver.ResolveTemplateExplicitBatchAsync(
       new LocalizationExplicitBatchRequest(definitions.Select(item => item.ResourceKey.Value).ToArray(), culture.Value.Value), cancellationToken);
     if (resolved.IsFailure) return Result.Failure<PagedResult<LocalizationAdministrationResource>>(resolved.Error);
     var effectiveByKey = resolved.Value.ToDictionary(item => item.ResourceKey.Value, StringComparer.Ordinal);

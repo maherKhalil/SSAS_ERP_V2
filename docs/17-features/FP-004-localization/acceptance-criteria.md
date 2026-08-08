@@ -92,9 +92,9 @@ Protected projector obtains prior/new text from immutable committed versions, in
 ### AC-LOC-0041 - Retirement
 Retired keys stay in history, cannot receive overrides, leave ordinary groups, are never reused, and transfer nothing.
 ### AC-LOC-0042 - Route: list resources
-GET `/resources` enforces auth/View/current live Tenant/strict bounded filters/paging/safe projection/codes/cross-Tenant denial and exact OpenAPI.
+GET `/resources` enforces auth/View/current live Tenant/strict bounded filters/paging/safe raw-template projection/codes/cross-Tenant denial and exact OpenAPI; placeholder-bearing templates require no interpolation values.
 ### AC-LOC-0043 - Route: get resource
-GET `/resources/{resourceKey}` enforces auth/View/current live Tenant/safe not-found/projection/codes and exact OpenAPI.
+GET `/resources/{resourceKey}` enforces auth/View/current live Tenant/safe not-found/raw-template projection/codes and exact OpenAPI; placeholder-bearing templates require no interpolation values.
 ### AC-LOC-0044 - Route: PUT override
 PUT override enforces auth/Manage/current live Tenant/strict body/UTF-16/parser/security/create-update semantics/statuses/codes and OpenAPI.
 ### AC-LOC-0045 - Route: Undo
@@ -106,9 +106,9 @@ GET history enforces auth/ViewHistory/current live Tenant/bounded stable paging/
 ### AC-LOC-0048 - Route: Preview
 POST preview enforces auth/Manage/current live Tenant/strict schema/no side effects/safe output/statuses/codes and OpenAPI.
 ### AC-LOC-0049 - Route: effective
-GET effective enforces authentication/trusted live Tenant/bounded selectors/culture metadata/projection/codes and OpenAPI; ordinary runtime resolution does not require View.
+GET effective enforces authentication/trusted live Tenant/bounded selectors/culture metadata/raw effective-template projection/codes and OpenAPI; it performs no placeholder interpolation and ordinary runtime resolution does not require View.
 ### AC-LOC-0050 - Route: effective batch
-POST `/effective/batch` enforces authentication/trusted live Tenant/strict unique bounded keys/culture/projection/codes and OpenAPI; ordinary runtime resolution does not require View.
+POST `/effective/batch` enforces authentication/trusted live Tenant/strict unique bounded keys/culture/optional resource-scoped plain-string placeholder values/projection/codes and OpenAPI; malformed or unrequested maps fail request validation, missing/unknown placeholders fail policy validation, and ordinary runtime resolution does not require View.
 ### AC-LOC-0051 - Permission positives
 Each exact permission succeeds only for its documented operations.
 ### AC-LOC-0052 - Permission negatives

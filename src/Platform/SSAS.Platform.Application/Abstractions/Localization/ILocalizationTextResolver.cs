@@ -6,12 +6,24 @@ namespace SSAS.Platform.Application.Abstractions.Localization;
 
 public interface ILocalizationTextResolver
 {
+  Task<Result<EffectiveLocalizedText>> ResolveTemplateAsync(
+    LocalizationResolutionRequest request,
+    CancellationToken cancellationToken = default);
+
   Task<Result<EffectiveLocalizedText>> ResolveAsync(
     LocalizationResolutionRequest request,
     CancellationToken cancellationToken = default);
 
+  Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveTemplateExplicitBatchAsync(
+    LocalizationExplicitBatchRequest request,
+    CancellationToken cancellationToken = default);
+
   Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveExplicitBatchAsync(
     LocalizationExplicitBatchRequest request,
+    CancellationToken cancellationToken = default);
+
+  Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveTemplateGroupAsync(
+    LocalizationGroupBatchRequest request,
     CancellationToken cancellationToken = default);
 
   Task<Result<IReadOnlyList<EffectiveLocalizedText>>> ResolveGroupAsync(

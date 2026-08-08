@@ -71,7 +71,7 @@ Resolution is compatible active Tenant override, requested-culture system defaul
 
 ### FR-LOC-0107 - Bounded batch resolution
 
-The resolver supports a single key and a deterministic bounded batch. The Application contract sets a positive maximum and rejects duplicates or excess before persistence/cache access.
+The resolver supports a single key and a deterministic bounded batch. The Application contract sets a positive maximum and rejects duplicates or excess before persistence/cache access. Effective template selection is available independently from optional placeholder substitution.
 
 ### FR-LOC-0108 - Placeholder validation
 
@@ -99,7 +99,7 @@ A later PUT reactivates the same retained aggregate identity as an update and re
 
 ### FR-LOC-0114 - Resource administration reads
 
-Future reads provide bounded catalog/override compatibility projections for the trusted current Tenant without exposing writable TenantId.
+Future reads provide bounded catalog/override compatibility projections for the trusted current Tenant without exposing writable TenantId. They return raw effective templates and do not require runtime placeholder values.
 
 ### FR-LOC-0115 - History read
 

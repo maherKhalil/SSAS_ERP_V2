@@ -20,7 +20,9 @@ public sealed record PreviewLocalizationRequest(
 
 public sealed record EffectiveLocalizationBatchRequest(
   [property: JsonPropertyName("culture")] string? Culture,
-  [property: JsonPropertyName("resourceKeys")] IReadOnlyList<string>? ResourceKeys);
+  [property: JsonPropertyName("resourceKeys")] IReadOnlyList<string>? ResourceKeys,
+  [property: JsonPropertyName("placeholderValuesByResource")]
+  IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? PlaceholderValuesByResource);
 
 public sealed record EffectiveLocalizationItemResponse(
   string ResourceKey,

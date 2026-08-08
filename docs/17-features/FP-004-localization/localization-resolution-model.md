@@ -37,7 +37,7 @@ Production completeness requires both defaults for every Active resource; there 
 
 ## Placeholder and rendering pipeline
 
-Parse resource text using exact braces and name grammar. Distinct names must equal the catalog set; order and repeated occurrences may differ. Resolve first, then substitute encoded text values once; never reparse substituted values. Text is never markup/code. PlainText/MultilineText validation counts UTF-16 code units and preserves valid Unicode and line endings without normalization or trim.
+Parse resource text using exact braces and name grammar. Distinct names must equal the catalog set; order and repeated occurrences may differ. Resolve the effective raw template first, then optionally substitute encoded text values once; never reparse substituted values. Administration and effective GET stop after template selection. Effective POST batch performs substitution when exact resource-scoped placeholder values are supplied. Text is never markup/code. PlainText/MultilineText validation counts UTF-16 code units and preserves valid Unicode and line endings without normalization or trim.
 
 RequestedCulture and ResolvedCulture are separate. Direction derives only from ResolvedCulture (`en/ltr`, `ar/rtl`). FormattingContext is separate; text culture does not select currency/timezone.
 

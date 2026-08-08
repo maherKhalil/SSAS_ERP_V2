@@ -35,7 +35,7 @@ Each numbered AC/TS verifies method/path, auth, permission, trusted Tenant deriv
 
 PUT body: `{ "value": string, "expectedRowVersion": string|null }`. `null` is create-only: absent aggregate creates; existing (including restored inactive) returns 409 `localization.override_already_exists`. Non-null is update-only: missing returns 409 `localization.override_missing`; a valid stale value returns 409 `concurrency.conflict`; a matching value updates. Concurrent creates yield exactly one success and one deterministic 409. Culture is route `en|ar`; ResourceKey is route identity.
 
-Undo body: `{ "targetVersion": integer, "expectedRowVersion": string }`. Target must equal the server-advertised eligible lineage predecessor. Stale: 409 `concurrency.conflict`; no predecessor: 409 `localization.undo_not_available`; wrong target: 422 `localization.undo_target_invalid`; incompatible target: 422 `localization.undo_target_incompatible`.
+Undo body: `{ "targetVersionNumber": integer, "expectedRowVersion": string }`. Target must equal the server-advertised eligible lineage predecessor. Stale: 409 `concurrency.conflict`; no predecessor: 409 `localization.undo_not_available`; wrong target: 422 `localization.undo_target_invalid`; incompatible target: 422 `localization.undo_target_incompatible`.
 
 Restore body: `{ "expectedRowVersion": string }`. It retains the aggregate inactive and appends history; missing/stale use `localization.override_missing`/`concurrency.conflict` at 409.
 
@@ -45,11 +45,11 @@ Every `expectedRowVersion` and exposed `rowVersion` uses canonical padded RFC 46
 
 Preview body: `{ "resourceKey": string, "culture": "en"|"ar", "value": string }`. It returns encoded text-only preview plus validation metadata and performs no write/version/event/shared-cache insertion/logged text. A non-overridable resource is rejected as uneditable.
 
-Effective batch body: `{ "resourceKeys": string[], "requestedCulture": "en"|"ar", "formattingContext"?: object }`; keys are unique and count-bounded. Single effective query uses bounded resource/group selectors and requestedCulture. Formatting fields are typed, independent, and cannot be inferred from culture.
+Effective batch body: `{ "culture": "en"|"ar", "resourceKeys": string[], "placeholderValuesByResource"?: { [resourceKey]: { [placeholderName]: string } } }`. Keys are ordinally unique and count-bounded. Placeholder entries are optional, may name only requested catalog resources, use exact ordinal catalog placeholder names, and contain plain string values. Missing or unknown placeholder values fail with 422 `localization.placeholder_mismatch`; malformed, duplicate, unrequested, or wrongly typed map entries fail strict request validation. The effective GET query accepts only `culture`, `module`, and `group` and returns raw effective templates without interpolation. Regional `FormattingContext` remains independent and complex HTTP formatting is deferred; neither effective route accepts a `formattingContext` field in Milestone 2.
 
 ## Read/query contracts
 
-List supports bounded filters for culture, lifecycle, compatibility, and search; comparisons are explicitly documented (ResourceKey ordinal; display-search culture-aware only when implemented). Detail contains both defaults, Tenant current state, compatibility, rowversion, and eligible Undo target. History is newest-first with VersionNumber stable ordering and protected values only for ViewHistory. Retired keys are absent from ordinary effective output but visible to authorized history/diagnostics.
+List supports bounded filters for culture, lifecycle, compatibility, and search; comparisons are explicitly documented (ResourceKey ordinal; display-search culture-aware only when implemented). Administration list/detail return the selected effective raw template and never require runtime placeholder values. Detail contains both defaults, Tenant current state, compatibility, rowversion, and eligible Undo target. History is newest-first with VersionNumber stable ordering and protected values only for ViewHistory. Retired keys are absent from ordinary effective output but visible to authorized history/diagnostics.
 
 ## ProblemDetails
 

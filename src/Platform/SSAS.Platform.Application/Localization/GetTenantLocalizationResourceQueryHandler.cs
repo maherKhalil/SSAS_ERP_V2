@@ -29,7 +29,7 @@ public sealed class GetTenantLocalizationResourceQueryHandler(
     if (!catalog.TryGet(key.Value, out var definition)) return Result.Failure<LocalizationAdministrationDetail>(LocalizationDomainErrors.ResourceNotFound);
 
     var overrides = await administrationReadService.ReadAsync(tenantId, culture.Value, [key.Value], cancellationToken);
-    var resolved = await resolver.ResolveAsync(new LocalizationResolutionRequest(key.Value.Value, culture.Value.Value), cancellationToken);
+    var resolved = await resolver.ResolveTemplateAsync(new LocalizationResolutionRequest(key.Value.Value, culture.Value.Value), cancellationToken);
     if (resolved.IsFailure) return Result.Failure<LocalizationAdministrationDetail>(resolved.Error);
     var resource = ListTenantLocalizationResourcesQueryHandler.Map(definition, culture.Value, overrides.SingleOrDefault(), resolved.Value, catalog.CatalogVersion.Value);
     return Result.Success(new LocalizationAdministrationDetail(resource, definition.EnglishDefault, definition.ArabicDefault));

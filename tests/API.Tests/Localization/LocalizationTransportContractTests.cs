@@ -32,6 +32,27 @@ public sealed class LocalizationTransportContractTests
   }
 
   [Fact]
+  public void Effective_batch_transport_uses_resource_scoped_plain_string_placeholder_values()
+  {
+    var request = new EffectiveLocalizationBatchRequest(
+      "en",
+      ["platform.common.validation.required"],
+      new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal)
+      {
+        ["platform.common.validation.required"] = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+          ["fieldName"] = "Name"
+        }
+      });
+
+    var json = JsonSerializer.Serialize(request, JsonOptions);
+
+    Assert.Equal(
+      "{\"culture\":\"en\",\"resourceKeys\":[\"platform.common.validation.required\"],\"placeholderValuesByResource\":{\"platform.common.validation.required\":{\"fieldName\":\"Name\"}}}",
+      json);
+  }
+
+  [Fact]
   public void Error_mapper_maps_internal_concurrency_to_http_contract()
   {
     Assert.True(LocalizationApiErrorMapper.TryMap(IdentityAccessErrors.ConcurrencyConflict.Code, out var error));

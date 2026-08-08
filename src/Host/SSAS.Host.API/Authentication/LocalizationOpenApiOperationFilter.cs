@@ -29,13 +29,14 @@ public sealed class LocalizationOpenApiOperationFilter : IOperationFilter
     switch (path)
     {
       case "/api/platform/localization/effective":
+        operation.Description = "Returns raw effective localization templates for an authenticated trusted active Tenant. No localization administrative permission is required; placeholder substitution is performed by the explicit batch route.";
         AddQueryParameter(operation, "culture", "Requested culture. Supported values: en, ar.", required: true, culture: true);
         AddQueryParameter(operation, "module", "Exact bounded localization module identity.", required: true);
         AddQueryParameter(operation, "group", "Exact bounded localization group identity; responses contain at most 250 active resources.", required: true);
         SetSuccessSchema<EffectiveLocalizationResponse>(operation, context);
         break;
       case "/api/platform/localization/effective/batch":
-        operation.Description = "Resolves at most 100 unique resource keys for the trusted active Tenant.";
+        operation.Description = "Resolves and formats at most 100 unique resource keys for the trusted active Tenant using an optional resource-scoped placeholder map.";
         SetRequestSchema<EffectiveLocalizationBatchRequest>(operation, context);
         SetSuccessSchema<EffectiveLocalizationResponse>(operation, context);
         break;
@@ -92,7 +93,7 @@ public sealed class LocalizationOpenApiOperationFilter : IOperationFilter
     {
       SetRequestSchema<PutLocalizationOverrideRequest>(operation, context);
       SetSuccessSchema<LocalizationMutationResponse>(operation, context);
-      EnsureResponse(operation, "201", "Created.");
+      SetResponseSchema<LocalizationMutationResponse>(operation, context, "201", "Created.");
     }
     else
     {
@@ -122,6 +123,10 @@ public sealed class LocalizationOpenApiOperationFilter : IOperationFilter
     else if (path.EndsWith("/preview", StringComparison.Ordinal))
     {
       EnsureResponse(operation, "422", "The localization policy rejected the preview.");
+    }
+    else if (path.EndsWith("/effective/batch", StringComparison.Ordinal))
+    {
+      EnsureResponse(operation, "422", "The supplied placeholder values do not match the requested resource contracts.");
     }
   }
 
@@ -206,9 +211,16 @@ public sealed class LocalizationOpenApiOperationFilter : IOperationFilter
     };
   }
 
-  private static void SetSuccessSchema<T>(OpenApiOperation operation, OperationFilterContext context)
+  private static void SetSuccessSchema<T>(OpenApiOperation operation, OperationFilterContext context) =>
+    SetResponseSchema<T>(operation, context, "200", "Successful response.");
+
+  private static void SetResponseSchema<T>(
+    OpenApiOperation operation,
+    OperationFilterContext context,
+    string status,
+    string description)
   {
-    var success = EnsureResponse(operation, "200", "Successful response.");
+    var success = EnsureResponse(operation, status, description);
     success.Content["application/json"] = new OpenApiMediaType
     {
       Schema = context.SchemaGenerator.GenerateSchema(typeof(T), context.SchemaRepository)
@@ -253,6 +265,7 @@ public sealed class LocalizationOpenApiOperationFilter : IOperationFilter
         schema.AdditionalPropertiesAllowed = false;
         foreach (var propertyName in schema.Properties.Keys)
         {
+          if (name == nameof(EffectiveLocalizationBatchRequest) && propertyName == "placeholderValuesByResource") continue;
           schema.Required.Add(propertyName);
         }
       }
@@ -275,6 +288,20 @@ public sealed class LocalizationOpenApiOperationFilter : IOperationFilter
         {
           property.MaxItems = LocalizationTextResolver.MaximumExplicitBatchSize;
           property.UniqueItems = true;
+        }
+
+        if (propertyName == "placeholderValuesByResource")
+        {
+          property.Type = "object";
+          property.Description = "Optional map keyed by a requested ResourceKey. Each value maps that resource's exact placeholder names to plain string values.";
+          property.MaxProperties = LocalizationTextResolver.MaximumExplicitBatchSize;
+          property.AdditionalPropertiesAllowed = true;
+          property.AdditionalProperties = new OpenApiSchema
+          {
+            Type = "object",
+            AdditionalPropertiesAllowed = true,
+            AdditionalProperties = new OpenApiSchema { Type = "string" }
+          };
         }
 
         if (name == nameof(EffectiveLocalizationResponse) && propertyName == "items")

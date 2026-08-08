@@ -96,15 +96,15 @@ module: Platform
 
 ## Dedicated Milestone 2 route tests
 
-- **TS-LOC-0071:** GET resources verifies exact path/method/auth/View/Tenant/live/filter/paging/schema/status/errors/isolation/OpenAPI.
-- **TS-LOC-0072:** GET resource verifies exact path/method/auth/View/Tenant/live/safe-not-found/projection/errors/OpenAPI.
+- **TS-LOC-0071:** GET resources verifies exact path/method/auth/View/Tenant/live/filter/paging/schema/status/errors/isolation/OpenAPI and raw placeholder-bearing templates without interpolation values.
+- **TS-LOC-0072:** GET resource verifies exact path/method/auth/View/Tenant/live/safe-not-found/projection/errors/OpenAPI and raw placeholder-bearing templates without interpolation values.
 - **TS-LOC-0073:** PUT override verifies exact path/auth/Manage/Tenant/live/strict schema/limits/create-update conflicts/projection/OpenAPI.
 - **TS-LOC-0074:** POST Undo verifies exact path/auth/Manage/Tenant/live/strict lineage/rowversion/exact 409/422 mappings/OpenAPI.
 - **TS-LOC-0075:** POST restore-default verifies exact path/auth/Manage/Tenant/live/strict rowversion/retention/errors/OpenAPI.
 - **TS-LOC-0076:** GET history verifies exact path/auth/ViewHistory/Tenant/live/bounded stable paging/safe projection/OpenAPI.
 - **TS-LOC-0077:** POST preview verifies exact path/auth/Manage/Tenant/live/strict validation/no side effects/safe output/OpenAPI.
-- **TS-LOC-0078:** GET effective verifies exact path/auth/trusted live Tenant/no administrative permission for ordinary runtime resolution/bounds/culture metadata/projection/errors/OpenAPI.
-- **TS-LOC-0079:** POST effective/batch verifies slash path/auth/trusted live Tenant/no administrative permission for ordinary runtime resolution/strict unique bounded keys/projection/errors/OpenAPI.
+- **TS-LOC-0078:** GET effective verifies exact path/auth/trusted live Tenant/no administrative permission for ordinary runtime resolution/bounds/culture metadata/raw effective templates without interpolation/projection/errors/OpenAPI.
+- **TS-LOC-0079:** POST effective/batch verifies slash path/auth/trusted live Tenant/no administrative permission for ordinary runtime resolution/strict unique bounded keys/optional resource-scoped plain-string placeholder values/missing and unknown placeholder failures/projection/errors/OpenAPI.
 
 ## Cache, rollback, audit, and remaining focused gates
 

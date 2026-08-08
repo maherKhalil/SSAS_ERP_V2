@@ -8,6 +8,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Localization;
 using SSAS.BuildingBlocks.Localization.Catalog;
 using SSAS.Platform.Application.Abstractions.Localization;
 using SSAS.Platform.Application.Abstractions.Queries;
@@ -207,7 +208,7 @@ public static class LocalizationEndpointRouteBuilderExtensions
       return Problem(context, LocalizationApiErrorMapper.TenantIneligible);
     }
 
-    var result = await resolver.ResolveGroupAsync(request, cancellationToken);
+    var result = await resolver.ResolveTemplateGroupAsync(request, cancellationToken);
     return result.IsFailure
       ? Problem(context, Map(result.Error))
       : Results.Ok(MapEffective(request.RequestedCulture, catalog.CatalogVersion.Value, result.Value));
@@ -223,10 +224,18 @@ public static class LocalizationEndpointRouteBuilderExtensions
   {
     LocalizationResponseSecurity.Apply(context);
     var request = await ReadStrictJsonAsync<EffectiveLocalizationBatchRequest>(context,
-      new Dictionary<string, JsonValueKind[]> { ["culture"] = [JsonValueKind.String], ["resourceKeys"] = [JsonValueKind.Array] },
-      cancellationToken);
+      new Dictionary<string, JsonValueKind[]>
+      {
+        ["culture"] = [JsonValueKind.String],
+        ["resourceKeys"] = [JsonValueKind.Array],
+        ["placeholderValuesByResource"] = [JsonValueKind.Object]
+      },
+      cancellationToken,
+      requiredFields: ["culture", "resourceKeys"],
+      additionalValidation: IsStrictEffectiveBatchJson);
     if (request?.Culture is null || request.ResourceKeys is null || request.ResourceKeys.Any(string.IsNullOrWhiteSpace) ||
-      request.ResourceKeys.Distinct(StringComparer.Ordinal).Count() != request.ResourceKeys.Count)
+      request.ResourceKeys.Distinct(StringComparer.Ordinal).Count() != request.ResourceKeys.Count ||
+      !HasValidPlaceholderResourceScope(request, catalog))
     {
       return Problem(context, LocalizationApiErrorMapper.InvalidRequest);
     }
@@ -236,7 +245,10 @@ public static class LocalizationEndpointRouteBuilderExtensions
       return Problem(context, LocalizationApiErrorMapper.TenantIneligible);
     }
 
-    var result = await resolver.ResolveExplicitBatchAsync(new LocalizationExplicitBatchRequest(request.ResourceKeys, request.Culture), cancellationToken);
+    var result = await resolver.ResolveExplicitBatchAsync(new LocalizationExplicitBatchRequest(
+      request.ResourceKeys,
+      request.Culture,
+      request.PlaceholderValuesByResource), cancellationToken);
     return result.IsFailure
       ? Problem(context, Map(result.Error))
       : Results.Ok(MapEffective(request.Culture, catalog.CatalogVersion.Value, result.Value));
@@ -369,8 +381,59 @@ public static class LocalizationEndpointRouteBuilderExtensions
   private static bool IsOneOf(string? value, IReadOnlyCollection<string> allowed) =>
     value is null || allowed.Contains(value, StringComparer.Ordinal);
 
+  private static bool IsStrictEffectiveBatchJson(JsonElement root)
+  {
+    if (!root.TryGetProperty("placeholderValuesByResource", out var placeholderValues)) return true;
+    var requested = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var item in root.GetProperty("resourceKeys").EnumerateArray())
+    {
+      if (item.ValueKind != JsonValueKind.String || item.GetString() is not { } resourceKey) return false;
+      requested.Add(resourceKey);
+    }
+
+    var seenResources = new HashSet<string>(StringComparer.Ordinal);
+    var resourceCount = 0;
+    foreach (var resource in placeholderValues.EnumerateObject())
+    {
+      if (++resourceCount > LocalizationTextResolver.MaximumExplicitBatchSize ||
+        !seenResources.Add(resource.Name) ||
+        !requested.Contains(resource.Name) ||
+        ResourceKey.Create(resource.Name).IsFailure ||
+        resource.Value.ValueKind != JsonValueKind.Object)
+      {
+        return false;
+      }
+
+      var seenPlaceholders = new HashSet<string>(StringComparer.Ordinal);
+      foreach (var placeholder in resource.Value.EnumerateObject())
+      {
+        if (!seenPlaceholders.Add(placeholder.Name) || placeholder.Value.ValueKind != JsonValueKind.String) return false;
+      }
+    }
+
+    return true;
+  }
+
+  private static bool HasValidPlaceholderResourceScope(
+    EffectiveLocalizationBatchRequest request,
+    ILocalizationCatalog catalog)
+  {
+    if (request.PlaceholderValuesByResource is null) return true;
+    var requested = request.ResourceKeys!.ToHashSet(StringComparer.Ordinal);
+    foreach (var resourceKey in request.PlaceholderValuesByResource.Keys)
+    {
+      var parsed = ResourceKey.Create(resourceKey);
+      if (!requested.Contains(resourceKey) || parsed.IsFailure || !catalog.TryGet(parsed.Value, out _)) return false;
+    }
+
+    return true;
+  }
+
   private static async Task<T?> ReadStrictJsonAsync<T>(HttpContext context,
-    Dictionary<string, JsonValueKind[]> fields, CancellationToken cancellationToken) where T : class
+    Dictionary<string, JsonValueKind[]> fields,
+    CancellationToken cancellationToken,
+    IReadOnlyCollection<string>? requiredFields = null,
+    Func<JsonElement, bool>? additionalValidation = null) where T : class
   {
     if (!context.Request.HasJsonContentType()) return null;
     try
@@ -382,7 +445,9 @@ public static class LocalizationEndpointRouteBuilderExtensions
       {
         if (!fields.TryGetValue(property.Name, out var kinds) || !seen.Add(property.Name) || !kinds.Contains(property.Value.ValueKind)) return null;
       }
-      if (seen.Count != fields.Count) return null;
+      var required = requiredFields ?? fields.Keys;
+      if (required.Any(propertyName => !seen.Contains(propertyName)) ||
+        additionalValidation is not null && !additionalValidation(document.RootElement)) return null;
       return document.RootElement.Deserialize<T>();
     }
     catch (JsonException) { return null; }

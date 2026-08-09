@@ -10,6 +10,8 @@ approved_date: 2026-07-31
 
 # Feature Package 001 — Platform Identity and Access Management
 
+> **Implementation status (informational).** The FP-001 backend core — Domain, Application (user, role, and permission commands and queries), and persistence — is implemented and merged. The administrative HTTP transport for these operations is not yet implemented; the Platform API currently exposes only the authentication and localization endpoints. This note records implementation state only and changes no FP-001 requirement, decision, or contract.
+
 ## Purpose
 
 This package defines the approved business and functional scope for tenant-aware identity and access management in SSAS ERP V2.

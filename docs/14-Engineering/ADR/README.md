@@ -20,3 +20,5 @@ Every significant architectural decision must be documented before implementatio
 | ADR-010 | Repository Pattern | Accepted |
 | ADR-011 | Unit of Work | Accepted |
 | ADR-012 | Runtime Module Composition | Accepted |
+| ADR-013 | Primary Key & Identifier Strategy | Accepted |
+| ADR-014 | Company / Legal-Entity Ownership and Scoping | Accepted |

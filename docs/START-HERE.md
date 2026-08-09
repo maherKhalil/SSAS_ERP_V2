@@ -48,6 +48,19 @@ Architecture Decision Records (ADRs) are authoritative.
 
 ---
 
+# Documentation Precedence
+
+When documents disagree, resolve the conflict using this order, highest authority first:
+
+1. Accepted Architecture Decision Record (ADR)
+2. Approved Feature Package
+3. Master Product Specification / Requirement Catalog / Functional Specification
+4. Historical Sprint / planning documentation
+
+This refines the rule above: ADRs remain authoritative for internal conflicts, an approved Feature Package supersedes older functional or planning text within its scope, and historical Sprint or planning notes never override an approved Feature Package, the Master Product Specification, or an ADR.
+
+---
+
 # Mandatory Reading Order
 
 Before writing code, read the following in order:
@@ -241,22 +254,13 @@ Each sprint must be reviewed and approved before the next begins.
 
 ---
 
-# Current Sprint
+# Current Implementation State
 
-Sprint-00 – Foundation
+Current implementation state is tracked through approved Feature Packages and the Git history, not through a single "current sprint" marker in this document.
 
-Objectives:
+Sprint-00 (Foundation) and the Sprint-01 Platform feature packages are delivered and merged: FP-001 Identity & Access, FP-002 Authentication & Token Lifecycle, FP-003 Tenant Lifecycle, and FP-004 Localization. To determine what exists, read the approved Feature Packages under `docs/17-features/` and the commit history.
 
-- Create the solution structure.
-- Configure Clean Architecture.
-- Configure Dependency Injection.
-- Configure EF Core.
-- Configure Authentication.
-- Configure Logging.
-- Configure Testing.
-- Configure CI/CD foundation.
-
-No business functionality shall be implemented during Sprint-00.
+Do not resume completed work on the basis of an older "current sprint" heading. The repository state and the approved Feature Packages are authoritative for what has been built and what comes next.
 
 ---
 

@@ -13,6 +13,8 @@ depends_on:
 
 # Feature Package 003 — Platform Tenant Lifecycle
 
+> **Implementation status (informational).** The FP-003 Milestone 1 backend core — the Tenant aggregate, lifecycle commands and queries, the authentication-eligibility contract, and persistence — is implemented and merged. The tenant lifecycle HTTP endpoints described in [`api-contracts.md`](api-contracts.md) remain deferred and are not yet implemented. This note records implementation state only and changes no FP-003 requirement, decision, or contract.
+
 ## Purpose
 
 This package defines the smallest Platform-owned tenant lifecycle needed to provide one trusted source of tenant authentication eligibility.

@@ -422,6 +422,19 @@ Consistent status codes
 
 ProblemDetails for errors
 
+## Optimistic Concurrency (RowVersion) Transport
+
+SQL Server `rowversion` concurrency tokens exposed or accepted over HTTP use one canonical Platform-wide encoding:
+
+- Encoding: RFC 4648 **padded** Base64 (standard alphabet), compatible with .NET `System.Text.Json` byte-array serialization.
+- Rejected: Base64Url, hexadecimal, surrounding whitespace, non-canonical encodings, and any value that does not decode to exactly 8 bytes.
+- A supplied token must be nonblank, decode to exactly 8 bytes, and re-encode byte-for-byte to the submitted canonical form. Server output is always canonical.
+- Malformed transport is `400 platform.rowversion_invalid`.
+- A missing token where one is required is `400 request.invalid`.
+- A valid but stale token is `409 concurrency.conflict`.
+
+This convention is Platform-wide and reusable across features. It must be implemented once in a neutral shared Platform/Host transport component; features must not define their own competing rowversion codec. (The existing localization-owned `LocalizationRowVersionCodec` predates this convention and should be extracted into the shared component so all features share one codec.)
+
 ---
 
 # Database Standards

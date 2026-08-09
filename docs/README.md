@@ -170,13 +170,9 @@ All code shall comply with:
 
 # Current Development Phase
 
-Current Sprint:
+Current implementation state is tracked through approved Feature Packages and the Git history, not through a fixed "current sprint" marker.
 
-**Sprint-00 – Foundation**
-
-Only platform infrastructure shall be implemented.
-
-Business modules are implemented only after Sprint-00 is approved.
+The Foundation and the Platform feature packages (FP-001 Identity & Access, FP-002 Authentication & Token Lifecycle, FP-003 Tenant Lifecycle, FP-004 Localization) are delivered and merged. Read the approved Feature Packages under `docs/17-features/` and the commit history to determine what exists and what comes next.
 
 ---
 

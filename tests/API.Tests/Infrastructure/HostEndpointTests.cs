@@ -137,6 +137,105 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  public async Task OpenApi_documents_the_company_create_route_with_shared_conventions()
+  {
+    var response = await factory.CreateClient().GetAsync("/swagger/v1/swagger.json");
+    response.EnsureSuccessStatusCode();
+    using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+    var paths = document.RootElement.GetProperty("paths");
+
+    Assert.True(paths.TryGetProperty("/api/platform/companies", out var companies));
+    var post = companies.GetProperty("post");
+    Assert.Equal("Bearer", post.GetProperty("security")[0].EnumerateObject().Single().Name);
+    var responses = post.GetProperty("responses");
+    foreach (var status in new[] { "201", "400", "401", "403", "409", "500" })
+    {
+      Assert.True(responses.TryGetProperty(status, out _), $"companies create is missing {status}.");
+    }
+
+    var requestSchemaRef = post.GetProperty("requestBody").GetProperty("content")
+      .GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString();
+    var schemaName = requestSchemaRef!.Split('/').Last();
+    var requestSchema = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty(schemaName);
+    Assert.False(requestSchema.GetProperty("additionalProperties").GetBoolean());
+    var requestProperties = requestSchema.GetProperty("properties").EnumerateObject()
+      .Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+    Assert.Equal(["baseCurrencyCode", "companyCode", "companyName"], requestProperties);
+  }
+
+  [Fact]
+  public async Task OpenApi_documents_the_company_read_routes_with_shared_conventions()
+  {
+    var response = await factory.CreateClient().GetAsync("/swagger/v1/swagger.json");
+    response.EnsureSuccessStatusCode();
+    using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+    var paths = document.RootElement.GetProperty("paths");
+
+    var list = paths.GetProperty("/api/platform/companies").GetProperty("get");
+    Assert.Equal("Bearer", list.GetProperty("security")[0].EnumerateObject().Single().Name);
+    foreach (var status in new[] { "200", "400", "401", "403" })
+    {
+      Assert.True(list.GetProperty("responses").TryGetProperty(status, out _), $"companies list is missing {status}.");
+    }
+
+    var listParameters = list.GetProperty("parameters").EnumerateArray()
+      .Select(parameter => parameter.GetProperty("name").GetString()).ToArray();
+    Assert.Contains("pageNumber", listParameters);
+    Assert.Contains("pageSize", listParameters);
+    Assert.Contains("status", listParameters);
+    Assert.DoesNotContain("tenantId", listParameters);
+
+    Assert.True(paths.TryGetProperty("/api/platform/companies/{companyId}", out var detailPath));
+    var detail = detailPath.GetProperty("get");
+    Assert.Equal("Bearer", detail.GetProperty("security")[0].EnumerateObject().Single().Name);
+    foreach (var status in new[] { "200", "401", "403", "404" })
+    {
+      Assert.True(detail.GetProperty("responses").TryGetProperty(status, out _), $"companies detail is missing {status}.");
+    }
+  }
+
+  [Fact]
+  public async Task OpenApi_documents_the_company_mutation_routes_and_omits_delete_and_reactivate()
+  {
+    var response = await factory.CreateClient().GetAsync("/swagger/v1/swagger.json");
+    response.EnsureSuccessStatusCode();
+    using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+    var paths = document.RootElement.GetProperty("paths");
+    var mutationStatuses = new[] { "200", "400", "401", "403", "404", "409", "500" };
+
+    var itemPath = paths.GetProperty("/api/platform/companies/{companyId}");
+    var put = itemPath.GetProperty("put");
+    Assert.Equal("Bearer", put.GetProperty("security")[0].EnumerateObject().Single().Name);
+    foreach (var status in mutationStatuses)
+    {
+      Assert.True(put.GetProperty("responses").TryGetProperty(status, out _), $"companies update is missing {status}.");
+    }
+
+    var updateSchemaRef = put.GetProperty("requestBody").GetProperty("content").GetProperty("application/json")
+      .GetProperty("schema").GetProperty("$ref").GetString();
+    var updateSchema = document.RootElement.GetProperty("components").GetProperty("schemas")
+      .GetProperty(updateSchemaRef!.Split('/').Last());
+    Assert.False(updateSchema.GetProperty("additionalProperties").GetBoolean());
+    Assert.Equal(["companyName", "expectedRowVersion"], updateSchema.GetProperty("properties").EnumerateObject()
+      .Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+
+    // No physical delete on the company item.
+    Assert.False(itemPath.TryGetProperty("delete", out _));
+
+    foreach (var action in new[] { "activate", "deactivate", "archive" })
+    {
+      var operation = paths.GetProperty($"/api/platform/companies/{{companyId}}/{action}").GetProperty("post");
+      Assert.Equal("Bearer", operation.GetProperty("security")[0].EnumerateObject().Single().Name);
+      foreach (var status in mutationStatuses)
+      {
+        Assert.True(operation.GetProperty("responses").TryGetProperty(status, out _), $"{action} is missing {status}.");
+      }
+    }
+
+    Assert.DoesNotContain(paths.EnumerateObject(), path => path.Name.EndsWith("/reactivate", StringComparison.Ordinal));
+  }
+
+  [Fact]
   public async Task Authentication_login_rejects_http_instead_of_redirecting()
   {
     using var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/api/platform/auth/login")

@@ -106,6 +106,7 @@ public sealed class PlatformAuthenticationPersistenceTests
         SET [RevocationReason] = N'UserLogout'
         WHERE [AuthenticationSessionId] = {{seed.AuthenticationSessionId}}
         """);
+      await reapplyContext.GetService<IMigrator>().MigrateAsync();
       Assert.Empty(await reapplyContext.Database.GetPendingMigrationsAsync());
     }
   }

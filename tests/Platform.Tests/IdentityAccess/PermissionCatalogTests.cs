@@ -24,7 +24,10 @@ public sealed class PermissionCatalogTests
     { "Platform.Permissions.View", "View the permission catalog" },
     { "Platform.Localization.View", "View localization resources" },
     { "Platform.Localization.Manage", "Manage localization overrides" },
-    { "Platform.Localization.ViewHistory", "View localization history" }
+    { "Platform.Localization.ViewHistory", "View localization history" },
+    { "Platform.Companies.View", "View companies" },
+    { "Platform.Companies.Manage", "Create and update companies" },
+    { "Platform.Companies.Lifecycle", "Change company lifecycle state" }
   };
 
   [Fact]
@@ -60,11 +63,11 @@ public sealed class PermissionCatalogTests
   }
 
   [Fact]
-  public void Catalog_has_exactly_eighteen_permissions_and_no_deferred_operation()
+  public void Catalog_has_exactly_twenty_one_permissions_and_no_deferred_operation()
   {
     var identifiers = new PlatformPermissionCatalog().All.Select(item => item.Name.Value).ToArray();
 
-    Assert.Equal(18, identifiers.Length);
+    Assert.Equal(21, identifiers.Length);
     Assert.DoesNotContain(identifiers, identifier =>
       identifier.Contains("Support", StringComparison.OrdinalIgnoreCase) ||
       identifier.Contains("Owner", StringComparison.OrdinalIgnoreCase) ||

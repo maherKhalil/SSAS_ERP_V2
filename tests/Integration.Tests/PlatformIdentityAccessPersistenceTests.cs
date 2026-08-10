@@ -111,6 +111,8 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "Companies",
             "Identities",
             "LocalizationCatalogStates",
+            "PlatformPermissionAssignments",
+            "PlatformSupportPrincipals",
             "RefreshTokenRecords",
             "RolePermissionAssignments",
             "Roles",

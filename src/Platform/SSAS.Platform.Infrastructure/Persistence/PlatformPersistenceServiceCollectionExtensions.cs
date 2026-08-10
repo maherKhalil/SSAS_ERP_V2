@@ -11,6 +11,7 @@ using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Application.Identities;
 using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.Application.PlatformSupport;
 using SSAS.Platform.Application.Roles;
 using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Tenants;
@@ -74,6 +75,8 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantLocalizationVersionReader, TenantLocalizationVersionReader>();
     services.AddScoped<IIdentityTenantMembershipReadService, IdentityTenantMembershipReadService>();
     services.AddScoped<IAccessTokenClaimsProvider, AccessTokenClaimsProvider>();
+    services.AddScoped<IPlatformSupportPrincipalRepository, PlatformSupportPrincipalRepository>();
+    services.AddScoped<IPlatformSupportPermissionReadService, PlatformSupportPermissionReadService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
     services.AddSingleton<ILocalizationCatalog>(GeneratedLocalizationCatalog.Instance);

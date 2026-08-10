@@ -9,6 +9,7 @@ using SSAS.Host.API.Errors;
 using SSAS.HR.API;
 using SSAS.Platform.API;
 using SSAS.Platform.API.Authentication;
+using SSAS.Platform.API.IdentityAccess;
 using SSAS.Platform.API.Localization;
 using SSAS.Platform.Infrastructure;
 using SSAS.Platform.Infrastructure.RequestContext;
@@ -54,6 +55,7 @@ try
   app.MapHostEndpoints();
   app.MapPlatformAuthenticationEndpoints();
   app.MapPlatformLocalizationEndpoints();
+  app.MapPlatformIdentityAccessEndpoints();
 
   app.Run();
 }

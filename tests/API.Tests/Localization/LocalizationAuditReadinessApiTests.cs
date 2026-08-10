@@ -23,6 +23,7 @@ using SSAS.BuildingBlocks.Localization.Catalog;
 using SSAS.BuildingBlocks.Localization.Generated;
 using SSAS.Host.API.Authorization;
 using SSAS.Platform.API.Localization;
+using SSAS.Platform.API.Transport;
 using SSAS.Platform.Application.Abstractions.Localization;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.Abstractions.Queries;
@@ -380,7 +381,7 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
     {
       state.RepositoryCalls++;
       typeof(TenantLocalizationOverride).GetProperty(nameof(TenantLocalizationOverride.RowVersion))!
-        .SetValue(localizationOverride, new byte[LocalizationRowVersionCodec.SqlServerRowVersionLength]);
+        .SetValue(localizationOverride, new byte[RowVersionCodec.SqlServerRowVersionLength]);
       state.Added = localizationOverride;
       return Task.CompletedTask;
     }

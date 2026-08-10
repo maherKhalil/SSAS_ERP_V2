@@ -65,6 +65,7 @@ public static class HostServiceCollectionExtensions
       });
       options.OperationFilter<AuthenticationOpenApiOperationFilter>();
       options.OperationFilter<LocalizationOpenApiOperationFilter>();
+      options.OperationFilter<PlatformAdminOpenApiOperationFilter>();
     });
 
     services

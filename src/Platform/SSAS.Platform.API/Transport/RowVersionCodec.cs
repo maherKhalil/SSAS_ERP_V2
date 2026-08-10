@@ -1,6 +1,10 @@
-namespace SSAS.Platform.API.Localization;
+namespace SSAS.Platform.API.Transport;
 
-public static class LocalizationRowVersionCodec
+// Neutral, platform-wide SQL Server rowversion <-> HTTP codec implementing the approved
+// convention in docs/08-Development/Development-Standards.md ("Optimistic Concurrency
+// (RowVersion) Transport"): canonical padded RFC 4648 Base64 of an exactly-8-byte value.
+// This is the single shared codec; feature transports must not define their own.
+public static class RowVersionCodec
 {
   public const int SqlServerRowVersionLength = 8;
 

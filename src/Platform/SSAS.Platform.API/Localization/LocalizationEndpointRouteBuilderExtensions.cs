@@ -14,6 +14,7 @@ using SSAS.Platform.Application.Abstractions.Localization;
 using SSAS.Platform.Application.Abstractions.Queries;
 using SSAS.Platform.Application.Localization;
 using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.API.Transport;
 
 namespace SSAS.Platform.API.Localization;
 
@@ -73,7 +74,7 @@ public static class LocalizationEndpointRouteBuilderExtensions
       var created = await create.HandleAsync(new CreateTenantLocalizationOverrideCommand(resourceKey, culture, request.Value!), cancellationToken);
       return created.IsFailure ? Problem(context, Map(created.Error)) : Results.Json(MapMutation(resourceKey, culture, created.Value), statusCode: StatusCodes.Status201Created);
     }
-    if (!LocalizationRowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return Problem(context, LocalizationApiErrorMapper.InvalidRowVersion);
+    if (!RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return Problem(context, LocalizationApiErrorMapper.InvalidRowVersion);
     var updated = await update.HandleAsync(new UpdateTenantLocalizationOverrideCommand(resourceKey, culture, request.Value!, rowVersion), cancellationToken);
     return updated.IsFailure ? Problem(context, Map(updated.Error)) : Results.Ok(MapMutation(resourceKey, culture, updated.Value));
   }
@@ -85,7 +86,7 @@ public static class LocalizationEndpointRouteBuilderExtensions
     var request = await ReadStrictJsonAsync<UndoLocalizationOverrideRequest>(context,
       new Dictionary<string, JsonValueKind[]> { ["targetVersionNumber"] = [JsonValueKind.Number], ["expectedRowVersion"] = [JsonValueKind.String] }, cancellationToken);
     if (request is null || request.TargetVersionNumber is not > 0 || string.IsNullOrWhiteSpace(resourceKey) || string.IsNullOrWhiteSpace(culture)) return Problem(context, LocalizationApiErrorMapper.InvalidRequest);
-    if (!LocalizationRowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return Problem(context, LocalizationApiErrorMapper.InvalidRowVersion);
+    if (!RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return Problem(context, LocalizationApiErrorMapper.InvalidRowVersion);
     var result = await handler.HandleAsync(new UndoTenantLocalizationOverrideCommand(resourceKey, culture, request.TargetVersionNumber.Value, rowVersion), cancellationToken);
     return result.IsFailure ? Problem(context, Map(result.Error)) : Results.Ok(MapMutation(resourceKey, culture, result.Value));
   }
@@ -97,7 +98,7 @@ public static class LocalizationEndpointRouteBuilderExtensions
     var request = await ReadStrictJsonAsync<RestoreLocalizationOverrideDefaultRequest>(context,
       new Dictionary<string, JsonValueKind[]> { ["expectedRowVersion"] = [JsonValueKind.String] }, cancellationToken);
     if (request is null || string.IsNullOrWhiteSpace(resourceKey) || string.IsNullOrWhiteSpace(culture)) return Problem(context, LocalizationApiErrorMapper.InvalidRequest);
-    if (!LocalizationRowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return Problem(context, LocalizationApiErrorMapper.InvalidRowVersion);
+    if (!RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return Problem(context, LocalizationApiErrorMapper.InvalidRowVersion);
     var result = await handler.HandleAsync(new RestoreTenantLocalizationDefaultCommand(resourceKey, culture, rowVersion), cancellationToken);
     return result.IsFailure ? Problem(context, Map(result.Error)) : Results.Ok(MapMutation(resourceKey, culture, result.Value));
   }
@@ -167,12 +168,12 @@ public static class LocalizationEndpointRouteBuilderExtensions
     resource.SecurityClassification, resource.TenantOverridable, resource.ResourceVersion, resource.CatalogVersion,
     resource.RequestedCulture, resource.RequestedCultureSystemDefault, resource.EffectiveValue, resource.CurrentTenantOverride,
     resource.OverrideActive, resource.Compatibility, resource.TenantOverrideVersion, resource.CurrentVersionNumber,
-    resource.RowVersion is null ? null : LocalizationRowVersionCodec.Encode(resource.RowVersion), resource.LastModifiedUtc,
+    resource.RowVersion is null ? null : RowVersionCodec.Encode(resource.RowVersion), resource.LastModifiedUtc,
     resource.Placeholders, resource.EligibleUndoTargetVersion);
 
   private static LocalizationMutationResponse MapMutation(string resourceKey, string culture, LocalizationMutationResult result) => new(
     resourceKey, culture, result.Value, result.IsActive, result.CurrentVersionNumber, result.TenantLocalizationVersion,
-    LocalizationRowVersionCodec.Encode(result.RowVersion));
+    RowVersionCodec.Encode(result.RowVersion));
 
   private static LocalizationApiError Map(Error error) => LocalizationApiErrorMapper.TryMap(error.Code, out var mapped)
     ? mapped

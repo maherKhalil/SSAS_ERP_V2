@@ -1,14 +1,10 @@
 using Microsoft.AspNetCore.Http;
+using SSAS.Platform.API.Transport;
 
 namespace SSAS.Platform.API.Localization;
 
 internal static class LocalizationResponseSecurity
 {
-  public static void Apply(HttpContext context)
-  {
-    context.Response.Headers.CacheControl = "no-store, no-cache";
-    context.Response.Headers.Pragma = "no-cache";
-    context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-  }
+  // Delegates to the shared admin response-security helper so header values live in one place.
+  public static void Apply(HttpContext context) => AdminResponseSecurity.Apply(context);
 }

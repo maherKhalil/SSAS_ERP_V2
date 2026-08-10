@@ -25,7 +25,10 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.ViewPermissions, "View the permission catalog"),
       Define(PlatformPermissionNames.ViewLocalization, "View localization resources"),
       Define(PlatformPermissionNames.ManageLocalization, "Manage localization overrides"),
-      Define(PlatformPermissionNames.ViewLocalizationHistory, "View localization history")
+      Define(PlatformPermissionNames.ViewLocalizationHistory, "View localization history"),
+      Define(PlatformPermissionNames.ViewCompanies, "View companies"),
+      Define(PlatformPermissionNames.ManageCompanies, "Create and update companies"),
+      Define(PlatformPermissionNames.CompanyLifecycle, "Change company lifecycle state")
     }
     .ToDictionary(definition => definition.Name.Value, StringComparer.Ordinal);
 

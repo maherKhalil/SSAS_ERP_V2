@@ -4,6 +4,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Domain.Authentication;
+using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Domain.Localization;
 using SSAS.Platform.Domain.Roles;
 using SSAS.Platform.Domain.TenantUsers;
@@ -34,6 +35,8 @@ public sealed class PlatformDbContext(
 
   public DbSet<Tenant> Tenants => Set<Tenant>();
 
+  public DbSet<Company> Companies => Set<Company>();
+
   public DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
 
   public DbSet<RefreshTokenRecord> RefreshTokenRecords => Set<RefreshTokenRecord>();
@@ -57,6 +60,7 @@ public sealed class PlatformDbContext(
   public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
   {
     PreventTenantDeletion();
+    PreventCompanyDeletion();
     PreventAuthenticationHistoryDeletion();
     PreventLocalizationHistoryMutation();
     PreventIdentityOwnershipChanges();
@@ -95,6 +99,14 @@ public sealed class PlatformDbContext(
     if (ChangeTracker.Entries<Tenant>().Any(entry => entry.State == EntityState.Deleted))
     {
       throw new InvalidOperationException("Tenant rows cannot be physically deleted; use the Archive lifecycle transition.");
+    }
+  }
+
+  private void PreventCompanyDeletion()
+  {
+    if (ChangeTracker.Entries<Company>().Any(entry => entry.State == EntityState.Deleted))
+    {
+      throw new InvalidOperationException("Company rows cannot be physically deleted; use the Archive lifecycle transition.");
     }
   }
 

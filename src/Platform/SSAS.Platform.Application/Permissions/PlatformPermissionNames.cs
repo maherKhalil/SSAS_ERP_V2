@@ -20,4 +20,7 @@ public static class PlatformPermissionNames
   public const string ViewLocalization = "Platform.Localization.View";
   public const string ManageLocalization = "Platform.Localization.Manage";
   public const string ViewLocalizationHistory = "Platform.Localization.ViewHistory";
+  public const string ViewCompanies = "Platform.Companies.View";
+  public const string ManageCompanies = "Platform.Companies.Manage";
+  public const string CompanyLifecycle = "Platform.Companies.Lifecycle";
 }

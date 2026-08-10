@@ -97,12 +97,12 @@ public sealed class PlatformTenantLifecycleSqlServerTests
     await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
     context.Entry(persisted).State = EntityState.Unchanged;
 
-    Assert.Equal(["AuthenticationSessions", "TenantLocalizationOverrides", "TenantLocalizationSettings"], await ReadStringsAsync(
+    Assert.Equal(["AuthenticationSessions", "Companies", "TenantLocalizationOverrides", "TenantLocalizationSettings"], await ReadStringsAsync(
       context,
       "SELECT parent.name FROM sys.foreign_keys fk JOIN sys.tables referenced ON referenced.object_id = fk.referenced_object_id JOIN sys.schemas s ON s.schema_id = referenced.schema_id JOIN sys.tables parent ON parent.object_id = fk.parent_object_id WHERE s.name = 'platform' AND referenced.name = 'Tenants' ORDER BY parent.name"));
     var deferredTables = await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME IN ('AccessTokens', 'RefreshTokens', 'Subscriptions', 'Billing', 'Companies')");
+      "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME IN ('AccessTokens', 'RefreshTokens', 'Subscriptions', 'Billing')");
     Assert.Equal(0, deferredTables);
   }
 
@@ -221,7 +221,7 @@ public sealed class PlatformTenantLifecycleSqlServerTests
 
     Assert.Empty(await context.Tenants.AsNoTracking().ToArrayAsync());
     Assert.Equal(legacyTenantId, await context.Roles.IgnoreQueryFilters().Select(role => role.TenantId).SingleAsync());
-    Assert.Equal(["AuthenticationSessions", "TenantLocalizationOverrides", "TenantLocalizationSettings"], await ReadStringsAsync(
+    Assert.Equal(["AuthenticationSessions", "Companies", "TenantLocalizationOverrides", "TenantLocalizationSettings"], await ReadStringsAsync(
       context,
       "SELECT parent.name FROM sys.foreign_keys fk JOIN sys.tables referenced ON referenced.object_id = fk.referenced_object_id JOIN sys.schemas s ON s.schema_id = referenced.schema_id JOIN sys.tables parent ON parent.object_id = fk.parent_object_id WHERE s.name = 'platform' AND referenced.name = 'Tenants' ORDER BY parent.name"));
   }

@@ -30,6 +30,7 @@ namespace SSAS.API.Tests.Companies;
 // authentication + authorization pipeline, the shared strict-query parsing, and the real list/detail
 // handlers. The database is replaced by a recording read-service stub whose GetById returns null for
 // any id other than the current tenant's, modelling the inherited tenant query filter.
+[Collection(CompanyApiEndpointGroup.Name)]
 public sealed class CompaniesReadEndpointTests : IAsyncLifetime
 {
   private const string Issuer = "https://companies-read.tests";
@@ -203,8 +204,7 @@ public sealed class CompaniesReadEndpointTests : IAsyncLifetime
     builder.Services.AddSingleton<ITenantAuthenticationEligibilityReadService>(new ActiveTenantEligibility());
     builder.Services.AddScoped<IRequestTenantEligibility, RequestTenantEligibility>();
     builder.Services.AddSingleton<ICompanyReadService>(readService);
-    builder.Services.AddScoped<ListCompaniesQueryHandler>();
-    builder.Services.AddScoped<GetCompanyByIdQueryHandler>();
+    builder.Services.AddCompanyEndpointHandlers();
 
     application = builder.Build();
     application.UseAuthentication();

@@ -27,12 +27,15 @@ public sealed class CompanyApiArchitectureTests
   }
 
   [Fact]
-  public void Company_route_builder_exposes_no_delete_or_reactivate_route()
+  public void Company_route_builder_exposes_no_delete_reactivate_restore_or_suspend_route()
   {
     var source = ReadCompanyApiSource("CompanyEndpointRouteBuilderExtensions.cs");
 
     Assert.DoesNotContain("MapDelete", source, StringComparison.Ordinal);
-    Assert.DoesNotContain("reactivate", source, StringComparison.OrdinalIgnoreCase);
+    foreach (var forbidden in new[] { "reactivate", "restore", "suspend" })
+    {
+      Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
+    }
   }
 
   [Fact]

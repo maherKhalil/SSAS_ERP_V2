@@ -13,6 +13,17 @@ public sealed record CreateCompanyRequest(
   [property: JsonPropertyName("companyName")] string? CompanyName,
   [property: JsonPropertyName("baseCurrencyCode")] string? BaseCurrencyCode);
 
+// Profile update accepts only the mutable display name and the concurrency version. Company code,
+// base currency, tenant, status, and identity are never accepted (unknown fields -> 400).
+public sealed record UpdateCompanyProfileRequest(
+  [property: JsonPropertyName("companyName")] string? CompanyName,
+  [property: JsonPropertyName("expectedRowVersion")] string? ExpectedRowVersion);
+
+// Lifecycle transitions accept only a bounded non-Created reason code and the concurrency version.
+public sealed record CompanyLifecycleRequest(
+  [property: JsonPropertyName("reasonCode")] string? ReasonCode,
+  [property: JsonPropertyName("expectedRowVersion")] string? ExpectedRowVersion);
+
 // Safe Company projection returned to the caller, including the concurrency version. Excludes the
 // owning-tenant field and the normalized code; status/reason are the bounded string values.
 public sealed record CompanyResponse(

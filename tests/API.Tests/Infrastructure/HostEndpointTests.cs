@@ -195,6 +195,47 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  public async Task OpenApi_documents_the_company_mutation_routes_and_omits_delete_and_reactivate()
+  {
+    var response = await factory.CreateClient().GetAsync("/swagger/v1/swagger.json");
+    response.EnsureSuccessStatusCode();
+    using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+    var paths = document.RootElement.GetProperty("paths");
+    var mutationStatuses = new[] { "200", "400", "401", "403", "404", "409", "500" };
+
+    var itemPath = paths.GetProperty("/api/platform/companies/{companyId}");
+    var put = itemPath.GetProperty("put");
+    Assert.Equal("Bearer", put.GetProperty("security")[0].EnumerateObject().Single().Name);
+    foreach (var status in mutationStatuses)
+    {
+      Assert.True(put.GetProperty("responses").TryGetProperty(status, out _), $"companies update is missing {status}.");
+    }
+
+    var updateSchemaRef = put.GetProperty("requestBody").GetProperty("content").GetProperty("application/json")
+      .GetProperty("schema").GetProperty("$ref").GetString();
+    var updateSchema = document.RootElement.GetProperty("components").GetProperty("schemas")
+      .GetProperty(updateSchemaRef!.Split('/').Last());
+    Assert.False(updateSchema.GetProperty("additionalProperties").GetBoolean());
+    Assert.Equal(["companyName", "expectedRowVersion"], updateSchema.GetProperty("properties").EnumerateObject()
+      .Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+
+    // No physical delete on the company item.
+    Assert.False(itemPath.TryGetProperty("delete", out _));
+
+    foreach (var action in new[] { "activate", "deactivate", "archive" })
+    {
+      var operation = paths.GetProperty($"/api/platform/companies/{{companyId}}/{action}").GetProperty("post");
+      Assert.Equal("Bearer", operation.GetProperty("security")[0].EnumerateObject().Single().Name);
+      foreach (var status in mutationStatuses)
+      {
+        Assert.True(operation.GetProperty("responses").TryGetProperty(status, out _), $"{action} is missing {status}.");
+      }
+    }
+
+    Assert.DoesNotContain(paths.EnumerateObject(), path => path.Name.EndsWith("/reactivate", StringComparison.Ordinal));
+  }
+
+  [Fact]
   public async Task Authentication_login_rejects_http_instead_of_redirecting()
   {
     using var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/api/platform/auth/login")

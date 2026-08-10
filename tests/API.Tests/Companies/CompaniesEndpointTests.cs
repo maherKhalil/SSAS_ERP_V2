@@ -38,6 +38,7 @@ namespace SSAS.API.Tests.Companies;
 // and the real CreateCompanyCommandHandler. The database is replaced by recording stubs; the
 // handler still derives the trusted tenant and validates value objects, and no caller-supplied
 // tenant is accepted.
+[Collection(CompanyApiEndpointGroup.Name)]
 public sealed class CompaniesEndpointTests : IAsyncLifetime
 {
   private const string Issuer = "https://companies.tests";
@@ -211,11 +212,9 @@ public sealed class CompaniesEndpointTests : IAsyncLifetime
     builder.Services.AddSingleton<ICompanyRepository>(repository);
     builder.Services.AddSingleton<ICompanyReadService>(readService);
     builder.Services.AddSingleton<IPlatformUnitOfWork>(unitOfWork);
-    builder.Services.AddScoped<CreateCompanyCommandHandler>();
-    // The shared MapPlatformCompanyEndpoints now maps the read routes too; their handlers must be
-    // resolvable for the endpoint host to build even though this class only exercises create.
-    builder.Services.AddScoped<ListCompaniesQueryHandler>();
-    builder.Services.AddScoped<GetCompanyByIdQueryHandler>();
+    // The shared MapPlatformCompanyEndpoints maps the full route family, so every handler must be
+    // resolvable even though this class only exercises create.
+    builder.Services.AddCompanyEndpointHandlers();
 
     application = builder.Build();
     application.UseAuthentication();

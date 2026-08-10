@@ -137,6 +137,33 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  public async Task OpenApi_documents_the_company_create_route_with_shared_conventions()
+  {
+    var response = await factory.CreateClient().GetAsync("/swagger/v1/swagger.json");
+    response.EnsureSuccessStatusCode();
+    using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+    var paths = document.RootElement.GetProperty("paths");
+
+    Assert.True(paths.TryGetProperty("/api/platform/companies", out var companies));
+    var post = companies.GetProperty("post");
+    Assert.Equal("Bearer", post.GetProperty("security")[0].EnumerateObject().Single().Name);
+    var responses = post.GetProperty("responses");
+    foreach (var status in new[] { "201", "400", "401", "403", "409", "500" })
+    {
+      Assert.True(responses.TryGetProperty(status, out _), $"companies create is missing {status}.");
+    }
+
+    var requestSchemaRef = post.GetProperty("requestBody").GetProperty("content")
+      .GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString();
+    var schemaName = requestSchemaRef!.Split('/').Last();
+    var requestSchema = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty(schemaName);
+    Assert.False(requestSchema.GetProperty("additionalProperties").GetBoolean());
+    var requestProperties = requestSchema.GetProperty("properties").EnumerateObject()
+      .Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+    Assert.Equal(["baseCurrencyCode", "companyCode", "companyName"], requestProperties);
+  }
+
+  [Fact]
   public async Task Authentication_login_rejects_http_instead_of_redirecting()
   {
     using var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/api/platform/auth/login")

@@ -45,3 +45,12 @@ public sealed record CompanyResponse(
     dto.ModifiedBy,
     rowVersion);
 }
+
+// Bounded page of safe Company projections. Order is the backend's deterministic order
+// (company name, then company id); the transport does not re-sort.
+public sealed record CompanyPageResponse(
+  IReadOnlyCollection<CompanyResponse> Items,
+  int PageNumber,
+  int PageSize,
+  int TotalCount,
+  int TotalPages);

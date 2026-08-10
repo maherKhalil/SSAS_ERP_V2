@@ -212,6 +212,10 @@ public sealed class CompaniesEndpointTests : IAsyncLifetime
     builder.Services.AddSingleton<ICompanyReadService>(readService);
     builder.Services.AddSingleton<IPlatformUnitOfWork>(unitOfWork);
     builder.Services.AddScoped<CreateCompanyCommandHandler>();
+    // The shared MapPlatformCompanyEndpoints now maps the read routes too; their handlers must be
+    // resolvable for the endpoint host to build even though this class only exercises create.
+    builder.Services.AddScoped<ListCompaniesQueryHandler>();
+    builder.Services.AddScoped<GetCompanyByIdQueryHandler>();
 
     application = builder.Build();
     application.UseAuthentication();

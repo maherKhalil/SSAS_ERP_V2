@@ -164,6 +164,37 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  public async Task OpenApi_documents_the_company_read_routes_with_shared_conventions()
+  {
+    var response = await factory.CreateClient().GetAsync("/swagger/v1/swagger.json");
+    response.EnsureSuccessStatusCode();
+    using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+    var paths = document.RootElement.GetProperty("paths");
+
+    var list = paths.GetProperty("/api/platform/companies").GetProperty("get");
+    Assert.Equal("Bearer", list.GetProperty("security")[0].EnumerateObject().Single().Name);
+    foreach (var status in new[] { "200", "400", "401", "403" })
+    {
+      Assert.True(list.GetProperty("responses").TryGetProperty(status, out _), $"companies list is missing {status}.");
+    }
+
+    var listParameters = list.GetProperty("parameters").EnumerateArray()
+      .Select(parameter => parameter.GetProperty("name").GetString()).ToArray();
+    Assert.Contains("pageNumber", listParameters);
+    Assert.Contains("pageSize", listParameters);
+    Assert.Contains("status", listParameters);
+    Assert.DoesNotContain("tenantId", listParameters);
+
+    Assert.True(paths.TryGetProperty("/api/platform/companies/{companyId}", out var detailPath));
+    var detail = detailPath.GetProperty("get");
+    Assert.Equal("Bearer", detail.GetProperty("security")[0].EnumerateObject().Single().Name);
+    foreach (var status in new[] { "200", "401", "403", "404" })
+    {
+      Assert.True(detail.GetProperty("responses").TryGetProperty(status, out _), $"companies detail is missing {status}.");
+    }
+  }
+
+  [Fact]
   public async Task Authentication_login_rejects_http_instead_of_redirecting()
   {
     using var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/api/platform/auth/login")

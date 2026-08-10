@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using SSAS.Platform.API.Companies;
@@ -38,6 +39,44 @@ public sealed class PlatformAdminOpenApiOperationFilter : IOperationFilter
       EnsureProblemResponse(operation, context, "409", "The normalized company code already exists within the tenant.");
       EnsureProblemResponse(operation, context, "500", "The company could not be persisted.");
     }
+    else if (path == "/api/platform/companies" && context.ApiDescription.HttpMethod == "GET")
+    {
+      operation.Security.Add(BearerRequirement());
+      operation.Description ??= "Requires bearer authentication, a trusted current tenant, and Platform.Companies.View.";
+      AddQueryParameter(operation, "pageNumber", "One-based page number.", minimum: 1);
+      AddQueryParameter(operation, "pageSize", "Page size; minimum 1, maximum 200.", minimum: 1, maximum: 200);
+      AddEnumQueryParameter(operation, "status", "Optional lifecycle status filter.", ["Active", "Inactive", "Archived"]);
+      SetSuccessSchema<CompanyPageResponse>(operation, context);
+      EnsureProblemResponse(operation, context, "400", "The paging values or status filter were invalid.");
+      EnsureProblemResponse(operation, context, "401", "Authentication is required.");
+      EnsureProblemResponse(operation, context, "403", "A trusted active tenant and the required permission are required.");
+    }
+    else if (path == "/api/platform/companies/{companyId}" && context.ApiDescription.HttpMethod == "GET")
+    {
+      operation.Security.Add(BearerRequirement());
+      operation.Description ??= "Requires bearer authentication, a trusted current tenant, and Platform.Companies.View.";
+      SetSuccessSchema<CompanyResponse>(operation, context);
+      EnsureProblemResponse(operation, context, "401", "Authentication is required.");
+      EnsureProblemResponse(operation, context, "403", "A trusted active tenant and the required permission are required.");
+      EnsureProblemResponse(operation, context, "404", "The company is unknown to the current tenant.");
+    }
+  }
+
+  private static void AddEnumQueryParameter(OpenApiOperation operation, string name, string description, IReadOnlyCollection<string> allowed)
+  {
+    if (operation.Parameters.Any(parameter => parameter.Name == name && parameter.In == ParameterLocation.Query))
+    {
+      return;
+    }
+
+    operation.Parameters.Add(new OpenApiParameter
+    {
+      Name = name,
+      In = ParameterLocation.Query,
+      Required = false,
+      Description = description,
+      Schema = new OpenApiSchema { Type = "string", Enum = allowed.Select(value => (IOpenApiAny)new OpenApiString(value)).ToList() }
+    });
   }
 
   private static void SetStrictRequestSchema<T>(OpenApiOperation operation, OperationFilterContext context)

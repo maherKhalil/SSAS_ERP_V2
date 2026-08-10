@@ -22,6 +22,7 @@ public static class CompanyApiErrorMapper
       "Company.InvalidName" => ProblemResults.RequestInvalid,
       "Company.InvalidBaseCurrency" => ProblemResults.RequestInvalid,
       "Company.InvalidTransitionReason" => ProblemResults.RequestInvalid,
+      "Company.ListFilterInvalid" => ProblemResults.RequestInvalid,
       // Duplicate normalized code within the tenant.
       "Company.CodeConflict" => CodeConflict,
       "Persistence.UniqueConstraint" => CodeConflict,

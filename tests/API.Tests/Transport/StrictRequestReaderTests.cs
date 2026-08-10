@@ -96,8 +96,8 @@ public sealed class StrictRequestReaderTests
     return StrictRequestReader.ReadStrictJsonAsync<StrictModel>(context, Fields, CancellationToken.None);
   }
 
-  private static IQueryCollection Query(params (string Key, string Value)[] pairs) =>
-    new QueryCollection(pairs.ToDictionary(pair => pair.Key, pair => new StringValues(pair.Value)));
+  private static QueryCollection Query(params (string Key, string Value)[] pairs) =>
+    new(pairs.ToDictionary(pair => pair.Key, pair => new StringValues(pair.Value)));
 
   // Consumer request DTOs annotate members exactly like the real transport contracts, so the
   // shared reader's default (case-sensitive) deserialization binds them.

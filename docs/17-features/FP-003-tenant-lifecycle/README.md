@@ -2,12 +2,13 @@
 document_id: FP-003
 title: Platform Tenant Lifecycle
 status: Approved for Implementation
-version: 1.1
+version: 1.2
 sprint: Sprint-01
 module: Platform
 depends_on:
   - ADR-005
   - ADR-015
+  - ADR-016
   - FP-001
   - FP-002
 ---
@@ -15,26 +16,32 @@ depends_on:
 # Feature Package 003 — Platform Tenant Lifecycle
 
 > **Implementation status (informational).**
-> - **Backend milestone:** Implemented and merged — the Tenant aggregate, lifecycle commands and queries, the authentication-eligibility contract, and persistence.
-> - **Platform-plane authorization architecture:** Approved — resolved by [`ADR-015`](../../14-Engineering/ADR/ADR-015-Platform-Plane-Authentication-Authorization.md) and recorded in [`decisions-approved.md`](decisions-approved.md) as `DEC-TEN-0018`.
-> - **HTTP transport:** Ready for implementation after the platform-plane authorization foundation is delivered. The tenant lifecycle HTTP endpoints described in [`api-contracts.md`](api-contracts.md) remain deferred and are not yet implemented.
+> - **Tenant backend milestone:** Implemented and merged — the Tenant aggregate, lifecycle commands and queries, the authentication-eligibility contract, and persistence.
+> - **Platform-plane authorization architecture:** Approved — [`ADR-015`](../../14-Engineering/ADR/ADR-015-Platform-Plane-Authentication-Authorization.md) / `DEC-TEN-0018`.
+> - **Platform-support permission scope (Phase 1):** Implemented — `Platform.Tenants.View/Manage/Lifecycle` at `PermissionScope.PlatformSupport`, tenant-role escalation invariant, tenant-token defence-in-depth filter.
+> - **Platform-support authority persistence (Phase 2):** Implemented — `PlatformSupportPrincipal` + `PlatformPermissionAssignment`, catalog-validated authority read, physical-delete protection, SQL-verified.
+> - **Platform-support bootstrap, lifecycle, and authority administration (Phase 3 decisions):** Approved — [`ADR-016`](../../14-Engineering/ADR/ADR-016-Platform-Support-Bootstrap-Lifecycle-Authority.md) and `DEC-TEN-0019`/`DEC-TEN-0020`/`DEC-TEN-0021`. **Not implemented.**
+> - **HTTP transport:** Deferred. The tenant lifecycle HTTP endpoints described in [`api-contracts.md`](api-contracts.md) remain unimplemented.
 >
-> This note records implementation and approval state. The platform-plane authorization decision is captured in `ADR-015` / `DEC-TEN-0018`; no earlier FP-003 requirement, decision, or contract is otherwise changed.
+> This note records implementation and approval state. No earlier FP-003 requirement, decision, or contract is otherwise changed.
 
 ## Platform-plane authorization — future implementation impact
 
-The platform-plane transport (`ADR-015`, `DEC-TEN-0018`) is documented and approved but not implemented. When it is built, the expected impact is:
+The platform-plane transport (`ADR-015`/`ADR-016`) is documented and approved. Phase 1–2 are implemented and committed; the phases below are **not** implemented.
 
-- **New persistent global constructs:** a `PlatformSupportPrincipal` authority and a `PlatformPermissionAssignment`, both global and non-tenant-owned, anchored to the existing global `Identity`, plus a platform-capable session representation. Exact table and column names are deferred to implementation.
-- **EF migration expected:** yes. **SQL verification expected:** yes.
+- **New persistent global constructs (Phase 2, implemented):** `PlatformSupportPrincipal` + `PlatformPermissionAssignment`, both global and non-tenant-owned, anchored to the existing global `Identity`.
+- **Additional persistence before Phase 3 issuance (`ADR-016`, not implemented):** a principal `Status {Active,Disabled}` column + `StatusChangedUtc/By` (small additive migration), and a platform-capable session representation.
 - **Tenant Domain, Tenant Application, and Tenant persistence:** unchanged.
 
-Recommended implementation phases (documentation only; none implemented here):
+Recommended implementation phases (documentation only; Phase 1–2 done, the rest not implemented):
 
-1. Permission scope/catalog foundation + `Platform.Tenants.*` definitions + escalation regression tests.
-2. `PlatformSupportPrincipal` authority + permission assignments + persistence/migration + SQL verification.
-3. Platform token/session profile (issuer/validator, claims sourcing) + tenant claims-provider `PermissionScope.Tenant` defense-in-depth filter.
-4. `PlatformPermissionAuthorizationHandler` + `RequirePlatformPermission` + real Host security tests.
+1. **(Done)** Permission scope/catalog foundation + `Platform.Tenants.*` + escalation regression tests + tenant-token defence-in-depth filter.
+2. **(Done)** `PlatformSupportPrincipal` authority + permission assignments + persistence/migration + physical-delete protection + SQL verification.
+3. Phase 3 (`ADR-016`), in slices:
+   - **3A** — principal `Active/Disabled` domain model + `StatusChangedUtc/By`, status migration, lifecycle persistence/application support, tests + SQL.
+   - **3B** — bootstrap configuration + genesis/recovery gate (`DEC-TEN-0019`); author `Platform.Support.Administer` in the catalog (`DEC-TEN-0021`); tests.
+   - **3C** — platform token/session profile, `security_plane=platform`, platform token issuance, live principal-status eligibility, claims sourced from `IPlatformSupportPermissionReadService`, platform refresh/session behaviour, `StrictAccessTokenValidator` platform profile.
+4. `PlatformPermissionAuthorizationHandler` + `RequirePlatformPermission` + DI/Host policy; expose platform-authority administration only when authorized by `Platform.Support.Administer`.
 5. FP-003 Tenant HTTP transport + Admin Transport reuse + architecture-test replacement.
 6. Final security review. **Production track:** mandatory MFA / strong-auth and session hardening before platform-support Production enablement.
 

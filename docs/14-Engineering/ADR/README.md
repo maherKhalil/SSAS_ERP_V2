@@ -23,3 +23,4 @@ Every significant architectural decision must be documented before implementatio
 | ADR-013 | Primary Key & Identifier Strategy | Accepted |
 | ADR-014 | Company / Legal-Entity Ownership and Scoping | Accepted |
 | ADR-015 | Platform-Plane Authentication and Authorization | Accepted |
+| ADR-016 | Platform-Support Bootstrap, Lifecycle, and Authority Administration | Accepted |

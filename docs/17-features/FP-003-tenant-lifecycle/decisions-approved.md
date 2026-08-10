@@ -2,7 +2,7 @@
 document_id: FP-003-DEC
 title: Approved Tenant Lifecycle Decisions
 status: Approved for Implementation
-version: 1.1
+version: 1.2
 sprint: Sprint-01
 module: Platform
 approved_date: 2026-08-01
@@ -98,6 +98,40 @@ Resolves the platform-support authentication and permission deferral in `DEC-TEN
 - **Production strong authentication.** Mandatory MFA/strong authentication is a production-readiness requirement for platform-support token issuance; the Production issuance flow must not enable platform-support access without it. It does not block implementing the platform-plane architecture in development/test.
 - **Audit posture unchanged.** `DEC-TEN-0017` is unchanged: FP-003 emits safe audit-ready post-commit events; immutable audit storage remains a production-release dependency and is not a per-mutation runtime gate.
 
+## DEC-TEN-0019 — Platform-support genesis bootstrap
+
+Governed by `ADR-016`. Resolves how the first (and recovery) platform-support authority is trusted before any platform authorization layer exists. Not implemented yet.
+
+- **Trust source.** A configuration-owned bootstrap allow-list keyed by the immutable `AuthenticationSubject` authorizes only the genesis/recovery creation of platform authority. Email, username, display name, `TenantId`, and `IdentityId` are rejected as configuration keys.
+- **Prerequisite identity.** The configured subject must resolve to an existing `Identity` with an authentication-capable, active `AuthenticationAccount`. Bootstrap never creates identities.
+- **Capability.** Bootstrap may only register/resolve the platform-support principal and establish the initial approved `PermissionScope.PlatformSupport` set. It is never per-request authorization, an implicit super-admin, a tenant-admin path, or a bypass around normal platform authorization once usable authority exists. No tenant role can invoke it.
+- **Usable platform authority (definition).** Usable platform authority exists when at least one `PlatformSupportPrincipal` simultaneously (1) has `Status == Active`, (2) is anchored to a valid authentication-capable identity/account, and (3) has at least one active assignment whose permission exists in `IPermissionCatalog` with `PermissionScope.PlatformSupport`. A revoked assignment, a corrupt tenant-scoped row, an unknown permission, and a `Disabled` principal do not count.
+- **Lifetime and recovery.** Bootstrap is configuration-controlled, genesis/recovery-only, audited, non-tenant-editable, and inert once usable authority exists. Recovery is eligible only when no usable authority exists; bootstrap must not implicitly re-enable a `Disabled` principal — config membership is never "always authorized" or re-enable authority.
+- **Live evaluation.** "No usable platform authority exists" is evaluated live against persisted current state (principal `Status`, authentication-account eligibility, active persisted assignments, current `IPermissionCatalog` scope). It is never inferred from configuration, a cached bootstrap-success flag, the mere presence of a principal row, or corrupt assignment rows.
+- **Subject cardinality and deterministic selection.** `PlatformSupportBootstrapOptions` may contain multiple unique configured `AuthenticationSubject` values. Bootstrap does not create a principal for every configured subject; a single evaluation establishes exactly one usable genesis/recovery principal. Eligible subjects (canonical, unique, resolving to an existing `Identity` with an eligible `AuthenticationAccount`, and — for a create — not already owning a principal) are sorted by ordinal comparison of the canonical `AuthenticationSubject`; the first is selected (never configuration insertion order). Remaining configured subjects stay recovery candidates and receive no authority automatically.
+- **Concurrent convergence.** Concurrent instances evaluate usable authority live, deterministically select the same first eligible subject, and are bounded by the Phase-2 uniqueness (`UX_PlatformSupportPrincipals_IdentityId`, active-assignment unique index); duplicates are idempotent race outcomes. For the same configuration and persistence state, a bootstrap race establishes exactly one genesis/recovery principal, not one per instance. No distributed lock is introduced.
+- **Recovery model.** Recovery never changes `Disabled → Active` and never grants to a `Disabled` principal. It may create a new `Active` recovery principal only for an eligible configured subject that owns no principal. If a `Disabled` principal is the only configured subject with no other eligible candidate, bootstrap fails closed (no re-enable, no duplicate) and emits an operator diagnostic; recovery then requires an additional approved pre-existing `AuthenticationSubject` in configuration or the separately-authorized explicit Re-enable lifecycle operation. An `Active` principal with no active catalog-valid `PlatformSupport` assignment is not usable authority; recovery may establish an eligible configured candidate without mutating the existing principal's assignments. Manual SQL is a governed break-glass activity only, not the designed recovery mechanism.
+- **Audit and failure.** Bootstrap reuses the Phase-2 audit fields with a distinguishable actor representation (e.g. `platform-bootstrap:<subject>`); no immutable-audit infrastructure is invented. Missing subject / ineligible account → no authority; existing principal → idempotent; existing assignment → no duplicate; usable authority already exists → no-op; unknown or tenant-scoped permission → fail closed.
+
+## DEC-TEN-0020 — Platform-support principal lifecycle
+
+Governed by `ADR-016`. Adds a minimal principal status so platform authority can be suspended immediately and re-enabled without deleting history or over-broadly disabling the person's tenant access. Not implemented yet.
+
+- **States.** `PlatformSupportPrincipalStatus { Active, Disabled }`, default `Active`; transitions `Active → Disabled` and `Disabled → Active` (both non-terminal). No `Suspended`/`Archived`/`Deleted` at this stage.
+- **Semantics.** `Active` evaluates authority from active assignments. `Disabled` makes all platform authority unusable regardless of retained assignments; assignments remain persisted (not deleted, not revoked). Grant while `Disabled` is rejected; revoke while `Disabled` is allowed. Re-enable restores eligibility of still-active retained assignments (it does not recreate revoked ones).
+- **Concurrency and audit.** The existing Phase-2 `RowVersion` is authoritative for lifecycle optimistic concurrency. Persist `StatusChangedUtc`/`StatusChangedBy` in addition to `ModifiedUtc/By`; no reason-code is introduced.
+- **Migration and backfill.** `Status` is added `NOT NULL` (`nvarchar`, `BIN2` collation, `CHECK Status IN ('Active','Disabled')`, default `'Active'`); `StatusChangedUtc` and `StatusChangedBy` are `NULLABLE`. Any principal existing before the status migration backfills to `Status = 'Active'` with `StatusChangedUtc = NULL` and `StatusChangedBy = NULL` — a schema addition is not a lifecycle transition, so no historical transition is synthesized from `CreatedUtc`/`CreatedBy`. The first actual `Disable`/`Re-enable` populates both, and every subsequent transition overwrites them.
+- **Token consequences.** Platform token issuance and refresh perform a live principal-status check (mirroring `ITenantAuthenticationEligibilityReadService`) and are denied for `Disabled`; no token-carried status is authoritative. Disabling does not cryptographically invalidate an already-issued short-lived JWT (consistent with `DEC-TEN-0010`); an existing access token may remain usable until natural expiry or until the `SecurityVersion` + session-revocation mechanism (`ADR-015`) applies. `StrictAccessTokenValidator` validates the platform profile structurally and performs no live DB status lookup. Whether the platform session reuses `AuthenticationAccount.SecurityVersion` + `AuthenticationSession` revocation or a distinct platform-session version is a Phase-3C detail; `PlatformSupportPrincipal` is not assigned its own `SecurityVersion` here.
+
+## DEC-TEN-0021 — Platform-authority administration permission
+
+Governed by `ADR-016`. Defines the permission that governs administering platform authority, so tenant permissions are never repurposed. Not implemented yet.
+
+- **New permission.** `Platform.Support.Administer`, `PermissionScope.PlatformSupport`, governing platform-support principal registration, permission grant, permission revoke, and principal Disable/Re-enable. A single permission covers this small surface; no additional permissions are introduced.
+- **Non-repurposing.** `Platform.Tenants.Manage` and `Platform.Tenants.Lifecycle` govern Tenant administration and lifecycle and never authorize administering `PlatformSupportPrincipal` or `PlatformPermissionAssignment`.
+- **Bootstrap exception.** Bootstrap is the only exception, and only before usable platform authority exists. Once it exists, Register/Grant/Revoke/Disable/Re-enable require `Platform.Support.Administer` through the future platform-plane authorization layer. The genesis/recovery principal receives `Platform.Support.Administer` in its initial authority set (once authored) to enable the Phase-4 transition to normal self-hosting administration, and may also receive explicitly configured, approved initial `Platform.Tenants.*` permissions; the bootstrap grant set contains only code-catalog permissions with `PermissionScope.PlatformSupport`.
+- **Catalog impact.** When authored, the `PlatformSupport` catalog grows from three to four entries. Being `PlatformSupport`-scoped, `Platform.Support.Administer` is excluded from tenant-facing catalog listings and tenant-token claims by the Phase-1 filters; the platform authority read path returns it only when legitimately assigned.
+
 ## Reconciled conflict register
 
 | # | Prior conflict | Approved resolution |
@@ -115,3 +149,6 @@ Resolves the platform-support authentication and permission deferral in `DEC-TEN
 | 11 | Immutable audit storage does not yet exist | Emit safe events and retain the production dependency under DEC-TEN-0017 |
 | 12 | FP-001 and FP-002 required Tenant status without an implementation source | Approved FP-003 is the source consumed by those workflows |
 | 13 | Draft documentation lacked an exact status vocabulary and graph | DEC-TEN-0002 and DEC-TEN-0003 define both exactly |
+| 14 | The first platform-support authority could not be created without a trusted, non-circular, non-tenant mechanism | Genesis/recovery config bootstrap keyed by immutable AuthenticationSubject under DEC-TEN-0019 and ADR-016 |
+| 15 | A platform-support principal had no way to be suspended immediately without over-broadly disabling all access | Minimal `Active`/`Disabled` principal status with live status checks under DEC-TEN-0020 and ADR-016 |
+| 16 | No permission governed administering platform authority; `Platform.Tenants.Manage` risked being repurposed | New `Platform.Support.Administer` permission under DEC-TEN-0021 and ADR-016 |

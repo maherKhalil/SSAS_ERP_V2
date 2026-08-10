@@ -2,7 +2,7 @@
 document_id: FP-003-AC
 title: Tenant Lifecycle Acceptance Criteria
 status: Approved for Implementation
-version: 1.1
+version: 1.2
 sprint: Sprint-01
 module: Platform
 ---
@@ -132,6 +132,102 @@ FP-005 Company and Localization routes remain tenant-plane: they still require a
 ### AC-TEN-0030 — Tenant claims provider omits platform permissions
 
 Tenant token claim generation emits only `PermissionScope.Tenant` permissions; a `PlatformSupport` entry present through corrupt data, a bad seed, or a direct database change is not emitted into a tenant token.
+
+## Platform-support bootstrap, lifecycle, and authority administration (ADR-016, DEC-TEN-0019/0020/0021)
+
+Criteria for the future Phase-3 platform-support authority foundation. Deferred with the platform token/session profile; not implemented in the committed milestones.
+
+### AC-TEN-0031 — Bootstrap requires an existing eligible identity
+
+The configured bootstrap `AuthenticationSubject` must resolve to an existing `Identity` with an authentication-capable, active `AuthenticationAccount`; a missing or ineligible subject creates no platform authority. Bootstrap never creates identities.
+
+### AC-TEN-0032 — Tenant users cannot bootstrap
+
+No tenant role or tenant-IAM path can invoke bootstrap or create/modify platform-support authority; bootstrap is keyed only by immutable `AuthenticationSubject` configuration.
+
+### AC-TEN-0033 — Bootstrap operates only without usable platform authority
+
+Bootstrap creates/recovers authority only when no usable platform authority exists (per the ADR-016 definition) and is inert once usable authority exists.
+
+### AC-TEN-0034 — Bootstrap is not standing request authority
+
+Being present in bootstrap configuration never authorizes ordinary platform operations; it authorizes only the genesis/recovery operation.
+
+### AC-TEN-0035 — Bootstrap is audited and idempotent
+
+Genesis/recovery operations are audited with a distinguishable bootstrap actor; re-running bootstrap creates no duplicate principal or assignment and does nothing when usable authority already exists.
+
+### AC-TEN-0036 — Bootstrap fails closed on invalid permissions
+
+Bootstrap grants only known `PermissionScope.PlatformSupport` permissions; an unknown or tenant-scoped permission is rejected and no assignment is created.
+
+### AC-TEN-0037 — Disabled principal is not implicitly re-enabled
+
+Bootstrap/recovery never changes a `Disabled` principal's status; re-enable is a separate explicit lifecycle operation. Configuration membership is not re-enable authority.
+
+### AC-TEN-0038 — Principal status default and transitions
+
+A registered `PlatformSupportPrincipal` starts `Active`; the only transitions are `Active → Disabled` and `Disabled → Active`.
+
+### AC-TEN-0039 — Disabled principal cannot receive a platform token
+
+Platform token issuance performs a live principal-status check and denies issuance for a `Disabled` principal; no token-carried status is authoritative.
+
+### AC-TEN-0040 — Disabled principal cannot refresh
+
+Platform refresh/session continuation re-reads live status; a `Disabled` principal's refresh is denied and its platform session is revoked; no new platform token is issued.
+
+### AC-TEN-0041 — Disabled retains assignments; grant rejected, revoke allowed
+
+While `Disabled`, active assignment rows remain persisted (not deleted, not revoked); a grant is rejected; a revoke is allowed.
+
+### AC-TEN-0042 — Lifecycle concurrency and existing-token accuracy
+
+Status mutations use the principal `RowVersion` (a stale version is a conflict). Documentation states accurately that disabling does not cryptographically invalidate an already-issued short-lived JWT; immediate cut-off is via `SecurityVersion`/session revocation, and `StrictAccessTokenValidator` performs no live DB status lookup.
+
+### AC-TEN-0043 — Administration permission is platform-scoped and un-self-grantable
+
+`Platform.Support.Administer` is `PermissionScope.PlatformSupport` and cannot be assigned to any tenant custom role, tenant system role, or tenant role-permission assignment.
+
+### AC-TEN-0044 — Administration permission excluded from tenant surfaces
+
+`Platform.Support.Administer` never appears in the tenant-facing permission catalog listing and is never emitted into a tenant access-token claim.
+
+### AC-TEN-0045 — Tenant permissions cannot administer platform authority
+
+`Platform.Tenants.Manage` and `Platform.Tenants.Lifecycle` cannot register, grant, revoke, disable, or re-enable platform-support authority; only `Platform.Support.Administer` (or genesis bootstrap) can.
+
+### AC-TEN-0046 — Status migration backfill
+
+The status migration adds `Status` `NOT NULL` (default `Active`, `CHECK Active/Disabled`) and `StatusChangedUtc`/`StatusChangedBy` `NULLABLE`. Every `PlatformSupportPrincipal` existing before the migration becomes `Active` with `StatusChangedUtc` and `StatusChangedBy` `NULL`; no historical transition is synthesized from `CreatedUtc`/`CreatedBy`.
+
+### AC-TEN-0047 — First transition populates status metadata
+
+The first `Disable` or `Re-enable` populates `StatusChangedUtc` and `StatusChangedBy`; every subsequent transition overwrites them with the latest transition metadata, while `ModifiedUtc`/`ModifiedBy` continue under the normal audit mechanism.
+
+### AC-TEN-0048 — Multiple subjects, deterministic single genesis
+
+The bootstrap allow-list may contain multiple unique `AuthenticationSubject` values; a single bootstrap evaluation establishes exactly one genesis principal — the first eligible subject by ordinal comparison of the canonical subject (never configuration insertion order).
+
+### AC-TEN-0049 — Concurrent bootstrap converges on one principal
+
+Concurrent bootstrap evaluations that both observe no usable authority converge, via the authoritative unique `IdentityId`/active-assignment constraints, on exactly one genesis/recovery principal (the loser's duplicate is an idempotent race outcome); no distributed lock is required.
+
+### AC-TEN-0050 — Remaining configured subjects stay unprivileged
+
+Configured subjects other than the selected one receive no platform authority automatically; they remain recovery candidates only.
+
+### AC-TEN-0051 — Recovery creates a new principal; disabled sole principal not re-enabled
+
+When no usable authority exists and a `Disabled` principal exists, bootstrap never re-enables it; if another eligible configured subject owns no principal, bootstrap establishes that subject as a new `Active` recovery principal while the disabled principal remains `Disabled`. An `Active` principal that has lost all active catalog-valid `PlatformSupport` assignments is likewise not usable authority, and recovery does not mutate its assignments.
+
+### AC-TEN-0052 — No eligible recovery candidate fails closed
+
+If a `Disabled` principal is the only configured subject and no other eligible candidate exists, bootstrap fails closed (no implicit re-enable, no duplicate principal) and emits an operator diagnostic that no eligible recovery subject exists; recovery requires an additional approved pre-existing `AuthenticationSubject` in configuration or the separately-authorized explicit Re-enable operation.
+
+### AC-TEN-0053 — Usable authority evaluated live
+
+"No usable platform authority exists" is evaluated live from persisted state and the code-owned catalog — current principal `Status`, authentication-account eligibility, active persisted assignments, and `PermissionScope.PlatformSupport` — and never from configuration, a cached flag, a bare principal row, or corrupt/unknown/revoked assignment rows.
 
 ## FP-002 Milestone 4 cross-package coverage
 

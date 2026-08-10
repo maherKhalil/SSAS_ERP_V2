@@ -108,6 +108,110 @@ public sealed class PlatformSupportAuthorityTests
     Assert.Equal(PlatformSupportErrors.PermissionAssignmentNotFound, result.Error);
   }
 
+  // ---- Lifecycle (ADR-016 / DEC-TEN-0020) ----
+
+  [Fact]
+  public void Register_starts_active_with_no_status_transition_metadata()
+  {
+    var principal = PlatformSupportPrincipal.Register(7).Value;
+
+    Assert.Equal(PlatformSupportPrincipalStatus.Active, principal.Status);
+    Assert.Null(principal.StatusChangedUtc);
+    Assert.Null(principal.StatusChangedBy);
+  }
+
+  [Fact]
+  public void Disable_then_reenable_transitions_and_stamps_metadata_without_touching_assignments()
+  {
+    var principal = PlatformSupportPrincipal.Register(7).Value;
+    Assert.True(principal.GrantPermission(Permission(PlatformPermissionNames.ManageTenants), "actor", Now).IsSuccess);
+
+    Assert.True(principal.Disable("disabler", Now.AddMinutes(1)).IsSuccess);
+    Assert.Equal(PlatformSupportPrincipalStatus.Disabled, principal.Status);
+    Assert.Equal(Now.AddMinutes(1), principal.StatusChangedUtc);
+    Assert.Equal("disabler", principal.StatusChangedBy);
+    Assert.Single(principal.ActivePermissions);
+
+    Assert.True(principal.Reenable("enabler", Now.AddMinutes(2)).IsSuccess);
+    Assert.Equal(PlatformSupportPrincipalStatus.Active, principal.Status);
+    Assert.Equal(Now.AddMinutes(2), principal.StatusChangedUtc);
+    Assert.Equal("enabler", principal.StatusChangedBy);
+    Assert.Single(principal.ActivePermissions);
+  }
+
+  [Fact]
+  public void Disable_when_already_disabled_is_an_invalid_transition()
+  {
+    var principal = PlatformSupportPrincipal.Register(7).Value;
+    Assert.True(principal.Disable("actor", Now).IsSuccess);
+
+    var again = principal.Disable("actor", Now.AddMinutes(1));
+
+    Assert.True(again.IsFailure);
+    Assert.Equal(PlatformSupportErrors.InvalidStatusTransition, again.Error);
+    Assert.Equal(Now, principal.StatusChangedUtc);
+  }
+
+  [Fact]
+  public void Reenable_when_already_active_is_an_invalid_transition()
+  {
+    var principal = PlatformSupportPrincipal.Register(7).Value;
+
+    var result = principal.Reenable("actor", Now);
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(PlatformSupportErrors.InvalidStatusTransition, result.Error);
+    Assert.Null(principal.StatusChangedUtc);
+  }
+
+  [Fact]
+  public void Grant_is_rejected_while_disabled()
+  {
+    var principal = PlatformSupportPrincipal.Register(7).Value;
+    Assert.True(principal.Disable("actor", Now).IsSuccess);
+
+    var result = principal.GrantPermission(Permission(PlatformPermissionNames.ViewTenants), "actor", Now.AddMinutes(1));
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(PlatformSupportErrors.PrincipalDisabled, result.Error);
+    Assert.Empty(principal.ActivePermissions);
+  }
+
+  [Fact]
+  public void Revoke_is_allowed_while_disabled()
+  {
+    var principal = PlatformSupportPrincipal.Register(7).Value;
+    var manage = Permission(PlatformPermissionNames.ManageTenants);
+    Assert.True(principal.GrantPermission(manage, "actor", Now).IsSuccess);
+    Assert.True(principal.Disable("actor", Now.AddMinutes(1)).IsSuccess);
+
+    Assert.True(principal.RevokePermission(manage.Name, "actor", Now.AddMinutes(2)).IsSuccess);
+
+    Assert.Empty(principal.ActivePermissions);
+    Assert.Equal(PlatformSupportPrincipalStatus.Disabled, principal.Status);
+  }
+
+  [Fact]
+  public async Task Disable_handler_gates_on_actor_missing_principal_and_stale_version()
+  {
+    var missing = new DisablePlatformSupportPrincipalCommandHandler(
+      new FakePrincipalRepository(), new FakeUnitOfWork(), new StubCurrentUser("actor"), new StubClock());
+    Assert.Equal(
+      PlatformSupportErrors.PrincipalNotFound,
+      (await missing.HandleAsync(new DisablePlatformSupportPrincipalCommand(1, [1]))).Error);
+
+    var unauthorized = new DisablePlatformSupportPrincipalCommandHandler(
+      new FakePrincipalRepository(PlatformSupportPrincipal.Register(7).Value), new FakeUnitOfWork(), new StubCurrentUser(null), new StubClock());
+    Assert.True((await unauthorized.HandleAsync(new DisablePlatformSupportPrincipalCommand(1, [1]))).IsFailure);
+
+    // A fresh principal has an empty RowVersion, so any expected version is a concurrency conflict.
+    var stale = new DisablePlatformSupportPrincipalCommandHandler(
+      new FakePrincipalRepository(PlatformSupportPrincipal.Register(7).Value), new FakeUnitOfWork(), new StubCurrentUser("actor"), new StubClock());
+    Assert.Equal(
+      IdentityAccessErrors.ConcurrencyConflict,
+      (await stale.HandleAsync(new DisablePlatformSupportPrincipalCommand(1, [9]))).Error);
+  }
+
   // ---- Defense-in-depth filter ----
 
   [Fact]

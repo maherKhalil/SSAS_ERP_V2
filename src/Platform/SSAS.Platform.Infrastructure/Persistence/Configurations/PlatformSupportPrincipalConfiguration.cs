@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.PlatformSupport;
 using PlatformIdentity = SSAS.Platform.Domain.Identities.Identity;
 
@@ -10,7 +11,8 @@ public sealed class PlatformSupportPrincipalConfiguration : IEntityTypeConfigura
 {
   public void Configure(EntityTypeBuilder<PlatformSupportPrincipal> builder)
   {
-    builder.ToTable("PlatformSupportPrincipals", PlatformPersistenceConstants.Schema);
+    builder.ToTable("PlatformSupportPrincipals", PlatformPersistenceConstants.Schema, table =>
+      table.HasCheckConstraint("CK_PlatformSupportPrincipals_Status", "[Status] IN (N'Active', N'Disabled')"));
     builder.HasKey(principal => principal.Id);
     builder.Property(principal => principal.Id).HasColumnName("PlatformSupportPrincipalId").UseIdentityColumn();
     builder.Property(principal => principal.IdentityId).IsRequired();
@@ -27,6 +29,17 @@ public sealed class PlatformSupportPrincipalConfiguration : IEntityTypeConfigura
 
     builder.Ignore(principal => principal.ActivePermissions);
     builder.Navigation(principal => principal.PermissionAssignments).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+    // Lifecycle status (ADR-016 / DEC-TEN-0020). Default 'Active' backfills any pre-existing row; status
+    // transition metadata stays NULL until the first Disable/Re-enable (registration is not a transition).
+    builder.Property(principal => principal.Status)
+      .HasConversion<string>()
+      .HasMaxLength(32)
+      .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
+      .HasDefaultValue(PlatformSupportPrincipalStatus.Active)
+      .IsRequired();
+    builder.Property(principal => principal.StatusChangedUtc);
+    builder.Property(principal => principal.StatusChangedBy).HasMaxLength(256);
 
     builder.Property(principal => principal.CreatedUtc).IsRequired();
     builder.Property(principal => principal.CreatedBy).HasMaxLength(256);

@@ -26,4 +26,10 @@ public static class PlatformSupportErrors
 
   public static readonly Error PermissionAssignmentNotFound =
     new("PlatformSupport.PermissionAssignmentNotFound", "The active platform-support permission assignment was not found.");
+
+  public static readonly Error InvalidStatusTransition =
+    new("PlatformSupport.InvalidStatusTransition", "The platform-support principal status transition is invalid.");
+
+  public static readonly Error PrincipalDisabled =
+    new("PlatformSupport.PrincipalDisabled", "A disabled platform-support principal cannot receive new permissions.");
 }

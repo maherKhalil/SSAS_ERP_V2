@@ -88,4 +88,24 @@ public sealed class PlatformSupportAuthorityArchitectureTests
       apiAssembly.GetTypes().SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)),
       method => method.Name == "RequirePlatformPermission");
   }
+
+  [Fact]
+  public void Principal_status_enum_has_exactly_active_and_disabled()
+  {
+    Assert.Equal(
+      ["Active", "Disabled"],
+      Enum.GetNames<PlatformSupportPrincipalStatus>().OrderBy(name => name, StringComparer.Ordinal));
+  }
+
+  [Fact]
+  public void No_bootstrap_configuration_is_introduced_in_this_phase()
+  {
+    // Genesis/recovery bootstrap (DEC-TEN-0019) is Phase 3B, not Phase 3A.
+    var forbidden = new[] { "PlatformSupportBootstrapOptions", "PlatformSupportBootstrap", "PlatformSupportBootstrapGate" };
+
+    foreach (var assembly in new[] { typeof(PlatformSupportPrincipal).Assembly, typeof(PlatformSupportPermissionFilter).Assembly })
+    {
+      Assert.DoesNotContain(assembly.GetTypes(), type => forbidden.Contains(type.Name, StringComparer.Ordinal));
+    }
+  }
 }

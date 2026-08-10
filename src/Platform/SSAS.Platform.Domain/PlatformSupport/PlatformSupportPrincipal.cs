@@ -7,9 +7,9 @@ namespace SSAS.Platform.Domain.PlatformSupport;
 
 // Global platform-plane authority (ADR-015 / DEC-TEN-0018), anchored to the existing global Identity.
 // It is deliberately NOT ITenantOwnedEntity and carries no TenantId: platform-support authority is
-// independent of tenant-role membership. Authority is expressed entirely through its revocable
-// PlatformSupport permission assignments; there is no separate principal status because the approved
-// documentation defines none (revoking all assignments removes all authority).
+// independent of tenant-role membership. Authority is expressed through its revocable PlatformSupport
+// permission assignments and its lifecycle status (ADR-016 / DEC-TEN-0020): a Disabled principal's
+// authority is unusable while its assignments are retained for a later re-enable.
 public sealed class PlatformSupportPrincipal : AggregateRoot<long>, IAuditableEntity
 {
   private readonly List<PlatformPermissionAssignment> permissionAssignments = [];
@@ -34,6 +34,13 @@ public sealed class PlatformSupportPrincipal : AggregateRoot<long>, IAuditableEn
 
   public byte[] RowVersion { get; private set; } = [];
 
+  public PlatformSupportPrincipalStatus Status { get; private set; } = PlatformSupportPrincipalStatus.Active;
+
+  // Null until the first lifecycle transition; registration is not a transition (ADR-016 / DEC-TEN-0020).
+  public DateTimeOffset? StatusChangedUtc { get; private set; }
+
+  public string? StatusChangedBy { get; private set; }
+
   public DateTimeOffset CreatedUtc { get; private set; }
 
   public DateTimeOffset ModifiedUtc { get; private set; }
@@ -51,6 +58,12 @@ public sealed class PlatformSupportPrincipal : AggregateRoot<long>, IAuditableEn
 
   public Result GrantPermission(PermissionDefinition permission, string actor, DateTimeOffset occurredUtc)
   {
+    // A disabled principal cannot receive new authority (ADR-016 / DEC-TEN-0020); revoke stays allowed.
+    if (Status != PlatformSupportPrincipalStatus.Active)
+    {
+      return Result.Failure(PlatformSupportErrors.PrincipalDisabled);
+    }
+
     // The catalog is the sole authority for scope: only PlatformSupport permissions may be granted.
     if (permission.Scope != PermissionScope.PlatformSupport)
     {
@@ -75,6 +88,34 @@ public sealed class PlatformSupportPrincipal : AggregateRoot<long>, IAuditableEn
     }
 
     assignment.Remove(occurredUtc, actor);
+    return Result.Success();
+  }
+
+  public Result Disable(string actor, DateTimeOffset occurredUtc)
+  {
+    if (Status != PlatformSupportPrincipalStatus.Active)
+    {
+      return Result.Failure(PlatformSupportErrors.InvalidStatusTransition);
+    }
+
+    // Assignments are retained; only the lifecycle status changes.
+    Status = PlatformSupportPrincipalStatus.Disabled;
+    StatusChangedUtc = occurredUtc.ToUniversalTime();
+    StatusChangedBy = actor;
+    return Result.Success();
+  }
+
+  public Result Reenable(string actor, DateTimeOffset occurredUtc)
+  {
+    if (Status != PlatformSupportPrincipalStatus.Disabled)
+    {
+      return Result.Failure(PlatformSupportErrors.InvalidStatusTransition);
+    }
+
+    // Restores eligibility of still-active retained assignments; revoked assignments stay revoked.
+    Status = PlatformSupportPrincipalStatus.Active;
+    StatusChangedUtc = occurredUtc.ToUniversalTime();
+    StatusChangedBy = actor;
     return Result.Success();
   }
 

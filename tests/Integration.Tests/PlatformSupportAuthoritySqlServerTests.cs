@@ -1,5 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -36,7 +38,7 @@ public sealed class PlatformSupportAuthoritySqlServerTests
     Assert.True(principalEntity.FindProperty(nameof(PlatformSupportPrincipal.RowVersion))?.IsConcurrencyToken);
 
     Assert.Equal(
-      ["PlatformSupportPrincipalId", "IdentityId", "RowVersion", "CreatedUtc", "ModifiedUtc", "CreatedBy", "ModifiedBy"],
+      ["PlatformSupportPrincipalId", "IdentityId", "RowVersion", "CreatedUtc", "ModifiedUtc", "CreatedBy", "ModifiedBy", "Status", "StatusChangedBy", "StatusChangedUtc"],
       await ReadStringsAsync(
         context,
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME = 'PlatformSupportPrincipals' ORDER BY ORDINAL_POSITION"));
@@ -280,6 +282,234 @@ public sealed class PlatformSupportAuthoritySqlServerTests
     }
   }
 
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0020")]
+  public async Task Status_migration_creates_expected_lifecycle_columns_and_check_constraint()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    await using var context = database.CreateContext();
+
+    Assert.Empty(await context.Database.GetPendingMigrationsAsync());
+    // The 'Active' default that backfills pre-existing rows is proven functionally by
+    // Existing_principal_backfills_to_active_with_null_status_metadata.
+    Assert.Equal("NO", await ReadStringAsync(
+      context,
+      "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='platform' AND TABLE_NAME='PlatformSupportPrincipals' AND COLUMN_NAME='Status'"));
+    Assert.Equal("YES", await ReadStringAsync(
+      context,
+      "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='platform' AND TABLE_NAME='PlatformSupportPrincipals' AND COLUMN_NAME='StatusChangedUtc'"));
+    Assert.Equal("YES", await ReadStringAsync(
+      context,
+      "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='platform' AND TABLE_NAME='PlatformSupportPrincipals' AND COLUMN_NAME='StatusChangedBy'"));
+    Assert.Equal("Latin1_General_100_BIN2", await ReadStringAsync(
+      context,
+      "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='platform' AND TABLE_NAME='PlatformSupportPrincipals' AND COLUMN_NAME='Status'"));
+    Assert.Equal(1, await ReadInt32Async(
+      context,
+      "SELECT COUNT(*) FROM sys.check_constraints WHERE parent_object_id = OBJECT_ID(N'[platform].[PlatformSupportPrincipals]') AND name = N'CK_PlatformSupportPrincipals_Status'"));
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-TEN-0081")]
+  [Trait("Scenario", "TS-TEN-0082")]
+  public async Task Existing_principal_backfills_to_active_with_null_status_metadata()
+  {
+    // Bring the database only up to the Phase-2 authority migration (before the Status column exists).
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync(migrate: false);
+    await using (var pre = database.CreateContext())
+    {
+      await pre.GetService<IMigrator>().MigrateAsync(PlatformSupportSqlDatabase.PlatformSupportAuthorityMigration);
+    }
+
+    // Insert an Identity and a principal at the pre-lifecycle schema via raw SQL (the entity's Status
+    // property does not yet have a column, so EF cannot be used here).
+    await using (var seed = database.CreateContext())
+    {
+      await seed.Database.ExecuteSqlInterpolatedAsync(
+        $"INSERT INTO [platform].[Identities] ([Subject], [CreatedUtc], [ModifiedUtc]) VALUES ({$"local:{Guid.NewGuid():N}"}, {PlatformSupportSqlDatabase.Now}, {PlatformSupportSqlDatabase.Now})");
+      await seed.Database.ExecuteSqlInterpolatedAsync(
+        $"INSERT INTO [platform].[PlatformSupportPrincipals] ([IdentityId], [CreatedUtc], [ModifiedUtc]) SELECT [IdentityId], {PlatformSupportSqlDatabase.Now}, {PlatformSupportSqlDatabase.Now} FROM [platform].[Identities]");
+    }
+
+    // Apply the lifecycle migration to the now non-empty table.
+    await using (var upgrade = database.CreateContext())
+    {
+      await upgrade.GetService<IMigrator>().MigrateAsync();
+    }
+
+    await using (var verify = database.CreateContext())
+    {
+      Assert.Equal("Active", await ReadStringAsync(verify, "SELECT [Status] FROM [platform].[PlatformSupportPrincipals]"));
+      Assert.Equal(1, await ReadInt32Async(
+        verify,
+        "SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals] WHERE [StatusChangedUtc] IS NULL AND [StatusChangedBy] IS NULL"));
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0020")]
+  public async Task Status_check_constraint_rejects_an_undefined_value()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var identityId = await SeedIdentityAsync(database);
+    await using var context = database.CreateContext();
+
+    await Assert.ThrowsAsync<SqlException>(() => context.Database.ExecuteSqlInterpolatedAsync(
+      $"INSERT INTO [platform].[PlatformSupportPrincipals] ([IdentityId], [Status], [CreatedUtc], [ModifiedUtc]) VALUES ({identityId}, {"Suspended"}, {PlatformSupportSqlDatabase.Now}, {PlatformSupportSqlDatabase.Now})"));
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-TEN-0083")]
+  [Trait("Scenario", "TS-TEN-0084")]
+  public async Task Disable_and_reenable_round_trip_through_the_real_handlers()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var identityId = await SeedIdentityAsync(database);
+
+    long principalId;
+    byte[] version;
+    await using (var context = database.CreateContext())
+    {
+      var register = new RegisterPlatformSupportPrincipalCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser());
+      principalId = (await register.HandleAsync(new RegisterPlatformSupportPrincipalCommand(identityId))).Value;
+
+      var grant = new GrantPlatformPermissionCommandHandler(
+        new PlatformSupportPrincipalRepository(context), new PlatformPermissionCatalog(), Uow(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await grant.HandleAsync(new GrantPlatformPermissionCommand(principalId, PlatformPermissionNames.ManageTenants))).IsSuccess);
+    }
+
+    await using (var read = database.CreateContext())
+    {
+      var principal = await read.PlatformSupportPrincipals.AsNoTracking().SingleAsync();
+      version = principal.RowVersion;
+    }
+
+    await using (var context = database.CreateContext())
+    {
+      var disable = new DisablePlatformSupportPrincipalCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await disable.HandleAsync(new DisablePlatformSupportPrincipalCommand(principalId, version))).IsSuccess);
+    }
+
+    await using (var verify = database.CreateContext())
+    {
+      var principal = await verify.PlatformSupportPrincipals.Include(p => p.PermissionAssignments).AsNoTracking().SingleAsync();
+      Assert.Equal(SSAS.Platform.Domain.Enums.PlatformSupportPrincipalStatus.Disabled, principal.Status);
+      Assert.NotNull(principal.StatusChangedUtc);
+      Assert.Equal("integration-actor", principal.StatusChangedBy);
+      Assert.False(version.SequenceEqual(principal.RowVersion));
+      Assert.Single(principal.PermissionAssignments.Where(a => a.IsActive));
+      version = principal.RowVersion;
+    }
+
+    await using (var context = database.CreateContext())
+    {
+      var reenable = new ReenablePlatformSupportPrincipalCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await reenable.HandleAsync(new ReenablePlatformSupportPrincipalCommand(principalId, version))).IsSuccess);
+    }
+
+    await using (var verify = database.CreateContext())
+    {
+      var principal = await verify.PlatformSupportPrincipals.Include(p => p.PermissionAssignments).AsNoTracking().SingleAsync();
+      Assert.Equal(SSAS.Platform.Domain.Enums.PlatformSupportPrincipalStatus.Active, principal.Status);
+      Assert.NotNull(principal.StatusChangedUtc);
+      Assert.Single(principal.PermissionAssignments.Where(a => a.IsActive));
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0020")]
+  public async Task Grant_is_rejected_and_revoke_is_allowed_while_disabled()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var identityId = await SeedIdentityAsync(database);
+
+    long principalId;
+    await using (var context = database.CreateContext())
+    {
+      var register = new RegisterPlatformSupportPrincipalCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser());
+      principalId = (await register.HandleAsync(new RegisterPlatformSupportPrincipalCommand(identityId))).Value;
+      var grant = new GrantPlatformPermissionCommandHandler(
+        new PlatformSupportPrincipalRepository(context), new PlatformPermissionCatalog(), Uow(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await grant.HandleAsync(new GrantPlatformPermissionCommand(principalId, PlatformPermissionNames.ManageTenants))).IsSuccess);
+    }
+
+    byte[] version;
+    await using (var read = database.CreateContext())
+    {
+      version = (await read.PlatformSupportPrincipals.AsNoTracking().SingleAsync()).RowVersion;
+    }
+
+    await using (var context = database.CreateContext())
+    {
+      var disable = new DisablePlatformSupportPrincipalCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await disable.HandleAsync(new DisablePlatformSupportPrincipalCommand(principalId, version))).IsSuccess);
+    }
+
+    await using (var context = database.CreateContext())
+    {
+      // Grant is rejected while Disabled.
+      var grant = new GrantPlatformPermissionCommandHandler(
+        new PlatformSupportPrincipalRepository(context), new PlatformPermissionCatalog(), Uow(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await grant.HandleAsync(new GrantPlatformPermissionCommand(principalId, PlatformPermissionNames.ViewTenants))).IsFailure);
+
+      // Revoke remains allowed while Disabled.
+      var revoke = new RevokePlatformPermissionCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await revoke.HandleAsync(new RevokePlatformPermissionCommand(principalId, PlatformPermissionNames.ManageTenants))).IsSuccess);
+    }
+
+    await using (var verify = database.CreateContext())
+    {
+      var principal = await verify.PlatformSupportPrincipals.Include(p => p.PermissionAssignments).AsNoTracking().SingleAsync();
+      Assert.Equal(SSAS.Platform.Domain.Enums.PlatformSupportPrincipalStatus.Disabled, principal.Status);
+      Assert.Empty(principal.PermissionAssignments.Where(a => a.IsActive));
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0020")]
+  public async Task Stale_rowversion_on_a_lifecycle_transition_is_a_concurrency_conflict()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var identityId = await SeedIdentityAsync(database);
+
+    long principalId;
+    byte[] staleVersion;
+    await using (var context = database.CreateContext())
+    {
+      var register = new RegisterPlatformSupportPrincipalCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser());
+      principalId = (await register.HandleAsync(new RegisterPlatformSupportPrincipalCommand(identityId))).Value;
+    }
+
+    await using (var read = database.CreateContext())
+    {
+      staleVersion = (await read.PlatformSupportPrincipals.AsNoTracking().SingleAsync()).RowVersion;
+    }
+
+    // A successful Disable advances the RowVersion, invalidating the captured version.
+    await using (var context = database.CreateContext())
+    {
+      var disable = new DisablePlatformSupportPrincipalCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await disable.HandleAsync(new DisablePlatformSupportPrincipalCommand(principalId, staleVersion))).IsSuccess);
+    }
+
+    await using (var context = database.CreateContext())
+    {
+      var reenable = new ReenablePlatformSupportPrincipalCommandHandler(
+        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+      var result = await reenable.HandleAsync(new ReenablePlatformSupportPrincipalCommand(principalId, staleVersion));
+      Assert.True(result.IsFailure);
+      Assert.Equal("Persistence.ConcurrencyConflict", result.Error.Code);
+    }
+  }
+
   private static TestPlatformUnitOfWork Uow(PlatformDbContext context) => new(context);
 
   private static async Task<long> SeedIdentityAsync(PlatformSupportSqlDatabase database)
@@ -355,7 +585,9 @@ public sealed class PlatformSupportAuthoritySqlServerTests
   {
     public static readonly DateTimeOffset Now = new(2026, 8, 10, 11, 0, 0, TimeSpan.Zero);
 
-    public static async Task<PlatformSupportSqlDatabase> CreateAsync()
+    public const string PlatformSupportAuthorityMigration = "20260810165035_AddPlatformSupportAuthority";
+
+    public static async Task<PlatformSupportSqlDatabase> CreateAsync(bool migrate = true)
     {
       var databaseName = $"SSAS_ERP_FP003_PSA_{Guid.NewGuid():N}";
       var configured = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
@@ -364,8 +596,12 @@ public sealed class PlatformSupportAuthoritySqlServerTests
       var database = new PlatformSupportSqlDatabase(builder.ConnectionString);
       try
       {
-        await using var context = database.CreateContext();
-        await context.Database.MigrateAsync();
+        if (migrate)
+        {
+          await using var context = database.CreateContext();
+          await context.Database.MigrateAsync();
+        }
+
         return database;
       }
       catch

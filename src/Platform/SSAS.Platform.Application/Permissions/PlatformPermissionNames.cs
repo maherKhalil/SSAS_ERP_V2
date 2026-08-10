@@ -29,4 +29,8 @@ public static class PlatformPermissionNames
   public const string ViewTenants = "Platform.Tenants.View";
   public const string ManageTenants = "Platform.Tenants.Manage";
   public const string TenantLifecycle = "Platform.Tenants.Lifecycle";
+
+  // Platform-authority administration permission (ADR-016, DEC-TEN-0021): governs platform-support
+  // principal registration, permission grant/revoke, and Disable/Re-enable. PermissionScope.PlatformSupport.
+  public const string AdministerPlatformSupport = "Platform.Support.Administer";
 }

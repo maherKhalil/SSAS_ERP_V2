@@ -19,6 +19,7 @@ using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Identity;
+using SSAS.Platform.Infrastructure.PlatformSupport;
 using SSAS.BuildingBlocks.Localization.Catalog;
 using SSAS.BuildingBlocks.Localization.Generated;
 using SSAS.Platform.Application.Localization;
@@ -77,6 +78,8 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IAccessTokenClaimsProvider, AccessTokenClaimsProvider>();
     services.AddScoped<IPlatformSupportPrincipalRepository, PlatformSupportPrincipalRepository>();
     services.AddScoped<IPlatformSupportPermissionReadService, PlatformSupportPermissionReadService>();
+    services.AddScoped<IPlatformSupportAuthorityStateReadService, PlatformSupportAuthorityStateReadService>();
+    services.AddScoped<IPlatformSupportBootstrapService, PlatformSupportBootstrapService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
     services.AddSingleton<ILocalizationCatalog>(GeneratedLocalizationCatalog.Instance);
@@ -158,6 +161,14 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddSingleton<IValidateOptions<CompromisedPasswordOptions>, CompromisedPasswordOptionsValidator>();
     services.AddSingleton<ICompromisedPasswordChecker, OfflineCompromisedPasswordChecker>();
     services.AddSingleton<IPasswordPolicyValidator, PasswordPolicyValidator>();
+
+    // Platform-support genesis/recovery bootstrap (ADR-016 / DEC-TEN-0019). Options are fail-closed
+    // validated at startup; the hosted service runs one convergence pass after the app is built.
+    services.AddOptions<PlatformSupportBootstrapOptions>()
+      .Bind(configuration.GetSection(PlatformSupportBootstrapOptions.SectionName))
+      .ValidateOnStart();
+    services.AddSingleton<IValidateOptions<PlatformSupportBootstrapOptions>, PlatformSupportBootstrapOptionsValidator>();
+    services.AddHostedService<PlatformSupportBootstrapHostedService>();
 
     services.AddScoped<RegisterIdentityCommandHandler>();
     services.AddScoped<CreateTenantUserMembershipCommandHandler>();

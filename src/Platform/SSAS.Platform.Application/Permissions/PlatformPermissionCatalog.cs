@@ -31,7 +31,8 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.CompanyLifecycle, "Change company lifecycle state"),
       Define(PlatformPermissionNames.ViewTenants, "View platform tenant lifecycle records", PermissionScope.PlatformSupport),
       Define(PlatformPermissionNames.ManageTenants, "Create platform tenants", PermissionScope.PlatformSupport),
-      Define(PlatformPermissionNames.TenantLifecycle, "Change platform tenant lifecycle state", PermissionScope.PlatformSupport)
+      Define(PlatformPermissionNames.TenantLifecycle, "Change platform tenant lifecycle state", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerPlatformSupport, "Administer platform-support principals and their permission assignments", PermissionScope.PlatformSupport)
     }
     .ToDictionary(definition => definition.Name.Value, StringComparer.Ordinal);
 

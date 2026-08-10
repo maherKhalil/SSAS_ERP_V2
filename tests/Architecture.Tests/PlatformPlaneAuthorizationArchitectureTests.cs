@@ -23,28 +23,28 @@ public sealed class PlatformPlaneAuthorizationArchitectureTests
   }
 
   [Fact]
-  public void Only_the_platform_tenant_family_is_platform_support_scoped()
+  public void The_platform_support_family_is_exactly_the_approved_permissions()
   {
+    // PlatformSupport scope = the Platform.Tenants.* tenant-admin family (ADR-015) plus the
+    // Platform.Support.Administer authority-administration permission (ADR-016). Nothing else.
     var catalog = new PlatformPermissionCatalog();
 
-    var platformSupportPermissions = catalog.All
-      .Where(permission => permission.Scope == PermissionScope.PlatformSupport)
-      .ToArray();
-
-    Assert.All(
-      platformSupportPermissions,
-      permission => Assert.StartsWith(PlatformTenantPrefix, permission.Name.Value, StringComparison.Ordinal));
+    Assert.Equal(
+      ["Platform.Support.Administer", "Platform.Tenants.Lifecycle", "Platform.Tenants.Manage", "Platform.Tenants.View"],
+      catalog.All.Where(permission => permission.Scope == PermissionScope.PlatformSupport)
+        .Select(permission => permission.Name.Value)
+        .OrderBy(value => value, StringComparer.Ordinal));
   }
 
   [Fact]
-  public void Every_non_platform_tenant_permission_stays_tenant_scoped()
+  public void Every_non_platform_support_permission_stays_tenant_scoped()
   {
     // The tenant plane (Company, Localization, IAM) is unchanged: everything outside the
-    // Platform.Tenants.* family remains PermissionScope.Tenant.
+    // PlatformSupport-scoped family remains PermissionScope.Tenant.
     var catalog = new PlatformPermissionCatalog();
 
     Assert.All(
-      catalog.All.Where(permission => !permission.Name.Value.StartsWith(PlatformTenantPrefix, StringComparison.Ordinal)),
+      catalog.All.Where(permission => permission.Scope != PermissionScope.PlatformSupport),
       permission => Assert.Equal(PermissionScope.Tenant, permission.Scope));
   }
 
@@ -57,9 +57,10 @@ public sealed class PlatformPlaneAuthorizationArchitectureTests
 
     var filtered = TenantPermissionClaimFilter.FilterToTenantScope(allNames, catalog);
 
+    // Every surviving name resolves to Tenant scope; no PlatformSupport permission (Tenants.* or Support.*) survives.
     Assert.All(
       filtered,
-      name => Assert.False(name.StartsWith(PlatformTenantPrefix, StringComparison.Ordinal)));
+      name => Assert.True(catalog.TryGet(name, out var permission) && permission.Scope == PermissionScope.Tenant));
     Assert.Equal(
       catalog.All.Count(permission => permission.Scope == PermissionScope.Tenant),
       filtered.Count);

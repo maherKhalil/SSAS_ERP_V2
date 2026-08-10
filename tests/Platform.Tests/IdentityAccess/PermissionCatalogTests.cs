@@ -31,12 +31,13 @@ public sealed class PermissionCatalogTests
     { "Platform.Companies.Lifecycle", "Change company lifecycle state" }
   };
 
-  // Platform-plane permissions (PermissionScope.PlatformSupport, ADR-015): never assignable to tenant roles.
+  // Platform-plane permissions (PermissionScope.PlatformSupport, ADR-015/016): never assignable to tenant roles.
   public static TheoryData<string, string> ExpectedPlatformSupportPermissions => new()
   {
     { "Platform.Tenants.View", "View platform tenant lifecycle records" },
     { "Platform.Tenants.Manage", "Create platform tenants" },
-    { "Platform.Tenants.Lifecycle", "Change platform tenant lifecycle state" }
+    { "Platform.Tenants.Lifecycle", "Change platform tenant lifecycle state" },
+    { "Platform.Support.Administer", "Administer platform-support principals and their permission assignments" }
   };
 
   [Fact]
@@ -89,17 +90,19 @@ public sealed class PermissionCatalogTests
     var catalog = new PlatformPermissionCatalog();
     var identifiers = catalog.All.Select(item => item.Name.Value).ToArray();
 
-    Assert.Equal(24, identifiers.Length);
+    Assert.Equal(25, identifiers.Length);
     Assert.Equal(21, catalog.All.Count(item => item.Scope == PermissionScope.Tenant));
-    Assert.Equal(3, catalog.All.Count(item => item.Scope == PermissionScope.PlatformSupport));
+    Assert.Equal(4, catalog.All.Count(item => item.Scope == PermissionScope.PlatformSupport));
 
-    // The only platform-plane family is Platform.Tenants.*; scope, not the "Platform." prefix, is authoritative.
-    Assert.All(
-      catalog.All.Where(item => item.Scope == PermissionScope.PlatformSupport),
-      item => Assert.StartsWith("Platform.Tenants.", item.Name.Value, StringComparison.Ordinal));
+    // The platform-plane (PlatformSupport) family is exactly the tenant-admin permissions plus the
+    // authority-administration permission; scope — not the "Platform." prefix — is authoritative.
+    Assert.Equal(
+      ["Platform.Support.Administer", "Platform.Tenants.Lifecycle", "Platform.Tenants.Manage", "Platform.Tenants.View"],
+      catalog.All.Where(item => item.Scope == PermissionScope.PlatformSupport)
+        .Select(item => item.Name.Value)
+        .OrderBy(value => value, StringComparer.Ordinal));
 
     Assert.DoesNotContain(identifiers, identifier =>
-      identifier.Contains("Support", StringComparison.OrdinalIgnoreCase) ||
       identifier.Contains("Owner", StringComparison.OrdinalIgnoreCase) ||
       identifier.Contains("Login", StringComparison.OrdinalIgnoreCase) ||
       identifier.Contains("Password", StringComparison.OrdinalIgnoreCase) ||
@@ -111,12 +114,12 @@ public sealed class PermissionCatalogTests
   [Fact]
   public void Backward_compatible_two_arg_define_keeps_existing_permissions_tenant_scoped()
   {
-    // Every permission outside the Platform.Tenants.* family uses the original two-argument Define,
+    // Every permission outside the PlatformSupport-scoped family uses the original two-argument Define,
     // which must continue to default to PermissionScope.Tenant so no existing permission changes plane.
     var catalog = new PlatformPermissionCatalog();
 
     Assert.All(
-      catalog.All.Where(item => !item.Name.Value.StartsWith("Platform.Tenants.", StringComparison.Ordinal)),
+      catalog.All.Where(item => item.Scope != PermissionScope.PlatformSupport),
       item => Assert.Equal(PermissionScope.Tenant, item.Scope));
   }
 

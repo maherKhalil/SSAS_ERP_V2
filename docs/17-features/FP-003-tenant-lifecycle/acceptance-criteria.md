@@ -2,7 +2,7 @@
 document_id: FP-003-AC
 title: Tenant Lifecycle Acceptance Criteria
 status: Approved for Implementation
-version: 1.0
+version: 1.1
 sprint: Sprint-01
 module: Platform
 ---
@@ -88,6 +88,50 @@ An already issued token does not override current non-Active status. Before ordi
 ### AC-TEN-0020 — Focused milestone scope
 
 The first implementation milestone introduces no subscription, company, branding, configuration, notification, authentication-session, refresh-token, JWT-issuance, tenant endpoint, Angular, or immutable-audit-store implementation.
+
+## Platform-plane authorization (ADR-015, DEC-TEN-0018)
+
+The following criteria apply to the future Tenant HTTP transport and its platform-plane authorization foundation. They are deferred with the endpoints; no HTTP behavior is implemented in the first backend milestone.
+
+### AC-TEN-0021 — Tenant token rejected on platform routes
+
+A valid tenant-plane token (carrying `tenant_id` and tenant-derived permissions) cannot invoke any `/api/platform/tenants` route; the request is denied and no lifecycle data is disclosed or changed.
+
+### AC-TEN-0022 — Authenticated platform principal without permission
+
+An authenticated platform-support principal lacking the required `PermissionScope.PlatformSupport` permission for a route receives 403 and no lifecycle effect occurs.
+
+### AC-TEN-0023 — Correct platform permission authorizes
+
+A platform-support principal holding the exact required permission (`Platform.Tenants.View`, `Platform.Tenants.Manage`, or `Platform.Tenants.Lifecycle`) is authorized for the mapped route.
+
+### AC-TEN-0024 — Tenant role cannot obtain platform permissions
+
+`Platform.Tenants.View`, `Platform.Tenants.Manage`, and `Platform.Tenants.Lifecycle` cannot be assigned to any tenant custom role, tenant system role, or tenant role-permission assignment; `Role.AssignPermission` rejects them by scope.
+
+### AC-TEN-0025 — Platform token carries no tenant scope
+
+A platform-support token carries `security_plane=platform` and no `tenant_id` or `tenant_user_id`; a token combining `security_plane=platform` with `tenant_id` is rejected as invalid.
+
+### AC-TEN-0026 — Target TenantId is not caller scope
+
+A route `{tenantId}` never establishes `ICurrentTenant`, never becomes a tenant claim, and never grants business-data access to the target tenant's tables.
+
+### AC-TEN-0027 — Suspended target authorizable for reactivation
+
+A platform principal with `Platform.Tenants.Lifecycle` is authorized to reactivate a `Suspended` target; authorization does not require the target to be Active.
+
+### AC-TEN-0028 — Provisioning target authorizable for activation
+
+A platform principal with `Platform.Tenants.Lifecycle` is authorized to activate a `Provisioning` target where the transition graph permits; target status does not gate caller authorization.
+
+### AC-TEN-0029 — Tenant-plane authorization unchanged
+
+FP-005 Company and Localization routes remain tenant-plane: they still require a validated current tenant and `PermissionScope.Tenant` permissions through the existing `RequirePermission` handler, unaffected by the platform plane.
+
+### AC-TEN-0030 — Tenant claims provider omits platform permissions
+
+Tenant token claim generation emits only `PermissionScope.Tenant` permissions; a `PlatformSupport` entry present through corrupt data, a bad seed, or a direct database change is not emitted into a tenant token.
 
 ## FP-002 Milestone 4 cross-package coverage
 

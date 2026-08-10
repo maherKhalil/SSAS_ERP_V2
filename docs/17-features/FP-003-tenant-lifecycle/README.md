@@ -2,18 +2,41 @@
 document_id: FP-003
 title: Platform Tenant Lifecycle
 status: Approved for Implementation
-version: 1.0
+version: 1.1
 sprint: Sprint-01
 module: Platform
 depends_on:
   - ADR-005
+  - ADR-015
   - FP-001
   - FP-002
 ---
 
 # Feature Package 003 — Platform Tenant Lifecycle
 
-> **Implementation status (informational).** The FP-003 Milestone 1 backend core — the Tenant aggregate, lifecycle commands and queries, the authentication-eligibility contract, and persistence — is implemented and merged. The tenant lifecycle HTTP endpoints described in [`api-contracts.md`](api-contracts.md) remain deferred and are not yet implemented. This note records implementation state only and changes no FP-003 requirement, decision, or contract.
+> **Implementation status (informational).**
+> - **Backend milestone:** Implemented and merged — the Tenant aggregate, lifecycle commands and queries, the authentication-eligibility contract, and persistence.
+> - **Platform-plane authorization architecture:** Approved — resolved by [`ADR-015`](../../14-Engineering/ADR/ADR-015-Platform-Plane-Authentication-Authorization.md) and recorded in [`decisions-approved.md`](decisions-approved.md) as `DEC-TEN-0018`.
+> - **HTTP transport:** Ready for implementation after the platform-plane authorization foundation is delivered. The tenant lifecycle HTTP endpoints described in [`api-contracts.md`](api-contracts.md) remain deferred and are not yet implemented.
+>
+> This note records implementation and approval state. The platform-plane authorization decision is captured in `ADR-015` / `DEC-TEN-0018`; no earlier FP-003 requirement, decision, or contract is otherwise changed.
+
+## Platform-plane authorization — future implementation impact
+
+The platform-plane transport (`ADR-015`, `DEC-TEN-0018`) is documented and approved but not implemented. When it is built, the expected impact is:
+
+- **New persistent global constructs:** a `PlatformSupportPrincipal` authority and a `PlatformPermissionAssignment`, both global and non-tenant-owned, anchored to the existing global `Identity`, plus a platform-capable session representation. Exact table and column names are deferred to implementation.
+- **EF migration expected:** yes. **SQL verification expected:** yes.
+- **Tenant Domain, Tenant Application, and Tenant persistence:** unchanged.
+
+Recommended implementation phases (documentation only; none implemented here):
+
+1. Permission scope/catalog foundation + `Platform.Tenants.*` definitions + escalation regression tests.
+2. `PlatformSupportPrincipal` authority + permission assignments + persistence/migration + SQL verification.
+3. Platform token/session profile (issuer/validator, claims sourcing) + tenant claims-provider `PermissionScope.Tenant` defense-in-depth filter.
+4. `PlatformPermissionAuthorizationHandler` + `RequirePlatformPermission` + real Host security tests.
+5. FP-003 Tenant HTTP transport + Admin Transport reuse + architecture-test replacement.
+6. Final security review. **Production track:** mandatory MFA / strong-auth and session hardening before platform-support Production enablement.
 
 ## Purpose
 

@@ -2,7 +2,7 @@
 document_id: FP-003-API
 title: Tenant Lifecycle API Contracts
 status: Approved for Implementation
-version: 1.0
+version: 1.1
 sprint: Sprint-01
 module: Platform
 ---
@@ -13,15 +13,29 @@ module: Platform
 
 These are future Platform-level HTTP contracts. The first FP-003 implementation milestone exposes no tenant lifecycle endpoint and delivers only Domain, Application, SQL Server, and tests.
 
-Endpoint implementation requires Platform-support authentication, exact permission identifiers, immutable audit integration, and implementation of the approved centralized current-status policy where applicable.
+The platform-support authentication model and the exact permission identifiers are now resolved by `ADR-015` (Platform-Plane Authentication and Authorization). Endpoint implementation still depends on delivering the platform-plane authorization foundation (platform-support token profile, `PlatformSupportPrincipal` authority, and `PlatformPermissionAuthorizationHandler`), immutable audit integration, and implementation of the approved centralized current-status policy where applicable.
+
+## Security plane
+
+Every route in this document is **platform-plane** under `ADR-015`. All seven routes require **platform-support authentication** (a validated `security_plane=platform` token) and the exact `PermissionScope.PlatformSupport` permission listed below, enforced through `RequirePlatformPermission(...)`. A tenant-plane token (carrying `tenant_id`, tenant-derived permissions) cannot call these routes. Route `TenantId` is a **target aggregate identifier only** and never establishes `ICurrentTenant` or caller scope.
+
+| Route | Required platform permission |
+|---|---|
+| `GET /api/platform/tenants` | `Platform.Tenants.View` |
+| `GET /api/platform/tenants/{tenantId}` | `Platform.Tenants.View` |
+| `POST /api/platform/tenants` | `Platform.Tenants.Manage` |
+| `POST /api/platform/tenants/{tenantId}/activate` | `Platform.Tenants.Lifecycle` |
+| `POST /api/platform/tenants/{tenantId}/suspend` | `Platform.Tenants.Lifecycle` |
+| `POST /api/platform/tenants/{tenantId}/reactivate` | `Platform.Tenants.Lifecycle` |
+| `POST /api/platform/tenants/{tenantId}/archive` | `Platform.Tenants.Lifecycle` |
 
 ## Conventions
 
 - Base route: `/api/platform/tenants`.
 - HTTPS, versioning, bounded pagination, and Problem Details apply.
-- All routes require explicit Platform-level authorization.
+- All routes require explicit platform-plane authorization (`RequirePlatformPermission`); see the security-plane matrix above.
 - Tenant administrators cannot call these routes through tenant roles.
-- `TenantId` is server-generated during creation.
+- `TenantId` in a route path is the target aggregate identifier only; on create it is server-generated.
 - Status is never accepted as a writable field in create input.
 - Lifecycle commands include the project-standard expected rowversion representation.
 - Stale concurrency returns 409 or the project-standard equivalent.

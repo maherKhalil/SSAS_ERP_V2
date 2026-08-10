@@ -2,7 +2,7 @@
 document_id: FP-003-TEST
 title: Tenant Lifecycle Test Scenarios
 status: Approved for Implementation
-version: 1.0
+version: 1.1
 sprint: Sprint-01
 module: Platform
 ---
@@ -66,8 +66,42 @@ module: Platform
 - **TS-TEN-0043:** Return Problem Details and the project-standard conflict result for stale lifecycle requests.
 - **TS-TEN-0044:** Deny ordinary tenant business access for current Provisioning, Suspended, or Archived status even when a previously issued token remains cryptographically valid.
 
+## Platform-plane authorization (ADR-015, DEC-TEN-0018)
+
+Scenarios for the future Tenant HTTP transport and its platform-plane authorization foundation, exercised through the real Host authorization pipeline. They are deferred with the endpoints.
+
+### Authentication and authorization
+
+- **TS-TEN-0045:** A request with no token to any `/api/platform/tenants` route returns 401.
+- **TS-TEN-0046:** A valid tenant-plane token is denied (403) on every `/api/platform/tenants` route with no lifecycle effect.
+- **TS-TEN-0047:** A platform-support token without the required `PermissionScope.PlatformSupport` permission returns 403.
+- **TS-TEN-0048:** A platform-support token with the exact required permission (`Platform.Tenants.View` / `Manage` / `Lifecycle`) authorizes the mapped route.
+
+### Plane confusion
+
+- **TS-TEN-0049:** A token combining `security_plane=platform` with a `tenant_id` claim is rejected as invalid.
+- **TS-TEN-0050:** A tenant token carrying a forged `security_plane=platform` claim is rejected (the claim is server-issued and validated, not client-editable).
+- **TS-TEN-0051:** A route target `{tenantId}` does not become caller scope: it establishes no `ICurrentTenant` and grants no business-data access to the target tenant.
+
+### Escalation
+
+- **TS-TEN-0052:** A tenant custom role cannot be assigned a `PlatformSupport` permission; `Role.AssignPermission` rejects it by scope.
+- **TS-TEN-0053:** A tenant system role cannot be assigned a `PlatformSupport` permission.
+- **TS-TEN-0054:** The tenant token claim provider filters out any `PlatformSupport` entry (e.g. from corrupt data or a bad seed) and emits only `PermissionScope.Tenant` permissions.
+
+### Target status independence
+
+- **TS-TEN-0055:** A platform principal with `Platform.Tenants.Lifecycle` is authorized to activate a `Provisioning` target where the transition graph permits.
+- **TS-TEN-0056:** A platform principal with `Platform.Tenants.Lifecycle` is authorized to reactivate a `Suspended` target.
+- **TS-TEN-0057:** Target lifecycle status does not gate caller authorization; the authorization decision precedes and is independent of the domain transition check.
+
+### Tenant-plane regression
+
+- **TS-TEN-0058:** An FP-005 Company route still requires a validated current tenant and a `PermissionScope.Tenant` permission through the existing `RequirePermission` handler.
+- **TS-TEN-0059:** A Localization tenant-plane route remains unchanged and unaffected by the platform plane.
+
 ## First implementation milestone applicability
 
 The first milestone implements `TS-TEN-0001` through `TS-TEN-0038` where infrastructure exists, excluding any HTTP-specific assertion other than verifying endpoint absence.
 
-FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization.
+FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization. `TS-TEN-0045` through `TS-TEN-0059` are deferred with the platform-plane Tenant HTTP transport and its authorization foundation under `ADR-015` and `DEC-TEN-0018`.

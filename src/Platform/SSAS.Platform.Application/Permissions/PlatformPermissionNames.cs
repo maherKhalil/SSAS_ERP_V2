@@ -23,4 +23,10 @@ public static class PlatformPermissionNames
   public const string ViewCompanies = "Platform.Companies.View";
   public const string ManageCompanies = "Platform.Companies.Manage";
   public const string CompanyLifecycle = "Platform.Companies.Lifecycle";
+
+  // Platform-plane (PermissionScope.PlatformSupport) tenant-administration permissions (ADR-015, DEC-TEN-0018).
+  // These are never assignable to tenant roles; scope is what makes them platform-plane, not the "Platform." prefix.
+  public const string ViewTenants = "Platform.Tenants.View";
+  public const string ManageTenants = "Platform.Tenants.Manage";
+  public const string TenantLifecycle = "Platform.Tenants.Lifecycle";
 }

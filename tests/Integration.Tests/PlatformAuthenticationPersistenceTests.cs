@@ -21,10 +21,12 @@ using SSAS.Host.API.Configuration;
 using SSAS.Platform.API;
 using SSAS.Platform.API.Authentication;
 using SSAS.Platform.Application.Authentication;
+using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Domain;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Identities;
+using SSAS.Platform.Domain.Roles;
 using SSAS.Platform.Domain.Tenants;
 using SSAS.Platform.Domain.TenantUsers;
 using SSAS.Platform.Domain.ValueObjects;
@@ -268,7 +270,7 @@ public sealed class PlatformAuthenticationPersistenceTests
         sessionRepository,
         unitOfWork,
         tokenService,
-        new AccessTokenClaimsProvider(loginContext),
+        new AccessTokenClaimsProvider(loginContext, new PlatformPermissionCatalog()),
         failedIssuer,
         policy);
       var handler = new BeginTenantAccessCommandHandler(
@@ -331,6 +333,37 @@ public sealed class PlatformAuthenticationPersistenceTests
       Assert.Null(session.RefreshTokenRecords.Single().ConsumedUtc);
       Assert.Null(session.RefreshTokenRecords.Single().RevokedUtc);
     }
+  }
+
+  [Fact]
+  [Trait("Scenario", "TS-TEN-0054")]
+  [Trait("Acceptance", "AC-TEN-0030")]
+  public async Task Corrupt_platform_support_assignment_is_excluded_from_tenant_access_token_claims()
+  {
+    // ADR-015 / DEC-TEN-0018 defense in depth: even if persistent SQL state contains an invalid
+    // PlatformSupport permission assignment on a tenant role, a tenant access token must not carry it.
+    // Exercises real SQL persistence, the real AccessTokenClaimsProvider, the real PlatformPermissionCatalog,
+    // and (through the provider) the real TenantPermissionClaimFilter — no mocking, no manual claim construction.
+    await using var database = await SqlTestDatabase.CreateAsync();
+    var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var seed = await CreateClaimsSeedWithCorruptPlatformAssignmentAsync(database, clientId);
+
+    await using var context = database.CreateContext(seed.TenantId);
+    var claimsProvider = new AccessTokenClaimsProvider(context, new PlatformPermissionCatalog());
+
+    var result = await claimsProvider.GetClaimsAsync(
+      seed.AuthenticationSessionId,
+      seed.IdentityId,
+      seed.TenantUserId,
+      seed.TenantId,
+      clientId,
+      seed.SecurityVersion);
+
+    Assert.True(result.IsSuccess);
+    // The force-seeded PlatformSupport permission must be filtered out of the tenant token claims.
+    Assert.DoesNotContain(PlatformPermissionNames.ManageTenants, result.Value.Permissions);
+    // The legitimate Tenant-scoped permission still survives: filtering is selective, not destructive.
+    Assert.Contains(PlatformPermissionNames.ViewCompanies, result.Value.Permissions);
   }
 
   [Fact]
@@ -623,7 +656,7 @@ public sealed class PlatformAuthenticationPersistenceTests
       new IdentityTenantMembershipReadService(context, tenantEligibility),
       new AuthenticationClientRegistry(Options.Create(new AuthenticationClientOptions())),
       new AuthenticationTokenService(),
-      new AccessTokenClaimsProvider(context),
+      new AccessTokenClaimsProvider(context, new PlatformPermissionCatalog()),
       accessTokenIssuer ?? new TestAccessTokenIssuer(),
       new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()),
       new AuthenticationPolicy(),
@@ -647,7 +680,7 @@ public sealed class PlatformAuthenticationPersistenceTests
       new AuthenticationClientRegistry(Options.Create(new AuthenticationClientOptions())),
       tokenService,
       new AuthenticationSessionCreator(sessionRepository, unitOfWork, tokenService,
-        new AccessTokenClaimsProvider(context), accessTokenIssuer ?? new TestAccessTokenIssuer(), policy),
+        new AccessTokenClaimsProvider(context, new PlatformPermissionCatalog()), accessTokenIssuer ?? new TestAccessTokenIssuer(), policy),
       unitOfWork,
       database.Clock);
   }
@@ -789,6 +822,107 @@ public sealed class PlatformAuthenticationPersistenceTests
     Assert.True((await SaveAsync(authenticationContext)).IsSuccess);
     return new RefreshSessionSeed(tenant.Id, session.Id, raw);
   }
+
+  private static async Task<ClaimsCorruptionSeed> CreateClaimsSeedWithCorruptPlatformAssignmentAsync(
+    SqlTestDatabase database,
+    AuthenticationClientId clientId)
+  {
+    var tenant = Tenant.Create(
+      TenantCode.Create("CLAIMFILTER").Value,
+      TenantName.Create("Claim Filter Tenant").Value,
+      "integration-actor",
+      Guid.NewGuid(),
+      database.Clock.UtcNow).Value;
+
+    long identityId;
+    long accountSecurityVersion;
+    await using (var globalContext = database.CreateContext(Guid.NewGuid()))
+    {
+      globalContext.Tenants.Add(tenant);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      Assert.True(tenant.Activate("integration-actor", Guid.NewGuid(), database.Clock.UtcNow.AddMinutes(1)).IsSuccess);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+
+      var identity = Identity.Create(AuthenticationSubject.Create($"local:{Guid.NewGuid():N}").Value);
+      globalContext.Identities.Add(identity);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      var account = AuthenticationAccount.CreatePending(
+        identity.Id,
+        LoginEmail.Create("claim.filter@example.com").Value);
+      globalContext.AuthenticationAccounts.Add(account);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      Assert.True(account.CompleteInitialSetup("integration-password-hash", Guid.NewGuid(), database.Clock.UtcNow).IsSuccess);
+      Assert.True((await SaveAsync(globalContext)).IsSuccess);
+      identityId = identity.Id;
+      accountSecurityVersion = account.SecurityVersion;
+    }
+
+    long tenantUserId;
+    long roleId;
+    await using (var tenantContext = database.CreateContext(tenant.Id))
+    {
+      // Role carries a legitimate Tenant-scoped permission through the real domain guard.
+      var role = Role.CreateCustom(
+        tenant.Id,
+        RoleName.Create("Claim Filter Role").Value,
+        null,
+        Guid.NewGuid(),
+        database.Clock.UtcNow);
+      var catalog = new PlatformPermissionCatalog();
+      Assert.True(catalog.TryGet(PlatformPermissionNames.ViewCompanies, out var companiesView));
+      Assert.True(role.AssignPermission(companiesView, "integration-actor", Guid.NewGuid(), database.Clock.UtcNow).IsSuccess);
+      tenantContext.Roles.Add(role);
+      Assert.True((await SaveAsync(tenantContext)).IsSuccess);
+      roleId = role.Id;
+
+      var membership = TenantUser.CreateActive(
+        identityId,
+        tenant.Id,
+        EmailAddress.Create("claim.filter.member@example.com").Value,
+        UserDisplayName.Create("Claim Filter Member").Value,
+        Guid.NewGuid(),
+        database.Clock.UtcNow);
+      Assert.True(membership.AssignRole(role, "integration-actor", Guid.NewGuid(), database.Clock.UtcNow).IsSuccess);
+      tenantContext.TenantUsers.Add(membership);
+      Assert.True((await SaveAsync(tenantContext)).IsSuccess);
+      tenantUserId = membership.Id;
+    }
+
+    long authenticationSessionId;
+    await using (var authenticationContext = database.CreateContext(tenant.Id))
+    {
+      var session = AuthenticationSession.Create(
+        identityId,
+        tenantUserId,
+        tenant.Id,
+        clientId.Value,
+        Guid.NewGuid(),
+        accountSecurityVersion,
+        database.Clock.UtcNow,
+        database.Clock.UtcNow.AddDays(30),
+        database.Clock.UtcNow.AddDays(90));
+      authenticationContext.AuthenticationSessions.Add(session);
+      Assert.True((await SaveAsync(authenticationContext)).IsSuccess);
+      authenticationSessionId = session.Id;
+    }
+
+    // Force-seed a corrupt PlatformSupport assignment straight into SQL, bypassing Role.AssignPermission
+    // (which rejects non-Tenant scopes). This models corrupt/manual database state that production writes cannot create.
+    await using (var corruptionContext = database.CreateContext(tenant.Id))
+    {
+      await corruptionContext.Database.ExecuteSqlInterpolatedAsync(
+        $"INSERT INTO [platform].[RolePermissionAssignments] ([TenantId], [RoleId], [PermissionName], [AssignedUtc], [AssignedBy]) VALUES ({tenant.Id}, {roleId}, {PlatformPermissionNames.ManageTenants}, {database.Clock.UtcNow}, {"corruption-test"})");
+    }
+
+    return new ClaimsCorruptionSeed(tenant.Id, identityId, tenantUserId, authenticationSessionId, accountSecurityVersion);
+  }
+
+  private sealed record ClaimsCorruptionSeed(
+    Guid TenantId,
+    long IdentityId,
+    long TenantUserId,
+    long AuthenticationSessionId,
+    long SecurityVersion);
 
   private static async Task VerifyAccountUniquenessAsync(SqlTestDatabase database, Guid tenantId, Seed seed)
   {

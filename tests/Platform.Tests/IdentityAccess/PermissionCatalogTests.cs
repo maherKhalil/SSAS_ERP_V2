@@ -5,7 +5,8 @@ namespace SSAS.Platform.Tests.IdentityAccess;
 
 public sealed class PermissionCatalogTests
 {
-  public static TheoryData<string, string> ExpectedPermissions => new()
+  // Tenant-plane permissions (PermissionScope.Tenant): assignable to tenant roles.
+  public static TheoryData<string, string> ExpectedTenantPermissions => new()
   {
     { "Platform.Users.View", "View tenant users" },
     { "Platform.Users.Create", "Create tenant memberships" },
@@ -30,14 +31,22 @@ public sealed class PermissionCatalogTests
     { "Platform.Companies.Lifecycle", "Change company lifecycle state" }
   };
 
+  // Platform-plane permissions (PermissionScope.PlatformSupport, ADR-015): never assignable to tenant roles.
+  public static TheoryData<string, string> ExpectedPlatformSupportPermissions => new()
+  {
+    { "Platform.Tenants.View", "View platform tenant lifecycle records" },
+    { "Platform.Tenants.Manage", "Create platform tenants" },
+    { "Platform.Tenants.Lifecycle", "Change platform tenant lifecycle state" }
+  };
+
   [Fact]
-  public void Catalog_is_code_owned_unique_and_tenant_scoped()
+  public void Catalog_is_code_owned_and_unique()
   {
     var catalog = new PlatformPermissionCatalog();
 
     Assert.NotEmpty(catalog.All);
     Assert.Equal(catalog.All.Count, catalog.All.Select(item => item.Name.Value).Distinct(StringComparer.Ordinal).Count());
-    Assert.All(catalog.All, item => Assert.Equal(PermissionScope.Tenant, item.Scope));
+    Assert.All(catalog.All, item => Assert.True(item.Scope is PermissionScope.Tenant or PermissionScope.PlatformSupport));
   }
 
   [Fact]
@@ -51,8 +60,8 @@ public sealed class PermissionCatalogTests
   }
 
   [Theory]
-  [MemberData(nameof(ExpectedPermissions))]
-  public void Catalog_contains_only_the_reviewed_milestone_permission(string identifier, string displayName)
+  [MemberData(nameof(ExpectedTenantPermissions))]
+  public void Catalog_tenant_permission_is_tenant_scoped(string identifier, string displayName)
   {
     var catalog = new PlatformPermissionCatalog();
 
@@ -62,12 +71,33 @@ public sealed class PermissionCatalogTests
     Assert.Equal(3, identifier.Split('.').Length);
   }
 
-  [Fact]
-  public void Catalog_has_exactly_twenty_one_permissions_and_no_deferred_operation()
+  [Theory]
+  [MemberData(nameof(ExpectedPlatformSupportPermissions))]
+  public void Catalog_platform_tenant_permission_is_platform_support_scoped(string identifier, string displayName)
   {
-    var identifiers = new PlatformPermissionCatalog().All.Select(item => item.Name.Value).ToArray();
+    var catalog = new PlatformPermissionCatalog();
 
-    Assert.Equal(21, identifiers.Length);
+    Assert.True(catalog.TryGet(identifier, out var permission));
+    Assert.Equal(displayName, permission.Description);
+    Assert.Equal(PermissionScope.PlatformSupport, permission.Scope);
+    Assert.Equal(3, identifier.Split('.').Length);
+  }
+
+  [Fact]
+  public void Catalog_has_exactly_the_reviewed_permissions_split_by_scope()
+  {
+    var catalog = new PlatformPermissionCatalog();
+    var identifiers = catalog.All.Select(item => item.Name.Value).ToArray();
+
+    Assert.Equal(24, identifiers.Length);
+    Assert.Equal(21, catalog.All.Count(item => item.Scope == PermissionScope.Tenant));
+    Assert.Equal(3, catalog.All.Count(item => item.Scope == PermissionScope.PlatformSupport));
+
+    // The only platform-plane family is Platform.Tenants.*; scope, not the "Platform." prefix, is authoritative.
+    Assert.All(
+      catalog.All.Where(item => item.Scope == PermissionScope.PlatformSupport),
+      item => Assert.StartsWith("Platform.Tenants.", item.Name.Value, StringComparison.Ordinal));
+
     Assert.DoesNotContain(identifiers, identifier =>
       identifier.Contains("Support", StringComparison.OrdinalIgnoreCase) ||
       identifier.Contains("Owner", StringComparison.OrdinalIgnoreCase) ||
@@ -76,5 +106,40 @@ public sealed class PermissionCatalogTests
       identifier.Contains("Token", StringComparison.OrdinalIgnoreCase) ||
       identifier.Contains("Invitation", StringComparison.OrdinalIgnoreCase) ||
       identifier.Contains("TenantSelection", StringComparison.OrdinalIgnoreCase));
+  }
+
+  [Fact]
+  public void Backward_compatible_two_arg_define_keeps_existing_permissions_tenant_scoped()
+  {
+    // Every permission outside the Platform.Tenants.* family uses the original two-argument Define,
+    // which must continue to default to PermissionScope.Tenant so no existing permission changes plane.
+    var catalog = new PlatformPermissionCatalog();
+
+    Assert.All(
+      catalog.All.Where(item => !item.Name.Value.StartsWith("Platform.Tenants.", StringComparison.Ordinal)),
+      item => Assert.Equal(PermissionScope.Tenant, item.Scope));
+  }
+
+  [Fact]
+  public void Existing_company_localization_and_iam_permissions_remain_tenant_scoped()
+  {
+    var catalog = new PlatformPermissionCatalog();
+
+    foreach (var name in new[]
+      {
+        PlatformPermissionNames.ViewCompanies,
+        PlatformPermissionNames.ManageCompanies,
+        PlatformPermissionNames.CompanyLifecycle,
+        PlatformPermissionNames.ViewLocalization,
+        PlatformPermissionNames.ManageLocalization,
+        PlatformPermissionNames.ViewLocalizationHistory,
+        PlatformPermissionNames.ViewRoles,
+        PlatformPermissionNames.AssignRolePermissions,
+        PlatformPermissionNames.ViewUsers
+      })
+    {
+      Assert.True(catalog.TryGet(name, out var permission));
+      Assert.Equal(PermissionScope.Tenant, permission.Scope);
+    }
   }
 }

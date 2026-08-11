@@ -27,6 +27,11 @@ public sealed class PlatformSupportPrincipalConfiguration : IEntityTypeConfigura
       .HasPrincipalKey(identity => identity.Id)
       .OnDelete(DeleteBehavior.Restrict);
 
+    // Composite alternate key so a PlatformAuthenticationSession can bind (PrincipalId, IdentityId) by FK,
+    // structurally guaranteeing the session's identity matches the principal's identity (DEC-TEN-0022).
+    builder.HasAlternateKey(principal => new { principal.Id, principal.IdentityId })
+      .HasName("AK_PlatformSupportPrincipals_PrincipalIdentity");
+
     builder.Ignore(principal => principal.ActivePermissions);
     builder.Navigation(principal => principal.PermissionAssignments).UsePropertyAccessMode(PropertyAccessMode.Field);
 

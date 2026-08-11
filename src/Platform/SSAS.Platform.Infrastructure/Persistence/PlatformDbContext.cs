@@ -46,6 +46,10 @@ public sealed class PlatformDbContext(
 
   public DbSet<RefreshTokenRecord> RefreshTokenRecords => Set<RefreshTokenRecord>();
 
+  public DbSet<PlatformAuthenticationSession> PlatformAuthenticationSessions => Set<PlatformAuthenticationSession>();
+
+  public DbSet<PlatformRefreshTokenRecord> PlatformRefreshTokenRecords => Set<PlatformRefreshTokenRecord>();
+
   public DbSet<TenantSelectionTransaction> TenantSelectionTransactions => Set<TenantSelectionTransaction>();
 
   public DbSet<LocalizationCatalogState> LocalizationCatalogStates => Set<LocalizationCatalogState>();
@@ -98,6 +102,14 @@ public sealed class PlatformDbContext(
       entry.State == EntityState.Deleted && entry.Entity is AuthenticationSession or RefreshTokenRecord or TenantSelectionTransaction))
     {
       throw new InvalidOperationException("Authentication session, refresh-token, and tenant-selection history cannot be physically deleted.");
+    }
+
+    // Platform-plane session/refresh history is retained security state (DEC-TEN-0022), consistent with the
+    // tenant guard above: revoke/compromise via status updates only, never physical delete.
+    if (ChangeTracker.Entries().Any(entry =>
+      entry.State == EntityState.Deleted && entry.Entity is PlatformAuthenticationSession or PlatformRefreshTokenRecord))
+    {
+      throw new InvalidOperationException("Platform authentication session and refresh-token history cannot be physically deleted.");
     }
   }
 

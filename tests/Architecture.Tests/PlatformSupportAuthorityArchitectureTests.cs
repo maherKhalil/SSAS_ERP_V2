@@ -68,16 +68,24 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
-  public void No_platform_session_or_phase_4_authorization_surface_is_introduced_yet()
+  public void Platform_session_persistence_exists_but_no_creation_refresh_or_phase_4_surface_yet()
   {
-    // Phase 3C-1 introduces the platform token PROFILE (security_plane + PlatformAccessTokenClaims), but the
-    // platform SESSION persistence (Phase 3C-3) must not exist yet. A platform session/refresh domain type
-    // would live in the Platform Domain assembly alongside AuthenticationSession.
-    var platformSessionTypes = new[] { "PlatformAuthenticationSession", "PlatformRefreshTokenRecord" };
-    foreach (var assembly in new[] { typeof(PlatformSupportPrincipal).Assembly, typeof(PlatformSupportPermissionFilter).Assembly })
+    // Phase 3C-3 introduces platform session PERSISTENCE (domain aggregate + refresh child).
+    var domainAssembly = typeof(PlatformSupportPrincipal).Assembly;
+    Assert.Contains(domainAssembly.GetTypes(), type => type.Name == "PlatformAuthenticationSession");
+    Assert.Contains(domainAssembly.GetTypes(), type => type.Name == "PlatformRefreshTokenRecord");
+
+    // But NOT the Phase-3C-4 session-creation / refresh orchestration.
+    var applicationAssembly = typeof(PlatformSupportPermissionFilter).Assembly;
+    var forbiddenApplication = new[]
     {
-      Assert.DoesNotContain(assembly.GetTypes(), type => platformSessionTypes.Contains(type.Name, StringComparer.Ordinal));
-    }
+      "PlatformAuthenticationSessionCreator",
+      "IssuePlatformAuthenticationSessionCommand",
+      "IssuePlatformAuthenticationSessionCommandHandler",
+      "RefreshPlatformAuthenticationSessionCommand",
+      "RefreshPlatformAuthenticationSessionCommandHandler"
+    };
+    Assert.DoesNotContain(applicationAssembly.GetTypes(), type => forbiddenApplication.Contains(type.Name, StringComparer.Ordinal));
 
     // The platform authorization handler and RequirePlatformPermission convention are Phase-4 concerns.
     var hostAssembly = typeof(SSAS.Host.API.Authorization.PermissionAuthorizationHandler).Assembly;
@@ -87,6 +95,26 @@ public sealed class PlatformSupportAuthorityArchitectureTests
     Assert.DoesNotContain(
       apiAssembly.GetTypes().SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)),
       method => method.Name == "RequirePlatformPermission");
+  }
+
+  [Fact]
+  public void Platform_authentication_session_is_global_and_not_tenant_or_company_owned()
+  {
+    var session = typeof(PlatformAuthenticationSession);
+    Assert.DoesNotContain(typeof(ITenantOwnedEntity), session.GetInterfaces());
+    Assert.DoesNotContain(session.GetInterfaces(), contract => contract.Name == "ICompanyOwnedEntity");
+    foreach (var forbidden in new[] { "TenantId", "TenantUserId", "CompanyId" })
+    {
+      Assert.Null(session.GetProperty(forbidden));
+    }
+
+    Assert.NotNull(session.GetProperty(nameof(PlatformAuthenticationSession.IdentityId)));
+    Assert.NotNull(session.GetProperty(nameof(PlatformAuthenticationSession.PlatformSupportPrincipalId)));
+
+    var refreshRecord = typeof(PlatformRefreshTokenRecord);
+    Assert.DoesNotContain(typeof(ITenantOwnedEntity), refreshRecord.GetInterfaces());
+    Assert.Null(refreshRecord.GetProperty("TenantId"));
+    Assert.NotNull(refreshRecord.GetProperty(nameof(PlatformRefreshTokenRecord.PlatformAuthenticationSessionId)));
   }
 
   [Fact]

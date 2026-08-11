@@ -59,6 +59,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IAuthenticationAccountRepository, AuthenticationAccountRepository>();
     services.AddScoped<IAccountActionTokenRepository, AccountActionTokenRepository>();
     services.AddScoped<IAuthenticationSessionRepository, AuthenticationSessionRepository>();
+    services.AddScoped<IPlatformAuthenticationSessionRepository, PlatformAuthenticationSessionRepository>();
     services.AddScoped<ITenantSelectionTransactionRepository, TenantSelectionTransactionRepository>();
     services.AddScoped<ITenantRepository, TenantRepository>();
     services.AddScoped<ICompanyRepository, CompanyRepository>();

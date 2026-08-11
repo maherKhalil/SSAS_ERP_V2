@@ -32,4 +32,11 @@ public static class PlatformSupportErrors
 
   public static readonly Error PrincipalDisabled =
     new("PlatformSupport.PrincipalDisabled", "A disabled platform-support principal cannot receive new permissions.");
+
+  // Platform token issuance eligibility (ADR-016 Phase 3C / DEC-TEN-0022), kept plane-specific.
+  public static readonly Error AccountIneligible =
+    new("PlatformSupport.AccountIneligible", "The identity's authentication account is not eligible for platform authentication.");
+
+  public static readonly Error NoUsablePlatformAuthority =
+    new("PlatformSupport.NoUsablePlatformAuthority", "The platform-support principal has no active platform-support permissions.");
 }

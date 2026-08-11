@@ -1247,11 +1247,17 @@ public sealed class PlatformAuthenticationPersistenceTests
   {
     public Result<IssuedAccessToken> Issue(AccessTokenClaims claims, DateTimeOffset issuedUtc) =>
       Result.Success(new IssuedAccessToken(new SensitiveAccessToken("integration-access-token"), issuedUtc.AddMinutes(15)));
+
+    public Result<IssuedAccessToken> Issue(PlatformAccessTokenClaims claims, DateTimeOffset issuedUtc) =>
+      Result.Success(new IssuedAccessToken(new SensitiveAccessToken("integration-platform-access-token"), issuedUtc.AddMinutes(15)));
   }
 
   private sealed class FailingAccessTokenIssuer : IAccessTokenIssuer
   {
     public Result<IssuedAccessToken> Issue(AccessTokenClaims claims, DateTimeOffset issuedUtc) =>
+      Result.Failure<IssuedAccessToken>(AuthenticationErrors.AccessTokenIssuanceUnavailable);
+
+    public Result<IssuedAccessToken> Issue(PlatformAccessTokenClaims claims, DateTimeOffset issuedUtc) =>
       Result.Failure<IssuedAccessToken>(AuthenticationErrors.AccessTokenIssuanceUnavailable);
   }
 

@@ -377,6 +377,9 @@ public sealed class AuthenticationSessionApplicationTests
   {
     public Result<IssuedAccessToken> Issue(AccessTokenClaims claims, DateTimeOffset issuedUtc) =>
       Result.Success(new IssuedAccessToken(new SensitiveAccessToken("test-access-token"), issuedUtc.AddMinutes(15)));
+
+    public Result<IssuedAccessToken> Issue(PlatformAccessTokenClaims claims, DateTimeOffset issuedUtc) =>
+      Result.Success(new IssuedAccessToken(new SensitiveAccessToken("test-platform-access-token"), issuedUtc.AddMinutes(15)));
   }
 
   private sealed class FakeCurrentAuthenticationSession(CurrentAuthenticationSession value)

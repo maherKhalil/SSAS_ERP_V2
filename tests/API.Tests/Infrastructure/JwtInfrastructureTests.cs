@@ -49,6 +49,53 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
     Assert.Equal(["a-role", "z-role"], token.Claims.Where(claim => claim.Type == JwtClaimTypes.Role).Select(claim => claim.Value));
     Assert.Equal(["a.permission", "z.permission"], token.Claims.Where(claim => claim.Type == JwtClaimTypes.Permission).Select(claim => claim.Value));
     Assert.DoesNotContain(token.Claims, claim => claim.Type is JwtClaimTypes.Email or JwtClaimTypes.Name);
+    // Tenant regression (DEC-TEN-0022): the tenant profile carries NO security_plane claim (absence ⇒ tenant).
+    Assert.DoesNotContain(token.Claims, claim => claim.Type == JwtClaimTypes.SecurityPlane);
+  }
+
+  [Fact]
+  public void Platform_token_issuer_emits_the_platform_profile_and_no_tenant_claims()
+  {
+    using var scope = factory.Services.CreateScope();
+    var issuer = scope.ServiceProvider.GetRequiredService<IAccessTokenIssuer>();
+    var client = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var now = DateTimeOffset.UtcNow;
+
+    var issued = issuer.Issue(new PlatformAccessTokenClaims(
+      "immutable-subject", 11, 33, client, 4,
+      ["Platform.Tenants.View", "Platform.Support.Administer", "Platform.Tenants.View"]), now);
+
+    Assert.True(issued.IsSuccess);
+    var token = new JwtSecurityTokenHandler().ReadJwtToken(issued.Value.AccessToken.RevealOnce().Value);
+
+    // security_plane=platform exactly once.
+    Assert.Single(token.Claims, claim => claim.Type == JwtClaimTypes.SecurityPlane && claim.Value == "platform");
+    Assert.Single(token.Claims, claim => claim.Type == JwtClaimTypes.Subject && claim.Value == "immutable-subject");
+    Assert.Single(token.Claims, claim => claim.Type == JwtClaimTypes.IdentityId && claim.Value == "11");
+    Assert.Single(token.Claims, claim => claim.Type == JwtClaimTypes.SessionId && claim.Value == "33");
+    Assert.Single(token.Claims, claim => claim.Type == JwtClaimTypes.ClientId && claim.Value == AuthenticationClientId.V1Web);
+    Assert.Single(token.Claims, claim => claim.Type == JwtClaimTypes.SecurityVersion && claim.Value == "4");
+    // Permissions deduped + ordinally ordered.
+    Assert.Equal(
+      ["Platform.Support.Administer", "Platform.Tenants.View"],
+      token.Claims.Where(claim => claim.Type == JwtClaimTypes.Permission).Select(claim => claim.Value));
+
+    // Platform profile forbids every tenant-shaped claim.
+    Assert.DoesNotContain(token.Claims, claim =>
+      claim.Type == JwtClaimTypes.TenantId || claim.Type == JwtClaimTypes.TenantUserId ||
+      claim.Type == JwtClaimTypes.Role || claim.Type == JwtClaimTypes.CompanyId);
+  }
+
+  [Fact]
+  public void Platform_token_issuer_rejects_a_claim_set_with_no_permissions()
+  {
+    using var scope = factory.Services.CreateScope();
+    var issuer = scope.ServiceProvider.GetRequiredService<IAccessTokenIssuer>();
+    var client = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+
+    var issued = issuer.Issue(new PlatformAccessTokenClaims("immutable-subject", 11, 33, client, 4, []), DateTimeOffset.UtcNow);
+
+    Assert.True(issued.IsFailure);
   }
 
   [Fact]

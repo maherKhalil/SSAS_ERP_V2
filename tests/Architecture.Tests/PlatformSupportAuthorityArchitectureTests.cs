@@ -1,5 +1,4 @@
 using System.Reflection;
-using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.API.Transport;
 using SSAS.Platform.Application.Permissions;
@@ -69,15 +68,16 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
-  public void No_platform_token_profile_or_handler_is_introduced_in_this_phase()
+  public void No_platform_session_or_phase_4_authorization_surface_is_introduced_yet()
   {
-    // security_plane claim is a Phase-3 concern and must not exist yet.
-    var claimValues = typeof(JwtClaimTypes)
-      .GetFields(BindingFlags.Public | BindingFlags.Static)
-      .Where(field => field is { IsLiteral: true } && field.FieldType == typeof(string))
-      .Select(field => (string)field.GetRawConstantValue()!)
-      .ToArray();
-    Assert.DoesNotContain("security_plane", claimValues);
+    // Phase 3C-1 introduces the platform token PROFILE (security_plane + PlatformAccessTokenClaims), but the
+    // platform SESSION persistence (Phase 3C-3) must not exist yet. A platform session/refresh domain type
+    // would live in the Platform Domain assembly alongside AuthenticationSession.
+    var platformSessionTypes = new[] { "PlatformAuthenticationSession", "PlatformRefreshTokenRecord" };
+    foreach (var assembly in new[] { typeof(PlatformSupportPrincipal).Assembly, typeof(PlatformSupportPermissionFilter).Assembly })
+    {
+      Assert.DoesNotContain(assembly.GetTypes(), type => platformSessionTypes.Contains(type.Name, StringComparer.Ordinal));
+    }
 
     // The platform authorization handler and RequirePlatformPermission convention are Phase-4 concerns.
     var hostAssembly = typeof(SSAS.Host.API.Authorization.PermissionAuthorizationHandler).Assembly;

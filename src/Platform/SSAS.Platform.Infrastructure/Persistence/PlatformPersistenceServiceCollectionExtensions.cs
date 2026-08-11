@@ -76,6 +76,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantLocalizationVersionReader, TenantLocalizationVersionReader>();
     services.AddScoped<IIdentityTenantMembershipReadService, IdentityTenantMembershipReadService>();
     services.AddScoped<IAccessTokenClaimsProvider, AccessTokenClaimsProvider>();
+    services.AddScoped<IPlatformAccessTokenClaimsProvider, PlatformAccessTokenClaimsProvider>();
     services.AddScoped<IPlatformSupportPrincipalRepository, PlatformSupportPrincipalRepository>();
     services.AddScoped<IPlatformSupportPermissionReadService, PlatformSupportPermissionReadService>();
     services.AddScoped<IPlatformSupportAuthorityStateReadService, PlatformSupportAuthorityStateReadService>();

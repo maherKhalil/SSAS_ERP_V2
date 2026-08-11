@@ -2,7 +2,7 @@
 document_id: FP-003-TEST
 title: Tenant Lifecycle Test Scenarios
 status: Approved for Implementation
-version: 1.0
+version: 1.2
 sprint: Sprint-01
 module: Platform
 ---
@@ -66,8 +66,127 @@ module: Platform
 - **TS-TEN-0043:** Return Problem Details and the project-standard conflict result for stale lifecycle requests.
 - **TS-TEN-0044:** Deny ordinary tenant business access for current Provisioning, Suspended, or Archived status even when a previously issued token remains cryptographically valid.
 
+## Platform-plane authorization (ADR-015, DEC-TEN-0018)
+
+Scenarios for the future Tenant HTTP transport and its platform-plane authorization foundation, exercised through the real Host authorization pipeline. They are deferred with the endpoints.
+
+### Authentication and authorization
+
+- **TS-TEN-0045:** A request with no token to any `/api/platform/tenants` route returns 401.
+- **TS-TEN-0046:** A valid tenant-plane token is denied (403) on every `/api/platform/tenants` route with no lifecycle effect.
+- **TS-TEN-0047:** A platform-support token without the required `PermissionScope.PlatformSupport` permission returns 403.
+- **TS-TEN-0048:** A platform-support token with the exact required permission (`Platform.Tenants.View` / `Manage` / `Lifecycle`) authorizes the mapped route.
+
+### Plane confusion
+
+- **TS-TEN-0049:** A token combining `security_plane=platform` with a `tenant_id` claim is rejected as invalid.
+- **TS-TEN-0050:** A tenant token carrying a forged `security_plane=platform` claim is rejected (the claim is server-issued and validated, not client-editable).
+- **TS-TEN-0051:** A route target `{tenantId}` does not become caller scope: it establishes no `ICurrentTenant` and grants no business-data access to the target tenant.
+
+### Escalation
+
+- **TS-TEN-0052:** A tenant custom role cannot be assigned a `PlatformSupport` permission; `Role.AssignPermission` rejects it by scope.
+- **TS-TEN-0053:** A tenant system role cannot be assigned a `PlatformSupport` permission.
+- **TS-TEN-0054:** The tenant token claim provider filters out any `PlatformSupport` entry (e.g. from corrupt data or a bad seed) and emits only `PermissionScope.Tenant` permissions.
+
+### Target status independence
+
+- **TS-TEN-0055:** A platform principal with `Platform.Tenants.Lifecycle` is authorized to activate a `Provisioning` target where the transition graph permits.
+- **TS-TEN-0056:** A platform principal with `Platform.Tenants.Lifecycle` is authorized to reactivate a `Suspended` target.
+- **TS-TEN-0057:** Target lifecycle status does not gate caller authorization; the authorization decision precedes and is independent of the domain transition check.
+
+### Tenant-plane regression
+
+- **TS-TEN-0058:** An FP-005 Company route still requires a validated current tenant and a `PermissionScope.Tenant` permission through the existing `RequirePermission` handler.
+- **TS-TEN-0059:** A Localization tenant-plane route remains unchanged and unaffected by the platform plane.
+
+## Platform-support bootstrap, lifecycle, and token authority (ADR-016, DEC-TEN-0019/0020/0021)
+
+Scenarios for the future Phase-3 platform-support authority foundation. Deferred with the platform token/session profile.
+
+### Bootstrap
+
+- **TS-TEN-0060:** A configured bootstrap subject with no matching `Identity` creates no platform authority (logged no-op).
+- **TS-TEN-0061:** A configured bootstrap subject whose `AuthenticationAccount` is not authentication-eligible creates no platform authority.
+- **TS-TEN-0062:** No tenant role or tenant-IAM path can invoke bootstrap or create/modify platform authority.
+- **TS-TEN-0063:** With no usable platform authority, bootstrap registers exactly one genesis principal and establishes the initial approved `PlatformSupport` permission set.
+- **TS-TEN-0064:** With usable platform authority already present, bootstrap is inert and idempotent (no duplicate principal or assignment).
+- **TS-TEN-0065:** Bootstrap rejects an unknown or tenant-scoped permission and creates no assignment (fail closed).
+- **TS-TEN-0066:** Bootstrap/recovery never implicitly re-enables a `Disabled` principal; config membership is not re-enable authority.
+- **TS-TEN-0067:** A corrupt tenant-scoped row in the platform assignment table is never counted as usable platform authority or bootstrap authority.
+
+### Principal lifecycle (SQL)
+
+- **TS-TEN-0068:** The status migration adds `Status` (default `Active`) with a CHECK constraint that rejects any value outside `{Active, Disabled}`.
+- **TS-TEN-0069:** `Active → Disabled` and `Disabled → Active` transitions persist and are audited (`StatusChangedUtc`/`StatusChangedBy`).
+- **TS-TEN-0070:** A stale principal `RowVersion` on a status mutation is a concurrency conflict.
+- **TS-TEN-0071:** A `Disabled` principal retains all assignment rows (none deleted or revoked by the disable).
+- **TS-TEN-0072:** A grant to a `Disabled` principal is rejected; a revoke on a `Disabled` principal is allowed.
+
+### Platform token authority
+
+- **TS-TEN-0073:** A platform token carries `security_plane=platform` and no `tenant_id`/`tenant_user_id`.
+- **TS-TEN-0074:** A `Disabled` principal is denied a new platform token by the live status check at issuance.
+- **TS-TEN-0075:** A `Disabled` principal's platform refresh is denied and its platform session is revoked; no new token is issued.
+- **TS-TEN-0076:** Platform token permission claims contain only catalog-valid `PlatformSupport` permissions (authority read path re-validates against the catalog).
+- **TS-TEN-0077:** A tenant token cannot become a platform token by claim injection; a malformed mixed-plane profile (`security_plane=platform` with `tenant_id`) is rejected.
+
+### Authority administration permission
+
+- **TS-TEN-0078:** `Platform.Support.Administer` is `PermissionScope.PlatformSupport` and cannot be assigned to any tenant custom or system role.
+- **TS-TEN-0079:** `Platform.Support.Administer` is excluded from the tenant-facing permission catalog listing and from tenant access-token claims.
+- **TS-TEN-0080:** `Platform.Tenants.Manage`/`Platform.Tenants.Lifecycle` cannot register, grant, revoke, disable, or re-enable platform-support authority.
+
+### Status migration backfill (SQL)
+
+- **TS-TEN-0081:** Applying the status migration sets every pre-existing `PlatformSupportPrincipal` to `Status = Active`.
+- **TS-TEN-0082:** A pre-existing principal has `StatusChangedUtc` and `StatusChangedBy` `NULL` after the migration (no synthesized transition).
+- **TS-TEN-0083:** The first `Disable` populates `StatusChangedUtc` and `StatusChangedBy`.
+- **TS-TEN-0084:** A subsequent `Re-enable` overwrites `StatusChangedUtc`/`StatusChangedBy` with the latest transition metadata.
+
+### Bootstrap subject cardinality, selection, and recovery
+
+- **TS-TEN-0085:** With subjects `A` and `B` both eligible and no usable authority, bootstrap establishes only the deterministic first subject (ordinal) as genesis; `B` receives no authority.
+- **TS-TEN-0086:** If the first subject is missing or ineligible, the next eligible subject is selected deterministically.
+- **TS-TEN-0087:** Two concurrent bootstrap evaluations converge on exactly one genesis principal via the unique `IdentityId`/active-assignment constraints.
+- **TS-TEN-0088:** With `A` `Disabled` and `B` eligible and owning no principal, bootstrap creates `B` as an `Active` recovery principal; `A` remains `Disabled`.
+- **TS-TEN-0089:** With `A` `Disabled` as the only configured subject and no other candidate, bootstrap does not re-enable `A`, creates no duplicate, and fails closed with an operator diagnostic.
+- **TS-TEN-0090:** A configured candidate that is not selected receives no platform authority.
+- **TS-TEN-0091:** Once usable platform authority exists, a further bootstrap evaluation is inert.
+- **TS-TEN-0092:** Usable authority is evaluated live: a corrupt tenant-scoped row, an unknown permission, a revoked assignment, and a `Disabled` principal are all excluded from the usable-authority determination.
+
+### Platform authentication session and token profile (Phase 3C, DEC-TEN-0022)
+
+SQL scenarios use the real SQL Server provider; validator scenarios are structural (no database).
+
+- **TS-TEN-0093:** The `PlatformAuthenticationSessions` table has `IdentityId` and `PlatformSupportPrincipalId` columns and **no** `TenantId`/`TenantUserId`/`CompanyId`; `Status`/`RevocationReason` are `BIN2` `CHECK`-constrained; `RowVersion` is a concurrency token.
+- **TS-TEN-0094:** Foreign keys `IdentityId → Identity` and `PlatformSupportPrincipalId → PlatformSupportPrincipal` exist with `OnDelete(Restrict)`; the refresh-token child is session-owned.
+- **TS-TEN-0095:** Platform session creation persists an `Active` session anchored to identity + principal, snapshots the account `SecurityVersion`, and creates the initial platform refresh token.
+- **TS-TEN-0096:** A platform refresh rotates the refresh token within the same family and issues a new platform access token.
+- **TS-TEN-0097:** A live `AuthenticationAccount.SecurityVersion` mismatch on platform refresh revokes the platform session and denies continuation.
+- **TS-TEN-0098:** A `Disabled` principal on platform refresh revokes the platform session and denies continuation (no new token).
+- **TS-TEN-0099:** A principal whose active catalog-valid `PlatformSupport` assignments have all been revoked is denied on refresh, and the platform session is revoked.
+- **TS-TEN-0100:** Platform refresh-token reuse (a consumed token) marks the platform session compromised/revoked without affecting tenant sessions.
+- **TS-TEN-0101:** Platform session-limit accounting is independent: platform sessions are counted only against platform sessions, and tenant sessions are unaffected.
+- **TS-TEN-0102:** Disabling a principal (and revoking its platform sessions) leaves the same identity's tenant `AuthenticationSession`s active.
+- **TS-TEN-0103:** A tenant refresh token is not resolvable in platform-session persistence and a platform refresh token is not resolvable in tenant-session persistence (cross-plane lookup is structurally impossible).
+- **TS-TEN-0104:** Re-enabling a principal does not revive a previously revoked `PlatformAuthenticationSession`; a new session is required.
+- **TS-TEN-0105:** A `PlatformAuthenticationSession` (and its refresh-token history) cannot be physically deleted (retained security history), consistent with the existing session-history guard.
+- **TS-TEN-0106:** Platform token issuance is denied when the principal has zero active catalog-valid `PlatformSupport` permissions.
+- **TS-TEN-0107:** Platform token issuance is denied when the principal `Status == Disabled`.
+- **TS-TEN-0108:** Proactively disabling a principal revokes its active platform sessions so the next refresh is denied.
+- **TS-TEN-0109:** `StrictAccessTokenValidator` accepts a well-formed platform token (`security_plane=platform`, exactly-one required claims, no tenant claims).
+- **TS-TEN-0110:** An unknown/empty `security_plane` value is rejected.
+- **TS-TEN-0111:** A duplicated `security_plane` claim is rejected.
+- **TS-TEN-0112:** A wrong-case `security_plane` (e.g. `Platform`) is rejected (exact ordinal match).
+- **TS-TEN-0113:** A `security_plane=platform` token containing `tenant_id` is rejected.
+- **TS-TEN-0114:** A `security_plane=platform` token containing `tenant_user_id` is rejected.
+- **TS-TEN-0115:** A `security_plane=platform` token containing a `role` claim is rejected.
+- **TS-TEN-0116:** A legacy tenant token without `security_plane` is accepted under the tenant profile; an explicit `security_plane=tenant` tenant token is also accepted.
+- **TS-TEN-0117:** A platform token with a duplicated `permission` claim is rejected.
+
 ## First implementation milestone applicability
 
 The first milestone implements `TS-TEN-0001` through `TS-TEN-0038` where infrastructure exists, excluding any HTTP-specific assertion other than verifying endpoint absence.
 
-FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization.
+FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization. `TS-TEN-0045` through `TS-TEN-0059` are deferred with the platform-plane Tenant HTTP transport and its authorization foundation under `ADR-015` and `DEC-TEN-0018`. `TS-TEN-0060` through `TS-TEN-0092` are deferred with the Phase-3 platform-support bootstrap, principal lifecycle, and token authority under `ADR-016` and `DEC-TEN-0019`/`DEC-TEN-0020`/`DEC-TEN-0021` (`TS-TEN-0081` through `TS-TEN-0092` cover the status-migration backfill and bootstrap cardinality/selection/recovery decisions). `TS-TEN-0093` through `TS-TEN-0117` are deferred with the Phase-3C platform token/session profile under `ADR-016` and `DEC-TEN-0022` (platform session persistence and cross-plane refresh isolation, SQL schema/FK/create/refresh/mismatch/disable/zero-permission/reuse/multi-session/tenant-unaffected/cross-plane-lookup/re-enable/physical-delete, and `StrictAccessTokenValidator` platform-profile/mixed-plane/legacy scenarios).

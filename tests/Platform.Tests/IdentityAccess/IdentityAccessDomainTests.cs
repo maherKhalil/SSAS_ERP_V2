@@ -50,6 +50,53 @@ public sealed class IdentityAccessDomainTests
     Assert.Empty(role.ActivePermissions);
   }
 
+  [Theory]
+  [InlineData(PlatformPermissionNames.ViewTenants)]
+  [InlineData(PlatformPermissionNames.ManageTenants)]
+  [InlineData(PlatformPermissionNames.TenantLifecycle)]
+  public void Custom_tenant_role_cannot_acquire_platform_tenant_permission(string permissionName)
+  {
+    var role = CreateCustomRole(Guid.NewGuid());
+    var catalog = new PlatformPermissionCatalog();
+    Assert.True(catalog.TryGet(permissionName, out var permission));
+    Assert.Equal(PermissionScope.PlatformSupport, permission.Scope);
+
+    var result = role.AssignPermission(permission, "actor", Guid.NewGuid(), Now);
+
+    Assert.True(result.IsFailure);
+    Assert.Empty(role.ActivePermissions);
+  }
+
+  [Theory]
+  [InlineData(PlatformPermissionNames.ViewTenants)]
+  [InlineData(PlatformPermissionNames.ManageTenants)]
+  [InlineData(PlatformPermissionNames.TenantLifecycle)]
+  public void System_tenant_role_cannot_acquire_platform_tenant_permission(string permissionName)
+  {
+    var role = Role.CreateSystem(Guid.NewGuid(), RoleName.Create("Tenant Administrator").Value, null);
+    var catalog = new PlatformPermissionCatalog();
+    Assert.True(catalog.TryGet(permissionName, out var permission));
+
+    // No supported tenant-role path may acquire a PlatformSupport permission. The specific rejection
+    // reason (protected-system-role guard fires before the scope guard) is not asserted — only the outcome.
+    var result = role.AssignPermission(permission, "actor", Guid.NewGuid(), Now);
+
+    Assert.True(result.IsFailure);
+    Assert.Empty(role.ActivePermissions);
+  }
+
+  [Fact]
+  public void Custom_tenant_role_still_accepts_a_tenant_scoped_permission()
+  {
+    var role = CreateCustomRole(Guid.NewGuid());
+    var catalog = new PlatformPermissionCatalog();
+    Assert.True(catalog.TryGet(PlatformPermissionNames.ViewCompanies, out var permission));
+    Assert.Equal(PermissionScope.Tenant, permission.Scope);
+
+    Assert.True(role.AssignPermission(permission, "actor", Guid.NewGuid(), Now).IsSuccess);
+    Assert.Contains(role.ActivePermissions, name => name.Equals(permission.Name));
+  }
+
   [Fact]
   public void Permission_matching_is_ordinal_and_assignments_keep_history()
   {

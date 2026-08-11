@@ -26,5 +26,10 @@ public static class JwtClaimTypes
 
   public const string SecurityVersion = "security_version";
 
+  // Platform-plane token profile discriminator (ADR-015 / DEC-TEN-0022). Present and equal to
+  // "platform" on platform tokens; absent (or "tenant") on tenant tokens. Server-issued, never
+  // caller-editable, never tenant-derived.
+  public const string SecurityPlane = "security_plane";
+
   public const string JwtId = "jti";
 }

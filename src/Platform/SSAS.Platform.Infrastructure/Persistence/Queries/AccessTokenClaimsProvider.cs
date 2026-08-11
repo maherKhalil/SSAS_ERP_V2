@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Authentication;
+using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Domain;
 using SSAS.Platform.Domain.Enums;
 
 namespace SSAS.Platform.Infrastructure.Persistence.Queries;
 
-public sealed class AccessTokenClaimsProvider(PlatformDbContext dbContext) : IAccessTokenClaimsProvider
+public sealed class AccessTokenClaimsProvider(PlatformDbContext dbContext, IPermissionCatalog permissionCatalog)
+  : IAccessTokenClaimsProvider
 {
   public async Task<Result<AccessTokenClaims>> GetClaimsAsync(
     long authenticationSessionId,
@@ -76,6 +78,12 @@ public sealed class AccessTokenClaimsProvider(PlatformDbContext dbContext) : IAc
         .Select(assignment => assignment.PermissionName)
         .ToListAsync(cancellationToken);
 
+    // Defense in depth (ADR-015 / AC-TEN-0030): tenant tokens emit only tenant-scoped permissions,
+    // so a corrupt or force-seeded PlatformSupport assignment can never become a tenant-token claim.
+    var tenantScopedPermissions = TenantPermissionClaimFilter.FilterToTenantScope(
+      permissions.Select(permission => permission.Value),
+      permissionCatalog);
+
     return Result.Success(new AccessTokenClaims(
       binding.Identity.Subject.Value,
       identityId,
@@ -85,7 +93,7 @@ public sealed class AccessTokenClaimsProvider(PlatformDbContext dbContext) : IAc
       clientId,
       securityVersion,
       roleRows.Select(role => role.Name.Value).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray(),
-      permissions.Select(permission => permission.Value).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray()));
+      tenantScopedPermissions.Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray()));
   }
 
   private static Result<AccessTokenClaims> Invalid() =>

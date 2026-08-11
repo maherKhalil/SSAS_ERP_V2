@@ -28,7 +28,11 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.ViewLocalizationHistory, "View localization history"),
       Define(PlatformPermissionNames.ViewCompanies, "View companies"),
       Define(PlatformPermissionNames.ManageCompanies, "Create and update companies"),
-      Define(PlatformPermissionNames.CompanyLifecycle, "Change company lifecycle state")
+      Define(PlatformPermissionNames.CompanyLifecycle, "Change company lifecycle state"),
+      Define(PlatformPermissionNames.ViewTenants, "View platform tenant lifecycle records", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.ManageTenants, "Create platform tenants", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.TenantLifecycle, "Change platform tenant lifecycle state", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerPlatformSupport, "Administer platform-support principals and their permission assignments", PermissionScope.PlatformSupport)
     }
     .ToDictionary(definition => definition.Name.Value, StringComparer.Ordinal);
 
@@ -36,7 +40,11 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
 
   public bool TryGet(string name, out PermissionDefinition permission) => Definitions.TryGetValue(name, out permission!);
 
-  private static PermissionDefinition Define(string name, string description)
+  // Backward-compatible overload: existing callers keep tenant scope unchanged.
+  private static PermissionDefinition Define(string name, string description) =>
+    Define(name, description, PermissionScope.Tenant);
+
+  private static PermissionDefinition Define(string name, string description, PermissionScope scope)
   {
     var permissionName = PermissionName.Create(name);
     if (permissionName.IsFailure)
@@ -44,6 +52,6 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       throw new InvalidOperationException($"The permission '{name}' is invalid.");
     }
 
-    return new PermissionDefinition(permissionName.Value, PermissionScope.Tenant, description);
+    return new PermissionDefinition(permissionName.Value, scope, description);
   }
 }

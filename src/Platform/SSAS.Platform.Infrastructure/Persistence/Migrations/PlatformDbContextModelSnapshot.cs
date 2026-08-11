@@ -898,6 +898,296 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("PlatformAuthenticationSessionId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("AbsoluteExpiresUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<long?>("CompromisedByRefreshTokenRecordId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("CompromisedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("IdentityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("IdleExpiresUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("LastRefreshedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("PlatformSupportPrincipalId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("RevokedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset?>("RevokedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<long>("SecurityVersionAtCreation")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("TokenFamilyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "TokenFamilyId", "ClientId")
+                        .HasName("AK_PlatformAuthenticationSessions_SessionFamilyClient");
+
+                    b.HasIndex("PlatformSupportPrincipalId", "IdentityId");
+
+                    b.HasIndex("PlatformSupportPrincipalId", "Status")
+                        .HasDatabaseName("IX_PlatformAuthenticationSessions_Principal_Status");
+
+                    b.HasIndex("IdentityId", "Status", "IdleExpiresUtc", "AbsoluteExpiresUtc")
+                        .HasDatabaseName("IX_PlatformAuthenticationSessions_Identity_ActiveExpiry");
+
+                    b.ToTable("PlatformAuthenticationSessions", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_PlatformAuthenticationSessions_Expiry", "[IdleExpiresUtc] > [CreatedUtc] AND [AbsoluteExpiresUtc] > [CreatedUtc] AND [IdleExpiresUtc] <= [AbsoluteExpiresUtc]");
+
+                            t.HasCheckConstraint("CK_PlatformAuthenticationSessions_LifecycleMetadata", "([Status] = N'Active' AND [RevokedUtc] IS NULL AND [RevocationReason] IS NULL AND [CompromisedUtc] IS NULL AND [CompromisedByRefreshTokenRecordId] IS NULL) OR ([Status] = N'Revoked' AND [RevokedUtc] IS NOT NULL AND [RevocationReason] IS NOT NULL AND [CompromisedUtc] IS NULL AND [CompromisedByRefreshTokenRecordId] IS NULL) OR ([Status] = N'Compromised' AND [RevokedUtc] IS NULL AND [RevocationReason] IS NULL AND [CompromisedUtc] IS NOT NULL AND [CompromisedByRefreshTokenRecordId] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_PlatformAuthenticationSessions_RevocationReason", "[RevocationReason] IS NULL OR [RevocationReason] IN (N'SessionLimitExceeded', N'SecurityStateChanged', N'IdentityIneligible', N'Administrative', N'UserLogout', N'PlatformPrincipalIneligible')");
+
+                            t.HasCheckConstraint("CK_PlatformAuthenticationSessions_SecurityVersion", "[SecurityVersionAtCreation] > 0");
+
+                            t.HasCheckConstraint("CK_PlatformAuthenticationSessions_Status", "[Status] IN (N'Active', N'Revoked', N'Compromised')");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformPermissionAssignment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("PlatformPermissionAssignmentId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AssignedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("AssignedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("PermissionName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<long>("PlatformSupportPrincipalId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RemovedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset?>("RemovedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlatformSupportPrincipalId", "PermissionName")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PlatformPermissionAssignments_Principal_Permission")
+                        .HasFilter("[RemovedUtc] IS NULL");
+
+                    b.ToTable("PlatformPermissionAssignments", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_PlatformPermissionAssignments_PermissionName_NotBlank", "LEN(LTRIM(RTRIM([PermissionName]))) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformRefreshTokenRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("PlatformRefreshTokenRecordId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTimeOffset?>("ConsumedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ExpiresUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("PlatformAuthenticationSessionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("ReplacedByRefreshTokenRecordId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("RevokedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TokenFamilyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("secretHash")
+                        .IsRequired()
+                        .HasColumnType("binary(32)")
+                        .HasColumnName("SecretHash")
+                        .IsFixedLength();
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PlatformRefreshTokenRecords_PublicId");
+
+                    b.HasIndex("ReplacedByRefreshTokenRecordId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PlatformRefreshTokenRecords_Replacement")
+                        .HasFilter("[ReplacedByRefreshTokenRecordId] IS NOT NULL");
+
+                    b.HasIndex("PlatformAuthenticationSessionId", "CreatedUtc")
+                        .HasDatabaseName("IX_PlatformRefreshTokenRecords_Session_Created");
+
+                    b.HasIndex("PlatformAuthenticationSessionId", "TokenFamilyId", "ClientId", "ReplacedByRefreshTokenRecordId");
+
+                    b.ToTable("PlatformRefreshTokenRecords", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_PlatformRefreshTokenRecords_Expiry", "[ExpiresUtc] > [CreatedUtc]");
+
+                            t.HasCheckConstraint("CK_PlatformRefreshTokenRecords_Lifecycle", "NOT ([ConsumedUtc] IS NOT NULL AND [RevokedUtc] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformSupportPrincipal", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("PlatformSupportPrincipalId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("IdentityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasDefaultValue("Active")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("StatusChangedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset?>("StatusChangedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "IdentityId")
+                        .HasName("AK_PlatformSupportPrincipals_PrincipalIdentity");
+
+                    b.HasIndex("IdentityId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PlatformSupportPrincipals_IdentityId");
+
+                    b.ToTable("PlatformSupportPrincipals", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_PlatformSupportPrincipals_Status", "[Status] IN (N'Active', N'Disabled')");
+                        });
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Roles.Role", b =>
                 {
                     b.Property<long>("Id")
@@ -1321,6 +1611,58 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Identities.Identity", null)
+                        .WithMany()
+                        .HasForeignKey("IdentityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.Platform.Domain.PlatformSupport.PlatformSupportPrincipal", null)
+                        .WithMany()
+                        .HasForeignKey("PlatformSupportPrincipalId", "IdentityId")
+                        .HasPrincipalKey("Id", "IdentityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformPermissionAssignment", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.PlatformSupport.PlatformSupportPrincipal", null)
+                        .WithMany("PermissionAssignments")
+                        .HasForeignKey("PlatformSupportPrincipalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformRefreshTokenRecord", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession", null)
+                        .WithMany("RefreshTokenRecords")
+                        .HasForeignKey("PlatformAuthenticationSessionId", "TokenFamilyId", "ClientId")
+                        .HasPrincipalKey("Id", "TokenFamilyId", "ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.Platform.Domain.PlatformSupport.PlatformRefreshTokenRecord", "ReplacedByRefreshTokenRecord")
+                        .WithMany()
+                        .HasForeignKey("PlatformAuthenticationSessionId", "TokenFamilyId", "ClientId", "ReplacedByRefreshTokenRecordId")
+                        .HasPrincipalKey("PlatformAuthenticationSessionId", "TokenFamilyId", "ClientId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ReplacedByRefreshTokenRecord");
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformSupportPrincipal", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Identities.Identity", null)
+                        .WithMany()
+                        .HasForeignKey("IdentityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Roles.RolePermissionAssignment", b =>
                 {
                     b.HasOne("SSAS.Platform.Domain.Roles.Role", null)
@@ -1365,6 +1707,16 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("SSAS.Platform.Domain.Localization.TenantLocalizationOverride", b =>
                 {
                     b.Navigation("Versions");
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession", b =>
+                {
+                    b.Navigation("RefreshTokenRecords");
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.PlatformSupport.PlatformSupportPrincipal", b =>
+                {
+                    b.Navigation("PermissionAssignments");
                 });
 
             modelBuilder.Entity("SSAS.Platform.Domain.Roles.Role", b =>

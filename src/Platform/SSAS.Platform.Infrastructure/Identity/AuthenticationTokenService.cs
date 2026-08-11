@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
 using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Domain.Authentication;
+using SSAS.Platform.Domain.PlatformSupport;
 
 namespace SSAS.Platform.Infrastructure.Identity;
 
@@ -86,6 +87,25 @@ public sealed class AuthenticationTokenService : IAuthenticationTokenService
     ArgumentNullException.ThrowIfNull(token);
     if (!TryParse(token.Value, out var publicId, out var secret) || publicId != record.PublicId ||
       record.AuthenticationSessionId != session.Id || record.TokenFamilyId != session.TokenFamilyId ||
+      !string.Equals(record.ClientId, session.ClientId, StringComparison.Ordinal))
+    {
+      return false;
+    }
+
+    var candidate = ComputeRefreshHash(publicId, session.Id, session.TokenFamilyId, session.ClientId, secret);
+    return CryptographicOperations.FixedTimeEquals(candidate, record.SecretHash);
+  }
+
+  public bool VerifyRefreshToken(
+    PlatformAuthenticationSession session,
+    PlatformRefreshTokenRecord record,
+    SensitiveAuthenticationTokenInput token)
+  {
+    ArgumentNullException.ThrowIfNull(session);
+    ArgumentNullException.ThrowIfNull(record);
+    ArgumentNullException.ThrowIfNull(token);
+    if (!TryParse(token.Value, out var publicId, out var secret) || publicId != record.PublicId ||
+      record.PlatformAuthenticationSessionId != session.Id || record.TokenFamilyId != session.TokenFamilyId ||
       !string.Equals(record.ClientId, session.ClientId, StringComparison.Ordinal))
     {
       return false;

@@ -6,6 +6,7 @@ using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Domain.Localization;
+using SSAS.Platform.Domain.PlatformSupport;
 using SSAS.Platform.Domain.Roles;
 using SSAS.Platform.Domain.TenantUsers;
 using SSAS.Platform.Domain.Tenants;
@@ -29,6 +30,10 @@ public sealed class PlatformDbContext(
 
   public DbSet<RolePermissionAssignment> RolePermissionAssignments => Set<RolePermissionAssignment>();
 
+  public DbSet<PlatformSupportPrincipal> PlatformSupportPrincipals => Set<PlatformSupportPrincipal>();
+
+  public DbSet<PlatformPermissionAssignment> PlatformPermissionAssignments => Set<PlatformPermissionAssignment>();
+
   public DbSet<AuthenticationAccount> AuthenticationAccounts => Set<AuthenticationAccount>();
 
   public DbSet<AccountActionToken> AccountActionTokens => Set<AccountActionToken>();
@@ -40,6 +45,10 @@ public sealed class PlatformDbContext(
   public DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
 
   public DbSet<RefreshTokenRecord> RefreshTokenRecords => Set<RefreshTokenRecord>();
+
+  public DbSet<PlatformAuthenticationSession> PlatformAuthenticationSessions => Set<PlatformAuthenticationSession>();
+
+  public DbSet<PlatformRefreshTokenRecord> PlatformRefreshTokenRecords => Set<PlatformRefreshTokenRecord>();
 
   public DbSet<TenantSelectionTransaction> TenantSelectionTransactions => Set<TenantSelectionTransaction>();
 
@@ -61,6 +70,8 @@ public sealed class PlatformDbContext(
   {
     PreventTenantDeletion();
     PreventCompanyDeletion();
+    PreventPlatformSupportPrincipalDeletion();
+    PreventPlatformPermissionAssignmentDeletion();
     PreventAuthenticationHistoryDeletion();
     PreventLocalizationHistoryMutation();
     PreventIdentityOwnershipChanges();
@@ -92,6 +103,14 @@ public sealed class PlatformDbContext(
     {
       throw new InvalidOperationException("Authentication session, refresh-token, and tenant-selection history cannot be physically deleted.");
     }
+
+    // Platform-plane session/refresh history is retained security state (DEC-TEN-0022), consistent with the
+    // tenant guard above: revoke/compromise via status updates only, never physical delete.
+    if (ChangeTracker.Entries().Any(entry =>
+      entry.State == EntityState.Deleted && entry.Entity is PlatformAuthenticationSession or PlatformRefreshTokenRecord))
+    {
+      throw new InvalidOperationException("Platform authentication session and refresh-token history cannot be physically deleted.");
+    }
   }
 
   private void PreventTenantDeletion()
@@ -99,6 +118,22 @@ public sealed class PlatformDbContext(
     if (ChangeTracker.Entries<Tenant>().Any(entry => entry.State == EntityState.Deleted))
     {
       throw new InvalidOperationException("Tenant rows cannot be physically deleted; use the Archive lifecycle transition.");
+    }
+  }
+
+  private void PreventPlatformSupportPrincipalDeletion()
+  {
+    if (ChangeTracker.Entries<PlatformSupportPrincipal>().Any(entry => entry.State == EntityState.Deleted))
+    {
+      throw new InvalidOperationException("Platform-support principals are retained authority records and cannot be physically deleted.");
+    }
+  }
+
+  private void PreventPlatformPermissionAssignmentDeletion()
+  {
+    if (ChangeTracker.Entries<PlatformPermissionAssignment>().Any(entry => entry.State == EntityState.Deleted))
+    {
+      throw new InvalidOperationException("Platform permission assignments are retained authority history and cannot be physically deleted; use revoke instead.");
     }
   }
 

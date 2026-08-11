@@ -11,6 +11,7 @@ using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Application.Identities;
 using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.Application.PlatformSupport;
 using SSAS.Platform.Application.Roles;
 using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Tenants;
@@ -18,6 +19,7 @@ using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Identity;
+using SSAS.Platform.Infrastructure.PlatformSupport;
 using SSAS.BuildingBlocks.Localization.Catalog;
 using SSAS.BuildingBlocks.Localization.Generated;
 using SSAS.Platform.Application.Localization;
@@ -57,6 +59,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IAuthenticationAccountRepository, AuthenticationAccountRepository>();
     services.AddScoped<IAccountActionTokenRepository, AccountActionTokenRepository>();
     services.AddScoped<IAuthenticationSessionRepository, AuthenticationSessionRepository>();
+    services.AddScoped<IPlatformAuthenticationSessionRepository, PlatformAuthenticationSessionRepository>();
     services.AddScoped<ITenantSelectionTransactionRepository, TenantSelectionTransactionRepository>();
     services.AddScoped<ITenantRepository, TenantRepository>();
     services.AddScoped<ICompanyRepository, CompanyRepository>();
@@ -74,6 +77,11 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantLocalizationVersionReader, TenantLocalizationVersionReader>();
     services.AddScoped<IIdentityTenantMembershipReadService, IdentityTenantMembershipReadService>();
     services.AddScoped<IAccessTokenClaimsProvider, AccessTokenClaimsProvider>();
+    services.AddScoped<IPlatformAccessTokenClaimsProvider, PlatformAccessTokenClaimsProvider>();
+    services.AddScoped<IPlatformSupportPrincipalRepository, PlatformSupportPrincipalRepository>();
+    services.AddScoped<IPlatformSupportPermissionReadService, PlatformSupportPermissionReadService>();
+    services.AddScoped<IPlatformSupportAuthorityStateReadService, PlatformSupportAuthorityStateReadService>();
+    services.AddScoped<IPlatformSupportBootstrapService, PlatformSupportBootstrapService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
     services.AddSingleton<ILocalizationCatalog>(GeneratedLocalizationCatalog.Instance);
@@ -156,6 +164,14 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddSingleton<ICompromisedPasswordChecker, OfflineCompromisedPasswordChecker>();
     services.AddSingleton<IPasswordPolicyValidator, PasswordPolicyValidator>();
 
+    // Platform-support genesis/recovery bootstrap (ADR-016 / DEC-TEN-0019). Options are fail-closed
+    // validated at startup; the hosted service runs one convergence pass after the app is built.
+    services.AddOptions<PlatformSupportBootstrapOptions>()
+      .Bind(configuration.GetSection(PlatformSupportBootstrapOptions.SectionName))
+      .ValidateOnStart();
+    services.AddSingleton<IValidateOptions<PlatformSupportBootstrapOptions>, PlatformSupportBootstrapOptionsValidator>();
+    services.AddHostedService<PlatformSupportBootstrapHostedService>();
+
     services.AddScoped<RegisterIdentityCommandHandler>();
     services.AddScoped<CreateTenantUserMembershipCommandHandler>();
     services.AddScoped<UpdateTenantUserProfileCommandHandler>();
@@ -184,6 +200,8 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<BeginTenantAccessCommandHandler>();
     services.AddScoped<SelectTenantCommandHandler>();
     services.AddScoped<RefreshAuthenticationSessionCommandHandler>();
+    services.AddScoped<PlatformAuthenticationSessionCreator>();
+    services.AddScoped<RefreshPlatformAuthenticationSessionCommandHandler>();
     services.AddScoped<RevokeCurrentAuthenticationSessionCommandHandler>();
     services.AddScoped<CreateTenantCommandHandler>();
     services.AddScoped<ActivateTenantCommandHandler>();

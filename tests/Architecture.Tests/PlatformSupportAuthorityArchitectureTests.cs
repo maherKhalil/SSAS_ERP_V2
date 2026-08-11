@@ -90,6 +90,21 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
+  public void Strict_access_token_validator_is_stateless_and_holds_no_persistence_dependency()
+  {
+    // Phase 3C-2 adds a platform profile branch but the validator must remain structural/stateless:
+    // no DbContext, repository, or read-service field may be introduced (DEC-TEN-0022 / ADR-016).
+    var validator = typeof(SSAS.Host.API.Authentication.StrictAccessTokenValidator);
+    Assert.True(validator is { IsAbstract: true, IsSealed: true }); // static class
+
+    var fields = validator.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance);
+    Assert.DoesNotContain(fields, field =>
+      field.FieldType.Name.Contains("DbContext", StringComparison.Ordinal) ||
+      field.FieldType.Name.Contains("Repository", StringComparison.Ordinal) ||
+      field.FieldType.Name.Contains("ReadService", StringComparison.Ordinal));
+  }
+
+  [Fact]
   public void Principal_status_enum_has_exactly_active_and_disabled()
   {
     Assert.Equal(

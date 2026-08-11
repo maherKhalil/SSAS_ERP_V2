@@ -237,6 +237,165 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
     Assert.True(result.Succeeded);
   }
 
+  // ---- Phase 3C-2: security-plane profile validation (ADR-015 / DEC-TEN-0022) ----
+
+  [Fact]
+  public async Task Platform_token_from_the_issuer_passes_strict_bearer_validation()
+  {
+    // Anchors 3C-1 issuer ↔ 3C-2 validator compatibility on a real signed platform token.
+    var issuer = factory.Services.GetRequiredService<IAccessTokenIssuer>();
+    var client = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var issued = issuer.Issue(
+      new PlatformAccessTokenClaims("platform-subject", 1, 3, client, 1, ["Platform.Support.Administer", "Platform.Tenants.View"]),
+      DateTimeOffset.UtcNow);
+
+    Assert.True((await AuthenticateAsync(issued.Value.AccessToken.RevealOnce().Value)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Legacy_tenant_token_without_security_plane_is_accepted()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5));
+
+    Assert.True((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Explicit_tenant_security_plane_is_accepted()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      extraClaims: [new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Tenant)]);
+
+    Assert.True((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Structural_platform_token_is_accepted()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5), mutateClaims: ToPlatformClaims);
+
+    Assert.True((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Theory]
+  [InlineData(JwtClaimTypes.TenantId, "b1b7c1e2-0000-4000-8000-000000000001")] // platform + tenant_id
+  [InlineData(JwtClaimTypes.TenantId, "")]                                     // forbidden even when blank
+  [InlineData(JwtClaimTypes.TenantUserId, "2")]                                // platform + tenant_user_id
+  [InlineData(JwtClaimTypes.Role, "anything")]                                 // platform + role
+  [InlineData(JwtClaimTypes.CompanyId, "b1b7c1e2-0000-4000-8000-000000000002")] // platform + company_id
+  public async Task Platform_token_with_a_forbidden_claim_is_rejected(string forbiddenType, string forbiddenValue)
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => ToPlatformClaims(claims).Append(new Claim(forbiddenType, forbiddenValue)).ToList());
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Platform_token_with_no_permission_is_rejected()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => claims
+        .Where(claim => claim.Type is not (JwtClaimTypes.TenantId or JwtClaimTypes.TenantUserId))
+        .Append(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform))
+        .ToList());
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Platform_token_with_a_duplicate_permission_is_rejected()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => ToPlatformClaims(claims).Append(new Claim(JwtClaimTypes.Permission, "Platform.Support.Administer")).ToList());
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Platform_token_with_a_blank_permission_is_rejected()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => claims
+        .Where(claim => claim.Type is not (JwtClaimTypes.TenantId or JwtClaimTypes.TenantUserId))
+        .Append(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform))
+        .Append(new Claim(JwtClaimTypes.Permission, " "))
+        .ToList());
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Duplicate_security_plane_is_rejected()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => ToPlatformClaims(claims).Append(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform)).ToList());
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Theory]
+  [InlineData("Platform")]
+  [InlineData("PLATFORM")]
+  [InlineData("Tenant")]
+  [InlineData("")]
+  [InlineData("   ")]
+  [InlineData("bogus")]
+  public async Task Unknown_or_wrong_case_security_plane_is_rejected(string plane)
+  {
+    // Even on an otherwise-valid tenant token, a non-exact security_plane value is rejected.
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      extraClaims: [new Claim(JwtClaimTypes.SecurityPlane, plane)]);
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Tenant_shaped_token_claiming_platform_plane_is_rejected()
+  {
+    // Attack: a valid tenant token (with tenant fields) sets security_plane=platform → platform profile
+    // forbids tenant_id/tenant_user_id → rejected.
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      extraClaims: [new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform)]);
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Fact]
+  public async Task Platform_shaped_token_claiming_tenant_plane_is_rejected()
+  {
+    // Attack: a platform-shaped token (no tenant fields) sets security_plane=tenant → tenant profile
+    // requires tenant_id/tenant_user_id → rejected.
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => claims
+        .Where(claim => claim.Type is not (JwtClaimTypes.TenantId or JwtClaimTypes.TenantUserId))
+        .Append(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Tenant))
+        .Append(new Claim(JwtClaimTypes.Permission, "Platform.Support.Administer"))
+        .ToList());
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  [Theory]
+  [InlineData(JwtClaimTypes.TenantId, "b1b7c1e2-0000-4000-8000-000000000003")]
+  [InlineData(JwtClaimTypes.TenantUserId, "9")]
+  public async Task Tenant_profile_rejects_duplicate_singleton_claims(string type, string extraValue)
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      extraClaims: [new Claim(type, extraValue)]);
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  private X509SecurityKey ActiveKey() => factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
+
+  private static List<Claim> ToPlatformClaims(List<Claim> claims) =>
+    claims
+      .Where(claim => claim.Type is not (JwtClaimTypes.TenantId or JwtClaimTypes.TenantUserId))
+      .Append(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform))
+      .Append(new Claim(JwtClaimTypes.Permission, "Platform.Support.Administer"))
+      .ToList();
+
   [Fact]
   public void Jwt_options_validator_requires_a_production_signing_certificate()
   {

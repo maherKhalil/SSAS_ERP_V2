@@ -155,8 +155,38 @@ Scenarios for the future Phase-3 platform-support authority foundation. Deferred
 - **TS-TEN-0091:** Once usable platform authority exists, a further bootstrap evaluation is inert.
 - **TS-TEN-0092:** Usable authority is evaluated live: a corrupt tenant-scoped row, an unknown permission, a revoked assignment, and a `Disabled` principal are all excluded from the usable-authority determination.
 
+### Platform authentication session and token profile (Phase 3C, DEC-TEN-0022)
+
+SQL scenarios use the real SQL Server provider; validator scenarios are structural (no database).
+
+- **TS-TEN-0093:** The `PlatformAuthenticationSessions` table has `IdentityId` and `PlatformSupportPrincipalId` columns and **no** `TenantId`/`TenantUserId`/`CompanyId`; `Status`/`RevocationReason` are `BIN2` `CHECK`-constrained; `RowVersion` is a concurrency token.
+- **TS-TEN-0094:** Foreign keys `IdentityId → Identity` and `PlatformSupportPrincipalId → PlatformSupportPrincipal` exist with `OnDelete(Restrict)`; the refresh-token child is session-owned.
+- **TS-TEN-0095:** Platform session creation persists an `Active` session anchored to identity + principal, snapshots the account `SecurityVersion`, and creates the initial platform refresh token.
+- **TS-TEN-0096:** A platform refresh rotates the refresh token within the same family and issues a new platform access token.
+- **TS-TEN-0097:** A live `AuthenticationAccount.SecurityVersion` mismatch on platform refresh revokes the platform session and denies continuation.
+- **TS-TEN-0098:** A `Disabled` principal on platform refresh revokes the platform session and denies continuation (no new token).
+- **TS-TEN-0099:** A principal whose active catalog-valid `PlatformSupport` assignments have all been revoked is denied on refresh, and the platform session is revoked.
+- **TS-TEN-0100:** Platform refresh-token reuse (a consumed token) marks the platform session compromised/revoked without affecting tenant sessions.
+- **TS-TEN-0101:** Platform session-limit accounting is independent: platform sessions are counted only against platform sessions, and tenant sessions are unaffected.
+- **TS-TEN-0102:** Disabling a principal (and revoking its platform sessions) leaves the same identity's tenant `AuthenticationSession`s active.
+- **TS-TEN-0103:** A tenant refresh token is not resolvable in platform-session persistence and a platform refresh token is not resolvable in tenant-session persistence (cross-plane lookup is structurally impossible).
+- **TS-TEN-0104:** Re-enabling a principal does not revive a previously revoked `PlatformAuthenticationSession`; a new session is required.
+- **TS-TEN-0105:** A `PlatformAuthenticationSession` (and its refresh-token history) cannot be physically deleted (retained security history), consistent with the existing session-history guard.
+- **TS-TEN-0106:** Platform token issuance is denied when the principal has zero active catalog-valid `PlatformSupport` permissions.
+- **TS-TEN-0107:** Platform token issuance is denied when the principal `Status == Disabled`.
+- **TS-TEN-0108:** Proactively disabling a principal revokes its active platform sessions so the next refresh is denied.
+- **TS-TEN-0109:** `StrictAccessTokenValidator` accepts a well-formed platform token (`security_plane=platform`, exactly-one required claims, no tenant claims).
+- **TS-TEN-0110:** An unknown/empty `security_plane` value is rejected.
+- **TS-TEN-0111:** A duplicated `security_plane` claim is rejected.
+- **TS-TEN-0112:** A wrong-case `security_plane` (e.g. `Platform`) is rejected (exact ordinal match).
+- **TS-TEN-0113:** A `security_plane=platform` token containing `tenant_id` is rejected.
+- **TS-TEN-0114:** A `security_plane=platform` token containing `tenant_user_id` is rejected.
+- **TS-TEN-0115:** A `security_plane=platform` token containing a `role` claim is rejected.
+- **TS-TEN-0116:** A legacy tenant token without `security_plane` is accepted under the tenant profile; an explicit `security_plane=tenant` tenant token is also accepted.
+- **TS-TEN-0117:** A platform token with a duplicated `permission` claim is rejected.
+
 ## First implementation milestone applicability
 
 The first milestone implements `TS-TEN-0001` through `TS-TEN-0038` where infrastructure exists, excluding any HTTP-specific assertion other than verifying endpoint absence.
 
-FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization. `TS-TEN-0045` through `TS-TEN-0059` are deferred with the platform-plane Tenant HTTP transport and its authorization foundation under `ADR-015` and `DEC-TEN-0018`. `TS-TEN-0060` through `TS-TEN-0092` are deferred with the Phase-3 platform-support bootstrap, principal lifecycle, and token authority under `ADR-016` and `DEC-TEN-0019`/`DEC-TEN-0020`/`DEC-TEN-0021` (`TS-TEN-0081` through `TS-TEN-0092` cover the status-migration backfill and bootstrap cardinality/selection/recovery decisions).
+FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization. `TS-TEN-0045` through `TS-TEN-0059` are deferred with the platform-plane Tenant HTTP transport and its authorization foundation under `ADR-015` and `DEC-TEN-0018`. `TS-TEN-0060` through `TS-TEN-0092` are deferred with the Phase-3 platform-support bootstrap, principal lifecycle, and token authority under `ADR-016` and `DEC-TEN-0019`/`DEC-TEN-0020`/`DEC-TEN-0021` (`TS-TEN-0081` through `TS-TEN-0092` cover the status-migration backfill and bootstrap cardinality/selection/recovery decisions). `TS-TEN-0093` through `TS-TEN-0117` are deferred with the Phase-3C platform token/session profile under `ADR-016` and `DEC-TEN-0022` (platform session persistence and cross-plane refresh isolation, SQL schema/FK/create/refresh/mismatch/disable/zero-permission/reuse/multi-session/tenant-unaffected/cross-plane-lookup/re-enable/physical-delete, and `StrictAccessTokenValidator` platform-profile/mixed-plane/legacy scenarios).

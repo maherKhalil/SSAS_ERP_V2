@@ -229,6 +229,106 @@ If a `Disabled` principal is the only configured subject and no other eligible c
 
 "No usable platform authority exists" is evaluated live from persisted state and the code-owned catalog — current principal `Status`, authentication-account eligibility, active persisted assignments, and `PermissionScope.PlatformSupport` — and never from configuration, a cached flag, a bare principal row, or corrupt/unknown/revoked assignment rows.
 
+## Platform authentication session and token profile (ADR-016 Phase 3C, DEC-TEN-0022)
+
+Deferred with the Phase-3C platform token/session profile. Every criterion below is governed by `ADR-016` and `DEC-TEN-0022` (and restates `ADR-015`/`DEC-TEN-0018` token rules where noted). None is implemented yet.
+
+### AC-TEN-0054 — Separate platform session persistence
+
+Platform authentication uses a separate `PlatformAuthenticationSession` aggregate and table; the tenant `AuthenticationSession` aggregate, table, foreign keys, events, and queries are unchanged.
+
+### AC-TEN-0055 — Platform session carries no tenant identifiers
+
+`PlatformAuthenticationSession` is not `ITenantOwnedEntity`/`ICompanyOwnedEntity`, receives no tenant query filter, and contains no `TenantId`, `TenantUserId`, or `CompanyId`.
+
+### AC-TEN-0056 — Platform session anchors to identity and principal
+
+`PlatformAuthenticationSession` stores both `IdentityId` and `PlatformSupportPrincipalId`; both are required and both are foreign-key-enforced.
+
+### AC-TEN-0057 — Tenant refresh cannot mint a platform token
+
+A tenant refresh token resolves only against tenant-session persistence; it can never continue into or mint a platform token.
+
+### AC-TEN-0058 — Platform refresh cannot mint a tenant token
+
+A platform refresh token resolves only against platform-session persistence; it can never continue into or mint a tenant token. No request parameter selects a plane for an existing refresh token.
+
+### AC-TEN-0059 — Platform token with `tenant_id` is rejected
+
+A token combining `security_plane=platform` with any `tenant_id` (or `tenant_user_id`) is rejected structurally, not ignored.
+
+### AC-TEN-0060 — Legacy tenant token remains valid
+
+A tenant access token without a `security_plane` claim remains valid under the tenant profile (absence ⇒ tenant); no tenant-issuer change is required in Phase 3C.
+
+### AC-TEN-0061 — Zero PlatformSupport permissions denies issuance
+
+A principal with zero active catalog-valid `PermissionScope.PlatformSupport` permissions is not eligible; platform token issuance is denied.
+
+### AC-TEN-0062 — Zero PlatformSupport permissions denies refresh and revokes
+
+On platform refresh, a principal with zero active catalog-valid `PermissionScope.PlatformSupport` permissions is denied, the current platform session is revoked, and no new token is issued.
+
+### AC-TEN-0063 — Disabled principal denies issuance
+
+At issuance, a live status check denies a platform token when `PlatformSupportPrincipal.Status == Disabled`; no token-carried status is authoritative.
+
+### AC-TEN-0064 — Disabled principal denies refresh and revokes
+
+At refresh, live principal status is re-read; a `Disabled` principal is denied, the current platform session is revoked, and no new token is issued.
+
+### AC-TEN-0065 — Tenant sessions unaffected by platform Disable
+
+Disabling a `PlatformSupportPrincipal` (and revoking its platform sessions) has no effect on the person's tenant `AuthenticationSession`s.
+
+### AC-TEN-0066 — Re-enable does not resurrect revoked sessions
+
+Re-enabling a principal (`Disabled → Active`) does not reactivate revoked `PlatformAuthenticationSession`s; a new platform session must be established.
+
+### AC-TEN-0067 — Account SecurityVersion reused
+
+`PlatformAuthenticationSession.SecurityVersionAtCreation` snapshots the global `AuthenticationAccount.SecurityVersion`; a live mismatch on refresh revokes and denies continuation.
+
+### AC-TEN-0068 — No principal SecurityVersion
+
+No `SecurityVersion` is added to `PlatformSupportPrincipal`; principal status is a separate platform-plane state.
+
+### AC-TEN-0069 — Validator is structural and stateless
+
+`StrictAccessTokenValidator` selects the tenant/platform profile structurally by `security_plane` and performs no database or live principal-status lookup.
+
+### AC-TEN-0070 — Permissions re-derived live on refresh
+
+Platform refresh re-derives permission claims live from `IPlatformSupportPermissionReadService`; no stale permission snapshot from the prior token/session is reused.
+
+### AC-TEN-0071 — Bootstrap config does not influence issuance
+
+Platform token issuance reads only `Identity`, `AuthenticationAccount`, `PlatformSupportPrincipal`, and `PlatformPermissionAssignment`; bootstrap subject lists/configuration never participate.
+
+### AC-TEN-0072 — Platform session limit is independent
+
+Platform session-limit accounting is separate from tenant accounting; a reused `MaximumActiveSessions` applies independently within platform-session persistence, and the two planes are never counted against each other.
+
+### AC-TEN-0073 — Platform refresh reuse follows compromise semantics
+
+Platform refresh-token reuse marks the platform session compromised/revoked under the existing session model, without affecting tenant sessions or inventing cross-plane compromise propagation.
+
+### AC-TEN-0074 — Platform token forbidden claims
+
+A platform access token forbids `tenant_id`, `tenant_user_id`, `role`, `company_id`, any principal-status claim, and any bootstrap/config claim; it carries `security_plane=platform` exactly once plus `identity_id`, `session_id`, `client_id`, `security_version`, and one or more active catalog-valid `PlatformSupport` permission claims.
+
+### AC-TEN-0075 — Server-owned plane selection
+
+The security plane is selected by a server-side typed issuer path and a distinct `PlatformAccessTokenClaimsProvider`; there is no caller-controllable `IssueToken(bool/string)` API and the tenant claims provider remains tenant-only and unchanged.
+
+### AC-TEN-0076 — Proactive revocation on principal Disable
+
+Explicitly disabling a `PlatformSupportPrincipal` revokes that principal's active `PlatformAuthenticationSession`s as part of the platform workflow (platform-only), blocking refresh immediately; it does not cryptographically invalidate an already-issued short-lived platform access JWT, which expires naturally.
+
+### AC-TEN-0077 — Trusted session-creation source
+
+Platform-session creation consumes a trusted verified-authentication result (`VerifiedIdentity`/verified-account context) and never an arbitrary caller-supplied `IdentityId`; it requires live account eligibility, an `Active` principal, and at least one catalog-valid permission before issuing a platform access/refresh pair. No HTTP route is added in Phase 3C.
+
 ## FP-002 Milestone 4 cross-package coverage
 
 `AC-TEN-0019` is implemented by the FP-002 Milestone 4 centralized live-Tenant authorization foundation under `DEC-AUTH-0057`, `AC-AUTH-0045`, and `TS-AUTH-0108`. FP-003 remains the authoritative lifecycle and eligibility source; FP-002 owns the Host/API authorization integration.

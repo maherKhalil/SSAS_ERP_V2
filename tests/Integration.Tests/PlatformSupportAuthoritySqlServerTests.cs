@@ -388,7 +388,7 @@ public sealed class PlatformSupportAuthoritySqlServerTests
     await using (var context = database.CreateContext())
     {
       var disable = new DisablePlatformSupportPrincipalCommandHandler(
-        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+        new PlatformSupportPrincipalRepository(context), new PlatformAuthenticationSessionRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
       Assert.True((await disable.HandleAsync(new DisablePlatformSupportPrincipalCommand(principalId, version))).IsSuccess);
     }
 
@@ -446,7 +446,7 @@ public sealed class PlatformSupportAuthoritySqlServerTests
     await using (var context = database.CreateContext())
     {
       var disable = new DisablePlatformSupportPrincipalCommandHandler(
-        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+        new PlatformSupportPrincipalRepository(context), new PlatformAuthenticationSessionRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
       Assert.True((await disable.HandleAsync(new DisablePlatformSupportPrincipalCommand(principalId, version))).IsSuccess);
     }
 
@@ -496,7 +496,7 @@ public sealed class PlatformSupportAuthoritySqlServerTests
     await using (var context = database.CreateContext())
     {
       var disable = new DisablePlatformSupportPrincipalCommandHandler(
-        new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+        new PlatformSupportPrincipalRepository(context), new PlatformAuthenticationSessionRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
       Assert.True((await disable.HandleAsync(new DisablePlatformSupportPrincipalCommand(principalId, staleVersion))).IsSuccess);
     }
 

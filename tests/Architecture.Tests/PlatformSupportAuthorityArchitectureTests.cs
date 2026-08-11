@@ -68,26 +68,18 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
-  public void Platform_session_persistence_exists_but_no_creation_refresh_or_phase_4_surface_yet()
+  public void Platform_session_flow_exists_but_no_phase_4_authorization_surface_yet()
   {
-    // Phase 3C-3 introduces platform session PERSISTENCE (domain aggregate + refresh child).
+    // Phase 3C-3 persistence + Phase 3C-4 session-creation/refresh orchestration exist now.
     var domainAssembly = typeof(PlatformSupportPrincipal).Assembly;
     Assert.Contains(domainAssembly.GetTypes(), type => type.Name == "PlatformAuthenticationSession");
     Assert.Contains(domainAssembly.GetTypes(), type => type.Name == "PlatformRefreshTokenRecord");
 
-    // But NOT the Phase-3C-4 session-creation / refresh orchestration.
     var applicationAssembly = typeof(PlatformSupportPermissionFilter).Assembly;
-    var forbiddenApplication = new[]
-    {
-      "PlatformAuthenticationSessionCreator",
-      "IssuePlatformAuthenticationSessionCommand",
-      "IssuePlatformAuthenticationSessionCommandHandler",
-      "RefreshPlatformAuthenticationSessionCommand",
-      "RefreshPlatformAuthenticationSessionCommandHandler"
-    };
-    Assert.DoesNotContain(applicationAssembly.GetTypes(), type => forbiddenApplication.Contains(type.Name, StringComparer.Ordinal));
+    Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == "PlatformAuthenticationSessionCreator");
+    Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == "RefreshPlatformAuthenticationSessionCommandHandler");
 
-    // The platform authorization handler and RequirePlatformPermission convention are Phase-4 concerns.
+    // The platform authorization handler and RequirePlatformPermission convention remain Phase-4 concerns.
     var hostAssembly = typeof(SSAS.Host.API.Authorization.PermissionAuthorizationHandler).Assembly;
     Assert.DoesNotContain(hostAssembly.GetTypes(), type => type.Name == "PlatformPermissionAuthorizationHandler");
 
@@ -95,6 +87,24 @@ public sealed class PlatformSupportAuthorityArchitectureTests
     Assert.DoesNotContain(
       apiAssembly.GetTypes().SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)),
       method => method.Name == "RequirePlatformPermission");
+  }
+
+  [Fact]
+  public void Platform_session_flow_depends_on_platform_persistence_not_tenant_session_persistence()
+  {
+    // The platform creation + refresh flow must resolve platform sessions only — never the tenant session
+    // repository — so cross-plane isolation is structural (DEC-TEN-0022). Also: no bool/string plane selector.
+    foreach (var type in new[]
+    {
+      typeof(SSAS.Platform.Application.Authentication.PlatformAuthenticationSessionCreator),
+      typeof(SSAS.Platform.Application.Authentication.RefreshPlatformAuthenticationSessionCommandHandler)
+    })
+    {
+      var parameters = type.GetConstructors().Single().GetParameters();
+      Assert.Contains(parameters, parameter => parameter.ParameterType.Name == "IPlatformAuthenticationSessionRepository");
+      Assert.DoesNotContain(parameters, parameter => parameter.ParameterType.Name == "IAuthenticationSessionRepository");
+      Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(bool) || parameter.ParameterType == typeof(string));
+    }
   }
 
   [Fact]

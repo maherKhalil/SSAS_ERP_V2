@@ -200,6 +200,8 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<BeginTenantAccessCommandHandler>();
     services.AddScoped<SelectTenantCommandHandler>();
     services.AddScoped<RefreshAuthenticationSessionCommandHandler>();
+    services.AddScoped<PlatformAuthenticationSessionCreator>();
+    services.AddScoped<RefreshPlatformAuthenticationSessionCommandHandler>();
     services.AddScoped<RevokeCurrentAuthenticationSessionCommandHandler>();
     services.AddScoped<CreateTenantCommandHandler>();
     services.AddScoped<ActivateTenantCommandHandler>();

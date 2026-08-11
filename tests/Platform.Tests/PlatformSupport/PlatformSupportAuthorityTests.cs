@@ -195,18 +195,18 @@ public sealed class PlatformSupportAuthorityTests
   public async Task Disable_handler_gates_on_actor_missing_principal_and_stale_version()
   {
     var missing = new DisablePlatformSupportPrincipalCommandHandler(
-      new FakePrincipalRepository(), new FakeUnitOfWork(), new StubCurrentUser("actor"), new StubClock());
+      new FakePrincipalRepository(), new FakePlatformSessionRepository(), new FakeUnitOfWork(), new StubCurrentUser("actor"), new StubClock());
     Assert.Equal(
       PlatformSupportErrors.PrincipalNotFound,
       (await missing.HandleAsync(new DisablePlatformSupportPrincipalCommand(1, [1]))).Error);
 
     var unauthorized = new DisablePlatformSupportPrincipalCommandHandler(
-      new FakePrincipalRepository(PlatformSupportPrincipal.Register(7).Value), new FakeUnitOfWork(), new StubCurrentUser(null), new StubClock());
+      new FakePrincipalRepository(PlatformSupportPrincipal.Register(7).Value), new FakePlatformSessionRepository(), new FakeUnitOfWork(), new StubCurrentUser(null), new StubClock());
     Assert.True((await unauthorized.HandleAsync(new DisablePlatformSupportPrincipalCommand(1, [1]))).IsFailure);
 
     // A fresh principal has an empty RowVersion, so any expected version is a concurrency conflict.
     var stale = new DisablePlatformSupportPrincipalCommandHandler(
-      new FakePrincipalRepository(PlatformSupportPrincipal.Register(7).Value), new FakeUnitOfWork(), new StubCurrentUser("actor"), new StubClock());
+      new FakePrincipalRepository(PlatformSupportPrincipal.Register(7).Value), new FakePlatformSessionRepository(), new FakeUnitOfWork(), new StubCurrentUser("actor"), new StubClock());
     Assert.Equal(
       IdentityAccessErrors.ConcurrencyConflict,
       (await stale.HandleAsync(new DisablePlatformSupportPrincipalCommand(1, [9]))).Error);
@@ -335,6 +335,28 @@ public sealed class PlatformSupportAuthorityTests
       Added = principal;
       return Task.CompletedTask;
     }
+  }
+
+  private sealed class FakePlatformSessionRepository : IPlatformAuthenticationSessionRepository
+  {
+    public Task<PlatformRefreshTokenSessionLocator?> GetRefreshTokenLocatorAsync(Guid refreshTokenPublicId, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException();
+
+    public Task<SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession?> GetByRefreshTokenForUpdateAsync(long platformAuthenticationSessionId, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException();
+
+    public Task<SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession?> GetByIdForUpdateAsync(long platformAuthenticationSessionId, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException();
+
+    public Task<IReadOnlyList<SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession>> ListActiveUnexpiredByIdentityForUpdateAsync(long identityId, DateTimeOffset utcNow, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException();
+
+    // The Disable-handler tests all fail before reaching proactive revocation, so no active sessions are needed.
+    public Task<IReadOnlyList<SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession>> ListActiveByPrincipalForUpdateAsync(long platformSupportPrincipalId, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession>>([]);
+
+    public Task AddAsync(SSAS.Platform.Domain.PlatformSupport.PlatformAuthenticationSession session, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException();
   }
 
   private sealed class FakeUnitOfWork : IPlatformUnitOfWork

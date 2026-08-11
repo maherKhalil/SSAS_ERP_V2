@@ -323,7 +323,7 @@ public sealed class PlatformSupportBootstrapSqlServerTests
 
     await using var context = database.CreateContext();
     var disable = new DisablePlatformSupportPrincipalCommandHandler(
-      new PlatformSupportPrincipalRepository(context), new TestPlatformUnitOfWork(context), new TestCurrentUser(), new TestClock());
+      new PlatformSupportPrincipalRepository(context), new PlatformAuthenticationSessionRepository(context), new TestPlatformUnitOfWork(context), new TestCurrentUser(), new TestClock());
     Assert.True((await disable.HandleAsync(new DisablePlatformSupportPrincipalCommand(principalId, version))).IsSuccess);
   }
 

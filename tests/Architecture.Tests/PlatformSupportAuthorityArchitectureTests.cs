@@ -68,6 +68,31 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
+  public void Platform_authority_read_query_surface_exists_but_is_not_http_exposed()
+  {
+    // Phase 4C adds the Application read/query surface (DEC-TEN-0025). It exists...
+    var applicationAssembly = typeof(PlatformSupportPermissionFilter).Assembly;
+    foreach (var typeName in new[]
+    {
+      "IPlatformSupportAuthorityReadService",
+      "ListPlatformSupportPrincipalsQueryHandler",
+      "GetPlatformSupportPrincipalQueryHandler",
+      "ListPlatformPermissionAssignmentsQueryHandler",
+      "GetActivePlatformSupportPermissionsQueryHandler",
+    })
+    {
+      Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == typeName);
+    }
+
+    // ...but the read/query surface is read-only Application infrastructure with NO HTTP transport yet
+    // (Phase 4D exposes it). No authority endpoint route-builder type exists in the Platform API assembly.
+    var apiAssembly = typeof(RowVersionCodec).Assembly;
+    Assert.DoesNotContain(apiAssembly.GetTypes(), type =>
+      type.Name.Contains("PlatformSupportAuthorityEndpoint", StringComparison.Ordinal) ||
+      type.Name.Contains("PlatformAuthorityEndpoint", StringComparison.Ordinal));
+  }
+
+  [Fact]
   public void Platform_authorization_primitives_exist_but_no_phase_4_http_exposure_yet()
   {
     // Phase 3C persistence/orchestration + Phase 4A authorization primitives exist now.

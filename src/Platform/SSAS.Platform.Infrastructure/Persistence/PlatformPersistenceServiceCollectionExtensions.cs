@@ -80,6 +80,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IPlatformAccessTokenClaimsProvider, PlatformAccessTokenClaimsProvider>();
     services.AddScoped<IPlatformSupportPrincipalRepository, PlatformSupportPrincipalRepository>();
     services.AddScoped<IPlatformSupportPermissionReadService, PlatformSupportPermissionReadService>();
+    services.AddScoped<IPlatformSupportAuthorityReadService, PlatformSupportAuthorityReadService>();
     services.AddScoped<IPlatformSupportAuthorityStateReadService, PlatformSupportAuthorityStateReadService>();
     services.AddScoped<IPlatformSupportBootstrapService, PlatformSupportBootstrapService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
@@ -210,6 +211,12 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ArchiveTenantCommandHandler>();
     services.AddScoped<GetTenantQueryHandler>();
     services.AddScoped<ListTenantsQueryHandler>();
+    // Platform-support authority read/query surface (DEC-TEN-0025, Phase 4C). Read-only; HTTP exposure +
+    // RequirePlatformPermission(Platform.Support.Administer) are wired later in Phase 4D.
+    services.AddScoped<ListPlatformSupportPrincipalsQueryHandler>();
+    services.AddScoped<GetPlatformSupportPrincipalQueryHandler>();
+    services.AddScoped<ListPlatformPermissionAssignmentsQueryHandler>();
+    services.AddScoped<GetActivePlatformSupportPermissionsQueryHandler>();
     services.AddScoped<CreateCompanyCommandHandler>();
     services.AddScoped<UpdateCompanyProfileCommandHandler>();
     services.AddScoped<ActivateCompanyCommandHandler>();

@@ -2,10 +2,12 @@
 document_id: FP-003-AUTH
 title: Tenant Lifecycle Authorization Model
 status: Approved for Implementation
-version: 1.2
+version: 1.3
 sprint: Sprint-01
 module: Platform
 ---
+
+> **Version 1.3 (2026-08-12) — Phase-4 request-plane sections approved.** The "Platform request-plane authorization (Phase 4)" section below records `DEC-TEN-0023`–`DEC-TEN-0026`, which are **Approved for Implementation** after the focused Phase-4 review and re-review. All prior sections remain Approved for Implementation and unchanged.
 
 # Authorization Model
 
@@ -42,7 +44,7 @@ A configuration-owned bootstrap allow-list keyed by the immutable `Authenticatio
 
 **Usable platform authority** exists when at least one `PlatformSupportPrincipal` simultaneously (1) has `Status == Active`, (2) is anchored to a valid authentication-capable identity/account, and (3) has at least one active assignment whose permission exists in `IPermissionCatalog` with `PermissionScope.PlatformSupport`. A revoked assignment, a corrupt tenant-scoped row, an unknown permission, and a `Disabled` principal do not count.
 
-Bootstrap is genesis/recovery-only, audited, non-tenant-editable, and inert once usable authority exists. It must not implicitly re-enable a `Disabled` principal — configuration membership is never equivalent to "always platform-authorized" or to re-enable authority. Manual SQL is not the recovery path.
+Bootstrap is genesis/recovery-only, audited, non-tenant-editable, and inert once usable authority exists. It must not implicitly re-enable a `Disabled` principal — configuration membership is never equivalent to "always platform-authorized" or to re-enable authority. Manual SQL is not the recovery path. *(Refined by `DEC-TEN-0026` (Approved): recovery is additionally eligible when usable authority exists but no usable **administrative** authority — an Active principal holding active current-catalog `Platform.Support.Administer` — exists; see "Last-admin / self-disable and administrative recovery" below. This forward note preserves the genesis semantics recorded here.)*
 
 "No usable platform authority exists" is evaluated **live against persisted current state** (principal `Status`, authentication-account eligibility, active persisted assignments, current `IPermissionCatalog` scope) — never from configuration, a cached flag, a bare principal row, or corrupt rows. The bootstrap allow-list may hold multiple unique `AuthenticationSubject` values, but a single evaluation establishes **exactly one** usable genesis/recovery principal: eligible subjects are sorted by ordinal comparison of the canonical `AuthenticationSubject` and the first is selected; remaining subjects stay recovery candidates with no automatic authority. Concurrent instances converge on one principal through the Phase-2 unique `IdentityId`/active-assignment constraints. Recovery creates a **new** `Active` principal only for an eligible configured subject that owns no principal; if a `Disabled` principal is the only configured subject and no other candidate is eligible, bootstrap **fails closed** with an operator diagnostic and recovery requires an additional configured subject or the explicit Re-enable operation. The genesis/recovery grant set contains only `PermissionScope.PlatformSupport` catalog permissions and includes `Platform.Support.Administer` (once authored).
 
@@ -53,6 +55,43 @@ Bootstrap is genesis/recovery-only, audited, non-tenant-editable, and inert once
 ### Authority administration (DEC-TEN-0021)
 
 Platform-support principal registration, permission grant/revoke, and Disable/Re-enable require the new `Platform.Support.Administer` permission (`PermissionScope.PlatformSupport`) through the future platform-plane authorization layer. `Platform.Tenants.Manage` and `Platform.Tenants.Lifecycle` govern Tenant administration and lifecycle only and never administer `PlatformSupportPrincipal` or `PlatformPermissionAssignment`. Bootstrap is the sole exception, and only before usable platform authority exists.
+
+## Platform request-plane authorization (Phase 4)
+
+Governed by `ADR-016` §5 and recorded in `decisions-approved.md` as `DEC-TEN-0023`–`DEC-TEN-0026` (**Approved for Implementation**). Phase 4A (committed) delivered the authorization primitives; the HTTP-exposure decisions below are approved (implementation pending) and gate slices 4B–4E.
+
+### Permission and plane policies
+
+Two structurally separate dynamic policy families exist:
+
+- **Tenant permission policy** — `Permission:<name>`, enforced by the tenant `PermissionAuthorizationHandler` (authenticated + validated current tenant + live tenant eligibility + exact `PermissionScope.Tenant` permission claim). Unchanged.
+- **Platform permission policy** — `PlatformPermission:<name>`, enforced by `PlatformPermissionAuthorizationHandler` (authenticated + exactly one ordinal-exact `security_plane=platform` + requested permission catalog-known with `PermissionScope.PlatformSupport` + exact permission claim). **Stateless** — no DB/principal/session lookup. A permission claim alone is never sufficient; a tenant token can never satisfy a platform policy and a platform token can never satisfy a tenant policy. The `PlatformPermission:` prefix does not collide with the tenant `Permission:`/`Role:` prefixes.
+
+### Authenticated request-plane taxonomy (DEC-TEN-0024, resolves F3C-4)
+
+Every authenticated endpoint declares exactly one class; plane-specific endpoints must not use a bare authenticated policy (enforced by an architecture guard):
+
+- **Tenant-authenticated** (`RequireTenantAuthenticatedUser`, conceptual) — authenticated + validated tenant plane.
+- **Platform-authenticated** (`RequirePlatformAuthenticatedUser`, conceptual) — authenticated + exact `security_plane=platform`; structural/claims-based, DB-free.
+- **Plane-neutral** (`RequireAuthenticatedUser`) — only for endpoints whose behaviour is genuinely independent of plane, justified in review.
+
+Current bare-authenticated endpoints are classified **TENANT-ONLY**: `POST /api/platform/auth/logout` (tenant-session logout; the platform counterpart is a dedicated PLATFORM-ONLY route), and `GET /api/platform/localization/effective` + `POST /api/platform/localization/effective/batch` (verified to resolve tenant-scoped localization via `ICurrentTenant`). A platform access JWT remains valid until expiry after Disable/revoke, so plane policies are structural; tenant policies keep their live-eligibility semantics (`DEC-AUTH-0057`).
+
+### Platform authentication HTTP entry (DEC-TEN-0023)
+
+A verified identity obtains a platform session over a dedicated, server-owned platform login route (credentials only): `VerifyPasswordCredentialsCommandHandler` → `VerifiedIdentity` → resolve principal by `IdentityId` → `Active` + ≥1 catalog-valid `PlatformSupport` permission → `PlatformAuthenticationSessionCreator`. The caller never supplies `security_plane`, principal id, permissions, or `SecurityVersion`; the plane is server-derived from the route and persisted authority. A dedicated platform refresh route resolves only the platform store (cross-plane refresh rejected).
+
+**Platform logout** uses a dedicated PLATFORM-ONLY route under `RequirePlatformAuthenticatedUser`. The required Application capability **does not yet exist** (Phase 3C added no platform current-session revocation); 4B adds a new command (conceptually `RevokeCurrentPlatformAuthenticationSessionCommand`) that resolves the target session from the **validated `session_id` claim** — never a caller-supplied session/identity/principal id — in the platform store only. It revokes the platform session and blocks refresh, leaves the tenant session and `AuthenticationAccount.SecurityVersion` untouched, and does not immediately invalidate the already-issued access JWT (valid until expiry).
+
+**L1 (create-vs-disable)** is closed by **serialization** before 4B: `PlatformAuthenticationSessionCreator` must serialize the principal's authority state against a concurrent Disable via a transactionally effective `FOR UPDATE`/locking read; correctness must not depend on deployment isolation settings. Required invariant: after a `Disable` commits, no concurrent creation may commit an `Active` session for that principal (both interleavings safe). Proven with a real two-connection SQL concurrency test in 4B.
+
+### Authority administration and reads (DEC-TEN-0021, DEC-TEN-0025)
+
+Register/Grant/Revoke/Disable/Re-enable **and** all authority read/list operations require `Platform.Support.Administer` through the platform permission policy; **no new read permission** is introduced in Phase 4. Reads use transport DTOs (paginated principal list with stable ordering; assignment history including revoked records with grant/revoke state and audit metadata; a separate current active-permission-names projection; no EF entities, no secrets). The HTTP layer adds authorization + transport only; the existing Application handlers own domain authorization. The audit actor is `ICurrentUser`/`sub` (`GetPlatformActor`); no tenant-user actor and no `principal_id` JWT claim are introduced.
+
+### Last-admin / self-disable and administrative recovery (DEC-TEN-0026)
+
+Self-disable, self-revoke of `Platform.Support.Administer`, and removal/disable of the last usable administrator are **allowed**; there is no preventive last-admin guard. Recovery distinguishes two concepts: **usable platform authority** (an Active principal with an eligible account and ≥1 active current-catalog `PlatformSupport` permission — any of them) and **usable platform *administrative* authority** (an Active principal with an eligible account holding active current-catalog `Platform.Support.Administer`). Genesis/recovery bootstrap (`DEC-TEN-0019`) becomes eligible when **either** no usable platform authority exists **or** usable platform authority exists but no usable *administrative* authority exists (e.g. the last `Administer` was revoked while `Platform.Tenants.View` remains) — this refines `DEC-TEN-0019` recovery eligibility for administrative-authority loss without rewriting its genesis history. Recovery only creates a **new** `Active` principal for an eligible configured subject that owns no principal, never re-enables a `Disabled` principal, never grants `Administer` to an arbitrary existing principal, and remains **fail-closed** if no eligible configured recovery subject exists (governed break-glass may then be required; automatic recovery is not guaranteed in every environment). Eligibility is evaluated **live** against persisted state, never from a still-valid access JWT. An administrator's already-issued access JWT may retain authority until expiry (stateless); Disable proactively revokes sessions and revoke applies at next refresh. The administrative-recovery predicate is bootstrap/recovery state logic, **not** per-request authorization (no new per-request DB lookup); it is owned by a **4D-0** sub-slice landing before HTTP `Revoke`/`Disable`.
 
 ## Operation classification
 

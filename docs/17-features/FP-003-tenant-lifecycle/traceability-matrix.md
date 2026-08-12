@@ -2,10 +2,12 @@
 document_id: FP-003-TRACE
 title: Tenant Lifecycle Traceability Matrix
 status: Approved for Implementation
-version: 1.2
+version: 1.4
 sprint: Sprint-01
 module: Platform
 ---
+
+> **Version 1.4 (2026-08-12).** Adds the Phase-4 request-plane / HTTP-exposure rows (`DEC-TEN-0023`–`DEC-TEN-0026`, `AC-TEN-0078`–`AC-TEN-0093`, `TS-TEN-0118`–`TS-TEN-0142`), **Approved for Implementation** and mapped to slices 4A/4B/4C/4D-0/4D/4E, with dedicated sub-rows for administrative-authority-loss recovery (4D-0, refines `DEC-TEN-0019`) and platform logout + create-vs-disable serialization (4B). Prior rows are unchanged.
 
 # Traceability Matrix
 
@@ -25,6 +27,9 @@ module: Platform
 | Platform-plane authentication and authorization (ADR-015) | BR-TEN-0005, BRULE-TEN-0014 | SEC-TEN-0203, SEC-TEN-0204 | NFR-TEN-0303 | AC-TEN-0021, AC-TEN-0022, AC-TEN-0023, AC-TEN-0024, AC-TEN-0025, AC-TEN-0026, AC-TEN-0027, AC-TEN-0028, AC-TEN-0029, AC-TEN-0030 | TS-TEN-0045, TS-TEN-0046, TS-TEN-0047, TS-TEN-0048, TS-TEN-0049, TS-TEN-0050, TS-TEN-0051, TS-TEN-0052, TS-TEN-0053, TS-TEN-0054, TS-TEN-0055, TS-TEN-0056, TS-TEN-0057, TS-TEN-0058, TS-TEN-0059 | DEC-TEN-0012, DEC-TEN-0018 |
 | Platform-support bootstrap, lifecycle, and authority administration (ADR-016) | BR-TEN-0005, BRULE-TEN-0014 | SEC-TEN-0203, SEC-TEN-0204 | NFR-TEN-0303 | AC-TEN-0031 through AC-TEN-0053 | TS-TEN-0060 through TS-TEN-0092 | DEC-TEN-0019, DEC-TEN-0020, DEC-TEN-0021 |
 | Platform authentication session and token profile (ADR-016 Phase 3C) | BR-TEN-0005, BRULE-TEN-0014 | SEC-TEN-0203, SEC-TEN-0204 | NFR-TEN-0303 | AC-TEN-0054 through AC-TEN-0077 | TS-TEN-0093 through TS-TEN-0117 | DEC-TEN-0022 |
+| Platform request-plane authorization and HTTP exposure (ADR-016 §5 Phase 4 — Approved (implementation pending); slices 4A/4B/4C/4D-0/4D/4E) | BR-TEN-0005, BRULE-TEN-0014 | SEC-TEN-0203, SEC-TEN-0204 | NFR-TEN-0303 | AC-TEN-0078 through AC-TEN-0093 | TS-TEN-0118 through TS-TEN-0142 | DEC-TEN-0023, DEC-TEN-0024, DEC-TEN-0025, DEC-TEN-0026 |
+| — Administrative-authority-loss recovery (DEC-TEN-0026, refines DEC-TEN-0019; slice 4D-0) | BR-TEN-0005, BRULE-TEN-0014 | SEC-TEN-0203, SEC-TEN-0204 | NFR-TEN-0303 | AC-TEN-0089, AC-TEN-0093 | TS-TEN-0136, TS-TEN-0139, TS-TEN-0140 | DEC-TEN-0026, DEC-TEN-0019 |
+| — Platform logout capability + create-vs-disable serialization (DEC-TEN-0023; slice 4B) | BR-TEN-0005, BRULE-TEN-0014 | SEC-TEN-0203, SEC-TEN-0204 | NFR-TEN-0303 | AC-TEN-0082, AC-TEN-0083 | TS-TEN-0141, TS-TEN-0142 | DEC-TEN-0023 |
 | Historical preservation and no deletion | BR-TEN-0004, BRULE-TEN-0008 | SEC-TEN-0206 | NFR-TEN-0304 | AC-TEN-0010, AC-TEN-0011 | TS-TEN-0006, TS-TEN-0026, TS-TEN-0031, TS-TEN-0042 | DEC-TEN-0007 |
 | Trusted metadata, events, and audit readiness | BR-TEN-0008, BRULE-TEN-0012 | SEC-TEN-0205 | NFR-TEN-0307 | AC-TEN-0015 | TS-TEN-0007, TS-TEN-0029, TS-TEN-0035 | DEC-TEN-0009, DEC-TEN-0017 |
 | Optimistic concurrency | BR-TEN-0003, BRULE-TEN-0013 | SEC-TEN-0207 | NFR-TEN-0304 | AC-TEN-0014 | TS-TEN-0014, TS-TEN-0025, TS-TEN-0043 | DEC-TEN-0003 |

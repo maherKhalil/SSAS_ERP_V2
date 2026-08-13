@@ -459,7 +459,13 @@ public sealed class PlatformSupportBootstrapTests
     public Task<PlatformSupportPrincipal?> GetByIdAsync(long platformSupportPrincipalId, CancellationToken cancellationToken = default) =>
       throw new NotSupportedException();
 
+    public Task<PlatformSupportPrincipal?> GetByIdForUpdateAsync(long platformSupportPrincipalId, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException();
+
     public Task<PlatformSupportPrincipal?> GetByIdentityIdAsync(long identityId, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException();
+
+    public Task<PlatformSupportPrincipal?> GetByIdentityIdForUpdateAsync(long identityId, CancellationToken cancellationToken = default) =>
       throw new NotSupportedException();
   }
 

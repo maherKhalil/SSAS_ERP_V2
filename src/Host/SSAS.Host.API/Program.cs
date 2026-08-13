@@ -46,7 +46,8 @@ try
     diagnosticContext.Set("CorrelationId", httpContext.Response.Headers[CorrelationIdMiddleware.HeaderName].ToString()));
   app.UseExceptionHandler();
   app.UseWhen(
-    context => !context.Request.Path.StartsWithSegments("/api/platform/auth"),
+    context => !context.Request.Path.StartsWithSegments("/api/platform/auth") &&
+      !context.Request.Path.StartsWithSegments("/api/platform/support/auth"),
     branch => branch.UseHttpsRedirection());
   app.UseCors(AuthenticationTransportServiceCollectionExtensions.CorsPolicy);
   app.UseAuthentication();
@@ -55,6 +56,7 @@ try
   app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "SSAS ERP API v1"));
   app.MapHostEndpoints();
   app.MapPlatformAuthenticationEndpoints();
+  app.MapPlatformSupportAuthenticationEndpoints();
   app.MapPlatformLocalizationEndpoints();
   app.MapPlatformIdentityAccessEndpoints();
   app.MapPlatformCompanyEndpoints();

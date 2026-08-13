@@ -213,12 +213,19 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ArchiveTenantCommandHandler>();
     services.AddScoped<GetTenantQueryHandler>();
     services.AddScoped<ListTenantsQueryHandler>();
-    // Platform-support authority read/query surface (DEC-TEN-0025, Phase 4C). Read-only; HTTP exposure +
-    // RequirePlatformPermission(Platform.Support.Administer) are wired later in Phase 4D.
+    // Platform-support authority read/query surface (DEC-TEN-0025), exposed over HTTP in Phase 4D behind
+    // RequirePlatformPermission(Platform.Support.Administer).
     services.AddScoped<ListPlatformSupportPrincipalsQueryHandler>();
     services.AddScoped<GetPlatformSupportPrincipalQueryHandler>();
     services.AddScoped<ListPlatformPermissionAssignmentsQueryHandler>();
     services.AddScoped<GetActivePlatformSupportPermissionsQueryHandler>();
+    // Platform-support authority mutations (DEC-TEN-0020/0021), exposed over HTTP in Phase 4D behind the same
+    // Administer permission. The handlers already own domain authorization, actor derivation and lifecycle rules.
+    services.AddScoped<RegisterPlatformSupportPrincipalCommandHandler>();
+    services.AddScoped<GrantPlatformPermissionCommandHandler>();
+    services.AddScoped<RevokePlatformPermissionCommandHandler>();
+    services.AddScoped<DisablePlatformSupportPrincipalCommandHandler>();
+    services.AddScoped<ReenablePlatformSupportPrincipalCommandHandler>();
     services.AddScoped<CreateCompanyCommandHandler>();
     services.AddScoped<UpdateCompanyProfileCommandHandler>();
     services.AddScoped<ActivateCompanyCommandHandler>();

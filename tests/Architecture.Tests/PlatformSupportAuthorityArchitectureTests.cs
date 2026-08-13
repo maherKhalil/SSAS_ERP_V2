@@ -84,12 +84,13 @@ public sealed class PlatformSupportAuthorityArchitectureTests
       Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == typeName);
     }
 
-    // ...but the read/query surface is read-only Application infrastructure with NO HTTP transport yet
-    // (Phase 4D exposes it). No authority endpoint route-builder type exists in the Platform API assembly.
+    // ...and Phase 4D exposes it over HTTP through a single authority transport, which must project
+    // transport-owned DTOs rather than leaking Application/EF read types onto the wire (DEC-TEN-0025).
     var apiAssembly = typeof(RowVersionCodec).Assembly;
-    Assert.DoesNotContain(apiAssembly.GetTypes(), type =>
-      type.Name.Contains("PlatformSupportAuthorityEndpoint", StringComparison.Ordinal) ||
-      type.Name.Contains("PlatformAuthorityEndpoint", StringComparison.Ordinal));
+    Assert.Contains(apiAssembly.GetTypes(), type =>
+      type.Name == "PlatformSupportAuthorityEndpointRouteBuilderExtensions");
+    Assert.Contains(apiAssembly.GetTypes(), type => type.Name == "PlatformSupportPrincipalResponse");
+    Assert.Contains(apiAssembly.GetTypes(), type => type.Name == "PlatformPermissionAssignmentResponse");
   }
 
   [Fact]

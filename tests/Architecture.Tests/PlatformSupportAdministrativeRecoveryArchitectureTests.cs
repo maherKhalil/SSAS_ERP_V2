@@ -37,22 +37,17 @@ public sealed class PlatformSupportAdministrativeRecoveryArchitectureTests
   }
 
   [Fact]
-  public void Phase_4D_authority_management_http_is_not_exposed_yet()
+  public void Recovery_is_never_reachable_over_http()
   {
-    // 4D-0 is state logic only: authority mutation/read routes remain gated until 4D.
+    // Phase 4D exposes authority ADMINISTRATION (Register/Grant/Revoke/Disable/Re-enable/read). Genesis and
+    // administrative recovery remain an internal bootstrap subsystem with no HTTP surface of its own and are
+    // never invoked from a request path — the mutation endpoints must not "repair" authority inline.
     var apiTypes = typeof(PlatformAuthenticatedResponse).Assembly
       .GetTypes()
       .Select(type => type.Name)
       .ToArray();
 
-    foreach (var forbidden in new[]
-      {
-        "PlatformSupportPrincipalEndpointRouteBuilderExtensions",
-        "PlatformSupportAuthorityEndpointRouteBuilderExtensions",
-        "PlatformSupportRecoveryEndpointRouteBuilderExtensions"
-      })
-    {
-      Assert.DoesNotContain(forbidden, apiTypes);
-    }
+    Assert.DoesNotContain("PlatformSupportRecoveryEndpointRouteBuilderExtensions", apiTypes);
+    Assert.DoesNotContain("PlatformSupportBootstrapEndpointRouteBuilderExtensions", apiTypes);
   }
 }

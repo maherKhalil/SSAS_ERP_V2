@@ -13,8 +13,10 @@ using SSAS.Platform.Application.Identities;
 using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Application.PlatformSupport;
 using SSAS.Platform.Application.Roles;
+using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Tenants;
+using SSAS.Platform.Infrastructure.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
@@ -84,6 +86,9 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IPlatformSupportAuthorityStateReadService, PlatformSupportAuthorityStateReadService>();
     services.AddScoped<IPlatformSupportRecoverySerializer, PlatformSupportRecoverySerializer>();
     services.AddScoped<IPlatformSupportBootstrapService, PlatformSupportBootstrapService>();
+    // Tenant-storage registry baseline (ADR-017, TS-1B). Registry persistence and bootstrap only: no
+    // routing resolver, no connection factory and no customer-managed path exist in this slice.
+    services.AddScoped<ITenantStorageBootstrapService, TenantStorageBootstrapService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
     services.AddSingleton<ILocalizationCatalog>(GeneratedLocalizationCatalog.Instance);
@@ -173,6 +178,12 @@ public static class PlatformInfrastructureServiceCollectionExtensions
       .ValidateOnStart();
     services.AddSingleton<IValidateOptions<PlatformSupportBootstrapOptions>, PlatformSupportBootstrapOptionsValidator>();
     services.AddHostedService<PlatformSupportBootstrapHostedService>();
+
+    // ServerKey is a trusted configuration lookup key; no address or credential is bound here, and none is
+    // persisted. The per-server connection map arrives with the TS-1C connection factory.
+    services.AddOptions<TenantStorageOptions>()
+      .Bind(configuration.GetSection(TenantStorageOptions.SectionName));
+    services.AddHostedService<TenantStorageBootstrapHostedService>();
 
     services.AddScoped<RegisterIdentityCommandHandler>();
     services.AddScoped<CreateTenantUserMembershipCommandHandler>();

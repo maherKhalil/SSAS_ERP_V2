@@ -8,6 +8,7 @@ using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Domain.Localization;
 using SSAS.Platform.Domain.PlatformSupport;
 using SSAS.Platform.Domain.Roles;
+using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Domain.TenantUsers;
 using SSAS.Platform.Domain.Tenants;
 using PlatformIdentity = SSAS.Platform.Domain.Identities.Identity;
@@ -60,6 +61,12 @@ public sealed class PlatformDbContext(
 
   public DbSet<TenantLocalizationOverrideVersion> TenantLocalizationOverrideVersions => Set<TenantLocalizationOverrideVersion>();
 
+  // Tenant-storage registry (ADR-017). Platform operational metadata: neither type is ITenantOwnedEntity,
+  // so routing and bootstrap read them without an ambient tenant filter.
+  public DbSet<TenantDatabase> TenantDatabases => Set<TenantDatabase>();
+
+  public DbSet<TenantDatabaseAssignment> TenantDatabaseAssignments => Set<TenantDatabaseAssignment>();
+
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
     modelBuilder.ApplyConfigurationsFromAssembly(typeof(PlatformDbContext).Assembly);
@@ -75,8 +82,22 @@ public sealed class PlatformDbContext(
     PreventAuthenticationHistoryDeletion();
     PreventLocalizationHistoryMutation();
     PreventIdentityOwnershipChanges();
+    PreventTenantStorageRegistryDeletion();
     PromoteAssignmentOwners();
     return base.SaveChangesAsync(cancellationToken);
+  }
+
+  // Routing history is retained operational state: an assignment is superseded by setting EndedUtc, never
+  // by deletion, and a physical database record outlives the tenants that used it so past routing stays
+  // reconstructable. Mirrors the existing authority/authentication history guards.
+  private void PreventTenantStorageRegistryDeletion()
+  {
+    if (ChangeTracker.Entries().Any(entry =>
+      entry.State == EntityState.Deleted && entry.Entity is TenantDatabase or TenantDatabaseAssignment))
+    {
+      throw new InvalidOperationException(
+        "Tenant storage registry rows are retained routing history and cannot be physically deleted; end the assignment instead.");
+    }
   }
 
   private void PreventLocalizationHistoryMutation()

@@ -82,6 +82,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IPlatformSupportPermissionReadService, PlatformSupportPermissionReadService>();
     services.AddScoped<IPlatformSupportAuthorityReadService, PlatformSupportAuthorityReadService>();
     services.AddScoped<IPlatformSupportAuthorityStateReadService, PlatformSupportAuthorityStateReadService>();
+    services.AddScoped<IPlatformSupportRecoverySerializer, PlatformSupportRecoverySerializer>();
     services.AddScoped<IPlatformSupportBootstrapService, PlatformSupportBootstrapService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();

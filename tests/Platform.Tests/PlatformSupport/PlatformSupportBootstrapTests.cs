@@ -287,7 +287,9 @@ public sealed class PlatformSupportBootstrapTests
     var outcome = await service.RunAsync();
 
     Assert.Equal(PlatformSupportBootstrapOutcome.AuthorityAlreadyUsable, outcome);
-    Assert.Equal(2, authority.CallCount); // pre-check + post-failure re-read
+    // Both predicates are evaluated at the pre-check and again at the post-failure re-read (DEC-TEN-0026).
+    Assert.Equal(2, authority.GeneralCallCount);
+    Assert.Equal(2, authority.AdministrativeCallCount);
   }
 
   [Fact]
@@ -304,6 +306,64 @@ public sealed class PlatformSupportBootstrapTests
     Assert.Equal(PlatformSupportBootstrapOutcome.NoEligibleCandidate, outcome);
   }
 
+  // ---- DEC-TEN-0026 administrative recovery predicate ----
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  public async Task Bootstrap_is_inert_only_when_both_general_and_administrative_authority_are_usable()
+  {
+    // general TRUE + administrative TRUE is the ONLY inert state.
+    var principals = new FakePrincipalRepository();
+    var service = Build(
+      new PlatformSupportBootstrapOptions { Subjects = ["local:alice"] },
+      new FakeAuthorityState([true], [true]), EligibleWorld("local:alice"), EligibleAccounts("local:alice"),
+      principals, new FakeUnitOfWork());
+
+    Assert.Equal(PlatformSupportBootstrapOutcome.AuthorityAlreadyUsable, await service.RunAsync());
+    Assert.Null(principals.Added);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  public async Task Administrative_loss_triggers_recovery_even_though_general_authority_survives()
+  {
+    // The DEC-TEN-0026 case: a surviving non-admin principal keeps general authority TRUE, but with no usable
+    // Administer anywhere the plane can never be administered again — recovery must engage, not stay inert.
+    var principals = new FakePrincipalRepository();
+    var service = Build(
+      new PlatformSupportBootstrapOptions { Subjects = ["local:alice"] },
+      new FakeAuthorityState([true], [false]), EligibleWorld("local:alice"), EligibleAccounts("local:alice"),
+      principals, new FakeUnitOfWork());
+
+    var outcome = await service.RunAsync();
+
+    Assert.Equal(PlatformSupportBootstrapOutcome.GenesisEstablished, outcome);
+    Assert.NotNull(principals.Added);
+    // Recovery establishes a NEW configured principal and grants it Administer.
+    Assert.Equal(IdFor("local:alice"), principals.Added!.IdentityId);
+    Assert.Contains(
+      principals.Added.PermissionAssignments,
+      assignment => assignment.PermissionName.Value == PlatformPermissionNames.AdministerPlatformSupport);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  public async Task Administrative_loss_without_an_eligible_configured_subject_fails_closed()
+  {
+    // No eligible configured subject: recovery must NOT elevate the surviving non-admin principal, must not
+    // re-enable anything, and must fail closed.
+    var principals = new FakePrincipalRepository();
+    var service = Build(
+      new PlatformSupportBootstrapOptions { Subjects = ["local:alice"] },
+      new FakeAuthorityState([true], [false]), EligibleWorld(), EligibleAccounts(),
+      principals, new FakeUnitOfWork());
+
+    var outcome = await service.RunAsync();
+
+    Assert.Equal(PlatformSupportBootstrapOutcome.NoEligibleCandidate, outcome);
+    Assert.Null(principals.Added);
+  }
+
   // ---- Fakes and builders ----
 
   private static PlatformSupportBootstrapService Build(
@@ -313,7 +373,8 @@ public sealed class PlatformSupportBootstrapTests
     FakeAccountRepository accounts,
     FakePrincipalRepository principals,
     FakeUnitOfWork unitOfWork) =>
-    new(Options.Create(options), identities, accounts, principals, authority, Catalog, unitOfWork, new StubClock());
+    new(Options.Create(options), identities, accounts, principals, authority, new FakeRecoverySerializer(),
+      Catalog, unitOfWork, new StubClock());
 
   private static long IdFor(string subject) => Math.Abs((long)subject.GetHashCode(StringComparison.Ordinal)) + 1;
 
@@ -371,17 +432,43 @@ public sealed class PlatformSupportBootstrapTests
     field!.SetValue(entity, id);
   }
 
-  private sealed class FakeAuthorityState(params bool[] results) : IPlatformSupportAuthorityStateReadService
+  // Models the two DEC-TEN-0026 predicates independently. The single-sequence constructor mirrors
+  // administrative onto general (the fully-authorised / fully-absent states); the two-sequence constructor
+  // expresses the admin-loss state where general authority survives but administrative authority does not.
+  private sealed class FakeAuthorityState : IPlatformSupportAuthorityStateReadService
   {
-    private readonly bool[] results = results.Length == 0 ? [false] : results;
+    private readonly bool[] general;
+    private readonly bool[] administrative;
 
-    public int CallCount { get; private set; }
+    public FakeAuthorityState(params bool[] results)
+      : this(results, results)
+    {
+    }
+
+    public FakeAuthorityState(bool[] general, bool[] administrative)
+    {
+      this.general = general.Length == 0 ? [false] : general;
+      this.administrative = administrative.Length == 0 ? [false] : administrative;
+    }
+
+    public int GeneralCallCount { get; private set; }
+
+    public int AdministrativeCallCount { get; private set; }
+
+    public int CallCount => GeneralCallCount + AdministrativeCallCount;
 
     public Task<bool> HasUsablePlatformAuthorityAsync(CancellationToken cancellationToken = default)
     {
-      var index = Math.Min(CallCount, results.Length - 1);
-      CallCount++;
-      return Task.FromResult(results[index]);
+      var index = Math.Min(GeneralCallCount, general.Length - 1);
+      GeneralCallCount++;
+      return Task.FromResult(general[index]);
+    }
+
+    public Task<bool> HasUsablePlatformAdministrativeAuthorityAsync(CancellationToken cancellationToken = default)
+    {
+      var index = Math.Min(AdministrativeCallCount, administrative.Length - 1);
+      AdministrativeCallCount++;
+      return Task.FromResult(administrative[index]);
     }
   }
 
@@ -479,8 +566,24 @@ public sealed class PlatformSupportBootstrapTests
       return Task.FromResult(failWith is null ? Result.Success(1) : Result.Failure<int>(failWith));
     }
 
+    // Recovery now runs inside a transaction that carries the cross-candidate serialization, so the fake
+    // supplies a no-op transaction. Real convergence is proven only by the SQL Server tests.
     public Task<ITransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
-      throw new NotSupportedException();
+      Task.FromResult<ITransaction>(new FakeTransaction());
+  }
+
+  private sealed class FakeTransaction : ITransaction
+  {
+    public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+  }
+
+  // In-memory fake always serializes successfully; genuine cross-candidate convergence is a database
+  // property and is proven exclusively by PlatformSupportBootstrapSqlServerTests.
+  private sealed class FakeRecoverySerializer : IPlatformSupportRecoverySerializer
+  {
+    public Task<bool> TryAcquireAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
   }
 
   private sealed class StubClock : IDateTimeProvider

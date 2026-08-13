@@ -24,3 +24,8 @@ Every significant architectural decision must be documented before implementatio
 | ADR-014 | Company / Legal-Entity Ownership and Scoping | Accepted |
 | ADR-015 | Platform-Plane Authentication and Authorization | Accepted |
 | ADR-016 | Platform-Support Bootstrap, Lifecycle, and Authority Administration | Accepted |
+| ADR-017 | Tenant Storage Topology and Routing | Proposed |
+| ADR-018 | Tenant Schema Health and Migration Orchestration | Proposed |
+| ADR-019 | Dynamic Tenant Placement Policy | Proposed |
+| ADR-020 | Shared-to-Dedicated Tenant Migration and Cutover | Proposed |
+| ADR-021 | Customer-Managed Tenant Database Connectivity and Operations | Proposed |

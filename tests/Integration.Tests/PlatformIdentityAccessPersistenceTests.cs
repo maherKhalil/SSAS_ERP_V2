@@ -118,6 +118,8 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "RefreshTokenRecords",
             "RolePermissionAssignments",
             "Roles",
+            "TenantDatabaseAssignments",
+            "TenantDatabases",
             "TenantLocalizationOverrideVersions",
             "TenantLocalizationOverrides",
             "TenantLocalizationSettings",

@@ -9,6 +9,13 @@ public sealed class PermissionAuthorizationPolicyProvider(IOptions<Authorization
 {
   public override Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
   {
+    // Platform prefix is checked first for clarity; "PlatformPermission:" is not a prefix of "Permission:" (or
+    // the reverse), so the tenant and platform branches never collide.
+    if (policyName.StartsWith(PlatformPermissionAuthorizationDefaults.PolicyPrefix, StringComparison.Ordinal))
+    {
+      return CreatePlatformPermissionPolicyAsync(policyName);
+    }
+
     if (policyName.StartsWith(PermissionAuthorizationDefaults.PolicyPrefix, StringComparison.Ordinal))
     {
       return CreatePermissionPolicyAsync(policyName);
@@ -20,6 +27,20 @@ public sealed class PermissionAuthorizationPolicyProvider(IOptions<Authorization
     }
 
     return base.GetPolicyAsync(policyName);
+  }
+
+  private static Task<AuthorizationPolicy?> CreatePlatformPermissionPolicyAsync(string policyName)
+  {
+    if (!PlatformPermissionAuthorizationDefaults.TryGetPermissionName(policyName, out var permission))
+    {
+      return Task.FromResult<AuthorizationPolicy?>(null);
+    }
+
+    var policy = CreatePolicyBuilder()
+      .AddRequirements(new PlatformPermissionRequirement(permission))
+      .Build();
+
+    return Task.FromResult<AuthorizationPolicy?>(policy);
   }
 
   private static Task<AuthorizationPolicy?> CreatePermissionPolicyAsync(string policyName)

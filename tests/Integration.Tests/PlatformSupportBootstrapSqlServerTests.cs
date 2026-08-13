@@ -10,6 +10,7 @@ using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Application.PlatformSupport;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Identities;
+using SSAS.Platform.Domain.Permissions;
 using SSAS.Platform.Domain.ValueObjects;
 using SSAS.Platform.Infrastructure.Identity;
 using SSAS.Platform.Infrastructure.Persistence;
@@ -215,6 +216,268 @@ public sealed class PlatformSupportBootstrapSqlServerTests
 
   // ---- Orchestrator + read-service construction over the real provider ----
 
+  // ---- Phase 4D-0: administrative recovery predicate (DEC-TEN-0026) ----
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  public async Task Administrative_authority_separates_administer_from_other_platform_support_grants()
+  {
+    await using var database = await BootstrapSqlDatabase.CreateAsync();
+
+    // View-only: general authority exists, administrative authority does not.
+    var viewSubject = await SeedEligibleIdentityAsync(database);
+    await RegisterAndGrantAsync(database, await IdentityIdAsync(database, viewSubject), PlatformPermissionNames.ViewTenants);
+    Assert.True(await ReadUsableAuthorityAsync(database));
+    Assert.False(await ReadAdministrativeAuthorityAsync(database));
+
+    // Adding an Administer holder flips only the administrative predicate to true.
+    var adminSubject = await SeedEligibleIdentityAsync(database);
+    var adminPrincipalId = await RegisterAndGrantAsync(
+      database, await IdentityIdAsync(database, adminSubject), PlatformPermissionNames.AdministerPlatformSupport);
+    Assert.True(await ReadUsableAuthorityAsync(database));
+    Assert.True(await ReadAdministrativeAuthorityAsync(database));
+
+    // A retired/unknown Administer (catalog no longer exposes it) confers nothing, even though the row persists.
+    Assert.False(await ReadAdministrativeAuthorityAsync(database, new CatalogWithoutAdminister()));
+
+    // Revoked Administer is inert; history remains but authority does not.
+    await RevokeAsync(database, adminPrincipalId, PlatformPermissionNames.AdministerPlatformSupport);
+    Assert.False(await ReadAdministrativeAuthorityAsync(database));
+    Assert.Equal(1, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] WHERE [PlatformSupportPrincipalId] = {adminPrincipalId} AND [PermissionName] = N'{PlatformPermissionNames.AdministerPlatformSupport}' AND [RemovedUtc] IS NOT NULL"));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  public async Task A_disabled_or_ineligible_administer_holder_confers_no_administrative_authority()
+  {
+    // Disabled principal retaining Administer.
+    await using (var database = await BootstrapSqlDatabase.CreateAsync())
+    {
+      var subject = await SeedEligibleIdentityAsync(database);
+      var principalId = await RegisterAndGrantAsync(
+        database, await IdentityIdAsync(database, subject), PlatformPermissionNames.AdministerPlatformSupport);
+      Assert.True(await ReadAdministrativeAuthorityAsync(database));
+
+      await DisableAsync(database, principalId);
+
+      Assert.False(await ReadAdministrativeAuthorityAsync(database));
+      Assert.False(await ReadUsableAuthorityAsync(database));
+      // Not reactivated by the predicate or by anything else.
+      Assert.Equal("Disabled", await ReadStringAsync(database,
+        $"SELECT [Status] FROM [platform].[PlatformSupportPrincipals] WHERE [PlatformSupportPrincipalId] = {principalId}"));
+    }
+
+    // Active principal holding Administer but anchored to an ineligible account.
+    await using (var database = await BootstrapSqlDatabase.CreateAsync())
+    {
+      var subject = await SeedIdentityAsync(database, eligible: false);
+      await RegisterAndGrantAsync(
+        database, await IdentityIdAsync(database, subject), PlatformPermissionNames.AdministerPlatformSupport);
+
+      Assert.False(await ReadAdministrativeAuthorityAsync(database));
+      Assert.False(await ReadUsableAuthorityAsync(database));
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0093")]
+  public async Task Revoking_the_last_administer_keeps_general_authority_and_recovers_through_a_new_principal()
+  {
+    // THE DEC-TEN-0026 CASE. Principal A holds Administer + View; revoking Administer leaves the plane usable
+    // (View survives) but unadministrable, which must trigger recovery through a NEW configured principal —
+    // never by elevating A.
+    await using var database = await BootstrapSqlDatabase.CreateAsync();
+    var subjectA = await SeedEligibleIdentityAsync(database);
+    var identityA = await IdentityIdAsync(database, subjectA);
+    var principalA = await RegisterAndGrantAsync(database, identityA, PlatformPermissionNames.AdministerPlatformSupport);
+    await using (var context = database.CreateContext())
+    {
+      var grant = new GrantPlatformPermissionCommandHandler(
+        new PlatformSupportPrincipalRepository(context), new PlatformPermissionCatalog(),
+        new TestPlatformUnitOfWork(context), new TestCurrentUser(), new TestClock());
+      Assert.True((await grant.HandleAsync(new GrantPlatformPermissionCommand(principalA, PlatformPermissionNames.ViewTenants))).IsSuccess);
+    }
+
+    // Before revoke: fully authorised, so bootstrap is inert.
+    Assert.True(await ReadUsableAuthorityAsync(database));
+    Assert.True(await ReadAdministrativeAuthorityAsync(database));
+    var subjectB = await SeedEligibleIdentityAsync(database);
+    Assert.Equal(PlatformSupportBootstrapOutcome.AuthorityAlreadyUsable, await RunBootstrapAsync(database, Options([subjectB])));
+
+    // Revoke the last Administer, leaving View.
+    await RevokeAsync(database, principalA, PlatformPermissionNames.AdministerPlatformSupport);
+
+    Assert.True(await ReadUsableAuthorityAsync(database));          // general survives on View
+    Assert.False(await ReadAdministrativeAuthorityAsync(database)); // administrative authority is gone
+
+    // Recovery now engages and establishes a NEW principal for the configured subject B.
+    Assert.Equal(PlatformSupportBootstrapOutcome.GenesisEstablished, await RunBootstrapAsync(database, Options([subjectB])));
+
+    var identityB = await IdentityIdAsync(database, subjectB);
+    Assert.Equal(1, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals] WHERE [IdentityId] = {identityB} AND [Status] = N'Active'"));
+    Assert.Equal(1, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] a JOIN [platform].[PlatformSupportPrincipals] p ON p.[PlatformSupportPrincipalId] = a.[PlatformSupportPrincipalId] WHERE p.[IdentityId] = {identityB} AND a.[PermissionName] = N'{PlatformPermissionNames.AdministerPlatformSupport}' AND a.[RemovedUtc] IS NULL"));
+
+    // Principal A is untouched: still Active, still View-only, and NOT re-granted Administer.
+    Assert.Equal("Active", await ReadStringAsync(database,
+      $"SELECT [Status] FROM [platform].[PlatformSupportPrincipals] WHERE [PlatformSupportPrincipalId] = {principalA}"));
+    Assert.Equal(1, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] WHERE [PlatformSupportPrincipalId] = {principalA} AND [PermissionName] = N'{PlatformPermissionNames.ViewTenants}' AND [RemovedUtc] IS NULL"));
+    Assert.Equal(0, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] WHERE [PlatformSupportPrincipalId] = {principalA} AND [PermissionName] = N'{PlatformPermissionNames.AdministerPlatformSupport}' AND [RemovedUtc] IS NULL"));
+
+    // Administrative authority is restored, so a second run is inert and creates nothing further.
+    Assert.True(await ReadAdministrativeAuthorityAsync(database));
+    Assert.Equal(PlatformSupportBootstrapOutcome.AuthorityAlreadyUsable, await RunBootstrapAsync(database, Options([subjectB])));
+    Assert.Equal(2, await ReadInt32Async(database, "SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals]"));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  public async Task Administrative_loss_with_no_eligible_configured_subject_fails_closed()
+  {
+    // Usable-but-unadministrable plane and no eligible configured subject: fail closed, elevate nobody.
+    await using var database = await BootstrapSqlDatabase.CreateAsync();
+    var subjectA = await SeedEligibleIdentityAsync(database);
+    var principalA = await RegisterAndGrantAsync(
+      database, await IdentityIdAsync(database, subjectA), PlatformPermissionNames.ViewTenants);
+
+    Assert.True(await ReadUsableAuthorityAsync(database));
+    Assert.False(await ReadAdministrativeAuthorityAsync(database));
+
+    // Subject A already owns a principal, so it is not an eligible recovery candidate; nothing else exists.
+    var outcome = await RunBootstrapAsync(database, Options([subjectA]));
+
+    Assert.Equal(PlatformSupportBootstrapOutcome.NoEligibleCandidate, outcome);
+    Assert.Equal(1, await ReadInt32Async(database, "SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals]"));
+    Assert.Equal(0, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] WHERE [PlatformSupportPrincipalId] = {principalA} AND [PermissionName] = N'{PlatformPermissionNames.AdministerPlatformSupport}' AND [RemovedUtc] IS NULL"));
+    Assert.False(await ReadAdministrativeAuthorityAsync(database));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  public async Task Concurrent_administrative_recovery_converges_on_exactly_one_new_principal()
+  {
+    // Multi-instance startup during administrative loss: both hosts observe admin=false and race. Deterministic
+    // ordinal selection sends both at the same subject, and IdentityId uniqueness converges them on one insert.
+    await using var database = await BootstrapSqlDatabase.CreateAsync();
+    var subjectA = await SeedEligibleIdentityAsync(database);
+    await RegisterAndGrantAsync(database, await IdentityIdAsync(database, subjectA), PlatformPermissionNames.ViewTenants);
+    var recoveryOne = await SeedEligibleIdentityAsync(database);
+    var recoveryTwo = await SeedEligibleIdentityAsync(database);
+    var subjects = new[] { recoveryOne, recoveryTwo }.OrderBy(subject => subject, StringComparer.Ordinal).ToArray();
+
+    Assert.True(await ReadUsableAuthorityAsync(database));
+    Assert.False(await ReadAdministrativeAuthorityAsync(database));
+
+    var outcomes = await Task.WhenAll(
+      RunBootstrapAsync(database, Options(subjects)),
+      RunBootstrapAsync(database, Options(subjects)));
+
+    Assert.All(outcomes, outcome => Assert.True(
+      outcome is PlatformSupportBootstrapOutcome.GenesisEstablished or PlatformSupportBootstrapOutcome.AuthorityAlreadyUsable,
+      $"Unexpected concurrent recovery outcome: {outcome}"));
+    // Exactly one recovery principal was created (2 total: the pre-existing View-only principal plus one).
+    Assert.Equal(2, await ReadInt32Async(database, "SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals]"));
+    Assert.Equal(1, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] WHERE [PermissionName] = N'{PlatformPermissionNames.AdministerPlatformSupport}' AND [RemovedUtc] IS NULL"));
+    Assert.True(await ReadAdministrativeAuthorityAsync(database));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0026")]
+  public async Task Multi_subject_administrative_recovery_converges_on_one_principal_when_a_peer_commits_first()
+  {
+    // M1 regression. Two eligible configured subjects and the admin-loss state. Both workers observe
+    // "no administrative authority", then one commits its recovery principal BEFORE the other enumerates
+    // candidates. Without cross-candidate serialization the second worker would skip the now-taken subject,
+    // select the OTHER configured subject, and establish a second Administer-bearing principal — no IdentityId
+    // uniqueness conflict would ever occur. The serialized live recheck must make it stop instead.
+    await using var database = await BootstrapSqlDatabase.CreateAsync();
+    var viewSubject = await SeedEligibleIdentityAsync(database);
+    var viewPrincipalId = await RegisterAndGrantAsync(
+      database, await IdentityIdAsync(database, viewSubject), PlatformPermissionNames.ViewTenants);
+    var recoveryOne = await SeedEligibleIdentityAsync(database);
+    var recoveryTwo = await SeedEligibleIdentityAsync(database);
+    var subjects = new[] { recoveryOne, recoveryTwo }.OrderBy(subject => subject, StringComparer.Ordinal).ToArray();
+
+    Assert.True(await ReadUsableAuthorityAsync(database));
+    Assert.False(await ReadAdministrativeAuthorityAsync(database));
+
+    // Shared table lock: both workers can complete their unserialized fast-path reads (and so genuinely
+    // observe admin=false), but neither can take the exclusive recovery serialization yet.
+    await using var gate = await SharedPrincipalTableGate.HoldAsync(database.ConnectionString);
+
+    var workerOne = RunBootstrapAsync(database, Options(subjects));
+    var workerTwo = RunBootstrapAsync(database, Options(subjects));
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    Assert.False(workerOne.IsCompleted); // both parked on the recovery serialization, not on each other
+    Assert.False(workerTwo.IsCompleted);
+
+    await gate.ReleaseAsync();
+    var outcomes = await Task.WhenAll(workerOne, workerTwo);
+
+    // Exactly one worker recovers; the other re-reads live state under serialization and converges.
+    Assert.Contains(PlatformSupportBootstrapOutcome.GenesisEstablished, outcomes);
+    Assert.Contains(PlatformSupportBootstrapOutcome.AuthorityAlreadyUsable, outcomes);
+
+    // Terminal state from a fresh context: the View-only principal plus EXACTLY ONE recovery principal.
+    Assert.Equal(2, await ReadInt32Async(database, "SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals]"));
+    Assert.Equal(1, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] WHERE [PermissionName] = N'{PlatformPermissionNames.AdministerPlatformSupport}' AND [RemovedUtc] IS NULL"));
+
+    // Exactly one of the two configured recovery subjects was used; the other must have no principal at all.
+    var identityOne = await IdentityIdAsync(database, recoveryOne);
+    var identityTwo = await IdentityIdAsync(database, recoveryTwo);
+    var createdForOne = await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals] WHERE [IdentityId] = {identityOne}");
+    var createdForTwo = await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals] WHERE [IdentityId] = {identityTwo}");
+    Assert.Equal(1, createdForOne + createdForTwo);
+
+    // The pre-existing View-only principal is untouched and still not administrative.
+    Assert.Equal("Active", await ReadStringAsync(database,
+      $"SELECT [Status] FROM [platform].[PlatformSupportPrincipals] WHERE [PlatformSupportPrincipalId] = {viewPrincipalId}"));
+    Assert.Equal(0, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] WHERE [PlatformSupportPrincipalId] = {viewPrincipalId} AND [PermissionName] = N'{PlatformPermissionNames.AdministerPlatformSupport}' AND [RemovedUtc] IS NULL"));
+    Assert.True(await ReadAdministrativeAuthorityAsync(database));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0019")]
+  public async Task Multi_subject_genesis_converges_on_one_principal_when_a_peer_commits_first()
+  {
+    // Same serialization must hold for ordinary genesis (no authority at all), not just administrative
+    // recovery — one mechanism covers both triggers.
+    await using var database = await BootstrapSqlDatabase.CreateAsync();
+    var recoveryOne = await SeedEligibleIdentityAsync(database);
+    var recoveryTwo = await SeedEligibleIdentityAsync(database);
+    var subjects = new[] { recoveryOne, recoveryTwo }.OrderBy(subject => subject, StringComparer.Ordinal).ToArray();
+
+    Assert.False(await ReadUsableAuthorityAsync(database));
+    Assert.False(await ReadAdministrativeAuthorityAsync(database));
+
+    await using var gate = await SharedPrincipalTableGate.HoldAsync(database.ConnectionString);
+    var workerOne = RunBootstrapAsync(database, Options(subjects));
+    var workerTwo = RunBootstrapAsync(database, Options(subjects));
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    Assert.False(workerOne.IsCompleted);
+    Assert.False(workerTwo.IsCompleted);
+
+    await gate.ReleaseAsync();
+    var outcomes = await Task.WhenAll(workerOne, workerTwo);
+
+    Assert.Contains(PlatformSupportBootstrapOutcome.GenesisEstablished, outcomes);
+    Assert.Contains(PlatformSupportBootstrapOutcome.AuthorityAlreadyUsable, outcomes);
+    Assert.Equal(1, await ReadInt32Async(database, "SELECT COUNT(*) FROM [platform].[PlatformSupportPrincipals]"));
+    Assert.Equal(1, await ReadInt32Async(database,
+      $"SELECT COUNT(*) FROM [platform].[PlatformPermissionAssignments] WHERE [PermissionName] = N'{PlatformPermissionNames.AdministerPlatformSupport}' AND [RemovedUtc] IS NULL"));
+  }
+
   private static IOptions<PlatformSupportBootstrapOptions> Options(string[] subjects) =>
     Microsoft.Extensions.Options.Options.Create(new PlatformSupportBootstrapOptions
     {
@@ -236,10 +499,56 @@ public sealed class PlatformSupportBootstrapSqlServerTests
       accounts,
       new PlatformSupportPrincipalRepository(context),
       readService,
+      new PlatformSupportRecoverySerializer(context),
       catalog,
       new TestPlatformUnitOfWork(context),
       new TestClock());
     return await service.RunAsync();
+  }
+
+  // Holds a SHARED table lock on the principal table from an independent connection. Shared is deliberate:
+  // it lets the bootstrap fast-path reads succeed (so both workers genuinely observe "no administrative
+  // authority") while blocking the exclusive recovery serialization, which is the ordering the M1 race needs.
+  private sealed class SharedPrincipalTableGate : IAsyncDisposable
+  {
+    private readonly SqlConnection connection;
+    private SqlTransaction? transaction;
+
+    private SharedPrincipalTableGate(SqlConnection connection, SqlTransaction transaction)
+    {
+      this.connection = connection;
+      this.transaction = transaction;
+    }
+
+    public static async Task<SharedPrincipalTableGate> HoldAsync(string connectionString)
+    {
+      var connection = new SqlConnection(connectionString);
+      await connection.OpenAsync();
+      var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+      await using var command = connection.CreateCommand();
+      command.Transaction = transaction;
+      command.CommandText = "SELECT TOP 1 1 FROM [platform].[PlatformSupportPrincipals] WITH (TABLOCK, HOLDLOCK);";
+      await command.ExecuteNonQueryAsync();
+      return new SharedPrincipalTableGate(connection, transaction);
+    }
+
+    public async Task ReleaseAsync()
+    {
+      if (transaction is null)
+      {
+        return;
+      }
+
+      await transaction.RollbackAsync();
+      await transaction.DisposeAsync();
+      transaction = null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+      await ReleaseAsync();
+      await connection.DisposeAsync();
+    }
   }
 
   private static async Task<bool> ReadUsableAuthorityAsync(BootstrapSqlDatabase database)
@@ -248,6 +557,34 @@ public sealed class PlatformSupportBootstrapSqlServerTests
     var accounts = new AuthenticationAccountRepository(context);
     var readService = new PlatformSupportAuthorityStateReadService(context, accounts, new PlatformPermissionCatalog());
     return await readService.HasUsablePlatformAuthorityAsync();
+  }
+
+  private static async Task<bool> ReadAdministrativeAuthorityAsync(
+    BootstrapSqlDatabase database, IPermissionCatalog? catalog = null)
+  {
+    await using var context = database.CreateContext();
+    var accounts = new AuthenticationAccountRepository(context);
+    var readService = new PlatformSupportAuthorityStateReadService(
+      context, accounts, catalog ?? new PlatformPermissionCatalog());
+    return await readService.HasUsablePlatformAdministrativeAuthorityAsync();
+  }
+
+  // Catalog that no longer recognises Platform.Support.Administer, to prove a persisted historical assignment
+  // alone cannot confer administrative authority once the canonical catalog stops exposing it (DEC-TEN-0026).
+  private sealed class CatalogWithoutAdminister : IPermissionCatalog
+  {
+    private readonly PlatformPermissionCatalog inner = new();
+
+    public IReadOnlyCollection<PermissionDefinition> All => inner.All
+      .Where(definition => definition.Name.Value != PlatformPermissionNames.AdministerPlatformSupport)
+      .ToArray();
+
+    public bool TryGet(string name, out PermissionDefinition permission)
+    {
+      permission = default!;
+      return !string.Equals(name, PlatformPermissionNames.AdministerPlatformSupport, StringComparison.Ordinal) &&
+        inner.TryGet(name, out permission);
+    }
   }
 
   // ---- Seeding ----
@@ -367,6 +704,8 @@ public sealed class PlatformSupportBootstrapSqlServerTests
   private sealed class BootstrapSqlDatabase(string connectionString) : IAsyncDisposable
   {
     public static readonly DateTimeOffset Now = new(2026, 8, 10, 11, 0, 0, TimeSpan.Zero);
+
+    public string ConnectionString => connectionString;
 
     public static async Task<BootstrapSqlDatabase> CreateAsync()
     {

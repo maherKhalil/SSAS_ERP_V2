@@ -22,7 +22,15 @@ public sealed class AuthenticationOpenApiOperationFilter : IOperationFilter
       };
     }
 
-    if (path is "/api/platform/auth/refresh" or "/api/platform/auth/logout")
+    // Platform-support login (Phase 4B) returns a single non-tenant success shape — no tenant-selection oneOf.
+    if (path == "/api/platform/support/auth/login" && operation.Responses.TryGetValue("200", out var platformSuccess) &&
+      platformSuccess.Content.TryGetValue("application/json", out var platformMediaType))
+    {
+      platformMediaType.Schema = context.SchemaGenerator.GenerateSchema(typeof(PlatformAuthenticatedResponse), context.SchemaRepository);
+    }
+
+    if (path is "/api/platform/auth/refresh" or "/api/platform/auth/logout"
+      or "/api/platform/support/auth/refresh" or "/api/platform/support/auth/logout")
     {
       operation.Parameters.Add(new OpenApiParameter
       {
@@ -34,7 +42,7 @@ public sealed class AuthenticationOpenApiOperationFilter : IOperationFilter
       });
     }
 
-    if (path == "/api/platform/auth/logout")
+    if (path is "/api/platform/auth/logout" or "/api/platform/support/auth/logout")
     {
       operation.Security.Add(new OpenApiSecurityRequirement
       {

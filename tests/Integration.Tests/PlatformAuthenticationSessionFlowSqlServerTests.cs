@@ -394,6 +394,340 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
     Assert.True(await ReadInt32Async(verify, $"SELECT COUNT(*) FROM [platform].[PlatformAuthenticationSessions] WHERE [IdentityId] = {identityId} AND [Status] = N'Active'") <= 1);
   }
 
+  // ---- Phase 4B: current-session logout (DEC-TEN-0023) ----
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0023")]
+  public async Task Logout_revokes_the_current_platform_session_with_UserLogout()
+  {
+    await using var db = await PlatformFlowSqlDatabase.CreateAsync();
+    var (identityId, _) = await SeedAuthorityAsync(db);
+    await CreateSessionAsync(db, identityId);
+    var sessionId = await SingleSessionIdAsync(db);
+
+    await using (var context = db.CreateContext())
+    {
+      var result = await BuildLogout(context).HandleAsync(new RevokeCurrentPlatformAuthenticationSessionCommand(sessionId, identityId));
+      Assert.True(result.IsSuccess);
+    }
+
+    await using var verify = db.CreateContext();
+    Assert.Equal("Revoked", await ReadStringAsync(verify, $"SELECT [Status] FROM [platform].[PlatformAuthenticationSessions] WHERE [PlatformAuthenticationSessionId] = {sessionId}"));
+    Assert.Equal("UserLogout", await ReadStringAsync(verify, $"SELECT [RevocationReason] FROM [platform].[PlatformAuthenticationSessions] WHERE [PlatformAuthenticationSessionId] = {sessionId}"));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0023")]
+  public async Task Logout_is_idempotent_and_fail_closed_for_a_foreign_or_already_revoked_session()
+  {
+    await using var db = await PlatformFlowSqlDatabase.CreateAsync();
+    var (identityId, _) = await SeedAuthorityAsync(db);
+    var (otherIdentityId, _) = await SeedAuthorityAsync(db);
+    await CreateSessionAsync(db, identityId);
+    var sessionId = await SingleSessionIdAsync(db);
+
+    // A different identity can never revoke this session — the ownership check makes it a silent no-op success.
+    await using (var context = db.CreateContext())
+    {
+      Assert.True((await BuildLogout(context).HandleAsync(new RevokeCurrentPlatformAuthenticationSessionCommand(sessionId, otherIdentityId))).IsSuccess);
+    }
+    await using (var stillActive = db.CreateContext())
+    {
+      Assert.Equal("Active", await ReadStringAsync(stillActive, $"SELECT [Status] FROM [platform].[PlatformAuthenticationSessions] WHERE [PlatformAuthenticationSessionId] = {sessionId}"));
+    }
+
+    // The owner logs out, then logs out again: the second call is an idempotent no-op success with no state change.
+    await using (var first = db.CreateContext())
+    {
+      Assert.True((await BuildLogout(first).HandleAsync(new RevokeCurrentPlatformAuthenticationSessionCommand(sessionId, identityId))).IsSuccess);
+    }
+    await using (var second = db.CreateContext())
+    {
+      Assert.True((await BuildLogout(second).HandleAsync(new RevokeCurrentPlatformAuthenticationSessionCommand(sessionId, identityId))).IsSuccess);
+    }
+
+    await using var verify = db.CreateContext();
+    Assert.Equal("Revoked", await ReadStringAsync(verify, $"SELECT [Status] FROM [platform].[PlatformAuthenticationSessions] WHERE [PlatformAuthenticationSessionId] = {sessionId}"));
+    Assert.Equal("UserLogout", await ReadStringAsync(verify, $"SELECT [RevocationReason] FROM [platform].[PlatformAuthenticationSessions] WHERE [PlatformAuthenticationSessionId] = {sessionId}"));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0023")]
+  public async Task Logout_revokes_the_platform_session_without_touching_the_tenant_session()
+  {
+    // Platform-store-only: logout revokes the platform session and leaves the identity's tenant session Active.
+    await using var db = await PlatformFlowSqlDatabase.CreateAsync();
+    var (identityId, _, accountVersion) = await SeedAuthorityWithVersionAsync(db);
+    await CreateSessionAsync(db, identityId);
+    var tenantSessionId = await SeedTenantSessionAsync(db, identityId, accountVersion);
+    var sessionId = await SingleSessionIdAsync(db);
+
+    await using (var context = db.CreateContext())
+    {
+      Assert.True((await BuildLogout(context).HandleAsync(new RevokeCurrentPlatformAuthenticationSessionCommand(sessionId, identityId))).IsSuccess);
+    }
+
+    await using var verify = db.CreateContext();
+    Assert.Equal("Revoked", await ReadStringAsync(verify, $"SELECT [Status] FROM [platform].[PlatformAuthenticationSessions] WHERE [PlatformAuthenticationSessionId] = {sessionId}"));
+    Assert.Equal("Active", await ReadStringAsync(verify, $"SELECT [Status] FROM [platform].[AuthenticationSessions] WHERE [AuthenticationSessionId] = {tenantSessionId}"));
+  }
+
+  // ---- Phase 4B: L1 create-vs-disable serialization (DEC-TEN-0023) ----
+
+  // The L1 invariant (DEC-TEN-0023): platform-session creation serializes its Active-eligibility decision against
+  // a concurrent principal Disable on a transactionally-effective lock. The GLOBAL LOCK ORDER is
+  // account -> principal -> session(s): both flows take the principal lock FIRST, so the principal row is the
+  // single first-contended resource and no flow ever holds a session lock while waiting for the principal lock.
+  //
+  // Regression history: an earlier ordering (create: session -> principal; disable: session -> principal-at-save)
+  // deadlocked under production-representative volume, because the two session range reads use DIFFERENT
+  // nonclustered indexes (IdentityId,Status,... vs PlatformSupportPrincipalId,Status) and therefore do not
+  // serialize each other, while creation's INSERT had to write both. These tests seed enough rows to reproduce
+  // that seek-based regime, and drive each interleaving deterministically with a SQL lock gate.
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0023")]
+  public async Task L1_create_first_commits_the_session_and_the_disable_then_revokes_it()
+  {
+    await using var db = await PlatformFlowSqlDatabase.CreateAsync();
+    await SeedSeekVolumeAsync(db);
+    var (identityId, principalId) = await SeedAuthorityAsync(db);
+    var rowVersion = await PrincipalRowVersionAsync(db, principalId);
+    var seeksBefore = await ReadSessionIndexSeeksAsync(db);
+
+    // Gate creation at its SESSION-range step; by then it already holds the account and principal locks.
+    await using var gate = await LockGate.HoldAsync(db.ConnectionString,
+      $"SELECT * FROM [platform].[PlatformAuthenticationSessions] WITH (UPDLOCK, HOLDLOCK) WHERE [IdentityId] = {identityId} AND [Status] = N'Active'");
+
+    await using var createContext = db.CreateContext();
+    var createTask = BuildCreator(createContext, new CapturingAccessTokenIssuer()).CreateAsync(Verified(identityId), Client, PlatformFlowSqlDatabase.Now);
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    Assert.False(createTask.IsCompleted); // creation is parked on the gate while HOLDING the principal lock
+
+    await using var disableContext = db.CreateContext();
+    var disableTask = BuildDisable(disableContext).HandleAsync(
+      new SSAS.Platform.Application.PlatformSupport.DisablePlatformSupportPrincipalCommand(principalId, rowVersion));
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    Assert.False(disableTask.IsCompleted); // Disable is serialized on the principal lock — it cannot overtake
+
+    await gate.ReleaseAsync();
+    var created = await createTask;
+    var disabled = await disableTask;
+
+    Assert.True(created.IsSuccess);  // create-first genuinely won the race
+    Assert.True(disabled.IsSuccess); // and no deadlock victim was chosen
+    await AssertDisabledWithNoUsableContinuationAsync(db, identityId, principalId, created.Value.RefreshToken.RevealOnce().Value);
+    await AssertBothSessionIndexesWereSoughtAsync(db, seeksBefore);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0023")]
+  public async Task L1_disable_first_makes_the_concurrent_creation_fail_closed()
+  {
+    await using var db = await PlatformFlowSqlDatabase.CreateAsync();
+    await SeedSeekVolumeAsync(db);
+    var (identityId, principalId) = await SeedAuthorityAsync(db);
+    var rowVersion = await PrincipalRowVersionAsync(db, principalId);
+    var seeksBefore = await ReadSessionIndexSeeksAsync(db);
+
+    // Gate Disable at its SESSION-range step; by then it already holds the principal lock.
+    await using var gate = await LockGate.HoldAsync(db.ConnectionString,
+      $"SELECT * FROM [platform].[PlatformAuthenticationSessions] WITH (UPDLOCK, HOLDLOCK) WHERE [PlatformSupportPrincipalId] = {principalId} AND [Status] = N'Active'");
+
+    await using var disableContext = db.CreateContext();
+    var disableTask = BuildDisable(disableContext).HandleAsync(
+      new SSAS.Platform.Application.PlatformSupport.DisablePlatformSupportPrincipalCommand(principalId, rowVersion));
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    Assert.False(disableTask.IsCompleted); // Disable is parked on the gate while HOLDING the principal lock
+
+    await using var createContext = db.CreateContext();
+    var createTask = BuildCreator(createContext, new CapturingAccessTokenIssuer()).CreateAsync(Verified(identityId), Client, PlatformFlowSqlDatabase.Now);
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    Assert.False(createTask.IsCompleted); // creation is serialized on the principal lock
+
+    await gate.ReleaseAsync();
+    var disabled = await disableTask;
+    var created = await createTask;
+
+    Assert.True(disabled.IsSuccess);
+    Assert.True(created.IsFailure); // creation observed the committed Disable and failed closed
+    Assert.Equal(PlatformSupportErrors.PrincipalDisabled, created.Error);
+    await AssertDisabledWithNoUsableContinuationAsync(db, identityId, principalId, refreshToken: null);
+    await AssertBothSessionIndexesWereSoughtAsync(db, seeksBefore);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0023")]
+  public async Task L1_holds_when_read_committed_snapshot_isolation_is_disabled()
+  {
+    // The guarantee must come from the UPDLOCK/HOLDLOCK reads, NOT the deployment isolation level. EF Core's SQL
+    // Server database creator turns RCSI ON for the databases it creates, so every other test here already runs
+    // with RCSI ON; this one proves the opposite regime — RCSI OFF, where readers take shared locks — behaves
+    // identically. Both isolation regimes are therefore covered.
+    await using var db = await PlatformFlowSqlDatabase.CreateAsync();
+    Assert.True(await db.ReadCommittedSnapshotEnabledAsync()); // original (EF-created) state: ON
+    await db.SetReadCommittedSnapshotAsync(false);
+    Assert.False(await db.ReadCommittedSnapshotEnabledAsync()); // RCSI is OFF for this run
+
+    await SeedSeekVolumeAsync(db);
+    var (identityId, principalId) = await SeedAuthorityAsync(db);
+    var rowVersion = await PrincipalRowVersionAsync(db, principalId);
+
+    await using var gate = await LockGate.HoldAsync(db.ConnectionString,
+      $"SELECT * FROM [platform].[PlatformAuthenticationSessions] WITH (UPDLOCK, HOLDLOCK) WHERE [IdentityId] = {identityId} AND [Status] = N'Active'");
+
+    await using var createContext = db.CreateContext();
+    var createTask = BuildCreator(createContext, new CapturingAccessTokenIssuer()).CreateAsync(Verified(identityId), Client, PlatformFlowSqlDatabase.Now);
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    Assert.False(createTask.IsCompleted);
+
+    await using var disableContext = db.CreateContext();
+    var disableTask = BuildDisable(disableContext).HandleAsync(
+      new SSAS.Platform.Application.PlatformSupport.DisablePlatformSupportPrincipalCommand(principalId, rowVersion));
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    Assert.False(disableTask.IsCompleted); // U-lock serialization is unaffected by snapshot reads
+
+    await gate.ReleaseAsync();
+    var created = await createTask;
+    var disabled = await disableTask;
+
+    Assert.True(created.IsSuccess);
+    Assert.True(disabled.IsSuccess);
+    await AssertDisabledWithNoUsableContinuationAsync(db, identityId, principalId, created.Value.RefreshToken.RevealOnce().Value);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0023")]
+  public async Task L1_concurrent_create_and_disable_stress_never_deadlocks_on_seeded_volume()
+  {
+    // Supplementary unsynchronised stress on seek-producing data: whichever flow wins, the terminal invariant
+    // holds and NEITHER side may fail from a deadlock (1205 surfaces as WriteFailure through the UnitOfWork).
+    await using var db = await PlatformFlowSqlDatabase.CreateAsync();
+    await SeedSeekVolumeAsync(db);
+    var seeksBefore = await ReadSessionIndexSeeksAsync(db);
+
+    var authorities = new List<(long IdentityId, long PrincipalId)>();
+    for (var index = 0; index < 8; index++)
+    {
+      authorities.Add(await SeedAuthorityAsync(db));
+    }
+
+    foreach (var (identityId, principalId) in authorities)
+    {
+      var rowVersion = await PrincipalRowVersionAsync(db, principalId);
+      await using var createContext = db.CreateContext();
+      await using var disableContext = db.CreateContext();
+      var createTask = BuildCreator(createContext, new CapturingAccessTokenIssuer()).CreateAsync(Verified(identityId), Client, PlatformFlowSqlDatabase.Now);
+      var disableTask = BuildDisable(disableContext).HandleAsync(
+        new SSAS.Platform.Application.PlatformSupport.DisablePlatformSupportPrincipalCommand(principalId, rowVersion));
+      var createResult = await createTask;
+      var disableResult = await disableTask;
+
+      // Disable always commits: creation only READS the principal under lock, so the optimistic token stays valid.
+      Assert.True(disableResult.IsSuccess);
+      // A deadlock would surface as a write failure on either side — none is tolerated.
+      Assert.NotEqual(IdentityAccessErrors.WriteFailure, disableResult.Error);
+      if (createResult.IsFailure)
+      {
+        Assert.NotEqual(IdentityAccessErrors.WriteFailure, createResult.Error);
+      }
+
+      await using var verify = db.CreateContext();
+      Assert.Equal("Disabled", await ReadStringAsync(verify, $"SELECT [Status] FROM [platform].[PlatformSupportPrincipals] WHERE [PlatformSupportPrincipalId] = {principalId}"));
+      Assert.Equal(0, await ReadInt32Async(verify, $"SELECT COUNT(*) FROM [platform].[PlatformAuthenticationSessions] WHERE [PlatformSupportPrincipalId] = {principalId} AND [Status] = N'Active'"));
+    }
+
+    await AssertBothSessionIndexesWereSoughtAsync(db, seeksBefore);
+  }
+
+  // Terminal state after a committed Disable: principal Disabled, zero active platform sessions, and any refresh
+  // token minted by the racing creation is unusable.
+  private static async Task AssertDisabledWithNoUsableContinuationAsync(
+    PlatformFlowSqlDatabase db, long identityId, long principalId, string? refreshToken)
+  {
+    await using var verify = db.CreateContext();
+    Assert.Equal("Disabled", await ReadStringAsync(verify, $"SELECT [Status] FROM [platform].[PlatformSupportPrincipals] WHERE [PlatformSupportPrincipalId] = {principalId}"));
+    Assert.Equal(0, await ReadInt32Async(verify, $"SELECT COUNT(*) FROM [platform].[PlatformAuthenticationSessions] WHERE [PlatformSupportPrincipalId] = {principalId} AND [Status] = N'Active'"));
+    Assert.Equal(0, await ReadInt32Async(verify, $"SELECT COUNT(*) FROM [platform].[PlatformAuthenticationSessions] WHERE [IdentityId] = {identityId} AND [Status] = N'Active'"));
+
+    if (refreshToken is not null)
+    {
+      await using var refreshContext = db.CreateContext();
+      Assert.True((await BuildRefresh(refreshContext, new CapturingAccessTokenIssuer()).HandleAsync(Refresh(refreshToken))).IsFailure);
+    }
+  }
+
+  // Index-usage counters are cumulative, so they are sampled BEFORE and AFTER the racing operations: the delta
+  // attributes the seeks to the flows under test rather than to seeding.
+  private static async Task<(long Identity, long Principal)> ReadSessionIndexSeeksAsync(PlatformFlowSqlDatabase db)
+  {
+    await using var context = db.CreateContext();
+    return (
+      await ReadInt64Async(context, SeekCountSql("IdentityId")),
+      await ReadInt64Async(context, SeekCountSql("PlatformSupportPrincipalId")));
+  }
+
+  // Evidence that the seeded volume really produced index SEEKS on the two distinct session indexes — the regime
+  // in which the two range locks are independent, and in which the previous ordering deadlocked.
+  private static async Task AssertBothSessionIndexesWereSoughtAsync(
+    PlatformFlowSqlDatabase db, (long Identity, long Principal) before)
+  {
+    var after = await ReadSessionIndexSeeksAsync(db);
+    Assert.True(after.Identity > before.Identity, "Expected an index SEEK on the (IdentityId, Status, ...) session index.");
+    Assert.True(after.Principal > before.Principal, "Expected an index SEEK on the (PlatformSupportPrincipalId, Status) session index.");
+  }
+
+  private static string SeekCountSql(string leadingColumn) => $"""
+    SELECT ISNULL(SUM(usage.user_seeks), 0)
+    FROM sys.indexes AS ix
+    JOIN sys.index_columns AS ic ON ic.object_id = ix.object_id AND ic.index_id = ix.index_id AND ic.key_ordinal = 1
+    JOIN sys.columns AS col ON col.object_id = ix.object_id AND col.column_id = ic.column_id
+    LEFT JOIN sys.dm_db_index_usage_stats AS usage ON usage.object_id = ix.object_id
+      AND usage.index_id = ix.index_id AND usage.database_id = DB_ID()
+    WHERE ix.object_id = OBJECT_ID('[platform].[PlatformAuthenticationSessions]')
+      AND ix.type_desc = 'NONCLUSTERED' AND col.name = N'{leadingColumn}'
+    """;
+
+  // Seeds enough principals/sessions that the optimizer chooses index SEEKS on the two session indexes rather
+  // than scanning a nearly empty table (a scan would serialize the flows for the wrong reason and hide the very
+  // regime the L1 fix has to survive). The threshold was measured, not guessed: at 50 principals / 250 sessions
+  // the principal/status query still SCANS, while from ~100 principals / 500 sessions both queries seek. 120
+  // principals / 600 sessions keeps a margin above that boundary at a fraction of the earlier setup cost.
+  private static async Task SeedSeekVolumeAsync(PlatformFlowSqlDatabase db, int principalCount = 120, int sessionsEach = 5)
+  {
+    await using var context = db.CreateContext();
+    var unitOfWork = new TestPlatformUnitOfWork(context);
+
+    var identities = Enumerable.Range(0, principalCount)
+      .Select(_ => Identity.Create(AuthenticationSubject.Create($"local:{Guid.NewGuid():N}").Value))
+      .ToList();
+    context.Identities.AddRange(identities);
+    Assert.True((await unitOfWork.SaveChangesAsync()).IsSuccess);
+
+    var principals = identities.Select(identity => PlatformSupportPrincipal.Register(identity.Id).Value).ToList();
+    context.PlatformSupportPrincipals.AddRange(principals);
+    Assert.True((await unitOfWork.SaveChangesAsync()).IsSuccess);
+
+    var sessions = principals
+      .SelectMany(principal => Enumerable.Range(0, sessionsEach).Select(_ => PlatformAuthenticationSession.Create(
+        principal.IdentityId, principal.Id, Client.Value, Guid.NewGuid(), 1,
+        PlatformFlowSqlDatabase.Now, PlatformFlowSqlDatabase.Now.AddDays(1), PlatformFlowSqlDatabase.Now.AddDays(7))))
+      .ToList();
+    context.PlatformAuthenticationSessions.AddRange(sessions);
+    Assert.True((await unitOfWork.SaveChangesAsync()).IsSuccess);
+
+    await context.Database.ExecuteSqlRawAsync("UPDATE STATISTICS [platform].[PlatformAuthenticationSessions]; UPDATE STATISTICS [platform].[PlatformSupportPrincipals];");
+  }
+
+  private static async Task<long> SingleSessionIdAsync(PlatformFlowSqlDatabase db)
+  {
+    await using var read = db.CreateContext();
+    return (await read.PlatformAuthenticationSessions.AsNoTracking().SingleAsync()).Id;
+  }
+
+  private static RevokeCurrentPlatformAuthenticationSessionCommandHandler BuildLogout(PlatformDbContext context) =>
+    new(new PlatformAuthenticationSessionRepository(context), new TestPlatformUnitOfWork(context), new TestClock());
+
   // ---- Builders / seeding ----
 
   private static VerifiedIdentity Verified(long identityId) => new(identityId, 1);
@@ -636,9 +970,62 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
       inner.BeginTransactionAsync(cancellationToken);
   }
 
+  // Holds a real UPDLOCK/HOLDLOCK on a chosen range from an INDEPENDENT connection/transaction, so a test can
+  // deterministically stop a production flow at a known step (no production timing hooks, no sleeps in
+  // production code). Releasing the gate lets the blocked flow continue.
+  private sealed class LockGate : IAsyncDisposable
+  {
+    private readonly SqlConnection connection;
+    private SqlTransaction? transaction;
+
+    private LockGate(SqlConnection connection, SqlTransaction transaction)
+    {
+      this.connection = connection;
+      this.transaction = transaction;
+    }
+
+    public static async Task<LockGate> HoldAsync(string connectionString, string sql)
+    {
+      var connection = new SqlConnection(connectionString);
+      await connection.OpenAsync();
+      var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+      await using var command = connection.CreateCommand();
+      command.Transaction = transaction;
+      command.CommandText = sql;
+      await using var reader = await command.ExecuteReaderAsync();
+      while (await reader.ReadAsync())
+      {
+      }
+
+      return new LockGate(connection, transaction);
+    }
+
+    // Releases the held locks (rollback: the gate never mutates state).
+    public async Task ReleaseAsync()
+    {
+      if (transaction is null)
+      {
+        return;
+      }
+
+      await transaction.RollbackAsync();
+      await transaction.DisposeAsync();
+      transaction = null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+      await ReleaseAsync();
+      await connection.DisposeAsync();
+    }
+  }
+
   private sealed class PlatformFlowSqlDatabase(string connectionString) : IAsyncDisposable
   {
     public static readonly DateTimeOffset Now = new(2026, 8, 11, 11, 0, 0, TimeSpan.Zero);
+    private const int SetupCommandTimeoutSeconds = 120;
+
+    public string ConnectionString => connectionString;
 
     public static async Task<PlatformFlowSqlDatabase> CreateAsync()
     {
@@ -660,12 +1047,44 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
       }
     }
 
+    // TEST-ONLY command timeout. Integration test classes run as parallel xUnit collections and each test creates
+    // and migrates its own database, so a CREATE DATABASE/migration can legitimately exceed the 30s EF default
+    // under local SQL Server contention (observed as a MigrateAsync timeout in an unrelated sibling test). 120s
+    // absorbs that contention while still failing a genuine hang. Production configuration is untouched.
     public PlatformDbContext CreateContext(Guid? tenantId = null)
     {
       var options = new DbContextOptionsBuilder<PlatformDbContext>()
-        .UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform"))
+        .UseSqlServer(connectionString, sql => sql
+          .MigrationsHistoryTable("__EFMigrationsHistory", "platform")
+          .CommandTimeout(SetupCommandTimeoutSeconds))
         .Options;
       return new PlatformDbContext(options, new TestCurrentUser(), new TestCurrentTenant(tenantId ?? Guid.NewGuid()), new TestClock());
+    }
+
+    // Sets READ_COMMITTED_SNAPSHOT for this isolated test database, run from a master connection with
+    // ROLLBACK IMMEDIATE so any idle pooled connection cannot block the ALTER. Note: EF Core's SQL Server
+    // database creator turns RCSI ON for databases it creates, so the migrated default here is ON.
+    public async Task SetReadCommittedSnapshotAsync(bool enabled)
+    {
+      var target = new SqlConnectionStringBuilder(connectionString);
+      var databaseName = target.InitialCatalog;
+      target.InitialCatalog = "master";
+      SqlConnection.ClearAllPools();
+      await using var connection = new SqlConnection(target.ConnectionString);
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = $"ALTER DATABASE [{databaseName}] SET READ_COMMITTED_SNAPSHOT {(enabled ? "ON" : "OFF")} WITH ROLLBACK IMMEDIATE;";
+      await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<bool> ReadCommittedSnapshotEnabledAsync()
+    {
+      await using var context = CreateContext();
+      var connection = context.Database.GetDbConnection();
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = "SELECT is_read_committed_snapshot_on FROM sys.databases WHERE database_id = DB_ID();";
+      return Convert.ToBoolean(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     public async ValueTask DisposeAsync()

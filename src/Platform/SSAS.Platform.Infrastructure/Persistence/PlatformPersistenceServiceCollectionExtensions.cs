@@ -80,7 +80,9 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IPlatformAccessTokenClaimsProvider, PlatformAccessTokenClaimsProvider>();
     services.AddScoped<IPlatformSupportPrincipalRepository, PlatformSupportPrincipalRepository>();
     services.AddScoped<IPlatformSupportPermissionReadService, PlatformSupportPermissionReadService>();
+    services.AddScoped<IPlatformSupportAuthorityReadService, PlatformSupportAuthorityReadService>();
     services.AddScoped<IPlatformSupportAuthorityStateReadService, PlatformSupportAuthorityStateReadService>();
+    services.AddScoped<IPlatformSupportRecoverySerializer, PlatformSupportRecoverySerializer>();
     services.AddScoped<IPlatformSupportBootstrapService, PlatformSupportBootstrapService>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
@@ -202,6 +204,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<RefreshAuthenticationSessionCommandHandler>();
     services.AddScoped<PlatformAuthenticationSessionCreator>();
     services.AddScoped<RefreshPlatformAuthenticationSessionCommandHandler>();
+    services.AddScoped<RevokeCurrentPlatformAuthenticationSessionCommandHandler>();
     services.AddScoped<RevokeCurrentAuthenticationSessionCommandHandler>();
     services.AddScoped<CreateTenantCommandHandler>();
     services.AddScoped<ActivateTenantCommandHandler>();
@@ -210,6 +213,19 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ArchiveTenantCommandHandler>();
     services.AddScoped<GetTenantQueryHandler>();
     services.AddScoped<ListTenantsQueryHandler>();
+    // Platform-support authority read/query surface (DEC-TEN-0025), exposed over HTTP in Phase 4D behind
+    // RequirePlatformPermission(Platform.Support.Administer).
+    services.AddScoped<ListPlatformSupportPrincipalsQueryHandler>();
+    services.AddScoped<GetPlatformSupportPrincipalQueryHandler>();
+    services.AddScoped<ListPlatformPermissionAssignmentsQueryHandler>();
+    services.AddScoped<GetActivePlatformSupportPermissionsQueryHandler>();
+    // Platform-support authority mutations (DEC-TEN-0020/0021), exposed over HTTP in Phase 4D behind the same
+    // Administer permission. The handlers already own domain authorization, actor derivation and lifecycle rules.
+    services.AddScoped<RegisterPlatformSupportPrincipalCommandHandler>();
+    services.AddScoped<GrantPlatformPermissionCommandHandler>();
+    services.AddScoped<RevokePlatformPermissionCommandHandler>();
+    services.AddScoped<DisablePlatformSupportPrincipalCommandHandler>();
+    services.AddScoped<ReenablePlatformSupportPrincipalCommandHandler>();
     services.AddScoped<CreateCompanyCommandHandler>();
     services.AddScoped<UpdateCompanyProfileCommandHandler>();
     services.AddScoped<ActivateCompanyCommandHandler>();

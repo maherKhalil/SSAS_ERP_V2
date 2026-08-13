@@ -68,9 +68,35 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
-  public void Platform_session_flow_exists_but_no_phase_4_authorization_surface_yet()
+  public void Platform_authority_read_query_surface_exists_but_is_not_http_exposed()
   {
-    // Phase 3C-3 persistence + Phase 3C-4 session-creation/refresh orchestration exist now.
+    // Phase 4C adds the Application read/query surface (DEC-TEN-0025). It exists...
+    var applicationAssembly = typeof(PlatformSupportPermissionFilter).Assembly;
+    foreach (var typeName in new[]
+    {
+      "IPlatformSupportAuthorityReadService",
+      "ListPlatformSupportPrincipalsQueryHandler",
+      "GetPlatformSupportPrincipalQueryHandler",
+      "ListPlatformPermissionAssignmentsQueryHandler",
+      "GetActivePlatformSupportPermissionsQueryHandler",
+    })
+    {
+      Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == typeName);
+    }
+
+    // ...and Phase 4D exposes it over HTTP through a single authority transport, which must project
+    // transport-owned DTOs rather than leaking Application/EF read types onto the wire (DEC-TEN-0025).
+    var apiAssembly = typeof(RowVersionCodec).Assembly;
+    Assert.Contains(apiAssembly.GetTypes(), type =>
+      type.Name == "PlatformSupportAuthorityEndpointRouteBuilderExtensions");
+    Assert.Contains(apiAssembly.GetTypes(), type => type.Name == "PlatformSupportPrincipalResponse");
+    Assert.Contains(apiAssembly.GetTypes(), type => type.Name == "PlatformPermissionAssignmentResponse");
+  }
+
+  [Fact]
+  public void Platform_authorization_primitives_exist_but_no_phase_4_http_exposure_yet()
+  {
+    // Phase 3C persistence/orchestration + Phase 4A authorization primitives exist now.
     var domainAssembly = typeof(PlatformSupportPrincipal).Assembly;
     Assert.Contains(domainAssembly.GetTypes(), type => type.Name == "PlatformAuthenticationSession");
     Assert.Contains(domainAssembly.GetTypes(), type => type.Name == "PlatformRefreshTokenRecord");
@@ -79,14 +105,19 @@ public sealed class PlatformSupportAuthorityArchitectureTests
     Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == "PlatformAuthenticationSessionCreator");
     Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == "RefreshPlatformAuthenticationSessionCommandHandler");
 
-    // The platform authorization handler and RequirePlatformPermission convention remain Phase-4 concerns.
+    // Phase 4A adds the platform authorization handler + RequirePlatformPermission convention.
     var hostAssembly = typeof(SSAS.Host.API.Authorization.PermissionAuthorizationHandler).Assembly;
-    Assert.DoesNotContain(hostAssembly.GetTypes(), type => type.Name == "PlatformPermissionAuthorizationHandler");
+    Assert.Contains(hostAssembly.GetTypes(), type => type.Name == "PlatformPermissionAuthorizationHandler");
 
     var apiAssembly = typeof(RowVersionCodec).Assembly;
-    Assert.DoesNotContain(
+    Assert.Contains(
       apiAssembly.GetTypes().SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)),
       method => method.Name == "RequirePlatformPermission");
+
+    // But no platform authentication/admin HTTP transport is exposed yet (Phase 4B/4D remain deferred): no
+    // endpoint route builder maps the internal platform session creator or refresh handler.
+    Assert.DoesNotContain(apiAssembly.GetTypes(), type => type.Name.Contains("PlatformAuthorityEndpoint", StringComparison.Ordinal));
+    Assert.DoesNotContain(apiAssembly.GetTypes(), type => type.Name.Contains("PlatformSessionEndpoint", StringComparison.Ordinal));
   }
 
   [Fact]

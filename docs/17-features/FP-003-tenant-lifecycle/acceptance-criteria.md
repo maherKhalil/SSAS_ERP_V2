@@ -2,10 +2,12 @@
 document_id: FP-003-AC
 title: Tenant Lifecycle Acceptance Criteria
 status: Approved for Implementation
-version: 1.2
+version: 1.4
 sprint: Sprint-01
 module: Platform
 ---
+
+> **Version 1.4 (2026-08-12).** `AC-TEN-0078`–`AC-TEN-0093` (Phase-4 request-plane / HTTP exposure) are **Approved for Implementation** under `DEC-TEN-0023`–`DEC-TEN-0026`; none is implemented (Phase 4A delivered the authorization primitives that `AC-TEN-0084`/`AC-TEN-0091` partly anchor). Corrected after review: `AC-TEN-0082` (logout is new 4B capability with `session_id`-claim resolution), `AC-TEN-0083` (L1 serialization required), `AC-TEN-0089` (administrative-recovery semantics), and new `AC-TEN-0093` (administrative-authority loss detection and recovery). All prior criteria are unchanged.
 
 # Acceptance Criteria
 
@@ -147,7 +149,7 @@ No tenant role or tenant-IAM path can invoke bootstrap or create/modify platform
 
 ### AC-TEN-0033 — Bootstrap operates only without usable platform authority
 
-Bootstrap creates/recovers authority only when no usable platform authority exists (per the ADR-016 definition) and is inert once usable authority exists.
+Bootstrap creates/recovers authority only when no usable platform authority exists (per the ADR-016 definition) and is inert once usable authority exists. *(Refined by the Proposed `DEC-TEN-0026` / `AC-TEN-0093`: bootstrap recovery is additionally eligible when usable platform authority exists but no usable **administrative** authority — an Active principal holding active current-catalog `Platform.Support.Administer` — remains. This forward note does not change the Phase-3B genesis-inertness behaviour verified here.)*
 
 ### AC-TEN-0034 — Bootstrap is not standing request authority
 
@@ -328,6 +330,74 @@ Explicitly disabling a `PlatformSupportPrincipal` revokes that principal's activ
 ### AC-TEN-0077 — Trusted session-creation source
 
 Platform-session creation consumes a trusted verified-authentication result (`VerifiedIdentity`/verified-account context) and never an arbitrary caller-supplied `IdentityId`; it requires live account eligibility, an `Active` principal, and at least one catalog-valid permission before issuing a platform access/refresh pair. No HTTP route is added in Phase 3C.
+
+## Platform request-plane authorization and HTTP exposure (Phase 4, DEC-TEN-0023–0026)
+
+Approved for Implementation (implementation pending); governed by `ADR-016` §5. `AC-TEN-0084` and `AC-TEN-0091` are partly anchored by the committed Phase-4A primitives; the remainder gate slices 4B–4E.
+
+### AC-TEN-0078 — Server-authorized platform login
+
+A verified identity obtains a platform session only through a dedicated, server-owned platform login route: credentials → `VerifiedIdentity` → resolve principal by `IdentityId` → account eligible, principal `Active`, ≥1 catalog-valid `PlatformSupport` permission → platform access/refresh pair. The plane is derived from the route and persisted authority.
+
+### AC-TEN-0079 — Caller cannot confer platform authority
+
+Platform login/refresh reject or ignore any caller-supplied `security_plane`, `PlatformSupportPrincipalId`, permission list, `SecurityVersion`, or `plane`/`isPlatform`/`mode` field as authority; none can select a privileged plane or bypass the server-side eligibility proof.
+
+### AC-TEN-0080 — Platform refresh route/store separation
+
+A dedicated platform refresh route invokes `RefreshPlatformAuthenticationSessionCommandHandler` and resolves the locator only in platform-session persistence; the tenant refresh route resolves only tenant persistence. No shared locator, token-shape inference, numeric-id inference, or fallback exists.
+
+### AC-TEN-0081 — Cross-plane refresh rejected over HTTP
+
+A tenant refresh token presented on the platform refresh route is denied, and a platform refresh token on the tenant refresh route is denied.
+
+### AC-TEN-0082 — Dedicated platform logout (new 4B capability; trusted session source)
+
+A dedicated PLATFORM-ONLY platform logout route (platform-authenticated policy, not permission-gated) revokes the current platform session. The capability is **new 4B work** (no platform current-session-revoke command exists from Phase 3C). The target session is resolved from the **validated `session_id` claim** in the platform store only; a caller-supplied session/identity/principal id cannot select the target. Refresh after logout is denied; the tenant session for the same identity is unaffected; `AuthenticationAccount.SecurityVersion` is unchanged; and the already-issued access JWT remains valid until natural expiry. A tenant token cannot call platform logout and a platform token cannot cause tenant logout.
+
+### AC-TEN-0083 — Create-vs-disable serialization required before HTTP exposure (L1)
+
+Before platform-session creation is exposed over HTTP (4B), the create-vs-disable concurrency item is closed by **serialization** — `PlatformAuthenticationSessionCreator` serializes the principal's authority state against a concurrent Disable via a transactionally effective `FOR UPDATE`/locking read. Correctness must **not** depend on `READ_COMMITTED_SNAPSHOT` being disabled or on deployment isolation settings. Required invariant: once a `Disable` commits, no concurrent creation may commit an `Active` session for that principal (both interleavings safe); proven by a real two-connection SQL concurrency test under actual supported SQL Server settings.
+
+### AC-TEN-0084 — Request-plane policy taxonomy
+
+Tenant-authenticated, platform-authenticated (structural/claims-based, DB-free), and plane-neutral policies exist with the stated semantics; the platform permission policy (`PlatformPermission:`) is structurally separate from the tenant `Permission:`/`Role:` policies. *(Phase 4A delivered the platform permission policy + handler.)*
+
+### AC-TEN-0085 — No bare authenticated policy on plane-specific routes
+
+An architecture guard rejects a plane-specific endpoint that uses a bare `RequireAuthenticatedUser`; plane-neutral is an explicit, justified classification.
+
+### AC-TEN-0086 — Generic-auth endpoint classification
+
+`/api/platform/auth/logout` and `/api/platform/localization/effective`(+`/batch`) are classified TENANT-ONLY and require the tenant-authenticated policy; a platform token is rejected on them.
+
+### AC-TEN-0087 — Authority reads require Administer
+
+Listing/getting platform-support principals and their assignments requires `Platform.Support.Administer`; a non-`Administer` platform token and a tenant token are both denied (403).
+
+### AC-TEN-0088 — No new read permission
+
+No `Platform.Support.View` (or equivalent) permission is introduced in Phase 4; authority reads reuse `Platform.Support.Administer`.
+
+### AC-TEN-0089 — Self-disable / last-admin behaviour
+
+Self-disable, self-revoke of `Platform.Support.Administer`, and removal/disable of the last usable administrator are permitted with no preventive guard. Loss of the final usable **administrative** authority (no Active principal holds active current-catalog `Platform.Support.Administer`) activates the approved administrative-recovery path; there is no permanent administrative lockout where an eligible configured recovery subject exists. Recovery never silently re-enables a `Disabled` principal and never grants `Administer` to an arbitrary existing principal.
+
+### AC-TEN-0093 — Administrative-authority loss detection and recovery
+
+The recovery predicate distinguishes **usable platform authority** (an Active principal with an eligible account and ≥1 active current-catalog `PlatformSupport` permission — any of them) from **usable platform administrative authority** (an Active principal with an eligible account holding active current-catalog `Platform.Support.Administer`). When the last `Administer` is revoked while another `PlatformSupport` permission (e.g. `Platform.Tenants.View`) remains, general usable authority is `true` but usable administrative authority is `false`, and genesis/recovery bootstrap becomes eligible. Recovery establishes a **new** `Active` principal only for an eligible configured `AuthenticationSubject` that owns no principal; it does not re-enable a `Disabled` principal, does not re-grant `Administer` to the principal that retained the other permission, and — if no eligible configured recovery subject exists — remains fail-closed (governed break-glass may be required; automatic recovery is not guaranteed in every environment). Eligibility is evaluated live against persisted state, never from a still-valid access JWT.
+
+### AC-TEN-0090 — Stateless JWT after self-disable/revoke
+
+After self-disable or self-revoke, the already-issued short-lived platform access JWT may retain its authority until natural expiry; Disable proactively revokes platform sessions (blocking refresh) and a permission revoke is reflected at the next refresh — no immediate access-token revocation is introduced.
+
+### AC-TEN-0091 — No new claim; no per-request DB authorization
+
+The Phase-3C token profile is unchanged (no `PlatformSupportPrincipalId`/`principal_id` claim); `PlatformPermissionAuthorizationHandler` and the plane-authenticated policies perform no live principal-status/permission/session/`SecurityVersion` lookup per request. *(Anchored by the committed Phase-4A handler.)*
+
+### AC-TEN-0092 — Phase-5 tenant-management boundary retained
+
+Phase 4 exposes platform-authority administration only; `Platform.Tenants.View`/`Manage`/`Lifecycle` HTTP endpoints remain Phase 5 and are not exposed merely because the authorization primitives exist.
 
 ## FP-002 Milestone 4 cross-package coverage
 

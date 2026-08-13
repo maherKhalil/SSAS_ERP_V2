@@ -6,6 +6,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Application.PlatformSupport;
@@ -508,6 +509,219 @@ public sealed class PlatformSupportAuthoritySqlServerTests
       Assert.True(result.IsFailure);
       Assert.Equal("Persistence.ConcurrencyConflict", result.Error.Code);
     }
+  }
+
+  // ---- Phase 4C: platform authority read/query surface (DEC-TEN-0025), exercised through the real handlers ----
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0025")]
+  public async Task Principal_list_returns_active_and_disabled_paginated_deterministically_with_stable_paging()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var principalA = await RegisterPrincipalAsync(database);
+    var principalB = await RegisterPrincipalAsync(database);
+    var principalC = await RegisterPrincipalAsync(database);
+    await DisablePrincipalDirectAsync(database, principalC); // Disabled principals remain listable.
+
+    await using var context = database.CreateContext();
+    var handler = new ListPlatformSupportPrincipalsQueryHandler(
+      new PlatformSupportAuthorityReadService(context), new TestCurrentUser());
+
+    var page1 = await handler.HandleAsync(new ListPlatformSupportPrincipalsQuery(1, 2));
+    var page2 = await handler.HandleAsync(new ListPlatformSupportPrincipalsQuery(2, 2));
+
+    Assert.True(page1.IsSuccess);
+    Assert.Equal(3, page1.Value.TotalCount);
+    Assert.Equal(2, page1.Value.TotalPages);
+    // Deterministic ORDER BY Id: page 1 = {A,B}, page 2 = {C}; no duplication/skip across the boundary.
+    Assert.Equal([principalA, principalB], page1.Value.Items.Select(item => item.PlatformSupportPrincipalId));
+    Assert.Equal([principalC], page2.Value.Items.Select(item => item.PlatformSupportPrincipalId));
+    Assert.Equal(
+      SSAS.Platform.Domain.Enums.PlatformSupportPrincipalStatus.Disabled,
+      page2.Value.Items.Single().Status);
+    Assert.All(page1.Value.Items, item => Assert.NotEmpty(item.RowVersion));
+
+    // Invalid paging is rejected by the handler; oversized page size is bounded.
+    Assert.True((await handler.HandleAsync(new ListPlatformSupportPrincipalsQuery(0, 10))).IsFailure);
+    Assert.True((await handler.HandleAsync(new ListPlatformSupportPrincipalsQuery(1, 0))).IsFailure);
+    Assert.True((await handler.HandleAsync(new ListPlatformSupportPrincipalsQuery(1, 101))).IsFailure);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0025")]
+  public async Task Get_principal_returns_authority_metadata_and_missing_principal_is_not_found()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var principalId = await RegisterPrincipalAsync(database);
+
+    await using var context = database.CreateContext();
+    var handler = new GetPlatformSupportPrincipalQueryHandler(
+      new PlatformSupportAuthorityReadService(context), new TestCurrentUser());
+
+    var found = await handler.HandleAsync(new GetPlatformSupportPrincipalQuery(principalId));
+    Assert.True(found.IsSuccess);
+    Assert.Equal(principalId, found.Value.PlatformSupportPrincipalId);
+    Assert.True(found.Value.IdentityId > 0);
+    Assert.Equal(SSAS.Platform.Domain.Enums.PlatformSupportPrincipalStatus.Active, found.Value.Status);
+    Assert.NotEmpty(found.Value.RowVersion);
+
+    var missing = await handler.HandleAsync(new GetPlatformSupportPrincipalQuery(principalId + 987));
+    Assert.True(missing.IsFailure);
+    Assert.Equal("PlatformSupport.PrincipalNotFound", missing.Error.Code);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0025")]
+  public async Task Assignment_history_includes_active_and_revoked_records_with_audit_metadata_ordered_by_recency()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var principalId = await RegisterPrincipalAsync(database);
+    await GrantAsync(database, principalId, PlatformPermissionNames.ManageTenants);
+    await GrantAsync(database, principalId, PlatformPermissionNames.ViewTenants);
+    await RevokeAsync(database, principalId, PlatformPermissionNames.ManageTenants);
+
+    await using var context = database.CreateContext();
+    var handler = new ListPlatformPermissionAssignmentsQueryHandler(
+      new PlatformSupportAuthorityReadService(context), new TestCurrentUser());
+
+    var result = await handler.HandleAsync(new ListPlatformPermissionAssignmentsQuery(principalId));
+
+    Assert.True(result.IsSuccess);
+    Assert.Equal(2, result.Value.Count); // both the active and the revoked assignment are retained history
+    var manage = result.Value.Single(item => item.PermissionName == PlatformPermissionNames.ManageTenants);
+    Assert.False(manage.IsActive);
+    Assert.NotNull(manage.RemovedUtc);
+    Assert.Equal("integration-actor", manage.RemovedBy);
+    Assert.Equal("integration-actor", manage.AssignedBy);
+    var view = result.Value.Single(item => item.PermissionName == PlatformPermissionNames.ViewTenants);
+    Assert.True(view.IsActive);
+    Assert.Null(view.RemovedUtc);
+    // Same AssignedUtc (fixed test clock) ⇒ stable Id-descending tie-breaker; the later-granted ViewTenants is first.
+    Assert.Equal(view.PlatformPermissionAssignmentId, result.Value[0].PlatformPermissionAssignmentId);
+    Assert.True(result.Value[0].PlatformPermissionAssignmentId > result.Value[1].PlatformPermissionAssignmentId);
+
+    // Missing principal ⇒ not-found (distinct from an empty history).
+    var missing = await handler.HandleAsync(new ListPlatformPermissionAssignmentsQuery(principalId + 987));
+    Assert.True(missing.IsFailure);
+    Assert.Equal("PlatformSupport.PrincipalNotFound", missing.Error.Code);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0025")]
+  public async Task Active_projection_is_catalog_filtered_while_history_retains_revoked_tenant_scoped_and_retired_rows()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var principalId = await RegisterPrincipalAsync(database);
+    await GrantAsync(database, principalId, PlatformPermissionNames.ViewTenants);
+    await GrantAsync(database, principalId, PlatformPermissionNames.ManageTenants);
+    await RevokeAsync(database, principalId, PlatformPermissionNames.ManageTenants);
+
+    // Force-seed rows the write-side guard would reject: a Tenant-scoped permission and a since-retired
+    // permission no longer in the catalog. They are persisted authority history but not effective authority.
+    await using (var seed = database.CreateContext())
+    {
+      await seed.Database.ExecuteSqlInterpolatedAsync(
+        $"INSERT INTO [platform].[PlatformPermissionAssignments] ([PlatformSupportPrincipalId], [PermissionName], [AssignedUtc], [AssignedBy]) VALUES ({principalId}, {PlatformPermissionNames.ViewCompanies}, {PlatformSupportSqlDatabase.Now}, {"corruption-test"})");
+      await seed.Database.ExecuteSqlInterpolatedAsync(
+        $"INSERT INTO [platform].[PlatformPermissionAssignments] ([PlatformSupportPrincipalId], [PermissionName], [AssignedUtc], [AssignedBy]) VALUES ({principalId}, {"Platform.Some.RetiredPermission"}, {PlatformSupportSqlDatabase.Now}, {"legacy-actor"})");
+    }
+
+    await using var context = database.CreateContext();
+    var active = await new GetActivePlatformSupportPermissionsQueryHandler(
+      new PlatformSupportAuthorityReadService(context),
+      new PlatformSupportPermissionReadService(context, new PlatformPermissionCatalog()),
+      new TestCurrentUser()).HandleAsync(new GetActivePlatformSupportPermissionsQuery(principalId));
+
+    Assert.True(active.IsSuccess);
+    // Effective now = only active, catalog-valid PlatformSupport permissions.
+    Assert.Equal([PlatformPermissionNames.ViewTenants], active.Value);
+    Assert.DoesNotContain(PlatformPermissionNames.ManageTenants, active.Value); // revoked
+    Assert.DoesNotContain(PlatformPermissionNames.ViewCompanies, active.Value);  // tenant-scoped
+    Assert.DoesNotContain("Platform.Some.RetiredPermission", active.Value);      // not in catalog
+
+    var history = await new ListPlatformPermissionAssignmentsQueryHandler(
+      new PlatformSupportAuthorityReadService(context), new TestCurrentUser())
+      .HandleAsync(new ListPlatformPermissionAssignmentsQuery(principalId));
+
+    Assert.True(history.IsSuccess);
+    var names = history.Value.Select(item => item.PermissionName).ToArray();
+    // History keeps every persisted row, including the revoked, tenant-scoped, and retired ones.
+    Assert.Contains(PlatformPermissionNames.ManageTenants, names);
+    Assert.Contains(PlatformPermissionNames.ViewCompanies, names);
+    Assert.Contains("Platform.Some.RetiredPermission", names);
+    Assert.Equal(4, history.Value.Count);
+
+    // Effective-permissions read for a missing principal is not-found.
+    await using var missingContext = database.CreateContext();
+    var missing = await new GetActivePlatformSupportPermissionsQueryHandler(
+      new PlatformSupportAuthorityReadService(missingContext),
+      new PlatformSupportPermissionReadService(missingContext, new PlatformPermissionCatalog()),
+      new TestCurrentUser()).HandleAsync(new GetActivePlatformSupportPermissionsQuery(principalId + 987));
+    Assert.True(missing.IsFailure);
+    Assert.Equal("PlatformSupport.PrincipalNotFound", missing.Error.Code);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-TEN-0025")]
+  public async Task Disabled_principal_remains_fully_readable_and_reads_touch_no_tenant_tables()
+  {
+    await using var database = await PlatformSupportSqlDatabase.CreateAsync();
+    var principalId = await RegisterPrincipalAsync(database);
+    await GrantAsync(database, principalId, PlatformPermissionNames.ViewTenants);
+    await DisablePrincipalDirectAsync(database, principalId);
+
+    await using var context = database.CreateContext();
+    var authorityRead = new PlatformSupportAuthorityReadService(context);
+
+    var principal = await new GetPlatformSupportPrincipalQueryHandler(authorityRead, new TestCurrentUser())
+      .HandleAsync(new GetPlatformSupportPrincipalQuery(principalId));
+    Assert.True(principal.IsSuccess);
+    Assert.Equal(SSAS.Platform.Domain.Enums.PlatformSupportPrincipalStatus.Disabled, principal.Value.Status);
+    Assert.NotNull(principal.Value.StatusChangedUtc);
+
+    // History and retained active assignments remain visible for a Disabled principal.
+    var history = await new ListPlatformPermissionAssignmentsQueryHandler(authorityRead, new TestCurrentUser())
+      .HandleAsync(new ListPlatformPermissionAssignmentsQuery(principalId));
+    Assert.True(history.IsSuccess);
+    Assert.Single(history.Value);
+    Assert.True(history.Value.Single().IsActive);
+
+    // The reads never depend on tenant data: tenant authority tables are empty and untouched.
+    Assert.Equal(0, await ReadInt32Async(context, "SELECT COUNT(*) FROM [platform].[Tenants]"));
+    Assert.Equal(0, await ReadInt32Async(context, "SELECT COUNT(*) FROM [platform].[Roles]"));
+  }
+
+  private static async Task<long> RegisterPrincipalAsync(PlatformSupportSqlDatabase database)
+  {
+    var identityId = await SeedIdentityAsync(database);
+    await using var context = database.CreateContext();
+    var register = new RegisterPlatformSupportPrincipalCommandHandler(
+      new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser());
+    return (await register.HandleAsync(new RegisterPlatformSupportPrincipalCommand(identityId))).Value;
+  }
+
+  private static async Task GrantAsync(PlatformSupportSqlDatabase database, long principalId, string permissionName)
+  {
+    await using var context = database.CreateContext();
+    var grant = new GrantPlatformPermissionCommandHandler(
+      new PlatformSupportPrincipalRepository(context), new PlatformPermissionCatalog(), Uow(context), new TestCurrentUser(), new TestClock());
+    Assert.True((await grant.HandleAsync(new GrantPlatformPermissionCommand(principalId, permissionName))).IsSuccess);
+  }
+
+  private static async Task RevokeAsync(PlatformSupportSqlDatabase database, long principalId, string permissionName)
+  {
+    await using var context = database.CreateContext();
+    var revoke = new RevokePlatformPermissionCommandHandler(
+      new PlatformSupportPrincipalRepository(context), Uow(context), new TestCurrentUser(), new TestClock());
+    Assert.True((await revoke.HandleAsync(new RevokePlatformPermissionCommand(principalId, permissionName))).IsSuccess);
+  }
+
+  private static async Task DisablePrincipalDirectAsync(PlatformSupportSqlDatabase database, long principalId)
+  {
+    await using var context = database.CreateContext();
+    var principal = await context.PlatformSupportPrincipals.SingleAsync(item => item.Id == principalId);
+    Assert.True(principal.Disable("seed", PlatformSupportSqlDatabase.Now).IsSuccess);
+    Assert.True((await Uow(context).SaveChangesAsync()).IsSuccess);
   }
 
   private static TestPlatformUnitOfWork Uow(PlatformDbContext context) => new(context);

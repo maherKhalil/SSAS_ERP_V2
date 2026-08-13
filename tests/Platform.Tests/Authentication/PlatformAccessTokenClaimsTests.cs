@@ -258,7 +258,13 @@ public sealed class PlatformAccessTokenClaimsTests
     public Task<PlatformSupportPrincipal?> GetByIdentityIdAsync(long identityId, CancellationToken cancellationToken = default) =>
       Task.FromResult(identityId == IdentityId ? principal : null);
 
+    public Task<PlatformSupportPrincipal?> GetByIdentityIdForUpdateAsync(long identityId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(identityId == IdentityId ? principal : null);
+
     public Task<PlatformSupportPrincipal?> GetByIdAsync(long platformSupportPrincipalId, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException();
+
+    public Task<PlatformSupportPrincipal?> GetByIdForUpdateAsync(long platformSupportPrincipalId, CancellationToken cancellationToken = default) =>
       throw new NotSupportedException();
 
     public Task<bool> ExistsForIdentityAsync(long identityId, CancellationToken cancellationToken = default) =>

@@ -35,14 +35,25 @@ public sealed class PlatformAuthenticationSessionCreator(
 
     await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-    // Live eligibility (persistence, never token/config): account eligible, principal Active, >=1 permission.
+    // Live eligibility (persistence, never token/config).
+    //
+    // GLOBAL LOCK ORDER (DEC-TEN-0023 / L1): account → principal → session(s).
+    // Every flow that takes BOTH a principal and a session lock takes the principal FIRST — creation here and the
+    // Disable handler (which locks the principal for update inside its transaction before listing its sessions).
+    // Because the principal row is the single first-contended resource, no cycle can form: a flow can never hold
+    // a session lock while waiting for a principal lock. Refresh takes account → session → a NON-locking principal
+    // read, so it never waits on the principal lock and cannot close a cycle either.
     var account = await accountRepository.GetByIdentityIdForUpdateAsync(verifiedIdentity.IdentityId, cancellationToken);
     if (account is not { IsAuthenticationEligible: true })
     {
       return Result.Failure<PlatformSessionCreated>(PlatformSupportErrors.AccountIneligible);
     }
 
-    var principal = await principalRepository.GetByIdentityIdAsync(verifiedIdentity.IdentityId, cancellationToken);
+    // L1: lock the principal row for update BEFORE acquiring any session resource, then decide Active on that
+    // locked read. A concurrent Disable serializes on this same lock, so it cannot commit between this decision
+    // and the session insert — no active platform session survives a committed Disable, for either interleaving
+    // and independent of the database isolation level (RCSI on or off).
+    var principal = await principalRepository.GetByIdentityIdForUpdateAsync(verifiedIdentity.IdentityId, cancellationToken);
     if (principal is null)
     {
       return Result.Failure<PlatformSessionCreated>(PlatformSupportErrors.PrincipalNotFound);
@@ -59,9 +70,11 @@ public sealed class PlatformAuthenticationSessionCreator(
       return Result.Failure<PlatformSessionCreated>(PlatformSupportErrors.NoUsablePlatformAuthority);
     }
 
-    // Enforce the platform-only active-session limit under an update lock (platform sessions only).
+    // Enforce the platform-only active-session limit under an update lock (platform sessions only), taken AFTER
+    // the principal lock so the global account → principal → session order holds.
     var activeSessions = await sessionRepository.ListActiveUnexpiredByIdentityForUpdateAsync(
       verifiedIdentity.IdentityId, now, cancellationToken);
+
     var revokeCount = Math.Max(0, activeSessions.Count - policy.MaximumActiveSessions + 1);
     foreach (var oldSession in activeSessions
       .OrderBy(session => session.CreatedUtc)

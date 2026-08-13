@@ -2,10 +2,12 @@
 document_id: FP-003-TEST
 title: Tenant Lifecycle Test Scenarios
 status: Approved for Implementation
-version: 1.2
+version: 1.4
 sprint: Sprint-01
 module: Platform
 ---
+
+> **Version 1.4 (2026-08-12).** `TS-TEN-0118`–`TS-TEN-0142` (Phase-4 request-plane / HTTP exposure) are **Approved for Implementation** under `DEC-TEN-0023`–`DEC-TEN-0026`; they are planned for slices 4B–4E (the Phase-4A anti-escalation / real-JWT authorization scenarios are already implemented). Corrected after review: `TS-TEN-0136` (administrative-authority loss also triggers recovery) and new `TS-TEN-0139`–`TS-TEN-0142` (last-Administer-retain-other-permission lockout + recovery, negative no-subject case, platform-logout trusted-session resolution, create-vs-disable serialization). Prior scenarios are unchanged.
 
 # Test Scenarios
 
@@ -185,8 +187,38 @@ SQL scenarios use the real SQL Server provider; validator scenarios are structur
 - **TS-TEN-0116:** A legacy tenant token without `security_plane` is accepted under the tenant profile; an explicit `security_plane=tenant` tenant token is also accepted.
 - **TS-TEN-0117:** A platform token with a duplicated `permission` claim is rejected.
 
+## Platform request-plane authorization and HTTP exposure (Phase 4, DEC-TEN-0023–0026)
+
+Approved for Implementation (implementation pending); planned for slices 4B–4E. The Phase-4A anti-escalation and real-signed-JWT authorization proofs are already implemented (a tenant token cannot satisfy a platform policy; a platform token cannot satisfy a tenant policy; unknown/tenant-scoped/wrong-case permissions and missing/duplicate/wrong-case `security_plane` are denied; a mixed-plane token is rejected at authentication).
+
+- **TS-TEN-0118:** An eligible platform operator obtains a platform session through the dedicated platform login route (server flow: verified identity → resolve principal → Active + ≥1 catalog-valid permission → session/token pair).
+- **TS-TEN-0119:** A tenant-only identity (no platform authority) cannot obtain a platform token through the platform login route (generic authentication failure).
+- **TS-TEN-0120:** A `Disabled` principal cannot obtain a platform session through platform login.
+- **TS-TEN-0121:** A principal with zero catalog-valid `PlatformSupport` permissions cannot obtain a platform session.
+- **TS-TEN-0122:** A caller-supplied `security_plane`/`PlatformSupportPrincipalId`/permission list/`SecurityVersion`/`mode` value is ignored or rejected and never confers platform authority.
+- **TS-TEN-0123:** The platform refresh route rejects a tenant refresh token.
+- **TS-TEN-0124:** The tenant refresh route rejects a platform refresh token.
+- **TS-TEN-0125:** A dual-capable identity obtains each plane's session only through that plane's own route (no cross-plane auto-selection or caller switch); the dedicated platform logout revokes only the current platform session.
+- **TS-TEN-0126:** Create-vs-disable concurrency (L1) closure: a Disable committed concurrently with a platform login leaves no usable new platform session, achieved by transactionally serialized creation (a `FOR UPDATE`/locking read of the principal authority state); correctness does not depend on deployment isolation settings. (See `TS-TEN-0142` for the two-connection SQL proof.)
+- **TS-TEN-0127:** A TENANT-ONLY endpoint (e.g. `/api/platform/auth/logout`, localization `effective`/`batch`) rejects a platform token.
+- **TS-TEN-0128:** A PLATFORM-ONLY endpoint rejects a tenant token.
+- **TS-TEN-0129:** A PLANE-NEUTRAL endpoint accepts both a valid tenant and a valid platform token.
+- **TS-TEN-0130:** An architecture guard fails if a plane-specific endpoint uses a bare `RequireAuthenticatedUser` policy.
+- **TS-TEN-0131:** A platform token holding `Platform.Support.Administer` can list platform-support principals and assignments.
+- **TS-TEN-0132:** A platform token lacking `Platform.Support.Administer` receives 403 on authority reads.
+- **TS-TEN-0133:** A tenant token receives 403 on platform authority reads.
+- **TS-TEN-0134:** An administrator can disable their own principal (self-disable permitted).
+- **TS-TEN-0135:** An administrator can revoke their own `Platform.Support.Administer` (self-revoke permitted); removal of the last usable administrator is not blocked.
+- **TS-TEN-0136:** When no usable platform authority remains (no Active principal holds any active current-catalog `PlatformSupport` permission), or when usable authority remains but no usable **administrative** authority remains, genesis/recovery bootstrap becomes eligible for an eligible configured subject that owns no principal.
+- **TS-TEN-0137:** Bootstrap does not silently re-enable a `Disabled` principal; recovery creates a new `Active` principal or fails closed with an operator diagnostic.
+- **TS-TEN-0138:** After self-disable or self-revoke, the already-issued platform access JWT retains authority until natural expiry (stateless), while Disable proactively revokes platform sessions and a permission revoke applies at next refresh.
+- **TS-TEN-0139:** Last-Administer revoked while non-admin authority remains: seed Principal A (`Active`, `Platform.Support.Administer` + `Platform.Tenants.View`) with no other Administer-capable principal; revoke `Platform.Support.Administer`; assert A stays `Active`, `Platform.Tenants.View` stays active, usable platform authority == true, usable platform administrative authority == false, administrative recovery == eligible, an eligible configured recovery subject can establish new recovery authority, A is not silently re-granted `Administer`, and no `Disabled` principal is re-enabled.
+- **TS-TEN-0140:** Administrative-recovery negative case: with no eligible configured recovery subject, loss of administrative authority cannot be recovered automatically — bootstrap fails closed with an operator diagnostic (governed break-glass required); recovery is not claimed to succeed in every environment.
+- **TS-TEN-0141:** Platform logout trusted-session resolution: with a valid platform token, logout revokes the platform session identified by the validated `session_id` claim (in the platform store only); a caller-supplied `session_id`/`IdentityId`/`PlatformSupportPrincipalId` cannot select a different target session; refresh afterward is denied; the same identity's tenant session and `AuthenticationAccount.SecurityVersion` are unaffected; the already-issued access JWT remains valid until expiry; a tenant token cannot call platform logout and a platform token cannot cause tenant logout.
+- **TS-TEN-0142:** Create-vs-disable serialization (L1): with two independent SQL connections/contexts, run platform-session creation concurrently with principal Disable; assert the fresh terminal DB state after the committed Disable is principal `Disabled` with zero active platform sessions for the principal and no usable refresh continuation, for both interleavings, under actual supported SQL Server settings (correctness independent of RCSI).
+
 ## First implementation milestone applicability
 
 The first milestone implements `TS-TEN-0001` through `TS-TEN-0038` where infrastructure exists, excluding any HTTP-specific assertion other than verifying endpoint absence.
 
-FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization. `TS-TEN-0045` through `TS-TEN-0059` are deferred with the platform-plane Tenant HTTP transport and its authorization foundation under `ADR-015` and `DEC-TEN-0018`. `TS-TEN-0060` through `TS-TEN-0092` are deferred with the Phase-3 platform-support bootstrap, principal lifecycle, and token authority under `ADR-016` and `DEC-TEN-0019`/`DEC-TEN-0020`/`DEC-TEN-0021` (`TS-TEN-0081` through `TS-TEN-0092` cover the status-migration backfill and bootstrap cardinality/selection/recovery decisions). `TS-TEN-0093` through `TS-TEN-0117` are deferred with the Phase-3C platform token/session profile under `ADR-016` and `DEC-TEN-0022` (platform session persistence and cross-plane refresh isolation, SQL schema/FK/create/refresh/mismatch/disable/zero-permission/reuse/multi-session/tenant-unaffected/cross-plane-lookup/re-enable/physical-delete, and `StrictAccessTokenValidator` platform-profile/mixed-plane/legacy scenarios).
+FP-002 Milestone 4 supplies the approved authorization milestone for `TS-TEN-0044` through `DEC-AUTH-0057`, `AC-AUTH-0045`, `TS-AUTH-0108`, and `TS-AUTH-0109`. `TS-TEN-0040` through `TS-TEN-0043` remain deferred with public Tenant lifecycle endpoints and Platform-support authorization. `TS-TEN-0045` through `TS-TEN-0059` are deferred with the platform-plane Tenant HTTP transport and its authorization foundation under `ADR-015` and `DEC-TEN-0018`. `TS-TEN-0060` through `TS-TEN-0092` are deferred with the Phase-3 platform-support bootstrap, principal lifecycle, and token authority under `ADR-016` and `DEC-TEN-0019`/`DEC-TEN-0020`/`DEC-TEN-0021` (`TS-TEN-0081` through `TS-TEN-0092` cover the status-migration backfill and bootstrap cardinality/selection/recovery decisions). `TS-TEN-0093` through `TS-TEN-0117` are deferred with the Phase-3C platform token/session profile under `ADR-016` and `DEC-TEN-0022` (platform session persistence and cross-plane refresh isolation, SQL schema/FK/create/refresh/mismatch/disable/zero-permission/reuse/multi-session/tenant-unaffected/cross-plane-lookup/re-enable/physical-delete, and `StrictAccessTokenValidator` platform-profile/mixed-plane/legacy scenarios). `TS-TEN-0118` through `TS-TEN-0142` are **approved** (implementation pending) with the Phase-4 request-plane / HTTP exposure work under `ADR-016` §5 and `DEC-TEN-0023`–`DEC-TEN-0026` (platform login/refresh/logout + server-owned plane selection, request-plane policy taxonomy and endpoint classification, authority-read authorization, last-admin/self-disable/recovery including administrative-authority-loss recovery and the create-vs-disable serialization proof), planned for slices 4B–4E (the administrative-recovery scenarios `TS-TEN-0136`/`TS-TEN-0139`/`TS-TEN-0140` and the create-vs-disable scenario `TS-TEN-0142` are owned by the 4D-0 / 4B prerequisite slices); the Phase-4A authorization primitives and their anti-escalation / real-signed-JWT scenarios are already implemented and committed.

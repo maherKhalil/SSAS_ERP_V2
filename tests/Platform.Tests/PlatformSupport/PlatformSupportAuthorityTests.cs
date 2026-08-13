@@ -324,7 +324,15 @@ public sealed class PlatformSupportAuthorityTests
     public Task<PlatformSupportPrincipal?> GetByIdAsync(long platformSupportPrincipalId, CancellationToken cancellationToken = default) =>
       Task.FromResult(principal);
 
+    // In-memory fake: same result as the unlocked read. Real lock serialization is proven only by the SQL Server
+    // concurrency tests (PlatformAuthenticationSessionFlowSqlServerTests), never by this fake.
+    public Task<PlatformSupportPrincipal?> GetByIdForUpdateAsync(long platformSupportPrincipalId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(principal);
+
     public Task<PlatformSupportPrincipal?> GetByIdentityIdAsync(long identityId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(principal);
+
+    public Task<PlatformSupportPrincipal?> GetByIdentityIdForUpdateAsync(long identityId, CancellationToken cancellationToken = default) =>
       Task.FromResult(principal);
 
     public Task<bool> ExistsForIdentityAsync(long identityId, CancellationToken cancellationToken = default) =>
@@ -369,8 +377,17 @@ public sealed class PlatformSupportAuthorityTests
       return Task.FromResult(Result.Success(1));
     }
 
+    // Disable now opens its transaction before the lock-protected principal read (global principal → session
+    // order), so even the early gate paths pass through here.
     public Task<ITransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
-      throw new NotSupportedException();
+      Task.FromResult<ITransaction>(new FakeTransaction());
+  }
+
+  private sealed class FakeTransaction : ITransaction
+  {
+    public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
   }
 
   private sealed class StubCurrentUser(string? userId) : ICurrentUser

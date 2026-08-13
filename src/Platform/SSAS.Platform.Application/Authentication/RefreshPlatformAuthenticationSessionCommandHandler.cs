@@ -87,6 +87,12 @@ public sealed class RefreshPlatformAuthenticationSessionCommandHandler(
     }
 
     // Live principal status — never trusted from the token; a Disabled/mismatched principal fails closed.
+    //
+    // LOCK ORDER (DEC-TEN-0023 / L1): the principal lookup is an ordinary read. Under RCSI it is versioned and
+    // takes no blocking lock; under non-versioned READ COMMITTED it may take a shared lock. Either way it stays
+    // compatible with Disable's principal UPDLOCK (S/U do not conflict) while Disable is still waiting for its
+    // session range, so refresh cannot close a cycle even though it already holds a session lock. Do NOT convert
+    // this into a for-update read without also moving it ahead of the session lock above.
     var principal = await principalRepository.GetByIdentityIdAsync(locator.IdentityId, cancellationToken);
     if (principal is null || principal.Id != session.PlatformSupportPrincipalId ||
       principal.IdentityId != session.IdentityId || principal.Status != PlatformSupportPrincipalStatus.Active)

@@ -2,7 +2,7 @@
 id: ADR-018
 title: Tenant Schema Health and Migration Orchestration
 category: Architecture Decision Record
-version: 1.6
+version: 1.7
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -460,6 +460,8 @@ Schema compatibility and **operational recovery readiness** are distinct dimensi
 
 The practical failure this prevents: a migration orchestrator reports a green estate, a release is judged safe, and a database that has never had a verifiable backup is carrying production data. Recovery readiness therefore belongs alongside the health dimensions as a **separate** reported state when `TS-Backup` lands, never folded into `SchemaCompatibilityStatus` or into a derived `Ready`.
 
+**`ADR-022` owns that dimension.** It defines recovery readiness as an independent fourth dimension with its own writer, following the one-writer-per-dimension discipline established below. Backup and recovery fields are **not** added to the schema-health model, and the schema-health service neither reads nor writes them: this ADR remains scoped to connectivity, schema compatibility and migration execution.
+
 Migration is also a moment when recovery matters most: applying DDL to a tenant database is precisely when a restore point is most likely to be needed. Backup verification and migration orchestration are separate responsibilities, but a migration run against a database with no verified recovery position is an operational decision that should be taken knowingly rather than by omission.
 
 ---
@@ -670,3 +672,4 @@ This ADR should be reviewed if:
 | 1.4 | 2026-08-14 | Solution Architecture Team | Documented the explicit two-stream (Platform / Tenant) migration deployment procedure, including per-stream commands, shared-catalog and dedicated behaviour, ordering-tolerance scope, and pre-traffic validation. No architecture decision changed |
 | 1.5 | 2026-08-14 | Solution Architecture Team | Recorded that schema health and migration orchestration are implemented: reclassified the manual two-stream commands as development/break-glass, and named the orchestrator as the normal path for the platform-managed estate. No architecture decision changed |
 | 1.6 | 2026-08-14 | Solution Architecture Team | Documented one-writer-per-dimension: connectivity and schema observations have independent writers, a check that observes nothing about a dimension writes nothing to it, LastSchemaCheckUtc advances only on an actual schema observation, and concurrent writers reapply only their own dimension. No architecture decision changed |
+| 1.7 | 2026-08-14 | Solution Architecture Team | Recorded that `ADR-022` owns recovery readiness as an independent fourth dimension; backup fields are not added to the schema-health model. No decision changed |

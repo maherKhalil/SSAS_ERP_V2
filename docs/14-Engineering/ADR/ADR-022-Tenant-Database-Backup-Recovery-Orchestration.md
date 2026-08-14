@@ -1,0 +1,729 @@
+---
+id: ADR-022
+title: Tenant Database Backup and Recovery Orchestration
+category: Architecture Decision Record
+version: 1.0
+status: Proposed
+date: 2026-08-14
+owner: Solution Architecture Team
+tags:
+  - architecture
+  - multi-tenancy
+  - persistence
+  - operations
+  - durability
+  - security
+depends_on:
+  - ADR-013
+  - ADR-017
+  - ADR-018
+  - ADR-020
+  - ADR-021
+used_by:
+  - Platform
+---
+
+# ADR-022: Tenant Database Backup and Recovery Orchestration
+
+---
+
+# Status
+
+**Proposed**
+
+Owns the decisions that make a physical tenant database **recoverable**, and the orchestration that keeps it so. `ADR-017` establishes the topology and names `TS-Backup` as a required capability of the platform-managed estate; `ADR-018` establishes the health and migration model this ADR sits beside without merging into; `ADR-020` defines the cutover this ADR gates; `ADR-021` defines whose data — and therefore whose backups — a customer-managed database holds.
+
+**Implementation scope: architecture decided, implementation phased.** Nothing here is implemented yet. The sequencing constraint from `ADR-017` is binding and is the reason this ADR exists now rather than later: **`TS-Backup` must exist before dedicated provisioning and cutover become production-capable**, because a dedicated database with no verified backup chain is a data-loss position the shared database did not have.
+
+---
+
+# Context
+
+`ADR-017` places tenant ERP data in physical databases: one or more `PlatformManaged` + `Shared` databases holding many tenants, optional `PlatformManaged` + `Dedicated` databases holding one, and optional `CustomerManaged` + `Dedicated` databases on a customer's own server. Routing resolves a tenant to exactly one physical database through `TenantDatabase` and `TenantDatabaseAssignment`.
+
+`ADR-018` added operational health to the physical database row and — following the `TS-Health-Split` refinement in its v1.6 — established a discipline this ADR inherits wholesale: **each health dimension has exactly one writer, and a check that observes nothing about a dimension writes nothing to that dimension.** Connectivity, schema compatibility and migration execution are independent, never merged, and never summarised into a single settable flag.
+
+What no decision covers today is **durability**. The product can currently tell an operator whether a tenant database is reachable and whether its schema matches the deployed application. It cannot tell them whether that database could be recovered if it were lost, when it was last provably recoverable, or whether promoting a tenant to dedicated storage would move it from a protected position to an unprotected one.
+
+The current estate is a single shared database, whose durability is whatever the deployment's existing database operations provide. That is survivable precisely because it is one database that somebody is already looking after. It stops being survivable at the first dedicated database, which is a new physical artifact nobody has arranged protection for, created by an automated workflow, at the exact moment a tenant's authoritative copy moves onto it.
+
+---
+
+# Problem Statement
+
+Without these decisions:
+
+- A dedicated database could be provisioned, migrated, verified schema-healthy, and cut over — with every health signal green — while having no backup at all. The operation would report success and silently reduce durability.
+- Backup arrangements would be assumed rather than recorded, and the assumption would be discovered during an incident.
+- "Restore this tenant to yesterday" would be requested on shared storage, where honouring it would roll back every other tenant in that database, and nobody would have written down that this is not what a database restore does.
+- Backup would be attempted with the ERP runtime credential, granting the request-serving identity the ability to read the entire database to a file.
+- Two platform instances could issue overlapping backups of the same physical database, producing chains whose continuity nobody can reason about.
+- A backup chain could be created and never once exercised, so its first restore would be attempted under incident conditions.
+- Retention could delete a full backup that retained differentials and logs depend on, destroying recoverability while appearing to tidy up.
+- Backup ownership for customer-hosted databases would be inferred from hosting mode, and the platform would either run backups it has no authority to run or assume a customer has arranged something they have not.
+- Recovery state would be folded into `SchemaCompatibilityStatus` or a derived `Ready`, making a migrated database look recoverable.
+
+---
+
+# Decision
+
+## 1. Backup and recovery attach to the physical database
+
+Backup policy, execution history and recovery readiness belong to the **physical `TenantDatabase`** — never to a `Tenant`, and never to a `TenantDatabaseAssignment`. This follows from the topology rather than from preference:
+
+| Placement | Backup chain | Recovery readiness |
+|---|---|---|
+| `PlatformManaged` + `Shared` | **One** chain covering the database, and therefore every tenant in it | One state for the database |
+| `PlatformManaged` + `Dedicated` | **Its own independent** chain | Its own state |
+| `CustomerManaged` + `Dedicated` | The customer's chain, on the customer's server | Externally owned — see §12 |
+
+A shared database hosting a thousand tenants is **one** backup target, scheduled once, with one chain and one readiness state. Modelling policy per assignment would create rows that can disagree with each other about the same physical database.
+
+## 2. Recovery readiness is a separate dimension
+
+Recovery readiness is a **fourth operational dimension**, independent of the three `ADR-018` defines. It is never merged into `SchemaCompatibilityStatus`, never merged into `ConnectivityStatus`, and never collapsed into a general `IsHealthy` or `IsReady`.
+
+The combinations this separation must express are ordinary, not exotic:
+
+- **schema-compatible but not recovery-ready** — a freshly migrated dedicated database with no baseline backup;
+- **recovery-ready but schema-incompatible** — a well-protected database awaiting a release;
+- **backup-degraded while serving normally** — a late log backup on a healthy database.
+
+A single overloaded status cannot express any of those truthfully, and an operator shown one would have to guess which problem they have.
+
+## 3. One writer per dimension
+
+The recovery-readiness dimension has **its own writer**, following the discipline established in `ADR-018` v1.6:
+
+- it writes recovery-readiness state and its observation timestamps, and nothing else;
+- it never writes connectivity, schema or migration state;
+- **an evaluation that observes nothing writes nothing** — a backup check that cannot reach a database records no recovery verdict rather than recording an incorrect one;
+- on an optimistic-concurrency conflict it **re-reads the latest row and reapplies only its own dimension's observation**, bounded, never replaying a stale whole aggregate.
+
+This matters more here than it did for two dimensions. Recovery readiness becomes the **third independent writer** on `TenantDatabase`, and cross-dimension clobbering that was survivable with two writers becomes progressively harder to detect with three.
+
+*Implementation guidance, not an architecture decision:* the existing re-read/reapply pattern is currently validated by outcome — concurrent writers demonstrably preserve both dimensions — but the conflict branch itself is not deterministically forced by a test. Deterministic coverage of that branch should be added **before or during** the first backup domain slice, proving that a losing writer retries, re-reads, reapplies only its own dimension, and leaves the winner's other-dimension state intact.
+
+## 4. Policy is a separate entity from observed state
+
+Backup **policy** is modelled as its own entity — conceptually `TenantDatabaseBackupPolicy` — bound to one physical `TenantDatabase`, rather than as a column set on `TenantDatabase` itself.
+
+The reasoning is growth and separation. Policy will accumulate three schedules, retention expectations, a destination reference, verification cadence, maximum tolerable backup age, and later service tiers and provider-specific settings. `TenantDatabase` is already carrying routing metadata plus three health dimensions and is read on the routing path; a dozen policy columns would bloat the row every tenant request touches.
+
+More importantly, three things must stay distinguishable:
+
+| Concept | Answers |
+|---|---|
+| **Policy** | What protection *should* exist |
+| **Run history** | What actually happened |
+| **Recovery readiness** | Whether current evidence *meets* the policy |
+
+**Protection is never inferred from `Enabled = true`.** A policy that has never executed protects nothing.
+
+## 5. Backup authority is its own dimension
+
+Who may execute backups is recorded per physical database as **`BackupManagementMode`**, with its own vocabulary:
+
+- **`AutomaticByPlatform`** — the platform schedules, executes, monitors and verifies backups.
+- **`PlatformAfterApproval`** — the platform may execute, but only under an explicit per-run approval; absence of approval is **denial**, never default-allow.
+- **`CustomerDba`** — the platform **never** executes backups. It records the arrangement and, where a verification mechanism exists, verifies evidence.
+
+This is deliberately **not** `MigrationManagementMode`, and the values are deliberately not inferred from `HostingMode`, `StorageMode`, or each other. `ADR-018` already learned this lesson once: reusing hosting vocabulary for migration authority made "customer-hosted database we are permitted to migrate" read as a contradiction. The same trap exists here, and the combinations are real — a platform-hosted database whose regulated customer requires their own DBA to run backups is an ordinary configuration, as is a customer-hosted database whose customer is happy for us to protect it.
+
+**Defaults:** `PlatformManaged` — shared or dedicated — defaults to `AutomaticByPlatform`. The platform owns durability for infrastructure it operates, and dedicated placement does not transfer that ownership to the customer. `CustomerManaged` defaults to `CustomerDba` per `ADR-021`.
+
+## 6. Recovery readiness states
+
+A closed, actionable set:
+
+| Status | Meaning |
+|---|---|
+| `Unknown` | Never evaluated, or evaluation could not complete. Pre-verification. |
+| `Protected` | Current evidence satisfies the configured policy. |
+| `Degraded` | Protected but slipping — a backup type is overdue, or verification is aging toward its limit. |
+| `Unprotected` | No usable recovery position: no baseline, or a known-broken chain. |
+| `RecoveryModelInvalid` | The database's recovery model cannot support the policy's requirements. |
+| `VerificationOverdue` | Backups exist but have not been verified within the policy's interval. |
+
+`Protected` requires **evidence**, not configuration. For SQL Server that means: policy enabled; recovery model appropriate to what the policy requires; a recent successful full baseline; differential and log positions current where the policy requires point-in-time recovery; backup age inside policy bounds; restore verification not overdue; and no known chain break.
+
+**`Protected` is never "the last backup command returned success."**
+
+## 7. Backup health does not gate ERP traffic
+
+Normal tenant ERP traffic is **not** gated on recovery readiness. `ADR-018`'s traffic gate continues to be driven by connectivity, schema compatibility and migration execution alone.
+
+The reasoning is that a durability problem and an availability problem are different problems with different correct responses. A late log backup means the recovery position has degraded; the data is intact and correct, and the application can read and write it perfectly well. Denying traffic would convert a durability concern into a customer-visible outage — strictly worse, and it would make operators reluctant to report degraded protection.
+
+Any future exception requires an explicit amendment naming the condition.
+
+## 8. Recovery readiness gates lifecycle operations
+
+Where recovery readiness **is** binding is the set of operations whose safety depends on it:
+
+- **Dedicated production activation** — a dedicated database may not begin serving traffic unprotected;
+- **Shared → Dedicated cutover** (`ADR-020`);
+- future placement promotion and any operation that moves a tenant's authoritative copy.
+
+These **fail closed**. An unknown recovery position is treated as unprotected, because at these moments an unverified assumption is exactly what the gate exists to catch.
+
+## 9. SQL Server semantics
+
+SQL Server remains the **only supported V1 runtime provider** (`ADR-017`). The managed chain is:
+
+**Full baseline + Differential + Transaction Log**, where the policy requires point-in-time recovery.
+
+Binding statements:
+
+- **Transaction-log backups alone are not a backup strategy.** They restore only onto a full baseline.
+- **A differential depends on its full baseline.** A chain whose base has been lost or superseded is not restorable as intended.
+- **Log recovery requires an appropriate recovery model** and an unbroken chain.
+
+Indicative default schedules — full weekly, differential daily, log every fifteen minutes — are **policy values, not architectural constants**, and higher log frequency is expected where the recovery-point requirement is tighter.
+
+**Recovery model: detect, report, and degrade readiness — never change automatically.** Switching a database to `FULL` starts transaction-log growth that will fill a disk unless log backups are already running; performing that switch automatically, on a database that by definition is misconfigured, risks converting a durability gap into an outage. Changing recovery model is an explicit administrative act.
+
+**SQL Server options.** `CHECKSUM` on by default. `COMPRESSION` configurable, defaulting on where the edition supports it. **Where the deployed edition does not support backup compression, the provider takes an approved uncompressed backup rather than failing the run** — an unavailable capability is not a policy violation, and classifying it as one would report a healthy database unprotected. The exception is a policy that explicitly marks compression **mandatory**, which is then a genuine policy failure. Capability discovery beyond that is a Phase B implementation concern, not an architectural one. **`COPY_ONLY` is not used for the managed full chain** — a copy-only full does not reset the differential base, so a chain built on one silently produces differentials anchored to an older full. Copy-only remains available as an explicit break-glass capability for ad-hoc backups taken outside the managed chain.
+
+**Backup encryption** is a policy capability. V1 relies on approved storage-level encryption at rest rather than requiring SQL Server native certificate-based backup encryption, and **encryption keys and certificates are never stored in the Platform database**. Native provider encryption remains an extension point.
+
+**Chain metadata.** Enough is recorded to reason about continuity: the provider backup-set identity, `first_lsn`, `last_lsn`, `database_backup_lsn`, and the backup-set GUID where available. Not every `msdb` column.
+
+**Database state** is classified before commands are issued. `ONLINE` is backable; `RESTORING`, `RECOVERY_PENDING`, `SUSPECT` and `OFFLINE` are not, and `READ_ONLY` has its own considerations. The provider classifies and reports rather than issuing commands blindly.
+
+## 10. Provider boundary
+
+Backup operations are reached through a provider abstraction — conceptually `ITenantDatabaseBackupProvider` — with a SQL Server implementation.
+
+**`Full`, `Differential` and `TransactionLog` are SQL Server vocabulary, not universal domain concepts.** They are owned by the SQL Server provider, and a future provider registers its own operation vocabulary rather than being forced into SQL Server's. Oracle would express its chain through RMAN and archived redo; PostgreSQL through WAL and physical or logical mechanisms. Inventing a lossy universal enum now would encode SQL Server's model as the architecture and make the first non-SQL-Server provider a rewrite.
+
+The Application layer never constructs backup SQL. Command generation, quoting and provider metadata extraction are Infrastructure concerns.
+
+`TS-Provider` remains **Deferred**; no Oracle or PostgreSQL runtime is planned.
+
+## 11. Credentials, destinations and secrets
+
+**The ERP runtime credential must not hold backup privileges.** `BACKUP DATABASE` reads the entire database to a file of the caller's choosing; granting that to the identity serving web requests widens the blast radius of any application-level compromise from "what the ERP can query" to "a complete copy of the database, anywhere the server can write".
+
+Three authorities are conceptually distinct and should not be silently merged:
+
+| Authority | Purpose |
+|---|---|
+| Runtime | Serve tenant ERP requests |
+| Migration | Apply DDL (`ADR-018`) |
+| Backup / recovery | Execute backups and restore verification |
+
+The current development environment is **integrated-security-only**, so the backup identity in V1 must be expressible as a Windows/service identity rather than assuming a SQL username and password. No specific development identity is fixed by this ADR.
+
+**Destinations** are referenced by a trusted `BackupDestinationKey` resolved from Infrastructure configuration. The Platform database stores the key, a safe artifact reference and provider identifiers — **never** a storage password, access key, SAS token, signed URL, or any credential-bearing path.
+
+**The destination is selected exclusively through that trusted reference.** A caller-, tenant-, or user-supplied filesystem path, UNC path, URL, storage endpoint or credential-bearing reference **must never** determine where a backup is written. The key is the only input the request or Application layer contributes; resolution from the key to a physical location happens entirely in Infrastructure, against trusted configuration. This closes destination injection, which is the sharpest edge of the capability: `BACKUP DATABASE` writes a complete copy of the database to wherever it is told, so an attacker who can influence the destination has exfiltration without needing to read a single row through the application. The Infrastructure provider may additionally validate a resolved destination — existence, writability by the SQL Server service identity, capacity — but validation narrows an already-trusted destination and **must not** become a path by which an untrusted one is accepted.
+
+**An operational constraint worth recording because it surprises people:** SQL Server writes backup files as the **SQL Server service identity**, not as the application process. A destination the application can write to is not necessarily one the server can, and vice versa. Destination validation must be expressed in terms of the server's access.
+
+**Artifact naming** is deterministic and non-secret: physical database identity, timestamp, operation type and run identifier. Customer or company names are not required and should not be used.
+
+## 12. Customer-managed databases
+
+`ADR-021` is authoritative and unchanged: backup execution for a `CustomerManaged` database belongs to the **customer or their DBA** by default, because the platform owns neither the server nor the data's disposition, and creating and retaining backups is an act of custody rather than a technical convenience.
+
+Consequences here:
+
+- The platform **does not attempt** backup execution against a customer-managed database — there is no supported runtime connectivity path to one (`ADR-021`), and inventing one for backups would contradict that.
+- Recovery readiness is reported as `Unknown` or an explicit externally-managed state. It is **never** reported `Protected` on the strength of a customer's assertion. This mirrors `ADR-018`'s existing rule that customer-executed migrations are verified against observed history rather than accepted on assertion.
+- Cutover to an endpoint whose recovery position is simply unknown is not acceptable either (`ADR-020`); the obligation is to **confirm** the arrangement, not to execute it.
+
+Delegated backup — where a customer explicitly contracts the platform to protect their database — requires the connectivity and credential model `ADR-021` defers, and is not enabled by this ADR.
+
+## 13. Scheduling and fleet orchestration
+
+Scheduling is owned by the **platform orchestration layer** — a background service evaluating policy across the physical database registry — not by SQL Agent.
+
+SQL Agent is per-server: it does not exist on a customer-managed endpoint, it fragments ownership across servers, and it cannot produce a fleet-wide view of which databases are due or protected. It may remain a deployment-level implementation detail; it is not the domain authority.
+
+Scale rules mirror `ADR-018`'s migration orchestration:
+
+- discovery is over **physical `TenantDatabase`**, never over assignments;
+- **keyset paging**, not `OFFSET`;
+- a shared database is evaluated and backed up **once**, regardless of tenant count;
+- no timer per tenant, and bounded execution concurrency.
+
+## 14. Multi-instance execution ownership
+
+Two platform instances must not run overlapping managed backups of the same physical database.
+
+The **planned** mechanism is the one `ADR-018` validated for migrations: a SQL Server application lock (`sp_getapplock`) at **Session** scope, taken **in the target database**, on the connection issuing the operation. Session scope is the attractive property — SQL Server releases the lock when the session ends, so a crashed holder leaves neither a stuck lock nor a permanently blocked resource, with no lease row, reaper or wall-clock assumption.
+
+**This mechanism is adopted as the intended V1 approach, and its sufficiency for backups is not yet established.** See "Ownership is not the same as server-side operation state" below; the difference between migrations and backups is duration, and duration is exactly what this mechanism's failure mode is sensitive to.
+
+**The resource namespace is distinct from migration's.** Backup and migration locks must not collide by accident or be released by the wrong operation:
+
+```
+TenantStorage:Migration:<physical database identity>
+TenantStorage:Backup:<physical database identity>
+```
+
+**These namespaces are deliberately non-contending.** Two distinct `sp_getapplock` resources do not exclude each other, and that is the intended behaviour, not an oversight. The two locks solve two different problems: migration ownership prevents a second migration of the same database, and backup ownership prevents a second platform-managed backup operation of the same database. Neither is intended to exclude the other, and **no cross-lock arrangement is required or permitted** — no shared coordination resource, no dual acquisition, no migration taking the backup lock, no backup taking the migration lock. A reader who expects these namespaces to serialise migration against backup has misread their purpose.
+
+**Granularity: one backup lock per physical database**, not per backup type. Serialising the managed chain per database is the conservative choice: full, differential and log operations participate in one chain whose continuity is easier to reason about when only one of them can be in flight. Splitting by type is a possible future optimisation once there is evidence it is needed and safe.
+
+### Migration and backup may coexist
+
+**Decision: all managed SQL Server backup types — full, differential and transaction log — may run while a tenant schema migration is in progress, and a migration may begin while any backup type is running.** There is no architectural exclusion between them.
+
+The reasoning is that the feared failure does not exist:
+
+- **SQL Server `BACKUP DATABASE` is an online operation** that produces a transactionally consistent recoverable database image. It captures data pages together with enough transaction log to bring the restored database to a consistent point; it does not photograph whatever half-written state happens to be on disk.
+- **EF Core executes SQL Server migration work transactionally according to provider and migration semantics.** A backup overlapping a multi-migration orchestration run may therefore represent a legitimate **intermediate committed migration state** — some migrations applied, others not yet.
+- **That state is not corrupt, and it is already a state the architecture names.** On restore, `ADR-018` schema health classifies the database from its actual `tenant.__EFMigrationsHistory` — `PendingMigrations`, `UpToDate`, or another supported compatibility state — and the migration orchestrator can subsequently advance a valid behind database exactly as it would advance any other. A restored database that is behind is a database to migrate, not a database to distrust.
+
+**Therefore overlap with a schema migration is not a reason to declare a backup invalid.** An earlier draft of this ADR asserted that a full or differential taken mid-migration "captures a half-applied schema"; that claim was wrong and has been withdrawn.
+
+**Deliberate limit on the transactionality claim.** This ADR does **not** assert that every possible EF Core migration is a single atomic transaction — that guarantee depends on provider behaviour and on what individual migrations contain, and the architecture must not rest on it. The precise and sufficient statement is narrower: *SQL Server backup yields a transactionally consistent database restore point, and any committed intermediate migration state it contains is evaluated through `ADR-018`'s migration-history compatibility model after restore.* Correctness comes from the backup's consistency plus post-restore classification, not from an assumed migration atomicity.
+
+**Log backups in particular must keep running during a migration.** A migration is when the transaction log grows fastest, which makes it precisely the wrong moment to suspend log backups: doing so risks both uncontrolled log growth and a widening recovery-point gap.
+
+**I/O contention is real, and it is an operational concern rather than a correctness one.** Migration and backup compete for I/O, CPU, storage bandwidth and transaction-log activity, and a large full or differential overlapping a fleet migration window will slow both. A scheduler **may** therefore prefer to avoid scheduling large full and differential backups inside planned fleet migration windows. This is capacity management and belongs to scheduling policy — it is **not** a data-correctness invariant, and it must not be implemented as a hard architectural exclusion or enforced through locking.
+
+### Ownership is not the same as server-side operation state
+
+`sp_getapplock` protects **platform orchestrator ownership**: it establishes which platform worker is entitled to run a managed backup of a given physical database. It does **not**, by itself, prove that no server-side `BACKUP` operation exists — and after a client session is lost, those two facts can diverge.
+
+The potential window:
+
+1. Worker A acquires the session-scoped backup applock in the target database.
+2. Worker A issues `BACKUP DATABASE`.
+3. Worker A's client connection or session dies.
+4. SQL Server releases the applock with the session.
+5. The server-side `BACKUP` may still be aborting or winding down.
+6. Worker B acquires the now-free backup applock.
+7. Worker B starts a second `BACKUP` while A's operation is still active on the server.
+
+Concurrent `BACKUP` commands against one database do not block each other in SQL Server, so this would not surface as an error. Even where it is harmless to database correctness, it produces duplicate work, ambiguous run ownership, contention for the same I/O, and potential confusion in chain and reporting metadata — for example ambiguity about which full anchors subsequent differentials.
+
+**This ADR does not claim that window is closed.** Session-scoped ownership is proven for migrations, which are short; backups are long-running, and the assumption that a dead client promptly stops a server-side `BACKUP` is inherited rather than demonstrated.
+
+**Binding requirement.** Before **Phase B** may be considered production-ready, real SQL Server validation **must** establish the observable behaviour when the client connection or session terminates during an active `BACKUP` command. The empirical test belongs to Phase B implementation, not to this document; the architecture specifies the gate, not its execution. Test shape, conceptually:
+
+1. create a disposable SQL Server test database — **never** a production or tenant database;
+2. make the backup long-running enough to observe;
+3. acquire the backup session applock;
+4. start `BACKUP DATABASE`;
+5. terminate or kill the client session in a controlled manner;
+6. observe the `BACKUP` request state in SQL Server, the lock release timing, the command cancellation/abort timing, and the disposition of the backup artifact;
+7. immediately have a second worker attempt ownership acquisition;
+8. determine whether a meaningful overlap window exists.
+
+**In-flight backup detection — the guard if the window is real.** If validation shows the applock can be released before SQL Server has fully stopped the prior operation, the provider or orchestrator **must**, before starting a managed backup, query SQL Server for an in-flight backup operation against the target physical database. Conceptually this inspects `sys.dm_exec_requests` and provider-supported request metadata; this ADR deliberately does not bind the implementation to one brittle query.
+
+**Guard semantics.** If an existing `BACKUP` operation against that physical database is detected, the worker **must not** start another platform-managed backup. The outcome is a **controlled non-execution** — conceptually `BackupAlreadyInProgress`, `OwnershipPending` or `SkippedInFlightOperation`, with the final vocabulary settled in Phase B alongside the run statuses in §15. **It must not be recorded as a backup failure**: nothing failed, and reporting it as failure would degrade recovery readiness on the strength of successful coordination.
+
+**Phase B exit gate.** Phase B **cannot** be considered production-ready until one of the following is proven:
+
+- **A.** Session loss terminates or aborts the server-side `BACKUP` sufficiently promptly that a subsequent ownership acquisition cannot result in overlapping platform-managed backup work; **or**
+- **B.** The provider implements an in-flight backup detection and reconciliation guard that prevents duplicate execution after ownership loss.
+
+This decision **must not** be allowed to drift to Phase C. **Phase C — fleet scheduling — depends on this proof**, because fleet scheduling multiplies single-database ownership ambiguity across every database in the estate: an unresolved window that is rare for one database becomes routine at fleet scale.
+
+**Session loss is loss of ownership.** If the connection carrying the lock dies, ownership is gone. A worker **must never** record `Succeeded` after losing session ownership merely because it previously issued a `BACKUP` command.
+
+**Success requires post-operation evidence, not command submission.** A completed `ExecuteNonQuery`, or a command having been submitted, is not evidence that a usable backup exists. The Phase B provider establishes success by reconciling with SQL Server backup metadata and expected artifact evidence after the operation completes — potentially the `msdb` backup set, the provider backup-set identity, and the chain metadata of §9. The exact reconciliation mechanism is a Phase B implementation concern; that reconciliation is **required** is an architectural one.
+
+## 15. Run history
+
+Backup execution history is **persisted in the Platform database** — conceptually `TenantDatabaseBackupRun`, one record per provider operation.
+
+Unlike migration, where a per-run summary suffices, backup history is required to answer questions no other state can:
+
+- when was the last successful full, differential and log backup?
+- is the current chain continuous, and what does the latest differential depend on?
+- what failed, when, and with what classification?
+- which artifacts have been verified, and when?
+- is retention about to remove something the chain still needs?
+
+Recorded per run: physical database, operation type, start and completion, status, safe destination reference, provider backup identity, size where available, provider chain metadata, a **safe error summary**, and verification state.
+
+Proposed run statuses: `Pending`, `Running`, `Succeeded`, `Failed`, `SkippedOwnershipHeld`, `SkippedInFlightOperation`, `BlockedByPolicy`, `VerificationFailed`. These describe **execution**; they are not recovery readiness, which is derived from the accumulated evidence. The two skip statuses are **not failures** — they record that coordination worked — and the final vocabulary for the in-flight case is settled in Phase B per §14.
+
+**`Succeeded` requires post-operation evidence.** A run is recorded successful on reconciled provider evidence that the backup set exists and is what was expected, never on the strength of a command having been submitted or a `ExecuteNonQuery` having returned. This is the run-history expression of the ownership rule in §14: a worker that lost its session lost the right to claim success regardless of what it issued.
+
+**No blind retry.** Transient conditions — connection establishment, lock contention, transient storage errors — may be retried, bounded. A deterministic provider or command failure is recorded, not retried, for the same reason `ADR-018` gives for migrations: retrying a deterministic failure spins instead of failing, turning a clear signal into a hang.
+
+Run history is itself operational data with a finite useful life, and it accumulates fastest of anything in this model — a fifteen-minute log cadence across a growing fleet is the dominant row source. **Backup-run metadata therefore requires a bounded retention or archival policy.** No specific duration is fixed by this ADR: the operative constraint is that history must remain long enough to answer the chain-continuity and verification questions above, which is a policy value rather than an architectural constant.
+
+## 16. Retention — the platform does not delete in V1
+
+**Decision: in V1 the platform does not physically delete backup artifacts.** Physical expiry is delegated to the trusted destination's storage lifecycle configuration. The platform records policy, retention expectation and observed artifact metadata, and can report artifacts outside expectation.
+
+This is deliberately conservative. Chain-aware deletion is the single easiest way to destroy recoverability while believing you are tidying up: removing a full that retained differentials and logs depend on leaves a set of files that look like backups and restore nothing. Shipping backup creation and backup deletion in the same first version would double the blast radius of the capability least able to tolerate it, and deletion is the half that is trivially deferred — storage lifecycle policies already solve it adequately.
+
+If platform-side deletion is added later it requires its own design and **must be chain-aware**. Naive "delete everything older than N days" logic is **prohibited**: retention must be expressed in terms of restore dependencies, not file age.
+
+## 17. Restore verification
+
+**A successful backup is not evidence of recoverability.** Verification is required at two levels, and they are not substitutes for each other.
+
+**Lightweight verification — `RESTORE VERIFYONLY`, frequently.** Cheap, and it confirms the backup set is readable and structurally intact with its checksums valid.
+
+**It is explicitly not proof of recoverability.** `VERIFYONLY` does not restore anything, does not exercise the chain, and cannot tell you whether the restored database would contain a usable tenant schema. Treating it as sufficient would be the comfortable mistake this section exists to prevent.
+
+**Actual restore verification — periodically, to a disposable database.** The only evidence that answers the real question. It restores a selected chain and confirms the restore completes, the database comes online, the tenant migration history is readable and at the expected position, and basic schema probes succeed.
+
+**Safety rules for verification restores** — these are binding:
+
+- a name drawn from a **reserved, system-controlled verification namespace** (see below), never a production name;
+- **never** a `TenantDatabaseAssignment` target, never routable, never serving traffic;
+- deterministic cleanup after the exercise;
+- and because a crashed process can leave one behind, a **maintenance sweep for stale verification databases**. A `finally` block is not sufficient. This repository already carries orphaned test databases from earlier work, which is the practical demonstration of why.
+
+**Reserved verification namespace.** Verification databases are created under a **reserved system-controlled prefix or equivalent structural marker** — conceptually `SSAS_Verify_<system-generated-id>`, though the exact literal should follow repository naming conventions rather than this example. "Deterministic naming" alone is not sufficient, because the sweep that consumes the naming convention is a `DROP DATABASE` operation, and a destructive operation must key on a namespace the platform owns rather than on a pattern a production database might one day match.
+
+**Eligibility for automated cleanup is a conjunction, not a pattern match.** A database may be dropped by the sweep only if it satisfies *all* of:
+
+- it carries the reserved system-controlled verification marker or namespace;
+- it matches the platform's known verification creation convention;
+- it exceeds an age or staleness threshold;
+- it is **not** registered as a `TenantDatabase`;
+- it has **no** `TenantDatabaseAssignment`;
+- it is not the target of a currently running verification.
+
+**A database must never be dropped solely because a loose string pattern happened to match its name.** The precise mechanism by which each condition is evaluated is a Phase D implementation detail; the boundary of what automated deletion may touch is architectural and is fixed here.
+
+Cadence for both levels is policy-driven, not fixed here.
+
+## 18. Cutover gate
+
+`ADR-020` requires backup and recovery readiness before a dedicated target becomes production-active. This ADR makes that requirement concrete.
+
+Before **first production activation** of a `PlatformManaged` dedicated target:
+
+1. a backup policy is assigned and enabled;
+2. the recovery model is valid for what the policy requires;
+3. **at least one successful full backup** has been taken — the chain is initialised, not merely scheduled;
+4. where point-in-time recovery is required, the **log chain is established**;
+5. **at least one successful actual restore verification** has completed;
+6. `RecoveryReadinessStatus` is `Protected`.
+
+**On requirement 5 — requiring a real restore, not merely a successful backup.** This is the most demanding requirement here and it is deliberate. Before cutover the tenant's data sits in the shared database, covered by a chain that has been exercised repeatedly across many tenants. The instant the assignment flips, that coverage stops applying and the authoritative copy lives on a chain that has never been restored even once. Accepting "a backup file exists" as sufficient accepts an unexercised chain at precisely the moment durability responsibility transfers — and the first restore would then be attempted during an incident, which is the worst possible time to discover the chain does not work.
+
+The gate is on `RecoveryReadinessStatus`, **not** on `BackupEnabled = true`. Configuration is not protection.
+
+For `CustomerManaged` targets the obligation is to **confirm** the customer's arrangement rather than to execute it, and an unknown recovery position does not satisfy the gate.
+
+## 19. Shared restore semantics
+
+Restated prominently because it is the most likely misreading of this entire capability:
+
+**A shared physical database has one backup chain. Restoring it restores the database — and therefore every tenant in it.**
+
+"Restore tenant A to yesterday" is **not** a physical database restore on shared storage. Performing one would roll back every other tenant sharing that database.
+
+**`TS-Backup` does not provide tenant-level point-in-time recovery.** That is a different capability requiring export, extraction or logical reconstruction, and it is **out of scope** for this ADR. Dedicated placement is what makes database-level restore a per-tenant operation, and that remains one of its genuine advantages over the shared default (`ADR-017`).
+
+---
+
+# Decision Drivers
+
+- Durability must be demonstrable, not assumed.
+- A dedicated database must never be less protected than the shared database a tenant came from.
+- Availability and durability are different concerns and must fail differently.
+- The platform must not hold custody of customer data it was not asked to hold.
+- The blast radius of a first backup implementation must be bounded.
+- Provider-specific mechanics must not become architectural assumptions.
+- Secrets must not accumulate in the Platform database.
+
+---
+
+# Alternatives Considered
+
+## 1. Backup settings directly on `TenantDatabase` versus a separate policy entity
+
+**Rejected: columns on `TenantDatabase`.** Simpler initially, and for a single schedule it would be adequate. It was rejected because policy is the part of this model that will grow — three schedules, retention, destination, verification cadence, age tolerance, later tiers and provider settings — and `TenantDatabase` is read on the routing path. A separate entity also keeps the policy/evidence/readiness distinction visible in the model rather than only in prose.
+
+## 2. Reuse `MigrationManagementMode` versus a separate `BackupManagementMode`
+
+**Rejected: reuse.** The values would look identical today, which is exactly what makes the trap attractive. But the authorities are independent: a customer may permit platform migrations while their DBA retains backup responsibility, or the reverse. `ADR-018` already corrected this same conflation once, when hosting vocabulary was reused for migration authority and produced configurations that read as contradictions. Reusing it again would reintroduce a defect the architecture has already paid to fix.
+
+## 3. Runtime credential versus a dedicated backup identity
+
+**Rejected: runtime credential.** Convenient, and it needs no new configuration. Rejected because `BACKUP DATABASE` produces a complete copy of the database at a location of the caller's choosing; granting it to the request-serving identity means any application-level compromise escalates from query access to full data exfiltration. The separation costs configuration; the alternative costs containment.
+
+## 4. SQL Agent versus platform orchestration
+
+**Rejected: SQL Agent as the domain owner.** It is mature, well understood, and operationally familiar. Rejected because it is per-server: it cannot see the fleet, does not exist on customer-managed endpoints, and would split ownership of a policy the platform is accountable for across servers the platform may not administer. It remains usable as a deployment mechanism beneath a platform-owned policy.
+
+## 5. Platform deletes artifacts in V1 versus storage lifecycle ownership
+
+**Rejected: platform deletion in V1.** A complete backup manager arguably owns the whole lifecycle. Rejected on blast radius: chain-aware deletion is subtle, its failure mode is silent and unrecoverable, and storage lifecycle policies already handle expiry adequately. Deletion is also the easiest half to add later, once creation and verification are proven.
+
+## 6. `VERIFYONLY` only versus periodic real restore
+
+**Rejected: `VERIFYONLY` alone.** Cheap and frequent, and it does catch corrupt or truncated backup sets. Rejected as *sufficient* because it proves the file is readable, not that the database is recoverable — it never restores anything and never looks at what a restored database would contain. A chain can pass `VERIFYONLY` indefinitely and still fail its first real restore.
+
+## 7. Successful backup versus actual restore verification before first cutover
+
+**Rejected: successful backup alone.** It is the lower-friction gate and would rarely bite. Rejected because cutover is the specific moment a tenant moves from an exercised chain to an unexercised one; if verification is ever justified, it is justified there. See §18.
+
+## 8. Gate ERP traffic on backup degradation versus lifecycle gates only
+
+**Rejected: gating ERP traffic.** Superficially the "safe" choice. Rejected because it is not safe — it converts a durability concern, where the data is intact and correct, into a customer-visible outage. It would also create an incentive to under-report degraded protection, which is the opposite of what a durability capability needs.
+
+## 9. Universal backup-type enum versus provider-scoped vocabulary
+
+**Rejected: a universal enum.** `Full`/`Differential`/`TransactionLog` is SQL Server's model. Mapping Oracle's RMAN and archived redo, or PostgreSQL's WAL, onto those three names would be lossy in both directions and would encode one provider's semantics as the architecture. Provider-scoped vocabulary costs a little indirection now and avoids a rewrite at the first non-SQL-Server provider.
+
+## 10. Excluding full and differential backups during migration versus permitting coexistence
+
+**Rejected: excluding full and differential backups during a migration.** An earlier draft of this ADR adopted that exclusion, permitting only log backups to overlap. It has the intuitive appeal of every restriction that sounds cautious, and it was rejected for two independent reasons.
+
+The first is that it is **technically unnecessary**. Its stated rationale — that a full or differential taken mid-migration captures a "half-applied schema" — is wrong. `BACKUP DATABASE` is online and yields a transactionally consistent restore point; what it can capture is a committed intermediate migration state, which `ADR-018`'s migration-history model already classifies and the orchestrator already knows how to advance. The exclusion protected against a failure that does not occur.
+
+The second is that it was **unenforceable as specified**. Migration and backup take distinct `sp_getapplock` resources, which by design do not contend; the ADR stated a rule no stated mechanism could realise. Closing that gap would have meant inventing cross-lock coordination — a shared exclusion resource, or one operation acquiring the other's lock — adding machinery, coupling two independent ownership concerns, and creating new deadlock and starvation surface, all to enforce a restriction that was not needed.
+
+**Removing the rule was therefore strictly better than enforcing it**: it resolves the gap by deletion rather than by construction, and it leaves the genuine concern — I/O contention — where it belongs, as a scheduling preference. See §14.
+
+---
+
+# Rationale
+
+The central decision is that **durability is a separate, independently observable dimension** — separate from schema health, separate from availability, and separate from configuration. Every other decision follows from taking that seriously.
+
+Keeping recovery readiness out of the traffic gate follows from it: a database whose backups are late is a durability problem, not an availability problem, and conflating them would produce outages in response to durability signals. Gating *cutover* on it follows equally: that is the one operation whose safety genuinely depends on demonstrated recoverability.
+
+Requiring evidence rather than configuration is the same principle applied to the model itself. `ADR-018` already established that a metadata column claiming a schema version the database does not have is worthless, and that observed history is the only trustworthy source. Recovery readiness inherits that: `Protected` means evidence exists, and `VERIFYONLY` alone is not the evidence the question requires.
+
+Deferring deletion and deferring RPO/RTO tiers are the same judgement in the other direction — the capability that must land first is the one that establishes protection and proves it, not the one that removes artifacts or classifies service levels.
+
+---
+
+# Consequences
+
+## Positive
+
+- Protection state is visible per physical database, and truthfully distinguishes "never protected" from "protection slipping".
+- Shared and dedicated semantics are correct and explicit, including the shared-restore limitation.
+- Dedicated durability becomes provable before a tenant depends on it.
+- Business availability is insulated from durability degradation.
+- Cutover can fail closed on recoverability rather than assuming it.
+- Backup credentials are separated from the request-serving identity, containing a real escalation path.
+- Secret scope in the Platform database stays limited to keys and references.
+- Provider-specific mechanics remain replaceable.
+
+## Negative
+
+- A privileged operational identity must be provisioned and managed.
+- Backup destinations must be configured and validated against the SQL Server service identity's access, which is an unfamiliar constraint.
+- Run history grows and needs its own retention.
+- Backup operations are long-running, complicating ownership and scheduling relative to migrations.
+- Restore verification consumes storage, time and server capacity.
+- Verification databases add a cleanup obligation with a known orphan failure mode.
+- A fourth health dimension increases the operational model operators must learn.
+- Retention split between platform policy and storage lifecycle means two places to look.
+
+---
+
+# Implementation Guidelines
+
+- Build the domain and readiness model before any backup command executes; policy, authority and ownership should exist before provider operations do.
+- Add deterministic RowVersion conflict coverage before introducing the recovery-readiness writer as the third writer on `TenantDatabase`.
+- Keep provider SQL entirely in Infrastructure; the Application layer never composes backup commands.
+- Resolve destinations only from the trusted `BackupDestinationKey`; never accept a path, UNC, URL or endpoint supplied by a caller.
+- Validate destinations in terms of the SQL Server service identity's access, not the application process's.
+- Record chain metadata from the first backup; reconstructing continuity retrospectively is far harder.
+- Treat session loss as loss of ownership, always, and establish success from reconciled provider evidence rather than from a completed command.
+- Never mark a customer-managed database `Protected` without verified evidence.
+- Give verification databases a reserved system-controlled namespace and a maintenance sweep, not just a `finally` block, and require the full eligibility conjunction of §17 before any automated `DROP`.
+
+## Phased implementation
+
+| Phase | Content |
+|---|---|
+| **A — Backup domain and recovery readiness** | `TenantDatabaseBackupPolicy`, `BackupManagementMode`, recovery-readiness status and observations, `TenantDatabaseBackupRun`, Platform migration, dimension-scoped recovery writer, deterministic RowVersion conflict test. **No backup execution.** |
+| **B — SQL Server provider, single database** | Trusted privileged identity, destination resolution, full/differential/log, `CHECKSUM`, compression policy, provider metadata, target-database ownership, **the session-loss empirical validation and its exit gate (§14)**, post-operation success reconciliation. |
+| **C — Fleet scheduling and orchestration** | Due evaluation, physical discovery, keyset paging, multi-instance ownership, run state, progress reporting. **Blocked on the Phase B exit gate.** |
+| **D — Verification and retention** | `RESTORE VERIFYONLY`, periodic disposable restore, verification state, reserved verification namespace and orphan cleanup eligibility, retention metadata and storage-lifecycle delegation. |
+| **E — Cutover integration** | Recovery-readiness gate in `ADR-020`, dedicated activation guard. |
+
+**Recommended first slice: Phase A.** Not backup execution. Policy, authority, readiness semantics and writer concurrency should be settled before any command touches a database, because those are the decisions the provider work will assume — and because Phase A is the slice that closes the outstanding RowVersion test gap while there are still only two live writers to reason about.
+
+**Phase B carries a binding exit gate.** It is not production-ready until the session-loss behaviour of a long-running `BACKUP` is empirically established on a real SQL Server against a disposable database, and either that behaviour is proven safe or the in-flight detection guard is implemented (§14). **Phase C must not begin on an unresolved gate** — fleet scheduling multiplies a single-database ownership ambiguity across the estate, converting a rare window into a routine one, and it is far cheaper to settle at one database than at a fleet.
+
+Backup metadata belongs to `PlatformDbContext`. A future Platform migration is expected; **no tenant migration is expected**, and backup metadata must not be placed in a tenant ERP database.
+
+## Audit
+
+Policy changes follow existing Platform audit conventions; execution runs record a stable operational actor identity.
+
+**Durability-affecting changes are audited explicitly.** These are the changes that alter whether — or by whom — a database is protected, and a change to any of them can move a database from protected to unprotected without any operation failing. Named explicitly so none is treated as ordinary configuration:
+
+- `BackupManagementMode` — who is permitted to execute backups at all;
+- `BackupDestinationKey` — where backups are written;
+- policy enabled or disabled;
+- schedule changes for any backup type;
+- retention expectation changes;
+- verification requirement and cadence changes;
+- any other materially recovery-affecting policy change.
+
+The audit record identifies the actor, the physical database, the previous and new values, and the time. Credential material and resolved physical destinations are **not** recorded — the destination key is, the secret behind it is not (§11).
+
+---
+
+# Compliance Rules
+
+1. Backup policy, run history and recovery readiness **must** attach to the physical `TenantDatabase`, never to a tenant or an assignment.
+2. Recovery readiness **must** remain a separate dimension; it **must not** be merged into `SchemaCompatibilityStatus`, `ConnectivityStatus`, `MigrationExecutionStatus`, or any derived general-health flag.
+3. The recovery-readiness writer **must** write only its own dimension, and **must not** write when it observed nothing.
+4. `BackupManagementMode` **must** be modelled separately from `MigrationManagementMode` and **must not** be inferred from `HostingMode` or `StorageMode`.
+5. The ERP runtime credential **must not** hold backup privileges.
+6. Credential material, storage keys, tokens and signed URLs **must not** be stored in the Platform database.
+7. The platform **must not** execute backups against a `CustomerManaged` database by default, and **must not** report one `Protected` without verified evidence.
+8. Normal ERP traffic **must not** be gated on recovery readiness.
+9. Dedicated production activation and Shared → Dedicated cutover **must** be gated on `RecoveryReadinessStatus`, and **must** fail closed on `Unknown`.
+10. First production activation of a dedicated target **must** require a successful full backup, a valid recovery model, an established log chain where required, and at least one successful actual restore verification.
+11. `Protected` **must** be derived from evidence, never from policy being enabled.
+12. Transaction-log backups **must not** be presented as a sufficient strategy on their own.
+13. The recovery model **must not** be changed automatically by the platform.
+14. `COPY_ONLY` **must not** be used for the managed full chain.
+15. Managed backup of one physical database **must** hold single-writer ownership, in a resource namespace distinct from migration ownership. The migration and backup namespaces **must not** be made to contend with each other, and no cross-lock coordination between them **may** be introduced.
+16. Loss of the owning session **must** be treated as loss of ownership; `Succeeded` **must not** be recorded afterwards, and **must not** be recorded on the strength of a submitted or completed command without post-operation provider evidence.
+17. Full, differential and transaction-log backups **may** run concurrently with a tenant schema migration, and a migration **may** begin while a backup is running. Avoidance of large backups during migration windows **may** be a scheduling preference; it **must not** be implemented as a correctness invariant or enforced through locking.
+18. The platform **must not** physically delete backup artifacts in V1; any future deletion **must** be chain-aware.
+19. Restore verification databases **must never** be routable, assigned, or serve traffic, and **must** be cleaned up deterministically.
+20. `RESTORE VERIFYONLY` **must not** be treated as proof of recoverability.
+21. Fleet operations **must** discover physical databases with keyset paging and **must** process a shared database once.
+22. SQL Server backup-type vocabulary **must** remain provider-scoped.
+23. Backup destinations **must** be selected exclusively through a trusted configuration reference such as `BackupDestinationKey`. Caller-, tenant- or user-provided filesystem paths, UNC paths, URLs, storage endpoints and credential-bearing references **must not** determine the physical backup destination.
+24. A database **must not** be eligible for automated verification cleanup unless it carries the platform's reserved system-controlled verification namespace or marker **and** satisfies the additional ownership, registration and age criteria of §17. Destructive cleanup **must not** be driven by a loose name-pattern match alone.
+25. Phase B **must not** be considered production-ready until SQL Server's behaviour on client/session loss during an active `BACKUP` has been empirically validated against a disposable database, and either that behaviour is proven safe or an in-flight backup detection guard is implemented. Phase C **must not** proceed on an unresolved gate.
+26. A detected in-flight backup against the target physical database **must** prevent a second platform-managed backup, and **must** be recorded as a controlled skip rather than as a backup failure.
+27. Dedicated production activation and Shared → Dedicated cutover **must** require `RecoveryReadinessStatus` = `Protected`; no other status, including `Degraded` or `Unknown`, satisfies the gate.
+28. Durability-affecting policy changes — including `BackupManagementMode` and `BackupDestinationKey` — **must** be audited under existing Platform audit conventions, without recording credential material or resolved physical destinations.
+
+---
+
+# Risks
+
+| Risk | Mitigation |
+|---|---|
+| Backup runs long and its lock-bearing connection is interrupted | Session-scoped ownership; session loss is ownership loss; no success recorded after it without reconciled provider evidence |
+| The applock is released while a server-side `BACKUP` is still winding down, letting a second worker overlap | Acknowledged as unproven (§14); binding Phase B empirical validation on a disposable database, with an in-flight detection guard as the alternative exit; Phase C blocked until resolved |
+| Verification-database sweep drops a database it should not | Reserved system-controlled namespace plus a conjunction of ownership, registration and age criteria; pattern-only matching prohibited |
+| A backup destination is influenced by caller input | Destination resolved only from a trusted `BackupDestinationKey` in Infrastructure; caller-supplied paths, UNC, URLs and endpoints prohibited |
+| Durability weakened by a quiet policy change rather than a failed operation | `BackupManagementMode`, destination key, schedules, retention and verification requirements explicitly audited |
+| Chain continuity becomes unverifiable | Record chain metadata from the first backup; platform history authoritative over `msdb` |
+| Storage lifecycle deletes a chain dependency | Retention expectation recorded and reported; future platform deletion must be chain-aware |
+| Restore verification consumes capacity | Policy-driven cadence; disposable databases; separate from frequent lightweight verification |
+| Verification databases orphaned by a crash | Deterministic naming and a maintenance sweep, not only `finally` |
+| Privileged backup identity is over-granted | Separate authority from runtime and migration; least privilege for the operations required |
+| Operators read `Protected` as tenant-level restorability on shared storage | Shared restore semantics stated explicitly in this ADR and in operator-facing reporting |
+| A fourth dimension makes health harder to read | Each dimension stays independently observable and actionable; no composite flag |
+
+---
+
+# Future Considerations
+
+- Formal RPO and RTO service tiers (deferred; the operative V1 field is maximum tolerable backup age).
+- Platform-side chain-aware retention and deletion.
+- Delegated backup for customer-managed databases, requiring `ADR-021`'s connectivity and credential model.
+- Tenant-level logical recovery — a separate capability, not an extension of physical backup.
+- Cross-region disaster recovery, geo-replication and automatic failover.
+- Native provider backup encryption with managed key material.
+- Administrative APIs and operator UI, after the execution model is stable.
+- Non-SQL-Server backup providers, gated on `TS-Provider`.
+- Backup destination capacity monitoring, where the destination type makes it meaningful.
+
+---
+
+# Out of Scope
+
+- Oracle and PostgreSQL backup providers.
+- Tenant-level logical or point-in-time restore.
+- Cross-region DR, geo-replication, automatic failover.
+- Formal RPO/RTO tiering.
+- Operator UI and full administrative HTTP API in the first slice.
+- Customer-managed backup execution.
+- Platform-side artifact deletion in V1.
+- Dedicated provisioning and cutover implementation (`ADR-020`).
+- Notification, alerting and paging subsystems.
+
+---
+
+# Related Documents
+
+- `ADR-013` — Primary Key and Identifier Strategy
+- `ADR-017` — Tenant Storage Topology and Routing
+- `ADR-018` — Tenant Schema Health and Migration Orchestration
+- `ADR-019` — Dynamic Tenant Placement Policy
+- `ADR-020` — Shared-to-Dedicated Tenant Migration and Cutover
+- `ADR-021` — Customer-Managed Tenant Database Connectivity and Operations
+
+---
+
+# Review Criteria
+
+This ADR should be reviewed if:
+
+- a second database provider is adopted;
+- delegated backup for customer-managed databases is contracted;
+- platform-side artifact deletion is proposed;
+- tenant-level logical recovery is required;
+- formal RPO/RTO tiers are introduced;
+- the cutover verification requirement is challenged on operational cost;
+- backup health is proposed as an ERP traffic gate.
+
+---
+
+# Decision Summary
+
+| Question | Decision |
+|---|---|
+| Scope unit | Physical `TenantDatabase` |
+| Shared backup | One chain per physical database |
+| Dedicated backup | Independent chain per database |
+| Policy model | Separate `TenantDatabaseBackupPolicy` entity |
+| Run history | Persisted (`TenantDatabaseBackupRun`) |
+| Recovery readiness | Separate fourth dimension |
+| Backup authority | Separate `BackupManagementMode` |
+| Normal ERP traffic gated on backup health | **No** |
+| Dedicated cutover gated on recovery readiness | **Yes** |
+| First cutover requires full backup | **Yes** |
+| First cutover requires actual restore verification | **Yes** |
+| Platform deletes artifacts in V1 | **No** |
+| Retention owner in V1 | Storage lifecycle; platform tracks expectation |
+| `RESTORE VERIFYONLY` | Yes — frequent, not sufficient alone |
+| Periodic actual restore | **Yes** |
+| Automatic recovery-model change | **No** |
+| Runtime credential used for backup | **No** |
+| Separate backup identity | **Yes** |
+| `CHECKSUM` | On by default |
+| `COMPRESSION` | Configurable, default on where supported |
+| `COPY_ONLY` for managed chain | **No** |
+| Scheduling owner | Platform orchestration, not SQL Agent |
+| Ownership mechanism | `sp_getapplock`, Session scope, target database — **planned; sufficiency conditional on Phase B validation** |
+| Lock namespace | Distinct from migration, and deliberately non-contending |
+| Migration/backup cross-lock | **None — not required, not permitted** |
+| Lock granularity | One per physical database |
+| Log backup during migration | Permitted |
+| Full/differential during migration | **Permitted** |
+| Migration/backup scheduling separation | Operational preference only, not a correctness invariant |
+| Session-loss behaviour during `BACKUP` | **Unproven — binding Phase B empirical validation** |
+| In-flight backup detection guard | Required if validation shows an overlap window |
+| Duplicate-backup outcome | Controlled skip, never a failure |
+| Success criterion | Reconciled post-operation provider evidence |
+| Phase C start | Blocked on the Phase B exit gate |
+| Backup destination selection | Trusted `BackupDestinationKey` only; caller-supplied paths/UNC/URLs prohibited |
+| Verification database naming | Reserved system-controlled namespace; cleanup eligibility is a conjunction |
+| `msdb` role | Supporting evidence; Platform authoritative |
+| Customer-managed backup owner | Customer / DBA |
+| Shared single-tenant restore | **Not supported** |
+| RPO/RTO fields in V1 | Deferred |
+| Provider | SQL Server only in V1 |
+| `TS-Provider` | Deferred |
+
+---
+
+# Revision History
+
+| Version | Date | Author | Change |
+|---|---|---|---|
+| 1.0 | 2026-08-14 | Solution Architecture Team | Initial decision: backup and recovery orchestration for physical tenant databases — per-database policy and chains, recovery readiness as an independent fourth dimension with its own writer, separate `BackupManagementMode`, separate backup credential, SQL Server full/differential/log semantics with no automatic recovery-model change, platform orchestration and `sp_getapplock` ownership in a namespace distinct from migration, persisted run history, no platform-side deletion in V1, two-level restore verification, and a binding pre-cutover recovery-readiness gate requiring an actual restore verification. Pre-approval revisions arising from architecture review: managed backups of all types may coexist with schema migration (the earlier full/differential exclusion was unnecessary and unenforceable across distinct lock namespaces, and is withdrawn along with its "half-applied schema" rationale, leaving I/O contention as a scheduling preference); session-scoped ownership is stated as planned rather than proven, with a binding Phase B empirical session-loss validation, an in-flight backup detection guard, a controlled duplicate-backup skip outcome, post-operation evidence as the success criterion, and Phase C blocked on that gate; destination selection restricted to a trusted key by compliance rule; verification-database cleanup bound to a reserved system-controlled namespace and an eligibility conjunction; durability-affecting policy changes explicitly audited |

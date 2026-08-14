@@ -2,7 +2,7 @@
 id: ADR-021
 title: Customer-Managed Tenant Database Connectivity and Operations
 category: Architecture Decision Record
-version: 1.2
+version: 1.3
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -519,6 +519,8 @@ The consistent principle is the one this ADR already applies to tenant deletion:
 
 What the platform **is** obliged to do regardless of ownership is **know and record** the position: who owns backup for each customer-managed endpoint, and whether that arrangement is asserted or verified. An unknown recovery position must be reported as unknown rather than presumed adequate — matching this ADR's existing rule that customer assertions are never accepted as evidence. Where a customer delegates backup explicitly, the required permissions become part of the credential permission set and the arrangement becomes a contracted obligation with a stated recovery-point objective.
 
+**`ADR-022` records this as `BackupManagementMode`**, a dimension deliberately separate from `MigrationManagementMode` — a customer may permit platform migrations while retaining backup responsibility, or the reverse — and never inferred from `HostingMode`. A `CustomerManaged` database defaults to `CustomerDba`: the platform attempts no backup execution against it, because no supported runtime connectivity path to one exists in this ADR, and it **never** reports such a database `Protected` on the strength of an assertion. Delegated backup requires the connectivity and credential model this ADR defers, and is not enabled by `ADR-022`.
+
 ---
 
 # Implementation Guidelines
@@ -623,3 +625,4 @@ This ADR should be reviewed if:
 | 1.0 | 2026-08-13 | Solution Architecture Team | Initial version — customer-managed tenant database connectivity and operations; architecture-ready, implementation deferred |
 | 1.1 | 2026-08-13 | Solution Architecture Team | Review hardening: added endpoint owner binding; added network-targeting/SSRF controls, port and protocol constraints, and DNS re-validation; prohibited public SQL in V1; added the binding TLS trust rule; added secret reference format, namespace containment, IAM scoping and owner binding; specified runtime/migration credential permission sets and the `CustomerDba` inference; expanded outage behaviour to platform-only surfaces and session protection; raised drift to a mandatory Ready criterion; declared Azure SQL out of scope; added customer-data deletion, audit field set, and the storage permission-family follow-up |
 | 1.2 | 2026-08-14 | Solution Architecture Team | Added backup and recovery ownership: platform-managed backup may be platform-executed, customer-managed backup remains customer/DBA responsibility unless explicitly delegated; unverified recovery position must be reported as unknown |
+| 1.3 | 2026-08-14 | Solution Architecture Team | Recorded backup ownership as `ADR-022`'s `BackupManagementMode`, separate from migration authority and never inferred from `HostingMode`; customer-managed defaults to `CustomerDba` and is never reported Protected on assertion |

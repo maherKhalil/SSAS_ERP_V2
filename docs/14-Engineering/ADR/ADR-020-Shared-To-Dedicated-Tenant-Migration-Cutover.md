@@ -2,7 +2,7 @@
 id: ADR-020
 title: Shared-to-Dedicated Tenant Migration and Cutover
 category: Architecture Decision Record
-version: 1.4
+version: 1.5
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -424,12 +424,18 @@ Identifier preservation is mandated rather than left to tooling choice because t
 
 **Binding rule. The gate is defined here; its implementation arrives with `TS-Backup` (`ADR-017`).**
 
-A dedicated target database **must not** become production-active — must not receive the assignment flip, and must not serve traffic — until the required backup and recovery protection is established on it. At minimum:
+A dedicated target database **must not** become production-active — must not receive the assignment flip, and must not serve traffic — until the required backup and recovery protection is established on it. `ADR-022` defines the mechanism and makes these prerequisites concrete:
 
-1. a backup **policy exists** for the target physical database;
-2. the **backup chain is initialised** (a full baseline has been taken, not merely scheduled);
-3. the **recovery model is appropriate** for the required recovery-point objective;
-4. a **restore-verification policy** is established for it.
+1. a backup **policy exists** and is enabled for the target physical database;
+2. the **recovery model is appropriate** for what that policy requires;
+3. the **backup chain is initialised** — at least one successful **full backup** has been taken, not merely scheduled;
+4. where point-in-time recovery is required, the **transaction-log chain is established**;
+5. at least one **successful actual restore verification** has completed — `RESTORE VERIFYONLY` alone does not satisfy this;
+6. `RecoveryReadinessStatus` is **`Protected`** (`ADR-022`).
+
+The gate is on demonstrated readiness, **not** on backup being configured or enabled. An `Unknown` recovery position fails the gate.
+
+Requirement 5 is the demanding one and is deliberate: before cutover the tenant is covered by the shared database's repeatedly-exercised chain, and the flip moves it onto a chain that has never been restored once. Accepting an unexercised chain at the moment durability responsibility transfers means the first restore would be attempted during an incident.
 
 The reason this is a gate rather than a follow-up task is the asymmetry of the moment. Before cutover, the tenant's data sits in the shared database and is covered by that database's existing, exercised backup chain. **The instant the assignment flips, that coverage stops applying to this tenant** — the authoritative copy is now the dedicated database. If the dedicated database has no verified chain, the cutover has silently moved the tenant from a protected position to an unprotected one, while every health signal reports success. That is a strict regression in durability delivered by an operation sold as an upgrade.
 
@@ -546,3 +552,4 @@ This ADR should be reviewed if:
 | 1.2 | 2026-08-13 | Solution Architecture Team | Review hardening: freeze extended to all tenant writers with drain, scope, timeout and release rules; added split-brain sequence, multi-node routing and connection-pool rules; required `RoutingVersion` **and** invalidation; excluded `rowversion` from preservation and required client token refresh; required the copy to bypass audit-stamping with audit-fidelity validation; added object-type coverage and fail-fast; added non-vacuity validation; replaced rollback with two explicit regimes and a post-cutover-write marker; made retention reason-aware; scoped identifier preservation to empty dedicated targets |
 | 1.3 | 2026-08-13 | Solution Architecture Team | Editorial: replaced stale rollback wording in Risks and Consequences that implied source retention alone makes post-cutover flip-back safe; updated the split-brain risk to the `RoutingVersion`-plus-invalidation model; scoped Compliance Rule 4 to the V1 Shared → empty Dedicated path and excluded `rowversion`. No decision changed |
 | 1.4 | 2026-08-14 | Solution Architecture Team | Added the binding pre-cutover backup/recovery readiness gate: a dedicated target may not become production-active until policy, initialised chain, appropriate recovery model and restore-verification policy exist |
+| 1.5 | 2026-08-14 | Solution Architecture Team | Made the pre-cutover recovery-readiness gate concrete against `ADR-022`: enabled policy, valid recovery model, successful full baseline, established log chain where required, at least one successful actual restore verification, and `RecoveryReadinessStatus` = Protected |

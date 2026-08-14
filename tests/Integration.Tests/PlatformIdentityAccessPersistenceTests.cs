@@ -108,7 +108,10 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "AccountActionTokens",
             "AuthenticationAccounts",
             "AuthenticationSessions",
-            "Companies",
+            // Company moved to the tenant ERP database (ADR-017). The platform table is RENAMED and
+            // retained rather than dropped, so the move is reversible and verifiable; a later, explicitly
+            // authorized slice retires it. Its presence here is the assertion that it was not dropped.
+            "Companies_MigratedToTenant",
             "Identities",
             "LocalizationCatalogStates",
             "PlatformAuthenticationSessions",

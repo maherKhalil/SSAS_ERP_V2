@@ -32,7 +32,7 @@ public static class CompanyEndpointTestServices
   {
     services.TryAddSingleton<ICompanyRepository, NoOpCompanyRepository>();
     services.TryAddSingleton<ICompanyReadService, NoOpCompanyReadService>();
-    services.TryAddSingleton<IPlatformUnitOfWork, NoOpUnitOfWork>();
+    services.TryAddSingleton<ITenantUnitOfWork, NoOpUnitOfWork>();
     services.TryAddSingleton<IDateTimeProvider, NoOpClock>();
 
     services.AddScoped<CreateCompanyCommandHandler>();
@@ -65,7 +65,7 @@ public static class CompanyEndpointTestServices
       Task.FromResult(new PagedResult<CompanyDto>([], pageNumber < 1 ? 1 : pageNumber, pageSize < 1 ? 1 : pageSize, 0));
   }
 
-  private sealed class NoOpUnitOfWork : IPlatformUnitOfWork
+  private sealed class NoOpUnitOfWork : ITenantUnitOfWork
   {
     public Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default) =>
       Task.FromResult(Result.Success(0));

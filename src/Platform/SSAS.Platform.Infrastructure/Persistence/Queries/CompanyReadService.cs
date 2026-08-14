@@ -4,13 +4,19 @@ using SSAS.Platform.Application.Abstractions.Queries;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Domain.Enums;
+using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
 namespace SSAS.Platform.Infrastructure.Persistence.Queries;
 
-public sealed class CompanyReadService(PlatformDbContext dbContext) : ICompanyReadService
+// Reads Company from the ROUTED tenant database (ADR-017). Both methods obtain the context through the
+// provider, which fails loudly when routing cannot be established — a read path is exactly where a silent
+// empty result would be most dangerous, since an unreachable tenant database would otherwise look like an
+// empty company list.
+public sealed class CompanyReadService(ITenantDbContextProvider contextProvider) : ICompanyReadService
 {
   public async Task<CompanyDto?> GetByIdAsync(Guid companyId, CancellationToken cancellationToken = default)
   {
+    var dbContext = await contextProvider.GetRequiredAsync(cancellationToken);
     var company = await dbContext.Companies.AsNoTracking()
       .SingleOrDefaultAsync(item => item.Id == companyId, cancellationToken);
     return company is null ? null : Map(company);
@@ -22,6 +28,7 @@ public sealed class CompanyReadService(PlatformDbContext dbContext) : ICompanyRe
     int pageSize,
     CancellationToken cancellationToken = default)
   {
+    var dbContext = await contextProvider.GetRequiredAsync(cancellationToken);
     var query = dbContext.Companies.AsNoTracking();
     if (status.HasValue)
     {

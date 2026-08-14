@@ -2,7 +2,7 @@
 id: ADR-017
 title: Tenant Storage Topology and Routing
 category: Architecture Decision Record
-version: 1.4
+version: 1.5
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -511,6 +511,54 @@ Deleting a tenant is **not** the same as destroying a database, and the two must
 
 Tenant operational reports query the one resolved Tenant ERP database. Cross-tenant analytics **must not** fan out arbitrary business queries across tenant databases in real time; a warehouse/ETL/event-aggregation approach is preferred and is decided separately.
 
+## Backup and recovery is a per-physical-database concern
+
+**Deferred capability — documented now so the boundary is not designed wrongly, implemented in `TS-Backup`.**
+
+Backup and recovery policy attaches to a **physical `TenantDatabase`**, never to a tenant. This follows directly from the topology and is not a matter of preference:
+
+| Placement | Backup chain |
+|---|---|
+| `PlatformManaged` + `Shared` | **One** physical backup chain covering the shared database, and therefore **every tenant in it**. A single tenant cannot be restored independently by restoring the database. |
+| `PlatformManaged` + `Dedicated` | **Its own independent** backup chain per database, restorable without affecting any other tenant. |
+| `CustomerManaged` + `Dedicated` | The customer's chain, on the customer's server — see `ADR-021`. |
+
+The consequence worth stating plainly: **on shared storage, "restore this tenant to yesterday" is not a database restore.** It would roll back every other tenant in that database. Per-tenant point-in-time recovery on shared storage requires export/extract tooling, which is a separate decision and is not implied by having backups. Dedicated placement is what makes database-level restore a per-tenant operation, and that is one of its real advantages over the shared default.
+
+A **Backup & Recovery Manager** (`TS-Backup`) is therefore a required capability of the platform-managed estate, covering: policy per physical database, scheduled execution, retention, backup history, failure monitoring, recovery-model validation, periodic **restore verification**, and recovery-readiness reporting. Its sequencing constraint is binding: it **must** exist before dedicated provisioning and cutover become production-capable (`ADR-020`), because a dedicated database with no verified backup chain is a data-loss position the shared database did not have.
+
+For SQL Server the expected default strategy is a **full baseline + differential + transaction-log** chain, with schedules and retention configurable per policy. **Transaction-log backups alone are not a backup strategy** — they are only restorable onto a full baseline, and they require an appropriate recovery model to exist at all. Indicative defaults, to be set by configuration rather than hard-coded: full weekly, differential daily, transaction log every 15 minutes, with higher log frequency where the recovery-point objective demands it.
+
+## Database provider extensibility
+
+**Deferred capability — documented now so provider-specific decisions are not mistaken for provider-neutral contracts. Implemented, if ever required, in `TS-Provider`.**
+
+The tenant persistence architecture is intended to remain **database-provider extensible**. **SQL Server is the only supported runtime provider in V1**, and no other provider works today. Provider-specific connection construction, schema migrations, concurrency mechanisms, locking behaviour, indexing capabilities, and backup/recovery behaviour remain isolated within Infrastructure. Oracle, PostgreSQL, and other providers are **deferred until explicitly required**.
+
+`DatabaseProvider` is a **third dimension, independent of `HostingMode` and `StorageMode`**. Future combinations may include `PlatformManaged + Shared + SqlServer`, `PlatformManaged + Dedicated + SqlServer`, `PlatformManaged + Dedicated + Oracle`, and `CustomerManaged + Dedicated + Oracle`. The provider **must not** be inferred from `ServerKey`, `HostingMode`, or `StorageMode` — a customer-managed endpoint is not necessarily Oracle, and a platform-managed one is not necessarily SQL Server forever. No schema change adding `DatabaseProvider` is required until a second provider is actually adopted.
+
+The following are **provider-specific** and must not be generalised around SQL Server assumptions: connection types and connection-string builders; the EF provider; migrations; identity/sequence generation; `rowversion`/concurrency tokens; filtered, partial and function-based indexes; locking syntax; collation and case semantics; schema naming; backup mechanisms; recovery model; and transaction-log/archive-log behaviour.
+
+Consequently, the current V1 implementation legitimately uses `SqlConnection`, `SqlConnectionStringBuilder`, SQL Server error numbers `2601`/`2627`, SQL Server migrations, and `rowversion` concurrency tokens. These are **acceptable provider-specific Infrastructure details**, and they **must not** be presented anywhere as database-independent contracts. Documentation and roadmap material **must not** claim Oracle or PostgreSQL compatibility that does not exist.
+
+## Implementation sequence
+
+The revised order, with each item's dependency reason:
+
+| # | Slice | Status |
+|---|---|---|
+| 1 | Tenant-storage registry (`TenantDatabase`, `TenantDatabaseAssignment`, bootstrap) | Done |
+| 2 | Routing resolver and trusted connection factory | Done |
+| 3 | `TenantDbContext` + separate tenant migration stream + `Company` pilot | Done |
+| 4 | Schema health and migration orchestration (`ADR-018`) | Next |
+| 5 | `TS-Provider` — database provider abstraction | Deferred; may remain deferred beyond V1 while SQL Server-only is acceptable |
+| 6 | `TS-Backup` — tenant database backup and recovery manager | Deferred; **required before** 7 and 8 become production-capable |
+| 7 | Dedicated database provisioning | Requires 4 and 6 |
+| 8 | Shared → Dedicated migration and cutover (`ADR-020`) | Requires 7 |
+| 9 | Dynamic placement automation (`ADR-019`) | Requires 8 |
+
+Customer-managed connectivity (`ADR-021`) remains separate and later throughout.
+
 ---
 
 # Decision Drivers
@@ -643,12 +691,12 @@ The membership refinement (keeping `TenantUser`/`Role`/assignments in the Platfo
 # Implementation Guidelines
 
 - Introduce `TenantDatabase` and `TenantDatabaseAssignment` in the Platform database first; routing can be exercised while the tenant schema still physically resides in one database.
-- Introduce `TenantDbContext` with its own migration stream before moving any entity.
+- Introduce `TenantDbContext` with its own migration stream, its own schema and its own migration-history table before moving any entity. Sharing the platform history table would make a tenant database indistinguishable from a platform database.
 - Move `Company` as the pilot tenant-owned entity to prove the routing and migration path end to end before HR/GL.
 - Resolve routing per `TenantDbContext` creation / unit of work. Cached routing is valid only for the `RoutingVersion` under which it was resolved: `RoutingVersion` is the correctness mechanism, while explicit invalidation and a bounded TTL are propagation aids. Cache invalidation alone is insufficient (`ADR-020`).
 - Make `TenantId` the leading column of tenant-owned indexes so the retained global filter is a no-op seek in dedicated databases.
 - Keep `IgnoreQueryFilters` usage confined to explicitly reviewed platform-side maintenance paths.
-- Prefer `IDbContextFactory<TenantDbContext>`; do not adopt context pooling for the tenant context without an explicit review of connection-identity safety.
+- Prefer `IDbContextFactory<TenantDbContext>` or a custom equivalent that takes the tenant explicitly and selects the connection at creation time rather than at options-build time; do not adopt context pooling for the tenant context without an explicit review of connection-identity safety.
 
 ---
 
@@ -762,3 +810,4 @@ Customer-managed tenant ERP database support does not change this. It alters not
 | 1.2 | 2026-08-13 | Solution Architecture Team | Review hardening: completed the boundary (localization to Platform DB); documented tenant-guard enforcement and misrouting asymmetry; added assignment invariants and single-transaction flip; added customer-endpoint owner binding; added `TenantDbContext` lifetime rules and tenant-less fail-loud; added cross-plane commit ordering, tenant-scoped uniqueness, closed-domain lookup category, actor-display hazard, tenant-deletion rules; corrected cross-references |
 | 1.3 | 2026-08-13 | Solution Architecture Team | Editorial: synchronised the status model with `ADR-018` (four orthogonal dimensions; `SchemaCompatibilityStatus`/`MigrationExecutionStatus`; `Ready` never independently writable); corrected a directional reference and lookup-list formatting. No decision changed |
 | 1.4 | 2026-08-13 | Solution Architecture Team | Editorial: corrected the routing-cache implementation guidance to resolve per `TenantDbContext` creation / unit of work with `RoutingVersion` as the correctness mechanism. No decision changed |
+| 1.5 | 2026-08-14 | Solution Architecture Team | Added per-physical-database backup and recovery policy with the shared-restore consequence and the `TS-Backup` sequencing constraint; added database-provider extensibility with SQL Server as the only V1 runtime provider and `DatabaseProvider` as a dimension independent of `HostingMode`/`StorageMode`; added the implementation sequence table; clarified the tenant migration-stream and context-factory guidelines |

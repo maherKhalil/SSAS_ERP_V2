@@ -16,13 +16,12 @@ using SSAS.Platform.Domain.Tenants;
 using SSAS.Platform.Domain.ValueObjects;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
+using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
 namespace SSAS.Integration.Tests;
 
-public sealed class PlatformCompanyOrganizationSqlServerTests
+public sealed class TenantCompanyOrganizationSqlServerTests
 {
-  private const string PreviousMigration = "20260801190753_AddLocalizationCore";
-
   [Fact]
   [Trait("Decision", "DEC-CMP-0001")]
   [Trait("Decision", "DEC-CMP-0004")]
@@ -32,7 +31,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     var tenantA = await SeedTenantAsync(database, "TENANTA");
     var tenantB = await SeedTenantAsync(database, "TENANTB");
 
-    await using var context = database.CreateContext(tenantA);
+    await using var context = database.CreateTenantContext(tenantA);
     Assert.Empty(await context.Database.GetPendingMigrationsAsync());
 
     var entity = context.Model.FindEntityType(typeof(Company));
@@ -51,31 +50,36 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
       ],
       await ReadStringsAsync(
         context,
-        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME = 'Companies' ORDER BY ORDINAL_POSITION"));
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'tenant' AND TABLE_NAME = 'Companies' ORDER BY ORDINAL_POSITION"));
     Assert.Equal("uniqueidentifier", await ReadStringAsync(
       context,
-      "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME = 'Companies' AND COLUMN_NAME = 'CompanyId'"));
+      "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'tenant' AND TABLE_NAME = 'Companies' AND COLUMN_NAME = 'CompanyId'"));
     Assert.Equal("char", await ReadStringAsync(
       context,
-      "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME = 'Companies' AND COLUMN_NAME = 'BaseCurrencyCode'"));
+      "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'tenant' AND TABLE_NAME = 'Companies' AND COLUMN_NAME = 'BaseCurrencyCode'"));
     Assert.Equal("Latin1_General_100_BIN2", await ReadStringAsync(
       context,
-      "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME = 'Companies' AND COLUMN_NAME = 'NormalizedCompanyCode'"));
+      "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'tenant' AND TABLE_NAME = 'Companies' AND COLUMN_NAME = 'NormalizedCompanyCode'"));
     Assert.Equal("Latin1_General_100_BIN2", await ReadStringAsync(
       context,
-      "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME = 'Companies' AND COLUMN_NAME = 'BaseCurrencyCode'"));
+      "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'tenant' AND TABLE_NAME = 'Companies' AND COLUMN_NAME = 'BaseCurrencyCode'"));
     Assert.Equal(1, await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID(N'[platform].[Companies]') AND name = N'UX_Companies_TenantId_NormalizedCompanyCode' AND is_unique = 1"));
+      "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID(N'[tenant].[Companies]') AND name = N'UX_Companies_TenantId_NormalizedCompanyCode' AND is_unique = 1"));
     Assert.Equal(1, await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID(N'[platform].[Companies]') AND name = N'IX_Companies_TenantId_Status_CompanyName_CompanyId'"));
+      "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID(N'[tenant].[Companies]') AND name = N'IX_Companies_TenantId_Status_CompanyName_CompanyId'"));
+    // NO foreign key to Tenant, by design (ADR-017 "Cross-database foreign keys"). Tenant stays in the
+    // Platform database; once the two are separate catalogs this constraint could not exist, so it is gone
+    // in the shared topology too rather than working until the first dedicated tenant and then failing.
+    // TenantId is still enforced — by the global query filter, the write-side tenant guard, and validation
+    // at creation — which the surrounding assertions cover.
+    Assert.Equal(0, await ReadInt32Async(
+      context,
+      "SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(N'[tenant].[Companies]')"));
     Assert.Equal(1, await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(N'[platform].[Companies]') AND name = N'FK_Companies_Tenants_TenantId'"));
-    Assert.Equal(1, await ReadInt32Async(
-      context,
-      "SELECT COUNT(*) FROM sys.triggers WHERE object_id = OBJECT_ID(N'[platform].[TR_Companies_PreventDelete]')"));
+      "SELECT COUNT(*) FROM sys.triggers WHERE object_id = OBJECT_ID(N'[tenant].[TR_Companies_PreventDelete]')"));
 
     context.Companies.AddRange(
       CreateCompany(tenantA, "  acme  ", "Acme"),
@@ -90,7 +94,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     Assert.Equal("Persistence.UniqueConstraint", duplicate.Error.Code);
     context.ChangeTracker.Clear();
 
-    await using var contextB = database.CreateContext(tenantB);
+    await using var contextB = database.CreateTenantContext(tenantB);
     contextB.Companies.Add(CreateCompany(tenantB, "ACME", "Acme In Other Tenant"));
     Assert.True((await SaveAsync(contextB)).IsSuccess);
 
@@ -106,7 +110,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
   {
     await using var database = await CompanySqlDatabase.CreateAsync();
     var tenantA = await SeedTenantAsync(database, "TENANTA");
-    await using var context = database.CreateContext(tenantA);
+    await using var context = database.CreateTenantContext(tenantA);
     var company = CreateCompany(tenantA, "ONE", "Company One");
     context.Companies.Add(company);
     Assert.True((await SaveAsync(context)).IsSuccess);
@@ -117,12 +121,12 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     context.Entry(persisted).State = EntityState.Unchanged;
 
     var single = await Assert.ThrowsAsync<SqlException>(() => context.Database.ExecuteSqlRawAsync(
-      "DELETE FROM [platform].[Companies] WHERE [CompanyId] = {0}",
+      "DELETE FROM [tenant].[Companies] WHERE [CompanyId] = {0}",
       company.CompanyId));
     Assert.Equal(51000, single.Number);
 
     var batch = await Assert.ThrowsAsync<SqlException>(() =>
-      context.Database.ExecuteSqlRawAsync("DELETE FROM [platform].[Companies]"));
+      context.Database.ExecuteSqlRawAsync("DELETE FROM [tenant].[Companies]"));
     Assert.Equal(51000, batch.Number);
 
     Assert.Equal(1, await context.Companies.CountAsync());
@@ -134,25 +138,25 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
   {
     await using var database = await CompanySqlDatabase.CreateAsync();
     var tenantA = await SeedTenantAsync(database, "TENANTA");
-    await using var context = database.CreateContext(tenantA);
+    await using var context = database.CreateTenantContext(tenantA);
     var company = CreateCompany(tenantA, "CHECK", "Check Company");
     context.Companies.Add(company);
     Assert.True((await SaveAsync(context)).IsSuccess);
 
     await Assert.ThrowsAsync<SqlException>(() => context.Database.ExecuteSqlRawAsync(
-      "UPDATE [platform].[Companies] SET [Status] = N'Deleted' WHERE [CompanyId] = {0}",
+      "UPDATE [tenant].[Companies] SET [Status] = N'Deleted' WHERE [CompanyId] = {0}",
       company.CompanyId));
     await Assert.ThrowsAsync<SqlException>(() => context.Database.ExecuteSqlRawAsync(
-      "UPDATE [platform].[Companies] SET [StatusChangeReasonCode] = N'FreeForm' WHERE [CompanyId] = {0}",
+      "UPDATE [tenant].[Companies] SET [StatusChangeReasonCode] = N'FreeForm' WHERE [CompanyId] = {0}",
       company.CompanyId));
     await Assert.ThrowsAsync<SqlException>(() => context.Database.ExecuteSqlRawAsync(
-      "UPDATE [platform].[Companies] SET [CompanyCode] = N'   ' WHERE [CompanyId] = {0}",
+      "UPDATE [tenant].[Companies] SET [CompanyCode] = N'   ' WHERE [CompanyId] = {0}",
       company.CompanyId));
     await Assert.ThrowsAsync<SqlException>(() => context.Database.ExecuteSqlRawAsync(
-      "UPDATE [platform].[Companies] SET [CompanyName] = N'   ' WHERE [CompanyId] = {0}",
+      "UPDATE [tenant].[Companies] SET [CompanyName] = N'   ' WHERE [CompanyId] = {0}",
       company.CompanyId));
     await Assert.ThrowsAsync<SqlException>(() => context.Database.ExecuteSqlRawAsync(
-      "UPDATE [platform].[Companies] SET [BaseCurrencyCode] = 'usd' WHERE [CompanyId] = {0}",
+      "UPDATE [tenant].[Companies] SET [BaseCurrencyCode] = 'usd' WHERE [CompanyId] = {0}",
       company.CompanyId));
   }
 
@@ -163,7 +167,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     await using var database = await CompanySqlDatabase.CreateAsync();
     var tenantA = await SeedTenantAsync(database, "TENANTA");
     Guid companyId;
-    await using (var setup = database.CreateContext(tenantA))
+    await using (var setup = database.CreateTenantContext(tenantA))
     {
       var company = CreateCompany(tenantA, "CONCURRENT", "Concurrent Company");
       setup.Companies.Add(company);
@@ -171,8 +175,8 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
       companyId = company.CompanyId;
     }
 
-    await using var firstContext = database.CreateContext(tenantA);
-    await using var staleContext = database.CreateContext(tenantA);
+    await using var firstContext = database.CreateTenantContext(tenantA);
+    await using var staleContext = database.CreateTenantContext(tenantA);
     var first = await firstContext.Companies.SingleAsync(item => item.Id == companyId);
     var stale = await staleContext.Companies.SingleAsync(item => item.Id == companyId);
     Assert.True(first.Activate(CompanyStatusChangeReason.Administrative, "actor-1", Guid.NewGuid(), CompanySqlDatabase.Now.AddMinutes(1)).IsSuccess);
@@ -185,32 +189,129 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-CMP-0003")]
-  public async Task Company_migration_rolls_back_and_reapplies_with_its_trigger()
+  public async Task Tenant_migration_rolls_back_and_reapplies_with_its_trigger()
   {
     await using var database = CompanySqlDatabase.CreateUnmigrated();
-    await using var context = database.CreateContext();
+    await using (var platform = database.CreateContext())
+    {
+      await platform.Database.MigrateAsync();
+    }
+
+    await using var context = database.CreateTenantContext();
     var migrator = context.Database.GetService<IMigrator>();
     await migrator.MigrateAsync();
     Assert.Equal(1, await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[platform].[Companies]')"));
+      "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[tenant].[Companies]')"));
     Assert.Equal(1, await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM sys.triggers WHERE object_id = OBJECT_ID(N'[platform].[TR_Companies_PreventDelete]')"));
+      "SELECT COUNT(*) FROM sys.triggers WHERE object_id = OBJECT_ID(N'[tenant].[TR_Companies_PreventDelete]')"));
 
-    await migrator.MigrateAsync(PreviousMigration);
+    // Target 0 rather than a named predecessor: this is the FIRST migration of the tenant stream, which is
+    // itself the point — the tenant stream has its own baseline and does not continue the platform one.
+    await migrator.MigrateAsync(Migration.InitialDatabase);
     Assert.Equal(0, await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[platform].[Companies]')"));
+      "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[tenant].[Companies]')"));
     Assert.Equal(0, await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM sys.triggers WHERE object_id = OBJECT_ID(N'[platform].[TR_Companies_PreventDelete]')"));
+      "SELECT COUNT(*) FROM sys.triggers WHERE object_id = OBJECT_ID(N'[tenant].[TR_Companies_PreventDelete]')"));
+
+    // The platform schema is untouched by rolling the tenant stream back — the streams are independent.
+    Assert.Equal(1, await ReadInt32Async(
+      context,
+      "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[platform].[Tenants]')"));
 
     await migrator.MigrateAsync();
     Assert.Empty(await context.Database.GetPendingMigrationsAsync());
     Assert.Equal(1, await ReadInt32Async(
       context,
-      "SELECT COUNT(*) FROM sys.triggers WHERE object_id = OBJECT_ID(N'[platform].[TR_Companies_PreventDelete]')"));
+      "SELECT COUNT(*) FROM sys.triggers WHERE object_id = OBJECT_ID(N'[tenant].[TR_Companies_PreventDelete]')"));
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public async Task Tenant_and_platform_migration_histories_are_separate()
+  {
+    // ADR-018: the two streams must never be mistakable for one another. Distinct history tables in
+    // distinct schemas is what makes "which migrations does this database have" answerable per stream.
+    await using var database = await CompanySqlDatabase.CreateAsync();
+    await using var tenant = database.CreateTenantContext();
+
+    Assert.Equal(1, await ReadInt32Async(
+      tenant, "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[tenant].[__EFMigrationsHistory]')"));
+    Assert.Equal(1, await ReadInt32Async(
+      tenant, "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[platform].[__EFMigrationsHistory]')"));
+
+    var tenantApplied = await ReadStringsAsync(
+      tenant, "SELECT [MigrationId] FROM [tenant].[__EFMigrationsHistory] ORDER BY [MigrationId]");
+    var platformApplied = await ReadStringsAsync(
+      tenant, "SELECT [MigrationId] FROM [platform].[__EFMigrationsHistory] ORDER BY [MigrationId]");
+
+    // No migration id appears in both, and neither stream can be inferred from the other.
+    Assert.NotEmpty(tenantApplied);
+    Assert.NotEmpty(platformApplied);
+    Assert.Empty(tenantApplied.Intersect(platformApplied, StringComparer.Ordinal));
+    Assert.Contains(tenantApplied, id => id.EndsWith("AddTenantCompanyOrganization", StringComparison.Ordinal));
+    Assert.DoesNotContain(platformApplied, id => id.EndsWith("AddTenantCompanyOrganization", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-017")]
+  public async Task Existing_platform_company_rows_are_preserved_by_the_move()
+  {
+    // The data move is the risky part of this slice, so it is proven against real SQL rather than reasoned
+    // about: seed rows into the retired platform table, run the tenant migration, and assert every column
+    // survived. RowVersion is regenerated by the target database and is therefore excluded.
+    await using var database = CompanySqlDatabase.CreateUnmigrated();
+    Guid tenantId;
+    var companyId = Guid.NewGuid();
+
+    await using (var platform = database.CreateContext())
+    {
+      await platform.Database.MigrateAsync();
+      var tenant = Tenant.Create(
+        TenantCode.Create("MOVED").Value, TenantName.Create("Moved Tenant").Value,
+        "integration-actor", Guid.NewGuid(), CompanySqlDatabase.Now).Value;
+      platform.Tenants.Add(tenant);
+      Assert.True((await SaveAsync(platform)).IsSuccess);
+      tenantId = tenant.TenantId;
+
+      // Written directly, because PlatformDbContext no longer maps Company at all — which is the point.
+      await platform.Database.ExecuteSqlRawAsync(
+        """
+        INSERT INTO [platform].[Companies_MigratedToTenant]
+          ([CompanyId], [TenantId], [CompanyCode], [NormalizedCompanyCode], [CompanyName], [BaseCurrencyCode],
+           [Status], [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [ModifiedUtc],
+           [CreatedBy], [ModifiedBy])
+        VALUES ({0}, {1}, N'LEGACY', N'LEGACY', N'Legacy Company', 'EUR', N'Active', N'Administrative',
+                {2}, N'status-actor', {3}, {4}, N'creator', N'modifier');
+        """,
+        companyId, tenantId, CompanySqlDatabase.Now, CompanySqlDatabase.Now, CompanySqlDatabase.Now);
+    }
+
+    await using var tenantContext = database.CreateTenantContext(tenantId);
+    await tenantContext.Database.MigrateAsync();
+
+    var moved = await tenantContext.Companies.SingleAsync(company => company.Id == companyId);
+    Assert.Equal(tenantId, moved.TenantId);
+    Assert.Equal("LEGACY", moved.CompanyCode.Value);
+    Assert.Equal("Legacy Company", moved.CompanyName.Value);
+    Assert.Equal("EUR", moved.BaseCurrencyCode.Value);
+    Assert.Equal(CompanyStatus.Active, moved.Status);
+    Assert.Equal(CompanyStatusChangeReason.Administrative, moved.StatusChangeReasonCode);
+    Assert.Equal("creator", moved.CreatedBy);
+    Assert.Equal("modifier", moved.ModifiedBy);
+    Assert.Equal("status-actor", moved.StatusChangedBy);
+    Assert.Equal(CompanySqlDatabase.Now, moved.CreatedUtc);
+    Assert.NotEmpty(moved.RowVersion);
+
+    // Re-running is idempotent: no duplicate, no overwrite.
+    await tenantContext.Database.ExecuteSqlRawAsync(
+      "EXEC(N'INSERT INTO [tenant].[Companies] ([CompanyId],[TenantId],[CompanyCode],[NormalizedCompanyCode],[CompanyName],[BaseCurrencyCode],[Status],[StatusChangeReasonCode],[StatusChangedUtc],[StatusChangedBy],[CreatedUtc],[ModifiedUtc],[CreatedBy],[ModifiedBy]) " +
+      "SELECT [CompanyId],[TenantId],[CompanyCode],[NormalizedCompanyCode],[CompanyName],[BaseCurrencyCode],[Status],[StatusChangeReasonCode],[StatusChangedUtc],[StatusChangedBy],[CreatedUtc],[ModifiedUtc],[CreatedBy],[ModifiedBy] " +
+      "FROM [platform].[Companies_MigratedToTenant] AS source WHERE NOT EXISTS (SELECT 1 FROM [tenant].[Companies] AS existing WHERE existing.[CompanyId] = source.[CompanyId]);')");
+    Assert.Equal(1, await tenantContext.Companies.CountAsync());
   }
 
   [Fact]
@@ -221,7 +322,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     var tenantA = await SeedTenantAsync(database, "TENANTA");
     var tenantB = await SeedTenantAsync(database, "TENANTB");
 
-    await using var context = database.CreateContext(tenantA);
+    await using var context = database.CreateTenantContext(tenantA);
     // The aggregate carries Tenant B while the trusted current-tenant context is Tenant A.
     context.Companies.Add(CreateCompany(tenantB, "MISMATCH", "Mismatch Company"));
     await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
@@ -238,7 +339,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     var tenantA = await SeedTenantAsync(database, "TENANTA");
     var tenantB = await SeedTenantAsync(database, "TENANTB");
     Guid companyId;
-    await using (var setup = database.CreateContext(tenantA))
+    await using (var setup = database.CreateTenantContext(tenantA))
     {
       var company = CreateCompany(tenantA, "OWNED", "Owned Company");
       setup.Companies.Add(company);
@@ -246,14 +347,14 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
       companyId = company.CompanyId;
     }
 
-    await using (var mutate = database.CreateContext(tenantA))
+    await using (var mutate = database.CreateTenantContext(tenantA))
     {
       var company = await mutate.Companies.SingleAsync(item => item.Id == companyId);
       mutate.Entry(company).Property(item => item.TenantId).CurrentValue = tenantB;
       await Assert.ThrowsAsync<InvalidOperationException>(() => mutate.SaveChangesAsync());
     }
 
-    await using (var verify = database.CreateContext(tenantA))
+    await using (var verify = database.CreateTenantContext(tenantA))
     {
       Assert.Equal(tenantA, await verify.Companies
         .Where(item => item.Id == companyId)
@@ -271,8 +372,8 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
   {
     await using var database = await CompanySqlDatabase.CreateAsync();
     var tenantId = await SeedTenantAsync(database, "TENANTA");
-    await using var firstContext = database.CreateContext(tenantId);
-    await using var secondContext = database.CreateContext(tenantId);
+    await using var firstContext = database.CreateTenantContext(tenantId);
+    await using var secondContext = database.CreateTenantContext(tenantId);
     var gate = new AsyncGate(2);
     var firstDispatcher = new RecordingDomainEventDispatcher();
     var secondDispatcher = new RecordingDomainEventDispatcher();
@@ -280,14 +381,14 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     var user = new TestCurrentUser();
     var clock = new TestClock();
     var firstHandler = new CreateCompanyCommandHandler(
-      new GatedCompanyRepository(new CompanyRepository(firstContext), gate),
-      new PlatformUnitOfWork(firstContext, firstDispatcher),
+      new GatedCompanyRepository(new CompanyRepository(new DirectTenantContextProvider(firstContext)), gate),
+      new TenantUnitOfWork(new DirectTenantContextProvider(firstContext), firstDispatcher),
       tenant,
       user,
       clock);
     var secondHandler = new CreateCompanyCommandHandler(
-      new GatedCompanyRepository(new CompanyRepository(secondContext), gate),
-      new PlatformUnitOfWork(secondContext, secondDispatcher),
+      new GatedCompanyRepository(new CompanyRepository(new DirectTenantContextProvider(secondContext)), gate),
+      new TenantUnitOfWork(new DirectTenantContextProvider(secondContext), secondDispatcher),
       tenant,
       user,
       clock);
@@ -305,7 +406,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     Assert.Single(successIndex == 0 ? firstDispatcher.Events : secondDispatcher.Events);
     Assert.Empty(successIndex == 0 ? secondDispatcher.Events : firstDispatcher.Events);
 
-    await using var verification = database.CreateContext(tenantId);
+    await using var verification = database.CreateTenantContext(tenantId);
     Assert.Equal(1, await verification.Companies.CountAsync());
     Assert.Equal("ACME", await verification.Companies
       .Select(company => company.NormalizedCompanyCode)
@@ -322,7 +423,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     var tenantId = await SeedTenantAsync(database, "TENANTA");
     Guid companyId;
 
-    await using (var createContext = database.CreateContext(tenantId, new StubClock(createdAt)))
+    await using (var createContext = database.CreateTenantContext(tenantId, new StubClock(createdAt)))
     {
       var company = Company.Create(
         tenantId,
@@ -337,7 +438,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
       companyId = company.CompanyId;
     }
 
-    await using (var afterCreate = database.CreateContext(tenantId))
+    await using (var afterCreate = database.CreateTenantContext(tenantId))
     {
       var company = await afterCreate.Companies.SingleAsync(item => item.Id == companyId);
       Assert.Equal(CompanyStatus.Inactive, company.Status);
@@ -353,14 +454,14 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
       Assert.Equal(TimeSpan.Zero, company.StatusChangedUtc.Offset);
     }
 
-    await using (var transitionContext = database.CreateContext(tenantId, new StubClock(activatedAt)))
+    await using (var transitionContext = database.CreateTenantContext(tenantId, new StubClock(activatedAt)))
     {
       var company = await transitionContext.Companies.SingleAsync(item => item.Id == companyId);
       Assert.True(company.Activate(CompanyStatusChangeReason.Administrative, "activator-actor", Guid.NewGuid(), activatedAt).IsSuccess);
       Assert.True((await SaveAsync(transitionContext)).IsSuccess);
     }
 
-    await using (var afterTransition = database.CreateContext(tenantId))
+    await using (var afterTransition = database.CreateTenantContext(tenantId))
     {
       var company = await afterTransition.Companies.SingleAsync(item => item.Id == companyId);
       Assert.Equal(CompanyStatus.Active, company.Status);
@@ -401,7 +502,24 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
   private static Task<Result<int>> SaveAsync(PlatformDbContext context) =>
     new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
 
-  private static async Task<string> ReadStringAsync(PlatformDbContext context, string commandText)
+  // Goes through the real TenantUnitOfWork so the tenant stream's failure translation — concurrency,
+  // unique violation, write failure — is the code under test rather than a test-local reimplementation.
+  private static Task<Result<int>> SaveAsync(TenantDbContext context) =>
+    new TenantUnitOfWork(new DirectTenantContextProvider(context), new NoOpDomainEventDispatcher())
+      .SaveChangesAsync();
+
+  // Supplies an already-constructed context. Routing itself is proven separately; here the point is the
+  // unit of work, so the provider is deliberately trivial.
+  private sealed class DirectTenantContextProvider(TenantDbContext context) : ITenantDbContextProvider
+  {
+    public Task<Result<TenantDbContext>> ResolveAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult(Result.Success(context));
+
+    public Task<TenantDbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult(context);
+  }
+
+  private static async Task<string> ReadStringAsync(DbContext context, string commandText)
   {
     var connection = context.Database.GetDbConnection();
     if (connection.State != System.Data.ConnectionState.Open)
@@ -414,7 +532,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     return Convert.ToString(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture)!;
   }
 
-  private static async Task<int> ReadInt32Async(PlatformDbContext context, string commandText)
+  private static async Task<int> ReadInt32Async(DbContext context, string commandText)
   {
     var connection = context.Database.GetDbConnection();
     if (connection.State != System.Data.ConnectionState.Open)
@@ -427,7 +545,7 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
     return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
   }
 
-  private static async Task<string[]> ReadStringsAsync(PlatformDbContext context, string commandText)
+  private static async Task<string[]> ReadStringsAsync(DbContext context, string commandText)
   {
     var connection = context.Database.GetDbConnection();
     if (connection.State != System.Data.ConnectionState.Open)
@@ -465,8 +583,16 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
       var database = CreateUnmigrated();
       try
       {
-        await using var context = database.CreateContext();
-        await context.Database.MigrateAsync();
+        // BOTH streams are applied to this one catalog, which is exactly today's shared topology: the
+        // tenant ERP schema physically co-resides with the platform schema while remaining a separate
+        // context, separate schema and separate migration history.
+        await using (var platform = database.CreateContext())
+        {
+          await platform.Database.MigrateAsync();
+        }
+
+        await using var tenant = database.CreateTenantContext();
+        await tenant.Database.MigrateAsync();
         return database;
       }
       catch
@@ -482,6 +608,19 @@ public sealed class PlatformCompanyOrganizationSqlServerTests
         .UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform"))
         .Options;
       return new PlatformDbContext(options, new TestCurrentUser(), new FixedCurrentTenant(currentTenantId), clock ?? new TestClock());
+    }
+
+    // Same catalog, different context, different migration history table. Constructed directly here rather
+    // than through the routing factory because these tests are about the tenant SCHEMA and its guarantees;
+    // TenantDbContextRoutingSqlServerTests covers the routed construction path.
+    public TenantDbContext CreateTenantContext(Guid? currentTenantId = null, IDateTimeProvider? clock = null)
+    {
+      var options = new DbContextOptionsBuilder<TenantDbContext>()
+        .UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable(
+          TenantPersistenceConstants.MigrationHistoryTable,
+          TenantPersistenceConstants.MigrationHistorySchema))
+        .Options;
+      return new TenantDbContext(options, new TestCurrentUser(), new FixedCurrentTenant(currentTenantId), clock ?? new TestClock());
     }
 
     public async ValueTask DisposeAsync()

@@ -4,7 +4,6 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Domain.Authentication;
-using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Domain.Localization;
 using SSAS.Platform.Domain.PlatformSupport;
 using SSAS.Platform.Domain.Roles;
@@ -41,8 +40,6 @@ public sealed class PlatformDbContext(
 
   public DbSet<Tenant> Tenants => Set<Tenant>();
 
-  public DbSet<Company> Companies => Set<Company>();
-
   public DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
 
   public DbSet<RefreshTokenRecord> RefreshTokenRecords => Set<RefreshTokenRecord>();
@@ -69,14 +66,18 @@ public sealed class PlatformDbContext(
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
-    modelBuilder.ApplyConfigurationsFromAssembly(typeof(PlatformDbContext).Assembly);
+    // Only PLATFORM configurations. Company moved to TenantDbContext (ADR-017) and its configuration now
+    // lives in the tenant configuration namespace; an unfiltered scan would silently pull it — and every
+    // future tenant ERP entity — back into the platform model, recreating the boundary this slice removes.
+    modelBuilder.ApplyConfigurationsFromAssembly(
+      typeof(PlatformDbContext).Assembly,
+      type => type.Namespace != TenantErp.TenantPersistenceConstants.ConfigurationNamespace);
     base.OnModelCreating(modelBuilder);
   }
 
   public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
   {
     PreventTenantDeletion();
-    PreventCompanyDeletion();
     PreventPlatformSupportPrincipalDeletion();
     PreventPlatformPermissionAssignmentDeletion();
     PreventAuthenticationHistoryDeletion();
@@ -155,14 +156,6 @@ public sealed class PlatformDbContext(
     if (ChangeTracker.Entries<PlatformPermissionAssignment>().Any(entry => entry.State == EntityState.Deleted))
     {
       throw new InvalidOperationException("Platform permission assignments are retained authority history and cannot be physically deleted; use revoke instead.");
-    }
-  }
-
-  private void PreventCompanyDeletion()
-  {
-    if (ChangeTracker.Entries<Company>().Any(entry => entry.State == EntityState.Deleted))
-    {
-      throw new InvalidOperationException("Company rows cannot be physically deleted; use the Archive lifecycle transition.");
     }
   }
 

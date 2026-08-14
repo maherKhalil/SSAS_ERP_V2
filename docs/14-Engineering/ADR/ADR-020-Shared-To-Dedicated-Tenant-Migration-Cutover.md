@@ -2,7 +2,7 @@
 id: ADR-020
 title: Shared-to-Dedicated Tenant Migration and Cutover
 category: Architecture Decision Record
-version: 1.3
+version: 1.4
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -420,9 +420,29 @@ Identifier preservation is mandated rather than left to tooling choice because t
 
 ---
 
+# Backup and recovery readiness is a pre-cutover gate
+
+**Binding rule. The gate is defined here; its implementation arrives with `TS-Backup` (`ADR-017`).**
+
+A dedicated target database **must not** become production-active — must not receive the assignment flip, and must not serve traffic — until the required backup and recovery protection is established on it. At minimum:
+
+1. a backup **policy exists** for the target physical database;
+2. the **backup chain is initialised** (a full baseline has been taken, not merely scheduled);
+3. the **recovery model is appropriate** for the required recovery-point objective;
+4. a **restore-verification policy** is established for it.
+
+The reason this is a gate rather than a follow-up task is the asymmetry of the moment. Before cutover, the tenant's data sits in the shared database and is covered by that database's existing, exercised backup chain. **The instant the assignment flips, that coverage stops applying to this tenant** — the authoritative copy is now the dedicated database. If the dedicated database has no verified chain, the cutover has silently moved the tenant from a protected position to an unprotected one, while every health signal reports success. That is a strict regression in durability delivered by an operation sold as an upgrade.
+
+Retaining the source data for the post-cutover retention window mitigates but does not remove this: the retained copy is frozen at cutover time and does not cover writes made after it.
+
+This gate applies to `PlatformManaged` dedicated targets. For `CustomerManaged` targets, the obligation is to **confirm** the customer's arrangements rather than to execute them (`ADR-021`) — but cutover to an endpoint whose recovery position is simply unknown is not acceptable either.
+
+---
+
 # Implementation Guidelines
 
 - Build and rehearse the workflow against a non-production tenant before any customer promotion, including a deliberate failure and freeze-release rehearsal.
+- Treat backup/recovery readiness on the target as a preflight gate evaluated with the other checks, not as a post-cutover task.
 - Derive the copy order from the model's foreign-key graph rather than a hand-maintained list.
 - Make every step idempotent and resumable; record progress on the migration record.
 - Validate before the flip and again after resuming traffic.
@@ -525,3 +545,4 @@ This ADR should be reviewed if:
 | 1.1 | 2026-08-13 | Solution Architecture Team | Scoped movement to platform-managed promotion; recorded cross-hosting movement as future with its additional connectivity, secure-transfer, no-fallback, and retention requirements |
 | 1.2 | 2026-08-13 | Solution Architecture Team | Review hardening: freeze extended to all tenant writers with drain, scope, timeout and release rules; added split-brain sequence, multi-node routing and connection-pool rules; required `RoutingVersion` **and** invalidation; excluded `rowversion` from preservation and required client token refresh; required the copy to bypass audit-stamping with audit-fidelity validation; added object-type coverage and fail-fast; added non-vacuity validation; replaced rollback with two explicit regimes and a post-cutover-write marker; made retention reason-aware; scoped identifier preservation to empty dedicated targets |
 | 1.3 | 2026-08-13 | Solution Architecture Team | Editorial: replaced stale rollback wording in Risks and Consequences that implied source retention alone makes post-cutover flip-back safe; updated the split-brain risk to the `RoutingVersion`-plus-invalidation model; scoped Compliance Rule 4 to the V1 Shared → empty Dedicated path and excluded `rowversion`. No decision changed |
+| 1.4 | 2026-08-14 | Solution Architecture Team | Added the binding pre-cutover backup/recovery readiness gate: a dedicated target may not become production-active until policy, initialised chain, appropriate recovery model and restore-verification policy exist |

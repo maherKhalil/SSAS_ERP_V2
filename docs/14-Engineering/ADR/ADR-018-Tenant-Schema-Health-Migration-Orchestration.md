@@ -2,7 +2,7 @@
 id: ADR-018
 title: Tenant Schema Health and Migration Orchestration
 category: Architecture Decision Record
-version: 1.2
+version: 1.3
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -432,9 +432,24 @@ Separating `ConnectivityStatus` from `SchemaStatus` is likewise not cosmetic. Un
 
 ---
 
+# Operational recovery readiness is not schema readiness
+
+**Deferred capability — documented now so the two are not conflated. Implemented in `TS-Backup` (`ADR-017`).**
+
+Schema compatibility and **operational recovery readiness** are distinct dimensions, and neither implies the other. A database can be fully migrated, `UpToDate`, reachable, and serving traffic while having **no usable backup chain at all**.
+
+**A successful migration is not evidence of recoverability.** The four status dimensions this ADR defines — provisioning, connectivity, schema compatibility, migration execution — answer "can the application correctly read and write this database". None of them answers "could this database be restored if it were lost". That question requires separate evidence: that a policy exists, that the chain is initialised, that the recovery model supports it, and — the only evidence that actually counts — that a **restore has been verified**, not merely that backups have been written.
+
+The practical failure this prevents: a migration orchestrator reports a green estate, a release is judged safe, and a database that has never had a verifiable backup is carrying production data. Recovery readiness therefore belongs alongside the health dimensions as a **separate** reported state when `TS-Backup` lands, never folded into `SchemaCompatibilityStatus` or into a derived `Ready`.
+
+Migration is also a moment when recovery matters most: applying DDL to a tenant database is precisely when a restore point is most likely to be needed. Backup verification and migration orchestration are separate responsibilities, but a migration run against a database with no verified recovery position is an operational decision that should be taken knowingly rather than by omission.
+
+---
+
 # Implementation Guidelines
 
 - Build the health service before the orchestrator; the orchestrator consumes it as preflight.
+- Keep recovery readiness a separate reported dimension from schema compatibility; never let a successful migration imply a recoverable database.
 - Make orchestration idempotent and resumable; re-running after partial failure must be safe.
 - Record per-database outcome, timestamps, and the failure reason on `TenantDatabase`.
 - Treat "unknown/stale status" conservatively in the request path.
@@ -531,3 +546,4 @@ This ADR should be reviewed if:
 | 1.0 | 2026-08-13 | Solution Architecture Team | Initial version — tenant schema health and migration orchestration |
 | 1.1 | 2026-08-13 | Solution Architecture Team | Added `MigrationManagementMode`, customer-managed migration models and authority, separated connectivity/schema/provisioning status dimensions, connectivity health service, and `TenantDatabaseUnavailable` behaviour |
 | 1.2 | 2026-08-13 | Solution Architecture Team | Review hardening: replaced the combined status enum with four orthogonal dimensions; added the traffic-gating table and health-cache freshness model; assigned estate migration to deployment tooling; added the eight migration-lock invariants; renamed migration modes to `AutomaticByPlatform`/`PlatformAfterApproval`/`CustomerDba`; added the mandatory customer-managed drift floor and schema fingerprint; required the environment matrix; declared Azure SQL out of scope for V1; clarified the RCSI/isolation policy |
+| 1.3 | 2026-08-14 | Solution Architecture Team | Added operational recovery readiness as a dimension distinct from schema compatibility; a successful migration does not imply a recoverable database. Deferred to `TS-Backup` |

@@ -18,6 +18,7 @@ using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Tenants;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
+using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Identity;
@@ -93,6 +94,16 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // routes application persistence through these yet, and no TenantDbContext, routing cache, health
     // gating or customer-managed path exists.
     services.AddScoped<ITenantDatabaseRegistryReadRepository, TenantDatabaseRegistryReadRepository>();
+
+    // Routed tenant ERP persistence. The provider is scoped so one unit of work resolves routing once and
+    // every repository in that request shares the resulting context — reads and writes in a single request
+    // cannot straddle two databases. Deliberately NOT AddDbContext/AddDbContextPool: the connection is
+    // chosen per creation from trusted routing, and pooled state could carry connection identity across
+    // tenants (ADR-017 binding lifetime rules 2 and 4).
+    services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
+    services.AddScoped<TenantDbContextProvider>();
+    services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());
+    services.AddScoped<ITenantUnitOfWork, TenantUnitOfWork>();
     services.AddScoped<ITenantDatabaseResolver, TenantDatabaseResolver>();
     services.AddScoped<CurrentTenantDatabaseRouteProvider>();
     services.AddSingleton<ITenantDatabaseConnectionFactory, TenantDatabaseConnectionFactory>();
@@ -186,10 +197,18 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddSingleton<IValidateOptions<PlatformSupportBootstrapOptions>, PlatformSupportBootstrapOptionsValidator>();
     services.AddHostedService<PlatformSupportBootstrapHostedService>();
 
-    // ServerKey is a trusted configuration lookup key; no address or credential is bound here, and none is
-    // persisted. The per-server connection map arrives with the TS-1C connection factory.
+    // ServerKey is a trusted configuration lookup key; no address or credential is persisted in the
+    // Platform database. `Servers` holds the per-server connection material that the connection factory
+    // resolves keys against.
+    //
+    // ValidateOnStart is required now that TenantDbContext routes through this configuration: an
+    // unconfigured or malformed server map used to be inert, and would now surface as a per-request
+    // failure on the first tenant that tried to reach its database. Failing at startup turns that into a
+    // deployment error instead of a production incident.
     services.AddOptions<TenantStorageOptions>()
-      .Bind(configuration.GetSection(TenantStorageOptions.SectionName));
+      .Bind(configuration.GetSection(TenantStorageOptions.SectionName))
+      .ValidateOnStart();
+    services.AddSingleton<IValidateOptions<TenantStorageOptions>, TenantStorageOptionsValidator>();
     services.AddHostedService<TenantStorageBootstrapHostedService>();
 
     services.AddScoped<RegisterIdentityCommandHandler>();

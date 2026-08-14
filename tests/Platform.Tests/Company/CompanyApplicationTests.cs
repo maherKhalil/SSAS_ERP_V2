@@ -542,7 +542,7 @@ public sealed class CompanyApplicationTests
     }
   }
 
-  private sealed class FakeUnitOfWork : IPlatformUnitOfWork
+  private sealed class FakeUnitOfWork : ITenantUnitOfWork
   {
     public int SaveCount { get; private set; }
 

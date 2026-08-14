@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence;
 
@@ -20,10 +21,20 @@ public sealed class TenantStorageBootstrapHostedService(
   IServiceScopeFactory scopeFactory,
   IConfiguration configuration,
   IHostEnvironment environment,
+  IOptions<TenantStorageOptions> storageOptions,
   ILogger<TenantStorageBootstrapHostedService> logger) : IHostedService
 {
   public async Task StartAsync(CancellationToken cancellationToken)
   {
+    // An empty server map is a VALID configuration (ADR-017): the platform plane must start and serve even
+    // when no tenant ERP database is configured. But "deliberately unconfigured" and "someone forgot" look
+    // identical at runtime until the first ERP request fails, so say which state this is at startup.
+    // Informational, never a failure, and it names no connection material.
+    if (storageOptions.Value.Servers.Count == 0)
+    {
+      LogEmptyServerMap(logger, null);
+    }
+
     if (!environment.IsProduction() &&
       string.IsNullOrWhiteSpace(configuration.GetConnectionString(PlatformPersistenceConstants.ConnectionStringName)))
     {
@@ -46,6 +57,13 @@ public sealed class TenantStorageBootstrapHostedService(
       new EventId(4301, nameof(TenantStorageBootstrapHostedService)),
       "Tenant storage bootstrap completed for tenant database {TenantDatabaseId} (created {TenantDatabaseCreated}); " +
       "{AssignmentsCreated} assignments created, {TenantsAlreadyAssigned} tenants already assigned.");
+
+  private static readonly Action<ILogger, Exception?> LogEmptyServerMap =
+    LoggerMessage.Define(
+      LogLevel.Information,
+      new EventId(4303, nameof(TenantStorageBootstrapHostedService)),
+      "Tenant ERP storage server map is empty. Platform-plane services continue; tenant ERP persistence " +
+      "will fail closed until TenantStorage:Servers is configured.");
 
   private static readonly Action<ILogger, Exception?> LogDevelopmentMissingConnection =
     LoggerMessage.Define(

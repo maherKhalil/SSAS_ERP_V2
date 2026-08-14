@@ -353,6 +353,87 @@ public sealed class TenantStorageRegistryArchitectureTests
     Assert.DoesNotContain("??", source.Split("ResolveConnectionString")[0], StringComparison.Ordinal);
   }
 
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void Each_health_dimension_has_its_own_writer_method()
+  {
+    // ONE WRITER PER DIMENSION. The previous single `RecordHealthAsync(id, mutate)` let any caller write
+    // any combination of dimensions, which is how a connectivity check came to erase schema state it had
+    // never observed. A dimension-scoped API makes that mistake hard to express — and it matters more once
+    // recovery readiness (TS-Backup) becomes a third writer on the same row.
+    var writer = typeof(ITenantDatabaseHealthWriter);
+    var methods = writer.GetMethods().Select(method => method.Name).ToArray();
+
+    Assert.Contains(nameof(ITenantDatabaseHealthWriter.RecordConnectivityAsync), methods);
+    Assert.Contains(nameof(ITenantDatabaseHealthWriter.RecordSchemaAsync), methods);
+
+    // No general-purpose "write whatever you like" entry point remains.
+    Assert.DoesNotContain("RecordHealthAsync", methods);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void The_connectivity_service_never_writes_schema_state()
+  {
+    // Asserted over source because the property is the ABSENCE of a call: a connectivity probe that wrote
+    // any schema-owned value would reintroduce the exact defect this split removes.
+    var source = File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure", "TenantStorage",
+      "TenantDatabaseConnectivityHealthService.cs"));
+
+    Assert.DoesNotContain("RecordSchemaAsync", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("RecordSchemaHealth", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("SchemaCompatibilityStatus", source, StringComparison.Ordinal);
+    // It also has no business reading migration history — that is the schema service's job.
+    Assert.DoesNotContain("GetAppliedMigrations", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("TenantDbContextBuilder", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void The_schema_service_writes_schema_only_when_schema_was_observed()
+  {
+    // The result carries an explicit observation flag, and persistence is gated on it. Without that gate a
+    // failed connection would once again write Unknown over a verdict it never looked at.
+    Assert.NotNull(typeof(TenantDatabaseSchemaHealthResult).GetProperty("SchemaObserved"));
+
+    var source = File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure", "TenantStorage",
+      "TenantDatabaseSchemaHealthService.cs"));
+
+    Assert.Contains("SchemaObserved", source, StringComparison.Ordinal);
+    Assert.Contains("if (!result.SchemaObserved)", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void Connectivity_and_schema_freshness_read_separate_clocks()
+  {
+    // Schema age must come from LastSchemaCheckUtc alone. If the gate consulted the connectivity timestamp,
+    // a frequent connectivity cadence would silently keep a stale schema verdict looking fresh forever.
+    var gate = File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Application", "TenantStorage",
+      "TenantDatabaseTrafficGate.cs"));
+
+    Assert.Contains("EvaluateFreshness(health.LastSchemaCheckUtc", gate, StringComparison.Ordinal);
+    Assert.DoesNotContain("EvaluateFreshness(health.LastConnectivityCheckUtc", gate, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void The_connectivity_service_reaches_databases_only_through_the_trusted_connection_factory()
+  {
+    var dependencies = typeof(TenantDatabaseConnectivityHealthService).GetConstructors()
+      .SelectMany(constructor => constructor.GetParameters())
+      .Select(parameter => parameter.ParameterType)
+      .ToArray();
+
+    Assert.Contains(typeof(ITenantDatabaseConnectionFactory), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseHealthWriter), dependencies);
+    // No schema dependency at all — the split is structural, not merely behavioural.
+    Assert.DoesNotContain(typeof(ITenantDatabaseSchemaHealthService), dependencies);
+  }
+
   private static IModel TenantModel() => BuildTenantContext(Guid.NewGuid()).Model;
 
   private static Type[] TenantModelEntities() =>

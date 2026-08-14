@@ -183,7 +183,7 @@ public sealed class TenantDatabaseMigrationOrchestrator(
     string? targetMigration,
     CancellationToken cancellationToken)
   {
-    await healthWriter.RecordHealthAsync(
+    await healthWriter.RecordMigrationAsync(
       descriptor.TenantDatabaseId,
       database => database.BeginMigration(MigrationActor, clock.UtcNow),
       cancellationToken);
@@ -210,20 +210,23 @@ public sealed class TenantDatabaseMigrationOrchestrator(
     }
 
     var head = verified.LastOrDefault() ?? targetMigration;
-    await healthWriter.RecordHealthAsync(
-      descriptor.TenantDatabaseId,
-      database =>
-      {
-        if (head is not null)
-        {
-          database.CompleteMigration(head, MigrationActor, clock.UtcNow);
-        }
 
-        database.RecordSchemaHealth(
-          TenantDatabaseSchemaCompatibilityStatus.UpToDate, head, known.LastOrDefault(),
-          MigrationActor, clock.UtcNow);
-      },
-      cancellationToken);
+    // Two dimensions, two explicit writes. The migration dimension records that the run succeeded; the
+    // schema dimension records what the post-verification read actually observed. They are separate calls
+    // because they are separate facts — and because the schema value must come from the history we just
+    // read, not from what the migration call believed it applied.
+    if (head is not null)
+    {
+      await healthWriter.RecordMigrationAsync(
+        descriptor.TenantDatabaseId,
+        database => database.CompleteMigration(head, MigrationActor, clock.UtcNow),
+        cancellationToken);
+    }
+
+    await healthWriter.RecordSchemaAsync(
+      descriptor.TenantDatabaseId,
+      TenantDatabaseSchemaCompatibilityStatus.UpToDate, head, known.LastOrDefault(),
+      MigrationActor, cancellationToken);
 
     return Outcome(descriptor, TenantDatabaseMigrationOutcomeKind.Migrated, null, head);
   }
@@ -233,7 +236,7 @@ public sealed class TenantDatabaseMigrationOrchestrator(
     CancellationToken cancellationToken)
   {
     const string reason = "Pending migrations exist but the migration management mode does not permit the platform to apply them.";
-    await healthWriter.RecordHealthAsync(
+    await healthWriter.RecordMigrationAsync(
       descriptor.TenantDatabaseId,
       database => database.BlockPendingCustomer(reason, MigrationActor, clock.UtcNow),
       cancellationToken);
@@ -246,10 +249,8 @@ public sealed class TenantDatabaseMigrationOrchestrator(
     string detail,
     CancellationToken cancellationToken)
   {
-    await healthWriter.RecordHealthAsync(
-      descriptor.TenantDatabaseId,
-      database => database.RecordConnectivity(
-        TenantDatabaseConnectivityStatus.Unreachable, MigrationActor, clock.UtcNow),
+    await healthWriter.RecordConnectivityAsync(
+      descriptor.TenantDatabaseId, TenantDatabaseConnectivityStatus.Unreachable, MigrationActor,
       cancellationToken);
 
     return Outcome(descriptor, TenantDatabaseMigrationOutcomeKind.Unreachable, detail);
@@ -260,7 +261,7 @@ public sealed class TenantDatabaseMigrationOrchestrator(
     string detail,
     CancellationToken cancellationToken)
   {
-    await healthWriter.RecordHealthAsync(
+    await healthWriter.RecordMigrationAsync(
       descriptor.TenantDatabaseId,
       database => database.FailMigration(detail, MigrationActor, clock.UtcNow),
       cancellationToken);
@@ -270,30 +271,26 @@ public sealed class TenantDatabaseMigrationOrchestrator(
 
   private Task RecordUpToDateAsync(
     TenantDatabaseDescriptor descriptor, string? applied, string? target, CancellationToken cancellationToken) =>
-    healthWriter.RecordHealthAsync(
-      descriptor.TenantDatabaseId,
-      database =>
-      {
-        database.RecordConnectivity(TenantDatabaseConnectivityStatus.Healthy, MigrationActor, clock.UtcNow);
-        database.RecordSchemaHealth(
-          TenantDatabaseSchemaCompatibilityStatus.UpToDate, applied, target, MigrationActor, clock.UtcNow);
-      },
-      cancellationToken);
+    RecordCompatibilityAsync(
+      descriptor, TenantDatabaseSchemaCompatibilityStatus.UpToDate, applied, target, cancellationToken);
 
-  private Task RecordCompatibilityAsync(
+  // The orchestrator reached and read the database under ownership, so it observed BOTH dimensions and may
+  // legitimately record both — but as two explicit, separately-owned writes rather than one combined
+  // mutation. Reaching this point always means a successful connection, so the connectivity claim is
+  // earned rather than assumed.
+  private async Task RecordCompatibilityAsync(
     TenantDatabaseDescriptor descriptor,
     TenantDatabaseSchemaCompatibilityStatus status,
     string? applied,
     string? target,
-    CancellationToken cancellationToken) =>
-    healthWriter.RecordHealthAsync(
-      descriptor.TenantDatabaseId,
-      database =>
-      {
-        database.RecordConnectivity(TenantDatabaseConnectivityStatus.Healthy, MigrationActor, clock.UtcNow);
-        database.RecordSchemaHealth(status, applied, target, MigrationActor, clock.UtcNow);
-      },
-      cancellationToken);
+    CancellationToken cancellationToken)
+  {
+    await healthWriter.RecordConnectivityAsync(
+      descriptor.TenantDatabaseId, TenantDatabaseConnectivityStatus.Healthy, MigrationActor, cancellationToken);
+
+    await healthWriter.RecordSchemaAsync(
+      descriptor.TenantDatabaseId, status, applied, target, MigrationActor, cancellationToken);
+  }
 
   private static TenantDatabaseMigrationOutcome Outcome(
     TenantDatabaseDescriptor descriptor,

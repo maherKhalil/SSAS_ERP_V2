@@ -29,7 +29,7 @@ public sealed class TenantSchemaHealthSqlServerTests
     await using var fixture = await HealthFixture.CreateAsync();
     var id = await fixture.RegisterAsync(fixture.CatalogA, migrateTenantStream: true);
 
-    var result = await fixture.HealthService().CheckAsync(id);
+    var result = await fixture.SchemaHealthService().CheckAsync(id);
 
     Assert.True(result.IsSuccess);
     Assert.Equal(TenantDatabaseConnectivityStatus.Healthy, result.Value.ConnectivityStatus);
@@ -54,7 +54,7 @@ public sealed class TenantSchemaHealthSqlServerTests
     await using var fixture = await HealthFixture.CreateAsync();
     var id = await fixture.RegisterAsync(fixture.CatalogB, migrateTenantStream: false);
 
-    var result = await fixture.HealthService().CheckAsync(id);
+    var result = await fixture.SchemaHealthService().CheckAsync(id);
 
     Assert.True(result.IsSuccess);
     Assert.Equal(TenantDatabaseConnectivityStatus.Healthy, result.Value.ConnectivityStatus);
@@ -75,7 +75,7 @@ public sealed class TenantSchemaHealthSqlServerTests
       "INSERT INTO [tenant].[__EFMigrationsHistory] ([MigrationId], [ProductVersion]) " +
       "VALUES (N'29990101000000_FutureTenantMigration', N'8.0.0')");
 
-    var result = await fixture.HealthService().CheckAsync(id);
+    var result = await fixture.SchemaHealthService().CheckAsync(id);
 
     Assert.Equal(TenantDatabaseSchemaCompatibilityStatus.AheadOfApplication, result.Value.SchemaCompatibilityStatus);
 
@@ -100,7 +100,7 @@ public sealed class TenantSchemaHealthSqlServerTests
       INSERT INTO [tenant].[__EFMigrationsHistory] VALUES (N'20250101000000_ForeignLineage', N'8.0.0');
       """);
 
-    var result = await fixture.HealthService().CheckAsync(id);
+    var result = await fixture.SchemaHealthService().CheckAsync(id);
     Assert.Equal(TenantDatabaseSchemaCompatibilityStatus.MigrationHistoryMismatch, result.Value.SchemaCompatibilityStatus);
 
     var migrate = await fixture.Orchestrator().MigrateAsync(id, new TenantMigrationRunOptions());
@@ -118,7 +118,7 @@ public sealed class TenantSchemaHealthSqlServerTests
     await using var fixture = await HealthFixture.CreateAsync();
     var id = await fixture.RegisterAsync(fixture.CatalogA, migrateTenantStream: true, serverKey: "UnconfiguredServer");
 
-    var result = await fixture.HealthService().CheckAsync(id);
+    var result = await fixture.SchemaHealthService().CheckAsync(id);
 
     Assert.Equal(TenantDatabaseConnectivityStatus.Unreachable, result.Value.ConnectivityStatus);
     Assert.Equal(TenantDatabaseSchemaCompatibilityStatus.Unknown, result.Value.SchemaCompatibilityStatus);
@@ -139,7 +139,7 @@ public sealed class TenantSchemaHealthSqlServerTests
       hostingMode: TenantDatabaseHostingMode.CustomerManaged,
       storageMode: TenantDatabaseStorageMode.Dedicated);
 
-    var result = await fixture.HealthService().CheckAsync(id);
+    var result = await fixture.SchemaHealthService().CheckAsync(id);
 
     // Unknown, never Healthy: claiming verified health for a database we never contacted would be the most
     // misleading thing this service could report.
@@ -165,7 +165,7 @@ public sealed class TenantSchemaHealthSqlServerTests
     await fixture.AssignTenantAsync(id, "SHARED-2");
     await fixture.AssignTenantAsync(id, "SHARED-3");
 
-    var sweep = await fixture.HealthService().SweepAsync(50);
+    var sweep = await fixture.SchemaHealthService().SweepAsync(50);
 
     Assert.True(sweep.IsSuccess);
     Assert.Equal(1, sweep.Value.Discovered);
@@ -303,7 +303,7 @@ public sealed class TenantSchemaHealthSqlServerTests
     var id = await fixture.RegisterAsync(fixture.CatalogB, migrateTenantStream: false);
     var tenantId = await fixture.AssignTenantAsync(id, "GATED");
 
-    await fixture.HealthService().CheckAsync(id);
+    await fixture.SchemaHealthService().CheckAsync(id);
 
     var blocked = await fixture.ContextFactory(tenantId).CreateAsync(tenantId);
     Assert.True(blocked.IsFailure);
@@ -339,8 +339,7 @@ public sealed class TenantSchemaHealthSqlServerTests
 
     // Once connectivity has been established but the schema verdict is still absent, the denial moves to
     // the schema reason — proving Unknown denies on its own account and not merely via connectivity.
-    await fixture.SetHealthAsync(id, database => database.RecordConnectivity(
-      TenantDatabaseConnectivityStatus.Healthy, "health-tests", DateTimeOffset.UtcNow));
+    await fixture.SetConnectivityAsync(id, TenantDatabaseConnectivityStatus.Healthy);
 
     var schemaResult = await fixture.ContextFactory(tenantId).CreateAsync(tenantId);
     Assert.True(schemaResult.IsFailure);
@@ -371,6 +370,183 @@ public sealed class TenantSchemaHealthSqlServerTests
     Assert.Equal(0, summary.Value.Failed);
   }
 
+  // ---- TS-Health-Split: connectivity and schema are independent dimensions with independent writers.
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public async Task A_connectivity_failure_preserves_previously_observed_schema_compatibility()
+  {
+    // THE L6 PROOF. A check that observes nothing about schema must write nothing about schema — the
+    // previous verdict and its timestamp survive, to be judged by the bounded stale policy rather than
+    // erased by an outage that never looked at the schema at all.
+    await using var fixture = await HealthFixture.CreateAsync();
+    var id = await fixture.RegisterAsync(fixture.CatalogA, migrateTenantStream: true);
+
+    await fixture.SchemaHealthService().CheckAsync(id);
+    var before = await fixture.ReadAsync(id);
+    Assert.Equal(TenantDatabaseSchemaCompatibilityStatus.UpToDate, before.SchemaCompatibilityStatus);
+    Assert.NotNull(before.LastSchemaCheckUtc);
+
+    // Deterministic connectivity failure: re-point the row at a ServerKey trusted configuration does not
+    // know, so the connection can never be built.
+    await fixture.RepointServerKeyAsync(id, "UnconfiguredServer");
+    var probe = await fixture.ConnectivityHealthService().CheckAsync(id);
+    Assert.True(probe.IsSuccess);
+    Assert.Equal(TenantDatabaseConnectivityStatus.Unreachable, probe.Value.Status);
+
+    var after = await fixture.ReadAsync(id);
+
+    // Connectivity moved and was re-timestamped...
+    Assert.Equal(TenantDatabaseConnectivityStatus.Unreachable, after.ConnectivityStatus);
+    Assert.True(after.LastConnectivityCheckUtc >= before.LastConnectivityCheckUtc);
+
+    // ...and every schema-owned value is untouched, including the freshness anchor.
+    Assert.Equal(TenantDatabaseSchemaCompatibilityStatus.UpToDate, after.SchemaCompatibilityStatus);
+    Assert.Equal(before.AppliedMigration, after.AppliedMigration);
+    Assert.Equal(before.TargetMigration, after.TargetMigration);
+    Assert.Equal(before.LastSchemaCheckUtc, after.LastSchemaCheckUtc);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public async Task Traffic_recovers_after_a_connectivity_outage_without_a_fresh_schema_check()
+  {
+    // The practical benefit of the split: once connectivity returns, the still-fresh schema observation
+    // serves traffic again. Before the split this required a full schema re-check, because the outage had
+    // destroyed the verdict.
+    await using var fixture = await HealthFixture.CreateAsync();
+    var id = await fixture.RegisterAsync(fixture.CatalogA, migrateTenantStream: true);
+    var tenantId = await fixture.AssignTenantAsync(id, "RECOVER");
+
+    await fixture.SchemaHealthService().CheckAsync(id);
+    Assert.True((await fixture.ContextFactory(tenantId).CreateAsync(tenantId)) is { IsSuccess: true });
+
+    // Outage.
+    await fixture.SetConnectivityAsync(id, TenantDatabaseConnectivityStatus.Unreachable);
+    var blocked = await fixture.ContextFactory(tenantId).CreateAsync(tenantId);
+    Assert.True(blocked.IsFailure);
+    Assert.Equal(TenantStorageErrors.TenantDatabaseUnavailable.Code, blocked.Error.Code);
+
+    // Connectivity alone recovers — no schema check runs.
+    var probe = await fixture.ConnectivityHealthService().CheckAsync(id);
+    Assert.Equal(TenantDatabaseConnectivityStatus.Healthy, probe.Value.Status);
+
+    var recovered = await fixture.ContextFactory(tenantId).CreateAsync(tenantId);
+    Assert.True(recovered.IsSuccess);
+    await recovered.Value.DisposeAsync();
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public async Task A_hard_stale_schema_observation_still_denies_after_connectivity_recovers()
+  {
+    // The split must not create indefinite trust. A compatible verdict older than the hard-stale bound
+    // denies regardless of how healthy connectivity is.
+    await using var fixture = await HealthFixture.CreateAsync();
+    var id = await fixture.RegisterAsync(fixture.CatalogA, migrateTenantStream: true);
+    var tenantId = await fixture.AssignTenantAsync(id, "HARDSTALE");
+
+    await fixture.SchemaHealthService().CheckAsync(id);
+    await fixture.SetConnectivityAsync(id, TenantDatabaseConnectivityStatus.Healthy);
+
+    // Age the schema observation past the hard-stale bound without touching connectivity.
+    await HealthFixture.ExecuteAsync(fixture.PlatformCatalog,
+      $"UPDATE [platform].[TenantDatabases] SET [LastSchemaCheckUtc] = DATEADD(day, -7, SYSDATETIMEOFFSET()) WHERE [TenantDatabaseId] = {id}");
+
+    var result = await fixture.ContextFactory(tenantId).CreateAsync(tenantId);
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(TenantStorageErrors.SchemaHealthStale.Code, result.Error.Code);
+  }
+
+  [Theory]
+  [Trait("Decision", "ADR-018")]
+  [InlineData(TenantDatabaseSchemaCompatibilityStatus.PendingMigrations)]
+  [InlineData(TenantDatabaseSchemaCompatibilityStatus.AheadOfApplication)]
+  [InlineData(TenantDatabaseSchemaCompatibilityStatus.MigrationHistoryMismatch)]
+  public async Task A_known_incompatible_schema_survives_connectivity_churn_and_keeps_denying(
+    TenantDatabaseSchemaCompatibilityStatus incompatible)
+  {
+    // Staleness never rescues a deny, and neither does a connectivity refresh.
+    await using var fixture = await HealthFixture.CreateAsync();
+    var id = await fixture.RegisterAsync(fixture.CatalogA, migrateTenantStream: true);
+    var tenantId = await fixture.AssignTenantAsync(id, "INCOMPAT");
+
+    await fixture.SetSchemaAsync(id, incompatible);
+    await fixture.SetConnectivityAsync(id, TenantDatabaseConnectivityStatus.Unreachable);
+    await fixture.ConnectivityHealthService().CheckAsync(id);
+
+    var after = await fixture.ReadAsync(id);
+    Assert.Equal(incompatible, after.SchemaCompatibilityStatus);
+    Assert.Equal(TenantDatabaseConnectivityStatus.Healthy, after.ConnectivityStatus);
+
+    var result = await fixture.ContextFactory(tenantId).CreateAsync(tenantId);
+    Assert.True(result.IsFailure);
+    Assert.Equal(TenantStorageErrors.DatabaseUpgradeRequired.Code, result.Error.Code);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public async Task A_successful_connectivity_check_cannot_manufacture_schema_health()
+  {
+    // Connectivity is not evidence about schema. An unverified database stays denied however reachable.
+    await using var fixture = await HealthFixture.CreateAsync();
+    var id = await fixture.RegisterAsync(fixture.CatalogA, migrateTenantStream: true);
+    var tenantId = await fixture.AssignTenantAsync(id, "NOMANUFACTURE");
+
+    var probe = await fixture.ConnectivityHealthService().CheckAsync(id);
+    Assert.Equal(TenantDatabaseConnectivityStatus.Healthy, probe.Value.Status);
+
+    var after = await fixture.ReadAsync(id);
+    Assert.Equal(TenantDatabaseSchemaCompatibilityStatus.Unknown, after.SchemaCompatibilityStatus);
+    Assert.Null(after.LastSchemaCheckUtc);
+
+    var result = await fixture.ContextFactory(tenantId).CreateAsync(tenantId);
+    Assert.True(result.IsFailure);
+    Assert.Equal(TenantStorageErrors.SchemaHealthUnknown.Code, result.Error.Code);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-021")]
+  public async Task Connectivity_health_never_probes_a_customer_managed_database()
+  {
+    await using var fixture = await HealthFixture.CreateAsync();
+    var id = await fixture.RegisterAsync(
+      "CustomerERP", migrateTenantStream: false, serverKey: "CustomerServer",
+      hostingMode: TenantDatabaseHostingMode.CustomerManaged,
+      storageMode: TenantDatabaseStorageMode.Dedicated);
+
+    var probe = await fixture.ConnectivityHealthService().CheckAsync(id);
+
+    Assert.False(probe.Value.Verified);
+    Assert.Equal(TenantDatabaseConnectivityStatus.Unknown, probe.Value.Status);
+    // Nothing was written: an unverifiable database keeps Unknown rather than a fabricated verdict.
+    Assert.Equal(TenantDatabaseConnectivityStatus.Unknown, (await fixture.ReadAsync(id)).ConnectivityStatus);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public async Task Concurrent_connectivity_and_schema_writers_each_preserve_the_other_dimension()
+  {
+    // The property that matters most for TS-Backup, which adds a THIRD writer to this same row. Both
+    // observations must survive: whoever loses the RowVersion race re-reads and reapplies only its own
+    // dimension rather than replaying a stale whole aggregate.
+    await using var fixture = await HealthFixture.CreateAsync();
+    var id = await fixture.RegisterAsync(fixture.CatalogA, migrateTenantStream: true);
+
+    await Task.WhenAll(
+      fixture.ConnectivityHealthService().CheckAsync(id),
+      fixture.SchemaHealthService().CheckAsync(id));
+
+    var after = await fixture.ReadAsync(id);
+
+    Assert.Equal(TenantDatabaseConnectivityStatus.Healthy, after.ConnectivityStatus);
+    Assert.NotNull(after.LastConnectivityCheckUtc);
+    Assert.Equal(TenantDatabaseSchemaCompatibilityStatus.UpToDate, after.SchemaCompatibilityStatus);
+    Assert.NotNull(after.LastSchemaCheckUtc);
+    Assert.NotNull(after.AppliedMigration);
+  }
+
   // Three real catalogs: the Platform registry, and two physical tenant databases.
   private sealed class HealthFixture : IAsyncDisposable
   {
@@ -379,6 +555,8 @@ public sealed class TenantSchemaHealthSqlServerTests
     private const string PrimaryServerKey = "PrimarySqlServer";
 
     private readonly string platformCatalog;
+
+    public string PlatformCatalog => platformCatalog;
 
     private HealthFixture(string platformCatalog, string catalogA, string catalogB)
     {
@@ -454,14 +632,31 @@ public sealed class TenantSchemaHealthSqlServerTests
       return new TenantDatabaseConnectionFactory(options);
     }
 
-    public TenantDatabaseSchemaHealthService HealthService()
+    public TenantDatabaseConnectivityHealthService ConnectivityHealthService()
+    {
+      var context = PlatformContext();
+      return new TenantDatabaseConnectivityHealthService(
+        new TenantDatabaseRegistryReadRepository(context),
+        ConnectionFactory(),
+        new TenantDatabaseHealthWriter(context, new TestClock()));
+    }
+
+    // Re-points a registered database at a different ServerKey, to create a deterministic connectivity
+    // failure without touching any health state.
+    public async Task RepointServerKeyAsync(long tenantDatabaseId, string serverKey)
+    {
+      await ExecuteAsync(
+        PlatformCatalog,
+        $"UPDATE [platform].[TenantDatabases] SET [ServerKey] = N'{serverKey}' WHERE [TenantDatabaseId] = {tenantDatabaseId}");
+    }
+
+    public TenantDatabaseSchemaHealthService SchemaHealthService()
     {
       var context = PlatformContext();
       return new TenantDatabaseSchemaHealthService(
         new TenantDatabaseRegistryReadRepository(context),
         ConnectionFactory(),
-        new TenantDatabaseHealthWriter(context),
-        new TestClock());
+        new TenantDatabaseHealthWriter(context, new TestClock()));
     }
 
     // A fresh instance per call, each with its own PlatformDbContext and its own connections — which is
@@ -472,7 +667,7 @@ public sealed class TenantSchemaHealthSqlServerTests
       return new TenantDatabaseMigrationOrchestrator(
         new TenantDatabaseRegistryReadRepository(context),
         ConnectionFactory(),
-        new TenantDatabaseHealthWriter(context),
+        new TenantDatabaseHealthWriter(context, new TestClock()),
         new TestClock());
     }
 
@@ -530,10 +725,22 @@ public sealed class TenantSchemaHealthSqlServerTests
 
     // Sets health directly through the aggregate, for cases that need a specific dimension established
     // without running the checker that would establish all of them.
-    public async Task SetHealthAsync(long tenantDatabaseId, Action<TenantDatabase> mutate)
+    public async Task SetConnectivityAsync(long tenantDatabaseId, TenantDatabaseConnectivityStatus status)
     {
       await using var platform = PlatformContext();
-      await new TenantDatabaseHealthWriter(platform).RecordHealthAsync(tenantDatabaseId, mutate);
+      await new TenantDatabaseHealthWriter(platform, new TestClock())
+        .RecordConnectivityAsync(tenantDatabaseId, status, "health-tests");
+    }
+
+    public async Task SetSchemaAsync(
+      long tenantDatabaseId,
+      TenantDatabaseSchemaCompatibilityStatus status,
+      string? applied = null,
+      string? target = null)
+    {
+      await using var platform = PlatformContext();
+      await new TenantDatabaseHealthWriter(platform, new TestClock())
+        .RecordSchemaAsync(tenantDatabaseId, status, applied, target, "health-tests");
     }
 
     public async Task<TenantDatabase> ReadAsync(long tenantDatabaseId)

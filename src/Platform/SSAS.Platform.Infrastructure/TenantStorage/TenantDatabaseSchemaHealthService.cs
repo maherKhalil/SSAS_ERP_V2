@@ -1,6 +1,5 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.TenantStorage;
@@ -23,8 +22,7 @@ namespace SSAS.Platform.Infrastructure.TenantStorage;
 public sealed class TenantDatabaseSchemaHealthService(
   ITenantDatabaseRegistryReadRepository readRepository,
   ITenantDatabaseConnectionFactory connectionFactory,
-  ITenantDatabaseHealthWriter healthWriter,
-  IDateTimeProvider clock) : ITenantDatabaseSchemaHealthService
+  ITenantDatabaseHealthWriter healthWriter) : ITenantDatabaseSchemaHealthService
 {
   private const string HealthActor = "tenant-storage-health";
 
@@ -119,7 +117,7 @@ public sealed class TenantDatabaseSchemaHealthService(
         descriptor.TenantDatabaseId,
         TenantDatabaseConnectivityStatus.Unknown,
         TenantDatabaseSchemaCompatibilityStatus.Unknown,
-        null, TargetMigration, []);
+        null, TargetMigration, [], SchemaObserved: false);
     }
 
     var connection = connectionFactory.Create(new TenantDatabaseConnectionTarget(
@@ -131,7 +129,7 @@ public sealed class TenantDatabaseSchemaHealthService(
         descriptor.TenantDatabaseId,
         TenantDatabaseConnectivityStatus.Unreachable,
         TenantDatabaseSchemaCompatibilityStatus.Unknown,
-        null, TargetMigration, []);
+        null, TargetMigration, [], SchemaObserved: false);
     }
 
     await using var sqlConnection = connection.Value;
@@ -148,7 +146,8 @@ public sealed class TenantDatabaseSchemaHealthService(
         Classify(applied, known),
         applied.LastOrDefault(),
         known.LastOrDefault(),
-        pending);
+        pending,
+        SchemaObserved: true);
     }
     catch (SqlException exception)
     {
@@ -160,7 +159,7 @@ public sealed class TenantDatabaseSchemaHealthService(
 
       return new TenantDatabaseSchemaHealthResult(
         descriptor.TenantDatabaseId, status,
-        TenantDatabaseSchemaCompatibilityStatus.Unknown, null, TargetMigration, []);
+        TenantDatabaseSchemaCompatibilityStatus.Unknown, null, TargetMigration, [], SchemaObserved: false);
     }
   }
 
@@ -208,27 +207,37 @@ public sealed class TenantDatabaseSchemaHealthService(
   private static bool IsAuthenticationFailure(SqlException exception) =>
     exception.Errors.OfType<SqlError>().Any(error => error.Number is 18456 or 4060 or 18452);
 
-  private Task PersistAsync(
+  // Each dimension is written by its own call, and only when this check actually observed it.
+  //
+  // THIS IS THE FIX FOR L6. The previous version wrote schema unconditionally, so a check that could not
+  // connect recorded SchemaCompatibilityStatus.Unknown over a perfectly good UpToDate it had never looked
+  // at — destroying exactly the observation the bounded stale-compatible policy exists to keep serving.
+  // Now a failed connection writes connectivity and nothing else.
+  private async Task PersistAsync(
     TenantDatabaseDescriptor descriptor,
     TenantDatabaseSchemaHealthResult result,
-    CancellationToken cancellationToken) =>
-    healthWriter.RecordHealthAsync(
-      descriptor.TenantDatabaseId,
-      database =>
-      {
-        // Only a completed check writes connectivity; an unverifiable database keeps Unknown rather than
-        // having a fabricated result recorded against it.
-        if (result.ConnectivityStatus != TenantDatabaseConnectivityStatus.Unknown)
-        {
-          database.RecordConnectivity(result.ConnectivityStatus, HealthActor, clock.UtcNow);
-        }
+    CancellationToken cancellationToken)
+  {
+    // Reaching the database IS a connectivity observation, so it is recorded — but through an explicit
+    // call to the connectivity writer rather than by this method quietly owning two dimensions.
+    // An unverifiable database (customer-managed) keeps Unknown rather than a fabricated result.
+    if (result.ConnectivityStatus != TenantDatabaseConnectivityStatus.Unknown)
+    {
+      await healthWriter.RecordConnectivityAsync(
+        descriptor.TenantDatabaseId, result.ConnectivityStatus, HealthActor, cancellationToken);
+    }
 
-        database.RecordSchemaHealth(
-          result.SchemaCompatibilityStatus,
-          result.AppliedMigration,
-          result.TargetMigration,
-          HealthActor,
-          clock.UtcNow);
-      },
+    if (!result.SchemaObserved)
+    {
+      return;
+    }
+
+    await healthWriter.RecordSchemaAsync(
+      descriptor.TenantDatabaseId,
+      result.SchemaCompatibilityStatus,
+      result.AppliedMigration,
+      result.TargetMigration,
+      HealthActor,
       cancellationToken);
+  }
 }

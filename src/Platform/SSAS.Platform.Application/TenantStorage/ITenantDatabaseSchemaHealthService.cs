@@ -32,7 +32,11 @@ public sealed record TenantDatabaseSchemaHealthResult(
   TenantDatabaseSchemaCompatibilityStatus SchemaCompatibilityStatus,
   string? AppliedMigration,
   string? TargetMigration,
-  IReadOnlyCollection<string> PendingMigrations);
+  IReadOnlyCollection<string> PendingMigrations,
+  // TRUE only when migration history was actually read. When a check cannot connect, it has observed
+  // nothing about schema, so it must write nothing about schema — the previous observation and its
+  // timestamp stand, to be judged by the bounded stale policy rather than erased.
+  bool SchemaObserved);
 
 public sealed record TenantDatabaseHealthSweepSummary(
   int Discovered,

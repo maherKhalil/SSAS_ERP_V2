@@ -2,7 +2,7 @@
 id: ADR-018
 title: Tenant Schema Health and Migration Orchestration
 category: Architecture Decision Record
-version: 1.5
+version: 1.6
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -127,6 +127,24 @@ Constraints:
 - Like the schema-health service, it is **read-only** with respect to schema.
 
 Its separation from schema health matters because the two answer different questions, fail for different reasons, and run on different cadences — and because a connectivity failure must not be reported as a schema problem.
+
+### One writer per dimension
+
+The separation is binding at the **write** boundary, not merely in the reported values. Each dimension has exactly one writer, and **a check that observes nothing about a dimension writes nothing to that dimension**:
+
+| Writer | Owns |
+|---|---|
+| Connectivity health | `ConnectivityStatus`, `LastConnectivityCheckUtc` |
+| Schema health | `SchemaCompatibilityStatus`, `AppliedMigration`, `TargetMigration`, `LastSchemaCheckUtc` |
+| Migration orchestration | `MigrationExecutionStatus` and its timestamps/error |
+
+The consequence that motivated stating this explicitly: a schema check that **cannot connect** has observed nothing about schema. It must record connectivity and leave the previous schema verdict — and its `LastSchemaCheckUtc` — exactly as it found them. Overwriting them with `Unknown` would destroy precisely the observation the bounded stale-compatible policy exists to keep serving, turning a transient network blip into an avoidable denial that outlives it.
+
+`LastSchemaCheckUtc` therefore means *the last time schema was actually observed*, and is never advanced by a connectivity result. Schema freshness is computed from it alone; a frequent connectivity cadence must never make a stale schema verdict look fresh.
+
+Because the dimensions share one physical row, concurrent writers will contend on `RowVersion`. A losing writer **re-reads and reapplies only its own dimension's observation**, bounded; it never replays a stale whole aggregate, which would be last-write-wins across dimensions. This property becomes load-bearing when recovery readiness (`TS-Backup`) adds a third writer.
+
+None of this weakens the deny rules: `PendingMigrations`, `AheadOfApplication`, `MigrationHistoryMismatch` and `Unknown` all continue to deny, and staleness never rescues them. Only a previously-observed `UpToDate` participates in the bounded stale-compatible policy.
 
 ## Tenant database unavailable
 
@@ -651,3 +669,4 @@ This ADR should be reviewed if:
 | 1.3 | 2026-08-14 | Solution Architecture Team | Added operational recovery readiness as a dimension distinct from schema compatibility; a successful migration does not imply a recoverable database. Deferred to `TS-Backup` |
 | 1.4 | 2026-08-14 | Solution Architecture Team | Documented the explicit two-stream (Platform / Tenant) migration deployment procedure, including per-stream commands, shared-catalog and dedicated behaviour, ordering-tolerance scope, and pre-traffic validation. No architecture decision changed |
 | 1.5 | 2026-08-14 | Solution Architecture Team | Recorded that schema health and migration orchestration are implemented: reclassified the manual two-stream commands as development/break-glass, and named the orchestrator as the normal path for the platform-managed estate. No architecture decision changed |
+| 1.6 | 2026-08-14 | Solution Architecture Team | Documented one-writer-per-dimension: connectivity and schema observations have independent writers, a check that observes nothing about a dimension writes nothing to it, LastSchemaCheckUtc advances only on an actual schema observation, and concurrent writers reapply only their own dimension. No architecture decision changed |

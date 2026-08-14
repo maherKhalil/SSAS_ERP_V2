@@ -106,6 +106,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddSingleton(TenantDatabaseHealthFreshness.Default);
     services.AddSingleton<ITenantDatabaseTrafficGate, TenantDatabaseTrafficGate>();
     services.AddScoped<ITenantDatabaseHealthWriter, TenantDatabaseHealthWriter>();
+    services.AddScoped<ITenantDatabaseConnectivityHealthService, TenantDatabaseConnectivityHealthService>();
     services.AddScoped<ITenantDatabaseSchemaHealthService, TenantDatabaseSchemaHealthService>();
     services.AddScoped<ITenantDatabaseMigrationOrchestrator, TenantDatabaseMigrationOrchestrator>();
 

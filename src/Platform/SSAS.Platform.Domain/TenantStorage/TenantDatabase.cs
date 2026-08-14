@@ -238,7 +238,11 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
     MigrationExecutionStatus = TenantDatabaseMigrationExecutionStatus.Succeeded;
     LastMigrationSuccessUtc = occurredUtc.ToUniversalTime();
     LastMigrationError = null;
-    AppliedMigration = appliedMigration;
+
+    // AppliedMigration is deliberately NOT written here: it is schema-observation state, owned by
+    // RecordSchemaHealth. The orchestrator re-reads the actual history after migrating and records that
+    // observation explicitly, so the value always comes from something that looked at the database rather
+    // than from what a migration call believed it had done.
     Touch(actor, occurredUtc);
     return Result.Success();
   }

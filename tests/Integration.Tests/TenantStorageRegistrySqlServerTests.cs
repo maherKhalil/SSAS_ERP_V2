@@ -43,11 +43,13 @@ public sealed class TenantStorageRegistrySqlServerTests
     Assert.True(databaseEntity.FindProperty(nameof(TenantDatabase.RowVersion))?.IsConcurrencyToken);
     Assert.True(assignmentEntity.FindProperty(nameof(TenantDatabaseAssignment.RowVersion))?.IsConcurrencyToken);
 
-    // Extended additively by ADR-018: the health and migration dimensions live on the PHYSICAL database
-    // row. The original routing columns are unchanged, which is what this assertion continues to protect.
+    // Extended additively by ADR-018 (health and migration dimensions) and again by ADR-022 (recovery
+    // readiness, the fourth dimension). Every column lives on the PHYSICAL database row, and the original
+    // routing columns are unchanged — which is what this assertion continues to protect.
     Assert.Equal(
       ["TenantDatabaseId", "HostingMode", "StorageMode", "ServerKey", "DatabaseName", "ProvisioningStatus", "RowVersion", "CreatedUtc", "ModifiedUtc", "CreatedBy", "ModifiedBy",
-       "AppliedMigration", "ConnectivityStatus", "LastConnectivityCheckUtc", "LastMigrationAttemptUtc", "LastMigrationError", "LastMigrationFailureUtc", "LastMigrationSuccessUtc", "LastSchemaCheckUtc", "MigrationExecutionStatus", "MigrationManagementMode", "SchemaCompatibilityStatus", "TargetMigration"],
+       "AppliedMigration", "ConnectivityStatus", "LastConnectivityCheckUtc", "LastMigrationAttemptUtc", "LastMigrationError", "LastMigrationFailureUtc", "LastMigrationSuccessUtc", "LastSchemaCheckUtc", "MigrationExecutionStatus", "MigrationManagementMode", "SchemaCompatibilityStatus", "TargetMigration",
+       "LastRecoveryReadinessCheckUtc", "LastRestoreVerificationUtc", "LastSuccessfulDifferentialBackupUtc", "LastSuccessfulFullBackupUtc", "LastSuccessfulLogBackupUtc", "RecoveryReadinessStatus"],
       await ReadStringsAsync(context,
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'platform' AND TABLE_NAME = 'TenantDatabases' ORDER BY ORDINAL_POSITION"));
     Assert.Equal(

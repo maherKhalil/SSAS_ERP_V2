@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.TenantStorage;
@@ -47,10 +46,9 @@ public sealed class TenantDatabaseHealthWriter(
   PlatformDbContext dbContext,
   IDateTimeProvider clock) : ITenantDatabaseHealthWriter
 {
-  // Two independent checkers write the same physical row on different cadences, so RowVersion conflicts
-  // are ordinary rather than exceptional. The bound is small because each retry re-reads and reapplies one
-  // dimension's observation — it converges immediately or the row is genuinely contended.
-  private const int MaximumConcurrencyRetries = 3;
+  // The shared dimension-scoped write path: re-read, reapply only this dimension, bounded retry. Shared
+  // with the recovery-readiness writer so all three dimensions use one proven implementation.
+  private readonly TenantDatabaseDimensionWriter writer = new(dbContext);
 
   public Task RecordConnectivityAsync(
     long tenantDatabaseId,
@@ -83,49 +81,9 @@ public sealed class TenantDatabaseHealthWriter(
     return ApplyAsync(tenantDatabaseId, mutate, cancellationToken);
   }
 
-  // Applies ONE dimension's observation, re-reading and reapplying on a concurrency conflict.
-  //
-  // The reapply is what makes independent writers safe. The mutation closes over only its own dimension's
-  // values, so replaying it against a freshly-loaded aggregate leaves whatever the winner wrote to OTHER
-  // dimensions intact. Reloading and saving the whole stale aggregate — the obvious alternative — would be
-  // last-write-wins across dimensions, which is precisely the bug this slice exists to remove.
-  private async Task ApplyAsync(
+  private Task ApplyAsync(
     long tenantDatabaseId,
     Action<TenantDatabase> mutate,
-    CancellationToken cancellationToken)
-  {
-    for (var attempt = 0; ; attempt++)
-    {
-      var database = await dbContext.TenantDatabases
-        .SingleOrDefaultAsync(item => item.Id == tenantDatabaseId, cancellationToken);
-      if (database is null)
-      {
-        return;
-      }
-
-      mutate(database);
-
-      try
-      {
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return;
-      }
-      catch (DbUpdateConcurrencyException)
-      {
-        // Another writer updated this row first. Give up only after a bounded number of attempts; a
-        // permanently contended row is an operational signal, not something to spin on.
-        if (attempt >= MaximumConcurrencyRetries)
-        {
-          return;
-        }
-      }
-      finally
-      {
-        // A fleet sweep touches every physical database in the estate; leaving each one tracked would grow
-        // the change tracker for the whole run and make every subsequent SaveChanges progressively slower.
-        // Detaching also guarantees the next attempt re-reads rather than reusing the stale instance.
-        dbContext.Entry(database).State = EntityState.Detached;
-      }
-    }
-  }
+    CancellationToken cancellationToken) =>
+    writer.ApplyAsync(tenantDatabaseId, mutate, cancellationToken);
 }

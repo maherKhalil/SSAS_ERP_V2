@@ -113,6 +113,31 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
   // Safe summary only. Connection strings, credentials and endpoint material must never reach this column.
   public string? LastMigrationError { get; private set; }
 
+  // ---- The FOURTH dimension: recovery readiness (ADR-022 §2). Durability, kept strictly apart from the
+  // three above. It has its own writer, its own cadence, and its own meaning; it is never merged into
+  // schema or connectivity state, and it never gates ordinary ERP traffic (ADR-022 §7).
+  //
+  // Defaults to Unknown, and EXISTING ROWS BACKFILL TO Unknown rather than Protected: nothing has proven
+  // those databases recoverable, and the lifecycle gates that read this must fail closed on an unverified
+  // assumption. Protected is a conclusion drawn from evidence, never from a policy existing.
+  public TenantDatabaseRecoveryReadinessStatus RecoveryReadinessStatus { get; private set; }
+    = TenantDatabaseRecoveryReadinessStatus.Unknown;
+
+  public DateTimeOffset? LastRecoveryReadinessCheckUtc { get; private set; }
+
+  // Cached OBSERVATIONS, not history. Full run history lives in TenantDatabaseBackupRun; these few
+  // timestamps exist so a cutover gate and an operator view can answer "when was this last protected?"
+  // without scanning a run table that grows every fifteen minutes.
+  public DateTimeOffset? LastSuccessfulFullBackupUtc { get; private set; }
+
+  public DateTimeOffset? LastSuccessfulDifferentialBackupUtc { get; private set; }
+
+  public DateTimeOffset? LastSuccessfulLogBackupUtc { get; private set; }
+
+  // An ACTUAL restore verification, not RESTORE VERIFYONLY (ADR-022 §17). This is the timestamp the
+  // pre-cutover gate depends on, which is why it is distinct from any readability check.
+  public DateTimeOffset? LastRestoreVerificationUtc { get; private set; }
+
   public byte[] RowVersion { get; private set; } = [];
 
   public DateTimeOffset CreatedUtc { get; private set; }
@@ -276,6 +301,55 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
     }
 
     return FailMigration(reasonSummary, actor, occurredUtc);
+  }
+
+  // Records ONE recovery-readiness observation. Writes recovery-owned fields and nothing else: connectivity,
+  // schema and migration state are untouched here, exactly as those dimensions leave this one untouched.
+  //
+  // The backup timestamps are passed as OPTIONAL observations rather than mandatory arguments, so an
+  // evaluation that learned nothing new about a given backup type leaves that timestamp alone instead of
+  // erasing it. That is the aggregate-level expression of "a check that observes nothing writes nothing".
+  public Result RecordRecoveryReadiness(
+    TenantDatabaseRecoveryReadinessStatus status,
+    string actor,
+    DateTimeOffset occurredUtc,
+    DateTimeOffset? lastSuccessfulFullBackupUtc = null,
+    DateTimeOffset? lastSuccessfulDifferentialBackupUtc = null,
+    DateTimeOffset? lastSuccessfulLogBackupUtc = null,
+    DateTimeOffset? lastRestoreVerificationUtc = null)
+  {
+    if (status == TenantDatabaseRecoveryReadinessStatus.Unknown)
+    {
+      // Unknown is the pre-verification state. A completed evaluation always concludes something, and
+      // writing Unknown back would erase evidence rather than record it — the same rule connectivity follows.
+      return Result.Failure(TenantStorageErrors.RecoveryReadinessResultRequired);
+    }
+
+    RecoveryReadinessStatus = status;
+    LastRecoveryReadinessCheckUtc = occurredUtc.ToUniversalTime();
+
+    if (lastSuccessfulFullBackupUtc is not null)
+    {
+      LastSuccessfulFullBackupUtc = lastSuccessfulFullBackupUtc.Value.ToUniversalTime();
+    }
+
+    if (lastSuccessfulDifferentialBackupUtc is not null)
+    {
+      LastSuccessfulDifferentialBackupUtc = lastSuccessfulDifferentialBackupUtc.Value.ToUniversalTime();
+    }
+
+    if (lastSuccessfulLogBackupUtc is not null)
+    {
+      LastSuccessfulLogBackupUtc = lastSuccessfulLogBackupUtc.Value.ToUniversalTime();
+    }
+
+    if (lastRestoreVerificationUtc is not null)
+    {
+      LastRestoreVerificationUtc = lastRestoreVerificationUtc.Value.ToUniversalTime();
+    }
+
+    Touch(actor, occurredUtc);
+    return Result.Success();
   }
 
   private static string? Truncate(string? value) =>

@@ -172,9 +172,14 @@ public sealed class TenantBackupFoundationArchitectureTests
             continue;
           }
 
-          // RecordVerification records an OUTCOME; it does not perform one. Everything else named after an
-          // execution verb is genuinely forbidden in this slice.
-          if (method.Name is "RecordVerification")
+          // RecordVerification records an OUTCOME; it does not perform one.
+          //
+          // ExecuteBackupAsync is the SQL Server provider's own command-issuing method, added by the
+          // reviewed Phase B slice. It is exempted BY TYPE rather than by name, so an execution verb
+          // appearing anywhere else in the tenant-storage surface still fails — which is the boundary this
+          // guard actually protects now that execution exists at all.
+          if (method.Name is "RecordVerification" ||
+            (method.Name is "ExecuteBackupAsync" && type.Name is "SqlServerTenantDatabaseBackupProvider"))
           {
             continue;
           }
@@ -191,9 +196,11 @@ public sealed class TenantBackupFoundationArchitectureTests
   [Trait("Decision", "ADR-022")]
   public void Phase_a_introduces_no_backup_provider_and_no_scheduler()
   {
-    // Phase B owns the provider; Phase C owns fleet scheduling and is blocked until the Phase B session-loss
-    // question is closed. Neither may appear early by accident.
-    foreach (var type in InfrastructureAssembly.GetTypes())
+    // Phase B has landed and owns the SQL Server provider, so the provider itself is expected. Phase C owns
+    // fleet scheduling and remains blocked behind the Phase B session-loss gate, so a scheduler, worker or
+    // restore-verification runtime still may not appear.
+    foreach (var type in InfrastructureAssembly.GetTypes()
+      .Where(type => type.Name is not "SqlServerTenantDatabaseBackupProvider"))
     {
       Assert.DoesNotContain("BackupProvider", type.Name, StringComparison.Ordinal);
       Assert.DoesNotContain("BackupScheduler", type.Name, StringComparison.Ordinal);

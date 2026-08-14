@@ -76,6 +76,49 @@ public sealed class TenantStorageOptionsValidator : IValidateOptions<TenantStora
         "server key lookup is ordinal and case-sensitive.");
     }
 
+    // ---- Backup authority and destinations (ADR-022 §11). Validated with the same shape-only discipline:
+    // no connection is opened, no directory is touched, and NO CREDENTIAL OR PATH APPEARS IN A MESSAGE.
+    foreach (var (serverKey, server) in options.BackupServers)
+    {
+      if (string.IsNullOrWhiteSpace(serverKey))
+      {
+        failures.Add($"{section}:{nameof(TenantStorageOptions.BackupServers)} contains a blank server key.");
+        continue;
+      }
+
+      if (server is null || string.IsNullOrWhiteSpace(server.ConnectionString))
+      {
+        failures.Add($"{section}:{nameof(TenantStorageOptions.BackupServers)}:{serverKey}:{nameof(TenantStorageServerOptions.ConnectionString)} must not be blank.");
+        continue;
+      }
+
+      try
+      {
+        _ = new SqlConnectionStringBuilder(server.ConnectionString);
+      }
+      catch (ArgumentException)
+      {
+        failures.Add($"{section}:{nameof(TenantStorageOptions.BackupServers)}:{serverKey}:{nameof(TenantStorageServerOptions.ConnectionString)} is not a valid SQL Server connection string.");
+      }
+    }
+
+    foreach (var (destinationKey, destination) in options.BackupDestinations)
+    {
+      if (string.IsNullOrWhiteSpace(destinationKey))
+      {
+        failures.Add($"{section}:{nameof(TenantStorageOptions.BackupDestinations)} contains a blank destination key.");
+        continue;
+      }
+
+      // The directory is validated for SHAPE only. Whether the SQL SERVER SERVICE IDENTITY can write there
+      // is deliberately NOT checked here: this process runs as a different account, so a check from here
+      // would prove nothing and could pass while every backup fails with OS error 5.
+      if (destination is null || string.IsNullOrWhiteSpace(destination.DirectoryPath))
+      {
+        failures.Add($"{section}:{nameof(TenantStorageOptions.BackupDestinations)}:{destinationKey}:{nameof(TenantStorageBackupDestinationOptions.DirectoryPath)} must not be blank.");
+      }
+    }
+
     // When servers ARE configured, the default key must be one of them. This catches the most likely real
     // misconfiguration — a typo between DefaultServerKey and the Servers map — which would otherwise leave
     // the bootstrap stamping a ServerKey that routing can never resolve.

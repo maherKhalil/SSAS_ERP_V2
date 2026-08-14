@@ -120,6 +120,21 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseRecoveryReadinessWriter, TenantDatabaseRecoveryReadinessWriter>();
     services.AddScoped<ITenantDatabaseBackupReadRepository, TenantDatabaseBackupReadRepository>();
 
+    // TS-Backup Phase B: single-database SQL Server backup execution.
+    //
+    // Registered as services only. NOTHING invokes them automatically — there is no hosted service, timer or
+    // fleet loop, and there must not be one until the ADR-022 §14 session-loss question is settled. A backup
+    // happens only when something explicitly asks for one.
+    //
+    // The backup connection factory is registered SEPARATELY from ITenantDatabaseConnectionFactory and the
+    // two must never be substituted for one another: the request-serving credential must never hold backup
+    // privileges (ADR-022 §11).
+    services.AddSingleton(TenantDatabaseBackupOperationalOptions.Default);
+    services.AddScoped<ITenantDatabaseBackupConnectionFactory, TenantDatabaseBackupConnectionFactory>();
+    services.AddScoped<ITenantDatabaseBackupRunStore, TenantDatabaseBackupRunStore>();
+    services.AddScoped<ITenantDatabaseBackupProvider, SqlServerTenantDatabaseBackupProvider>();
+    services.AddScoped<ITenantDatabaseBackupExecutor, TenantDatabaseBackupExecutor>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

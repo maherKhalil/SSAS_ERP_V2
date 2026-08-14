@@ -16,7 +16,7 @@ namespace SSAS.Platform.Infrastructure.TenantStorage;
 //
 //   1. open a NON-POOLED privileged connection to the target database
 //   2. take SESSION-scoped ownership on THAT connection
-//   3. optionally check for a server-side backup already in flight
+//   3. confirm this identity can SEE other sessions, then check for a backup already in flight
 //   4. validate database state, recovery model and chain preconditions
 //   5. issue the backup on the SAME connection that holds the lock
 //   6. re-confirm ownership is still held
@@ -78,16 +78,33 @@ public sealed class SqlServerTenantDatabaseBackupProvider(
           CompletedUtc: DateTimeOffset.UtcNow);
       }
 
-      // The in-flight guard (ADR-022 §14). Enabled by configuration because whether it is REQUIRED depends
-      // on the empirical session-loss result: if session loss provably stops a server-side BACKUP before
-      // another worker can acquire ownership, the applock alone suffices; if it does not, this closes the
-      // window. It is cheap enough to leave on regardless.
-      if (operationalOptions.InFlightDetectionEnabled &&
-        await IsBackupInFlightAsync(connection, cancellationToken))
+      // THE IN-FLIGHT GUARD (ADR-022 §14), in two deliberate steps.
+      //
+      // Step one establishes that this identity can actually SEE other sessions. sys.dm_exec_requests does
+      // not refuse a caller without server-wide visibility — it silently narrows to that caller's own
+      // session. Reading the resulting empty set as "nothing in flight" would turn a missing grant into a
+      // green light, so the permission is confirmed BEFORE the DMV answer is given any weight.
+      //
+      // The guard is required V1 behaviour, not an optional extra: the session-loss experiment observed
+      // ownership becoming reacquirable only 7 ms after the backup request disappeared, and that ordering
+      // was measured on one host with one backup size. It is not a margin to build on.
+      if (operationalOptions.InFlightDetectionEnabled)
       {
-        return new TenantDatabaseBackupProviderResult(
-          TenantDatabaseBackupOutcome.SkippedInFlightOperation, StartedUtc: startedUtc,
-          CompletedUtc: DateTimeOffset.UtcNow);
+        if (!await SqlServerBackupVisibility.HasInFlightVisibilityAsync(connection, cancellationToken))
+        {
+          // FAIL CLOSED, and say why. This is a deployment fault — the identity needs
+          // VIEW SERVER PERFORMANCE STATE — so it is reported as a failure an operator investigates rather
+          // than a skip that reads like routine contention.
+          return Failed(TenantStorageErrors.BackupInFlightVisibilityUnavailable.Code, startedUtc);
+        }
+
+        if (await SqlServerBackupVisibility.IsBackupInFlightAsync(connection, cancellationToken))
+        {
+          // An operation was genuinely OBSERVED. Distinct from the case above, which is "could not look".
+          return new TenantDatabaseBackupProviderResult(
+            TenantDatabaseBackupOutcome.SkippedInFlightOperation, StartedUtc: startedUtc,
+            CompletedUtc: DateTimeOffset.UtcNow);
+        }
       }
 
       var precondition = await ValidatePreconditionsAsync(connection, request, cancellationToken);
@@ -117,25 +134,32 @@ public sealed class SqlServerTenantDatabaseBackupProvider(
         return Failed(TenantStorageErrors.BackupOwnershipLost.Code, startedUtc);
       }
 
-      // EVIDENCE RECONCILIATION. Correlated on the unique artifact path this run generated — never "the
-      // latest backup for this database", which would happily adopt a DBA's ad-hoc backup as ours.
-      var evidence = await ReadEvidenceAsync(connection, descriptor.DatabaseName, fileName, cancellationToken);
-      if (evidence is null)
+      // EVIDENCE RECONCILIATION, on the EXACT device this run wrote to, the database it targeted and the
+      // backup type the operation should have produced — never "the latest backup for this database", which
+      // would happily adopt a DBA's ad-hoc backup as ours.
+      //
+      // DST NOTE: the reconciled finish time is converted to UTC using the server's CURRENT offset. That is
+      // sound HERE because this reconciles the backup that finished seconds ago on this same connection, so
+      // no offset change can have intervened. It would NOT be sound for reading arbitrary historical rows,
+      // and this provider never does.
+      var evidence = await SqlServerBackupEvidence.ReadAsync(
+        connection, descriptor.DatabaseName, request.Operation, fullPath, cancellationToken);
+      if (evidence.IsFailure)
       {
-        return Failed(TenantStorageErrors.BackupEvidenceMissing.Code, startedUtc);
+        return Failed(evidence.Error.Code, startedUtc);
       }
 
       return new TenantDatabaseBackupProviderResult(
         TenantDatabaseBackupOutcome.Succeeded,
-        ProviderBackupSetIdentity: evidence.BackupSetIdentity,
+        ProviderBackupSetIdentity: evidence.Value.BackupSetIdentity,
         SafeArtifactReference: fileName,
-        BackupSizeBytes: evidence.BackupSizeBytes,
-        FirstLsn: evidence.FirstLsn,
-        LastLsn: evidence.LastLsn,
-        DatabaseBackupLsn: evidence.DatabaseBackupLsn,
-        BackupSetGuid: evidence.BackupSetGuid,
+        BackupSizeBytes: evidence.Value.BackupSizeBytes,
+        FirstLsn: evidence.Value.FirstLsn,
+        LastLsn: evidence.Value.LastLsn,
+        DatabaseBackupLsn: evidence.Value.DatabaseBackupLsn,
+        BackupSetGuid: evidence.Value.BackupSetGuid,
         StartedUtc: startedUtc,
-        CompletedUtc: evidence.FinishedUtc ?? DateTimeOffset.UtcNow);
+        CompletedUtc: evidence.Value.FinishedUtc ?? DateTimeOffset.UtcNow);
     }
     catch (SqlException exception)
     {
@@ -239,35 +263,6 @@ public sealed class SqlServerTenantDatabaseBackupProvider(
     return value is null or DBNull ? 0 : Convert.ToInt32(value, CultureInfo.InvariantCulture);
   }
 
-  // Detects a server-side backup already running against THIS database (ADR-022 §14).
-  //
-  // Reads sys.dm_exec_requests, which on SQL Server 2022 requires VIEW SERVER PERFORMANCE STATE — the
-  // granular successor to VIEW SERVER STATE, and emphatically not sysadmin. The permission is granted by
-  // deployment; nothing here assumes or requests it.
-  //
-  // A permission failure is treated as "cannot determine", not "nothing running": claiming the database is
-  // free because we are not allowed to look would be the worst possible reading.
-  private static async Task<bool> IsBackupInFlightAsync(
-    SqlConnection connection,
-    CancellationToken cancellationToken)
-  {
-    try
-    {
-      await using var command = connection.CreateCommand();
-      command.CommandText =
-        "SELECT TOP (1) 1 FROM sys.dm_exec_requests " +
-        "WHERE database_id = DB_ID() AND command LIKE 'BACKUP%' AND session_id <> @@SPID";
-      var found = await command.ExecuteScalarAsync(cancellationToken);
-      return found is not null and not DBNull;
-    }
-    catch (SqlException)
-    {
-      // Insufficient visibility. Fail CLOSED: report an operation as possibly in flight rather than
-      // proceeding on an assumption we could not verify.
-      return true;
-    }
-  }
-
   private async Task ExecuteBackupAsync(
     SqlConnection connection,
     TenantDatabaseBackupRequest request,
@@ -289,60 +284,6 @@ public sealed class SqlServerTenantDatabaseBackupProvider(
     command.CommandTimeout = (int)operationalOptions.BackupCommandTimeout.TotalSeconds;
 
     await command.ExecuteNonQueryAsync(cancellationToken);
-  }
-
-  // Deterministic correlation: this run's UNIQUE artifact name, plus the database and operation type it
-  // should have produced. Never "the most recent backup".
-  private static async Task<BackupEvidence?> ReadEvidenceAsync(
-    SqlConnection connection,
-    string databaseName,
-    string fileName,
-    CancellationToken cancellationToken)
-  {
-    await using var command = connection.CreateCommand();
-    command.CommandText =
-      "SELECT TOP (1) bs.backup_set_uuid, bs.first_lsn, bs.last_lsn, bs.database_backup_lsn, " +
-      "bs.backup_size, bs.backup_finish_date, bs.type, bs.is_copy_only, bs.has_backup_checksums, bs.backup_set_id " +
-      "FROM msdb.dbo.backupset AS bs " +
-      "INNER JOIN msdb.dbo.backupmediafamily AS bmf ON bmf.media_set_id = bs.media_set_id " +
-      "WHERE bs.database_name = @database AND bmf.physical_device_name LIKE @artifact " +
-      "ORDER BY bs.backup_set_id DESC";
-    command.Parameters.Add("@database", SqlDbType.NVarChar, 128).Value = databaseName;
-    // Matches the tail of the resolved path. The file name is generated by this provider and contains no
-    // wildcard characters, so the pattern cannot widen beyond this run's own artifact.
-    command.Parameters.Add("@artifact", SqlDbType.NVarChar, 300).Value = "%" + fileName;
-
-    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-    if (!await reader.ReadAsync(cancellationToken))
-    {
-      return null;
-    }
-
-    return new BackupEvidence(
-      reader.IsDBNull(0) ? null : reader.GetGuid(0),
-      reader.IsDBNull(1) ? null : reader.GetDecimal(1),
-      reader.IsDBNull(2) ? null : reader.GetDecimal(2),
-      reader.IsDBNull(3) ? null : reader.GetDecimal(3),
-      reader.IsDBNull(4) ? null : Convert.ToInt64(reader.GetValue(4), CultureInfo.InvariantCulture),
-      reader.IsDBNull(5) ? null : new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc)),
-      reader.IsDBNull(9) ? null : Convert.ToInt64(reader.GetValue(9), CultureInfo.InvariantCulture));
-  }
-
-  private sealed record BackupEvidence(
-    Guid? BackupSetGuid,
-    decimal? FirstLsn,
-    decimal? LastLsn,
-    decimal? DatabaseBackupLsn,
-    long? BackupSizeBytes,
-    DateTimeOffset? FinishedUtc,
-    long? BackupSetId)
-  {
-    // The provider's stable identity for this backup set. Prefers the backup-set GUID, which is what a
-    // restore would be selected by, and falls back to the numeric identity where the GUID is unavailable.
-    public string BackupSetIdentity =>
-      BackupSetGuid?.ToString() ??
-      BackupSetId?.ToString(CultureInfo.InvariantCulture) ??
-      string.Empty;
   }
 
   private static TenantDatabaseBackupProviderResult Blocked(string reason, DateTimeOffset? startedUtc = null) =>
@@ -373,9 +314,16 @@ public sealed class TenantDatabaseBackupOperationalOptions
 
   public TimeSpan OwnershipTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-  // Whether to check for a server-side backup already running before issuing one. Required if the empirical
-  // session-loss result shows ownership can be released while a backup is still winding down (ADR-022 §14
-  // exit condition B); harmless and cheap otherwise, so it defaults ON.
+  // REQUIRED V1 BEHAVIOUR, not a tuning preference.
+  //
+  // The session-loss experiment observed exit condition A — the server-side backup was gone before ownership
+  // could be reacquired — but by 7 ms, on one host, at one backup size, and that figure is the observation
+  // cadence rather than a designed margin. The guard also covers what the applock never could: a backup
+  // started by a DBA, SQL Agent or a third-party tool, which holds no application lock at all.
+  //
+  // Disabling this in a deployment means backups may be issued against a database already being backed up,
+  // with no way to detect it. The switch exists for controlled diagnosis, never as a way to make a failing
+  // permission check go away — that failure means the identity is under-privileged, and the fix is the grant.
   public bool InFlightDetectionEnabled { get; init; } = true;
 
   public static TenantDatabaseBackupOperationalOptions Default { get; } = new();

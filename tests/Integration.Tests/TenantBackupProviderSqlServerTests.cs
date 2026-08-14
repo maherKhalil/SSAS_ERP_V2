@@ -18,6 +18,7 @@ namespace SSAS.Integration.Tests;
 // These execute ACTUAL backups — the first slice permitted to. Every one runs against a disposable generated
 // catalog, writes into a per-run folder under the instance backup directory, and cleans up only its own
 // files. No production or tenant database is ever a target, and nothing here restores.
+[Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantBackupProviderSqlServerTests
 {
   [Fact]
@@ -234,10 +235,13 @@ public sealed class TenantBackupProviderSqlServerTests
 
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public async Task A_destination_the_sql_server_service_account_cannot_write_fails_safely()
+  public async Task An_unreachable_destination_directory_fails_safely()
   {
-    // The constraint that surprises people: SQL Server writes the file as its SERVICE identity, not as this
-    // process. A trusted, configured destination can still be refused, and it must fail cleanly.
+    // Renamed after the focused review: this configures a NON-EXISTENT directory, so it proves a trusted but
+    // unreachable destination fails cleanly. It does NOT exercise an ACL denial — the service-account
+    // asymmetry it used to claim — and manufacturing one would mean editing machine ACLs to satisfy a test
+    // name. The positive path below is what actually proves the SQL Server service identity can write to a
+    // directory this process created.
     await using var fixture = await BackupFixture.CreateAsync();
     var id = await fixture.RegisterAsync();
     await fixture.AddPolicyAsync(id, destinationKey: BackupFixture.UnwritableDestinationKey);
@@ -255,23 +259,206 @@ public sealed class TenantBackupProviderSqlServerTests
 
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public async Task A_completed_command_without_matching_evidence_is_never_recorded_successful()
+  public async Task Reconciliation_accepts_this_runs_own_artifact_and_refuses_an_external_backup()
   {
-    // The rule ADR-022 §14 exists to enforce, tested through a controlled seam: the provider reconciles on
-    // the artifact name it generated, so evidence recorded under a different name must not be adopted.
+    // Rewritten after the focused review: this now drives the PRODUCTION reconciliation code
+    // (SqlServerBackupEvidence.ReadAsync) rather than a lookalike query written beside it, so a regression
+    // in the real correlation would fail here.
     await using var fixture = await BackupFixture.CreateAsync();
     var id = await fixture.RegisterAsync();
     await fixture.AddPolicyAsync(id);
 
-    // A real backup exists for this database, taken outside the platform under a name the platform did not
-    // generate. Deterministic correlation must refuse to claim it.
+    // A real backup taken OUTSIDE the platform, under a name the platform did not generate.
     await fixture.TakeExternalBackupAsync();
-    Assert.Equal(1, await BackupFixture.MsdbScalarAsync(
-      $"SELECT COUNT(*) FROM msdb.dbo.backupset WHERE database_name = N'{fixture.TargetCatalog}'"));
 
-    var evidence = await fixture.ReconcileAsync("42_Full_20260814T000000Z_999.bak");
+    await fixture.Executor().ExecuteAsync(id, TenantDatabaseBackupOperation.SqlServerFull());
+    var device = await fixture.DeviceOfManagedBackupAsync();
 
-    Assert.Null(evidence);
+    await using var connection = await fixture.OpenTargetAsync();
+
+    // The run's own artifact reconciles.
+    var matched = await SqlServerBackupEvidence.ReadAsync(
+      connection, fixture.TargetCatalog, TenantDatabaseBackupOperation.SqlServerFull(), device);
+    Assert.True(matched.IsSuccess);
+    Assert.True(matched.Value.HasChecksums);
+    Assert.False(matched.Value.IsCopyOnly);
+
+    // The external DBA backup is a REAL backup of the same database, taken without CHECKSUM as ad-hoc
+    // backups routinely are. Pointing reconciliation straight at it is refused on quality grounds — which is
+    // the checksum rule proving itself against real SQL Server data rather than a contrived row.
+    var external = await SqlServerBackupEvidence.ReadAsync(
+      connection, fixture.TargetCatalog, TenantDatabaseBackupOperation.SqlServerFull(),
+      Path.Combine(fixture.BackupRoot, "external-dba.bak"));
+    Assert.True(external.IsFailure);
+    Assert.Equal(TenantStorageErrors.BackupEvidenceRejected.Code, external.Error.Code);
+
+    // And a device this run never wrote to yields nothing at all — the state that drives
+    // BackupEvidenceMissing.
+    var absent = await SqlServerBackupEvidence.ReadAsync(
+      connection, fixture.TargetCatalog, TenantDatabaseBackupOperation.SqlServerFull(),
+      Path.Combine(fixture.BackupRoot, "42_Full_20260814T000000Z_999.bak"));
+    Assert.True(absent.IsFailure);
+    Assert.Equal(TenantStorageErrors.BackupEvidenceMissing.Code, absent.Error.Code);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Copy_only_evidence_is_refused_even_though_it_is_a_valid_checksummed_backup()
+  {
+    // Isolates the COPY_ONLY rule: this set is a real, checksummed full backup of the right database, so the
+    // ONLY reason to refuse it is that it is copy-only. A copy-only full does not reset the differential
+    // base, so accepting one as a managed full would leave later differentials anchored to an older baseline
+    // — a chain that looks healthy and restores to the wrong point (ADR-022 §9).
+    await using var fixture = await BackupFixture.CreateAsync();
+    var id = await fixture.RegisterAsync();
+    await fixture.AddPolicyAsync(id);
+
+    await fixture.TakeExternalCopyOnlyBackupAsync();
+
+    await using var connection = await fixture.OpenTargetAsync();
+    var evidence = await SqlServerBackupEvidence.ReadAsync(
+      connection, fixture.TargetCatalog, TenantDatabaseBackupOperation.SqlServerFull(),
+      Path.Combine(fixture.BackupRoot, "external-copyonly.bak"));
+
+    Assert.True(evidence.IsFailure);
+    Assert.Equal(TenantStorageErrors.BackupEvidenceRejected.Code, evidence.Error.Code);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Evidence_is_refused_when_the_backup_type_does_not_match_the_operation()
+  {
+    // Correlation must include TYPE. Without it, a device and database match alone would let a run claim a
+    // backup set that records a different operation entirely.
+    await using var fixture = await BackupFixture.CreateAsync();
+    var id = await fixture.RegisterAsync();
+    await fixture.AddPolicyAsync(id);
+
+    await fixture.Executor().ExecuteAsync(id, TenantDatabaseBackupOperation.SqlServerFull());
+    var device = await fixture.DeviceOfManagedBackupAsync();
+
+    await using var connection = await fixture.OpenTargetAsync();
+
+    // Same database, same device — but the set recorded there is a full ('D'), not a differential ('I').
+    var mismatched = await SqlServerBackupEvidence.ReadAsync(
+      connection, fixture.TargetCatalog, TenantDatabaseBackupOperation.SqlServerDifferential(), device);
+
+    Assert.True(mismatched.IsFailure);
+    Assert.Equal(TenantStorageErrors.BackupEvidenceMissing.Code, mismatched.Error.Code);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_device_differing_only_at_underscore_positions_does_not_match()
+  {
+    // THE REGRESSION TEST FOR THE LIKE DEFECT. Correlation used `LIKE '%' + fileName`, and the generated
+    // name contains underscores — SINGLE-CHARACTER WILDCARDS in T-SQL — so a device differing only at those
+    // positions matched. The counterexample is built by substituting exactly those characters.
+    await using var fixture = await BackupFixture.CreateAsync();
+    var id = await fixture.RegisterAsync();
+    await fixture.AddPolicyAsync(id);
+
+    await fixture.Executor().ExecuteAsync(id, TenantDatabaseBackupOperation.SqlServerFull());
+    var device = await fixture.DeviceOfManagedBackupAsync();
+
+    var fileName = Path.GetFileName(device);
+    Assert.Contains("_", fileName, StringComparison.Ordinal);
+
+    // Same length, same everything except the wildcard positions.
+    var wildcardTwin = Path.Combine(
+      Path.GetDirectoryName(device)!, fileName.Replace('_', 'X'));
+    Assert.NotEqual(device, wildcardTwin);
+
+    await using var connection = await fixture.OpenTargetAsync();
+
+    var twin = await SqlServerBackupEvidence.ReadAsync(
+      connection, fixture.TargetCatalog, TenantDatabaseBackupOperation.SqlServerFull(), wildcardTwin);
+    Assert.True(twin.IsFailure);
+
+    // The genuine artifact still matches, so the fix is not simply a stricter comparison that matches
+    // nothing.
+    var real = await SqlServerBackupEvidence.ReadAsync(
+      connection, fixture.TargetCatalog, TenantDatabaseBackupOperation.SqlServerFull(), device);
+    Assert.True(real.IsSuccess);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task The_reconciled_completion_time_is_true_utc_and_not_the_servers_local_clock()
+  {
+    // THE REGRESSION TEST FOR MEDIUM-2. backup_finish_date is a `datetime` written from the server's LOCAL
+    // clock; it was being labelled UTC without conversion, which on this UTC+03 host stored completion times
+    // three hours in the future. A real clock is used deliberately — TestClock would hide the defect.
+    await using var fixture = await BackupFixture.CreateAsync();
+    var id = await fixture.RegisterAsync();
+    await fixture.AddPolicyAsync(id);
+
+    var utcBefore = DateTimeOffset.UtcNow;
+    var outcome = await fixture.Executor().ExecuteAsync(id, TenantDatabaseBackupOperation.SqlServerFull());
+    var utcAfter = DateTimeOffset.UtcNow;
+
+    Assert.Equal(TenantDatabaseBackupRunStatus.Succeeded, outcome.Value.Status);
+
+    await using var platform = fixture.PlatformContext();
+    var run = await platform.TenantDatabaseBackupRuns.AsNoTracking()
+      .SingleAsync(item => item.TenantDatabaseId == id);
+
+    Assert.NotNull(run.CompletedUtc);
+
+    // Generous either side for datetime precision and second-granularity conversion, but nowhere near wide
+    // enough to admit a timezone offset.
+    var tolerance = TimeSpan.FromSeconds(30);
+    Assert.InRange(run.CompletedUtc!.Value, utcBefore - tolerance, utcAfter + tolerance);
+
+    // Stated explicitly, because this is the exact shape of the defect: a whole-hour offset from real UTC.
+    var drift = (run.CompletedUtc.Value - utcAfter).Duration();
+    Assert.True(drift < TimeSpan.FromMinutes(10),
+      $"completion time drifted {drift} from UTC, which looks like a server-timezone offset rather than a clock skew");
+
+    // The recovery observation is derived from the same evidence, so it must be UTC too.
+    var stored = await fixture.ReadDatabaseAsync(id);
+    Assert.NotNull(stored.LastSuccessfulFullBackupUtc);
+    Assert.InRange(stored.LastSuccessfulFullBackupUtc!.Value, utcBefore - tolerance, utcAfter + tolerance);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_backup_already_in_flight_produces_a_skip_from_the_production_path()
+  {
+    // Rewritten after the focused review: this drives the EXECUTOR, so SkippedInFlightOperation is produced
+    // by production code end to end rather than asserted from a query the test ran itself.
+    await using var fixture = await BackupFixture.CreateAsync();
+    var id = await fixture.RegisterAsync();
+    await fixture.AddPolicyAsync(id);
+    await fixture.FillAsync();
+
+    // A backup started by another process entirely, holding no application lock — exactly what a DBA or a
+    // SQL Agent job looks like, and precisely what ownership alone cannot protect against.
+    using var competing = fixture.StartCompetingBackup();
+    try
+    {
+      TenantDatabaseBackupRunStatus? observed = null;
+
+      // The competitor runs backups back to back, but there is still a brief gap between iterations. An
+      // attempt that lands in one proves nothing either way, so attempts are repeated — each one confirming
+      // a backup is genuinely in flight FIRST, so a pass can only come from a real overlap.
+      for (var attempt = 0; attempt < 5 && observed is not TenantDatabaseBackupRunStatus.SkippedInFlightOperation; attempt++)
+      {
+        Assert.True(await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)),
+          "the competing backup never became visible, so the in-flight path was not exercised");
+
+        var outcome = await fixture.Executor().ExecuteAsync(
+          id, TenantDatabaseBackupOperation.SqlServerFull());
+        observed = outcome.Value.Status;
+      }
+
+      Assert.True(observed is TenantDatabaseBackupRunStatus.SkippedInFlightOperation,
+        $"expected SkippedInFlightOperation from the production path but observed {observed}");
+    }
+    finally
+    {
+      BackupFixture.KillProcess(competing);
+    }
   }
 
   [Fact]
@@ -561,25 +748,124 @@ public sealed class TenantBackupProviderSqlServerTests
       return connection;
     }
 
+    // A COPY_ONLY backup, WITH checksums, so reconciling against it isolates the copy-only rule from the
+    // checksum rule.
+    public Task TakeExternalCopyOnlyBackupAsync() =>
+      ExecuteOnAsync(TargetCatalog,
+        $"BACKUP DATABASE [{TargetCatalog}] TO DISK = N'{Path.Combine(BackupRoot, "external-copyonly.bak")}' " +
+        "WITH INIT, CHECKSUM, COPY_ONLY");
+
     // A backup taken outside the platform, under a name the platform did not generate.
     public Task TakeExternalBackupAsync() =>
       ExecuteOnAsync(TargetCatalog,
         $"BACKUP DATABASE [{TargetCatalog}] TO DISK = N'{Path.Combine(BackupRoot, "external-dba.bak")}' WITH INIT");
 
-    // Runs the provider's own reconciliation query shape against an artifact name, to prove correlation is
-    // by generated name rather than by recency.
-    public async Task<string?> ReconcileAsync(string artifactFileName)
+    // An open connection in the target database, for driving the production reconciliation code directly.
+    public async Task<SqlConnection> OpenTargetAsync()
     {
-      await using var connection = new SqlConnection(ConnectionFor(TargetCatalog));
+      var connection = new SqlConnection(ConnectionFor(TargetCatalog));
+      await connection.OpenAsync();
+      return connection;
+    }
+
+    // The exact device the PLATFORM's own run wrote to, read back from SQL Server. Identified by the
+    // generated artifact vocabulary rather than by recency, so it never picks up the external DBA backup.
+    public async Task<string> DeviceOfManagedBackupAsync()
+    {
+      await using var connection = new SqlConnection(ConnectionFor("master"));
       await connection.OpenAsync();
       await using var command = connection.CreateCommand();
       command.CommandText =
-        "SELECT TOP (1) CAST(bs.backup_set_uuid AS nvarchar(64)) FROM msdb.dbo.backupset AS bs " +
+        "SELECT TOP (1) bmf.physical_device_name FROM msdb.dbo.backupset AS bs " +
         "INNER JOIN msdb.dbo.backupmediafamily AS bmf ON bmf.media_set_id = bs.media_set_id " +
-        "WHERE bs.database_name = @database AND bmf.physical_device_name LIKE @artifact";
+        "WHERE bs.database_name = @database AND bmf.physical_device_name LIKE @managed " +
+        "ORDER BY bs.backup_set_id DESC";
       command.Parameters.AddWithValue("@database", TargetCatalog);
-      command.Parameters.AddWithValue("@artifact", "%" + artifactFileName);
-      return await command.ExecuteScalarAsync() as string;
+      // ESCAPE-free by construction: this pattern is the test's own, and matches the platform's generated
+      // artifacts by their trailing extension rather than by a name containing wildcards.
+      command.Parameters.AddWithValue("@managed", "%Full%.bak");
+      return (string)(await command.ExecuteScalarAsync())!;
+    }
+
+    // Enough data that a competing backup lasts long enough for the provider to observe it.
+    //
+    // Loaded in BATCHES under SIMPLE recovery, then returned to FULL. One 240 MB insert inside a single
+    // FULL-recovery transaction exhausted the buffer pool on this host and left the database unrecoverable —
+    // a test-fixture problem, but one that destroyed the very database under test, so the load is chunked
+    // and checkpointed instead.
+    public async Task FillAsync()
+    {
+      await ExecuteOnAsync("master", $"ALTER DATABASE [{TargetCatalog}] SET RECOVERY SIMPLE");
+      await ExecuteOnAsync(TargetCatalog,
+        "CREATE TABLE dbo.Filler (Id int IDENTITY(1,1) NOT NULL, Payload char(8000) NOT NULL)");
+      await ExecuteOnAsync(TargetCatalog,
+        "DECLARE @batch int = 0; " +
+        "WHILE @batch < 6 BEGIN " +
+        "  INSERT INTO dbo.Filler (Payload) SELECT TOP (5000) REPLICATE('x', 8000) " +
+        "  FROM sys.all_columns AS a CROSS JOIN sys.all_columns AS b; " +
+        "  CHECKPOINT; SET @batch += 1; END");
+      await ExecuteOnAsync("master", $"ALTER DATABASE [{TargetCatalog}] SET RECOVERY FULL");
+    }
+
+    // A backup from a separate process, holding no application lock.
+    public System.Diagnostics.Process StartCompetingBackup()
+    {
+      var path = Path.Combine(BackupRoot, $"competing_{Guid.NewGuid():N}.bak");
+      var builder = new SqlConnectionStringBuilder(Configured());
+      var server = string.IsNullOrWhiteSpace(builder.DataSource) ? "localhost" : builder.DataSource;
+
+      var start = new System.Diagnostics.ProcessStartInfo("sqlcmd")
+      {
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true
+      };
+      start.ArgumentList.Add("-S");
+      start.ArgumentList.Add(server);
+      start.ArgumentList.Add("-E");
+      start.ArgumentList.Add("-C");
+      start.ArgumentList.Add("-d");
+      start.ArgumentList.Add(TargetCatalog);
+      start.ArgumentList.Add("-Q");
+      // BACKED UP REPEATEDLY, not once. A single backup of this database completes in well under a second,
+      // so a one-shot competitor turns the test into a race it usually loses. A loop keeps a BACKUP request
+      // continuously present for long enough that the provider's check is deterministic rather than lucky.
+      start.ArgumentList.Add(
+        $"DECLARE @i int = 0; WHILE @i < 30 BEGIN " +
+        $"BACKUP DATABASE [{TargetCatalog}] TO DISK = N'{path}' WITH INIT, CHECKSUM; SET @i += 1; END");
+
+      return System.Diagnostics.Process.Start(start)!;
+    }
+
+    public async Task<bool> WaitForCompetingBackupAsync(TimeSpan timeout)
+    {
+      await using var connection = await OpenTargetAsync();
+      var deadline = DateTime.UtcNow.Add(timeout);
+      while (DateTime.UtcNow < deadline)
+      {
+        if (await SqlServerBackupVisibility.IsBackupInFlightAsync(connection))
+        {
+          return true;
+        }
+
+        await Task.Delay(10);
+      }
+
+      return false;
+    }
+
+    public static void KillProcess(System.Diagnostics.Process process)
+    {
+      try
+      {
+        if (!process.HasExited)
+        {
+          process.Kill(entireProcessTree: true);
+        }
+      }
+      catch (InvalidOperationException)
+      {
+      }
     }
 
     public Task SetRecoveryModelAsync(string model) =>

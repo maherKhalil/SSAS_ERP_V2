@@ -337,7 +337,14 @@ public sealed class TenantStorageRegistryArchitectureTests
       "TenantDatabaseBackupExecutor",
       "SqlServerBackupCommandText",
       "SqlServerTenantDatabaseBackupProvider",
-      "TenantStorageBackupDestinationOptions"
+      "TenantStorageBackupDestinationOptions",
+
+      // Phase B remediation: the visibility check and evidence reconciliation were extracted from the
+      // provider so a low-privilege test principal can exercise the PRODUCTION code rather than a copy of
+      // its SQL. Still execution components, still enumerated by exact name.
+      "SqlServerBackupVisibility",
+      "SqlServerBackupEvidence",
+      "SqlServerBackupEvidenceRecord"
     };
 
     var offenders = InfrastructureAssembly.GetTypes()

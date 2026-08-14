@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
+using SSAS.Platform.Infrastructure.TenantStorage;
 
 namespace SSAS.Integration.Tests;
 
@@ -18,10 +19,16 @@ namespace SSAS.Integration.Tests;
 // The termination is an ABRUPT CLIENT PROCESS KILL, not KILL <spid>. A server-initiated kill answers a
 // different question; ADR-022's scenario is a worker crashing, so the experiment reproduces a client
 // disappearing.
+[Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITestOutputHelper output)
 {
   // How long the observer will wait after the kill before declaring the window unmeasurable.
   private static readonly TimeSpan ObservationWindow = TimeSpan.FromSeconds(60);
+
+  // Repeated after the focused review, which found a single trial too thin to carry an architectural
+  // conclusion. Three conclusive trials on one loaded fixture is affordable; it is still ONE host and ONE
+  // backup size, which is why the conclusion below stays deliberately narrow.
+  private const int RequiredTrials = 3;
 
   [Fact]
   [Trait("Decision", "ADR-022")]
@@ -29,29 +36,37 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
   {
     await using var fixture = await SessionLossFixture.CreateAsync();
 
-    var trial = await fixture.RunTrialAsync(ObservationWindow);
+    for (var trialNumber = 1; trialNumber <= RequiredTrials; trialNumber++)
+    {
+      var trial = await fixture.RunTrialAsync(ObservationWindow);
 
-    // Emitted whether the trial passes or fails: this is the measured evidence behind an ADR gate, and it
-    // should be readable from a test run rather than reconstructed from an assertion message.
-    output.WriteLine("ADR-022 session-loss trial: " + trial);
+      // Emitted whether the trial passes or fails: this is the measured evidence behind an ADR gate, and it
+      // should be readable from a test run rather than reconstructed from an assertion message.
+      output.WriteLine(
+        string.Create(CultureInfo.InvariantCulture, $"ADR-022 session-loss trial {trialNumber}: {trial}"));
 
-    // The trial must have genuinely caught a backup in flight; a backup that finished before the kill would
-    // prove nothing, so that is reported as inconclusive rather than quietly passing.
-    Assert.True(trial.BackupObservedInFlight,
-      "the backup was never observed in flight, so session loss was not exercised: " + trial);
-    Assert.True(trial.ClientKilledDuringBackup,
-      "the client was not killed while the backup was running: " + trial);
+      // The trial must have genuinely caught a backup in flight; a backup that finished before the kill
+      // would prove nothing, so that is reported as inconclusive rather than quietly passing.
+      Assert.True(trial.BackupObservedInFlight,
+        "the backup was never observed in flight, so session loss was not exercised: " + trial);
+      Assert.True(trial.ClientKilledDuringBackup,
+        "the client was not killed while the backup was running: " + trial);
 
-    // EXIT CONDITION A: at the moment a second worker acquired ownership, no BACKUP was still running
-    // against the database. If this holds, session-scoped ownership alone is sufficient for V1.
-    //
-    // If it does NOT hold, the in-flight guard in SqlServerTenantDatabaseBackupProvider is what closes the
-    // window — and it is enabled by default precisely because this outcome could not be assumed in advance.
-    Assert.True(trial.OwnershipReacquired,
-      "a second worker could not acquire ownership after the client died: " + trial);
+      Assert.True(trial.OwnershipReacquired,
+        "a second worker could not acquire ownership after the client died: " + trial);
 
-    Assert.False(trial.BackupStillRunningWhenOwnershipReacquired,
-      "OVERLAP WINDOW OBSERVED — exit condition A failed, so the in-flight guard is mandatory: " + trial);
+      // EXIT CONDITION A: at the moment a second worker acquired ownership, no BACKUP was still running
+      // against the database.
+      //
+      // WHAT THIS DOES AND DOES NOT ESTABLISH. It shows the observed ORDERING on this host: the server-side
+      // request was gone before ownership became reacquirable. It does NOT establish that session-scoped
+      // ownership is universally sufficient — the observed gap has been single-digit milliseconds, which is
+      // the observation cadence rather than a designed margin, and nothing here speaks to slower storage or
+      // a database large enough for abort to take real work. The in-flight guard therefore remains REQUIRED
+      // V1 defence-in-depth, not dead code kept for symmetry.
+      Assert.False(trial.BackupStillRunningWhenOwnershipReacquired,
+        "OVERLAP WINDOW OBSERVED — exit condition A failed, so the in-flight guard is mandatory: " + trial);
+    }
   }
 
   [Fact]
@@ -216,7 +231,8 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
         ownershipAt);
     }
 
-    // The same evidence the provider's in-flight guard uses.
+    // Drives the PRODUCTION in-flight check, not a copy of it, so the guard the provider actually runs is
+    // what gets exercised here.
     public async Task<bool> WaitForInFlightDetectionAsync(TimeSpan timeout)
     {
       await using var connection = new SqlConnection(NonPooled(ConnectionFor(catalog)));
@@ -225,7 +241,7 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
       var stopwatch = Stopwatch.StartNew();
       while (stopwatch.Elapsed < timeout)
       {
-        if (await IsBackupRunningAsync(connection))
+        if (await SqlServerBackupVisibility.IsBackupInFlightAsync(connection))
         {
           return true;
         }

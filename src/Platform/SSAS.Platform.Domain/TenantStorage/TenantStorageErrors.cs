@@ -192,4 +192,17 @@ public static class TenantStorageErrors
 
   public static readonly Error BackupOwnershipLost =
     new("TenantStorage.BackupOwnershipLost", "Backup ownership of the tenant database was lost before the operation could be verified.");
+
+  // Evidence WAS found and correlated, but fails a quality requirement — missing checksums, or copy-only
+  // where the managed chain requires a base-resetting backup. Distinct from BackupEvidenceMissing so an
+  // operator can tell "nothing was recorded" from "what was recorded is not acceptable".
+  public static readonly Error BackupEvidenceRejected =
+    new("TenantStorage.BackupEvidenceRejected", "The reconciled backup evidence did not satisfy the managed chain's requirements.");
+
+  // The backup identity cannot see server-wide request state, so whether another backup is already running
+  // against this database CANNOT BE DETERMINED. Deliberately distinct from a detected in-flight operation:
+  // sys.dm_exec_requests silently narrows to the caller's own session rather than failing, so treating an
+  // empty result as "nothing running" would be an assumption, not an observation (ADR-022 §14).
+  public static readonly Error BackupInFlightVisibilityUnavailable =
+    new("TenantStorage.BackupInFlightVisibilityUnavailable", "The backup identity lacks the server permission required to determine whether a backup is already in flight.");
 }

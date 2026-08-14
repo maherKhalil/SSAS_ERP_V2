@@ -279,7 +279,7 @@ public sealed class CompaniesMutationEndpointTests : IAsyncLifetime
     builder.Services.AddSingleton<IDateTimeProvider>(new FixedClock());
     builder.Services.AddSingleton<ICompanyRepository>(repository);
     builder.Services.AddSingleton<ICompanyReadService>(readService);
-    builder.Services.AddSingleton<IPlatformUnitOfWork>(unitOfWork);
+    builder.Services.AddSingleton<ITenantUnitOfWork>(unitOfWork);
     builder.Services.AddCompanyEndpointHandlers();
 
     application = builder.Build();
@@ -434,7 +434,7 @@ public sealed class CompaniesMutationEndpointTests : IAsyncLifetime
       throw new NotSupportedException();
   }
 
-  private sealed class FakeUnitOfWork : IPlatformUnitOfWork
+  private sealed class FakeUnitOfWork : ITenantUnitOfWork
   {
     public Error? Failure { get; set; }
     public int SaveCount { get; private set; }

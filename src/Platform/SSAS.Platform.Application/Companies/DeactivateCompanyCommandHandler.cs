@@ -10,7 +10,7 @@ namespace SSAS.Platform.Application.Companies;
 
 public sealed class DeactivateCompanyCommandHandler(
   ICompanyRepository companyRepository,
-  IPlatformUnitOfWork unitOfWork,
+  ITenantUnitOfWork unitOfWork,
   ICurrentTenant currentTenant,
   ICurrentUser currentUser,
   IDateTimeProvider clock)

@@ -10,4 +10,13 @@ internal static class PersistenceResult
     var result = await unitOfWork.SaveChangesAsync(cancellationToken);
     return result.IsSuccess ? Result.Success() : Result.Failure(result.Error);
   }
+
+  // Tenant ERP overload (ADR-017). The two units of work stay separate types rather than sharing an
+  // interface, because the plane a handler commits to is exactly the distinction that must remain visible
+  // once the Platform and Tenant databases are physically apart and no single transaction spans them.
+  public static async Task<Result> SaveAsync(ITenantUnitOfWork unitOfWork, CancellationToken cancellationToken)
+  {
+    var result = await unitOfWork.SaveChangesAsync(cancellationToken);
+    return result.IsSuccess ? Result.Success() : Result.Failure(result.Error);
+  }
 }

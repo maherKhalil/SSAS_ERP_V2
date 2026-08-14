@@ -42,13 +42,11 @@ public static class TenantStorageErrors
   public static readonly Error ActiveAssignmentMissing =
     new("TenantStorage.ActiveAssignmentMissing", "The tenant has no active tenant database assignment.");
 
-  // Structurally impossible while UX_TenantDatabaseAssignments_ActiveTenant exists; retained so corruption
-  // or a disabled constraint fails loudly instead of silently selecting one row.
-  public static readonly Error AmbiguousActiveAssignment =
-    new("TenantStorage.AmbiguousActiveAssignment", "The tenant has more than one active tenant database assignment.");
-
-  public static readonly Error TenantDatabaseMissing =
-    new("TenantStorage.TenantDatabaseMissing", "The assigned tenant database record could not be found.");
+  // NOTE: there is deliberately no `AmbiguousActiveAssignment` or `TenantDatabaseMissing` error.
+  // Both described conditions are structurally impossible — UX_TenantDatabaseAssignments_ActiveTenant
+  // permits one active assignment per tenant, and the FK to TenantDatabase is Restrict — and neither was
+  // reachable. Ambiguity surfaces instead as a hard failure from SingleOrDefaultAsync in the registry read,
+  // which is the louder outcome; a declared error suggested a controlled Result path that did not exist.
 
   public static readonly Error TenantDatabaseNotReady =
     new("TenantStorage.TenantDatabaseNotReady", "The assigned tenant database is not ready to serve traffic.");

@@ -211,7 +211,7 @@ public sealed class CompaniesEndpointTests : IAsyncLifetime
     builder.Services.AddSingleton<IDateTimeProvider>(new FixedClock());
     builder.Services.AddSingleton<ICompanyRepository>(repository);
     builder.Services.AddSingleton<ICompanyReadService>(readService);
-    builder.Services.AddSingleton<IPlatformUnitOfWork>(unitOfWork);
+    builder.Services.AddSingleton<ITenantUnitOfWork>(unitOfWork);
     // The shared MapPlatformCompanyEndpoints maps the full route family, so every handler must be
     // resolvable even though this class only exercises create.
     builder.Services.AddCompanyEndpointHandlers();
@@ -337,7 +337,7 @@ public sealed class CompaniesEndpointTests : IAsyncLifetime
       throw new NotSupportedException();
   }
 
-  private sealed class StubUnitOfWork : IPlatformUnitOfWork
+  private sealed class StubUnitOfWork : ITenantUnitOfWork
   {
     public Error? Failure { get; set; }
     public int SaveCount { get; private set; }

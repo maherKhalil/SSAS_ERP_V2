@@ -12,7 +12,7 @@ namespace SSAS.Platform.Application.Companies;
 
 public sealed class CreateCompanyCommandHandler(
   ICompanyRepository companyRepository,
-  IPlatformUnitOfWork unitOfWork,
+  ITenantUnitOfWork unitOfWork,
   ICurrentTenant currentTenant,
   ICurrentUser currentUser,
   IDateTimeProvider clock)

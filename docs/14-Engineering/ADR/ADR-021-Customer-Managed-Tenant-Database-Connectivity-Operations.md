@@ -2,7 +2,7 @@
 id: ADR-021
 title: Customer-Managed Tenant Database Connectivity and Operations
 category: Architecture Decision Record
-version: 1.1
+version: 1.2
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -499,9 +499,32 @@ The no-fallback rule deserves its emphasis. Falling back to platform storage dur
 
 ---
 
+# Backup and recovery ownership
+
+**Deferred capability — documented now so ownership is never assumed. Implemented in `TS-Backup` (`ADR-017`).**
+
+Backup ownership follows `HostingMode`, and the default is deliberately asymmetric:
+
+| `HostingMode` | Default backup ownership |
+|---|---|
+| `PlatformManaged` | The **platform** may execute, schedule, monitor and verify backups, because it owns the server and the database. |
+| `CustomerManaged` | The **customer / their DBA** owns backup execution, retention and restore, because the platform owns neither the server nor the data's disposition. |
+
+The platform **must not** assume it owns backup for a customer-managed database unless that responsibility has been **explicitly delegated and contracted**. Two distinct failure modes follow from getting this wrong, and they fail in opposite directions:
+
+- **Assuming the customer has it covered** when nobody has arranged anything leaves a production database unprotected, and it will be discovered during an incident.
+- **Assuming the platform should take it over** means running backup operations against a server we do not own — consuming the customer's storage, holding copies of customer data on schedules they never agreed, and potentially conflicting with their existing maintenance plans and their regulator's expectations.
+
+The consistent principle is the one this ADR already applies to tenant deletion: **the platform does not own customer data or its disposition.** Backups are copies of customer data; creating and retaining them is an act of custody, not a technical convenience.
+
+What the platform **is** obliged to do regardless of ownership is **know and record** the position: who owns backup for each customer-managed endpoint, and whether that arrangement is asserted or verified. An unknown recovery position must be reported as unknown rather than presumed adequate — matching this ADR's existing rule that customer assertions are never accepted as evidence. Where a customer delegates backup explicitly, the required permissions become part of the credential permission set and the arrangement becomes a contracted obligation with a stated recovery-point objective.
+
+---
+
 # Implementation Guidelines
 
 - Do not build any of this before a customer requirement exists; keep the model shape, defer the machinery.
+- Record backup ownership per customer-managed endpoint, and report an unverified recovery position as unknown rather than assuming either party has it covered.
 - When a requirement does arrive, resolve the pending decisions in this order: supported-environment matrix → connectivity model → credential permission sets → certificate/trust policy → rotation procedure.
 - Rehearse against a deliberately hostile simulated endpoint — one that is slow, drops connections, and fails authentication — before touching a real customer server.
 - Verify the outage story explicitly: login must succeed and ERP must fail cleanly, as a tested behaviour rather than an assumption.
@@ -599,3 +622,4 @@ This ADR should be reviewed if:
 |----------|------|--------|-------------|
 | 1.0 | 2026-08-13 | Solution Architecture Team | Initial version — customer-managed tenant database connectivity and operations; architecture-ready, implementation deferred |
 | 1.1 | 2026-08-13 | Solution Architecture Team | Review hardening: added endpoint owner binding; added network-targeting/SSRF controls, port and protocol constraints, and DNS re-validation; prohibited public SQL in V1; added the binding TLS trust rule; added secret reference format, namespace containment, IAM scoping and owner binding; specified runtime/migration credential permission sets and the `CustomerDba` inference; expanded outage behaviour to platform-only surfaces and session protection; raised drift to a mandatory Ready criterion; declared Azure SQL out of scope; added customer-data deletion, audit field set, and the storage permission-family follow-up |
+| 1.2 | 2026-08-14 | Solution Architecture Team | Added backup and recovery ownership: platform-managed backup may be platform-executed, customer-managed backup remains customer/DBA responsibility unless explicitly delegated; unverified recovery position must be reported as unknown |

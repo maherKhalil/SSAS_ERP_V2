@@ -4,9 +4,9 @@ namespace SSAS.Platform.Infrastructure.TenantStorage;
 // an address: the Platform database persists the key and the catalog name, while addresses and credentials
 // stay in configuration/secret storage where one entry serves many database rows.
 //
-// This slice needs only the default server key naming today's physical database. The per-server connection
-// map arrives with the TS-1C connection factory, which is the only component that will ever resolve a key
-// to a connection.
+// `DefaultServerKey` names the server hosting today's baseline shared database; `Servers` holds the
+// per-server connection material. The connection factory is the only component that ever resolves a key
+// to a connection, and TenantStorageOptionsValidator checks the shape of both at startup.
 public sealed class TenantStorageOptions
 {
   public const string SectionName = "TenantStorage";

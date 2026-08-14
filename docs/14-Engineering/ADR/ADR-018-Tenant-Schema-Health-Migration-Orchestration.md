@@ -2,7 +2,7 @@
 id: ADR-018
 title: Tenant Schema Health and Migration Orchestration
 category: Architecture Decision Record
-version: 1.2
+version: 1.4
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -432,9 +432,120 @@ Separating `ConnectivityStatus` from `SchemaStatus` is likewise not cosmetic. Un
 
 ---
 
+# Operational recovery readiness is not schema readiness
+
+**Deferred capability — documented now so the two are not conflated. Implemented in `TS-Backup` (`ADR-017`).**
+
+Schema compatibility and **operational recovery readiness** are distinct dimensions, and neither implies the other. A database can be fully migrated, `UpToDate`, reachable, and serving traffic while having **no usable backup chain at all**.
+
+**A successful migration is not evidence of recoverability.** The four status dimensions this ADR defines — provisioning, connectivity, schema compatibility, migration execution — answer "can the application correctly read and write this database". None of them answers "could this database be restored if it were lost". That question requires separate evidence: that a policy exists, that the chain is initialised, that the recovery model supports it, and — the only evidence that actually counts — that a **restore has been verified**, not merely that backups have been written.
+
+The practical failure this prevents: a migration orchestrator reports a green estate, a release is judged safe, and a database that has never had a verifiable backup is carrying production data. Recovery readiness therefore belongs alongside the health dimensions as a **separate** reported state when `TS-Backup` lands, never folded into `SchemaCompatibilityStatus` or into a derived `Ready`.
+
+Migration is also a moment when recovery matters most: applying DDL to a tenant database is precisely when a restore point is most likely to be needed. Backup verification and migration orchestration are separate responsibilities, but a migration run against a database with no verified recovery position is an operational decision that should be taken knowingly rather than by omission.
+
+---
+
+# Deployment / migration application procedure
+
+**Current implementation-stage procedure.** This section describes what an operator must do *today*, before the orchestration described above exists. It is deliberately manual, and it is written down because the deployment contract changed the moment a second migration stream appeared.
+
+## There are two independent migration streams
+
+| Stream | Owns | Migration history |
+|---|---|---|
+| `PlatformDbContext` | Platform-plane schema — tenancy, identity, authentication, membership, roles, localization, platform-support authority, tenant-storage registry | `platform.__EFMigrationsHistory` |
+| `TenantDbContext` | Tenant ERP schema — `Company` today, HR/GL and the rest later | `tenant.__EFMigrationsHistory` |
+
+**Applying one stream does not imply the other has been applied.** They have separate histories, separate snapshots, and no shared migration identifiers. A deployment that runs only the platform stream leaves the tenant schema entirely absent, and nothing in the running application will correct that.
+
+## Nothing applies these automatically
+
+There is, today:
+
+- **no automatic migration on host startup** for either stream;
+- **no fleet migration orchestration** — no discovery of physical tenant databases, no rolling application, no concurrency coordination;
+- **no background migration worker.**
+
+`TenantMigrationRunner` is **single-target tooling** for one explicitly-named tenant: it reports applied and pending migrations and can migrate that one routed database. It is not registered for automatic execution and must not be described or used as fleet orchestration, startup auto-migration, or rolling-deployment coordination.
+
+## Applying each stream
+
+Both contexts live in `SSAS.Platform.Infrastructure`, which is also its own startup project for design-time commands (the API host does not reference `Microsoft.EntityFrameworkCore.Design`).
+
+**Platform stream** — requires the `ConnectionStrings__Platform` environment variable; the design-time factory fails fast without it:
+
+```
+ConnectionStrings__Platform="<platform connection string>" \
+dotnet ef database update \
+  --project src/Platform/SSAS.Platform.Infrastructure/SSAS.Platform.Infrastructure.csproj \
+  --startup-project src/Platform/SSAS.Platform.Infrastructure/SSAS.Platform.Infrastructure.csproj \
+  --context PlatformDbContext
+```
+
+**Tenant stream** — target database supplied via `SSAS_TENANT_MIGRATION_SQLSERVER`. Run this **once per physical tenant database** that is intended to serve tenant ERP traffic:
+
+```
+SSAS_TENANT_MIGRATION_SQLSERVER="<tenant database connection string>" \
+dotnet ef database update \
+  --project src/Platform/SSAS.Platform.Infrastructure/SSAS.Platform.Infrastructure.csproj \
+  --startup-project src/Platform/SSAS.Platform.Infrastructure/SSAS.Platform.Infrastructure.csproj \
+  --context TenantDbContext
+```
+
+Connection strings are supplied by the deployment environment and **must never be committed to documentation, configuration in source control, or logs**.
+
+## Shared topology: same catalog, still two streams
+
+In the current shared topology the Platform database and the shared tenant ERP database are the **same physical SQL Server catalog**. That changes nothing about the procedure. The two streams remain logically independent, write to separate history tables in separate schemas, and **both commands must still be run** against that catalog. Sharing a catalog is a deployment fact, not a merging of the streams.
+
+## Dedicated topology
+
+A `PlatformManaged` + `Dedicated` tenant ERP database receives the **Tenant stream only**. The Platform stream is not applied to it: the platform plane lives in the Platform database, and a dedicated tenant database holds tenant ERP data alone. Should a future decision require any platform-side object inside tenant databases, that decision must be recorded explicitly; it is not implied today.
+
+## Recommended sequence
+
+For operational simplicity, use one standard order:
+
+1. Apply the **Platform** stream.
+2. Apply the **Tenant** stream to every physical tenant database that will serve traffic.
+3. **Validate** (below).
+4. Only then serve tenant ERP traffic.
+
+**A note on ordering tolerance.** The `Company` transition migrations were deliberately written to survive either order — the platform migration renames `platform.Companies` rather than dropping it, and the tenant migration copies from whichever source table exists. That is a property of **this specific transition**, achieved on purpose, and **must not be generalised**: future migrations are not automatically order-independent, and any future cross-stream data movement must have its ordering safety established for itself.
+
+## The Company transition makes this concrete
+
+The consequence of stopping halfway is specific and worth stating plainly:
+
+- The platform migration renames `platform.Companies` → `platform.Companies_MigratedToTenant`. **No data is lost**; the rows are intact under the retained name.
+- The tenant migration creates `tenant.Companies` and copies those rows across.
+
+If **only** the platform stream is applied, the data is safe but `tenant.Companies` does not exist, and **every `Company` operation fails**. The failure is loud and fully recoverable by applying the tenant stream — but it is an invalid deployment state, not a degraded one, and it will not repair itself.
+
+## Validation before serving ERP traffic
+
+Until the health service exists, verify manually:
+
+- the Platform stream is at the expected version (no pending migrations);
+- the Tenant stream is at the expected version on each tenant database;
+- `tenant.__EFMigrationsHistory` exists on each tenant ERP database;
+- the `tenant` schema exists, and for this slice `tenant.Companies` exists;
+- `TenantStorage:Servers` contains an entry for every `ServerKey` the registry routes to.
+
+Pending state can be read per stream with `dotnet ef migrations list --context <PlatformDbContext|TenantDbContext>` using the parameters above.
+
+## This procedure is temporary
+
+The health service and orchestrator specified in this ADR replace it. Once implemented, physical `TenantDatabase` discovery, schema-compatibility reporting, controlled migration execution, concurrency coordination, and operational progress reporting take over what is currently a manual per-database command. Note also that **migration success remains distinct from backup/recovery readiness** (above): completing this procedure says nothing about whether the resulting database is recoverable.
+
+---
+
 # Implementation Guidelines
 
 - Build the health service before the orchestrator; the orchestrator consumes it as preflight.
+- Until the orchestrator exists, apply both migration streams explicitly per the deployment procedure above; neither is applied automatically at startup.
+- Keep recovery readiness a separate reported dimension from schema compatibility; never let a successful migration imply a recoverable database.
 - Make orchestration idempotent and resumable; re-running after partial failure must be safe.
 - Record per-database outcome, timestamps, and the failure reason on `TenantDatabase`.
 - Treat "unknown/stale status" conservatively in the request path.
@@ -531,3 +642,5 @@ This ADR should be reviewed if:
 | 1.0 | 2026-08-13 | Solution Architecture Team | Initial version — tenant schema health and migration orchestration |
 | 1.1 | 2026-08-13 | Solution Architecture Team | Added `MigrationManagementMode`, customer-managed migration models and authority, separated connectivity/schema/provisioning status dimensions, connectivity health service, and `TenantDatabaseUnavailable` behaviour |
 | 1.2 | 2026-08-13 | Solution Architecture Team | Review hardening: replaced the combined status enum with four orthogonal dimensions; added the traffic-gating table and health-cache freshness model; assigned estate migration to deployment tooling; added the eight migration-lock invariants; renamed migration modes to `AutomaticByPlatform`/`PlatformAfterApproval`/`CustomerDba`; added the mandatory customer-managed drift floor and schema fingerprint; required the environment matrix; declared Azure SQL out of scope for V1; clarified the RCSI/isolation policy |
+| 1.3 | 2026-08-14 | Solution Architecture Team | Added operational recovery readiness as a dimension distinct from schema compatibility; a successful migration does not imply a recoverable database. Deferred to `TS-Backup` |
+| 1.4 | 2026-08-14 | Solution Architecture Team | Documented the explicit two-stream (Platform / Tenant) migration deployment procedure, including per-stream commands, shared-catalog and dedicated behaviour, ordering-tolerance scope, and pre-traffic validation. No architecture decision changed |

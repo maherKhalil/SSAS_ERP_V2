@@ -1,7 +1,9 @@
 using System.Reflection;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence;
+using SSAS.Platform.Infrastructure.TenantStorage;
 
 namespace SSAS.Architecture.Tests;
 
@@ -69,17 +71,89 @@ public sealed class TenantStorageRegistryArchitectureTests
 
   [Fact]
   [Trait("Decision", "ADR-017")]
-  public void No_tenant_dbcontext_or_routing_runtime_is_introduced_yet()
+  public void No_tenant_dbcontext_is_introduced_yet()
   {
-    // TS-1C owns the resolver/connection factory and Slice B owns TenantDbContext. Their absence is what
-    // keeps this slice reviewable; their arrival should be a deliberate, separately reviewed change.
-    var types = DomainAssembly.GetTypes().Concat(InfrastructureAssembly.GetTypes())
+    // TS-1C adds the resolver and connection factory; TenantDbContext and the separate tenant migration
+    // stream remain a later, separately reviewed slice.
+    var types = DomainAssembly.GetTypes()
+      .Concat(InfrastructureAssembly.GetTypes())
+      .Concat(typeof(ITenantDatabaseResolver).Assembly.GetTypes())
       .Select(type => type.Name)
       .ToArray();
 
     Assert.DoesNotContain("TenantDbContext", types);
-    Assert.DoesNotContain("TenantDatabaseResolver", types);
-    Assert.DoesNotContain("TenantDatabaseConnectionFactory", types);
+    Assert.DoesNotContain("TenantDbContextFactory", types);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-017")]
+  public void The_resolver_is_application_level_and_free_of_ambient_request_context()
+  {
+    // The resolver must be equally usable from a background worker, so it may not depend on HTTP context.
+    // Taking the tenant as an explicit parameter is what keeps that true.
+    Assert.Equal(typeof(ITenantDatabaseResolver).Assembly, typeof(TenantDatabaseResolver).Assembly);
+
+    var dependencies = typeof(TenantDatabaseResolver).GetConstructors()
+      .SelectMany(constructor => constructor.GetParameters())
+      .Select(parameter => parameter.ParameterType.Name)
+      .ToArray();
+    Assert.DoesNotContain("IHttpContextAccessor", dependencies);
+
+    var resolveMethod = typeof(ITenantDatabaseResolver).GetMethod(nameof(ITenantDatabaseResolver.ResolveAsync));
+    Assert.NotNull(resolveMethod);
+    Assert.Contains(resolveMethod!.GetParameters(), parameter => parameter.ParameterType == typeof(Guid));
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-017")]
+  public void The_route_carries_only_non_secret_metadata()
+  {
+    // The route crosses into the Application layer, so anything on it may reach logs and diagnostics.
+    string[] forbidden =
+    [
+      "ConnectionString", "Password", "Username", "Secret", "Credential", "Certificate", "PrivateKey",
+      "Endpoint", "Token", "AuthenticationMode"
+    ];
+
+    foreach (var property in typeof(TenantDatabaseRoute).GetProperties())
+    {
+      Assert.DoesNotContain(forbidden, term =>
+        property.Name.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-017")]
+  public void Connection_construction_stays_in_infrastructure()
+  {
+    // Credential material must not travel through the Application layer; the factory therefore lives in
+    // Infrastructure and returns an open-able connection rather than a credentialed string.
+    Assert.Equal(InfrastructureAssembly, typeof(ITenantDatabaseConnectionFactory).Assembly);
+    Assert.Equal(InfrastructureAssembly, typeof(TenantDatabaseConnectionFactory).Assembly);
+
+    var createMethod = typeof(ITenantDatabaseConnectionFactory).GetMethod(
+      nameof(ITenantDatabaseConnectionFactory.Create));
+    Assert.NotNull(createMethod);
+    Assert.DoesNotContain("String", createMethod!.ReturnType.GenericTypeArguments.Select(type => type.Name));
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-017")]
+  public void No_routing_cache_is_introduced_yet()
+  {
+    // TS-1C is deliberately uncached: correctness first, and RoutingVersion semantics proven before any
+    // cache exists. A cache added later must key validity to RoutingVersion (ADR-020).
+    var routingTypes = typeof(ITenantDatabaseResolver).Assembly.GetTypes()
+      .Concat(InfrastructureAssembly.GetTypes())
+      .Where(type => type.Name.Contains("TenantDatabase", StringComparison.Ordinal) ||
+        type.Name.Contains("TenantStorage", StringComparison.Ordinal))
+      .ToArray();
+
+    Assert.DoesNotContain(routingTypes, type =>
+      type.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase));
+    Assert.DoesNotContain(routingTypes, type => type.GetConstructors()
+      .SelectMany(constructor => constructor.GetParameters())
+      .Any(parameter => parameter.ParameterType.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase)));
   }
 
   [Fact]

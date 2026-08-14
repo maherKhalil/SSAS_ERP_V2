@@ -34,6 +34,17 @@ public sealed class TenantStorageBootstrapService(
   // Tenants are backfilled in bounded pages so an unbounded tenant table is never materialised at once.
   private const int TenantPageSize = 500;
 
+  // SQL Server unique-constraint and unique-index violations. ONLY these are treated as the benign
+  // "a peer host won the race" outcome; any other DbUpdateException propagates, so a genuine persistence
+  // failure fails the bootstrap instead of being retried as if it were contention.
+  private const int UniqueConstraintViolation = 2627;
+  private const int UniqueIndexViolation = 2601;
+
+  // Second, deterministic guard: even a correctly classified uniqueness conflict cannot retry a page
+  // forever. Each pass observes the peer's committed rows and has strictly less to insert, so exhausting
+  // this bound means something other than ordinary contention is happening.
+  private const int MaximumPeerRaceRetriesPerPage = 5;
+
   public async Task<TenantStorageBootstrapOutcome> RunAsync(CancellationToken cancellationToken = default)
   {
     var serverKey = optionsAccessor.Value.DefaultServerKey;
@@ -101,10 +112,10 @@ public sealed class TenantStorageBootstrapService(
       await dbContext.SaveChangesAsync(cancellationToken);
       return (registered.Value, true);
     }
-    catch (DbUpdateException)
+    catch (DbUpdateException exception) when (IsUniquenessConflict(exception))
     {
       // A peer host won the race on UX_TenantDatabases_ServerKey_DatabaseName. Re-read its row and treat
-      // the pass as converged rather than retrying blindly.
+      // the pass as converged rather than retrying blindly. Any other persistence failure propagates.
       dbContext.Entry(registered.Value).State = EntityState.Detached;
       var winner = await FindSharedDatabaseAsync(serverKey, databaseName, cancellationToken)
         ?? throw new InvalidOperationException(
@@ -143,6 +154,7 @@ public sealed class TenantStorageBootstrapService(
     var created = 0;
     var alreadyAssigned = 0;
     var pageStartExclusive = Guid.Empty;
+    var peerRaceRetries = 0;
 
     while (true)
     {
@@ -195,24 +207,42 @@ public sealed class TenantStorageBootstrapService(
       {
         await dbContext.SaveChangesAsync(cancellationToken);
       }
-      catch (DbUpdateException)
+      catch (DbUpdateException exception) when (IsUniquenessConflict(exception))
       {
         // A peer host assigned one or more of these tenants first and
         // UX_TenantDatabaseAssignments_ActiveTenant rejected the duplicates — the intended outcome. Drop
         // this page's pending inserts and re-examine THE SAME page (pageStartExclusive is not advanced),
         // so any tenant the peer did not cover is still assigned. The retry terminates because each pass
         // observes the peer's committed rows and has strictly less left to insert.
+        //
+        // Only recognised uniqueness violations reach here; every other DbUpdateException propagates.
         DetachPendingAssignments();
+        if (++peerRaceRetries > MaximumPeerRaceRetriesPerPage)
+        {
+          throw new InvalidOperationException(
+            "The tenant storage assignment backfill did not converge after repeated uniqueness conflicts on one page.",
+            exception);
+        }
+
         continue;
       }
 
       created += missingTenantIds.Count;
       alreadyAssigned += assignedTenantIds.Count;
       pageStartExclusive = tenantIds[^1];
+      peerRaceRetries = 0;
     }
 
     return (created, alreadyAssigned);
   }
+
+  // Classifies a persistence failure as the benign peer-won race rather than assuming it. Anything that is
+  // not a recognised SQL Server uniqueness violation — a transient fault, a constraint bug, a schema
+  // problem — must surface as a bootstrap failure, not be retried as if it were contention.
+  internal static bool IsUniquenessConflict(DbUpdateException exception) =>
+    exception.InnerException is SqlException sqlException &&
+      sqlException.Errors.OfType<SqlError>().Any(error =>
+        error.Number is UniqueConstraintViolation or UniqueIndexViolation);
 
   private void DetachPendingAssignments()
   {

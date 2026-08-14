@@ -2,7 +2,7 @@
 id: ADR-017
 title: Tenant Storage Topology and Routing
 category: Architecture Decision Record
-version: 1.3
+version: 1.4
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -645,7 +645,7 @@ The membership refinement (keeping `TenantUser`/`Role`/assignments in the Platfo
 - Introduce `TenantDatabase` and `TenantDatabaseAssignment` in the Platform database first; routing can be exercised while the tenant schema still physically resides in one database.
 - Introduce `TenantDbContext` with its own migration stream before moving any entity.
 - Move `Company` as the pilot tenant-owned entity to prove the routing and migration path end to end before HR/GL.
-- Resolve routing once per request and cache it; invalidate on cutover (`ADR-020`).
+- Resolve routing per `TenantDbContext` creation / unit of work. Cached routing is valid only for the `RoutingVersion` under which it was resolved: `RoutingVersion` is the correctness mechanism, while explicit invalidation and a bounded TTL are propagation aids. Cache invalidation alone is insufficient (`ADR-020`).
 - Make `TenantId` the leading column of tenant-owned indexes so the retained global filter is a no-op seek in dedicated databases.
 - Keep `IgnoreQueryFilters` usage confined to explicitly reviewed platform-side maintenance paths.
 - Prefer `IDbContextFactory<TenantDbContext>`; do not adopt context pooling for the tenant context without an explicit review of connection-identity safety.
@@ -761,3 +761,4 @@ Customer-managed tenant ERP database support does not change this. It alters not
 | 1.1 | 2026-08-13 | Solution Architecture Team | Separated `HostingMode` from `StorageMode`; added customer-managed hosting, endpoint/credential model, authentication mode, fail-closed routing and no-automatic-fallback rules; added `ADR-021` |
 | 1.2 | 2026-08-13 | Solution Architecture Team | Review hardening: completed the boundary (localization to Platform DB); documented tenant-guard enforcement and misrouting asymmetry; added assignment invariants and single-transaction flip; added customer-endpoint owner binding; added `TenantDbContext` lifetime rules and tenant-less fail-loud; added cross-plane commit ordering, tenant-scoped uniqueness, closed-domain lookup category, actor-display hazard, tenant-deletion rules; corrected cross-references |
 | 1.3 | 2026-08-13 | Solution Architecture Team | Editorial: synchronised the status model with `ADR-018` (four orthogonal dimensions; `SchemaCompatibilityStatus`/`MigrationExecutionStatus`; `Ready` never independently writable); corrected a directional reference and lookup-list formatting. No decision changed |
+| 1.4 | 2026-08-13 | Solution Architecture Team | Editorial: corrected the routing-cache implementation guidance to resolve per `TenantDbContext` creation / unit of work with `RoutingVersion` as the correctness mechanism. No decision changed |

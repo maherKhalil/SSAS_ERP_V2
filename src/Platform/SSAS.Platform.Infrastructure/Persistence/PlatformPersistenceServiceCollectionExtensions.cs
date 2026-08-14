@@ -86,9 +86,16 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IPlatformSupportAuthorityStateReadService, PlatformSupportAuthorityStateReadService>();
     services.AddScoped<IPlatformSupportRecoverySerializer, PlatformSupportRecoverySerializer>();
     services.AddScoped<IPlatformSupportBootstrapService, PlatformSupportBootstrapService>();
-    // Tenant-storage registry baseline (ADR-017, TS-1B). Registry persistence and bootstrap only: no
-    // routing resolver, no connection factory and no customer-managed path exist in this slice.
+    // Tenant-storage registry baseline (ADR-017, TS-1B).
     services.AddScoped<ITenantStorageBootstrapService, TenantStorageBootstrapService>();
+
+    // Tenant-storage routing foundation (ADR-017, TS-1C). Resolver and connection factory only: nothing
+    // routes application persistence through these yet, and no TenantDbContext, routing cache, health
+    // gating or customer-managed path exists.
+    services.AddScoped<ITenantDatabaseRegistryReadRepository, TenantDatabaseRegistryReadRepository>();
+    services.AddScoped<ITenantDatabaseResolver, TenantDatabaseResolver>();
+    services.AddScoped<CurrentTenantDatabaseRouteProvider>();
+    services.AddSingleton<ITenantDatabaseConnectionFactory, TenantDatabaseConnectionFactory>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
     services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
     services.AddSingleton<ILocalizationCatalog>(GeneratedLocalizationCatalog.Instance);

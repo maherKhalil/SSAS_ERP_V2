@@ -52,6 +52,29 @@ public sealed class TenantDatabaseConfiguration : IEntityTypeConfiguration<Tenan
       table.HasCheckConstraint(
         "CK_TenantDatabases_ConnectivityCheckedWhenKnown",
         "[ConnectivityStatus] = N'Unknown' OR [LastConnectivityCheckUtc] IS NOT NULL");
+
+      // ADR-022 recovery readiness — the FOURTH dimension. Constrained to its own closed set and
+      // deliberately NOT cross-constrained against the other three: a database can legitimately be
+      // schema-current and unprotected, or well-protected and awaiting a release, and forbidding those
+      // combinations would forbid states an operator needs to see.
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_RecoveryReadinessStatus",
+        "[RecoveryReadinessStatus] IN (N'Unknown', N'Protected', N'Degraded', N'Unprotected', " +
+        "N'RecoveryModelInvalid', N'VerificationOverdue')");
+
+      // Same coherence rule the other dimensions carry: a status can only be trusted alongside the
+      // timestamp that dates it.
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_RecoveryCheckedWhenKnown",
+        "[RecoveryReadinessStatus] = N'Unknown' OR [LastRecoveryReadinessCheckUtc] IS NOT NULL");
+
+      // PROTECTED REQUIRES EVIDENCE, NEVER CONFIGURATION (ADR-022 §6, compliance rule 11). A full baseline
+      // is the weakest claim that could possibly justify the word, so the database refuses the combination
+      // outright — no application path and no direct SQL write can mark a database protected that has never
+      // had a successful full backup recorded.
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_ProtectedRequiresFullBackup",
+        "[RecoveryReadinessStatus] <> N'Protected' OR [LastSuccessfulFullBackupUtc] IS NOT NULL");
     });
 
     builder.HasKey(database => database.Id);
@@ -95,6 +118,19 @@ public sealed class TenantDatabaseConfiguration : IEntityTypeConfiguration<Tenan
       .HasMaxLength(32)
       .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
       .IsRequired();
+    // ---- ADR-022 recovery readiness. Cached observations only; full history lives in
+    // TenantDatabaseBackupRun, and policy lives in TenantDatabaseBackupPolicy.
+    builder.Property(database => database.RecoveryReadinessStatus)
+      .HasConversion<string>()
+      .HasMaxLength(32)
+      .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
+      .IsRequired();
+    builder.Property(database => database.LastRecoveryReadinessCheckUtc);
+    builder.Property(database => database.LastSuccessfulFullBackupUtc);
+    builder.Property(database => database.LastSuccessfulDifferentialBackupUtc);
+    builder.Property(database => database.LastSuccessfulLogBackupUtc);
+    builder.Property(database => database.LastRestoreVerificationUtc);
+
     builder.Property(database => database.LastConnectivityCheckUtc);
     builder.Property(database => database.LastSchemaCheckUtc);
     builder.Property(database => database.LastMigrationAttemptUtc);

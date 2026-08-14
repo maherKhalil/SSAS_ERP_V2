@@ -311,10 +311,22 @@ public sealed class TenantStorageRegistryArchitectureTests
         property.Name.Contains("Restore", StringComparison.OrdinalIgnoreCase));
     }
 
-    // And no backup runtime exists at all.
+    // And no backup RUNTIME exists. TS-Backup Phase A (ADR-022) adds backup METADATA — policy, run history
+    // and their persistence — which is why the permitted names are enumerated rather than the check being
+    // dropped. Anything else named after backup or restore still fails here, so a provider, scheduler,
+    // restore worker or verification runtime cannot arrive unnoticed under a later slice.
+    var phaseAMetadata = new[]
+    {
+      "TenantDatabaseBackupPolicyConfiguration",
+      "TenantDatabaseBackupRunConfiguration",
+      "TenantDatabaseBackupReadRepository",
+      "AddTenantDatabaseBackupRecoveryFoundation"
+    };
+
     var offenders = InfrastructureAssembly.GetTypes()
       .Where(type => type.Name.Contains("Backup", StringComparison.OrdinalIgnoreCase) ||
         type.Name.Contains("Restore", StringComparison.OrdinalIgnoreCase))
+      .Where(type => !phaseAMetadata.Contains(type.Name, StringComparer.Ordinal))
       .Select(type => type.FullName)
       .ToArray();
     Assert.Empty(offenders);

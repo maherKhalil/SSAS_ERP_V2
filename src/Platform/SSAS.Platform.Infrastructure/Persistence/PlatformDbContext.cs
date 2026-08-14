@@ -64,6 +64,13 @@ public sealed class PlatformDbContext(
 
   public DbSet<TenantDatabaseAssignment> TenantDatabaseAssignments => Set<TenantDatabaseAssignment>();
 
+  // Backup and recovery metadata (ADR-022). Platform-plane operational metadata, deliberately here and NOT
+  // in a tenant ERP database: it describes the physical database rather than living inside it, and a
+  // database that cannot be reached is exactly when its protection state must still be readable.
+  public DbSet<TenantDatabaseBackupPolicy> TenantDatabaseBackupPolicies => Set<TenantDatabaseBackupPolicy>();
+
+  public DbSet<TenantDatabaseBackupRun> TenantDatabaseBackupRuns => Set<TenantDatabaseBackupRun>();
+
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
     // Only PLATFORM configurations. Company moved to TenantDbContext (ADR-017) and its configuration now

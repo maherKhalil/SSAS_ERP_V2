@@ -122,6 +122,10 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "RolePermissionAssignments",
             "Roles",
             "TenantDatabaseAssignments",
+            // Backup policy and run history (ADR-022, TS-Backup Phase A). Platform-plane metadata about the
+            // physical database, deliberately not inside the tenant ERP database it describes.
+            "TenantDatabaseBackupPolicies",
+            "TenantDatabaseBackupRuns",
             "TenantDatabases",
             "TenantLocalizationOverrideVersions",
             "TenantLocalizationOverrides",

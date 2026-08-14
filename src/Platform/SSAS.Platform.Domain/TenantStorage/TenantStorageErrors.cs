@@ -102,4 +102,52 @@ public static class TenantStorageErrors
 
   public static readonly Error DatabaseNameInvalid =
     new("TenantStorage.DatabaseNameInvalid", "The tenant database name is not valid for connection construction.");
+
+  // ---- Backup and recovery (ADR-022). Messages are operator-facing and carry no destination, credential
+  // or provider command text, for the same reason the routing errors above carry none.
+
+  public static readonly Error BackupDestinationKeyRequired =
+    new("TenantStorage.BackupDestinationKeyRequired", "A trusted backup destination key is required for a platform-executed backup policy.");
+
+  public static readonly Error BackupDestinationKeyInvalid =
+    new("TenantStorage.BackupDestinationKeyInvalid", "The backup destination key is not valid.");
+
+  public static readonly Error BackupScheduleInvalid =
+    new("TenantStorage.BackupScheduleInvalid", "A backup schedule interval must be a positive number of minutes within supported bounds.");
+
+  // Transaction-log and differential backups restore only onto a full baseline (ADR-022 §9), so scheduling
+  // them without one configures a chain with no base.
+  public static readonly Error BackupFullBaselineRequired =
+    new("TenantStorage.BackupFullBaselineRequired", "A backup policy requires a full baseline schedule; log or differential backups alone are not a backup strategy.");
+
+  public static readonly Error BackupRetentionInvalid =
+    new("TenantStorage.BackupRetentionInvalid", "The backup retention expectation must be a positive number of days within supported bounds.");
+
+  public static readonly Error BackupVerificationIntervalInvalid =
+    new("TenantStorage.BackupVerificationIntervalInvalid", "The restore verification interval must be a positive number of days within supported bounds.");
+
+  public static readonly Error BackupEncryptionModeNotSupported =
+    new("TenantStorage.BackupEncryptionModeNotSupported", "Provider-native backup encryption is not supported in this version.");
+
+  public static readonly Error BackupOperationInvalid =
+    new("TenantStorage.BackupOperationInvalid", "A backup operation requires a provider key and an operation code.");
+
+  // A run is successful on reconciled provider evidence, never on a command having returned.
+  public static readonly Error BackupProviderEvidenceRequired =
+    new("TenantStorage.BackupProviderEvidenceRequired", "A successful backup run requires provider backup evidence.");
+
+  public static readonly Error BackupArtifactReferenceInvalid =
+    new("TenantStorage.BackupArtifactReferenceInvalid", "The backup artifact reference is not valid.");
+
+  public static readonly Error BackupRunSizeInvalid =
+    new("TenantStorage.BackupRunSizeInvalid", "A backup run size cannot be negative.");
+
+  public static readonly Error BackupRunSkipStatusInvalid =
+    new("TenantStorage.BackupRunSkipStatusInvalid", "The requested status is not a controlled backup skip outcome.");
+
+  public static readonly Error BackupVerificationResultRequired =
+    new("TenantStorage.BackupVerificationResultRequired", "A verification result is required to record backup verification.");
+
+  public static readonly Error RecoveryReadinessResultRequired =
+    new("TenantStorage.RecoveryReadinessResultRequired", "A recovery readiness evaluation must record a concluded status.");
 }

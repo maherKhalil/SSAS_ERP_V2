@@ -110,6 +110,16 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseSchemaHealthService, TenantDatabaseSchemaHealthService>();
     services.AddScoped<ITenantDatabaseMigrationOrchestrator, TenantDatabaseMigrationOrchestrator>();
 
+    // ADR-022 backup and recovery foundation (TS-Backup Phase A). Domain state and reads ONLY: the
+    // recovery-readiness writer is registered as a SEPARATE interface from the health writer, because
+    // ADR-022 requires one writer per dimension and compile-time separation is what keeps a component
+    // holding one from expressing a write to another.
+    //
+    // Nothing here can cause a backup. There is no provider, no scheduler, no destination resolution and no
+    // restore — those are Phase B, C and D, and the Phase B session-loss exit gate blocks Phase C.
+    services.AddScoped<ITenantDatabaseRecoveryReadinessWriter, TenantDatabaseRecoveryReadinessWriter>();
+    services.AddScoped<ITenantDatabaseBackupReadRepository, TenantDatabaseBackupReadRepository>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

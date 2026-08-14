@@ -410,6 +410,7 @@ public sealed class TenantDbContextRoutingSqlServerTests
       new(
         new TenantDatabaseResolver(new TenantDatabaseRegistryReadRepository(PlatformContext())),
         ConnectionFactory(),
+        new TenantDatabaseTrafficGate(TenantDatabaseHealthFreshness.Default),
         new TestUser(),
         new FixedTenant(currentTenantId),
         new TestClock());
@@ -459,6 +460,19 @@ public sealed class TenantDbContextRoutingSqlServerTests
 
       platform.TenantDatabaseAssignments.Add(
         TenantDatabaseAssignment.Create(tenantId, existing.Id, 1, "routing-tests", "routing-tests", Now).Value);
+
+      // ADR-018 gating now denies traffic to an unverified database, so a routing test that expects to
+      // obtain a context must first record that this database has been checked. This mirrors reality: a
+      // database serving ERP traffic has passed schema health. Gating itself is proven separately in
+      // TenantSchemaHealthSqlServerTests.
+      if (provisioningStatus == TenantDatabaseProvisioningStatus.Ready &&
+        hostingMode == TenantDatabaseHostingMode.PlatformManaged)
+      {
+        existing.RecordConnectivity(TenantDatabaseConnectivityStatus.Healthy, "routing-tests", Now);
+        existing.RecordSchemaHealth(
+          TenantDatabaseSchemaCompatibilityStatus.UpToDate, null, null, "routing-tests", Now);
+      }
+
       await platform.SaveChangesAsync();
       return tenantId;
     }
@@ -481,6 +495,12 @@ public sealed class TenantDbContextRoutingSqlServerTests
           TenantDatabaseHostingMode.PlatformManaged, TenantDatabaseStorageMode.Shared,
           PrimaryServerKey, databaseName, TenantDatabaseProvisioningStatus.Ready, "routing-tests", Now).Value;
         platform.TenantDatabases.Add(target);
+
+        // Verified, for the same reason as in RegisterTenantAsync: the reassignment target must be
+        // servable or ADR-018 gating will deny the very context this test is about to obtain.
+        target.RecordConnectivity(TenantDatabaseConnectivityStatus.Healthy, "routing-tests", Now);
+        target.RecordSchemaHealth(
+          TenantDatabaseSchemaCompatibilityStatus.UpToDate, null, null, "routing-tests", Now);
         await platform.SaveChangesAsync();
       }
 

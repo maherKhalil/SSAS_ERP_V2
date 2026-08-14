@@ -227,6 +227,132 @@ public sealed class TenantStorageRegistryArchitectureTests
     Assert.DoesNotContain(typeof(PlatformDbContext), dependencies);
   }
 
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void Health_state_lives_on_the_physical_database_never_on_the_assignment()
+  {
+    // A shared database has ONE schema and ONE migration state. Copying that onto every tenant's
+    // assignment would create rows that can disagree with each other about the same physical database.
+    string[] healthProperties =
+    [
+      "ConnectivityStatus", "SchemaCompatibilityStatus", "MigrationExecutionStatus",
+      "MigrationManagementMode", "LastSchemaCheckUtc", "AppliedMigration"
+    ];
+
+    foreach (var property in healthProperties)
+    {
+      Assert.NotNull(typeof(TenantDatabase).GetProperty(property));
+      Assert.Null(typeof(TenantDatabaseAssignment).GetProperty(property));
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void The_request_path_never_migrates_and_startup_never_fleet_migrates()
+  {
+    // DDL authority does not belong in the process serving requests, and startup must not scale with
+    // estate size. Asserted over source text because the property is the ABSENCE of a call.
+    var infrastructure = Path.Combine(RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure");
+
+    foreach (var file in new[]
+      {
+        Path.Combine(infrastructure, "Persistence", "TenantErp", "TenantDbContextFactory.cs"),
+        Path.Combine(infrastructure, "Persistence", "TenantErp", "TenantDbContextProvider.cs"),
+        Path.Combine(infrastructure, "Persistence", "TenantErp", "TenantUnitOfWork.cs"),
+        Path.Combine(infrastructure, "Persistence", "Repositories", "CompanyRepository.cs"),
+        Path.Combine(infrastructure, "Persistence", "Queries", "CompanyReadService.cs")
+      })
+    {
+      var source = File.ReadAllText(file);
+      Assert.DoesNotContain("MigrateAsync", source, StringComparison.Ordinal);
+      Assert.DoesNotContain("EnsureCreated", source, StringComparison.Ordinal);
+    }
+
+    // No hosted service migrates. The orchestrator is invoked explicitly, never registered to run itself.
+    var registration = File.ReadAllText(Path.Combine(
+      infrastructure, "Persistence", "PlatformPersistenceServiceCollectionExtensions.cs"));
+    Assert.DoesNotContain("AddHostedService<TenantDatabaseMigration", registration, StringComparison.Ordinal);
+    Assert.DoesNotContain("AddHostedService<TenantDatabaseSchemaHealth", registration, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void The_traffic_gate_is_consulted_before_a_connection_is_built()
+  {
+    // Gating that ran after connection construction would already have reached the database it is meant
+    // to keep traffic away from.
+    var source = File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure",
+      "Persistence", "TenantErp", "TenantDbContextFactory.cs"));
+
+    var gateIndex = source.IndexOf("trafficGate.Evaluate", StringComparison.Ordinal);
+    var connectionIndex = source.IndexOf("connectionFactory.Create", StringComparison.Ordinal);
+
+    Assert.True(gateIndex > 0, "The tenant context factory must consult the traffic gate.");
+    Assert.True(connectionIndex > gateIndex, "The traffic gate must be evaluated before a connection is built.");
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void Schema_health_never_reports_backup_or_recovery_readiness()
+  {
+    // TS-Backup is a separate dimension (ADR-018). A schema-compatible database is not automatically a
+    // recoverable one, and folding the two would let a green release imply a durability guarantee that
+    // nothing has established.
+    foreach (var type in new[]
+      {
+        typeof(TenantDatabaseHealth), typeof(TenantDatabaseDescriptor),
+        typeof(TenantDatabaseSchemaHealthResult), typeof(TenantDatabaseHealthSweepSummary)
+      })
+    {
+      Assert.DoesNotContain(type.GetProperties(), property =>
+        property.Name.Contains("Backup", StringComparison.OrdinalIgnoreCase) ||
+        property.Name.Contains("Recovery", StringComparison.OrdinalIgnoreCase) ||
+        property.Name.Contains("Restore", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // And no backup runtime exists at all.
+    var offenders = InfrastructureAssembly.GetTypes()
+      .Where(type => type.Name.Contains("Backup", StringComparison.OrdinalIgnoreCase) ||
+        type.Name.Contains("Restore", StringComparison.OrdinalIgnoreCase))
+      .Select(type => type.FullName)
+      .ToArray();
+    Assert.Empty(offenders);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void Health_and_migration_reach_databases_only_through_the_trusted_connection_factory()
+  {
+    // A second, weaker connection path would let health or migration reach a database that request
+    // routing would refuse — including a customer-managed one.
+    foreach (var type in new[]
+      {
+        typeof(TenantDatabaseSchemaHealthService), typeof(TenantDatabaseMigrationOrchestrator)
+      })
+    {
+      var dependencies = type.GetConstructors()
+        .SelectMany(constructor => constructor.GetParameters())
+        .Select(parameter => parameter.ParameterType)
+        .ToArray();
+      Assert.Contains(typeof(ITenantDatabaseConnectionFactory), dependencies);
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-018")]
+  public void The_tenant_design_time_factory_has_no_silent_connection_fallback()
+  {
+    // The command is published operational procedure now; a silent localhost default would make a
+    // forgotten environment variable look like a successful migration.
+    var source = File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure",
+      "Persistence", "TenantErp", "TenantDbContextDesignTimeFactory.cs"));
+
+    Assert.DoesNotContain("Server=localhost", source, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("??", source.Split("ResolveConnectionString")[0], StringComparison.Ordinal);
+  }
+
   private static IModel TenantModel() => BuildTenantContext(Guid.NewGuid()).Model;
 
   private static Type[] TenantModelEntities() =>
@@ -325,10 +451,18 @@ public sealed class TenantStorageRegistryArchitectureTests
     Assert.Equal(InfrastructureAssembly, typeof(ITenantDatabaseConnectionFactory).Assembly);
     Assert.Equal(InfrastructureAssembly, typeof(TenantDatabaseConnectionFactory).Assembly);
 
-    var createMethod = typeof(ITenantDatabaseConnectionFactory).GetMethod(
-      nameof(ITenantDatabaseConnectionFactory.Create));
-    Assert.NotNull(createMethod);
-    Assert.DoesNotContain("String", createMethod!.ReturnType.GenericTypeArguments.Select(type => type.Name));
+    // Both overloads — route-addressed for the request path, physical-database-addressed for health and
+    // migration — must return an open-able connection rather than a credentialed string.
+    var createMethods = typeof(ITenantDatabaseConnectionFactory)
+      .GetMethods()
+      .Where(method => method.Name == nameof(ITenantDatabaseConnectionFactory.Create))
+      .ToArray();
+
+    Assert.NotEmpty(createMethods);
+    foreach (var createMethod in createMethods)
+    {
+      Assert.DoesNotContain("String", createMethod.ReturnType.GenericTypeArguments.Select(type => type.Name));
+    }
   }
 
   [Fact]

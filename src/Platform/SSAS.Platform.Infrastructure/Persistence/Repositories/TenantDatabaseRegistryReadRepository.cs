@@ -36,6 +36,37 @@ public sealed class TenantDatabaseRegistryReadRepository(PlatformDbContext dbCon
           database.DatabaseName,
           database.HostingMode,
           database.StorageMode,
-          database.ProvisioningStatus))
+          database.ProvisioningStatus,
+          database.ConnectivityStatus,
+          database.LastConnectivityCheckUtc,
+          database.SchemaCompatibilityStatus,
+          database.LastSchemaCheckUtc,
+          database.MigrationExecutionStatus,
+          database.MigrationManagementMode,
+          database.AppliedMigration,
+          database.TargetMigration))
       .SingleOrDefaultAsync(cancellationToken);
+
+  public async Task<IReadOnlyList<TenantDatabaseDescriptor>> ListPhysicalDatabasesAsync(
+    long afterId,
+    int take,
+    CancellationToken cancellationToken = default) =>
+    await dbContext.TenantDatabases
+      .AsNoTracking()
+      .Where(database => database.Id > afterId)
+      .OrderBy(database => database.Id)
+      .Take(take)
+      .Select(database => new TenantDatabaseDescriptor(
+        database.Id,
+        database.ServerKey,
+        database.DatabaseName,
+        database.HostingMode,
+        database.StorageMode,
+        database.ProvisioningStatus,
+        database.MigrationManagementMode,
+        database.ConnectivityStatus,
+        database.SchemaCompatibilityStatus,
+        database.MigrationExecutionStatus,
+        database.LastSchemaCheckUtc))
+      .ToListAsync(cancellationToken);
 }

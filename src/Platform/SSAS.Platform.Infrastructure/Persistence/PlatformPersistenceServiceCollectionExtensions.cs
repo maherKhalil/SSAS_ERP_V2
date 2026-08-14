@@ -100,6 +100,15 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // cannot straddle two databases. Deliberately NOT AddDbContext/AddDbContextPool: the connection is
     // chosen per creation from trusted routing, and pooled state could carry connection identity across
     // tenants (ADR-017 binding lifetime rules 2 and 4).
+    // ADR-018 schema health and migration orchestration. Registered as services only: nothing here runs
+    // automatically at startup and nothing is reachable from a request path, because DDL authority does
+    // not belong in the process that serves requests.
+    services.AddSingleton(TenantDatabaseHealthFreshness.Default);
+    services.AddSingleton<ITenantDatabaseTrafficGate, TenantDatabaseTrafficGate>();
+    services.AddScoped<ITenantDatabaseHealthWriter, TenantDatabaseHealthWriter>();
+    services.AddScoped<ITenantDatabaseSchemaHealthService, TenantDatabaseSchemaHealthService>();
+    services.AddScoped<ITenantDatabaseMigrationOrchestrator, TenantDatabaseMigrationOrchestrator>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

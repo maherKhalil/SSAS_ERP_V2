@@ -59,6 +59,9 @@ public sealed class TenantDatabaseResolver(ITenantDatabaseRegistryReadRepository
       return Result.Failure<TenantDatabaseRoute>(TenantStorageErrors.DatabaseNameInvalid);
     }
 
+    // Health travels on the route but is NOT acted on here. The resolver's contract stays "which database";
+    // ADR-018 gating is applied on the request path by ITenantDatabaseTrafficGate, because migration
+    // tooling must be able to reach exactly the databases that are currently unservable.
     return Result.Success(new TenantDatabaseRoute(
       assignment.TenantId,
       assignment.TenantDatabaseId,
@@ -66,6 +69,15 @@ public sealed class TenantDatabaseResolver(ITenantDatabaseRegistryReadRepository
       assignment.DatabaseName,
       assignment.HostingMode,
       assignment.StorageMode,
-      assignment.RoutingVersion));
+      assignment.RoutingVersion,
+      new TenantDatabaseHealth(
+        assignment.ConnectivityStatus,
+        assignment.LastConnectivityCheckUtc,
+        assignment.SchemaCompatibilityStatus,
+        assignment.LastSchemaCheckUtc,
+        assignment.MigrationExecutionStatus,
+        assignment.MigrationManagementMode,
+        assignment.AppliedMigration,
+        assignment.TargetMigration)));
   }
 }

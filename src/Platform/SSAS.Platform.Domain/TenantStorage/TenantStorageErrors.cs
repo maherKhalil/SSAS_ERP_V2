@@ -57,6 +57,49 @@ public static class TenantStorageErrors
   public static readonly Error ServerKeyNotConfigured =
     new("TenantStorage.ServerKeyNotConfigured", "The tenant database server key is not present in trusted configuration.");
 
+  // ---- Schema health and migration orchestration (ADR-018).
+
+  public static readonly Error ConnectivityResultRequired =
+    new("TenantStorage.ConnectivityResultRequired", "A completed connectivity check must record a definite result.");
+
+  public static readonly Error MigrationIdentifierInvalid =
+    new("TenantStorage.MigrationIdentifierInvalid", "The migration identifier is not valid.");
+
+  public static readonly Error MigrationNotPermittedByManagementMode =
+    new("TenantStorage.MigrationNotPermittedByManagementMode", "The tenant database's migration management mode does not permit the platform to apply migrations.");
+
+  public static readonly Error MigrationAlreadyRunning =
+    new("TenantStorage.MigrationAlreadyRunning", "A migration is already running for this tenant database.");
+
+  public static readonly Error MigrationNotRunning =
+    new("TenantStorage.MigrationNotRunning", "No migration is running for this tenant database.");
+
+  public static readonly Error MigrationOwnershipNotAcquired =
+    new("TenantStorage.MigrationOwnershipNotAcquired", "Migration ownership for this tenant database could not be acquired.");
+
+  public static readonly Error MigrationOwnershipLost =
+    new("TenantStorage.MigrationOwnershipLost", "Migration ownership for this tenant database was lost during the run.");
+
+  public static readonly Error MigrationVerificationFailed =
+    new("TenantStorage.MigrationVerificationFailed", "The tenant database's migration history did not reach the expected state after migrating.");
+
+  // ---- Traffic gating (ADR-018). These deny ERP traffic; none of them falls back to another database.
+
+  public static readonly Error TenantDatabaseUnavailable =
+    new("TenantStorage.TenantDatabaseUnavailable", "The tenant database cannot currently be reached.");
+
+  public static readonly Error DatabaseUpgradeRequired =
+    new("TenantStorage.DatabaseUpgradeRequired", "The tenant database schema is not up to date for this application version.");
+
+  public static readonly Error DatabaseUpgrading =
+    new("TenantStorage.DatabaseUpgrading", "The tenant database is currently being migrated.");
+
+  public static readonly Error SchemaHealthUnknown =
+    new("TenantStorage.SchemaHealthUnknown", "The tenant database schema compatibility has not been verified.");
+
+  public static readonly Error SchemaHealthStale =
+    new("TenantStorage.SchemaHealthStale", "The tenant database schema compatibility check is too old to be trusted.");
+
   public static readonly Error DatabaseNameInvalid =
     new("TenantStorage.DatabaseNameInvalid", "The tenant database name is not valid for connection construction.");
 }

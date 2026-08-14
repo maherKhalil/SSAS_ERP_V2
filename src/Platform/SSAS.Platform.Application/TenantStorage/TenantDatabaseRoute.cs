@@ -19,4 +19,9 @@ public sealed record TenantDatabaseRoute(
   string DatabaseName,
   TenantDatabaseHostingMode HostingMode,
   TenantDatabaseStorageMode StorageMode,
-  long RoutingVersion);
+  long RoutingVersion,
+  // Cached operational health of the physical database (ADR-018). Carried here because it comes from the
+  // same registry row the route does, so gating costs no extra query. It contains statuses, timestamps and
+  // migration identifiers only — no secret — and the resolver deliberately does NOT act on it: gating is
+  // the request path's concern, and migration tooling must be able to route to unhealthy databases.
+  TenantDatabaseHealth Health);

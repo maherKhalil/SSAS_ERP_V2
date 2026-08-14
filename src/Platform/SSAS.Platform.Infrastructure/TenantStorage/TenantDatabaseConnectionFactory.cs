@@ -25,23 +25,32 @@ public sealed class TenantDatabaseConnectionFactory(IOptions<TenantStorageOption
   {
     ArgumentNullException.ThrowIfNull(route);
 
+    return Create(new TenantDatabaseConnectionTarget(route.ServerKey, route.DatabaseName, route.HostingMode));
+  }
+
+  // The ONE trusted construction path. The route overload delegates here rather than duplicating the
+  // checks, so schema health and migration cannot reach a database that request routing would refuse.
+  public Result<SqlConnection> Create(TenantDatabaseConnectionTarget target)
+  {
+    ArgumentNullException.ThrowIfNull(target);
+
     // Defence in depth: the resolver already rejects customer-managed routing, but this layer is what
     // would actually open a socket, so it refuses independently rather than trusting an upstream check.
-    if (route.HostingMode != TenantDatabaseHostingMode.PlatformManaged)
+    if (target.HostingMode != TenantDatabaseHostingMode.PlatformManaged)
     {
       return Result.Failure<SqlConnection>(TenantStorageErrors.UnsupportedHostingMode);
     }
 
-    if (string.IsNullOrWhiteSpace(route.DatabaseName) ||
-      route.DatabaseName.Length > TenantDatabase.DatabaseNameMaximumLength)
+    if (string.IsNullOrWhiteSpace(target.DatabaseName) ||
+      target.DatabaseName.Length > TenantDatabase.DatabaseNameMaximumLength)
     {
       return Result.Failure<SqlConnection>(TenantStorageErrors.DatabaseNameInvalid);
     }
 
     // Exact, ordinal lookup. No default entry, no case-insensitive near-match, no "first configured
     // server" — absence is a failure.
-    if (string.IsNullOrWhiteSpace(route.ServerKey) ||
-      !optionsAccessor.Value.Servers.TryGetValue(route.ServerKey, out var server) ||
+    if (string.IsNullOrWhiteSpace(target.ServerKey) ||
+      !optionsAccessor.Value.Servers.TryGetValue(target.ServerKey, out var server) ||
       string.IsNullOrWhiteSpace(server.ConnectionString))
     {
       return Result.Failure<SqlConnection>(TenantStorageErrors.ServerKeyNotConfigured);
@@ -49,7 +58,7 @@ public sealed class TenantDatabaseConnectionFactory(IOptions<TenantStorageOption
 
     var builder = new SqlConnectionStringBuilder(server.ConnectionString)
     {
-      InitialCatalog = route.DatabaseName
+      InitialCatalog = target.DatabaseName
     };
 
     return Result.Success(new SqlConnection(builder.ConnectionString));

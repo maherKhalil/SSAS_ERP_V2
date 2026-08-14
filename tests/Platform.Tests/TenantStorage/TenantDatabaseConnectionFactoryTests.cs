@@ -101,7 +101,7 @@ public sealed class TenantDatabaseConnectionFactoryTests
     // Defence in depth: the resolver already refuses, but this layer is what would open a socket.
     var route = new TenantDatabaseRoute(
       Guid.NewGuid(), 25, "PrimarySqlServer", "CustomerERP",
-      TenantDatabaseHostingMode.CustomerManaged, TenantDatabaseStorageMode.Dedicated, 1);
+      TenantDatabaseHostingMode.CustomerManaged, TenantDatabaseStorageMode.Dedicated, 1, HealthyRoute);
 
     var result = Factory().Create(route);
 
@@ -180,5 +180,13 @@ public sealed class TenantDatabaseConnectionFactoryTests
 
   private static TenantDatabaseRoute Route(string serverKey, string databaseName) =>
     new(Guid.NewGuid(), 25, serverKey, databaseName,
-      TenantDatabaseHostingMode.PlatformManaged, TenantDatabaseStorageMode.Shared, 1);
+      TenantDatabaseHostingMode.PlatformManaged, TenantDatabaseStorageMode.Shared, 1, HealthyRoute);
+
+  // The connection factory does not consult health — gating happens before it — so a verified-healthy
+  // snapshot keeps these tests focused on trusted ServerKey lookup.
+  private static readonly TenantDatabaseHealth HealthyRoute = new(
+    TenantDatabaseConnectivityStatus.Healthy, null,
+    TenantDatabaseSchemaCompatibilityStatus.UpToDate, null,
+    TenantDatabaseMigrationExecutionStatus.Idle,
+    TenantDatabaseMigrationManagementMode.AutomaticByPlatform, null, null);
 }

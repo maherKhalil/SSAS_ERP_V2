@@ -231,7 +231,15 @@ public sealed class TenantDatabaseResolverTests
     TenantDatabaseHostingMode hostingMode = TenantDatabaseHostingMode.PlatformManaged,
     TenantDatabaseStorageMode storageMode = TenantDatabaseStorageMode.Shared,
     TenantDatabaseProvisioningStatus provisioningStatus = TenantDatabaseProvisioningStatus.Ready) =>
-    new(tenantId, tenantDatabaseId, routingVersion, serverKey, databaseName, hostingMode, storageMode, provisioningStatus);
+    // Health defaults to a verified-healthy database: these tests are about ROUTING, and ADR-018 gating is
+    // exercised separately by TenantDatabaseTrafficGateTests. The resolver deliberately does not gate.
+    new(tenantId, tenantDatabaseId, routingVersion, serverKey, databaseName, hostingMode, storageMode, provisioningStatus,
+      TenantDatabaseConnectivityStatus.Healthy, CheckedAt,
+      TenantDatabaseSchemaCompatibilityStatus.UpToDate, CheckedAt,
+      TenantDatabaseMigrationExecutionStatus.Idle,
+      TenantDatabaseMigrationManagementMode.AutomaticByPlatform, null, null);
+
+  private static readonly DateTimeOffset CheckedAt = new(2026, 8, 14, 11, 0, 0, TimeSpan.Zero);
 
   private sealed class StubRepository : ITenantDatabaseRegistryReadRepository
   {
@@ -245,6 +253,10 @@ public sealed class TenantDatabaseResolverTests
       CallCount++;
       return Task.FromResult(RecordsByTenant.GetValueOrDefault(tenantId));
     }
+
+    public Task<IReadOnlyList<TenantDatabaseDescriptor>> ListPhysicalDatabasesAsync(
+      long afterId, int take, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<TenantDatabaseDescriptor>>([]);
   }
 
   private sealed class StubCurrentTenant(Guid? tenantId) : ICurrentTenant

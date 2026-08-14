@@ -26,6 +26,32 @@ public sealed class TenantDatabaseConfiguration : IEntityTypeConfiguration<Tenan
         "NOT ([HostingMode] = N'CustomerManaged' AND [StorageMode] = N'Shared')");
       table.HasCheckConstraint("CK_TenantDatabases_ServerKey_NotBlank", "LEN(LTRIM(RTRIM([ServerKey]))) > 0");
       table.HasCheckConstraint("CK_TenantDatabases_DatabaseName_NotBlank", "LEN(LTRIM(RTRIM([DatabaseName]))) > 0");
+
+      // ADR-018 health dimensions. Each is constrained to its own closed value set; deliberately NOT
+      // cross-constrained into a single composite "ready" rule, because the whole point of four orthogonal
+      // dimensions is that unusual combinations (schema-current but unreachable, compatible with a failed
+      // last attempt) are legitimate states an operator needs to see rather than states to forbid.
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_ConnectivityStatus",
+        "[ConnectivityStatus] IN (N'Unknown', N'Healthy', N'Unreachable', N'AuthenticationFailed')");
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_SchemaCompatibilityStatus",
+        "[SchemaCompatibilityStatus] IN (N'Unknown', N'UpToDate', N'PendingMigrations', N'AheadOfApplication', N'MigrationHistoryMismatch')");
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_MigrationExecutionStatus",
+        "[MigrationExecutionStatus] IN (N'Idle', N'Migrating', N'Succeeded', N'Failed', N'BlockedPendingCustomer')");
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_MigrationManagementMode",
+        "[MigrationManagementMode] IN (N'AutomaticByPlatform', N'PlatformAfterApproval', N'CustomerDba')");
+
+      // The one combination that is genuinely incoherent rather than merely unusual: a status can only be
+      // trusted alongside the timestamp that dates it, and the gating model reads that timestamp.
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_SchemaCheckedWhenKnown",
+        "[SchemaCompatibilityStatus] = N'Unknown' OR [LastSchemaCheckUtc] IS NOT NULL");
+      table.HasCheckConstraint(
+        "CK_TenantDatabases_ConnectivityCheckedWhenKnown",
+        "[ConnectivityStatus] = N'Unknown' OR [LastConnectivityCheckUtc] IS NOT NULL");
     });
 
     builder.HasKey(database => database.Id);
@@ -46,6 +72,41 @@ public sealed class TenantDatabaseConfiguration : IEntityTypeConfiguration<Tenan
       .HasMaxLength(32)
       .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
       .IsRequired();
+
+    // ---- ADR-018 health and migration state. Stored on the PHYSICAL database row, never duplicated per
+    // assignment: a shared database has one schema and one migration state.
+    builder.Property(database => database.MigrationManagementMode)
+      .HasConversion<string>()
+      .HasMaxLength(32)
+      .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
+      .IsRequired();
+    builder.Property(database => database.ConnectivityStatus)
+      .HasConversion<string>()
+      .HasMaxLength(32)
+      .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
+      .IsRequired();
+    builder.Property(database => database.SchemaCompatibilityStatus)
+      .HasConversion<string>()
+      .HasMaxLength(32)
+      .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
+      .IsRequired();
+    builder.Property(database => database.MigrationExecutionStatus)
+      .HasConversion<string>()
+      .HasMaxLength(32)
+      .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
+      .IsRequired();
+    builder.Property(database => database.LastConnectivityCheckUtc);
+    builder.Property(database => database.LastSchemaCheckUtc);
+    builder.Property(database => database.LastMigrationAttemptUtc);
+    builder.Property(database => database.LastMigrationSuccessUtc);
+    builder.Property(database => database.LastMigrationFailureUtc);
+    builder.Property(database => database.AppliedMigration)
+      .HasMaxLength(TenantDatabase.MigrationIdentifierMaximumLength);
+    builder.Property(database => database.TargetMigration)
+      .HasMaxLength(TenantDatabase.MigrationIdentifierMaximumLength);
+    // Safe operator-facing summary only; bounded so a provider exception can never blow up the row.
+    builder.Property(database => database.LastMigrationError)
+      .HasMaxLength(TenantDatabase.ErrorSummaryMaximumLength);
 
     // Trusted routing metadata only: a configuration lookup key and a catalog name. No host, no port, no
     // credential and no connection string is persisted for any hosting mode.

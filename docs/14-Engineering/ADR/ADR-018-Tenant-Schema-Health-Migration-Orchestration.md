@@ -2,7 +2,7 @@
 id: ADR-018
 title: Tenant Schema Health and Migration Orchestration
 category: Architecture Decision Record
-version: 1.4
+version: 1.5
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -448,7 +448,13 @@ Migration is also a moment when recovery matters most: applying DDL to a tenant 
 
 # Deployment / migration application procedure
 
-**Current implementation-stage procedure.** This section describes what an operator must do *today*, before the orchestration described above exists. It is deliberately manual, and it is written down because the deployment contract changed the moment a second migration stream appeared.
+**Status: superseded for the platform-managed estate.** The orchestrator described above is now implemented, and it is the normal path for applying the Tenant stream across physical databases. The commands below are **retained as the development and break-glass procedure** — scaffolding a migration, working against a local database, and recovering a single database when orchestration is unavailable.
+
+What has NOT changed: the Platform stream is still applied by deployment tooling, and neither stream is applied automatically at host startup.
+
+**Normal platform-managed estate migration** now runs through `ITenantDatabaseMigrationOrchestrator`, which discovers physical databases, evaluates health as preflight, acquires single-writer ownership per database, applies the Tenant stream, verifies the resulting history, and reports per-database outcomes. Databases it may not migrate — `CustomerDba`, or `PlatformAfterApproval` without approval — are reported as blocked, not failed.
+
+The rest of this section remains accurate for the manual path.
 
 ## There are two independent migration streams
 
@@ -644,3 +650,4 @@ This ADR should be reviewed if:
 | 1.2 | 2026-08-13 | Solution Architecture Team | Review hardening: replaced the combined status enum with four orthogonal dimensions; added the traffic-gating table and health-cache freshness model; assigned estate migration to deployment tooling; added the eight migration-lock invariants; renamed migration modes to `AutomaticByPlatform`/`PlatformAfterApproval`/`CustomerDba`; added the mandatory customer-managed drift floor and schema fingerprint; required the environment matrix; declared Azure SQL out of scope for V1; clarified the RCSI/isolation policy |
 | 1.3 | 2026-08-14 | Solution Architecture Team | Added operational recovery readiness as a dimension distinct from schema compatibility; a successful migration does not imply a recoverable database. Deferred to `TS-Backup` |
 | 1.4 | 2026-08-14 | Solution Architecture Team | Documented the explicit two-stream (Platform / Tenant) migration deployment procedure, including per-stream commands, shared-catalog and dedicated behaviour, ordering-tolerance scope, and pre-traffic validation. No architecture decision changed |
+| 1.5 | 2026-08-14 | Solution Architecture Team | Recorded that schema health and migration orchestration are implemented: reclassified the manual two-stream commands as development/break-glass, and named the orchestrator as the normal path for the platform-managed estate. No architecture decision changed |

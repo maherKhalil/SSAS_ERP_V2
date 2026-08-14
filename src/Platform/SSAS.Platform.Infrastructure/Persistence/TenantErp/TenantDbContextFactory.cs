@@ -22,6 +22,7 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp;
 public sealed class TenantDbContextFactory(
   ITenantDatabaseResolver resolver,
   ITenantDatabaseConnectionFactory connectionFactory,
+  ITenantDatabaseTrafficGate trafficGate,
   ICurrentUser currentUser,
   ICurrentTenant currentTenant,
   IDateTimeProvider dateTimeProvider) : ITenantDbContextFactory
@@ -37,6 +38,16 @@ public sealed class TenantDbContextFactory(
     if (route.IsFailure)
     {
       return Result.Failure<TenantDbContext>(route.Error);
+    }
+
+    // ADR-018 traffic gating, applied BEFORE any connection is built. A database that is unreachable,
+    // unverified, behind, ahead, history-mismatched, or currently migrating does not serve ERP traffic —
+    // and the denial is a controlled TenantStorage.* result rather than a raw SqlException surfacing from
+    // somewhere deeper. Nothing here migrates, and nothing falls back to another database.
+    var gate = trafficGate.Evaluate(route.Value, dateTimeProvider.UtcNow);
+    if (gate.IsFailure)
+    {
+      return Result.Failure<TenantDbContext>(gate.Error);
     }
 
     // The connection factory refuses CustomerManaged independently of the resolver, and refuses a

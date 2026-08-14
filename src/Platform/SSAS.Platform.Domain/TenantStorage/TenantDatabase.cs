@@ -21,6 +21,12 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
 
   public const int ActorMaximumLength = 256;
 
+  // Safe, bounded operator-facing failure summary. Never credential or connection material.
+  public const int ErrorSummaryMaximumLength = 512;
+
+  // EF migration identifiers are timestamp-prefixed names; sized generously rather than guessed tightly.
+  public const int MigrationIdentifierMaximumLength = 256;
+
   private TenantDatabase(
     long id,
     TenantDatabaseHostingMode hostingMode,
@@ -28,6 +34,7 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
     string serverKey,
     string databaseName,
     TenantDatabaseProvisioningStatus provisioningStatus,
+    TenantDatabaseMigrationManagementMode migrationManagementMode,
     string actor,
     DateTimeOffset occurredUtc)
     : base(id)
@@ -37,6 +44,7 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
     ServerKey = serverKey;
     DatabaseName = databaseName;
     ProvisioningStatus = provisioningStatus;
+    MigrationManagementMode = migrationManagementMode;
     CreatedUtc = occurredUtc.ToUniversalTime();
     CreatedBy = actor;
     ModifiedUtc = CreatedUtc;
@@ -63,6 +71,48 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
 
   public TenantDatabaseProvisioningStatus ProvisioningStatus { get; private set; }
 
+  // ---- Migration authority (ADR-018). Independent of HostingMode: a customer-hosted database we are
+  // permitted to migrate is an ordinary configuration, and so is a platform-hosted one gated behind
+  // approval.
+  public TenantDatabaseMigrationManagementMode MigrationManagementMode { get; private set; }
+    = TenantDatabaseMigrationManagementMode.AutomaticByPlatform;
+
+  // ---- The three health dimensions (ADR-018). They are maintained independently and NEVER merged into a
+  // single Ready flag: readiness is a conclusion drawn from all of them plus routing, and a settable flag
+  // would drift from the dimensions it claims to summarise.
+  //
+  // Every one of them defaults to Unknown/Idle, which the gating table treats as DENY. A newly registered
+  // database is therefore not servable until something has actually verified it.
+  public TenantDatabaseConnectivityStatus ConnectivityStatus { get; private set; }
+    = TenantDatabaseConnectivityStatus.Unknown;
+
+  public DateTimeOffset? LastConnectivityCheckUtc { get; private set; }
+
+  public TenantDatabaseSchemaCompatibilityStatus SchemaCompatibilityStatus { get; private set; }
+    = TenantDatabaseSchemaCompatibilityStatus.Unknown;
+
+  // Freshness anchor for the ADR-018 staleness model. A stale COMPATIBLE status may still allow traffic
+  // inside the grace window; a stale INCOMPATIBLE one never upgrades to allow.
+  public DateTimeOffset? LastSchemaCheckUtc { get; private set; }
+
+  // Cached observation, never authority — `tenant.__EFMigrationsHistory` is the source of truth (ADR-018).
+  public string? AppliedMigration { get; private set; }
+
+  // The migration head this application expects, recorded at check time so a stale row is interpretable.
+  public string? TargetMigration { get; private set; }
+
+  public TenantDatabaseMigrationExecutionStatus MigrationExecutionStatus { get; private set; }
+    = TenantDatabaseMigrationExecutionStatus.Idle;
+
+  public DateTimeOffset? LastMigrationAttemptUtc { get; private set; }
+
+  public DateTimeOffset? LastMigrationSuccessUtc { get; private set; }
+
+  public DateTimeOffset? LastMigrationFailureUtc { get; private set; }
+
+  // Safe summary only. Connection strings, credentials and endpoint material must never reach this column.
+  public string? LastMigrationError { get; private set; }
+
   public byte[] RowVersion { get; private set; } = [];
 
   public DateTimeOffset CreatedUtc { get; private set; }
@@ -80,7 +130,11 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
     string databaseName,
     TenantDatabaseProvisioningStatus provisioningStatus,
     string actor,
-    DateTimeOffset occurredUtc)
+    DateTimeOffset occurredUtc,
+    // Defaults to AutomaticByPlatform so existing platform-managed registration is unchanged; a
+    // customer-managed or approval-gated estate sets it explicitly.
+    TenantDatabaseMigrationManagementMode migrationManagementMode =
+      TenantDatabaseMigrationManagementMode.AutomaticByPlatform)
   {
     if (string.IsNullOrWhiteSpace(serverKey) || serverKey.Length > ServerKeyMaximumLength)
     {
@@ -101,7 +155,134 @@ public sealed class TenantDatabase : AggregateRoot<long>, IAuditableEntity
     }
 
     return Result.Success(new TenantDatabase(
-      0, hostingMode, storageMode, serverKey, databaseName, provisioningStatus, actor, occurredUtc));
+      0, hostingMode, storageMode, serverKey, databaseName, provisioningStatus,
+      migrationManagementMode, actor, occurredUtc));
+  }
+
+  // ---- Health transitions (ADR-018). Each dimension is recorded on its own; none of them touches
+  // another, because that independence is the whole point of the four-dimension model.
+
+  public Result RecordConnectivity(
+    TenantDatabaseConnectivityStatus status,
+    string actor,
+    DateTimeOffset occurredUtc)
+  {
+    if (status == TenantDatabaseConnectivityStatus.Unknown)
+    {
+      // Unknown is the pre-verification state. A completed check always concludes something; writing
+      // Unknown back would erase evidence rather than record it.
+      return Result.Failure(TenantStorageErrors.ConnectivityResultRequired);
+    }
+
+    ConnectivityStatus = status;
+    LastConnectivityCheckUtc = occurredUtc.ToUniversalTime();
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  public Result RecordSchemaHealth(
+    TenantDatabaseSchemaCompatibilityStatus status,
+    string? appliedMigration,
+    string? targetMigration,
+    string actor,
+    DateTimeOffset occurredUtc)
+  {
+    if (appliedMigration is { Length: > MigrationIdentifierMaximumLength } ||
+      targetMigration is { Length: > MigrationIdentifierMaximumLength })
+    {
+      return Result.Failure(TenantStorageErrors.MigrationIdentifierInvalid);
+    }
+
+    SchemaCompatibilityStatus = status;
+    AppliedMigration = appliedMigration;
+    TargetMigration = targetMigration;
+    LastSchemaCheckUtc = occurredUtc.ToUniversalTime();
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  // Ownership has already been acquired by the caller; this records that a run now owns the database.
+  // Traffic is denied while Migrating, so this transition is deliberately explicit rather than implied by
+  // the first DDL statement.
+  public Result BeginMigration(string actor, DateTimeOffset occurredUtc)
+  {
+    if (MigrationManagementMode == TenantDatabaseMigrationManagementMode.CustomerDba)
+    {
+      // Defence in depth: the orchestrator checks authority before acquiring ownership, but the aggregate
+      // refuses independently so no future caller can migrate a database it may never touch.
+      return Result.Failure(TenantStorageErrors.MigrationNotPermittedByManagementMode);
+    }
+
+    if (MigrationExecutionStatus == TenantDatabaseMigrationExecutionStatus.Migrating)
+    {
+      return Result.Failure(TenantStorageErrors.MigrationAlreadyRunning);
+    }
+
+    MigrationExecutionStatus = TenantDatabaseMigrationExecutionStatus.Migrating;
+    LastMigrationAttemptUtc = occurredUtc.ToUniversalTime();
+    LastMigrationError = null;
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  // Called only after post-migration verification has re-read the actual history (ADR-018): a successful
+  // migration API call is not evidence on its own.
+  public Result CompleteMigration(string appliedMigration, string actor, DateTimeOffset occurredUtc)
+  {
+    if (string.IsNullOrWhiteSpace(appliedMigration) ||
+      appliedMigration.Length > MigrationIdentifierMaximumLength)
+    {
+      return Result.Failure(TenantStorageErrors.MigrationIdentifierInvalid);
+    }
+
+    MigrationExecutionStatus = TenantDatabaseMigrationExecutionStatus.Succeeded;
+    LastMigrationSuccessUtc = occurredUtc.ToUniversalTime();
+    LastMigrationError = null;
+    AppliedMigration = appliedMigration;
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  public Result FailMigration(string errorSummary, string actor, DateTimeOffset occurredUtc)
+  {
+    MigrationExecutionStatus = TenantDatabaseMigrationExecutionStatus.Failed;
+    LastMigrationFailureUtc = occurredUtc.ToUniversalTime();
+    LastMigrationError = Truncate(errorSummary);
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  // A database with pending migrations that the platform is not permitted to apply. ADR-018 requires this
+  // be its own reported category, distinct from failure — the release is not broken.
+  public Result BlockPendingCustomer(string reasonSummary, string actor, DateTimeOffset occurredUtc)
+  {
+    MigrationExecutionStatus = TenantDatabaseMigrationExecutionStatus.BlockedPendingCustomer;
+    LastMigrationError = Truncate(reasonSummary);
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  // Recovers a database left Migrating by a crashed run whose ownership has since lapsed. It records a
+  // failure rather than silently returning to Idle: something did abort mid-flight, and that is evidence.
+  public Result AbandonMigration(string reasonSummary, string actor, DateTimeOffset occurredUtc)
+  {
+    if (MigrationExecutionStatus != TenantDatabaseMigrationExecutionStatus.Migrating)
+    {
+      return Result.Failure(TenantStorageErrors.MigrationNotRunning);
+    }
+
+    return FailMigration(reasonSummary, actor, occurredUtc);
+  }
+
+  private static string? Truncate(string? value) =>
+    string.IsNullOrWhiteSpace(value)
+      ? null
+      : value.Length <= ErrorSummaryMaximumLength ? value : value[..ErrorSummaryMaximumLength];
+
+  private void Touch(string actor, DateTimeOffset occurredUtc)
+  {
+    ModifiedUtc = occurredUtc.ToUniversalTime();
+    ModifiedBy = actor;
   }
 
   DateTimeOffset IAuditableEntity.CreatedUtc

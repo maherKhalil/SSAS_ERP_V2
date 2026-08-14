@@ -13,16 +13,23 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp;
 // it must never go through the resolver. ADR-017 rule 7 also keeps migration context and options separate
 // from runtime context and options.
 //
-// The connection string here is used only when a developer runs a design-time command against a database;
-// `SSAS_TENANT_MIGRATION_SQLSERVER` overrides it. Applying migrations to real tenant databases at runtime
-// goes through TenantMigrationRunner, which resolves a genuine route.
+// The target database comes from `SSAS_TENANT_MIGRATION_SQLSERVER` and there is deliberately NO fallback.
+// An earlier version defaulted to a local database when the variable was absent, which was tolerable while
+// the command lived only in a developer's head. It stopped being tolerable once ADR-018 published the
+// command as operational procedure: an operator who omitted the variable would get an apparently
+// successful `database update` against a stray local database while the intended tenant database stayed
+// unmigrated. Failing fast — matching PlatformDesignTimeDbContextFactory — makes that mistake loud.
+//
+// Applying migrations to real tenant databases at runtime goes through the migration orchestrator, which
+// resolves a genuine route.
 public sealed class TenantDbContextDesignTimeFactory : IDesignTimeDbContextFactory<TenantDbContext>
 {
+  public const string ConnectionStringVariable = "SSAS_TENANT_MIGRATION_SQLSERVER";
+
   public TenantDbContext CreateDbContext(string[] args)
   {
-    var connectionString =
-      Environment.GetEnvironmentVariable("SSAS_TENANT_MIGRATION_SQLSERVER") ??
-      "Server=localhost;Database=SSAS_ERP_TenantDesignTime;Integrated Security=True;Encrypt=True;TrustServerCertificate=True";
+    var connectionString = ResolveConnectionString(
+      Environment.GetEnvironmentVariable(ConnectionStringVariable));
 
     var options = new DbContextOptionsBuilder<TenantDbContext>()
       .UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable(
@@ -32,6 +39,15 @@ public sealed class TenantDbContextDesignTimeFactory : IDesignTimeDbContextFacto
 
     return new TenantDbContext(options, DesignTimeUser.Instance, DesignTimeTenant.Instance, DesignTimeClock.Instance);
   }
+
+  // Extracted so the fail-fast contract is directly testable without invoking EF tooling. The message
+  // names the variable and nothing else — never a value, which would be a connection string.
+  internal static string ResolveConnectionString(string? configuredConnectionString) =>
+    string.IsNullOrWhiteSpace(configuredConnectionString)
+      ? throw new InvalidOperationException(
+        $"{ConnectionStringVariable} is required for tenant design-time migrations. " +
+        "Set it to the target tenant database connection string; there is no default.")
+      : configuredConnectionString;
 
   // Design-time stubs. A migration never saves entities, so these are never consulted for auditing or
   // tenant assignment; the tenant is deliberately null so nothing here can be mistaken for a real context.

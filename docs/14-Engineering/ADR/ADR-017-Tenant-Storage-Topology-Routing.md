@@ -2,7 +2,7 @@
 id: ADR-017
 title: Tenant Storage Topology and Routing
 category: Architecture Decision Record
-version: 1.5
+version: 1.6
 status: Proposed
 date: 2026-08-13
 owner: Solution Architecture Team
@@ -527,6 +527,8 @@ The consequence worth stating plainly: **on shared storage, "restore this tenant
 
 A **Backup & Recovery Manager** (`TS-Backup`) is therefore a required capability of the platform-managed estate, covering: policy per physical database, scheduled execution, retention, backup history, failure monitoring, recovery-model validation, periodic **restore verification**, and recovery-readiness reporting. Its sequencing constraint is binding: it **must** exist before dedicated provisioning and cutover become production-capable (`ADR-020`), because a dedicated database with no verified backup chain is a data-loss position the shared database did not have.
 
+**`ADR-022` now owns these decisions.** It defines backup policy as a per-physical-database entity, recovery readiness as an independent operational dimension with its own writer, a `BackupManagementMode` separate from migration authority, a backup credential separate from the ERP runtime identity, SQL Server chain semantics, orchestration and execution ownership, run history, retention responsibility, restore verification, and the binding pre-cutover readiness gate. This section remains the topology rationale; `ADR-022` is authoritative for the mechanism.
+
 For SQL Server the expected default strategy is a **full baseline + differential + transaction-log** chain, with schedules and retention configurable per policy. **Transaction-log backups alone are not a backup strategy** — they are only restorable onto a full baseline, and they require an appropriate recovery model to exist at all. Indicative defaults, to be set by configuration rather than hard-coded: full weekly, differential daily, transaction log every 15 minutes, with higher log frequency where the recovery-point objective demands it.
 
 ## Database provider extensibility
@@ -811,3 +813,4 @@ Customer-managed tenant ERP database support does not change this. It alters not
 | 1.3 | 2026-08-13 | Solution Architecture Team | Editorial: synchronised the status model with `ADR-018` (four orthogonal dimensions; `SchemaCompatibilityStatus`/`MigrationExecutionStatus`; `Ready` never independently writable); corrected a directional reference and lookup-list formatting. No decision changed |
 | 1.4 | 2026-08-13 | Solution Architecture Team | Editorial: corrected the routing-cache implementation guidance to resolve per `TenantDbContext` creation / unit of work with `RoutingVersion` as the correctness mechanism. No decision changed |
 | 1.5 | 2026-08-14 | Solution Architecture Team | Added per-physical-database backup and recovery policy with the shared-restore consequence and the `TS-Backup` sequencing constraint; added database-provider extensibility with SQL Server as the only V1 runtime provider and `DatabaseProvider` as a dimension independent of `HostingMode`/`StorageMode`; added the implementation sequence table; clarified the tenant migration-stream and context-factory guidelines |
+| 1.6 | 2026-08-14 | Solution Architecture Team | Pointed backup and recovery mechanism decisions to the new `ADR-022`; this ADR retains the topology rationale only. No decision changed |

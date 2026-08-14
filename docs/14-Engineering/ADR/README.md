@@ -29,3 +29,4 @@ Every significant architectural decision must be documented before implementatio
 | ADR-019 | Dynamic Tenant Placement Policy | Proposed |
 | ADR-020 | Shared-to-Dedicated Tenant Migration and Cutover | Proposed |
 | ADR-021 | Customer-Managed Tenant Database Connectivity and Operations | Proposed |
+| ADR-022 | Tenant Database Backup and Recovery Orchestration | Proposed |

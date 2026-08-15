@@ -124,25 +124,135 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
       "SELECT COUNT(*) FROM [platform].[TenantDatabaseRestoreVerificationRuns]"));
   }
 
-  // Once an operation reaches a terminal state it no longer occupies the slot, so the NEXT due verification
-  // can be admitted. The filter is what makes the index an admission control rather than a permanent lock.
+  // THE SEQUENTIAL STALE-DUE DUPLICATE — the case a baseline-only recheck cannot see.
+  //
+  // A and B are created from the SAME due snapshot. A completes successfully. B then acts on its old
+  // snapshot: the baseline has not moved, and A's terminal status has freed the active slot, so neither the
+  // baseline recheck nor the unique index would stop it. The verification anchor is what rejects it.
+  //
+  // An earlier version of this suite asserted the OPPOSITE here — that re-admitting against the same
+  // completed due state succeeds — which documented the defect as intended behaviour and let it pass a green
+  // suite.
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public async Task A_completed_verification_frees_the_slot_for_the_next_one()
+  public async Task A_stale_decision_is_rejected_after_another_instance_satisfied_the_same_due_state()
   {
     await using var fixture = await VerificationFixture.CreateAsync();
     var databaseId = await fixture.RegisterAsync("SSAS_Verify_Admission_D");
     var baselineId = await fixture.RecordSuccessfulFullBackupAsync(databaseId);
 
-    var firstId = (await fixture.RunStore().TryAdmitAsync(Request(databaseId, baselineId))).Value;
-    var store = fixture.RunStore();
-    Assert.True((await store.BeginRestoreAsync(
-      firstId, TenantDatabaseVerificationNaming.ForRun(databaseId, firstId), "test")).IsSuccess);
-    Assert.True((await store.MarkSucceededAsync(firstId, "test")).IsSuccess);
+    // Both instances snapshot the same due state: this baseline, and no previous successful verification.
+    var snapshot = Request(databaseId, baselineId, previousVerificationId: null);
 
-    var secondResult = await fixture.RunStore().TryAdmitAsync(Request(databaseId, baselineId));
+    var firstId = (await fixture.RunStore().TryAdmitAsync(snapshot)).Value;
+    await fixture.CompleteSuccessfullyAsync(databaseId, firstId);
+
+    var staleResult = await fixture.RunStore().TryAdmitAsync(snapshot);
+
+    Assert.True(staleResult.IsFailure);
+    Assert.Equal(
+      TenantStorageErrors.RestoreVerificationAlreadySatisfied.Code,
+      staleResult.Error.Code);
+
+    // And no second operation exists for that due state.
+    Assert.Equal(1, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [platform].[TenantDatabaseRestoreVerificationRuns]"));
+  }
+
+  // THE ORDERING TEST. The verification run reaches Succeeded before anything propagates a derived timestamp
+  // onto the TenantDatabase row — the fixture never writes one at all — and the stale decision must STILL be
+  // rejected.
+  //
+  // This is what proves admission reads authoritative durable evidence rather than the lagging aggregate
+  // field. Depending on LastRestoreVerificationUtc would leave a gap between the run going terminal (slot
+  // freed) and the timestamp catching up, which is Phase C's ordering defect rebuilt under a new name.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_stale_decision_is_rejected_even_before_the_aggregate_timestamp_is_propagated()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var databaseId = await fixture.RegisterAsync("SSAS_Verify_Admission_H");
+    var baselineId = await fixture.RecordSuccessfulFullBackupAsync(databaseId);
+    var snapshot = Request(databaseId, baselineId, previousVerificationId: null);
+
+    var firstId = (await fixture.RunStore().TryAdmitAsync(snapshot)).Value;
+    await fixture.CompleteSuccessfullyAsync(databaseId, firstId);
+
+    // The aggregate observation is deliberately still empty.
+    Assert.Equal(0, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [platform].[TenantDatabases] " +
+      $"WHERE [TenantDatabaseId] = {databaseId} AND [LastRestoreVerificationUtc] IS NOT NULL"));
+
+    var staleResult = await fixture.RunStore().TryAdmitAsync(snapshot);
+
+    Assert.True(staleResult.IsFailure);
+    Assert.Equal(
+      TenantStorageErrors.RestoreVerificationAlreadySatisfied.Code,
+      staleResult.Error.Code);
+  }
+
+  // AND WE HAVE NOT OVER-CORRECTED. The same full baseline legitimately needs verifying again when the
+  // policy's interval expires and no newer full exists — that is a NEW due state, anchored to the
+  // verification that has since gone stale, and it must be admissible.
+  //
+  // A rule like "never verify a baseline twice" would have closed the duplicate and broken this.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_new_due_state_against_the_same_baseline_is_admissible()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var databaseId = await fixture.RegisterAsync("SSAS_Verify_Admission_I");
+    var baselineId = await fixture.RecordSuccessfulFullBackupAsync(databaseId);
+
+    // V1 against the same baseline, with no prior verification.
+    var firstId = (await fixture.RunStore()
+      .TryAdmitAsync(Request(databaseId, baselineId, previousVerificationId: null))).Value;
+    await fixture.CompleteSuccessfullyAsync(databaseId, firstId);
+
+    // The interval later expires. A NEW decision is made, anchored to V1 — same baseline, newer due state.
+    var secondResult = await fixture.RunStore()
+      .TryAdmitAsync(Request(databaseId, baselineId, previousVerificationId: firstId));
 
     Assert.True(secondResult.IsSuccess);
+    var secondId = secondResult.Value;
+    await fixture.CompleteSuccessfullyAsync(databaseId, secondId);
+
+    // Terminal completion freed the active slot — but the decision anchored to V1 is now stale in its turn.
+    var replayResult = await fixture.RunStore()
+      .TryAdmitAsync(Request(databaseId, baselineId, previousVerificationId: firstId));
+
+    Assert.True(replayResult.IsFailure);
+    Assert.Equal(
+      TenantStorageErrors.RestoreVerificationAlreadySatisfied.Code,
+      replayResult.Error.Code);
+
+    // ...while a decision anchored to V2 is the current one and may proceed.
+    var nextResult = await fixture.RunStore()
+      .TryAdmitAsync(Request(databaseId, baselineId, previousVerificationId: secondId));
+
+    Assert.True(nextResult.IsSuccess);
+  }
+
+  // A FAILED verification satisfies no obligation, so it must not move the anchor and make a legitimate
+  // retry of the same due state look stale. Retry timing itself remains a scheduler concern.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_failed_verification_does_not_satisfy_the_due_state()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var databaseId = await fixture.RegisterAsync("SSAS_Verify_Admission_J");
+    var baselineId = await fixture.RecordSuccessfulFullBackupAsync(databaseId);
+    var snapshot = Request(databaseId, baselineId, previousVerificationId: null);
+
+    var firstId = (await fixture.RunStore().TryAdmitAsync(snapshot)).Value;
+    var store = fixture.RunStore();
+    await store.BeginRestoreAsync(
+      firstId, TenantDatabaseVerificationNaming.ForRun(databaseId, firstId), "test");
+    Assert.True((await store.MarkFailedAsync(firstId, "restore failed", "test")).IsSuccess);
+
+    var retryResult = await fixture.RunStore().TryAdmitAsync(snapshot);
+
+    Assert.True(retryResult.IsSuccess);
   }
 
   // Different physical databases never contend: the invariant is per database, not a fleet lock.
@@ -205,10 +315,14 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
       "AND [Status] = N'Succeeded' AND [CleanupState] = N'Failed'"));
   }
 
+  // A due-state snapshot. Both halves matter: the baseline being verified, and the successful verification
+  // that existed when the decision was made (null = none had).
   private static TenantDatabaseRestoreVerificationAdmissionRequest Request(
     long tenantDatabaseId,
-    long baselineBackupRunId) =>
-    new(tenantDatabaseId, baselineBackupRunId, TenantDatabaseRestoreDepth.Full, "verify", "test");
+    long baselineBackupRunId,
+    long? previousVerificationId = null) =>
+    new(tenantDatabaseId, baselineBackupRunId, previousVerificationId,
+      TenantDatabaseRestoreDepth.Full, "verify", "test");
 
   private sealed class VerificationFixture : IAsyncDisposable
   {
@@ -282,6 +396,20 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
       run.Succeed("evidence-identity", "artifact.bak", 1024, null, null, null, null, "verify-tests", Now);
       await platform.SaveChangesAsync();
       return run.Id;
+    }
+
+    // Drives one admitted run to a successful terminal state. Deliberately does NOT propagate any derived
+    // observation onto the TenantDatabase row, so the ordering test above exercises the gap between a run
+    // going terminal and an aggregate timestamp catching up.
+    public async Task CompleteSuccessfullyAsync(long tenantDatabaseId, long verificationRunId)
+    {
+      var store = RunStore();
+      var begun = await store.BeginRestoreAsync(
+        verificationRunId,
+        TenantDatabaseVerificationNaming.ForRun(tenantDatabaseId, verificationRunId),
+        "test");
+      Assert.True(begun.IsSuccess);
+      Assert.True((await store.MarkSucceededAsync(verificationRunId, "test")).IsSuccess);
     }
 
     public async Task<int> ScalarAsync(string sql)

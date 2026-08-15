@@ -250,6 +250,13 @@ public static class TenantStorageErrors
   public static readonly Error RestoreVerificationNotDue =
     new("TenantStorage.RestoreVerificationNotDue", "The tenant database does not currently require a restore verification.");
 
+  // The due state this decision was made against has since been satisfied by another successful verification.
+  // NOT the same as ownership contention: nothing is running now, and nothing failed — the work was already
+  // done (ADR-022 §17, compliance rule 43). Distinguished from AlreadyAdmitted because the two call for
+  // different operator responses.
+  public static readonly Error RestoreVerificationAlreadySatisfied =
+    new("TenantStorage.RestoreVerificationAlreadySatisfied", "A successful restore verification completed after this decision was made, so this verification is redundant.");
+
   // The verification target is absent, unresolvable, or not trusted for this environment. FAILS CLOSED —
   // there is no fallback to the source database's server (ADR-022 §17, compliance rule 44).
   public static readonly Error RestoreVerificationServerNotConfigured =

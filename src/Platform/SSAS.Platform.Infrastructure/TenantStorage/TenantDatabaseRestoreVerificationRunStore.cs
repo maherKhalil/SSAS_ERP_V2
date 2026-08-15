@@ -28,19 +28,27 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
 
   // ADMISSION (ADR-022 compliance rule 43).
   //
-  // Two mechanisms, closing two different duplicates:
+  // THE INVARIANT IS PER DUE STATE, NOT PER ACTIVE RUN. "At most one verification running at a time" is a
+  // strictly weaker property and does not satisfy the ADR: it permits a stale worker to repeat a
+  // verification another instance has already completed, because completion frees the active slot.
   //
-  //   1. AUTHORITATIVE RECHECK, inside the transaction. The scheduler's view of "due" may be stale by the
-  //      time it gets here — the Phase C lesson — so the current baseline is re-read and admission refuses
-  //      if it has moved. This closes SEQUENTIAL duplicates from a stale decision.
+  // Three mechanisms, closing three different duplicates:
   //
-  //   2. FILTERED UNIQUE INDEX on active runs. Two instances that both pass the recheck simultaneously both
-  //      INSERT; the database admits exactly one and the loser gets a duplicate-key violation. This closes
-  //      CONCURRENT duplicates, and it is the part a claim on an existing row cannot do, because each
-  //      instance would otherwise be claiming its own record.
+  //   1. PER-DATABASE ADMISSION LOCK, taken first inside the transaction. Serialises admission decisions for
+  //      one physical database so a recheck cannot be invalidated between reading and inserting. Scoped to a
+  //      single row of a single database — emphatically not a fleet lock.
   //
-  // Losing either race is a SUCCESS of the invariant, not an error, so both are returned as ordinary
-  // failures the caller reports as a controlled non-execution.
+  //   2. AUTHORITATIVE RECHECK of BOTH halves of the due state — the baseline AND the successful-verification
+  //      anchor. This closes SEQUENTIAL duplicates from a stale decision, which a baseline-only check cannot:
+  //      a completed verification does not move the baseline.
+  //
+  //   3. FILTERED UNIQUE INDEX on active runs. Two instances that both pass the recheck simultaneously both
+  //      INSERT; the database admits exactly one. This closes CONCURRENT duplicates, and it is the part a
+  //      claim on an existing row cannot do, because each instance would otherwise claim its own record.
+  //
+  // Losing any of these races is a SUCCESS of the invariant, not an error, so each returns an ordinary
+  // failure the caller reports as a controlled non-execution — with a distinct reason, because "someone
+  // already did this work" and "someone is doing it right now" call for different operator responses.
   public async Task<Result<long>> TryAdmitAsync(
     TenantDatabaseRestoreVerificationAdmissionRequest request,
     CancellationToken cancellationToken = default)
@@ -59,10 +67,22 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
       return Result.Failure<long>(admitted.Error);
     }
 
-    // AUTHORITATIVE RECHECK. The baseline this verification was decided against must still be the latest
-    // successful full backup for the database. If a newer full has landed since the scheduler read its
-    // candidate, the due state has changed and this operation is answering a question nobody is asking any
-    // more.
+    // ONE ATOMIC ADMISSION DECISION. The recheck below and the insert must not be separable: without a
+    // shared transaction the state a recheck observed can change before the insert lands, which is precisely
+    // the read-then-execute shape Phase C had to remove.
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+    // The serialising event, and the reason the rechecks can be ordinary reads.
+    //
+    // UPDLOCK + HOLDLOCK on the SINGLE TenantDatabases row: an update lock held to the end of the
+    // transaction, so a second admission for the same database waits here rather than racing. Taken FIRST
+    // and always on one row, so two admissions cannot acquire resources in opposing orders — which is how a
+    // SERIALIZABLE range-lock approach over the two evidence tables would deadlock instead of queue.
+    await dbContext.Database.ExecuteSqlInterpolatedAsync(
+      $"SELECT TOP (1) 1 FROM [platform].[TenantDatabases] WITH (UPDLOCK, HOLDLOCK) WHERE [TenantDatabaseId] = {request.TenantDatabaseId}",
+      cancellationToken);
+
+    // RECHECK 1 — the baseline. A newer full backup means the chain this decision selected has moved on.
     var currentBaselineId = await dbContext.Set<TenantDatabaseBackupRun>()
       .AsNoTracking()
       .Where(run => run.TenantDatabaseId == request.TenantDatabaseId &&
@@ -77,6 +97,28 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
       return Result.Failure<long>(TenantStorageErrors.RestoreVerificationNotDue);
     }
 
+    // RECHECK 2 — the successful-verification anchor. THE ONE THAT CLOSES THE SEQUENTIAL DUPLICATE.
+    //
+    // Read from the DURABLE VERIFICATION RUN, never from TenantDatabase.LastRestoreVerificationUtc. That
+    // aggregate field is written through the recovery-readiness writer AFTER the run reaches Succeeded, so
+    // between those two moments the active slot is already free while the timestamp still reads stale — a
+    // gap a stale worker would walk straight through. Depending on it would rebuild Phase C's exact ordering
+    // defect: evidence visible in one place before the derived value catches up.
+    var latestSuccessfulVerificationId = await dbContext.Set<TenantDatabaseRestoreVerificationRun>()
+      .AsNoTracking()
+      .Where(run => run.TenantDatabaseId == request.TenantDatabaseId &&
+        run.Status == TenantDatabaseRestoreVerificationStatus.Succeeded)
+      .OrderByDescending(run => run.Id)
+      .Select(run => (long?)run.Id)
+      .FirstOrDefaultAsync(cancellationToken);
+
+    // A FAILED verification is deliberately not evidence here: it satisfied no obligation, so it must not
+    // move the anchor and make a legitimate retry look stale.
+    if (latestSuccessfulVerificationId != request.ExpectedPreviousSuccessfulVerificationRunId)
+    {
+      return Result.Failure<long>(TenantStorageErrors.RestoreVerificationAlreadySatisfied);
+    }
+
     dbContext.Set<TenantDatabaseRestoreVerificationRun>().Add(admitted.Value);
 
     try
@@ -85,12 +127,16 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
     }
     catch (DbUpdateException exception) when (IsUniquenessViolation(exception))
     {
-      // Another instance was admitted first. Detach so this context is not left holding a row the database
-      // rejected — a later SaveChanges on the same scope would otherwise retry the losing insert.
+      // Another instance holds an ACTIVE verification. Distinct from the stale case above: that one means
+      // the work is already done, this one means it is happening now.
+      //
+      // Detach so this context is not left holding a row the database rejected — a later SaveChanges on the
+      // same scope would otherwise retry the losing insert.
       dbContext.Entry(admitted.Value).State = EntityState.Detached;
       return Result.Failure<long>(TenantStorageErrors.RestoreVerificationAlreadyAdmitted);
     }
 
+    await transaction.CommitAsync(cancellationToken);
     return Result.Success(admitted.Value.Id);
   }
 

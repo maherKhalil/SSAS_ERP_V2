@@ -61,11 +61,28 @@ public interface ITenantDatabaseRestoreVerificationRunStore
 
 // What admission needs to decide whether this instance may take the work.
 //
-// `ExpectedBaselineBackupRunId` is the authoritative-recheck input: admission re-reads the database's
-// current evidence and refuses if the due state it was called for is no longer the current one.
+// THIS RECORD IS A SNAPSHOT OF THE DUE DECISION, and admission's job is to detect that the snapshot has gone
+// stale. Two facts identify the due state together, and BOTH are required:
+//
+//   SourceBackupRunId — the baseline this verification would restore. A newer full backup means the chain
+//                       being verified has moved on.
+//
+//   ExpectedPreviousSuccessfulVerificationRunId — the successful restore verification that existed WHEN the
+//                       due decision was made, or null if there had never been one. If a newer successful
+//                       verification exists by the time this reaches admission, someone else already
+//                       satisfied this obligation and this decision is answering a stale question.
+//
+// The second is what closes the sequential duplicate. The baseline alone cannot: a completed verification
+// does not change the baseline, so a stale worker whose verification has already been performed by another
+// instance would otherwise pass a baseline-only check and repeat the work.
+//
+// It is deliberately an ANCHOR rather than a rule that a baseline may be verified only once. The same full
+// baseline legitimately needs verifying again when the policy's interval expires and no newer full exists —
+// that is a NEW due state, anchored to the verification that has since gone stale, and it must be admissible.
 public sealed record TenantDatabaseRestoreVerificationAdmissionRequest(
   long TenantDatabaseId,
   long SourceBackupRunId,
+  long? ExpectedPreviousSuccessfulVerificationRunId,
   TenantDatabaseRestoreDepth Depth,
   string RestoreServerKey,
   string Actor);

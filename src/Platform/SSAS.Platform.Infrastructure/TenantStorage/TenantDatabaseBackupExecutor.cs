@@ -126,11 +126,14 @@ public sealed class TenantDatabaseBackupExecutor(
       throw;
     }
 
-    return Result.Success(await RecordAsync(tenantDatabaseId, runId, operation, result, cancellationToken));
+    return Result.Success(
+      await RecordAsync(tenantDatabaseId, descriptor, policy, runId, operation, result, cancellationToken));
   }
 
   private async Task<TenantDatabaseBackupExecutionOutcome> RecordAsync(
     long tenantDatabaseId,
+    TenantDatabaseDescriptor descriptor,
+    TenantDatabaseBackupPolicyRecord policy,
     long runId,
     TenantDatabaseBackupOperation operation,
     TenantDatabaseBackupProviderResult result,
@@ -148,7 +151,8 @@ public sealed class TenantDatabaseBackupExecutor(
         // its RowVersion race repeatedly it abandons silently (a known carried finding), which leaves the
         // observation stale rather than the run's history wrong. Stale readiness is caught by freshness;
         // a corrupted run record would not be.
-        await RecordRecoveryObservationAsync(tenantDatabaseId, operation, result, cancellationToken);
+        await RecordRecoveryObservationAsync(
+          tenantDatabaseId, descriptor, policy, operation, result, cancellationToken);
 
         return Outcome(tenantDatabaseId, runId, operation,
           TenantDatabaseBackupRunStatus.Succeeded, result.ProviderBackupSetIdentity, null);
@@ -193,11 +197,19 @@ public sealed class TenantDatabaseBackupExecutor(
   // Updates ONLY the timestamp for the operation that actually succeeded, using SQL Server's OBSERVED finish
   // time rather than a local clock reading — the authoritative moment is the one the server recorded.
   //
-  // The readiness STATUS it reports can never be Protected: ADR-022 §6 requires restore-verification
-  // evidence, and the first actual restore verification belongs to Phase D. A successful full backup moves a
-  // database from "no baseline" to "baseline exists but unverified", which is exactly VerificationOverdue.
+  // The readiness STATUS it reports can never be Protected, and the reason is honest rather than merely
+  // conservative: this path has observed neither the database's recovery model nor its chain continuity, and
+  // `Protected` asserts both (ADR-022 §6). The full evaluation belongs to the verification/readiness sweep,
+  // which observes them.
+  //
+  // WHAT PHASE D FIXES HERE is the mislabelling. Phase B reported `VerificationOverdue` unconditionally,
+  // which called a database overdue for restore verification its policy had never asked for. The status is
+  // now derived from the policy's actual verification obligation against the evidence already held
+  // (ADR-022 §6, v1.2).
   private async Task RecordRecoveryObservationAsync(
     long tenantDatabaseId,
+    TenantDatabaseDescriptor descriptor,
+    TenantDatabaseBackupPolicyRecord policy,
     TenantDatabaseBackupOperation operation,
     TenantDatabaseBackupProviderResult result,
     CancellationToken cancellationToken)
@@ -208,7 +220,23 @@ public sealed class TenantDatabaseBackupExecutor(
       return;
     }
 
-    var status = TenantDatabaseRecoveryReadinessEvaluator.EvaluateAfterSuccessfulBackup();
+    var evidence = await backupReads.FindRecoveryEvidenceAsync(tenantDatabaseId, cancellationToken);
+    var status = TenantDatabaseRecoveryReadinessEvaluator.EvaluateAfterSuccessfulBackup(
+      new TenantDatabaseRecoveryReadinessInputs(
+        descriptor.HostingMode,
+        PolicyExists: true,
+        policy.Enabled,
+        policy.ManagementMode,
+        policy.FullBackupIntervalMinutes,
+        policy.DifferentialBackupIntervalMinutes,
+        policy.TransactionLogBackupIntervalMinutes,
+        policy.RestoreVerificationIntervalDays,
+        policy.MaximumBackupAgeMinutes,
+        evidence?.LastSuccessfulFullBackupUtc,
+        evidence?.LastSuccessfulDifferentialBackupUtc,
+        evidence?.LastSuccessfulLogBackupUtc,
+        evidence?.LastRestoreVerificationUtc),
+      observedUtc.Value);
 
     await recoveryWriter.RecordRecoveryReadinessAsync(
       tenantDatabaseId,

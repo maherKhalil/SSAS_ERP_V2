@@ -217,4 +217,54 @@ public static class TenantStorageErrors
 
   public static readonly Error BackupSupersededByRecentRun =
     new("TenantStorage.BackupSupersededByRecentRun", "A platform-managed backup of this operation completed after the scheduling decision was made, so this run is redundant.");
+
+  // ---- Restore verification (ADR-022 §17, TS-Backup Phase D). Operator-facing, and never carrying a
+  // server name, path, credential or restored data.
+
+  public static readonly Error RestoreVerificationBaselineRequired =
+    new("TenantStorage.RestoreVerificationBaselineRequired", "A restore verification requires a successful full backup baseline to restore.");
+
+  public static readonly Error RestoreVerificationServerKeyInvalid =
+    new("TenantStorage.RestoreVerificationServerKeyInvalid", "The restore verification server key is not valid.");
+
+  public static readonly Error RestoreVerificationDatabaseNameInvalid =
+    new("TenantStorage.RestoreVerificationDatabaseNameInvalid", "The generated verification database name is not valid.");
+
+  public static readonly Error RestoreVerificationNotAdmitted =
+    new("TenantStorage.RestoreVerificationNotAdmitted", "The restore verification is not in an admitted state.");
+
+  public static readonly Error RestoreVerificationNotRunning =
+    new("TenantStorage.RestoreVerificationNotRunning", "The restore verification is not running.");
+
+  public static readonly Error RestoreVerificationAlreadyCompleted =
+    new("TenantStorage.RestoreVerificationAlreadyCompleted", "The restore verification has already reached a terminal result.");
+
+  public static readonly Error RestoreVerificationCleanupStateInvalid =
+    new("TenantStorage.RestoreVerificationCleanupStateInvalid", "The requested cleanup state is not a terminal cleanup outcome.");
+
+  // Another application instance already holds the effective verification for this database's due state.
+  // NOT a failure: the admission invariant worked exactly as intended (ADR-022 §17, compliance rule 43).
+  public static readonly Error RestoreVerificationAlreadyAdmitted =
+    new("TenantStorage.RestoreVerificationAlreadyAdmitted", "An effective restore verification is already admitted for this tenant database.");
+
+  public static readonly Error RestoreVerificationNotDue =
+    new("TenantStorage.RestoreVerificationNotDue", "The tenant database does not currently require a restore verification.");
+
+  // The verification target is absent, unresolvable, or not trusted for this environment. FAILS CLOSED —
+  // there is no fallback to the source database's server (ADR-022 §17, compliance rule 44).
+  public static readonly Error RestoreVerificationServerNotConfigured =
+    new("TenantStorage.RestoreVerificationServerNotConfigured", "No trusted restore verification server is configured for the requested key.");
+
+  // The configured verification target is the server hosting the authoritative tenant database, and the
+  // deployment has not declared itself non-production. Refused (ADR-022 §17, compliance rule 32).
+  public static readonly Error RestoreVerificationTargetNotIsolated =
+    new("TenantStorage.RestoreVerificationTargetNotIsolated", "The restore verification target must not be the server hosting the authoritative tenant database.");
+
+  public static readonly Error RestoreVerificationNotConfigured =
+    new("TenantStorage.RestoreVerificationNotConfigured", "Restore verification is not configured for this deployment.");
+
+  // A generated verification name collided with a registered authoritative database. Refused rather than
+  // resolved: nothing that could be a production database may be a restore target (ADR-022 §17).
+  public static readonly Error RestoreVerificationTargetNameNotSafe =
+    new("TenantStorage.RestoreVerificationTargetNameNotSafe", "The verification database name does not satisfy the platform's reserved verification vocabulary or collides with a registered tenant database.");
 }

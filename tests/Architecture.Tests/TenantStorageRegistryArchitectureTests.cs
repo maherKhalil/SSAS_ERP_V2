@@ -322,6 +322,11 @@ public sealed class TenantStorageRegistryArchitectureTests
       "TenantDatabaseBackupReadRepository",
       "AddTenantDatabaseBackupRecoveryFoundation",
 
+      // TS-Backup Phase D (ADR-022 §17, v1.2): verification persistence. Metadata and its migration, on the
+      // same terms as Phase A's — an orphan-cleanup worker or a restore provider is still not on this list.
+      "TenantDatabaseRestoreVerificationRunConfiguration",
+      "AddTenantDatabaseRestoreVerification",
+
       // TS-Backup Phase B (ADR-022): single-database SQL Server backup execution. Enumerated by exact name
       // for the same reason as above — a scheduler, restore worker or retention service would still fail
       // this guard, because none of them is on this list.
@@ -355,7 +360,26 @@ public sealed class TenantStorageRegistryArchitectureTests
       "TenantDatabaseBackupSchedulerHostedService",
       "TenantDatabaseBackupSchedulerOptionsValidator",
       "TenantDatabaseBackupSweepSummary",
-      "TenantDatabaseBackupFleetReadRepository"
+      "TenantDatabaseBackupFleetReadRepository",
+
+      // TS-Backup Phase D (ADR-022 §17, v1.2): the restore-verification foundation. Enumerated by exact name
+      // for the same reason as everything above — a retention worker, an artifact-deletion component or a
+      // Phase E cutover guard would still fail this guard, because none of them is on this list.
+      //
+      // NOTE what is NOT here and must not be added without a decision: no orphan-cleanup worker, no
+      // verification scheduler, no restore provider. Those arrive in later slices and each one is a
+      // deliberate addition rather than a category this guard already waves through.
+      "TenantDatabaseRestoreVerificationOptions",
+      "TenantDatabaseRestoreVerificationOptionsValidator",
+      "TenantDatabaseRestoreVerificationRunStore",
+      "ITenantDatabaseVerificationConnectionFactory",
+      "TenantDatabaseVerificationConnectionFactory",
+      "TenantDatabaseVerificationTarget",
+      "TenantDatabaseVerificationFileLayout",
+      "TenantDatabaseVerificationFilePlacement",
+      "TenantDatabaseBackupFileEntry",
+      "SqlServerRestoreCommandText",
+      "TenantDatabaseRestoreStep"
     };
 
     var offenders = InfrastructureAssembly.GetTypes()

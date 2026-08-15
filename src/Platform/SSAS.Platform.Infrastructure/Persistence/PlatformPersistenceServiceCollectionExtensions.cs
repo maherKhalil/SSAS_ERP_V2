@@ -149,6 +149,25 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseBackupScheduler, TenantDatabaseBackupScheduler>();
     services.AddHostedService<TenantDatabaseBackupSchedulerHostedService>();
 
+    // TS-Backup Phase D: restore-verification foundation (ADR-022 §17, v1.2).
+    //
+    // DEFAULTS OFF, and separately from the backup scheduler. Enabling restore verification additionally
+    // requires a dedicated verification server, a privileged verification identity that can create and drop
+    // databases, and file roots the verification instance's service account can write to — so a deployment
+    // that has not been prepared fails startup validation rather than attempting restores it cannot perform.
+    //
+    // NOTE the asymmetry with backup credentials: VerificationServers is a SEPARATE key namespace, not a
+    // second identity on the same keys. Verification reaches a server that hosts no authoritative tenant
+    // data, and there is deliberately no fallback from it to BackupServers or Servers.
+    services.AddOptions<TenantDatabaseRestoreVerificationOptions>()
+      .Bind(configuration.GetSection(TenantDatabaseRestoreVerificationOptions.SectionName))
+      .ValidateOnStart();
+    services.AddSingleton<IValidateOptions<TenantDatabaseRestoreVerificationOptions>,
+      TenantDatabaseRestoreVerificationOptionsValidator>();
+    services.AddScoped<ITenantDatabaseVerificationConnectionFactory,
+      TenantDatabaseVerificationConnectionFactory>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationRunStore, TenantDatabaseRestoreVerificationRunStore>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

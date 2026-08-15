@@ -68,6 +68,20 @@ public sealed class TenantDatabaseBackupReadRepository(PlatformDbContext dbConte
       .Select(Projection)
       .FirstOrDefaultAsync(cancellationToken);
 
+  public Task<TenantDatabaseRecoveryEvidenceRecord?> FindRecoveryEvidenceAsync(
+    long tenantDatabaseId,
+    CancellationToken cancellationToken = default) =>
+    dbContext.Set<Domain.TenantStorage.TenantDatabase>()
+      .AsNoTracking()
+      .Where(database => database.Id == tenantDatabaseId)
+      .Select(database => new TenantDatabaseRecoveryEvidenceRecord(
+        database.Id,
+        database.LastSuccessfulFullBackupUtc,
+        database.LastSuccessfulDifferentialBackupUtc,
+        database.LastSuccessfulLogBackupUtc,
+        database.LastRestoreVerificationUtc))
+      .FirstOrDefaultAsync(cancellationToken)!;
+
   // A shared projection EXPRESSION rather than a method: EF must translate it to SQL, and a method call
   // would force client-side evaluation of the whole entity.
   private static readonly System.Linq.Expressions.Expression<

@@ -54,6 +54,24 @@ public sealed class TenantStorageOptions
   // inside Infrastructure. An unknown key fails closed.
   public IDictionary<string, TenantStorageBackupDestinationOptions> BackupDestinations { get; } =
     new Dictionary<string, TenantStorageBackupDestinationOptions>(StringComparer.Ordinal);
+
+  // ---- Restore verification authority (ADR-022 §17, TS-Backup Phase D). A THIRD credential profile, and a
+  // SEPARATE KEY NAMESPACE from `Servers` and `BackupServers`.
+  //
+  // The namespace is separate here where backup's was shared, and the difference is deliberate. Backup
+  // reaches the same physical servers routing does, so it shares ServerKey and differs only in identity.
+  // Verification reaches a DIFFERENT server entirely — one that hosts no authoritative tenant data — so it
+  // has its own keys, and a verification key that happens to match a routing key means nothing.
+  //
+  // The identity behind these entries is the most privileged in this capability: it creates databases,
+  // forces them single-user and drops them. Granting that to the backup identity for convenience would push
+  // database-creation and database-destruction rights onto every production instance backup reaches, which
+  // is precisely the widening the dedicated topology exists to prevent.
+  //
+  // Absent entry = restore verification is not configured for that key, and FAILS CLOSED. There is no
+  // fallback to `BackupServers` and none to `Servers` (compliance rule 44).
+  public IDictionary<string, TenantStorageServerOptions> VerificationServers { get; } =
+    new Dictionary<string, TenantStorageServerOptions>(StringComparer.Ordinal);
 }
 
 // One trusted backup destination. Holds a location, never a credential: V1 destinations are filesystem or

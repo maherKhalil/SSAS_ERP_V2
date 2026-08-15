@@ -1,0 +1,71 @@
+using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Domain.Enums;
+
+namespace SSAS.Platform.Application.TenantStorage;
+
+// The WRITE path for restore-verification operations (ADR-022 §17, TS-Backup Phase D).
+//
+// INTENT-SPECIFIC METHODS, following the backup run store's precedent. There is no "set status to whatever":
+// admission, beginning a restore, succeeding, failing, abandoning as unavailable and recording cleanup mean
+// materially different things, and the two most worth protecting — success, and a cleanup failure that must
+// NOT disturb a proven restore — must not be interchangeable.
+//
+// Every method is a SHORT write. No Platform transaction is held across a restore, which can run for hours.
+public interface ITenantDatabaseRestoreVerificationRunStore
+{
+  // ADMISSION — the serialising event (ADR-022 compliance rule 43).
+  //
+  // Returns the admitted run, or a failure when another application instance already holds the effective
+  // verification for this database, or when the database is no longer due. Both are ORDINARY OUTCOMES rather
+  // than errors: the first means the invariant worked, and the second means a stale decision was caught.
+  Task<Result<long>> TryAdmitAsync(
+    TenantDatabaseRestoreVerificationAdmissionRequest request,
+    CancellationToken cancellationToken = default);
+
+  // Records the database this run is about to create, and moves it to Restoring. Called BEFORE the restore,
+  // never after.
+  Task<Result> BeginRestoreAsync(
+    long verificationRunId,
+    string verificationDatabaseName,
+    string actor,
+    CancellationToken cancellationToken = default);
+
+  Task<Result> MarkSucceededAsync(
+    long verificationRunId,
+    string actor,
+    CancellationToken cancellationToken = default);
+
+  Task<Result> MarkFailedAsync(
+    long verificationRunId,
+    string? errorSummary,
+    string actor,
+    CancellationToken cancellationToken = default);
+
+  // The attempt could not begin or complete for reasons independent of the artifacts. Separate from failure
+  // so a verification-host outage never degrades readiness (ADR-022 §17, v1.2).
+  Task<Result> MarkInfrastructureUnavailableAsync(
+    long verificationRunId,
+    string? reasonSummary,
+    string actor,
+    CancellationToken cancellationToken = default);
+
+  // Disposal outcome, recorded independently. Cannot change the verification result — the aggregate makes
+  // that inexpressible rather than merely discouraged.
+  Task<Result> RecordCleanupAsync(
+    long verificationRunId,
+    TenantDatabaseVerificationCleanupState state,
+    string? errorSummary,
+    string actor,
+    CancellationToken cancellationToken = default);
+}
+
+// What admission needs to decide whether this instance may take the work.
+//
+// `ExpectedBaselineBackupRunId` is the authoritative-recheck input: admission re-reads the database's
+// current evidence and refuses if the due state it was called for is no longer the current one.
+public sealed record TenantDatabaseRestoreVerificationAdmissionRequest(
+  long TenantDatabaseId,
+  long SourceBackupRunId,
+  TenantDatabaseRestoreDepth Depth,
+  string RestoreServerKey,
+  string Actor);

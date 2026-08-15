@@ -159,7 +159,13 @@ public sealed class TenantBackupFoundationArchitectureTests
     // nothing about backup authority.
     foreach (var assembly in new[] { DomainAssembly, ApplicationAssembly, InfrastructureAssembly })
     {
-      foreach (var type in assembly.GetTypes().Where(IsTenantStorageType))
+      // Author-written types only. A lambda inside an exempt method compiles to a display class whose
+      // generated method inherits the enclosing name — `<BeginRestoreAsync>b__0` — so without this the guard
+      // would demand an exemption for machinery nobody wrote. The sibling type-vocabulary guard excludes
+      // compiler-generated types for exactly the same reason.
+      foreach (var type in assembly.GetTypes()
+        .Where(type => !Attribute.IsDefined(type, typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute)))
+        .Where(IsTenantStorageType))
       {
         foreach (var method in type.GetMethods(
           BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static |
@@ -178,15 +184,35 @@ public sealed class TenantBackupFoundationArchitectureTests
           // reviewed Phase B slice. It is exempted BY TYPE rather than by name, so an execution verb
           // appearing anywhere else in the tenant-storage surface still fails — which is the boundary this
           // guard actually protects now that execution exists at all.
-          if (method.Name is "RecordVerification" ||
-            (method.Name is "ExecuteBackupAsync" && type.Name is "SqlServerTenantDatabaseBackupProvider"))
+          //
+          // TS-Backup Phase D (ADR-022 §17, v1.2) adds two more, on the same terms.
+          //
+          // BeginRestore/BeginRestoreAsync RECORD that a restore is about to begin — the durable write that
+          // makes a crashed process's orphan identifiable. They perform nothing, and the whole reason they
+          // exist is that the record must precede the operation.
+          //
+          // SqlServerRestoreCommandText BUILDS COMMAND TEXT and never executes it, so its methods are
+          // exempted BY TYPE. Restore EXECUTION belongs to a later slice and has no component here yet: an
+          // execution verb appearing on any other tenant-storage type still fails this guard, which is
+          // precisely the boundary worth holding while the destructive half of the capability is unwritten.
+          //
+          // CanRestoreInto is a PREDICATE — it answers whether a name may be used as a verification target,
+          // and its whole purpose is to REFUSE. Reading it as a restore capability would flag the very guard
+          // that prevents one.
+          if (method.Name is "RecordVerification" or "BeginRestore" or "BeginRestoreAsync" or "CanRestoreInto" ||
+            (method.Name is "ExecuteBackupAsync" && type.Name is "SqlServerTenantDatabaseBackupProvider") ||
+            type.Name is "SqlServerRestoreCommandText")
           {
             continue;
           }
 
-          Assert.DoesNotContain(
+          // The offender is NAMED in the failure. A guard that says only "something matched" costs more to
+          // diagnose than it saves, and this one fires whenever a slice legitimately extends the surface.
+          var matched = Array.Find(
             forbiddenFragments,
             fragment => method.Name.Contains(fragment, StringComparison.Ordinal));
+          Assert.True(matched is null,
+            $"{type.FullName}.{method.Name} contains the execution verb '{matched}'.");
         }
       }
     }
@@ -206,7 +232,17 @@ public sealed class TenantBackupFoundationArchitectureTests
       "TenantDatabaseBackupScheduler",
       "TenantDatabaseBackupSchedulerOptions",
       "TenantDatabaseBackupSchedulerHostedService",
-      "TenantDatabaseBackupSchedulerOptionsValidator"
+      "TenantDatabaseBackupSchedulerOptionsValidator",
+
+      // TS-Backup Phase D (ADR-022 §17, v1.2): the restore-verification FOUNDATION — configuration, the
+      // credential boundary and the durable operation record. Exempted by exact name, and note what is
+      // deliberately still absent: no verification scheduler, no hosted service, no restore provider, no
+      // orphan-cleanup worker. Each of those would fail this guard until a slice adds it explicitly.
+      "TenantDatabaseRestoreVerificationOptions",
+      "TenantDatabaseRestoreVerificationOptionsValidator",
+      "TenantDatabaseRestoreVerificationRunStore",
+      "AddTenantDatabaseRestoreVerification",
+      "TenantDatabaseRestoreVerificationRunConfiguration"
     };
 
     foreach (var type in InfrastructureAssembly.GetTypes()

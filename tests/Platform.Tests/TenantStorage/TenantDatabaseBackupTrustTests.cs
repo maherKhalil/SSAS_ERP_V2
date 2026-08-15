@@ -142,10 +142,30 @@ public sealed class TenantDatabaseBackupTrustTests
   [Trait("Decision", "ADR-022")]
   public void A_successful_backup_never_evaluates_to_protected()
   {
-    // The most damaging shortcut available in this slice, refused structurally: a database that has just
-    // taken a good backup has a baseline that has never been restored once, which is what
-    // VerificationOverdue describes and what ADR-022 §18 refuses to cut over on.
-    var status = TenantDatabaseRecoveryReadinessEvaluator.EvaluateAfterSuccessfulBackup();
+    // The most damaging shortcut available in this capability, refused structurally: the post-backup path
+    // has observed neither the recovery model nor chain continuity, and `Protected` asserts both.
+    //
+    // NARROWED IN PHASE D. Phase B additionally asserted `VerificationOverdue` unconditionally, which was
+    // the defect ADR-022 v1.2 corrects: a policy that requires no periodic restore verification must not be
+    // told it is overdue for one. The surviving invariant — never `Protected` from here — is the one that
+    // was ever load-bearing; the full matrix is covered by
+    // TenantDatabaseRecoveryReadinessMatrixTests.
+    var status = TenantDatabaseRecoveryReadinessEvaluator.EvaluateAfterSuccessfulBackup(
+      new TenantDatabaseRecoveryReadinessInputs(
+        TenantDatabaseHostingMode.PlatformManaged,
+        PolicyExists: true,
+        PolicyEnabled: true,
+        TenantDatabaseBackupManagementMode.AutomaticByPlatform,
+        FullBackupIntervalMinutes: 10_080,
+        DifferentialBackupIntervalMinutes: null,
+        TransactionLogBackupIntervalMinutes: null,
+        RestoreVerificationIntervalDays: 30,
+        MaximumBackupAgeMinutes: null,
+        LastSuccessfulFullBackupUtc: DateTimeOffset.UnixEpoch,
+        LastSuccessfulDifferentialBackupUtc: null,
+        LastSuccessfulLogBackupUtc: null,
+        LastRestoreVerificationUtc: null),
+      DateTimeOffset.UnixEpoch);
 
     Assert.NotEqual(TenantDatabaseRecoveryReadinessStatus.Protected, status);
     Assert.Equal(TenantDatabaseRecoveryReadinessStatus.VerificationOverdue, status);

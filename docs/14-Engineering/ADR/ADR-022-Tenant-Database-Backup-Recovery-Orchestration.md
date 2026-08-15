@@ -353,7 +353,7 @@ On **SQL Server 2022**, the granular permission that grants this visibility is *
 
 **The in-flight safety check is not an operational feature flag.** It is a correctness precondition, and neither fleet configuration, scheduler configuration nor deployment configuration may disable it. This matters most in Phase C, where backups run unattended across the estate.
 
-**Guard semantics.** If an existing `BACKUP` operation against that physical database is detected, the worker **must not** start another platform-managed backup. The outcome is a **controlled non-execution** — conceptually `BackupAlreadyInProgress`, `OwnershipPending` or `SkippedInFlightOperation`, with the final vocabulary settled in Phase B alongside the run statuses in §15. **It must not be recorded as a backup failure**: nothing failed, and reporting it as failure would degrade recovery readiness on the strength of successful coordination.
+**Guard semantics.** If an existing `BACKUP` operation against that physical database is detected, the worker **must not** start another platform-managed backup. The outcome is a **controlled non-execution**; Phase B settled the vocabulary as `SkippedInFlightOperation`, alongside the run statuses in §15. **It must not be recorded as a backup failure**: nothing failed, and reporting it as failure would degrade recovery readiness on the strength of successful coordination.
 
 **Phase B exit gate — CLOSED.** The gate required one of the following to be proven:
 
@@ -382,7 +382,7 @@ Unlike migration, where a per-run summary suffices, backup history is required t
 
 Recorded per run: physical database, operation type, start and completion, status, safe destination reference, provider backup identity, size where available, provider chain metadata, a **safe error summary**, and verification state.
 
-Proposed run statuses: `Pending`, `Running`, `Succeeded`, `Failed`, `SkippedOwnershipHeld`, `SkippedInFlightOperation`, `BlockedByPolicy`, `VerificationFailed`. These describe **execution**; they are not recovery readiness, which is derived from the accumulated evidence. The two skip statuses are **not failures** — they record that coordination worked — and the final vocabulary for the in-flight case is settled in Phase B per §14.
+Run statuses, as established in Phase A: `Pending`, `Running`, `Succeeded`, `Failed`, `SkippedOwnershipHeld`, `SkippedInFlightOperation`, `BlockedByPolicy`, `VerificationFailed`. These describe **execution**; they are not recovery readiness, which is derived from the accumulated evidence. The two skip statuses are **not failures** — they record that coordination worked — and Phase B settled the in-flight case as `SkippedInFlightOperation` (§14).
 
 **`Succeeded` requires post-operation evidence.** A run is recorded successful on reconciled provider evidence that the backup set exists and is what was expected, never on the strength of a command having been submitted or a `ExecuteNonQuery` having returned. This is the run-history expression of the ownership rule in §14: a worker that lost its session lost the right to claim success regardless of what it issued.
 
@@ -583,11 +583,11 @@ Deferring deletion and deferring RPO/RTO tiers are the same judgement in the oth
 | **D — Verification and retention** | `RESTORE VERIFYONLY`, periodic disposable restore, verification state, reserved verification namespace and orphan cleanup eligibility, retention metadata and storage-lifecycle delegation. |
 | **E — Cutover integration** | Recovery-readiness gate in `ADR-020`, dedicated activation guard. |
 
-**Recommended first slice: Phase A.** Not backup execution. Policy, authority, readiness semantics and writer concurrency should be settled before any command touches a database, because those are the decisions the provider work will assume — and because Phase A is the slice that closes the outstanding RowVersion test gap while there are still only two live writers to reason about.
+**Phase A was the first delivered slice**, and deliberately not backup execution. Policy, authority, readiness semantics and writer concurrency were settled before any command touched a database, because those were the decisions the provider work would assume — and because Phase A was the slice that closed the outstanding RowVersion test gap while there were still only two live writers to reason about.
 
 **Phase B carried a binding exit gate, and that gate is now closed.** The session-loss behaviour of a long-running `BACKUP` was empirically established on a real SQL Server against a disposable database across three conclusive trials, and the in-flight detection guard was implemented and retained as mandatory rather than as a fallback (§14). Phase C may now begin. The original reasoning for gating it still holds and is why the guard is mandatory rather than optional: fleet scheduling multiplies a single-database ownership ambiguity across the estate, converting a rare window into a routine one, and it was far cheaper to settle at one database than at a fleet.
 
-Backup metadata belongs to `PlatformDbContext`. A future Platform migration is expected; **no tenant migration is expected**, and backup metadata must not be placed in a tenant ERP database.
+Backup metadata belongs to `PlatformDbContext`. Phase A introduced the Platform migration that persists backup policy, run history and the recovery-readiness fields; **no tenant migration is expected**, and backup metadata must not be placed in a tenant ERP database.
 
 ## Audit
 

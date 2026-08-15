@@ -79,7 +79,12 @@ internal static class SqlServerBackupEvidence
       "FROM msdb.dbo.backupset AS bs " +
       "INNER JOIN msdb.dbo.backupmediafamily AS bmf ON bmf.media_set_id = bs.media_set_id " +
       "WHERE bs.database_name = @database AND bs.type = @type " +
-      "AND bmf.physical_device_name LIKE @platformArtifact " +
+      // SEPARATOR-NORMALISED before matching. The pattern anchors the platform's generated file name to a
+      // path separator so a directory cannot masquerade as one, but a destination configured as `C:/backups/`
+      // yields a forward slash immediately before the file name and the anchor would miss it — silently
+      // disabling deduplication for that deployment. Folding '/' to '\' first makes the anchor hold for every
+      // supported destination form without loosening what it matches.
+      "AND REPLACE(bmf.physical_device_name, '/', '\\') LIKE @platformArtifact " +
       "AND DATEADD(second, DATEDIFF(second, GETDATE(), GETUTCDATE()), bs.backup_finish_date) > @since";
 
     command.Parameters.Add("@database", SqlDbType.NVarChar, 128).Value = databaseName;

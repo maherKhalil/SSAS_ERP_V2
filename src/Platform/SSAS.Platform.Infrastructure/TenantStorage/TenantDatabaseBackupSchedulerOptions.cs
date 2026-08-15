@@ -49,9 +49,8 @@ public sealed class TenantDatabaseBackupSchedulerOptions
   // the fleet on every sweep.
   public TimeSpan FailureRetryBackoff { get; set; } = TimeSpan.FromMinutes(5);
 
-  // How long after a controlled skip — ownership held elsewhere, or an operation already in flight — before
-  // this database is considered again. Short, because a skip means coordination worked.
+  // How long after a controlled skip — ownership held elsewhere, an operation already in flight, or a
+  // decision another instance already satisfied — before this database is considered again. Short, because
+  // a skip means coordination worked.
   public TimeSpan SkipRetryBackoff { get; set; } = TimeSpan.FromMinutes(1);
-
-  public static TenantDatabaseBackupSchedulerOptions Default { get; } = new();
 }

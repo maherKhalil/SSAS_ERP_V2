@@ -222,6 +222,14 @@ public sealed class TenantDatabaseBackupScheduler(
       await serverGate.WaitAsync(cancellationToken);
       try
       {
+        // THE LAST MOMENT AT WHICH SHUTDOWN CAN STILL PREVENT A BACKUP.
+        //
+        // Waiting for a permit can take as long as the backup ahead of it, so cancellation frequently
+        // arrives between acquiring one and using it. Checking here means a host that is stopping does not
+        // begin work it could still have declined — and it is the last such opportunity, because the next
+        // line deliberately stops honouring the token at all.
+        cancellationToken.ThrowIfCancellationRequested();
+
         var startedUtc = clock.UtcNow;
 
         // THE CANCELLATION BOUNDARY (ADR-022 §14).

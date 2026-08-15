@@ -248,6 +248,25 @@ public sealed class TenantDatabaseBackupSchedulerTests
 
   [Fact]
   [Trait("Decision", "ADR-022")]
+  public async Task Shutdown_between_acquiring_a_permit_and_starting_prevents_the_backup()
+  {
+    // LOW-A. Waiting for a concurrency permit can take as long as the backup ahead of it, so cancellation
+    // frequently lands in exactly this gap. The executor must not be called at all — and the permits must
+    // still be released, or a later sweep in the same process would deadlock against a drained semaphore.
+    using var cancellation = new CancellationTokenSource();
+    cancellation.Cancel();
+
+    var executor = new FakeExecutor();
+    var scheduler = Scheduler(new FakeFleetReads(Due(1, "A"), Due(2, "A")), executor);
+
+    var summary = await scheduler.RunSweepAsync(cancellation.Token);
+
+    Assert.Empty(executor.Calls);
+    Assert.Equal(0, summary.Dispatched);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
   public async Task The_due_anchor_travels_with_scheduled_work()
   {
     // The anchor is what lets the executor revalidate the decision under database ownership. Without it the
@@ -277,10 +296,14 @@ public sealed class TenantDatabaseBackupSchedulerTests
 
     await Scheduler(reads, executor, batchSize: 100, maxConcurrent: 2, maxPerServer: 1).RunSweepAsync();
 
+    // Tightened from "within the first page" to what the design actually guarantees. Round-robin emits
+    // Busy[0] then Quiet[0], and the global cap of two admits exactly those two before any third can start,
+    // so the quiet server's database is structurally among the first two dispatched — not merely ahead of
+    // the busy server's backlog.
     var quietPosition = executor.StartOrder.IndexOf(9_999L);
     Assert.True(quietPosition >= 0, "the quiet server's database was never dispatched");
-    Assert.True(quietPosition < 100,
-      $"the quiet server's database started at position {quietPosition}, behind a whole page of the busy server");
+    Assert.True(quietPosition <= 1,
+      $"the quiet server's database started at position {quietPosition}, behind the busy server's backlog");
   }
 
   [Fact]

@@ -196,6 +196,67 @@ public sealed class TenantBackupSchedulerSqlServerTests
     Assert.DoesNotContain(ids[0], afterFirst.Select(candidate => candidate.TenantDatabaseId));
   }
 
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Supersession_recognises_platform_artifacts_written_under_either_path_separator()
+  {
+    // LOW-B. The supersession match anchors the platform's generated file name to a path separator so a
+    // directory cannot masquerade as one. Anchoring on a backslash alone meant a destination configured as
+    // `C:/backups/` produced a forward slash before the file name, the match missed, and deduplication
+    // silently reverted to taking a redundant backup. Separators are normalised before matching.
+    //
+    // Exercised against real msdb, because the behaviour under test is SQL Server's record of the device
+    // name — not a string helper.
+    await using var fixture = await TenantBackupProviderSqlServerTests.BackupFixture.CreateAsync();
+    var id = await fixture.RegisterAsync();
+    await fixture.AddPolicyAsync(id);
+
+    var operation = TenantDatabaseBackupOperation.SqlServerFull();
+    var before = DateTimeOffset.UtcNow.AddMinutes(-1);
+
+    await using var connection = await fixture.OpenTargetAsync();
+
+    // Nothing yet: a database with no platform backup must never look superseded, or the first backup would
+    // never happen.
+    Assert.False(await SqlServerBackupEvidence.HasPlatformBackupCompletedSinceAsync(
+      connection, fixture.TargetCatalog, operation, id, before));
+
+    // A backup written through a FORWARD-SLASH directory, exactly as a destination configured that way
+    // would produce. The file name still carries the platform's generated vocabulary.
+    var forwardSlashDevice =
+      $"{fixture.BackupRoot.Replace('\\', '/')}/{id}_Full_20260815T120000Z_1.bak";
+    await TenantBackupProviderSqlServerTests.BackupFixture.ExecuteOnAsync(
+      fixture.TargetCatalog,
+      $"BACKUP DATABASE [{fixture.TargetCatalog}] TO DISK = N'{forwardSlashDevice}' WITH INIT, CHECKSUM");
+
+    Assert.True(await SqlServerBackupEvidence.HasPlatformBackupCompletedSinceAsync(
+      connection, fixture.TargetCatalog, operation, id, before));
+
+    // A DIFFERENT database identifier must not be satisfied by it — the anchor still discriminates.
+    Assert.False(await SqlServerBackupEvidence.HasPlatformBackupCompletedSinceAsync(
+      connection, fixture.TargetCatalog, operation, id + 1_000, before));
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task An_external_backup_never_satisfies_the_platform_schedule()
+  {
+    // The property that must survive every loosening of the match: a DBA, SQL Agent or third-party backup
+    // changes SQL Server's chain state without discharging the platform's scheduling obligation. Its file
+    // name carries none of the platform's generated vocabulary, so it cannot supersede a due decision.
+    await using var fixture = await TenantBackupProviderSqlServerTests.BackupFixture.CreateAsync();
+    var id = await fixture.RegisterAsync();
+    await fixture.AddPolicyAsync(id);
+
+    var before = DateTimeOffset.UtcNow.AddMinutes(-1);
+    await fixture.TakeExternalBackupAsync();
+
+    await using var connection = await fixture.OpenTargetAsync();
+
+    Assert.False(await SqlServerBackupEvidence.HasPlatformBackupCompletedSinceAsync(
+      connection, fixture.TargetCatalog, TenantDatabaseBackupOperation.SqlServerFull(), id, before));
+  }
+
   private static TenantDatabaseBackupScheduler Scheduler(
     TenantBackupProviderSqlServerTests.BackupFixture fixture,
     int maxConcurrent = 2,

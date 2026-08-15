@@ -274,4 +274,35 @@ public static class TenantStorageErrors
   // resolved: nothing that could be a production database may be a restore target (ADR-022 §17).
   public static readonly Error RestoreVerificationTargetNameNotSafe =
     new("TenantStorage.RestoreVerificationTargetNameNotSafe", "The verification database name does not satisfy the platform's reserved verification vocabulary or collides with a registered tenant database.");
+
+  // ---- Chain selection and restore execution (ADR-022 §17, TS-Backup Phase D5/D6).
+
+  public static readonly Error RestoreChainBaselineMissing =
+    new("TenantStorage.RestoreChainBaselineMissing", "No successful platform-managed full backup is available to restore.");
+
+  // The platform's own artifacts cannot form the required restorable sequence — a segment is missing,
+  // superseded by an externally taken backup, or expired. Reported rather than silently downgraded to a
+  // shallower restore, so readiness degrades honestly (ADR-022 §17, compliance rule 37).
+  public static readonly Error RestoreChainBroken =
+    new("TenantStorage.RestoreChainBroken", "The platform-managed backup artifacts do not form a complete restorable sequence.");
+
+  // A verification database already exists under the generated name. FAILS SAFE — never overwritten, never
+  // dropped and retried (ADR-022 §17, compliance rule 38).
+  public static readonly Error RestoreVerificationTargetAlreadyExists =
+    new("TenantStorage.RestoreVerificationTargetAlreadyExists", "A database already exists under the generated verification name.");
+
+  public static readonly Error RestoreVerificationArtifactUnavailable =
+    new("TenantStorage.RestoreVerificationArtifactUnavailable", "A selected backup artifact could not be read from its trusted destination.");
+
+  public static readonly Error RestoreVerificationRestoreFailed =
+    new("TenantStorage.RestoreVerificationRestoreFailed", "The selected restore sequence did not complete.");
+
+  // The restore completed but the database did not come online, so nothing was demonstrated.
+  public static readonly Error RestoreVerificationDatabaseNotOnline =
+    new("TenantStorage.RestoreVerificationDatabaseNotOnline", "The restored verification database did not come online.");
+
+  // Something the admission decision depended on changed before execution began. Fails closed rather than
+  // restoring against drifted state.
+  public static readonly Error RestoreVerificationTargetDrifted =
+    new("TenantStorage.RestoreVerificationTargetDrifted", "The verification target or its admitted operation changed before the restore began.");
 }

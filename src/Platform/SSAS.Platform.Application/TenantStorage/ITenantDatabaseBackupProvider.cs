@@ -25,7 +25,15 @@ public sealed record TenantDatabaseBackupRequest(
   long TenantDatabaseId,
   TenantDatabaseBackupOperation Operation,
   long BackupRunId,
-  TenantDatabaseBackupOptions Options);
+  TenantDatabaseBackupOptions Options,
+  // Set ONLY for scheduler-originated work (TS-Backup Phase C). It carries the last-successful timestamp the
+  // scheduling decision was based on; if a platform-managed backup of this operation has completed since
+  // then, the decision is stale and this run is redundant.
+  //
+  // NULL for manual execution, which means "take this backup now" and is deliberately never subject to the
+  // schedule. A conditional manual backup would be a surprising thing to hand an operator during an
+  // incident.
+  DateTimeOffset? SupersededIfCompletedAfterUtc = null);
 
 // Policy-derived execution options. Read from the persisted policy by the executor, never from a caller.
 public sealed record TenantDatabaseBackupOptions(
@@ -65,5 +73,9 @@ public enum TenantDatabaseBackupOutcome
 
   // A precondition made the operation impossible before it was issued — wrong recovery model, missing
   // differential base, unsupported compression requirement, unbackable database state.
-  BlockedByPrecondition = 5
+  BlockedByPrecondition = 5,
+
+  // Another platform worker already satisfied this scheduling decision while this one waited for ownership
+  // (ADR-022 §13). Nothing is running and nothing failed — the work was already done.
+  SkippedSupersededByRecentBackup = 6
 }

@@ -24,9 +24,26 @@ public sealed class TenantDatabaseBackupExecutor(
 {
   private const string BackupActor = "tenant-backup-executor";
 
-  public async Task<Result<TenantDatabaseBackupExecutionOutcome>> ExecuteAsync(
+  public Task<Result<TenantDatabaseBackupExecutionOutcome>> ExecuteAsync(
     long tenantDatabaseId,
     TenantDatabaseBackupOperation operation,
+    CancellationToken cancellationToken = default) =>
+    RunAsync(tenantDatabaseId, operation, dueAnchorUtc: null, cancellationToken);
+
+  public Task<Result<TenantDatabaseBackupExecutionOutcome>> ExecuteScheduledAsync(
+    long tenantDatabaseId,
+    TenantDatabaseBackupOperation operation,
+    DateTimeOffset? dueAnchorUtc,
+    CancellationToken cancellationToken = default) =>
+    // A scheduled call with no anchor still means "no platform backup of this type has ever succeeded", so
+    // DateTimeOffset.MinValue is the correct floor: any platform backup of this operation at all supersedes
+    // the decision.
+    RunAsync(tenantDatabaseId, operation, dueAnchorUtc ?? DateTimeOffset.MinValue, cancellationToken);
+
+  private async Task<Result<TenantDatabaseBackupExecutionOutcome>> RunAsync(
+    long tenantDatabaseId,
+    TenantDatabaseBackupOperation operation,
+    DateTimeOffset? dueAnchorUtc,
     CancellationToken cancellationToken = default)
   {
     ArgumentNullException.ThrowIfNull(operation);
@@ -81,13 +98,33 @@ public sealed class TenantDatabaseBackupExecutor(
     var runId = await runStore.StartAsync(
       tenantDatabaseId, operation, policy.DestinationKey, BackupActor, cancellationToken);
 
-    var result = await provider.ExecuteAsync(
-      new TenantDatabaseBackupRequest(
-        tenantDatabaseId,
-        operation,
-        runId,
-        new TenantDatabaseBackupOptions(policy.DestinationKey ?? string.Empty, policy.CompressionMode)),
-      cancellationToken);
+    TenantDatabaseBackupProviderResult result;
+    try
+    {
+      result = await provider.ExecuteAsync(
+        new TenantDatabaseBackupRequest(
+          tenantDatabaseId,
+          operation,
+          runId,
+          new TenantDatabaseBackupOptions(policy.DestinationKey ?? string.Empty, policy.CompressionMode),
+          dueAnchorUtc),
+        cancellationToken);
+    }
+    catch (OperationCanceledException)
+    {
+      // A RUN MUST NEVER BE STRANDED IN `Running`.
+      //
+      // Cancellation reaches here from a client-side abort, and Phase B established that aborting the client
+      // does not reliably stop a server-side BACKUP — so this cannot claim the operation stopped. It records
+      // a terminal Failed with an explicit reason and leaves the rest to the mandatory in-flight guard,
+      // which is what prevents the next attempt from colliding with a backup that may still be running.
+      //
+      // Recording Failed here is deliberately conservative: it never marks success without reconciled
+      // evidence, and it never advances a successful-backup timestamp.
+      await runStore.MarkFailedAsync(
+        runId, TenantStorageErrors.BackupExecutionCancelled.Code, BackupActor, CancellationToken.None);
+      throw;
+    }
 
     return Result.Success(await RecordAsync(tenantDatabaseId, runId, operation, result, cancellationToken));
   }
@@ -117,6 +154,18 @@ public sealed class TenantDatabaseBackupExecutor(
           TenantDatabaseBackupRunStatus.Succeeded, result.ProviderBackupSetIdentity, null);
 
       case TenantDatabaseBackupOutcome.SkippedOwnershipHeld:
+        await runStore.MarkSkippedAsync(runId, TenantDatabaseBackupRunStatus.SkippedOwnershipHeld,
+          result.SafeErrorSummary, BackupActor, cancellationToken);
+        return Outcome(tenantDatabaseId, runId, operation,
+          TenantDatabaseBackupRunStatus.SkippedOwnershipHeld, null, result.SafeErrorSummary);
+
+      case TenantDatabaseBackupOutcome.SkippedSupersededByRecentBackup:
+        // Recorded under SkippedOwnershipHeld, with the precise reason in the safe error summary.
+        //
+        // The status family is right — this run did not execute because another worker's ownership of the
+        // same due event covered it — and a dedicated status would mean a new enum value, which the
+        // CK_TenantDatabaseBackupRuns_Status check constraint makes a schema migration. Phase C is a
+        // no-schema slice, and BackupSupersededByRecentRun carries the distinction without one.
         await runStore.MarkSkippedAsync(runId, TenantDatabaseBackupRunStatus.SkippedOwnershipHeld,
           result.SafeErrorSummary, BackupActor, cancellationToken);
         return Outcome(tenantDatabaseId, runId, operation,

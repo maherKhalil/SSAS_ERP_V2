@@ -91,12 +91,28 @@ public sealed class TenantBackupProviderArchitectureTests
 
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public void Phase_b_adds_no_scheduler_and_no_hosted_service()
+  public void The_provider_layer_still_hosts_no_loop_of_its_own()
   {
-    // Fleet scheduling is Phase C and stays blocked behind the session-loss gate. A backup happens only when
-    // something explicitly asks for one.
+    // Originally "Phase B adds no scheduler and no hosted service". Phase C landed fleet scheduling, so the
+    // blanket prohibition is retired — but the boundary underneath it is not.
+    //
+    // What still binds: the PROVIDER and its immediate collaborators must remain passive. Scheduling lives
+    // in the scheduler types, which are exempted by exact name and separately guarded by
+    // TenantBackupSchedulerArchitectureTests; nothing else in the backup surface may run a loop, host a
+    // service, or become a worker.
+    var schedulingComponents = new[]
+    {
+      "ITenantDatabaseBackupScheduler",
+      "TenantDatabaseBackupScheduler",
+      "TenantDatabaseBackupSchedulerOptions",
+      "TenantDatabaseBackupSchedulerHostedService",
+      "TenantDatabaseBackupSchedulerOptionsValidator",
+      "TenantDatabaseBackupSweepSummary"
+    };
+
     foreach (var type in InfrastructureAssembly.GetTypes()
-      .Where(type => type.Name.Contains("Backup", StringComparison.Ordinal)))
+      .Where(type => type.Name.Contains("Backup", StringComparison.Ordinal))
+      .Where(type => !schedulingComponents.Contains(type.Name, StringComparer.Ordinal)))
     {
       Assert.DoesNotContain(typeof(Microsoft.Extensions.Hosting.IHostedService), type.GetInterfaces());
       Assert.DoesNotContain("Scheduler", type.Name, StringComparison.Ordinal);

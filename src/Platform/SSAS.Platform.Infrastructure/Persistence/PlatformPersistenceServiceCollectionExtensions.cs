@@ -122,10 +122,6 @@ public static class PlatformInfrastructureServiceCollectionExtensions
 
     // TS-Backup Phase B: single-database SQL Server backup execution.
     //
-    // Registered as services only. NOTHING invokes them automatically — there is no hosted service, timer or
-    // fleet loop, and there must not be one until the ADR-022 §14 session-loss question is settled. A backup
-    // happens only when something explicitly asks for one.
-    //
     // The backup connection factory is registered SEPARATELY from ITenantDatabaseConnectionFactory and the
     // two must never be substituted for one another: the request-serving credential must never hold backup
     // privileges (ADR-022 §11).
@@ -134,6 +130,24 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseBackupRunStore, TenantDatabaseBackupRunStore>();
     services.AddScoped<ITenantDatabaseBackupProvider, SqlServerTenantDatabaseBackupProvider>();
     services.AddScoped<ITenantDatabaseBackupExecutor, TenantDatabaseBackupExecutor>();
+
+    // TS-Backup Phase C: fleet scheduling (ADR-022 §13).
+    //
+    // BOUND FROM CONFIGURATION and validated at startup, following the TenantStorageOptions precedent. The
+    // scheduler still DEFAULTS OFF — enabling unattended fleet backups also requires BackupServers
+    // credentials and BackupDestinations to exist — but a deployment can now turn it on and tune it without
+    // a rebuild, and a misconfigured enabled scheduler fails at startup rather than at 03:00.
+    //
+    // Note what is NOT configurable anywhere in this graph: the provider's visibility and in-flight checks.
+    // Scheduling is an operational preference; that guard is a correctness precondition (compliance rule 29).
+    services.AddOptions<TenantDatabaseBackupSchedulerOptions>()
+      .Bind(configuration.GetSection(TenantDatabaseBackupSchedulerOptions.SectionName))
+      .ValidateOnStart();
+    services.AddSingleton<IValidateOptions<TenantDatabaseBackupSchedulerOptions>,
+      TenantDatabaseBackupSchedulerOptionsValidator>();
+    services.AddScoped<ITenantDatabaseBackupFleetReadRepository, TenantDatabaseBackupFleetReadRepository>();
+    services.AddScoped<ITenantDatabaseBackupScheduler, TenantDatabaseBackupScheduler>();
+    services.AddHostedService<TenantDatabaseBackupSchedulerHostedService>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();

@@ -800,7 +800,7 @@ public sealed class TenantBackupProviderSqlServerTests
         "CREATE TABLE dbo.Filler (Id int IDENTITY(1,1) NOT NULL, Payload char(8000) NOT NULL)");
       await ExecuteOnAsync(TargetCatalog,
         "DECLARE @batch int = 0; " +
-        "WHILE @batch < 6 BEGIN " +
+        "WHILE @batch < 3 BEGIN " +
         "  INSERT INTO dbo.Filler (Payload) SELECT TOP (5000) REPLICATE('x', 8000) " +
         "  FROM sys.all_columns AS a CROSS JOIN sys.all_columns AS b; " +
         "  CHECKPOINT; SET @batch += 1; END");

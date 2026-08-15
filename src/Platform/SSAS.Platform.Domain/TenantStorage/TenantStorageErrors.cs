@@ -205,4 +205,16 @@ public static class TenantStorageErrors
   // empty result as "nothing running" would be an assumption, not an observation (ADR-022 §14).
   public static readonly Error BackupInFlightVisibilityUnavailable =
     new("TenantStorage.BackupInFlightVisibilityUnavailable", "The backup identity lacks the server permission required to determine whether a backup is already in flight.");
+
+  // Another platform worker already satisfied the scheduling decision this run was created for. Distinct
+  // from ownership contention and from an in-flight operation: nothing is running now, and nothing failed —
+  // the work was simply already done (ADR-022 §13, §14).
+  // The execution was cancelled client-side before evidence could be reconciled. Recorded as a terminal
+  // failure rather than left Running: Phase B established that cancelling the client does not reliably stop
+  // a server-side BACKUP, so the honest statement is that this run cannot be shown to have succeeded.
+  public static readonly Error BackupExecutionCancelled =
+    new("TenantStorage.BackupExecutionCancelled", "The backup execution was cancelled before provider evidence could be reconciled.");
+
+  public static readonly Error BackupSupersededByRecentRun =
+    new("TenantStorage.BackupSupersededByRecentRun", "A platform-managed backup of this operation completed after the scheduling decision was made, so this run is redundant.");
 }

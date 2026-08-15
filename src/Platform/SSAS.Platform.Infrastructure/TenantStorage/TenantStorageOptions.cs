@@ -30,6 +30,41 @@ public sealed class TenantStorageOptions
   // routing failure, never a redirect to the Platform connection (ADR-017 "No automatic fallback").
   public IDictionary<string, TenantStorageServerOptions> Servers { get; } =
     new Dictionary<string, TenantStorageServerOptions>(StringComparer.Ordinal);
+
+  // ---- Backup authority (ADR-022 §11, TS-Backup Phase B). A SEPARATE credential profile, keyed by the
+  // SAME ServerKey namespace as `Servers` above.
+  //
+  // The key namespace is shared deliberately: ServerKey remains the one physical server registry, and a
+  // second registry would let backup reach a server routing would refuse. What differs is the IDENTITY
+  // behind the key — `BACKUP DATABASE` reads the entire database to a file, so granting that to the
+  // request-serving credential would widen any application compromise from "what the ERP can query" to "a
+  // complete copy of the database". Separate entries keep the two authorities independently rotatable and
+  // independently scoped.
+  //
+  // Absent entry = backup is not configured for that server, and fails closed. There is no fallback to
+  // `Servers`, because falling back would silently reintroduce the very credential reuse this separation
+  // exists to prevent.
+  public IDictionary<string, TenantStorageServerOptions> BackupServers { get; } =
+    new Dictionary<string, TenantStorageServerOptions>(StringComparer.Ordinal);
+
+  // Trusted backup destinations, keyed by `BackupDestinationKey` (ADR-022 §11, compliance rule 23).
+  //
+  // THE ONLY place a physical backup location may come from. A caller, tenant or request may contribute
+  // the KEY and nothing else; resolution to a directory happens here, in trusted configuration, entirely
+  // inside Infrastructure. An unknown key fails closed.
+  public IDictionary<string, TenantStorageBackupDestinationOptions> BackupDestinations { get; } =
+    new Dictionary<string, TenantStorageBackupDestinationOptions>(StringComparer.Ordinal);
+}
+
+// One trusted backup destination. Holds a location, never a credential: V1 destinations are filesystem or
+// UNC directories reached by the SQL Server service identity's own Windows authentication, so there is no
+// secret to store here and none may be added without revisiting ADR-022 §11.
+public sealed class TenantStorageBackupDestinationOptions
+{
+  // A directory the SQL SERVER SERVICE IDENTITY can write to — not the application process. Those are
+  // different accounts with different access, and confusing them is the single most common way a correctly
+  // configured backup fails with OS error 5.
+  public string DirectoryPath { get; set; } = string.Empty;
 }
 
 // Trusted connection configuration for one logical server. Credential material lives in configuration or a

@@ -320,10 +320,40 @@ public sealed class TenantStorageRegistryArchitectureTests
       "TenantDatabaseBackupPolicyConfiguration",
       "TenantDatabaseBackupRunConfiguration",
       "TenantDatabaseBackupReadRepository",
-      "AddTenantDatabaseBackupRecoveryFoundation"
+      "AddTenantDatabaseBackupRecoveryFoundation",
+
+      // TS-Backup Phase B (ADR-022): single-database SQL Server backup execution. Enumerated by exact name
+      // for the same reason as above — a scheduler, restore worker or retention service would still fail
+      // this guard, because none of them is on this list.
+      "ITenantDatabaseBackupConnectionFactory",
+      "TenantDatabaseBackupConnectionFactory",
+      "ITenantDatabaseBackupDestinationResolver",
+      "TenantDatabaseBackupDestinationResolver",
+      "TenantDatabaseBackupDestination",
+      "TenantDatabaseBackupOwnership",
+      "TenantDatabaseBackupOperationalOptions",
+      "ITenantDatabaseBackupRunStore",
+      "TenantDatabaseBackupRunStore",
+      "TenantDatabaseBackupExecutor",
+      "SqlServerBackupCommandText",
+      "SqlServerTenantDatabaseBackupProvider",
+      "TenantStorageBackupDestinationOptions",
+
+      // Phase B remediation: the visibility check and evidence reconciliation were extracted from the
+      // provider so a low-privilege test principal can exercise the PRODUCTION code rather than a copy of
+      // its SQL. Still execution components, still enumerated by exact name.
+      "SqlServerBackupVisibility",
+      "SqlServerBackupEvidence",
+      "SqlServerBackupEvidenceRecord"
     };
 
     var offenders = InfrastructureAssembly.GetTypes()
+      // Top-level, author-written types only. Nested records and compiler-generated async state machines
+      // inherit their enclosing type's vocabulary ("BackupEvidence", "<ExecuteBackupAsync>d__8") and would
+      // otherwise have to be enumerated one by one, which would make the allow-list noise rather than a
+      // boundary. Excluding them structurally keeps the guard about COMPONENTS.
+      .Where(type => !type.IsNested &&
+        !Attribute.IsDefined(type, typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute)))
       .Where(type => type.Name.Contains("Backup", StringComparison.OrdinalIgnoreCase) ||
         type.Name.Contains("Restore", StringComparison.OrdinalIgnoreCase))
       .Where(type => !phaseAMetadata.Contains(type.Name, StringComparer.Ordinal))

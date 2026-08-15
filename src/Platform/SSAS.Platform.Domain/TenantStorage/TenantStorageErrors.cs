@@ -150,4 +150,59 @@ public static class TenantStorageErrors
 
   public static readonly Error RecoveryReadinessResultRequired =
     new("TenantStorage.RecoveryReadinessResultRequired", "A recovery readiness evaluation must record a concluded status.");
+
+  // ---- Backup execution (ADR-022, TS-Backup Phase B). These are operator-facing and never carry a
+  // resolved destination, credential or provider command text.
+
+  // No BACKUP identity is configured for this server. Deliberately distinct from ServerKeyNotConfigured:
+  // a server may be routable without the platform being permitted or equipped to back it up, and falling
+  // back to the runtime credential would be the exact reuse ADR-022 §11 forbids.
+  public static readonly Error BackupServerNotConfigured =
+    new("TenantStorage.BackupServerNotConfigured", "No backup authority is configured for the tenant database's server.");
+
+  public static readonly Error BackupDestinationNotConfigured =
+    new("TenantStorage.BackupDestinationNotConfigured", "The backup destination key is not present in trusted configuration.");
+
+  public static readonly Error BackupCompressionNotSupported =
+    new("TenantStorage.BackupCompressionNotSupported", "The policy requires backup compression, which this SQL Server edition does not support.");
+
+  public static readonly Error BackupNotPermittedByManagementMode =
+    new("TenantStorage.BackupNotPermittedByManagementMode", "The backup management mode does not permit the platform to execute this backup.");
+
+  public static readonly Error BackupPolicyNotConfigured =
+    new("TenantStorage.BackupPolicyNotConfigured", "No backup policy is configured for the tenant database.");
+
+  public static readonly Error BackupPolicyDisabled =
+    new("TenantStorage.BackupPolicyDisabled", "The tenant database's backup policy is disabled.");
+
+  public static readonly Error BackupDatabaseStateUnsupported =
+    new("TenantStorage.BackupDatabaseStateUnsupported", "The tenant database is not in a state that supports backup.");
+
+  // SIMPLE recovery cannot produce a log backup at all. Reported rather than corrected: changing a recovery
+  // model automatically would start log growth on a database that is by definition misconfigured.
+  public static readonly Error BackupRecoveryModelUnsupported =
+    new("TenantStorage.BackupRecoveryModelUnsupported", "The tenant database's recovery model does not support a transaction log backup.");
+
+  public static readonly Error BackupBaselineMissing =
+    new("TenantStorage.BackupBaselineMissing", "No full backup baseline exists for this database, so the requested operation has no base.");
+
+  // The command returned but reconciled provider evidence was absent or did not match. NEVER a success.
+  public static readonly Error BackupEvidenceMissing =
+    new("TenantStorage.BackupEvidenceMissing", "The backup command completed but no matching provider evidence could be reconciled.");
+
+  public static readonly Error BackupOwnershipLost =
+    new("TenantStorage.BackupOwnershipLost", "Backup ownership of the tenant database was lost before the operation could be verified.");
+
+  // Evidence WAS found and correlated, but fails a quality requirement — missing checksums, or copy-only
+  // where the managed chain requires a base-resetting backup. Distinct from BackupEvidenceMissing so an
+  // operator can tell "nothing was recorded" from "what was recorded is not acceptable".
+  public static readonly Error BackupEvidenceRejected =
+    new("TenantStorage.BackupEvidenceRejected", "The reconciled backup evidence did not satisfy the managed chain's requirements.");
+
+  // The backup identity cannot see server-wide request state, so whether another backup is already running
+  // against this database CANNOT BE DETERMINED. Deliberately distinct from a detected in-flight operation:
+  // sys.dm_exec_requests silently narrows to the caller's own session rather than failing, so treating an
+  // empty result as "nothing running" would be an assumption, not an observation (ADR-022 §14).
+  public static readonly Error BackupInFlightVisibilityUnavailable =
+    new("TenantStorage.BackupInFlightVisibilityUnavailable", "The backup identity lacks the server permission required to determine whether a backup is already in flight.");
 }

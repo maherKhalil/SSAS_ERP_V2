@@ -64,12 +64,28 @@ public static class TenantDatabaseBackupChainSelector
       return Result.Success(Complete(steps, baseline, TenantDatabaseRestoreDepth.Full));
     }
 
+    // WITHOUT THE BASELINE'S CHECKPOINT, DIFFERENTIAL APPLICABILITY CANNOT BE DECIDED AT ALL.
+    //
+    // Fails closed rather than substituting `FirstLsn`. On the instances this was established against the two
+    // values were identical for every full observed, which is exactly what makes the substitution tempting
+    // and exactly why it is refused: SQL Server guarantees no such equality, and a wrong anchor would silently
+    // select a differential belonging to another baseline.
+    //
+    // Reported as MISSING METADATA, not as a broken chain. The platform has not established that SQL Server's
+    // chain is broken — it has established that it cannot tell, and those are different claims to an
+    // operator. A full captured after this change supplies the value naturally.
+    if (baseline.CheckpointLsn is not { } baselineCheckpoint)
+    {
+      return Result.Failure<TenantDatabaseRestoreChain>(
+        TenantStorageErrors.RestoreChainMetadataUnavailable);
+    }
+
     // THE LATEST APPLICABLE DIFFERENTIAL — applicable meaning anchored to THIS baseline, never merely the
     // most recent one. A differential taken against a superseded full is not restorable onto this one, so
     // selecting by time alone would produce a sequence that fails at restore.
     var differential = candidates
       .Where(candidate => candidate.Operation == TenantDatabaseRestoreStepKind.Differential &&
-        candidate.DatabaseBackupLsn == baseline.CheckpointLsn)
+        candidate.DatabaseBackupLsn == baselineCheckpoint)
       .OrderByDescending(candidate => candidate.LastLsn)
       .FirstOrDefault();
 
@@ -85,7 +101,7 @@ public static class TenantDatabaseBackupChainSelector
     // In the second case the differential path CANNOT be exercised from platform-owned artifacts. Returning a
     // full-only chain there would report a shallower restore while the caller believes the depth its policy
     // claims was verified — the silent downgrade ADR-022 §17 (v1.2) prohibits and compliance rule 37 names.
-    if (differential is null && HasOrphanedDifferential(candidates, baseline))
+    if (differential is null && HasOrphanedDifferential(candidates, baseline, baselineCheckpoint))
     {
       return Result.Failure<TenantDatabaseRestoreChain>(TenantStorageErrors.RestoreChainBroken);
     }
@@ -143,10 +159,11 @@ public static class TenantDatabaseBackupChainSelector
   // differential path is unverifiable from platform-owned artifacts.
   private static bool HasOrphanedDifferential(
     IReadOnlyList<TenantDatabaseBackupChainCandidate> candidates,
-    TenantDatabaseBackupChainCandidate baseline) =>
+    TenantDatabaseBackupChainCandidate baseline,
+    decimal baselineCheckpoint) =>
     candidates.Any(candidate =>
       candidate.Operation == TenantDatabaseRestoreStepKind.Differential &&
-      candidate.DatabaseBackupLsn != baseline.CheckpointLsn &&
+      candidate.DatabaseBackupLsn != baselineCheckpoint &&
       // Only differentials taken AFTER this baseline matter. One belonging to an older full is ordinary
       // history that a newer baseline has legitimately superseded, not evidence of a broken chain.
       candidate.LastLsn > baseline.LastLsn);
@@ -240,7 +257,9 @@ public sealed record TenantDatabaseBackupChainCandidate(
   TenantDatabaseRestoreStepKind Operation,
   string? DestinationKey,
   string? ArtifactReference,
-  decimal CheckpointLsn,
+  // NULLABLE, because runs captured before Phase D7 never recorded it. A missing checkpoint is not evidence
+  // of anything — it is absence of evidence — and the selector refuses depth rather than guessing.
+  decimal? CheckpointLsn,
   decimal DatabaseBackupLsn,
   decimal FirstLsn,
   decimal LastLsn);

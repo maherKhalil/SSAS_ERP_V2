@@ -89,6 +89,7 @@ public sealed class TenantDatabaseBackupRunStore(
       result.FirstLsn,
       result.LastLsn,
       result.DatabaseBackupLsn,
+      result.CheckpointLsn,
       result.BackupSetGuid,
       actor,
       // The provider's OBSERVED finish time, not the local clock: the authoritative completion moment is

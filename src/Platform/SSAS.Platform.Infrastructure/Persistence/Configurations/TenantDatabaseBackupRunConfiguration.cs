@@ -98,6 +98,10 @@ public sealed class TenantDatabaseBackupRunConfiguration : IEntityTypeConfigurat
     builder.Property(run => run.FirstLsn).HasColumnType("decimal(25,0)");
     builder.Property(run => run.LastLsn).HasColumnType("decimal(25,0)");
     builder.Property(run => run.DatabaseBackupLsn).HasColumnType("decimal(25,0)");
+
+    // Nullable by design: rows written before Phase D7 never captured it, and are left NULL rather than
+    // backfilled from a column that merely happened to match (TS-Backup Phase D7).
+    builder.Property(run => run.CheckpointLsn).HasColumnType("decimal(25,0)");
     builder.Property(run => run.BackupSetGuid);
 
     // The questions run history exists to answer: what happened to this database most recently, and what

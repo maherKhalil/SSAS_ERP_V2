@@ -385,7 +385,13 @@ public sealed class TenantStorageRegistryArchitectureTests
       // provider. Enumerated by exact name on the same terms as everything above — a retention worker, an
       // orphan-cleanup worker or a Phase E cutover guard would still fail this guard.
       "SqlServerTenantDatabaseRestoreVerificationProvider",
-      "TenantDatabaseRestoreDevice"
+      "TenantDatabaseRestoreDevice",
+
+      // TS-Backup Phase D7 (ADR-022 §17): post-restore probes and the checkpoint-LSN migration.
+      "SqlServerRestoreVerificationProbe",
+      "TenantDatabaseRestoreProbeResult",
+      "AddBackupCheckpointLsn",
+      "TenantDatabaseRestoreProbeOutcome"
     };
 
     var offenders = InfrastructureAssembly.GetTypes()

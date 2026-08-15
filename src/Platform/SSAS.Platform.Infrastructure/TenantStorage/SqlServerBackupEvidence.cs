@@ -103,6 +103,15 @@ internal static class SqlServerBackupEvidence
       CultureInfo.InvariantCulture,
       $@"%\{tenantDatabaseId}[_]{operation.OperationCode}[_]%");
 
+  // Reads one nullable column by NAME. Keeps the projection and the record from drifting apart when a
+  // column is added in the middle of the list.
+  private static T? Nullable<T>(SqlDataReader reader, string column, Func<SqlDataReader, int, T> read)
+    where T : struct
+  {
+    var ordinal = reader.GetOrdinal(column);
+    return reader.IsDBNull(ordinal) ? null : read(reader, ordinal);
+  }
+
   public static async Task<Result<SqlServerBackupEvidenceRecord>> ReadAsync(
     SqlConnection connection,
     string databaseName,
@@ -133,7 +142,7 @@ internal static class SqlServerBackupEvidence
     // correct here because this reconciles the backup that finished moments ago on this same connection, not
     // an arbitrary historical row (see the DST note on the caller).
     command.CommandText =
-      "SELECT TOP (1) bs.backup_set_uuid, bs.first_lsn, bs.last_lsn, bs.database_backup_lsn, " +
+      "SELECT TOP (1) bs.backup_set_uuid, bs.first_lsn, bs.last_lsn, bs.database_backup_lsn, bs.checkpoint_lsn, " +
       "bs.backup_size, " +
       "DATEADD(second, DATEDIFF(second, GETDATE(), GETUTCDATE()), bs.backup_finish_date) AS backup_finish_utc, " +
       "bs.backup_set_id, bs.has_backup_checksums, bs.is_copy_only " +
@@ -155,16 +164,23 @@ internal static class SqlServerBackupEvidence
         return Result.Failure<SqlServerBackupEvidenceRecord>(TenantStorageErrors.BackupEvidenceMissing);
       }
 
+      // READ BY NAME, not by ordinal. Adding `checkpoint_lsn` to the projection shifted every column after
+      // it, and positional reads would have silently mapped size into the finish time and onwards — a whole
+      // evidence record quietly wrong, with types loose enough that some of it would still have parsed.
       record = new SqlServerBackupEvidenceRecord(
-        reader.IsDBNull(0) ? null : reader.GetGuid(0),
-        reader.IsDBNull(1) ? null : reader.GetDecimal(1),
-        reader.IsDBNull(2) ? null : reader.GetDecimal(2),
-        reader.IsDBNull(3) ? null : reader.GetDecimal(3),
-        reader.IsDBNull(4) ? null : Convert.ToInt64(reader.GetValue(4), CultureInfo.InvariantCulture),
-        reader.IsDBNull(5) ? null : new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc)),
-        reader.IsDBNull(6) ? null : Convert.ToInt64(reader.GetValue(6), CultureInfo.InvariantCulture),
-        !reader.IsDBNull(7) && reader.GetBoolean(7),
-        !reader.IsDBNull(8) && reader.GetBoolean(8));
+        Nullable(reader, "backup_set_uuid", static (r, o) => r.GetGuid(o)),
+        Nullable(reader, "first_lsn", static (r, o) => r.GetDecimal(o)),
+        Nullable(reader, "last_lsn", static (r, o) => r.GetDecimal(o)),
+        Nullable(reader, "database_backup_lsn", static (r, o) => r.GetDecimal(o)),
+        Nullable(reader, "checkpoint_lsn", static (r, o) => r.GetDecimal(o)),
+        Nullable(reader, "backup_size",
+          static (r, o) => Convert.ToInt64(r.GetValue(o), CultureInfo.InvariantCulture)),
+        Nullable(reader, "backup_finish_utc",
+          static (r, o) => new DateTimeOffset(DateTime.SpecifyKind(r.GetDateTime(o), DateTimeKind.Utc))),
+        Nullable(reader, "backup_set_id",
+          static (r, o) => Convert.ToInt64(r.GetValue(o), CultureInfo.InvariantCulture)),
+        Nullable(reader, "has_backup_checksums", static (r, o) => r.GetBoolean(o)) ?? false,
+        Nullable(reader, "is_copy_only", static (r, o) => r.GetBoolean(o)) ?? false);
     }
 
     // CHECKSUMS. The managed chain always issues WITH CHECKSUM, so evidence saying otherwise means the set
@@ -193,6 +209,10 @@ internal sealed record SqlServerBackupEvidenceRecord(
   decimal? FirstLsn,
   decimal? LastLsn,
   decimal? DatabaseBackupLsn,
+
+  // The checkpoint this set records. For a FULL it is the anchor a differential's `database_backup_lsn`
+  // must match for that differential to be restorable onto it (TS-Backup Phase D7).
+  decimal? CheckpointLsn,
   long? BackupSizeBytes,
   DateTimeOffset? FinishedUtc,
   long? BackupSetId,

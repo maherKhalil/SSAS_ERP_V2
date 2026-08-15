@@ -82,6 +82,36 @@ public sealed class TenantDatabaseBackupReadRepository(PlatformDbContext dbConte
         database.LastRestoreVerificationUtc))
       .FirstOrDefaultAsync(cancellationToken)!;
 
+  // Successful platform-managed runs, projected into chain candidates.
+  //
+  // Runs missing the LSN evidence a chain decision needs are excluded here rather than defended against
+  // downstream: a run with no first/last LSN cannot be placed in a sequence at all. `CheckpointLsn` is
+  // deliberately NOT filtered on — a baseline predating Phase D7 is still selectable for a full-only
+  // verification, and the selector refuses it only where differential applicability actually depends on it.
+  public async Task<IReadOnlyList<Domain.TenantStorage.TenantDatabaseBackupChainCandidate>>
+    ListChainCandidatesAsync(long tenantDatabaseId, CancellationToken cancellationToken = default) =>
+    await dbContext.TenantDatabaseBackupRuns
+      .AsNoTracking()
+      .Where(run => run.TenantDatabaseId == tenantDatabaseId &&
+        run.Status == Domain.Enums.TenantDatabaseBackupRunStatus.Succeeded &&
+        run.Operation.ProviderKey == "SqlServer" &&
+        run.FirstLsn != null && run.LastLsn != null && run.DatabaseBackupLsn != null)
+      .OrderBy(run => run.Id)
+      .Select(run => new Domain.TenantStorage.TenantDatabaseBackupChainCandidate(
+        run.Id,
+        run.Operation.OperationCode == "Full"
+          ? Domain.TenantStorage.TenantDatabaseRestoreStepKind.Full
+          : run.Operation.OperationCode == "Differential"
+            ? Domain.TenantStorage.TenantDatabaseRestoreStepKind.Differential
+            : Domain.TenantStorage.TenantDatabaseRestoreStepKind.Log,
+        run.DestinationKey,
+        run.ArtifactReference,
+        run.CheckpointLsn,
+        run.DatabaseBackupLsn!.Value,
+        run.FirstLsn!.Value,
+        run.LastLsn!.Value))
+      .ToListAsync(cancellationToken);
+
   // A shared projection EXPRESSION rather than a method: EF must translate it to SQL, and a method call
   // would force client-side evaluation of the whole entity.
   private static readonly System.Linq.Expressions.Expression<

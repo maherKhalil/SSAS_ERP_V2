@@ -320,6 +320,86 @@ public sealed class TenantDatabaseBackupChainSelectorTests
     Assert.Equal("1_Full_20260815T000000Z_1.bak", chain.Steps[0].Artifact.ArtifactReference);
   }
 
+  // ---- The anchor is the CHECKPOINT LSN, pinned independently of this server's observed equality.
+  //
+  // On every instance this was established against, a full's `checkpoint_lsn` and `first_lsn` were identical,
+  // which makes substituting one for the other look harmless. SQL Server guarantees no such equality, so the
+  // rule is pinned with metadata where they deliberately DIFFER — a case the local server may never produce
+  // but the semantics must still handle.
+  [Fact]
+  public void Differential_applicability_follows_the_checkpoint_lsn_not_the_first_lsn()
+  {
+    // A baseline whose checkpoint and first LSN are different values.
+    var baseline = Candidate(
+      20, TenantDatabaseRestoreStepKind.Full, chk: 900, dbl: 0, fst: 700, lst: 750);
+
+    // Anchored to the baseline's CHECKPOINT (900) — this is the applicable one.
+    var anchoredToCheckpoint = Candidate(
+      21, TenantDatabaseRestoreStepKind.Differential, chk: 950, dbl: 900, fst: 950, lst: 960);
+
+    var chain = Select([baseline, anchoredToCheckpoint], TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.Equal(2, chain.Steps.Count);
+    Assert.Equal(anchoredToCheckpoint.BackupRunId, chain.Steps[1].Artifact.BackupRunId);
+    Assert.Equal(TenantDatabaseRestoreDepth.FullWithDifferential, chain.AchievedDepth);
+  }
+
+  [Fact]
+  public void A_differential_anchored_to_the_baselines_first_lsn_is_not_applicable()
+  {
+    var baseline = Candidate(
+      20, TenantDatabaseRestoreStepKind.Full, chk: 900, dbl: 0, fst: 700, lst: 750);
+
+    // Anchored to the baseline's FIRST LSN (700). Under a FirstLsn-based rule this would have been selected
+    // and restored — and would have failed, or worse, restored a differential belonging elsewhere.
+    var anchoredToFirstLsn = Candidate(
+      22, TenantDatabaseRestoreStepKind.Differential, chk: 950, dbl: 700, fst: 950, lst: 960);
+
+    var result = TenantDatabaseBackupChainSelector.Select(
+      [baseline, anchoredToFirstLsn], TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    // Not applicable, and newer than the baseline, so it is an orphan rather than superseded history.
+    Assert.True(result.IsFailure);
+    Assert.Equal(TenantStorageErrors.RestoreChainBroken.Code, result.Error.Code);
+  }
+
+  // ---- Runs captured before checkpoint LSNs were persisted.
+
+  // FAILS CLOSED, and says WHY. A baseline with no checkpoint cannot decide differential applicability, and
+  // guessing from `FirstLsn` is exactly the substitution this whole column exists to avoid.
+  [Fact]
+  public void A_baseline_without_a_checkpoint_cannot_establish_deeper_depth()
+  {
+    var legacyBaseline = Candidate(
+      30, TenantDatabaseRestoreStepKind.Full, chk: null, dbl: 0, fst: 700, lst: 750);
+
+    foreach (var depth in new[]
+      {
+        TenantDatabaseRestoreDepth.FullWithDifferential,
+        TenantDatabaseRestoreDepth.FullWithDifferentialAndLog
+      })
+    {
+      var result = TenantDatabaseBackupChainSelector.Select([legacyBaseline], depth);
+
+      Assert.True(result.IsFailure);
+      Assert.Equal(TenantStorageErrors.RestoreChainMetadataUnavailable.Code, result.Error.Code);
+    }
+  }
+
+  // ...but a full-only verification never needed the checkpoint, so a pre-D7 baseline still verifies at
+  // Level A. Refusing it would strand every database whose newest full predates the column.
+  [Fact]
+  public void A_baseline_without_a_checkpoint_still_supports_a_full_only_verification()
+  {
+    var legacyBaseline = Candidate(
+      30, TenantDatabaseRestoreStepKind.Full, chk: null, dbl: 0, fst: 700, lst: 750);
+
+    var chain = Select([legacyBaseline], TenantDatabaseRestoreDepth.Full);
+
+    Assert.Single(chain.Steps);
+    Assert.Equal(TenantDatabaseRestoreDepth.Full, chain.AchievedDepth);
+  }
+
   private static TenantDatabaseRestoreChain Select(
     IReadOnlyList<TenantDatabaseBackupChainCandidate> candidates,
     TenantDatabaseRestoreDepth depth)
@@ -332,7 +412,7 @@ public sealed class TenantDatabaseBackupChainSelectorTests
   private static TenantDatabaseBackupChainCandidate Candidate(
     long id,
     TenantDatabaseRestoreStepKind operation,
-    decimal chk,
+    decimal? chk,
     decimal dbl,
     decimal fst,
     decimal lst) =>

@@ -90,6 +90,18 @@ public sealed class TenantDatabaseBackupRun : AggregateRoot<long>, IAuditableEnt
 
   public decimal? DatabaseBackupLsn { get; private set; }
 
+  // The checkpoint this backup set records (TS-Backup Phase D7).
+  //
+  // THE ANCHOR DIFFERENTIAL APPLICABILITY IS DECIDED BY: a differential's `DatabaseBackupLsn` equals the
+  // checkpoint LSN of the full it was taken against, which is what makes "is this differential restorable
+  // onto that baseline?" answerable from platform records alone.
+  //
+  // NULLABLE, AND HISTORICAL ROWS STAY NULL. On the instances this was established against, a full's
+  // checkpoint and first LSN happened to be identical, so backfilling one from the other would have looked
+  // right — and would have been inventing evidence about backups nobody captured this value for. A chain
+  // whose baseline predates this column is reported as unverifiable at depth rather than guessed at.
+  public decimal? CheckpointLsn { get; private set; }
+
   public Guid? BackupSetGuid { get; private set; }
 
   public TenantDatabaseBackupVerificationState VerificationState { get; private set; }
@@ -147,6 +159,7 @@ public sealed class TenantDatabaseBackupRun : AggregateRoot<long>, IAuditableEnt
     decimal? firstLsn,
     decimal? lastLsn,
     decimal? databaseBackupLsn,
+    decimal? checkpointLsn,
     Guid? backupSetGuid,
     string actor,
     DateTimeOffset occurredUtc)
@@ -174,6 +187,7 @@ public sealed class TenantDatabaseBackupRun : AggregateRoot<long>, IAuditableEnt
     FirstLsn = firstLsn;
     LastLsn = lastLsn;
     DatabaseBackupLsn = databaseBackupLsn;
+    CheckpointLsn = checkpointLsn;
     BackupSetGuid = backupSetGuid;
     ErrorSummary = null;
     Complete(actor, occurredUtc);

@@ -305,4 +305,32 @@ public static class TenantStorageErrors
   // restoring against drifted state.
   public static readonly Error RestoreVerificationTargetDrifted =
     new("TenantStorage.RestoreVerificationTargetDrifted", "The verification target or its admitted operation changed before the restore began.");
+
+  // ---- Post-restore probes (ADR-022 §17, TS-Backup Phase D7).
+
+  // The restored database came online but carries no readable tenant migration history. Whatever restored,
+  // it is not a recoverable tenant database.
+  public static readonly Error RestoreVerificationMigrationHistoryUnreadable =
+    new("TenantStorage.RestoreVerificationMigrationHistoryUnreadable", "The restored verification database has no readable tenant migration history.");
+
+  // The restored schema is at a position the deployed application does not recognise, so its lineage
+  // diverged from the tenant migration catalog.
+  public static readonly Error RestoreVerificationSchemaPositionUnexpected =
+    new("TenantStorage.RestoreVerificationSchemaPositionUnexpected", "The restored verification database is not at a schema position this application recognises.");
+
+  // The restore reached a shallower recovery path than the active policy requires, so the deeper capability
+  // the policy claims was never exercised (ADR-022 §17, v1.2).
+  public static readonly Error RestoreVerificationDepthNotAchieved =
+    new("TenantStorage.RestoreVerificationDepthNotAchieved", "The restore did not reach the recovery depth the active policy requires.");
+
+  // Eligibility changed between admission and execution — hosting mode, policy, authority or the admitted
+  // operation itself. Fails closed rather than restoring against drifted state.
+  // The selected baseline predates checkpoint-LSN capture, so differential applicability cannot be decided.
+  // DISTINCT FROM A CHAIN BREAK: the platform has not established that SQL Server's chain is broken, only
+  // that it cannot tell from its own records (TS-Backup Phase D7).
+  public static readonly Error RestoreChainMetadataUnavailable =
+    new("TenantStorage.RestoreChainMetadataUnavailable", "The selected full backup lacks the checkpoint metadata required to establish differential applicability.");
+
+  public static readonly Error RestoreVerificationNotEligible =
+    new("TenantStorage.RestoreVerificationNotEligible", "The tenant database is no longer eligible for platform restore verification.");
 }

@@ -7,6 +7,7 @@ using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence;
+using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.TenantStorage;
 
 namespace SSAS.Integration.Tests;
@@ -317,6 +318,65 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
 
   // A due-state snapshot. Both halves matter: the baseline being verified, and the successful verification
   // that existed when the decision was made (null = none had).
+  // THE PRODUCTION PATH FOR CHECKPOINT METADATA (TS-Backup Phase D7).
+  //
+  // This closes the fixture gap that hid a real defect: the D5 chain tests read `checkpoint_lsn` straight
+  // from `msdb` into their candidates, which gave them richer metadata than production ever receives. The
+  // selector looked correctly wired while the Platform run row had no checkpoint column at all.
+  //
+  // Here the value travels the way it does in a deployment — reconciled from provider evidence, persisted on
+  // the run, reloaded through the read repository — and chain selection consumes THAT.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_successful_backup_persists_its_checkpoint_lsn_for_chain_selection()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var databaseId = await fixture.RegisterAsync("SSAS_Verify_Checkpoint_A");
+
+    // A successful full recorded through the run store with reconciled evidence, checkpoint included.
+    var baselineId = await fixture.RecordSuccessfulFullBackupAsync(databaseId, checkpointLsn: 512m);
+
+    var candidates = await fixture.BackupReads().ListChainCandidatesAsync(databaseId);
+
+    var baseline = Assert.Single(candidates);
+    Assert.Equal(baselineId, baseline.BackupRunId);
+    Assert.Equal(512m, baseline.CheckpointLsn);
+
+    // And a differential anchored to that persisted checkpoint is selectable from it.
+    await fixture.RecordSuccessfulDifferentialAsync(databaseId, databaseBackupLsn: 512m);
+    var withDifferential = await fixture.BackupReads().ListChainCandidatesAsync(databaseId);
+
+    var chain = TenantDatabaseBackupChainSelector.Select(
+      withDifferential, TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.True(chain.IsSuccess);
+    Assert.Equal(TenantDatabaseRestoreDepth.FullWithDifferential, chain.Value.AchievedDepth);
+  }
+
+  // A run captured before the column existed stays NULL — never backfilled from FirstLsn — and depth is
+  // refused rather than guessed.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_baseline_without_a_persisted_checkpoint_refuses_deeper_depth()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var databaseId = await fixture.RegisterAsync("SSAS_Verify_Checkpoint_B");
+    await fixture.RecordSuccessfulFullBackupAsync(databaseId, checkpointLsn: null);
+
+    var candidates = await fixture.BackupReads().ListChainCandidatesAsync(databaseId);
+    Assert.Null(Assert.Single(candidates).CheckpointLsn);
+
+    var result = TenantDatabaseBackupChainSelector.Select(
+      candidates, TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(TenantStorageErrors.RestoreChainMetadataUnavailable.Code, result.Error.Code);
+
+    // ...while a full-only verification is unaffected.
+    Assert.True(TenantDatabaseBackupChainSelector
+      .Select(candidates, TenantDatabaseRestoreDepth.Full).IsSuccess);
+  }
+
   private static TenantDatabaseRestoreVerificationAdmissionRequest Request(
     long tenantDatabaseId,
     long baselineBackupRunId,
@@ -385,7 +445,9 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
 
     // A successful full backup row — the baseline a verification restores. Recorded directly rather than by
     // running BACKUP: this suite proves admission, not execution.
-    public async Task<long> RecordSuccessfulFullBackupAsync(long tenantDatabaseId)
+    public async Task<long> RecordSuccessfulFullBackupAsync(
+      long tenantDatabaseId,
+      decimal? checkpointLsn = null)
     {
       await using var platform = PlatformContext();
       var run = TenantDatabaseBackupRun.Start(
@@ -393,10 +455,36 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
       platform.TenantDatabaseBackupRuns.Add(run);
       await platform.SaveChangesAsync();
 
-      run.Succeed("evidence-identity", "artifact.bak", 1024, null, null, null, null, "verify-tests", Now);
+      // A run captured before Phase D7 still carries its first/last/database-backup LSNs — only the
+      // CHECKPOINT is absent. Nulling the others too would make the row fail the candidate filter for an
+      // unrelated reason and stop this exercising the missing-checkpoint path at all.
+      run.Succeed(
+        "evidence-identity", "artifact.bak", 1024,
+        500m, 520m, 0m, checkpointLsn,
+        null, "verify-tests", Now);
       await platform.SaveChangesAsync();
       return run.Id;
     }
+
+    public async Task<long> RecordSuccessfulDifferentialAsync(
+      long tenantDatabaseId,
+      decimal databaseBackupLsn)
+    {
+      await using var platform = PlatformContext();
+      var run = TenantDatabaseBackupRun.Start(
+        tenantDatabaseId, TenantDatabaseBackupOperation.SqlServerDifferential(),
+        "primary", "verify-tests", Now).Value;
+      platform.TenantDatabaseBackupRuns.Add(run);
+      await platform.SaveChangesAsync();
+
+      run.Succeed(
+        "diff-identity", "artifact-diff.bak", 512,
+        600m, 620m, databaseBackupLsn, 600m, null, "verify-tests", Now);
+      await platform.SaveChangesAsync();
+      return run.Id;
+    }
+
+    public TenantDatabaseBackupReadRepository BackupReads() => new(PlatformContext());
 
     // Drives one admitted run to a successful terminal state. Deliberately does NOT propagate any derived
     // observation onto the TenantDatabase row, so the ordering test above exercises the gap between a run

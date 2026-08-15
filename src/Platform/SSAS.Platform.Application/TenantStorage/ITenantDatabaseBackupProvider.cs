@@ -51,6 +51,7 @@ public sealed record TenantDatabaseBackupProviderResult(
   decimal? FirstLsn = null,
   decimal? LastLsn = null,
   decimal? DatabaseBackupLsn = null,
+  decimal? CheckpointLsn = null,
   Guid? BackupSetGuid = null,
   DateTimeOffset? StartedUtc = null,
   DateTimeOffset? CompletedUtc = null,

@@ -61,7 +61,7 @@ public static class TenantDatabaseBackupChainSelector
 
     if (depth == TenantDatabaseRestoreDepth.Full)
     {
-      return Result.Success(Complete(steps, baseline));
+      return Result.Success(Complete(steps, baseline, TenantDatabaseRestoreDepth.Full));
     }
 
     // THE LATEST APPLICABLE DIFFERENTIAL — applicable meaning anchored to THIS baseline, never merely the
@@ -73,17 +73,38 @@ public static class TenantDatabaseBackupChainSelector
       .OrderByDescending(candidate => candidate.LastLsn)
       .FirstOrDefault();
 
+    // AN ORPHANED DIFFERENTIAL IS A CHAIN BREAK, NOT A QUIETER RESULT.
+    //
+    // These two situations produce the same STEPS and must not produce the same VERDICT:
+    //
+    //   * no platform differential has ever been taken — the full alone genuinely is the whole chain; and
+    //   * a platform differential exists, but an external non-copy-only full reset the differential base, so
+    //     the platform's own differential is anchored to an artifact the platform neither recorded nor can
+    //     locate.
+    //
+    // In the second case the differential path CANNOT be exercised from platform-owned artifacts. Returning a
+    // full-only chain there would report a shallower restore while the caller believes the depth its policy
+    // claims was verified — the silent downgrade ADR-022 §17 (v1.2) prohibits and compliance rule 37 names.
+    if (differential is null && HasOrphanedDifferential(candidates, baseline))
+    {
+      return Result.Failure<TenantDatabaseRestoreChain>(TenantStorageErrors.RestoreChainBroken);
+    }
+
     if (differential is not null)
     {
       steps.Add(new TenantDatabaseRestoreChainStep(
         TenantDatabaseRestoreStepKind.Differential, differential));
     }
 
-    // A DIFFERENTIAL IS NOT A PRECONDITION FOR LOG VERIFICATION (ADR-022 §17, v1.2). Where none applies,
-    // Level B is the baseline alone and Level C is the baseline followed by logs.
+    // A DIFFERENTIAL IS NOT A PRECONDITION FOR LOG VERIFICATION (ADR-022 §17, v1.2). Where none has ever been
+    // taken, Level B is the baseline alone and Level C is the baseline followed by logs — but the ACHIEVED
+    // depth says so rather than letting the request imply it.
     if (depth == TenantDatabaseRestoreDepth.FullWithDifferential)
     {
-      return Result.Success(Complete(steps, differential ?? baseline));
+      return Result.Success(Complete(
+        steps,
+        differential ?? baseline,
+        differential is null ? TenantDatabaseRestoreDepth.Full : TenantDatabaseRestoreDepth.FullWithDifferential));
     }
 
     var lastDataStep = differential ?? baseline;
@@ -102,8 +123,33 @@ public static class TenantDatabaseBackupChainSelector
     // sequence available now — not a moving target that grows as later logs arrive, which is what keeps a
     // verification finite on a database whose log cadence is measured in minutes.
     var recoveryPoint = logs.Value.Count > 0 ? logs.Value[^1] : lastDataStep;
-    return Result.Success(Complete(steps, recoveryPoint));
+
+    // ACHIEVED DEPTH REFLECTS WHAT THE SEQUENCE ACTUALLY EXERCISES. A chain with no log segment does not
+    // exercise the log recovery path, however it was requested: where the latest platform backup IS the data
+    // backup there is no tail to restore, and saying so is the difference between "nothing to verify beyond
+    // this point" and "the log path was verified".
+    var achieved = logs.Value.Count > 0
+      ? TenantDatabaseRestoreDepth.FullWithDifferentialAndLog
+      : differential is null
+        ? TenantDatabaseRestoreDepth.Full
+        : TenantDatabaseRestoreDepth.FullWithDifferential;
+
+    return Result.Success(Complete(steps, recoveryPoint, achieved));
   }
+
+  // Does a platform differential exist that CANNOT be applied to the selected baseline?
+  //
+  // Distinguishes "none was ever taken" from "one exists but its base is not ours". Only the latter means the
+  // differential path is unverifiable from platform-owned artifacts.
+  private static bool HasOrphanedDifferential(
+    IReadOnlyList<TenantDatabaseBackupChainCandidate> candidates,
+    TenantDatabaseBackupChainCandidate baseline) =>
+    candidates.Any(candidate =>
+      candidate.Operation == TenantDatabaseRestoreStepKind.Differential &&
+      candidate.DatabaseBackupLsn != baseline.CheckpointLsn &&
+      // Only differentials taken AFTER this baseline matter. One belonging to an older full is ordinary
+      // history that a newer baseline has legitimately superseded, not evidence of a broken chain.
+      candidate.LastLsn > baseline.LastLsn);
 
   // The contiguous log run from the last restored data backup through the latest log available.
   private static Result<IReadOnlyList<TenantDatabaseBackupChainCandidate>> SelectLogs(
@@ -162,8 +208,9 @@ public static class TenantDatabaseBackupChainSelector
 
   private static TenantDatabaseRestoreChain Complete(
     List<TenantDatabaseRestoreChainStep> steps,
-    TenantDatabaseBackupChainCandidate recoveryPoint) =>
-    new(steps, recoveryPoint.LastLsn, recoveryPoint.BackupRunId);
+    TenantDatabaseBackupChainCandidate recoveryPoint,
+    TenantDatabaseRestoreDepth achievedDepth) =>
+    new(steps, recoveryPoint.LastLsn, recoveryPoint.BackupRunId, achievedDepth);
 }
 
 // The ROLE an artifact plays in a restore sequence: the base image, a cumulative delta on that base, or a
@@ -206,7 +253,17 @@ public sealed record TenantDatabaseRestoreChainStep(
 //
 // `RecoveryPointLsn` and `RecoveryPointBackupRunId` name the position this verification will actually reach,
 // so an operation records what it proved rather than what was available when it finished.
+//
+// `AchievedDepth` IS THE HALF THAT STOPS A SHALLOWER RESTORE CLAIMING A DEEPER GUARANTEE. It states what the
+// selected sequence actually exercises, which is not always what was requested: a Level C request against a
+// database whose newest backup is its full yields a full-only sequence, and the caller must be able to see
+// that rather than infer verification of a log path that has no segments to restore.
+//
+// The rule downstream is a comparison, not a boolean: a verification counts at the requested depth only when
+// `AchievedDepth >= RequestedDepth`. Reusing the existing depth vocabulary keeps that comparison meaningful
+// and avoids inventing a second way to describe the same three levels.
 public sealed record TenantDatabaseRestoreChain(
   IReadOnlyList<TenantDatabaseRestoreChainStep> Steps,
   decimal RecoveryPointLsn,
-  long RecoveryPointBackupRunId);
+  long RecoveryPointBackupRunId,
+  TenantDatabaseRestoreDepth AchievedDepth);

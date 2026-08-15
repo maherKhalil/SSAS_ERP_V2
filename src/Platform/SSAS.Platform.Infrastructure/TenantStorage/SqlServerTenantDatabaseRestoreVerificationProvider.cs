@@ -135,17 +135,24 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
           TenantDatabaseRestoreVerificationOutcome.NotOnline,
           request.VerificationDatabaseName,
           request.Chain.Steps.Count,
-          startedUtc,
-          clock.UtcNow,
-          TenantStorageErrors.RestoreVerificationDatabaseNotOnline.Code);
+          // No achieved depth: the sequence ran but produced nothing usable, so it demonstrated no recovery
+          // capability at any level.
+          AchievedDepth: null,
+          StartedUtc: startedUtc,
+          CompletedUtc: clock.UtcNow,
+          SafeErrorSummary: TenantStorageErrors.RestoreVerificationDatabaseNotOnline.Code);
       }
 
       // DELIBERATELY NOT "RestoreVerified". The migration-history and schema probes ADR-022 §17 also
       // requires belong to D7; claiming full verification here would report a probe that never ran.
+      //
+      // The ACHIEVED DEPTH travels with the result so D7 can refuse `RestoreVerified` at a depth this
+      // sequence did not exercise. It is the chain's own achieved depth, never the requested one.
       return new TenantDatabaseRestoreVerificationResult(
         TenantDatabaseRestoreVerificationOutcome.RestoredAndOnline,
         request.VerificationDatabaseName,
         request.Chain.Steps.Count,
+        request.Chain.AchievedDepth,
         startedUtc,
         clock.UtcNow);
     }
@@ -302,20 +309,24 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
   private static string Safe(SqlException exception) =>
     string.Create(CultureInfo.InvariantCulture, $"SqlError:{exception.Number}");
 
+  // Every non-success path carries a NULL achieved depth: nothing was demonstrated, so there is no level to
+  // report. Named arguments throughout, so adding a field to the result cannot silently shift a value into
+  // the wrong parameter.
   private TenantDatabaseRestoreVerificationResult Blocked(string reason, DateTimeOffset startedUtc) =>
     new(TenantDatabaseRestoreVerificationOutcome.BlockedByPrecondition,
-      null, 0, startedUtc, clock.UtcNow, reason);
+      AchievedDepth: null, StartedUtc: startedUtc, CompletedUtc: clock.UtcNow, SafeErrorSummary: reason);
 
   private TenantDatabaseRestoreVerificationResult Unavailable(string reason, DateTimeOffset startedUtc) =>
     new(TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable,
-      null, 0, startedUtc, clock.UtcNow, reason);
+      AchievedDepth: null, StartedUtc: startedUtc, CompletedUtc: clock.UtcNow, SafeErrorSummary: reason);
 
   private TenantDatabaseRestoreVerificationResult Failed(
     string reason,
     DateTimeOffset startedUtc,
     string databaseName) =>
     new(TenantDatabaseRestoreVerificationOutcome.RestoreFailed,
-      databaseName, 0, startedUtc, clock.UtcNow, reason);
+      VerificationDatabaseName: databaseName,
+      AchievedDepth: null, StartedUtc: startedUtc, CompletedUtc: clock.UtcNow, SafeErrorSummary: reason);
 }
 
 // One resolved artifact location, paired with the chain role it plays.

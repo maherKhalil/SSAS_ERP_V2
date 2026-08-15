@@ -64,14 +64,97 @@ public sealed class TenantDatabaseBackupChainSelectorTests
     Assert.Equal(Diff2.BackupRunId, chain.Steps[1].Artifact.BackupRunId);
   }
 
+  // Diff1 belongs to Full1 and was taken BEFORE Full2, so it is ordinary superseded history rather than
+  // evidence of a break. The baseline alone is correct — and the result reports Level A, not Level B.
   [Fact]
-  public void Level_b_omits_a_differential_belonging_to_a_superseded_baseline()
+  public void Level_b_omits_a_superseded_differential_and_reports_the_depth_it_achieved()
   {
-    // Only Diff1 exists, and it belongs to Full1. Against Full2 the correct answer is the baseline alone.
     var chain = Select([Full1, Diff1, Full2], TenantDatabaseRestoreDepth.FullWithDifferential);
 
     Assert.Single(chain.Steps);
     Assert.Equal(Full2.BackupRunId, chain.Steps[0].Artifact.BackupRunId);
+    Assert.Equal(TenantDatabaseRestoreDepth.Full, chain.AchievedDepth);
+  }
+
+  // ---- Achieved depth. THE DISTINCTION THAT STOPS A SHALLOWER RESTORE CLAIMING A DEEPER GUARANTEE.
+
+  [Fact]
+  public void A_full_only_chain_reports_level_a()
+  {
+    var chain = Select([Full1], TenantDatabaseRestoreDepth.Full);
+
+    Assert.Equal(TenantDatabaseRestoreDepth.Full, chain.AchievedDepth);
+  }
+
+  [Fact]
+  public void A_chain_with_an_applicable_differential_reports_level_b()
+  {
+    var chain = Select([Full1, Diff1], TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.Equal(TenantDatabaseRestoreDepth.FullWithDifferential, chain.AchievedDepth);
+  }
+
+  [Fact]
+  public void A_chain_with_a_restored_log_sequence_reports_level_c()
+  {
+    var chain = Select([Full1, Log1, Log2], TenantDatabaseRestoreDepth.FullWithDifferentialAndLog);
+
+    Assert.Equal(TenantDatabaseRestoreDepth.FullWithDifferentialAndLog, chain.AchievedDepth);
+  }
+
+  // A Level C REQUEST against a database whose newest backup is its full exercises no log path at all. The
+  // request does not make it Level C — the achieved depth says what was actually restored.
+  [Fact]
+  public void A_level_c_request_with_no_log_tail_reports_only_what_it_restored()
+  {
+    var chain = Select([Full1], TenantDatabaseRestoreDepth.FullWithDifferentialAndLog);
+
+    Assert.Single(chain.Steps);
+    Assert.Equal(TenantDatabaseRestoreDepth.Full, chain.AchievedDepth);
+  }
+
+  [Fact]
+  public void A_level_c_request_reaching_only_the_differential_reports_level_b()
+  {
+    var chain = Select(
+      [Full1, Log1, Diff1, Log2, Full2, Diff2, Log3],
+      TenantDatabaseRestoreDepth.FullWithDifferentialAndLog);
+
+    Assert.Equal(TenantDatabaseRestoreDepth.FullWithDifferential, chain.AchievedDepth);
+  }
+
+  // AN ORPHANED DIFFERENTIAL IS A BREAK, not a quieter result. Diff2 anchors to Full2, but the platform's
+  // selected baseline is Full1 — as happens when an external non-copy-only full resets the differential base
+  // between them. The differential path cannot be exercised from platform-owned artifacts.
+  [Fact]
+  public void A_differential_orphaned_by_an_external_baseline_is_a_chain_break()
+  {
+    var result = TenantDatabaseBackupChainSelector.Select(
+      [Full1, Diff2], TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(TenantStorageErrors.RestoreChainBroken.Code, result.Error.Code);
+  }
+
+  [Fact]
+  public void An_orphaned_differential_also_breaks_a_level_c_request()
+  {
+    var result = TenantDatabaseBackupChainSelector.Select(
+      [Full1, Diff2], TenantDatabaseRestoreDepth.FullWithDifferentialAndLog);
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(TenantStorageErrors.RestoreChainBroken.Code, result.Error.Code);
+  }
+
+  // A Level A request is unaffected: it never claimed the differential path, so an orphaned differential is
+  // irrelevant to what it verifies.
+  [Fact]
+  public void An_orphaned_differential_does_not_break_a_full_only_request()
+  {
+    var chain = Select([Full1, Diff2], TenantDatabaseRestoreDepth.Full);
+
+    Assert.Single(chain.Steps);
+    Assert.Equal(TenantDatabaseRestoreDepth.Full, chain.AchievedDepth);
   }
 
   // The observed sample ends with Diff2 and Log3 sharing the same last_lsn (640): taking a differential does

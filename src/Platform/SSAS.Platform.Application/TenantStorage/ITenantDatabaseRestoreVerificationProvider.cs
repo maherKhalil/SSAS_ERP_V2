@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.TenantStorage;
 
 namespace SSAS.Platform.Application.TenantStorage;
@@ -33,10 +34,15 @@ public sealed record TenantDatabaseRestoreVerificationRequest(
 
 // What the provider observed. Distinct from the persisted run, so a provider concern never becomes domain
 // state by accident.
+//
+// `AchievedDepth` travels with the outcome because a successful restore is not self-describing: the same
+// `RestoredAndOnline` can represent a full-only sequence or a full-differential-log one, and D7 must be able
+// to refuse `RestoreVerified` at a depth the sequence never reached. Null where nothing was restored.
 public sealed record TenantDatabaseRestoreVerificationResult(
   TenantDatabaseRestoreVerificationOutcome Outcome,
   string? VerificationDatabaseName = null,
   int RestoredStepCount = 0,
+  TenantDatabaseRestoreDepth? AchievedDepth = null,
   DateTimeOffset? StartedUtc = null,
   DateTimeOffset? CompletedUtc = null,
   string? SafeErrorSummary = null);

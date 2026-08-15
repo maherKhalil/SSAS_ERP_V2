@@ -169,17 +169,49 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     await fixture.TakeExternalFullAsync();
     await fixture.TakeDifferentialAsync();
 
-    // The platform's differential now anchors to the EXTERNAL full, which the platform never recorded, so
-    // no differential applicable to the platform's own baseline exists.
+    // The platform's differential now anchors to the EXTERNAL full, which the platform never recorded and
+    // cannot locate, so the differential path cannot be exercised from platform-owned artifacts.
+    //
+    // THIS TEST PREVIOUSLY ASSERTED THE OPPOSITE OF ITS OWN NAME. It required success with a single full
+    // step, which documented the silent downgrade as intended behaviour and let it pass a green suite. The
+    // name was right and the assertions were wrong.
+    var chain = fixture.SelectChain(TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.True(chain.IsFailure);
+    Assert.Equal(TenantStorageErrors.RestoreChainBroken.Code, chain.Error.Code);
+  }
+
+  // ...and the distinction that makes the rule above safe: a database that has simply never had a
+  // differential taken is NOT broken. The full alone is genuinely its whole chain, and the result says so by
+  // reporting Level A rather than by implying the request was met.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_database_with_no_differential_at_all_reports_level_a_rather_than_breaking()
+  {
+    await using var fixture = await RestoreFixture.CreateAsync();
+    await fixture.TakeFullAsync();
+
     var chain = fixture.SelectChain(TenantDatabaseRestoreDepth.FullWithDifferential);
 
     Assert.True(chain.IsSuccess);
     Assert.Single(chain.Value.Steps);
-    Assert.Equal(TenantDatabaseRestoreStepKind.Full, chain.Value.Steps[0].Kind);
+    Assert.Equal(TenantDatabaseRestoreDepth.Full, chain.Value.AchievedDepth);
+  }
 
-    // The external artifact itself is never a candidate.
-    Assert.DoesNotContain(chain.Value.Steps, step =>
-      step.Artifact.ArtifactReference?.Contains("external", StringComparison.OrdinalIgnoreCase) == true);
+  // The provider carries the achieved depth through to its result, so D7 can refuse RestoreVerified at a
+  // depth the sequence never exercised.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task The_provider_reports_the_depth_the_sequence_actually_restored()
+  {
+    await using var fixture = await RestoreFixture.CreateAsync();
+    await fixture.TakeFullAsync();
+    await fixture.TakeDifferentialAsync();
+
+    var result = await fixture.VerifyAsync(TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.Equal(TenantDatabaseRestoreVerificationOutcome.RestoredAndOnline, result.Outcome);
+    Assert.Equal(TenantDatabaseRestoreDepth.FullWithDifferential, result.AchievedDepth);
   }
 
   // 10. An external non-copy-only LOG takes a range the platform never recorded, leaving a gap its own

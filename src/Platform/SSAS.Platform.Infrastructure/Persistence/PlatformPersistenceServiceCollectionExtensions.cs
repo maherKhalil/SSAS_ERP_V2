@@ -168,6 +168,18 @@ public static class PlatformInfrastructureServiceCollectionExtensions
       TenantDatabaseVerificationConnectionFactory>();
     services.AddScoped<ITenantDatabaseRestoreVerificationRunStore, TenantDatabaseRestoreVerificationRunStore>();
 
+    // TS-Backup Phase D6: the isolated restore provider. Registered as a service only — nothing schedules
+    // it, and it implements no cleanup, because the destructive-permission model is not yet proven against a
+    // directly-connected least-privilege identity on this Windows-auth-only instance.
+    services.AddScoped<ITenantDatabaseRestoreVerificationProvider,
+      SqlServerTenantDatabaseRestoreVerificationProvider>();
+
+    // The destination resolver becomes an injected dependency here. Phase B's backup provider constructs one
+    // directly from options, which was self-contained enough at the time; the restore provider needs the same
+    // trust boundary, and two components sharing it is the point at which it belongs in the container rather
+    // than being new-ed up twice.
+    services.AddScoped<ITenantDatabaseBackupDestinationResolver, TenantDatabaseBackupDestinationResolver>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

@@ -379,7 +379,13 @@ public sealed class TenantStorageRegistryArchitectureTests
       "TenantDatabaseVerificationFilePlacement",
       "TenantDatabaseBackupFileEntry",
       "SqlServerRestoreCommandText",
-      "TenantDatabaseRestoreStep"
+      "TenantDatabaseRestoreStep",
+
+      // TS-Backup Phase D5/D6 (ADR-022 §17): deterministic chain selection and the isolated restore
+      // provider. Enumerated by exact name on the same terms as everything above — a retention worker, an
+      // orphan-cleanup worker or a Phase E cutover guard would still fail this guard.
+      "SqlServerTenantDatabaseRestoreVerificationProvider",
+      "TenantDatabaseRestoreDevice"
     };
 
     var offenders = InfrastructureAssembly.GetTypes()

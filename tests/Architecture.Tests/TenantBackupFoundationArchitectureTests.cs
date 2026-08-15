@@ -199,9 +199,17 @@ public sealed class TenantBackupFoundationArchitectureTests
           // CanRestoreInto is a PREDICATE — it answers whether a name may be used as a verification target,
           // and its whole purpose is to REFUSE. Reading it as a restore capability would flag the very guard
           // that prevents one.
+          //
+          // TS-Backup Phase D6: RESTORE EXECUTION NOW EXISTS, in exactly one type. Exempted BY TYPE, on the
+          // same terms as the backup provider in Phase B — the boundary this guard protects is that an
+          // execution verb appearing on any OTHER tenant-storage type still fails, which is what stops a
+          // second restore path arriving unnoticed.
           if (method.Name is "RecordVerification" or "BeginRestore" or "BeginRestoreAsync" or "CanRestoreInto" ||
             (method.Name is "ExecuteBackupAsync" && type.Name is "SqlServerTenantDatabaseBackupProvider") ||
-            type.Name is "SqlServerRestoreCommandText")
+            type.Name is "SqlServerRestoreCommandText" or
+              "SqlServerTenantDatabaseRestoreVerificationProvider" or
+              "ITenantDatabaseRestoreVerificationProvider" or
+              "TenantDatabaseBackupChainSelector")
           {
             continue;
           }
@@ -242,7 +250,15 @@ public sealed class TenantBackupFoundationArchitectureTests
       "TenantDatabaseRestoreVerificationOptionsValidator",
       "TenantDatabaseRestoreVerificationRunStore",
       "AddTenantDatabaseRestoreVerification",
-      "TenantDatabaseRestoreVerificationRunConfiguration"
+      "TenantDatabaseRestoreVerificationRunConfiguration",
+
+      // TS-Backup Phase D6: the isolated restore provider and its contract. Still no verification SCHEDULER,
+      // no hosted service and no cleanup worker — each of those would fail this guard until added explicitly.
+      "SqlServerTenantDatabaseRestoreVerificationProvider",
+      "ITenantDatabaseRestoreVerificationProvider",
+      "TenantDatabaseRestoreVerificationRequest",
+      "TenantDatabaseRestoreVerificationResult",
+      "TenantDatabaseRestoreVerificationOutcome"
     };
 
     foreach (var type in InfrastructureAssembly.GetTypes()

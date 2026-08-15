@@ -122,10 +122,6 @@ public static class PlatformInfrastructureServiceCollectionExtensions
 
     // TS-Backup Phase B: single-database SQL Server backup execution.
     //
-    // Registered as services only. NOTHING invokes them automatically — there is no hosted service, timer or
-    // fleet loop, and there must not be one until the ADR-022 §14 session-loss question is settled. A backup
-    // happens only when something explicitly asks for one.
-    //
     // The backup connection factory is registered SEPARATELY from ITenantDatabaseConnectionFactory and the
     // two must never be substituted for one another: the request-serving credential must never hold backup
     // privileges (ADR-022 §11).
@@ -134,6 +130,20 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseBackupRunStore, TenantDatabaseBackupRunStore>();
     services.AddScoped<ITenantDatabaseBackupProvider, SqlServerTenantDatabaseBackupProvider>();
     services.AddScoped<ITenantDatabaseBackupExecutor, TenantDatabaseBackupExecutor>();
+
+    // TS-Backup Phase C: fleet scheduling (ADR-022 §13).
+    //
+    // The scheduler DEFAULTS OFF. Enabling unattended fleet backups is a deployment decision that also
+    // requires BackupServers credentials and BackupDestinations to exist; a host that has not been prepared
+    // would otherwise sweep on first boot and fail once per database per minute. Registration is
+    // unconditional so the loop is present and observable; only its Enabled flag starts it.
+    //
+    // Note what is NOT configurable anywhere in this graph: the provider's visibility and in-flight checks.
+    // Scheduling is an operational preference; that guard is a correctness precondition (compliance rule 29).
+    services.AddSingleton(TenantDatabaseBackupSchedulerOptions.Default);
+    services.AddScoped<ITenantDatabaseBackupFleetReadRepository, TenantDatabaseBackupFleetReadRepository>();
+    services.AddScoped<ITenantDatabaseBackupScheduler, TenantDatabaseBackupScheduler>();
+    services.AddHostedService<TenantDatabaseBackupSchedulerHostedService>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();

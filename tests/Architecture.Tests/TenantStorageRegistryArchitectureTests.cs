@@ -344,7 +344,17 @@ public sealed class TenantStorageRegistryArchitectureTests
       // its SQL. Still execution components, still enumerated by exact name.
       "SqlServerBackupVisibility",
       "SqlServerBackupEvidence",
-      "SqlServerBackupEvidenceRecord"
+      "SqlServerBackupEvidenceRecord",
+
+      // TS-Backup Phase C (ADR-022 §13): fleet scheduling. Enumerated by exact name for the same reason as
+      // above — a restore worker, retention service or artifact-deletion component would still fail this
+      // guard, because none of them is on this list.
+      "ITenantDatabaseBackupScheduler",
+      "TenantDatabaseBackupScheduler",
+      "TenantDatabaseBackupSchedulerOptions",
+      "TenantDatabaseBackupSchedulerHostedService",
+      "TenantDatabaseBackupSweepSummary",
+      "TenantDatabaseBackupFleetReadRepository"
     };
 
     var offenders = InfrastructureAssembly.GetTypes()

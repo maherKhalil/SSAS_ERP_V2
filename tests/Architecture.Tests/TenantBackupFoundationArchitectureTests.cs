@@ -196,11 +196,20 @@ public sealed class TenantBackupFoundationArchitectureTests
   [Trait("Decision", "ADR-022")]
   public void Phase_a_introduces_no_backup_provider_and_no_scheduler()
   {
-    // Phase B has landed and owns the SQL Server provider, so the provider itself is expected. Phase C owns
-    // fleet scheduling and remains blocked behind the Phase B session-loss gate, so a scheduler, worker or
-    // restore-verification runtime still may not appear.
+    // Phase B owns the SQL Server provider and Phase C owns fleet scheduling, so both are expected and are
+    // exempted BY EXACT NAME. What must still not appear is a backup WORKER or a restore-verification
+    // runtime — those belong to Phase D and beyond, and neither is on this list.
+    var delivered = new[]
+    {
+      "SqlServerTenantDatabaseBackupProvider",
+      "ITenantDatabaseBackupScheduler",
+      "TenantDatabaseBackupScheduler",
+      "TenantDatabaseBackupSchedulerOptions",
+      "TenantDatabaseBackupSchedulerHostedService"
+    };
+
     foreach (var type in InfrastructureAssembly.GetTypes()
-      .Where(type => type.Name is not "SqlServerTenantDatabaseBackupProvider"))
+      .Where(type => !delivered.Contains(type.Name, StringComparer.Ordinal)))
     {
       Assert.DoesNotContain("BackupProvider", type.Name, StringComparison.Ordinal);
       Assert.DoesNotContain("BackupScheduler", type.Name, StringComparison.Ordinal);

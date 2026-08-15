@@ -88,23 +88,25 @@ public sealed class SqlServerTenantDatabaseBackupProvider(
       // The guard is required V1 behaviour, not an optional extra: the session-loss experiment observed
       // ownership becoming reacquirable only 7 ms after the backup request disappeared, and that ordering
       // was measured on one host with one backup size. It is not a margin to build on.
-      if (operationalOptions.InFlightDetectionEnabled)
+      // UNCONDITIONAL. There is no configuration, option or flag that reaches these two checks, by
+      // ADR-022 compliance rules 29 and 30: the in-flight guard is a correctness precondition, not an
+      // operational feature. Phase C made this binding, because fleet scheduling runs it unattended across
+      // the estate — the setting most likely to be flipped to "make the errors stop" is exactly the one
+      // that must not be.
+      if (!await SqlServerBackupVisibility.HasInFlightVisibilityAsync(connection, cancellationToken))
       {
-        if (!await SqlServerBackupVisibility.HasInFlightVisibilityAsync(connection, cancellationToken))
-        {
-          // FAIL CLOSED, and say why. This is a deployment fault — the identity needs
-          // VIEW SERVER PERFORMANCE STATE — so it is reported as a failure an operator investigates rather
-          // than a skip that reads like routine contention.
-          return Failed(TenantStorageErrors.BackupInFlightVisibilityUnavailable.Code, startedUtc);
-        }
+        // FAIL CLOSED, and say why. This is a deployment fault — the identity needs
+        // VIEW SERVER PERFORMANCE STATE — so it is reported as a failure an operator investigates rather
+        // than a skip that reads like routine contention.
+        return Failed(TenantStorageErrors.BackupInFlightVisibilityUnavailable.Code, startedUtc);
+      }
 
-        if (await SqlServerBackupVisibility.IsBackupInFlightAsync(connection, cancellationToken))
-        {
-          // An operation was genuinely OBSERVED. Distinct from the case above, which is "could not look".
-          return new TenantDatabaseBackupProviderResult(
-            TenantDatabaseBackupOutcome.SkippedInFlightOperation, StartedUtc: startedUtc,
-            CompletedUtc: DateTimeOffset.UtcNow);
-        }
+      if (await SqlServerBackupVisibility.IsBackupInFlightAsync(connection, cancellationToken))
+      {
+        // An operation was genuinely OBSERVED. Distinct from the case above, which is "could not look".
+        return new TenantDatabaseBackupProviderResult(
+          TenantDatabaseBackupOutcome.SkippedInFlightOperation, StartedUtc: startedUtc,
+          CompletedUtc: DateTimeOffset.UtcNow);
       }
 
       var precondition = await ValidatePreconditionsAsync(connection, request, cancellationToken);
@@ -314,17 +316,12 @@ public sealed class TenantDatabaseBackupOperationalOptions
 
   public TimeSpan OwnershipTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-  // REQUIRED V1 BEHAVIOUR, not a tuning preference.
+  // NOTE: there is deliberately NO in-flight detection switch here.
   //
-  // The session-loss experiment observed exit condition A — the server-side backup was gone before ownership
-  // could be reacquired — but by 7 ms, on one host, at one backup size, and that figure is the observation
-  // cadence rather than a designed margin. The guard also covers what the applock never could: a backup
-  // started by a DBA, SQL Agent or a third-party tool, which holds no application lock at all.
-  //
-  // Disabling this in a deployment means backups may be issued against a database already being backed up,
-  // with no way to detect it. The switch exists for controlled diagnosis, never as a way to make a failing
-  // permission check go away — that failure means the identity is under-privileged, and the fix is the grant.
-  public bool InFlightDetectionEnabled { get; init; } = true;
+  // v1 of this type carried `InFlightDetectionEnabled`. It defaulted on and was never configuration-bound,
+  // but its shape invited a future maintainer to disable a correctness precondition to quieten a failing
+  // permission check. ADR-022 v1.1 compliance rules 29 and 30 settled the question — the check is mandatory
+  // and must not be disableable — and Phase C removed the option rather than documenting around it.
 
   public static TenantDatabaseBackupOperationalOptions Default { get; } = new();
 }

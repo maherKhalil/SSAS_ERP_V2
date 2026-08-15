@@ -2,7 +2,7 @@
 id: ADR-022
 title: Tenant Database Backup and Recovery Orchestration
 category: Architecture Decision Record
-version: 1.1
+version: 1.2
 status: Proposed
 date: 2026-08-15
 owner: Solution Architecture Team
@@ -33,7 +33,7 @@ used_by:
 
 Owns the decisions that make a physical tenant database **recoverable**, and the orchestration that keeps it so. `ADR-017` establishes the topology and names `TS-Backup` as a required capability of the platform-managed estate; `ADR-018` establishes the health and migration model this ADR sits beside without merging into; `ADR-020` defines the cutover this ADR gates; `ADR-021` defines whose data — and therefore whose backups — a customer-managed database holds.
 
-**Implementation scope: architecture decided, implementation phased.** Phases A and B are delivered — the backup domain, recovery-readiness dimension and run history, and single-database SQL Server full, differential and transaction-log execution with mandatory in-flight detection and reconciled provider evidence. Phase C onward remain to be built. The sequencing constraint from `ADR-017` is binding and is the reason this ADR exists now rather than later: **`TS-Backup` must exist before dedicated provisioning and cutover become production-capable**, because a dedicated database with no verified backup chain is a data-loss position the shared database did not have.
+**Implementation scope: architecture decided, implementation phased.** Phases A, B and C are delivered — the backup domain, recovery-readiness dimension and run history; single-database SQL Server full, differential and transaction-log execution with mandatory in-flight detection and reconciled provider evidence; and fleet scheduling with due evaluation, keyset discovery, bounded concurrency and multi-instance duplicate-safe orchestration. **Phase D's architecture is defined by v1.2 of this ADR and its implementation has not begun.** Phase E remains future. The sequencing constraint from `ADR-017` is binding and is the reason this ADR exists now rather than later: **`TS-Backup` must exist before dedicated provisioning and cutover become production-capable**, because a dedicated database with no verified backup chain is a data-loss position the shared database did not have.
 
 ---
 
@@ -149,6 +149,23 @@ A closed, actionable set:
 
 **`Protected` is never "the last backup command returned success."**
 
+### `VerificationOverdue` — exact semantics *(v1.2)*
+
+`VerificationOverdue` applies when, and only when, **both** hold:
+
+- the policy's restore-verification interval **is set** — periodic actual restore verification is required; **and**
+- **either** no successful actual restore verification exists, **or** the current UTC time exceeds the last successful actual restore verification plus that interval.
+
+**A failed verification is not an overdue one.** An attempt that ran and failed is evidence of a recovery problem, not of age, and it degrades readiness to `Degraded` or `Unprotected` according to how deep the failure reached (§17). Labelling it `VerificationOverdue` would describe a broken chain as a late one and point the operator at the schedule instead of at the failure.
+
+### Where the policy does not require periodic verification *(v1.2)*
+
+**Where the restore-verification interval is unset, periodic actual restore verification is not required by that policy.** Verification therefore cannot become overdue merely because no restore has happened, and such a database **may** reach `Protected` on its remaining evidence without ever having undergone an actual restore.
+
+This is deliberate, and it is not a weakening. §17 already records that an unset interval is a legitimate configuration for a shared database whose chain is exercised continuously by other means. Treating those databases as permanently overdue would leave the fleet's most heavily used chains reporting amber indefinitely, which erodes the signal precisely where it needs to be readable.
+
+**It does not relax the cutover gate, which is a separate and stricter test.** First production activation of a dedicated target requires at least one successful actual restore verification *in addition to* `Protected` (§18). `ADR-020` lists those as separate prerequisites for the same reason: if `Protected` already implied a real restore, the requirement would be redundant, and it is not. **Periodic readiness and first-cutover evidence are two gates, and neither substitutes for the other.**
+
 ## 7. Backup health does not gate ERP traffic
 
 Normal tenant ERP traffic is **not** gated on recovery readiness. `ADR-018`'s traffic gate continues to be driven by connectivity, schema compatibility and migration execution alone.
@@ -232,6 +249,8 @@ Consequences here:
 - The platform **does not attempt** backup execution against a customer-managed database — there is no supported runtime connectivity path to one (`ADR-021`), and inventing one for backups would contradict that.
 - Recovery readiness is reported as `Unknown` or an explicit externally-managed state. It is **never** reported `Protected` on the strength of a customer's assertion. This mirrors `ADR-018`'s existing rule that customer-executed migrations are verified against observed history rather than accepted on assertion.
 - Cutover to an endpoint whose recovery position is simply unknown is not acceptable either (`ADR-020`); the obligation is to **confirm** the arrangement, not to execute it.
+
+- **The platform performs no actual restore verification against a customer-managed database** *(v1.2)*. Restore ownership for those databases rests with the customer's DBA (`ADR-021` §16), and the platform has no supported connectivity path to execute one. Where platform verification cannot be performed, recovery readiness stays `Unknown` — never `Protected` on the strength of an assertion.
 
 Delegated backup — where a customer explicitly contracts the platform to protect their database — requires the connectivity and credential model `ADR-021` defers, and is not enabled by this ADR.
 
@@ -398,6 +417,8 @@ This is deliberately conservative. Chain-aware deletion is the single easiest wa
 
 If platform-side deletion is added later it requires its own design and **must be chain-aware**. Naive "delete everything older than N days" logic is **prohibited**: retention must be expressed in terms of restore dependencies, not file age.
 
+**Retention must outlast verification** *(v1.2)*. Restore verification can only exercise artifacts that still exist, so the retention expectation is expected to keep the artifacts a scheduled verification needs available long enough to be restored. Where the configured retention expectation is shorter than verification requires, that is **reported as configuration drift** — a database whose next verification will fail for a reason that has nothing to do with its backups. It is deliberately reported rather than enforced: physical expiry belongs to the storage lifecycle, so the platform observes the mismatch rather than pretending to control it, and hard rejection is not adopted here.
+
 ## 17. Restore verification
 
 **A successful backup is not evidence of recoverability.** Verification is required at two levels, and they are not substitutes for each other.
@@ -406,7 +427,73 @@ If platform-side deletion is added later it requires its own design and **must b
 
 **It is explicitly not proof of recoverability.** `VERIFYONLY` does not restore anything, does not exercise the chain, and cannot tell you whether the restored database would contain a usable tenant schema. Treating it as sufficient would be the comfortable mistake this section exists to prevent.
 
+**`VERIFYONLY` is supplementary evidence only.** It may record that a backup set is readable, and nothing more. It **must not**, on its own, establish that a backup set is restore-verified, satisfy a policy that requires actual restore verification, or contribute to cutover readiness.
+
 **Actual restore verification — periodically, to a disposable database.** The only evidence that answers the real question. It restores a selected chain and confirms the restore completes, the database comes online, the tenant migration history is readable and at the expected position, and basic schema probes succeed.
+
+### Where verification restores run *(v1.2)*
+
+**Decision: in production, actual restore verification runs on a dedicated verification SQL Server instance — never on the instance hosting the authoritative production `TenantDatabase`.** Controlled non-production environments **may** verify on the same instance, explicitly and by configuration.
+
+**This is an isolation and security decision, not a performance preference.** Four things follow from restoring on the production instance, and the last is the one that settles it:
+
+1. Verification requires materially broader authority than backup execution — creating a database and later dropping it — where Phase B deliberately narrowed the backup identity to the least privilege that could take a backup.
+2. A restore writes a full-size second copy of the database and competes for the same I/O, storage and memory as live tenant traffic.
+3. Cleanup requires a working `DROP DATABASE` path.
+4. Granting database-creation and database-destruction authority on the instance holding every tenant's authoritative data — and then exercising it unattended, on a schedule — puts a destructive automated operation next to the data it must never touch. **The blast radius of a mistargeted restore or cleanup is bounded by which instance holds those privileges**, and that is the property being protected.
+
+**The verification target is selected through a trusted closed configuration key**, resolved in Infrastructure exactly as `BackupDestinationKey` is (§11). A caller-, tenant- or user-supplied server name, connection string or endpoint **must never** select or influence it. Concrete section and property names are an implementation concern.
+
+**Restore verification uses its own privileged identity**, distinct from the ERP runtime credential, from the migration credential, and from the backup identity. Reusing the backup identity for convenience would push database-creation rights onto every production instance the backup identity reaches, undoing the containment above.
+
+**The exact minimum grant set is an implementation exit gate, not an architectural fact.** It must be established empirically against a real SQL Server during Phase D and recorded then. This ADR fixes only the binding constraints: least privilege, **no `sysadmin`**, and no silent escalation to make an operation work. Phase B is the precedent — the permission its in-flight guard required was neither the obvious one nor one that failed loudly when absent, and that was discovered by testing rather than by reading.
+
+### How deeply a restore must be verified *(v1.2)*
+
+A policy claims a recovery capability. **Verification must exercise the capability the policy claims, not a cheaper subset of it** — otherwise `Protected` asserts a recovery path that has never been performed, which is the failure §18 exists to prevent, one phase earlier than the cutover it guards.
+
+Three depths, selected by what the active policy requires:
+
+| Depth | Applies when | Restore sequence |
+|---|---|---|
+| **Level A** | Required recoverability is full-only | The selected platform-managed full backup |
+| **Level B** | Differential protection is part of the active policy | The selected full baseline, then the latest **applicable** platform-managed differential based on that baseline |
+| **Level C** | Transaction-log recovery is part of the active policy | The selected full baseline; the latest applicable differential **if one applies**; then every required platform-managed log backup after the last restored data backup, in restore order — recovering the database only at the end |
+
+**"Latest applicable" is load-bearing.** A differential is restorable only onto the full baseline it was taken against; one belonging to a different base **must not** be selected. "Latest differential" without that qualification describes a restore that fails.
+
+**A differential is not a precondition for log verification.** Where no differential applies, Level C is the full baseline followed by the required subsequent logs. Preferring the latest applicable differential is a legitimate restore-sequence strategy because it shortens the log tail that must follow; it is a strategy, not a requirement.
+
+**This ADR states the guarantee, not the algorithm.** The binding rule is that **the selected artifacts must form a valid, deterministic SQL Server restore sequence reaching the intended platform recovery point.** The mechanics that produce such a sequence — `backupset` metadata interpretation, differential base applicability, log-sequence continuity, LSN boundary semantics and recovery-fork behaviour — **must be validated against SQL Server and proven by real restore tests during Phase D.** No simplified equality rule is adopted here as normative: freezing an untested formula as architecture is precisely the mistake Phase B's permission work exists to warn against.
+
+### Verification proves the platform's own chain *(v1.2)*
+
+**Restore verification proves that the platform's own managed artifacts form a recoverable sequence.** Externally created backups — DBA, SQL Agent, third-party tooling — are **not** selected as restore-verification inputs.
+
+An external operation may legitimately change SQL Server's chain state. Where doing so leaves the platform-owned artifacts no longer forming a complete restorable sequence, the platform **must not** silently skip the missing segment, **must not** quietly fall back to a shallower restore while still reporting the original level verified, and **must not** treat an external artifact as satisfying platform verification. The correct outcome is a recorded **platform chain break** and a readiness degradation under the existing model (§6).
+
+The distinction that matters operationally: an external operation that does not disrupt the platform's recovery path — a copy-only backup, which resets no differential base and truncates no log — **must not** degrade readiness. Platform-managed backups remain subject to the existing rules: the managed full chain is never `COPY_ONLY` (§9), and managed evidence remains quality-validated (§14).
+
+**Restore inputs are resolved from platform-owned metadata** — the destination key, the recorded artifact reference, and provider identity and chain evidence — through trusted Infrastructure configuration. A caller-supplied path, UNC, URL, restore device or credential-bearing endpoint **must never** determine what is restored, exactly as it must never determine where a backup is written (§11).
+
+### What a successful verification must establish *(v1.2)*
+
+A completed `RESTORE` command is not a verified restore. The minimum V1 evidence is:
+
+- the restore sequence completed;
+- the verification database is **online**;
+- the tenant migration history is readable and at the expected position;
+- basic tenant schema probes succeed.
+
+**`DBCC CHECKDB` is not required in V1.** It is the most expensive thing that could be added to each verification, and the probe set above is what the recovery question actually asks. It may become a future verification policy; it **must not** be added silently, and it is **not** part of the first dedicated activation gate (§18) unless separately decided.
+
+### Verification is a distinct operation with a durable record *(v1.2)*
+
+**Actual restore verification has its own durable operation record, separate from backup-run history.** Its lifecycle is not a backup's: it runs on a different cadence, against a different server, under a different identity, and — uniquely in this capability — **it creates a database that can outlive the process that created it.**
+
+The platform must be able to determine, after an arbitrary process crash, which verification operation created a given database, whether that verification is still active, whether the restore and probes succeeded, and whether cleanup succeeded.
+
+**This persistence is required by the safety rules below, not by scheduling convenience.** Automated destructive cleanup demands durable positive identification, and a process-local `try`/`finally` cannot provide it: a crash, a machine failure or a forced termination leaves the disposable database behind with no in-memory record that it ever existed. That is the case the record exists to cover.
 
 **Safety rules for verification restores** — these are binding:
 
@@ -428,6 +515,34 @@ If platform-side deletion is added later it requires its own design and **must b
 
 **A database must never be dropped solely because a loose string pattern happened to match its name.** The precise mechanism by which each condition is evaluated is a Phase D implementation detail; the boundary of what automated deletion may touch is architectural and is fixed here.
 
+**The same conjunction gates every destructive step, not only the `DROP`** *(v1.2)*. Forcing a database to single-user with immediate rollback is itself destructive against the wrong target, so it is bound by the identical conditions. Cleanup correlates the physical database to its durable verification record before touching it; **a name alone never authorises destruction.**
+
+### Restoring safely into the verification database *(v1.2)*
+
+**`RESTORE ... WITH REPLACE` must not be used.** This is a structural blast-radius invariant, not a stylistic preference: `REPLACE` is the clause that converts a mistargeted restore from a failed operation into the destruction of an existing database. Verification never needs it, because it always restores into a name the platform has just generated for that purpose.
+
+**If the generated verification database name already exists, the verification fails safe.** It does not overwrite, does not replace, and does not blind-drop. The existing database is left for orphan reconciliation, which will remove it only under the full conjunction above.
+
+**Verification databases are named from a reserved, platform-generated vocabulary** — conceptually `SSAS_Verify_<physical database identity>_<verification operation identity>`, with exact token spelling an implementation concern. The name must be platform-generated and never caller-supplied, identifier-safe, unique per verification operation, recognisable as a verification database, and within SQL Server's identifier bounds.
+
+**Restored files are always relocated.** A backup carries the original database's physical file paths, and reusing them would write over the very files the verification exists to protect. Therefore: the backup's file list is read and every logical file is redirected to a verification-owned path, with **multiple data files and multiple log files supported** rather than a single data/log pair assumed.
+
+**Restored data and log roots come from trusted verification configuration**, never from a caller. Generated physical file names are unique per verification operation, and nothing is overwritten.
+
+### Cleanup outcome is not verification outcome *(v1.2)*
+
+These are separate dimensions and must be recorded separately. Where the restore and its probes succeed but cleanup fails, **the recovery evidence remains valid**: the chain was restored and the database was proven usable, and that fact does not become untrue because a `DROP` failed afterwards.
+
+The platform records the successful restore verification, records the cleanup failure independently, and surfaces the orphan operationally. Reporting unqualified success would conceal a database consuming capacity on the verification instance; reporting failure would discard genuine recovery proof and could push a correctly protected database out of `Protected`. **Neither error is acceptable, which is why the two outcomes are not collapsed.**
+
+### Scheduling and ownership of verification *(v1.2)*
+
+Restore-verification scheduling is **separate from high-frequency backup scheduling**, with its own enablement, cadence, concurrency limits, credential and restore target. The two differ in cost by orders of magnitude and in blast radius by more; sharing a loop would force one set of limits onto both.
+
+**One due verification must have exactly one effective owner across application instances.** The mechanism is a durable atomic claim on the verification operation, together with verification-scoped ownership where appropriate — **not** a read-then-execute decision, which is the race Phase C had to close after two instances both acted on the same stale observation. **No global fleet lock and no leader election** is required or permitted; the claim is per operation.
+
+**Verification ownership must not be made to contend with backup or migration ownership** as a correctness rule. Under the production topology above, verification does not touch the source database at all — it reads artifacts and writes a database on another instance. Resource competition is governed by concurrency limits, not by a shared correctness lock, for the same reasons set out in §14.
+
 Cadence for both levels is policy-driven, not fixed here.
 
 ## 18. Cutover gate
@@ -447,6 +562,10 @@ Before **first production activation** of a `PlatformManaged` dedicated target:
 
 The gate is on `RecoveryReadinessStatus`, **not** on `BackupEnabled = true`. Configuration is not protection.
 
+**Requirements 5 and 6 are independent, and requirement 5 is not implied by requirement 6** *(v1.2)*. Where a policy does not require periodic restore verification, a database may be `Protected` without a real restore ever having occurred (§6). The activation gate is therefore stricter than periodic readiness by design, and both conditions are checked. `ADR-020` lists them separately for the same reason.
+
+**The verification must relate to the recovery path being activated** *(v1.2)*. Activation evidence identifies the current relevant full baseline, the validity of the chain built on it, the successful actual restore verification, **the relationship between that verification and the required baseline and recovery path**, and `RecoveryReadinessStatus`. A verification of a superseded baseline does not demonstrate that the chain now protecting the target has ever been restored, which is the whole content of requirement 5. Phase D produces this evidence; **Phase E consumes it and owns the gate's execution.**
+
 For `CustomerManaged` targets the obligation is to **confirm** the customer's arrangement rather than to execute it, and an unknown recovery position does not satisfy the gate.
 
 ## 19. Shared restore semantics
@@ -456,6 +575,8 @@ Restated prominently because it is the most likely misreading of this entire cap
 **A shared physical database has one backup chain. Restoring it restores the database — and therefore every tenant in it.**
 
 "Restore tenant A to yesterday" is **not** a physical database restore on shared storage. Performing one would roll back every other tenant sharing that database.
+
+**Restore verification is scoped to the physical database** *(v1.2)*. A shared database is verified once, as one physical database with one chain. The result is never presented as per-tenant restore verification, and Level C verifying the log chain's recoverability establishes a chain capability — **it does not create any customer-facing point-in-time recovery operation.**
 
 **`TS-Backup` does not provide tenant-level point-in-time recovery.** That is a different capability requiring export, extraction or logical reconstruction, and it is **out of scope** for this ADR. Dedicated placement is what makes database-level restore a per-tenant operation, and that remains one of its genuine advantages over the shared default (`ADR-017`).
 
@@ -521,6 +642,14 @@ The second is that it was **unenforceable as specified**. Migration and backup t
 
 **Removing the rule was therefore strictly better than enforcing it**: it resolves the gap by deletion rather than by construction, and it leaves the genuine concern — I/O contention — where it belongs, as a scheduling preference. See §14.
 
+## 11. Same-instance verification restore versus a dedicated verification instance
+
+**Rejected: restoring onto the production instance in V1.** It is markedly simpler — no second instance to provision, no second credential, no cross-instance access to the artifacts — and for a small estate the I/O cost would often go unnoticed. It was rejected because the cost is not primarily I/O. Verification needs authority to create and drop databases, and it exercises that authority unattended on a schedule; granting it on the instance holding every tenant's authoritative data places an automated destructive operation next to the data it must never touch, and no amount of naming discipline reduces the privilege itself. A dedicated instance bounds the blast radius structurally rather than procedurally. Same-instance verification remains available for non-production environments, where the trade-off genuinely does favour simplicity.
+
+## 12. Verifying the full only versus verifying the depth the policy claims
+
+**Rejected: always verifying the full baseline alone.** It is much cheaper, bounded in time, and would satisfy a literal reading of "at least one successful actual restore verification". It was rejected because it makes `Protected` mean less than it appears to. A policy scheduling log backups claims point-in-time recoverability; verifying only its full proves the baseline restores and leaves the differential and log path — the part with the most moving pieces and the most ways to break — entirely unexercised. The first real use of that path would then occur during an incident, which is the exact position §18 was written to prevent.
+
 ---
 
 # Rationale
@@ -550,7 +679,9 @@ Deferring deletion and deferring RPO/RTO tiers are the same judgement in the oth
 
 ## Negative
 
-- A privileged operational identity must be provisioned and managed.
+- A privileged operational identity must be provisioned and managed, and restore verification adds a second, more privileged one.
+- A dedicated verification SQL Server instance must be provisioned, reachable, and given capacity for a full-size restored database.
+- Verification depth means a log-protected database's verification restores a chain rather than a single file, which costs materially more time and I/O than verifying a full alone.
 - Backup destinations must be configured and validated against the SQL Server service identity's access, which is an unfamiliar constraint.
 - Run history grows and needs its own retention.
 - Backup operations are long-running, complicating ownership and scheduling relative to migrations.
@@ -572,6 +703,10 @@ Deferring deletion and deferring RPO/RTO tiers are the same judgement in the oth
 - Treat session loss as loss of ownership, always, and establish success from reconciled provider evidence rather than from a completed command.
 - Never mark a customer-managed database `Protected` without verified evidence.
 - Give verification databases a reserved system-controlled namespace and a maintenance sweep, not just a `finally` block, and require the full eligibility conjunction of §17 before any automated `DROP`.
+- Write the durable verification record **before** the restore begins; a record created afterwards cannot describe the crash it exists to survive.
+- Establish the restore, create and drop permission set empirically against a real SQL Server before treating it as known, and never widen it to `sysadmin` to make an operation succeed.
+- Prove the restore sequence against SQL Server with real restore tests — including multiple data and log files, an absent applicable differential, and a chain whose platform-owned segment is incomplete — rather than deriving it from chain metadata alone.
+- Keep cleanup outcome and verification outcome separate from the first commit; collapsing them is easy to do early and expensive to unpick once readiness depends on the result.
 
 ## Phased implementation
 
@@ -579,15 +714,17 @@ Deferring deletion and deferring RPO/RTO tiers are the same judgement in the oth
 |---|---|
 | **A — Backup domain and recovery readiness** *(delivered)* | `TenantDatabaseBackupPolicy`, `BackupManagementMode`, recovery-readiness status and observations, `TenantDatabaseBackupRun`, Platform migration, dimension-scoped recovery writer, deterministic RowVersion conflict test. **No backup execution.** |
 | **B — SQL Server provider, single database** *(delivered)* | Trusted privileged identity, destination resolution, full/differential/log, `CHECKSUM`, compression policy, provider metadata, target-database ownership, **the session-loss empirical validation and its exit gate (§14, now closed)**, mandatory in-flight detection with a server-visibility precondition, post-operation success reconciliation. |
-| **C — Fleet scheduling and orchestration** | Due evaluation, physical discovery, keyset paging, bounded concurrency, a scheduling background service, multi-instance duplicate-safe orchestration, run state, progress reporting. **Unblocked — the Phase B exit gate is closed (§14).** |
-| **D — Verification and retention** | `RESTORE VERIFYONLY`, periodic disposable restore, verification state, reserved verification namespace and orphan cleanup eligibility, retention metadata and storage-lifecycle delegation. |
-| **E — Cutover integration** | Recovery-readiness gate in `ADR-020`, dedicated activation guard. |
+| **C — Fleet scheduling and orchestration** *(delivered)* | Due evaluation, physical discovery, keyset paging, bounded concurrency, a scheduling background service, multi-instance duplicate-safe orchestration, run state, progress reporting. |
+| **D — Verification and retention** *(architecture defined in v1.2; implementation not started)* | `RESTORE VERIFYONLY`, periodic disposable restore on a dedicated verification instance, verification depth by policy, platform-managed-chain-only selection, a durable verification operation record, reserved verification namespace and orphan cleanup eligibility, retention metadata and storage-lifecycle delegation. |
+| **E — Cutover integration** *(future)* | Recovery-readiness gate in `ADR-020`, dedicated activation guard, consuming the activation evidence Phase D produces. |
 
 **Phase A was the first delivered slice**, and deliberately not backup execution. Policy, authority, readiness semantics and writer concurrency were settled before any command touched a database, because those were the decisions the provider work would assume — and because Phase A was the slice that closed the outstanding RowVersion test gap while there were still only two live writers to reason about.
 
 **Phase B carried a binding exit gate, and that gate is now closed.** The session-loss behaviour of a long-running `BACKUP` was empirically established on a real SQL Server against a disposable database across three conclusive trials, and the in-flight detection guard was implemented and retained as mandatory rather than as a fallback (§14). Phase C may now begin. The original reasoning for gating it still holds and is why the guard is mandatory rather than optional: fleet scheduling multiplies a single-database ownership ambiguity across the estate, converting a rare window into a routine one, and it was far cheaper to settle at one database than at a fleet.
 
-Backup metadata belongs to `PlatformDbContext`. Phase A introduced the Platform migration that persists backup policy, run history and the recovery-readiness fields; **no tenant migration is expected**, and backup metadata must not be placed in a tenant ERP database.
+Backup metadata belongs to `PlatformDbContext`. Phase A introduced the Platform migration that persists backup policy, run history and the recovery-readiness fields; **no tenant migration is expected**, and backup metadata must not be placed in a tenant ERP database. Phase D's durable verification record is expected to extend Platform persistence on the same terms — one Platform migration, no tenant migration — and **every new persisted string must be Unicode (`nvarchar`)**, in line with the project-wide rule. Project-wide Unicode remediation is separate work and is not part of Phase D.
+
+**A deployment prerequisite, recorded as process risk rather than architecture.** Phase D introduces unattended operations that create databases, force them to single-user, drop them, and write restore files to disk. The repository currently has no branch protection, no required checks and no required approvals on its main branch, so Phases B and C each merged without an approving review. That was tolerable for a capability defaulting to disabled; it is a materially larger exposure for one whose failure mode is destructive. **Closing the repository's review and check governance is recommended before production restore verification is enabled.** This ADR records the concern; it does not specify the mechanism, and repository settings are not changed by it.
 
 ## Audit
 
@@ -640,6 +777,18 @@ The audit record identifies the actor, the physical database, the previous and n
 29. In-flight backup detection **must** be performed before every platform-managed backup. It is a correctness precondition, **not** an operational feature flag, and **must not** be disableable by fleet, scheduler or deployment configuration.
 30. The provider **must** establish that its identity holds sufficient server visibility *before* trusting an in-flight query result, because `sys.dm_exec_requests` silently narrows to the caller's own session rather than failing when that visibility is absent. If visibility cannot be established the backup **must not** start, and the outcome **must** be distinguishable from having observed an in-flight operation. On SQL Server 2022 the required permission is `VIEW SERVER PERFORMANCE STATE`; `VIEW SERVER STATE` is not required and `sysadmin` **must not** be used to satisfy it.
 31. When several backup operations are due for one physical database, the scheduler **must** dispatch exactly one per sweep, in the order transaction log, then full, then differential. An externally taken backup **must not** be treated as satisfying the platform's schedule.
+32. In production, actual restore verification **must** run on a dedicated verification instance and **must not** run on the SQL Server instance hosting the authoritative production `TenantDatabase`. Same-instance verification **may** be permitted only in explicitly configured non-production environments.
+33. The verification restore target **must** be selected through a trusted closed configuration key resolved in Infrastructure. A caller-, tenant- or user-supplied server name, connection string or endpoint **must not** select or influence it.
+34. Restore verification **must** use a privileged identity distinct from the ERP runtime, migration and backup identities, **must** follow least privilege, and **must not** use `sysadmin`. The exact minimum grant set **must** be established empirically against a real SQL Server during implementation and **must not** be frozen as architecture beforehand.
+35. Verification depth **must** exercise what the active policy claims: full-only policies restore the full; differential protection additionally restores the latest **applicable** differential based on the selected baseline; log protection additionally restores the required subsequent platform-managed log backups in order, recovering only at the end. A differential **must not** be treated as a precondition for log verification.
+36. The selected artifacts **must** form a valid deterministic SQL Server restore sequence to the intended platform recovery point. The mechanics establishing that sequence **must** be validated against SQL Server behaviour and proven by real restore tests; no simplified chain formula is normative.
+37. Restore verification **must** select only platform-managed artifacts. Where external activity leaves the platform-owned artifacts unable to form a complete restorable sequence, the platform **must** record a chain break and degrade readiness, and **must not** silently verify a shallower level while reporting the level the policy claims.
+38. Restore verification **must not** use `RESTORE ... WITH REPLACE`, **must** relocate every restored database file to a verification-owned path from trusted configuration, and **must** fail safe rather than overwrite when the generated verification database name already exists.
+39. Actual restore verification **must** have a durable operation record sufficient to identify, after a process crash, which verification created a database, whether it is active, and whether restore and cleanup succeeded. A process-local `try`/`finally` **must not** be relied upon as the cleanup guarantee.
+40. Cleanup outcome **must** be recorded separately from verification outcome. A cleanup failure following a successful restore and probe **must not** discard the recovery evidence, and **must** surface the orphan operationally.
+41. `RESTORE VERIFYONLY` **must not** by itself establish restore-verified state, satisfy a policy requiring actual restore verification, or contribute to cutover readiness. Actual restore verification additionally **must** establish that the database is online, the tenant migration history is readable at the expected position, and basic schema probes succeed. `DBCC CHECKDB` is **not** required in V1.
+42. Where a policy does not require periodic restore verification, readiness **must not** be reported `VerificationOverdue` for that reason alone, and the database **may** reach `Protected` without an actual restore. First production activation of a dedicated target **must** still require at least one successful actual restore verification related to the baseline being activated.
+43. One due verification **must** have exactly one effective owner across application instances, established by a durable atomic claim rather than a read-then-execute decision. Global fleet locking or leader election **must not** be introduced, and verification ownership **must not** be made to contend with backup or migration ownership as a correctness rule.
 
 ---
 
@@ -651,7 +800,13 @@ The audit record identifies the actor, the physical database, the previous and n
 | The applock is released while a server-side `BACKUP` is still winding down, letting a second worker overlap | Validated in Phase B across three conclusive trials: no overlap observed, but at margins of 1–10 ms, which are not treated as a portable guarantee (§14). Mandatory in-flight detection with a server-visibility precondition is retained as the standing defence |
 | A backup started outside the platform — DBA, SQL Agent, third-party tooling — overlaps a managed backup | Such operations take no platform lock and are structurally invisible to ownership; mandatory in-flight detection against live server state is the only mechanism that sees them |
 | The in-flight guard is disabled to work around a missing permission | The guard is a correctness precondition, not a feature flag, and must not be disableable by configuration; a missing visibility permission fails the backup closed and names the missing prerequisite |
-| Verification-database sweep drops a database it should not | Reserved system-controlled namespace plus a conjunction of ownership, registration and age criteria; pattern-only matching prohibited |
+| Verification-database sweep drops a database it should not | Reserved system-controlled namespace plus a conjunction of ownership, registration and age criteria correlated to a durable verification record; pattern-only matching prohibited, and the same conjunction gates single-user forcing as well as the `DROP` |
+| A verification restore is mistargeted and destroys a live database | Production verification runs on a dedicated instance that holds no authoritative tenant data; `WITH REPLACE` prohibited; every restored file relocated; an existing target name fails safe rather than being overwritten |
+| Database creation and destruction privileges are granted on production tenant instances | Dedicated verification instance in production, with a verification identity distinct from the runtime, migration and backup identities; least privilege, no `sysadmin`, grant set proven empirically rather than assumed |
+| Verification reports a recovery level the policy claims but never exercised | Depth follows the active policy — full, plus applicable differential, plus required subsequent logs; an incomplete platform-owned sequence is a recorded chain break, never a silent fallback to a shallower restore |
+| A crash leaves a verification database with no record it existed | Durable verification operation record written before the restore begins, correlated by the orphan sweep; a `try`/`finally` is explicitly insufficient |
+| A cleanup failure is reported as a verification failure, or hides an orphan | Cleanup outcome recorded separately from verification outcome; recovery evidence is retained and the orphan surfaced operationally |
+| A stale verification of a superseded baseline satisfies a first dedicated activation | Activation evidence relates the verification to the current baseline and recovery path; periodic readiness and the cutover gate are separate tests |
 | A backup destination is influenced by caller input | Destination resolved only from a trusted `BackupDestinationKey` in Infrastructure; caller-supplied paths, UNC, URLs and endpoints prohibited |
 | Durability weakened by a quiet policy change rather than a failed operation | `BackupManagementMode`, destination key, schedules, retention and verification requirements explicitly audited |
 | Chain continuity becomes unverifiable | Record chain metadata from the first backup; platform history authoritative over `msdb` |
@@ -774,3 +929,4 @@ This ADR should be reviewed if:
 |---|---|---|---|
 | 1.0 | 2026-08-14 | Solution Architecture Team | Initial decision: backup and recovery orchestration for physical tenant databases — per-database policy and chains, recovery readiness as an independent fourth dimension with its own writer, separate `BackupManagementMode`, separate backup credential, SQL Server full/differential/log semantics with no automatic recovery-model change, platform orchestration and `sp_getapplock` ownership in a namespace distinct from migration, persisted run history, no platform-side deletion in V1, two-level restore verification, and a binding pre-cutover recovery-readiness gate requiring an actual restore verification. Pre-approval revisions arising from architecture review: managed backups of all types may coexist with schema migration (the earlier full/differential exclusion was unnecessary and unenforceable across distinct lock namespaces, and is withdrawn along with its "half-applied schema" rationale, leaving I/O contention as a scheduling preference); session-scoped ownership is stated as planned rather than proven, with a binding Phase B empirical session-loss validation, an in-flight backup detection guard, a controlled duplicate-backup skip outcome, post-operation evidence as the success criterion, and Phase C blocked on that gate; destination selection restricted to a trusted key by compliance rule; verification-database cleanup bound to a reserved system-controlled namespace and an eligibility conjunction; durability-affecting policy changes explicitly audited |
 | 1.1 | 2026-08-15 | Solution Architecture Team | Records the outcome of the Phase B empirical work and unblocks Phase C. The §14 session-loss gate is **closed**: abrupt client-process termination during an active `BACKUP` was validated against a disposable database across three conclusive trials, and in each the server-side request was gone before another worker could acquire ownership. The observed margins — 10 ms, 1 ms, 1 ms — are recorded as a local observation at the granularity of the measurement itself, explicitly **not** as a portable timing guarantee, so session-scoped ownership alone is not accepted as the sole duplicate-operation defence. In-flight backup detection is therefore promoted from conditional to **mandatory V1 behaviour**, on two grounds: the margin is too small to rely on, and backups started outside the platform take no platform lock and are structurally invisible to ownership. A server-visibility precondition is added after Phase B established that `sys.dm_exec_requests` silently narrows to the caller's own session rather than failing when visibility is absent — the provider must confirm visibility before trusting an empty result, must fail closed when it cannot, and on SQL Server 2022 requires `VIEW SERVER PERFORMANCE STATE` rather than `VIEW SERVER STATE` and never `sysadmin`. The guard is stated to be a correctness precondition rather than an operational feature flag, and not disableable by configuration. Adds Phase C scheduler operation precedence — transaction log, then full, then differential, one operation per physical database per sweep — with the distinction that an externally taken backup may change SQL Server chain state without satisfying the platform's schedule. Compliance rules 29–31 added; rule 25 marked satisfied. |
+| 1.2 | 2026-08-15 | Solution Architecture Team | Settles the Phase D restore-verification architecture that was blocking implementation. **Topology:** in production, actual restore verification runs on a dedicated verification SQL Server instance and never on the instance hosting the authoritative production database, with same-instance verification permitted only in explicitly configured non-production environments. The target is selected through a trusted closed configuration key, and verification uses a privileged identity distinct from the runtime, migration and backup identities, under least privilege and never `sysadmin`, with the exact grant set an empirical implementation exit gate rather than an architectural assertion. **Depth:** verification must exercise the recovery capability the active policy claims — the full baseline, plus the latest *applicable* differential where differential protection is active, plus the required subsequent platform-managed log backups in order where log recovery is active, recovering only at the end — and a differential is not a precondition for log verification. The ADR fixes the guarantee that the selected artifacts form a valid deterministic SQL Server restore sequence while explicitly leaving the chain-selection mechanics to be validated against SQL Server by real restore tests, adopting no simplified formula as normative. **Chain ownership:** verification proves the platform's own artifacts, never external ones, and an incomplete platform-owned sequence is a recorded chain break with degraded readiness rather than a silent fallback to a shallower restore, while external copy-only activity that disrupts nothing does not degrade readiness. **`Protected` semantics:** where a policy does not require periodic restore verification, readiness is not `VerificationOverdue` for that reason alone and `Protected` is reachable without an actual restore, with first dedicated activation remaining a separate and stricter gate that additionally requires a successful actual restore verification related to the baseline being activated; `VerificationOverdue` is given exact semantics and distinguished from a verification that ran and failed. Also records the durable safety rules that follow: a durable verification operation record sufficient to survive a process crash, destructive cleanup only under positive correlation to that record rather than a name pattern, `RESTORE ... WITH REPLACE` prohibited, mandatory relocation of every restored file to trusted verification-owned paths, fail-safe behaviour when a target name already exists, cleanup outcome recorded separately from verification outcome so a failed drop never discards genuine recovery proof, `VERIFYONLY` as supplementary evidence only, `DBCC CHECKDB` deferred, separate verification scheduling with one effective owner per due verification and no global fleet lock, and retention expected to outlast verification with shortfalls reported as drift. Compliance rules 32–43 added; Phase C marked delivered and Phase D marked architecture-defined. |

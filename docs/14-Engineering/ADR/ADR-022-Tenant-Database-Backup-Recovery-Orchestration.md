@@ -2,9 +2,9 @@
 id: ADR-022
 title: Tenant Database Backup and Recovery Orchestration
 category: Architecture Decision Record
-version: 1.0
+version: 1.1
 status: Proposed
-date: 2026-08-14
+date: 2026-08-15
 owner: Solution Architecture Team
 tags:
   - architecture
@@ -33,7 +33,7 @@ used_by:
 
 Owns the decisions that make a physical tenant database **recoverable**, and the orchestration that keeps it so. `ADR-017` establishes the topology and names `TS-Backup` as a required capability of the platform-managed estate; `ADR-018` establishes the health and migration model this ADR sits beside without merging into; `ADR-020` defines the cutover this ADR gates; `ADR-021` defines whose data — and therefore whose backups — a customer-managed database holds.
 
-**Implementation scope: architecture decided, implementation phased.** Nothing here is implemented yet. The sequencing constraint from `ADR-017` is binding and is the reason this ADR exists now rather than later: **`TS-Backup` must exist before dedicated provisioning and cutover become production-capable**, because a dedicated database with no verified backup chain is a data-loss position the shared database did not have.
+**Implementation scope: architecture decided, implementation phased.** Phases A and B are delivered — the backup domain, recovery-readiness dimension and run history, and single-database SQL Server full, differential and transaction-log execution with mandatory in-flight detection and reconciled provider evidence. Phase C onward remain to be built. The sequencing constraint from `ADR-017` is binding and is the reason this ADR exists now rather than later: **`TS-Backup` must exist before dedicated provisioning and cutover become production-capable**, because a dedicated database with no verified backup chain is a data-loss position the shared database did not have.
 
 ---
 
@@ -248,6 +248,22 @@ Scale rules mirror `ADR-018`'s migration orchestration:
 - a shared database is evaluated and backed up **once**, regardless of tenant count;
 - no timer per tenant, and bounded execution concurrency.
 
+### Operation precedence when several are due
+
+A physical database may have full, differential and transaction-log backups all due at the same moment. **One operation is dispatched per physical database per sweep**, and the precedence is:
+
+1. **Transaction log**
+2. **Full**
+3. **Differential**
+
+The remaining operations are reconsidered on a later sweep, against the successful-backup timestamps the completed operation has by then persisted.
+
+**Log first**, because it is the operation that protects the *recovery point*: delaying it directly widens the window of data that cannot be recovered, and a log backup is normally materially less expensive than a full of the same database. It should not queue behind a long full operation.
+
+**Full before differential**, because a full establishes and resets the differential base. A differential taken immediately before a due full is usually work that the full then makes redundant, and once the full succeeds the differential's due time is recomputed from the new baseline.
+
+**This is a scheduling precedence, not a chain-validity rule.** The two are distinct and must stay distinct: SQL Server chain validity is established from provider evidence (§14), while whether the *platform's* schedule has been satisfied is established from the platform's own successful-run timestamps. An externally taken backup may legitimately change SQL Server chain state — an external full resets the differential base — without discharging the platform's scheduling obligation, and **must not** be treated as satisfying it.
+
 ## 14. Multi-instance execution ownership
 
 Two platform instances must not run overlapping managed backups of the same physical database.
@@ -301,29 +317,52 @@ The potential window:
 
 Concurrent `BACKUP` commands against one database do not block each other in SQL Server, so this would not surface as an error. Even where it is harmless to database correctness, it produces duplicate work, ambiguous run ownership, contention for the same I/O, and potential confusion in chain and reporting metadata — for example ambiguity about which full anchors subsequent differentials.
 
-**This ADR does not claim that window is closed.** Session-scoped ownership is proven for migrations, which are short; backups are long-running, and the assumption that a dead client promptly stops a server-side `BACKUP` is inherited rather than demonstrated.
+**Session-scoped ownership is proven for migrations, which are short; backups are long-running**, and the assumption that a dead client promptly stops a server-side `BACKUP` was inherited rather than demonstrated. v1.0 recorded that window as open and made closing it a binding Phase B requirement. **Phase B has now performed that validation; the observed result is recorded below.**
 
-**Binding requirement.** Before **Phase B** may be considered production-ready, real SQL Server validation **must** establish the observable behaviour when the client connection or session terminates during an active `BACKUP` command. The empirical test belongs to Phase B implementation, not to this document; the architecture specifies the gate, not its execution. Test shape, conceptually:
+**Empirical validation performed (Phase B).** The experiment ran against a disposable SQL Server database — never a production or tenant database — with a real `BACKUP DATABASE` large enough to observe, ownership held on the backup session applock, and the client terminated by **abrupt termination of the client process**. That is the scenario this section is about: a platform worker crashing. A server-initiated `KILL` of the session answers a different and weaker question and was deliberately not used as the decisive case. An independent observer on a separate session then polled `sys.dm_exec_requests` for a surviving `BACKUP` request against the target database while repeatedly attempting to acquire the same backup applock.
 
-1. create a disposable SQL Server test database — **never** a production or tenant database;
-2. make the backup long-running enough to observe;
-3. acquire the backup session applock;
-4. start `BACKUP DATABASE`;
-5. terminate or kill the client session in a controlled manner;
-6. observe the `BACKUP` request state in SQL Server, the lock release timing, the command cancellation/abort timing, and the disposition of the backup artifact;
-7. immediately have a second worker attempt ownership acquisition;
-8. determine whether a meaningful overlap window exists.
+**Observed result — three conclusive trials.** In each trial the backup was confirmed in flight before the client was killed; a trial in which the backup completed first is inconclusive, not a pass.
 
-**In-flight backup detection — the guard if the window is real.** If validation shows the applock can be released before SQL Server has fully stopped the prior operation, the provider or orchestrator **must**, before starting a managed backup, query SQL Server for an in-flight backup operation against the target physical database. Conceptually this inspects `sys.dm_exec_requests` and provider-supported request metadata; this ADR deliberately does not bind the implementation to one brittle query.
+| Trial | `BACKUP` request gone | Ownership reacquired |
+|---|---|---|
+| 1 | 849 ms | 859 ms |
+| 2 | 838 ms | 839 ms |
+| 3 | 847 ms | 848 ms |
 
-**Guard semantics.** If an existing `BACKUP` operation against that physical database is detected, the worker **must not** start another platform-managed backup. The outcome is a **controlled non-execution** — conceptually `BackupAlreadyInProgress`, `OwnershipPending` or `SkippedInFlightOperation`, with the final vocabulary settled in Phase B alongside the run statuses in §15. **It must not be recorded as a backup failure**: nothing failed, and reporting it as failure would degrade recovery readiness on the strength of successful coordination.
+In all three trials, **at the moment another worker acquired the backup applock, no active `BACKUP` request for the target database remained**. Condition A below was therefore observed.
 
-**Phase B exit gate.** Phase B **cannot** be considered production-ready until one of the following is proven:
+**This is an observation, not a portable guarantee.** The ADR does **not** conclude that SQL Server always aborts a `BACKUP` before releasing the session applock. The observed margins were 10 ms, 1 ms and 1 ms — at the granularity of the observation itself rather than a designed safety margin — measured on one host, at one backup size, on one storage profile. Nothing in this evidence speaks to slower storage, higher load, or a database large enough that aborting takes real work. **Session-scoped ownership alone is therefore not accepted as the sole production defence against duplicate operations.**
+
+**In-flight backup detection — mandatory, not conditional.** v1.0 framed this guard as required only if validation revealed an overlap window. That framing is withdrawn. The guard is **mandatory V1 behaviour** for two independent reasons:
+
+- the measured margin is too small to treat as a safety property, as above; and
+- **the applock cannot see backups that never took it.** A DBA, a SQL Agent job or a third-party backup tool acquires no platform lock at all. Ownership coordination is structurally blind to them; only inspection of live server state is not.
+
+Conceptually the guard inspects `sys.dm_exec_requests` and provider-supported request metadata; this ADR deliberately does not bind the implementation to one brittle query.
+
+**Server visibility is a precondition of trusting the guard.** Phase B established a SQL Server behaviour that makes the obvious implementation unsafe: **without sufficient server-level visibility, `sys.dm_exec_requests` does not raise an error — it silently narrows to the caller's own session.** An empty result is then indistinguishable from "nothing is running", and a missing permission becomes a green light.
+
+Therefore, before any platform-managed backup starts, the provider **must**:
+
+1. **establish** that its identity holds sufficient server visibility to observe other sessions;
+2. **inspect** for an active backup request against the target physical database;
+3. **fail closed** if visibility cannot be established — the backup **must not** start, and the outcome is a controlled failure naming the missing prerequisite, distinct from having observed an in-flight operation;
+4. **not start** a second backup if another is active.
+
+On **SQL Server 2022**, the granular permission that grants this visibility is **`VIEW SERVER PERFORMANCE STATE`**. The broader `VIEW SERVER STATE` is **not** required, and `sysadmin` **must not** be used to satisfy it. The permission is granted by deployment; no platform code grants or escalates it.
+
+**The in-flight safety check is not an operational feature flag.** It is a correctness precondition, and neither fleet configuration, scheduler configuration nor deployment configuration may disable it. This matters most in Phase C, where backups run unattended across the estate.
+
+**Guard semantics.** If an existing `BACKUP` operation against that physical database is detected, the worker **must not** start another platform-managed backup. The outcome is a **controlled non-execution**; Phase B settled the vocabulary as `SkippedInFlightOperation`, alongside the run statuses in §15. **It must not be recorded as a backup failure**: nothing failed, and reporting it as failure would degrade recovery readiness on the strength of successful coordination.
+
+**Phase B exit gate — CLOSED.** The gate required one of the following to be proven:
 
 - **A.** Session loss terminates or aborts the server-side `BACKUP` sufficiently promptly that a subsequent ownership acquisition cannot result in overlapping platform-managed backup work; **or**
 - **B.** The provider implements an in-flight backup detection and reconciliation guard that prevents duplicate execution after ownership loss.
 
-This decision **must not** be allowed to drift to Phase C. **Phase C — fleet scheduling — depends on this proof**, because fleet scheduling multiplies single-database ownership ambiguity across every database in the estate: an unresolved window that is rare for one database becomes routine at fleet scale.
+**Phase B satisfies both.** Condition A was observed in three controlled local trials, with the caveats recorded above; condition B is implemented and retained as mandatory rather than as a fallback. The gate is closed, and **Phase C is no longer blocked by it**.
+
+The reason both were required in practice rather than either: fleet scheduling multiplies single-database ownership ambiguity across every database in the estate, so a window that is rare for one database becomes routine at fleet scale. A 1 ms observed margin is not a basis on which to remove the guard before multiplying the exposure.
 
 **Session loss is loss of ownership.** If the connection carrying the lock dies, ownership is gone. A worker **must never** record `Succeeded` after losing session ownership merely because it previously issued a `BACKUP` command.
 
@@ -343,7 +382,7 @@ Unlike migration, where a per-run summary suffices, backup history is required t
 
 Recorded per run: physical database, operation type, start and completion, status, safe destination reference, provider backup identity, size where available, provider chain metadata, a **safe error summary**, and verification state.
 
-Proposed run statuses: `Pending`, `Running`, `Succeeded`, `Failed`, `SkippedOwnershipHeld`, `SkippedInFlightOperation`, `BlockedByPolicy`, `VerificationFailed`. These describe **execution**; they are not recovery readiness, which is derived from the accumulated evidence. The two skip statuses are **not failures** — they record that coordination worked — and the final vocabulary for the in-flight case is settled in Phase B per §14.
+Run statuses, as established in Phase A: `Pending`, `Running`, `Succeeded`, `Failed`, `SkippedOwnershipHeld`, `SkippedInFlightOperation`, `BlockedByPolicy`, `VerificationFailed`. These describe **execution**; they are not recovery readiness, which is derived from the accumulated evidence. The two skip statuses are **not failures** — they record that coordination worked — and Phase B settled the in-flight case as `SkippedInFlightOperation` (§14).
 
 **`Succeeded` requires post-operation evidence.** A run is recorded successful on reconciled provider evidence that the backup set exists and is what was expected, never on the strength of a command having been submitted or a `ExecuteNonQuery` having returned. This is the run-history expression of the ownership rule in §14: a worker that lost its session lost the right to claim success regardless of what it issued.
 
@@ -538,17 +577,17 @@ Deferring deletion and deferring RPO/RTO tiers are the same judgement in the oth
 
 | Phase | Content |
 |---|---|
-| **A — Backup domain and recovery readiness** | `TenantDatabaseBackupPolicy`, `BackupManagementMode`, recovery-readiness status and observations, `TenantDatabaseBackupRun`, Platform migration, dimension-scoped recovery writer, deterministic RowVersion conflict test. **No backup execution.** |
-| **B — SQL Server provider, single database** | Trusted privileged identity, destination resolution, full/differential/log, `CHECKSUM`, compression policy, provider metadata, target-database ownership, **the session-loss empirical validation and its exit gate (§14)**, post-operation success reconciliation. |
-| **C — Fleet scheduling and orchestration** | Due evaluation, physical discovery, keyset paging, multi-instance ownership, run state, progress reporting. **Blocked on the Phase B exit gate.** |
+| **A — Backup domain and recovery readiness** *(delivered)* | `TenantDatabaseBackupPolicy`, `BackupManagementMode`, recovery-readiness status and observations, `TenantDatabaseBackupRun`, Platform migration, dimension-scoped recovery writer, deterministic RowVersion conflict test. **No backup execution.** |
+| **B — SQL Server provider, single database** *(delivered)* | Trusted privileged identity, destination resolution, full/differential/log, `CHECKSUM`, compression policy, provider metadata, target-database ownership, **the session-loss empirical validation and its exit gate (§14, now closed)**, mandatory in-flight detection with a server-visibility precondition, post-operation success reconciliation. |
+| **C — Fleet scheduling and orchestration** | Due evaluation, physical discovery, keyset paging, bounded concurrency, a scheduling background service, multi-instance duplicate-safe orchestration, run state, progress reporting. **Unblocked — the Phase B exit gate is closed (§14).** |
 | **D — Verification and retention** | `RESTORE VERIFYONLY`, periodic disposable restore, verification state, reserved verification namespace and orphan cleanup eligibility, retention metadata and storage-lifecycle delegation. |
 | **E — Cutover integration** | Recovery-readiness gate in `ADR-020`, dedicated activation guard. |
 
-**Recommended first slice: Phase A.** Not backup execution. Policy, authority, readiness semantics and writer concurrency should be settled before any command touches a database, because those are the decisions the provider work will assume — and because Phase A is the slice that closes the outstanding RowVersion test gap while there are still only two live writers to reason about.
+**Phase A was the first delivered slice**, and deliberately not backup execution. Policy, authority, readiness semantics and writer concurrency were settled before any command touched a database, because those were the decisions the provider work would assume — and because Phase A was the slice that closed the outstanding RowVersion test gap while there were still only two live writers to reason about.
 
-**Phase B carries a binding exit gate.** It is not production-ready until the session-loss behaviour of a long-running `BACKUP` is empirically established on a real SQL Server against a disposable database, and either that behaviour is proven safe or the in-flight detection guard is implemented (§14). **Phase C must not begin on an unresolved gate** — fleet scheduling multiplies a single-database ownership ambiguity across the estate, converting a rare window into a routine one, and it is far cheaper to settle at one database than at a fleet.
+**Phase B carried a binding exit gate, and that gate is now closed.** The session-loss behaviour of a long-running `BACKUP` was empirically established on a real SQL Server against a disposable database across three conclusive trials, and the in-flight detection guard was implemented and retained as mandatory rather than as a fallback (§14). Phase C may now begin. The original reasoning for gating it still holds and is why the guard is mandatory rather than optional: fleet scheduling multiplies a single-database ownership ambiguity across the estate, converting a rare window into a routine one, and it was far cheaper to settle at one database than at a fleet.
 
-Backup metadata belongs to `PlatformDbContext`. A future Platform migration is expected; **no tenant migration is expected**, and backup metadata must not be placed in a tenant ERP database.
+Backup metadata belongs to `PlatformDbContext`. Phase A introduced the Platform migration that persists backup policy, run history and the recovery-readiness fields; **no tenant migration is expected**, and backup metadata must not be placed in a tenant ERP database.
 
 ## Audit
 
@@ -594,10 +633,13 @@ The audit record identifies the actor, the physical database, the previous and n
 22. SQL Server backup-type vocabulary **must** remain provider-scoped.
 23. Backup destinations **must** be selected exclusively through a trusted configuration reference such as `BackupDestinationKey`. Caller-, tenant- or user-provided filesystem paths, UNC paths, URLs, storage endpoints and credential-bearing references **must not** determine the physical backup destination.
 24. A database **must not** be eligible for automated verification cleanup unless it carries the platform's reserved system-controlled verification namespace or marker **and** satisfies the additional ownership, registration and age criteria of §17. Destructive cleanup **must not** be driven by a loose name-pattern match alone.
-25. Phase B **must not** be considered production-ready until SQL Server's behaviour on client/session loss during an active `BACKUP` has been empirically validated against a disposable database, and either that behaviour is proven safe or an in-flight backup detection guard is implemented. Phase C **must not** proceed on an unresolved gate.
+25. Phase B **must not** be considered production-ready until SQL Server's behaviour on client/session loss during an active `BACKUP` has been empirically validated against a disposable database, and either that behaviour is proven safe or an in-flight backup detection guard is implemented. Phase C **must not** proceed on an unresolved gate. *(Satisfied: validated across three conclusive trials, with the in-flight guard implemented and retained — §14.)*
 26. A detected in-flight backup against the target physical database **must** prevent a second platform-managed backup, and **must** be recorded as a controlled skip rather than as a backup failure.
 27. Dedicated production activation and Shared → Dedicated cutover **must** require `RecoveryReadinessStatus` = `Protected`; no other status, including `Degraded` or `Unknown`, satisfies the gate.
 28. Durability-affecting policy changes — including `BackupManagementMode` and `BackupDestinationKey` — **must** be audited under existing Platform audit conventions, without recording credential material or resolved physical destinations.
+29. In-flight backup detection **must** be performed before every platform-managed backup. It is a correctness precondition, **not** an operational feature flag, and **must not** be disableable by fleet, scheduler or deployment configuration.
+30. The provider **must** establish that its identity holds sufficient server visibility *before* trusting an in-flight query result, because `sys.dm_exec_requests` silently narrows to the caller's own session rather than failing when that visibility is absent. If visibility cannot be established the backup **must not** start, and the outcome **must** be distinguishable from having observed an in-flight operation. On SQL Server 2022 the required permission is `VIEW SERVER PERFORMANCE STATE`; `VIEW SERVER STATE` is not required and `sysadmin` **must not** be used to satisfy it.
+31. When several backup operations are due for one physical database, the scheduler **must** dispatch exactly one per sweep, in the order transaction log, then full, then differential. An externally taken backup **must not** be treated as satisfying the platform's schedule.
 
 ---
 
@@ -606,7 +648,9 @@ The audit record identifies the actor, the physical database, the previous and n
 | Risk | Mitigation |
 |---|---|
 | Backup runs long and its lock-bearing connection is interrupted | Session-scoped ownership; session loss is ownership loss; no success recorded after it without reconciled provider evidence |
-| The applock is released while a server-side `BACKUP` is still winding down, letting a second worker overlap | Acknowledged as unproven (§14); binding Phase B empirical validation on a disposable database, with an in-flight detection guard as the alternative exit; Phase C blocked until resolved |
+| The applock is released while a server-side `BACKUP` is still winding down, letting a second worker overlap | Validated in Phase B across three conclusive trials: no overlap observed, but at margins of 1–10 ms, which are not treated as a portable guarantee (§14). Mandatory in-flight detection with a server-visibility precondition is retained as the standing defence |
+| A backup started outside the platform — DBA, SQL Agent, third-party tooling — overlaps a managed backup | Such operations take no platform lock and are structurally invisible to ownership; mandatory in-flight detection against live server state is the only mechanism that sees them |
+| The in-flight guard is disabled to work around a missing permission | The guard is a correctness precondition, not a feature flag, and must not be disableable by configuration; a missing visibility permission fails the backup closed and names the missing prerequisite |
 | Verification-database sweep drops a database it should not | Reserved system-controlled namespace plus a conjunction of ownership, registration and age criteria; pattern-only matching prohibited |
 | A backup destination is influenced by caller input | Destination resolved only from a trusted `BackupDestinationKey` in Infrastructure; caller-supplied paths, UNC, URLs and endpoints prohibited |
 | Durability weakened by a quiet policy change rather than a failed operation | `BackupManagementMode`, destination key, schedules, retention and verification requirements explicitly audited |
@@ -706,11 +750,13 @@ This ADR should be reviewed if:
 | Log backup during migration | Permitted |
 | Full/differential during migration | **Permitted** |
 | Migration/backup scheduling separation | Operational preference only, not a correctness invariant |
-| Session-loss behaviour during `BACKUP` | **Unproven — binding Phase B empirical validation** |
-| In-flight backup detection guard | Required if validation shows an overlap window |
+| Session-loss behaviour during `BACKUP` | **Validated in Phase B** — no overlap observed in three trials, at 1–10 ms margins; not a portable guarantee |
+| In-flight backup detection guard | **Mandatory V1** — not conditional, and not disableable by configuration |
+| Server visibility for in-flight detection | `VIEW SERVER PERFORMANCE STATE` (SQL Server 2022); never `sysadmin`; missing visibility fails closed |
 | Duplicate-backup outcome | Controlled skip, never a failure |
 | Success criterion | Reconciled post-operation provider evidence |
-| Phase C start | Blocked on the Phase B exit gate |
+| Phase C start | **Unblocked — Phase B exit gate closed** |
+| Operation precedence when several are due | Transaction log → full → differential; one operation per database per sweep |
 | Backup destination selection | Trusted `BackupDestinationKey` only; caller-supplied paths/UNC/URLs prohibited |
 | Verification database naming | Reserved system-controlled namespace; cleanup eligibility is a conjunction |
 | `msdb` role | Supporting evidence; Platform authoritative |
@@ -727,3 +773,4 @@ This ADR should be reviewed if:
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 1.0 | 2026-08-14 | Solution Architecture Team | Initial decision: backup and recovery orchestration for physical tenant databases — per-database policy and chains, recovery readiness as an independent fourth dimension with its own writer, separate `BackupManagementMode`, separate backup credential, SQL Server full/differential/log semantics with no automatic recovery-model change, platform orchestration and `sp_getapplock` ownership in a namespace distinct from migration, persisted run history, no platform-side deletion in V1, two-level restore verification, and a binding pre-cutover recovery-readiness gate requiring an actual restore verification. Pre-approval revisions arising from architecture review: managed backups of all types may coexist with schema migration (the earlier full/differential exclusion was unnecessary and unenforceable across distinct lock namespaces, and is withdrawn along with its "half-applied schema" rationale, leaving I/O contention as a scheduling preference); session-scoped ownership is stated as planned rather than proven, with a binding Phase B empirical session-loss validation, an in-flight backup detection guard, a controlled duplicate-backup skip outcome, post-operation evidence as the success criterion, and Phase C blocked on that gate; destination selection restricted to a trusted key by compliance rule; verification-database cleanup bound to a reserved system-controlled namespace and an eligibility conjunction; durability-affecting policy changes explicitly audited |
+| 1.1 | 2026-08-15 | Solution Architecture Team | Records the outcome of the Phase B empirical work and unblocks Phase C. The §14 session-loss gate is **closed**: abrupt client-process termination during an active `BACKUP` was validated against a disposable database across three conclusive trials, and in each the server-side request was gone before another worker could acquire ownership. The observed margins — 10 ms, 1 ms, 1 ms — are recorded as a local observation at the granularity of the measurement itself, explicitly **not** as a portable timing guarantee, so session-scoped ownership alone is not accepted as the sole duplicate-operation defence. In-flight backup detection is therefore promoted from conditional to **mandatory V1 behaviour**, on two grounds: the margin is too small to rely on, and backups started outside the platform take no platform lock and are structurally invisible to ownership. A server-visibility precondition is added after Phase B established that `sys.dm_exec_requests` silently narrows to the caller's own session rather than failing when visibility is absent — the provider must confirm visibility before trusting an empty result, must fail closed when it cannot, and on SQL Server 2022 requires `VIEW SERVER PERFORMANCE STATE` rather than `VIEW SERVER STATE` and never `sysadmin`. The guard is stated to be a correctness precondition rather than an operational feature flag, and not disableable by configuration. Adds Phase C scheduler operation precedence — transaction log, then full, then differential, one operation per physical database per sweep — with the distinction that an externally taken backup may change SQL Server chain state without satisfying the platform's schedule. Compliance rules 29–31 added; rule 25 marked satisfied. |

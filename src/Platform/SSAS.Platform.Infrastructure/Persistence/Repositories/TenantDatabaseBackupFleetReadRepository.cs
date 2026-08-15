@@ -8,7 +8,22 @@ namespace SSAS.Platform.Infrastructure.Persistence.Repositories;
 public sealed class TenantDatabaseBackupFleetReadRepository(PlatformDbContext dbContext)
   : ITenantDatabaseBackupFleetReadRepository
 {
+  public async Task<IReadOnlyList<string>> ListEligibleServerKeysAsync(
+    CancellationToken cancellationToken = default) =>
+    await (from database in dbContext.TenantDatabases.AsNoTracking()
+           join policy in dbContext.TenantDatabaseBackupPolicies.AsNoTracking()
+             on database.Id equals policy.TenantDatabaseId
+           where policy.Enabled &&
+             policy.ManagementMode == Domain.Enums.TenantDatabaseBackupManagementMode.AutomaticByPlatform &&
+             database.HostingMode == Domain.Enums.TenantDatabaseHostingMode.PlatformManaged &&
+             database.ProvisioningStatus == Domain.Enums.TenantDatabaseProvisioningStatus.Ready
+           select database.ServerKey)
+      .Distinct()
+      .OrderBy(serverKey => serverKey)
+      .ToListAsync(cancellationToken);
+
   public async Task<IReadOnlyList<TenantDatabaseBackupDueCandidate>> ListBackupCandidatesAsync(
+    string serverKey,
     long afterId,
     int take,
     CancellationToken cancellationToken = default) =>
@@ -21,7 +36,8 @@ public sealed class TenantDatabaseBackupFleetReadRepository(PlatformDbContext db
     await (from database in dbContext.TenantDatabases.AsNoTracking()
            join policy in dbContext.TenantDatabaseBackupPolicies.AsNoTracking()
              on database.Id equals policy.TenantDatabaseId
-           where database.Id > afterId &&
+           where database.ServerKey == serverKey &&
+             database.Id > afterId &&
              policy.Enabled &&
              policy.ManagementMode == Domain.Enums.TenantDatabaseBackupManagementMode.AutomaticByPlatform &&
              database.HostingMode == Domain.Enums.TenantDatabaseHostingMode.PlatformManaged &&

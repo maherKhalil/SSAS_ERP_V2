@@ -88,6 +88,28 @@ public sealed class SqlServerTenantDatabaseBackupProvider(
       // The guard is required V1 behaviour, not an optional extra: the session-loss experiment observed
       // ownership becoming reacquirable only 7 ms after the backup request disappeared, and that ordering
       // was measured on one host with one backup size. It is not a margin to build on.
+      // SUPERSESSION CHECK — under the lock, and it must stay there (ADR-022 §13, TS-Backup Phase C).
+      //
+      // Two scheduler instances can both decide this database is due from the same stale projection. The
+      // applock serialises them, but serialising is not deduplicating: without this, the second worker
+      // simply waits its turn and takes a redundant backup of a due state the first already satisfied.
+      //
+      // The check cannot live in the scheduler. Both instances can re-read platform timestamps while the
+      // first backup is still running and both still see "due"; only one of them can hold this lock. And it
+      // reads SQL Server's own record rather than the Platform database because the executor persists
+      // success AFTER ownership is released — msdb has the first worker's row before it lets go of the lock,
+      // the Platform row does not.
+      if (request.SupersededIfCompletedAfterUtc is { } supersededAfter &&
+        await SqlServerBackupEvidence.HasPlatformBackupCompletedSinceAsync(
+          connection, descriptor.DatabaseName, request.Operation, request.TenantDatabaseId,
+          supersededAfter, cancellationToken))
+      {
+        return new TenantDatabaseBackupProviderResult(
+          TenantDatabaseBackupOutcome.SkippedSupersededByRecentBackup, StartedUtc: startedUtc,
+          CompletedUtc: DateTimeOffset.UtcNow,
+          SafeErrorSummary: TenantStorageErrors.BackupSupersededByRecentRun.Code);
+      }
+
       // UNCONDITIONAL. There is no configuration, option or flag that reaches these two checks, by
       // ADR-022 compliance rules 29 and 30: the in-flight guard is a correctness precondition, not an
       // operational feature. Phase C made this binding, because fleet scheduling runs it unattended across

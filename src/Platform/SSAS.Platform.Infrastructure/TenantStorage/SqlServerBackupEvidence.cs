@@ -41,6 +41,63 @@ internal static class SqlServerBackupEvidence
     };
   }
 
+  // Has a PLATFORM-MANAGED backup of this operation completed since the moment a scheduling decision was
+  // based on? (ADR-022 §13, TS-Backup Phase C.)
+  //
+  // THIS IS THE MULTI-INSTANCE DEDUPLICATION SIGNAL, and its correctness rests on an ordering that must not
+  // be disturbed. SQL Server writes the `backupset` row when the BACKUP statement completes; the provider
+  // then re-checks ownership and reconciles evidence, and only afterwards releases the applock. A second
+  // worker can therefore acquire ownership only AFTER the first worker's row is already visible here. That
+  // is why this check belongs under the lock and why a pre-dispatch check cannot replace it: two schedulers
+  // can both read stale platform timestamps at the same instant, but they cannot both hold this lock.
+  //
+  // EXTERNAL BACKUPS MUST NOT SATISFY THE PLATFORM SCHEDULE (ADR-022 §13). A DBA, SQL Agent or third-party
+  // backup changes SQL Server's chain state without discharging the platform's obligation, so the match is
+  // restricted to devices whose FILE NAME carries this platform's generated vocabulary — the physical
+  // database identifier and operation code that ArtifactFileName emits, anchored to a path separator so a
+  // directory name cannot masquerade as one. `[_]` matches a literal underscore, which LIKE would otherwise
+  // treat as a single-character wildcard.
+  public static async Task<bool> HasPlatformBackupCompletedSinceAsync(
+    SqlConnection connection,
+    string databaseName,
+    TenantDatabaseBackupOperation operation,
+    long tenantDatabaseId,
+    DateTimeOffset sinceUtc,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(connection);
+
+    var typeCode = TypeCodeFor(operation);
+    if (typeCode is null)
+    {
+      return false;
+    }
+
+    await using var command = connection.CreateCommand();
+    command.CommandText =
+      "SELECT TOP (1) 1 " +
+      "FROM msdb.dbo.backupset AS bs " +
+      "INNER JOIN msdb.dbo.backupmediafamily AS bmf ON bmf.media_set_id = bs.media_set_id " +
+      "WHERE bs.database_name = @database AND bs.type = @type " +
+      "AND bmf.physical_device_name LIKE @platformArtifact " +
+      "AND DATEADD(second, DATEDIFF(second, GETDATE(), GETUTCDATE()), bs.backup_finish_date) > @since";
+
+    command.Parameters.Add("@database", SqlDbType.NVarChar, 128).Value = databaseName;
+    command.Parameters.Add("@type", SqlDbType.Char, 1).Value = typeCode;
+    command.Parameters.Add("@platformArtifact", SqlDbType.NVarChar, 320).Value =
+      PlatformArtifactPattern(tenantDatabaseId, operation);
+    command.Parameters.Add("@since", SqlDbType.DateTime2).Value = sinceUtc.UtcDateTime;
+
+    var found = await command.ExecuteScalarAsync(cancellationToken);
+    return found is not null and not DBNull;
+  }
+
+  // Mirrors SqlServerBackupCommandText.ArtifactFileName's prefix: "{tenantDatabaseId}_{operationCode}_".
+  internal static string PlatformArtifactPattern(long tenantDatabaseId, TenantDatabaseBackupOperation operation) =>
+    string.Create(
+      CultureInfo.InvariantCulture,
+      $@"%\{tenantDatabaseId}[_]{operation.OperationCode}[_]%");
+
   public static async Task<Result<SqlServerBackupEvidenceRecord>> ReadAsync(
     SqlConnection connection,
     string databaseName,

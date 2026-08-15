@@ -229,6 +229,78 @@ public sealed class TenantDatabaseBackupSchedulerTests
     Assert.True(summary.Dispatched <= executor.Calls.Count + 1);
   }
 
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_started_backup_never_receives_the_hosts_stopping_token()
+  {
+    // MEDIUM-2 REGRESSION. Phase B established that cancelling the client does not reliably stop a
+    // server-side BACKUP, so propagating host shutdown into a started operation tears down the session for
+    // nothing and strands the run. Everything before dispatch honours the token; nothing after it does.
+    using var cancellation = new CancellationTokenSource();
+    var executor = new FakeExecutor();
+
+    await Scheduler(new FakeFleetReads(Due(1, "A")), executor).RunSweepAsync(cancellation.Token);
+
+    Assert.Single(executor.ObservedCancellableTokens);
+    Assert.False(executor.ObservedCancellableTokens[0],
+      "the scheduler handed a cancellable token to a started backup");
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task The_due_anchor_travels_with_scheduled_work()
+  {
+    // The anchor is what lets the executor revalidate the decision under database ownership. Without it the
+    // second instance has nothing to compare against and the duplicate cannot be detected.
+    var lastFull = Now.AddDays(-8);
+    var candidate = Due(1, "A") with { FullBackupIntervalMinutes = 60, LastSuccessfulFullBackupUtc = lastFull };
+
+    var executor = new FakeExecutor();
+    await Scheduler(new FakeFleetReads(candidate), executor).RunSweepAsync();
+
+    Assert.Single(executor.ObservedAnchors);
+    Assert.Equal(lastFull, executor.ObservedAnchors[0]);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_server_with_a_large_backlog_does_not_hide_another_servers_database()
+  {
+    // MEDIUM-4 REGRESSION. Server A has more due databases than a full page and every id below B's, so
+    // identifier-ordered paging would have discovered B only after working through all of A. Server-aware
+    // round-robin discovery means B contributes to the very first round.
+    var busy = Enumerable.Range(1, 250).Select(id => Due(id, "Busy"));
+    var quiet = Due(9_999, "Quiet");
+
+    var executor = new FakeExecutor { HoldMilliseconds = 5 };
+    var reads = new FakeFleetReads([.. busy, quiet]) { PageSize = 100 };
+
+    await Scheduler(reads, executor, batchSize: 100, maxConcurrent: 2, maxPerServer: 1).RunSweepAsync();
+
+    var quietPosition = executor.StartOrder.IndexOf(9_999L);
+    Assert.True(quietPosition >= 0, "the quiet server's database was never dispatched");
+    Assert.True(quietPosition < 100,
+      $"the quiet server's database started at position {quietPosition}, behind a whole page of the busy server");
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Every_server_keeps_its_own_keyset_cursor()
+  {
+    // Cursors advance per server rather than across the fleet, so one server's identifiers cannot skip
+    // another's. Proven by every database on both servers being dispatched exactly once.
+    var candidates = Enumerable.Range(1, 5).Select(id => Due(id, "A"))
+      .Concat(Enumerable.Range(6, 5).Select(id => Due(id, "B")))
+      .ToArray();
+
+    var executor = new FakeExecutor();
+    await Scheduler(new FakeFleetReads(candidates) { PageSize = 2 }, executor, batchSize: 2).RunSweepAsync();
+
+    var dispatched = executor.Calls.Select(call => call.TenantDatabaseId).Order().ToArray();
+    Assert.Equal(Enumerable.Range(1, 10).Select(id => (long)id).ToArray(), dispatched);
+    Assert.Equal(dispatched.Distinct().Count(), dispatched.Length);
+  }
+
   private static TenantDatabaseBackupScheduler Scheduler(
     FakeFleetReads reads,
     FakeExecutor executor,
@@ -253,7 +325,7 @@ public sealed class TenantDatabaseBackupSchedulerTests
     }
 
     return new TenantDatabaseBackupScheduler(
-      reads, executor, new FixedClock(), options,
+      reads, executor, new FixedClock(), Microsoft.Extensions.Options.Options.Create(options),
       NullLogger<TenantDatabaseBackupScheduler>.Instance);
   }
 
@@ -291,14 +363,25 @@ public sealed class TenantDatabaseBackupSchedulerTests
 
     public Dictionary<long, TenantDatabaseBackupRunRecord> LatestRuns { get; } = [];
 
+    public Task<IReadOnlyList<string>> ListEligibleServerKeysAsync(CancellationToken cancellationToken = default)
+    {
+      IReadOnlyList<string> serverKeys =
+      [
+        .. candidates.Select(candidate => candidate.ServerKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
+      ];
+
+      return Task.FromResult(serverKeys);
+    }
+
     public Task<IReadOnlyList<TenantDatabaseBackupDueCandidate>> ListBackupCandidatesAsync(
-      long afterId, int take, CancellationToken cancellationToken = default)
+      string serverKey, long afterId, int take, CancellationToken cancellationToken = default)
     {
       RequestedAfterIds.Add(afterId);
 
       IReadOnlyList<TenantDatabaseBackupDueCandidate> page =
       [
         .. candidates
+          .Where(candidate => string.Equals(candidate.ServerKey, serverKey, StringComparison.Ordinal))
           .Where(candidate => candidate.TenantDatabaseId > afterId)
           .OrderBy(candidate => candidate.TenantDatabaseId)
           .Take(Math.Min(take, PageSize))
@@ -342,9 +425,29 @@ public sealed class TenantDatabaseBackupSchedulerTests
     public int MaximumConcurrencyFor(string serverKey) =>
       peakPerServer.TryGetValue(serverKey, out var peak) ? peak : 0;
 
-    public async Task<Result<TenantDatabaseBackupExecutionOutcome>> ExecuteAsync(
+    // Records whether the scheduler handed down a live cancellation token. The shutdown contract is that it
+    // must not: a started backup finishes on its own terms.
+    public List<bool> ObservedCancellableTokens { get; } = [];
+
+    public List<DateTimeOffset?> ObservedAnchors { get; } = [];
+
+    public Task<Result<TenantDatabaseBackupExecutionOutcome>> ExecuteAsync(
       long tenantDatabaseId,
       TenantDatabaseBackupOperation operation,
+      CancellationToken cancellationToken = default) =>
+      RunAsync(tenantDatabaseId, operation, null, cancellationToken);
+
+    public Task<Result<TenantDatabaseBackupExecutionOutcome>> ExecuteScheduledAsync(
+      long tenantDatabaseId,
+      TenantDatabaseBackupOperation operation,
+      DateTimeOffset? dueAnchorUtc,
+      CancellationToken cancellationToken = default) =>
+      RunAsync(tenantDatabaseId, operation, dueAnchorUtc, cancellationToken);
+
+    private async Task<Result<TenantDatabaseBackupExecutionOutcome>> RunAsync(
+      long tenantDatabaseId,
+      TenantDatabaseBackupOperation operation,
+      DateTimeOffset? dueAnchorUtc,
       CancellationToken cancellationToken = default)
     {
       // The fake does not know the ServerKey, so concurrency per server is tracked by the scheduler's own
@@ -357,6 +460,8 @@ public sealed class TenantDatabaseBackupSchedulerTests
         OnCall?.Invoke();
         Calls.Add((tenantDatabaseId, operation));
         StartOrder.Add(tenantDatabaseId);
+        ObservedCancellableTokens.Add(cancellationToken.CanBeCanceled);
+        ObservedAnchors.Add(dueAnchorUtc);
 
         active++;
         MaximumObservedConcurrency = Math.Max(MaximumObservedConcurrency, active);

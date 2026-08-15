@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace SSAS.Platform.Infrastructure.TenantStorage;
 
@@ -14,7 +15,7 @@ namespace SSAS.Platform.Infrastructure.TenantStorage;
 // so the scheduling rules can be tested without a host, a timer or a clock skew.
 public sealed class TenantDatabaseBackupSchedulerHostedService(
   IServiceScopeFactory scopeFactory,
-  TenantDatabaseBackupSchedulerOptions options,
+  IOptions<TenantDatabaseBackupSchedulerOptions> schedulerOptions,
   ILogger<TenantDatabaseBackupSchedulerHostedService> logger) : BackgroundService
 {
   // Process-local health. Deliberately not persisted: it describes THIS instance's loop, and a row would
@@ -25,7 +26,7 @@ public sealed class TenantDatabaseBackupSchedulerHostedService(
 
   protected override async Task ExecuteAsync(CancellationToken stoppingToken)
   {
-    if (!options.Enabled)
+    if (!schedulerOptions.Value.Enabled)
     {
       // Registered but idle. Said once, at startup, so an operator wondering why no backups are happening
       // finds the answer in the log rather than in configuration archaeology.
@@ -34,19 +35,19 @@ public sealed class TenantDatabaseBackupSchedulerHostedService(
     }
 
     LogSchedulerStarted(
-      logger, options.SweepInterval.TotalSeconds, options.MaxConcurrentBackups,
-      options.MaxConcurrentPerServer, null);
+      logger, schedulerOptions.Value.SweepInterval.TotalSeconds, schedulerOptions.Value.MaxConcurrentBackups,
+      schedulerOptions.Value.MaxConcurrentPerServer, null);
 
     try
     {
       // Startup delay plus jitter. Several instances deployed together would otherwise begin their first
       // sweep in the same second and stay in lockstep indefinitely.
-      await Task.Delay(WithJitter(options.StartupDelay), stoppingToken);
+      await Task.Delay(WithJitter(schedulerOptions.Value.StartupDelay), stoppingToken);
 
       while (!stoppingToken.IsCancellationRequested)
       {
         await RunOneSweepAsync(stoppingToken);
-        await Task.Delay(WithJitter(options.SweepInterval), stoppingToken);
+        await Task.Delay(WithJitter(schedulerOptions.Value.SweepInterval), stoppingToken);
       }
     }
     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -89,12 +90,12 @@ public sealed class TenantDatabaseBackupSchedulerHostedService(
   // Bounded, non-negative, and applied to both the startup delay and every interval.
   private TimeSpan WithJitter(TimeSpan interval)
   {
-    if (options.MaximumJitter <= TimeSpan.Zero)
+    if (schedulerOptions.Value.MaximumJitter <= TimeSpan.Zero)
     {
       return interval;
     }
 
-    var jitterMilliseconds = Random.Shared.NextDouble() * options.MaximumJitter.TotalMilliseconds;
+    var jitterMilliseconds = Random.Shared.NextDouble() * schedulerOptions.Value.MaximumJitter.TotalMilliseconds;
     return interval + TimeSpan.FromMilliseconds(jitterMilliseconds);
   }
 

@@ -133,14 +133,18 @@ public static class PlatformInfrastructureServiceCollectionExtensions
 
     // TS-Backup Phase C: fleet scheduling (ADR-022 §13).
     //
-    // The scheduler DEFAULTS OFF. Enabling unattended fleet backups is a deployment decision that also
-    // requires BackupServers credentials and BackupDestinations to exist; a host that has not been prepared
-    // would otherwise sweep on first boot and fail once per database per minute. Registration is
-    // unconditional so the loop is present and observable; only its Enabled flag starts it.
+    // BOUND FROM CONFIGURATION and validated at startup, following the TenantStorageOptions precedent. The
+    // scheduler still DEFAULTS OFF — enabling unattended fleet backups also requires BackupServers
+    // credentials and BackupDestinations to exist — but a deployment can now turn it on and tune it without
+    // a rebuild, and a misconfigured enabled scheduler fails at startup rather than at 03:00.
     //
     // Note what is NOT configurable anywhere in this graph: the provider's visibility and in-flight checks.
     // Scheduling is an operational preference; that guard is a correctness precondition (compliance rule 29).
-    services.AddSingleton(TenantDatabaseBackupSchedulerOptions.Default);
+    services.AddOptions<TenantDatabaseBackupSchedulerOptions>()
+      .Bind(configuration.GetSection(TenantDatabaseBackupSchedulerOptions.SectionName))
+      .ValidateOnStart();
+    services.AddSingleton<IValidateOptions<TenantDatabaseBackupSchedulerOptions>,
+      TenantDatabaseBackupSchedulerOptionsValidator>();
     services.AddScoped<ITenantDatabaseBackupFleetReadRepository, TenantDatabaseBackupFleetReadRepository>();
     services.AddScoped<ITenantDatabaseBackupScheduler, TenantDatabaseBackupScheduler>();
     services.AddHostedService<TenantDatabaseBackupSchedulerHostedService>();

@@ -13,13 +13,13 @@ public sealed class TenantDatabaseBackupRetryPolicyTests
 
   private static readonly TimeSpan Initial = TimeSpan.FromMinutes(5);
 
-  private static readonly TimeSpan Maximum = TimeSpan.FromMinutes(60);
+  private static readonly TimeSpan Skip = TimeSpan.FromMinutes(1);
 
   [Fact]
   [Trait("Decision", "ADR-022")]
   public void Nothing_ever_attempted_is_never_suppressed()
   {
-    Assert.False(TenantDatabaseBackupRetryPolicy.ShouldSuppress(null, Now, Initial, Maximum));
+    Assert.False(TenantDatabaseBackupRetryPolicy.ShouldSuppress(null, Now, Initial, Skip));
   }
 
   [Fact]
@@ -27,10 +27,10 @@ public sealed class TenantDatabaseBackupRetryPolicyTests
   public void A_recent_failure_is_suppressed_and_an_old_one_is_retried()
   {
     var recent = Run(TenantDatabaseBackupRunStatus.Failed, Now.AddMinutes(-1));
-    Assert.True(TenantDatabaseBackupRetryPolicy.ShouldSuppress(recent, Now, Initial, Maximum));
+    Assert.True(TenantDatabaseBackupRetryPolicy.ShouldSuppress(recent, Now, Initial, Skip));
 
     var old = Run(TenantDatabaseBackupRunStatus.Failed, Now.AddMinutes(-6));
-    Assert.False(TenantDatabaseBackupRetryPolicy.ShouldSuppress(old, Now, Initial, Maximum));
+    Assert.False(TenantDatabaseBackupRetryPolicy.ShouldSuppress(old, Now, Initial, Skip));
   }
 
   [Fact]
@@ -46,10 +46,10 @@ public sealed class TenantDatabaseBackupRetryPolicyTests
     })
     {
       Assert.True(TenantDatabaseBackupRetryPolicy.ShouldSuppress(
-        Run(status, Now.AddSeconds(-30)), Now, Initial, Maximum));
+        Run(status, Now.AddSeconds(-30)), Now, Initial, Skip));
 
       Assert.False(TenantDatabaseBackupRetryPolicy.ShouldSuppress(
-        Run(status, Now.AddMinutes(-2)), Now, Initial, Maximum));
+        Run(status, Now.AddMinutes(-2)), Now, Initial, Skip));
     }
   }
 
@@ -60,7 +60,7 @@ public sealed class TenantDatabaseBackupRetryPolicyTests
     // Due-ness already accounts for success. Suppressing here as well would delay a log backup that has
     // genuinely fallen due since.
     Assert.False(TenantDatabaseBackupRetryPolicy.ShouldSuppress(
-      Run(TenantDatabaseBackupRunStatus.Succeeded, Now.AddSeconds(-1)), Now, Initial, Maximum));
+      Run(TenantDatabaseBackupRunStatus.Succeeded, Now.AddSeconds(-1)), Now, Initial, Skip));
   }
 
   [Fact]
@@ -69,7 +69,7 @@ public sealed class TenantDatabaseBackupRetryPolicyTests
   {
     // It clears when authority changes, not when a clock advances.
     Assert.True(TenantDatabaseBackupRetryPolicy.ShouldSuppress(
-      Run(TenantDatabaseBackupRunStatus.BlockedByPolicy, Now.AddDays(-30)), Now, Initial, Maximum));
+      Run(TenantDatabaseBackupRunStatus.BlockedByPolicy, Now.AddDays(-30)), Now, Initial, Skip));
   }
 
   [Fact]
@@ -77,21 +77,7 @@ public sealed class TenantDatabaseBackupRetryPolicyTests
   public void A_running_operation_is_not_started_again()
   {
     Assert.True(TenantDatabaseBackupRetryPolicy.ShouldSuppress(
-      Run(TenantDatabaseBackupRunStatus.Running, Now.AddSeconds(-5)), Now, Initial, Maximum));
-  }
-
-  [Fact]
-  [Trait("Decision", "ADR-022")]
-  public void Backoff_escalates_and_is_capped()
-  {
-    Assert.Equal(Initial, TenantDatabaseBackupRetryPolicy.BackoffFor(1, Initial, Maximum));
-    Assert.Equal(TimeSpan.FromMinutes(10), TenantDatabaseBackupRetryPolicy.BackoffFor(2, Initial, Maximum));
-    Assert.Equal(TimeSpan.FromMinutes(20), TenantDatabaseBackupRetryPolicy.BackoffFor(3, Initial, Maximum));
-    Assert.Equal(TimeSpan.FromMinutes(40), TenantDatabaseBackupRetryPolicy.BackoffFor(4, Initial, Maximum));
-
-    // Capped, and a long failure streak must not overflow into a negative or absurd interval.
-    Assert.Equal(Maximum, TenantDatabaseBackupRetryPolicy.BackoffFor(5, Initial, Maximum));
-    Assert.Equal(Maximum, TenantDatabaseBackupRetryPolicy.BackoffFor(1_000, Initial, Maximum));
+      Run(TenantDatabaseBackupRunStatus.Running, Now.AddSeconds(-5)), Now, Initial, Skip));
   }
 
   [Fact]
@@ -104,7 +90,7 @@ public sealed class TenantDatabaseBackupRetryPolicyTests
       StartedUtc: Now.AddHours(-3), CompletedUtc: Now.AddMinutes(-1),
       null, null, null, null, TenantDatabaseBackupVerificationState.NotVerified, null, "boom");
 
-    Assert.True(TenantDatabaseBackupRetryPolicy.ShouldSuppress(run, Now, Initial, Maximum));
+    Assert.True(TenantDatabaseBackupRetryPolicy.ShouldSuppress(run, Now, Initial, Skip));
   }
 
   private static TenantDatabaseBackupRunRecord Run(TenantDatabaseBackupRunStatus status, DateTimeOffset when) =>

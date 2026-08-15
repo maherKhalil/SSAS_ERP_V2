@@ -17,20 +17,21 @@ namespace SSAS.Platform.Application.TenantStorage;
 // PURE, and derived entirely from existing run history: no NextRetryUtc column, no scheduler state table.
 public static class TenantDatabaseBackupRetryPolicy
 {
-  // Skips are not failures. Another worker owning the lock, or an operation already running on the server,
-  // both mean coordination worked exactly as designed (ADR-022 §14) — so the pause is short, just long
-  // enough to avoid spinning against a backup that is genuinely in progress.
-  public static readonly TimeSpan SkipBackoff = TimeSpan.FromMinutes(1);
-
   // Whether a due operation should be suppressed this sweep because of a recent attempt.
   //
   // `null` latestRun means nothing has ever been attempted — never a reason to wait.
+  //
+  // FLAT INTERVALS, NOT AN ESCALATING CURVE. An earlier shape carried a consecutive-failure count and a
+  // configurable history depth; production never computed either, so the escalation existed only in its own
+  // unit tests while the real behaviour was a single fixed pause. Rather than add a per-database failure-
+  // streak query to every sweep to make dead code true, the curve was removed. Two honest intervals — one
+  // for failures, one for controlled skips — are what the scheduler actually needs, and both are
+  // deployment-configurable.
   public static bool ShouldSuppress(
     TenantDatabaseBackupRunRecord? latestRun,
     DateTimeOffset nowUtc,
-    TimeSpan failureInitialBackoff,
-    TimeSpan failureMaximumBackoff,
-    int consecutiveFailures = 1)
+    TimeSpan failureRetryBackoff,
+    TimeSpan skipRetryBackoff)
   {
     if (latestRun is null)
     {
@@ -44,13 +45,15 @@ public static class TenantDatabaseBackupRetryPolicy
       // A backup is already running under this run, or the process recording it died mid-flight. Either way
       // the scheduler does not start a second one on top of it; Phase B ownership would refuse anyway, and
       // declining here avoids the pointless run record.
-      TenantDatabaseBackupRunStatus.Running => nowUtc < since + SkipBackoff,
+      TenantDatabaseBackupRunStatus.Running => nowUtc < since + skipRetryBackoff,
 
-      TenantDatabaseBackupRunStatus.Failed =>
-        nowUtc < since + BackoffFor(consecutiveFailures, failureInitialBackoff, failureMaximumBackoff),
+      TenantDatabaseBackupRunStatus.Failed => nowUtc < since + failureRetryBackoff,
 
+      // Skips are not failures. Another worker owning the lock, an operation already running on the server,
+      // or a decision another instance already satisfied all mean coordination worked exactly as designed
+      // (ADR-022 §13, §14) — so the pause is short.
       TenantDatabaseBackupRunStatus.SkippedOwnershipHeld or
-      TenantDatabaseBackupRunStatus.SkippedInFlightOperation => nowUtc < since + SkipBackoff,
+      TenantDatabaseBackupRunStatus.SkippedInFlightOperation => nowUtc < since + skipRetryBackoff,
 
       // BlockedByPolicy is not retried on a timer: it clears when policy or authority changes, not when a
       // clock advances. Eligibility filtering should mean the scheduler rarely sees one at all.
@@ -60,32 +63,5 @@ public static class TenantDatabaseBackupRetryPolicy
       // no retry meaning.
       _ => false
     };
-  }
-
-  // Escalating, capped. Deliberately simple arithmetic rather than a retry framework — the failure modes
-  // this guards against are "a database is unreachable for an hour" and "a destination is misconfigured",
-  // neither of which is helped by a sophisticated curve.
-  public static TimeSpan BackoffFor(
-    int consecutiveFailures,
-    TimeSpan initial,
-    TimeSpan maximum)
-  {
-    if (consecutiveFailures <= 1)
-    {
-      return initial;
-    }
-
-    // Doubling, but computed in ticks with an early exit so a long failure streak cannot overflow.
-    var backoff = initial;
-    for (var attempt = 1; attempt < consecutiveFailures; attempt++)
-    {
-      backoff += backoff;
-      if (backoff >= maximum)
-      {
-        return maximum;
-      }
-    }
-
-    return backoff > maximum ? maximum : backoff;
   }
 }

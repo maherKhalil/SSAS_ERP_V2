@@ -353,6 +353,7 @@ public sealed class TenantStorageRegistryArchitectureTests
       "TenantDatabaseBackupScheduler",
       "TenantDatabaseBackupSchedulerOptions",
       "TenantDatabaseBackupSchedulerHostedService",
+      "TenantDatabaseBackupSchedulerOptionsValidator",
       "TenantDatabaseBackupSweepSummary",
       "TenantDatabaseBackupFleetReadRepository"
     };

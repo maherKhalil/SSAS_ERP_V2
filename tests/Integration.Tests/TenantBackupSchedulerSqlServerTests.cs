@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Domain.Enums;
+using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.TenantStorage;
 
@@ -52,16 +53,19 @@ public sealed class TenantBackupSchedulerSqlServerTests
   {
     // THE MULTI-INSTANCE ASSERTION. Phase C deliberately adds no fleet lock, no lease and no leader
     // election: two application instances may both decide the same database is due, and correctness comes
-    // from Phase B's session applock rather than from the scheduler agreeing with itself.
+    // from Phase B's session applock plus an ownership-bound revalidation of the decision.
     //
-    // The claim under test is not "exactly one scheduler selects it" — that would be a distributed-consensus
-    // claim nobody made. It is that the OUTCOME is safe: one backup happens, and the duplicate resolves to a
-    // controlled skip rather than a second concurrent BACKUP.
+    // This asserts EXACTLY ONE managed backup for one due event. An earlier version asserted only that no
+    // two backups overlapped, and it passed while the second instance quietly took a redundant sequential
+    // backup — serialised, but still duplicated work nobody asked for.
+    //
+    // NO FILLER DATA, deliberately. A small database backs up in well under the ownership timeout, which is
+    // precisely the race that produced the duplicate: the first worker finishes and releases the lock before
+    // the second times out waiting for it. A large database would hide the bug behind a timeout.
     await using var fixture = await TenantBackupProviderSqlServerTests.BackupFixture.CreateAsync();
 
     var id = await fixture.RegisterAsync();
     await fixture.AddPolicyAsync(id);
-    await fixture.FillAsync();
 
     var instanceOne = Scheduler(fixture);
     var instanceTwo = Scheduler(fixture);
@@ -82,14 +86,21 @@ public sealed class TenantBackupSchedulerSqlServerTests
         or TenantDatabaseBackupRunStatus.SkippedInFlightOperation,
       $"unexpected duplicate-execution outcome {run.Status}"));
 
-    // THE ACTUAL SAFETY PROPERTY, asserted from SQL Server's own record rather than from run status: no two
-    // backups of this database ever overlapped in time.
-    //
-    // Note what is deliberately NOT asserted — that exactly one backup happened. Ownership serialises
-    // execution; it does not deduplicate a decision two instances made independently from the same stale
-    // projection. When a backup finishes quickly, the second instance can acquire ownership cleanly
-    // afterwards and take a redundant one. That is wasteful rather than unsafe, and it is recorded as a
-    // known Phase C limitation rather than hidden behind a weaker assertion here.
+    // EXACTLY ONE managed backup for one due event, asserted three ways.
+    var succeeded = runs.Count(run => run.Status == TenantDatabaseBackupRunStatus.Succeeded);
+    Assert.Equal(1, succeeded);
+
+    // The second instance recorded a controlled skip carrying the supersession reason, not a second backup.
+    var superseded = runs.Count(run =>
+      run.Status == TenantDatabaseBackupRunStatus.SkippedOwnershipHeld &&
+      run.ErrorSummary == TenantStorageErrors.BackupSupersededByRecentRun.Code);
+    Assert.Equal(1, superseded);
+
+    // And SQL Server's own record agrees: one managed backup set for this database, and no overlap.
+    var managedBackupSets = await TenantBackupProviderSqlServerTests.BackupFixture.MsdbScalarAsync(
+      $"SELECT COUNT(*) FROM msdb.dbo.backupset WHERE database_name = N'{fixture.TargetCatalog}'");
+    Assert.Equal(1, managedBackupSets);
+
     var overlapping = await TenantBackupProviderSqlServerTests.BackupFixture.MsdbScalarAsync(
       "SELECT COUNT(*) FROM msdb.dbo.backupset AS a " +
       "INNER JOIN msdb.dbo.backupset AS b ON a.backup_set_id < b.backup_set_id " +
@@ -168,7 +179,7 @@ public sealed class TenantBackupSchedulerSqlServerTests
     await using var context = fixture.PlatformContext();
     var reads = new TenantDatabaseBackupFleetReadRepository(context);
 
-    var candidates = await reads.ListBackupCandidatesAsync(0, 100);
+    var candidates = await reads.ListBackupCandidatesAsync(TenantBackupProviderSqlServerTests.BackupFixture.PrimaryServerKey, 0, 100);
     var ids = candidates.Select(candidate => candidate.TenantDatabaseId).ToArray();
 
     Assert.Contains(automatic, ids);
@@ -181,7 +192,7 @@ public sealed class TenantBackupSchedulerSqlServerTests
     Assert.Equal(ids.Distinct().Count(), ids.Length);
 
     // And the cursor genuinely advances: asking past the first row never returns it again.
-    var afterFirst = await reads.ListBackupCandidatesAsync(ids[0], 100);
+    var afterFirst = await reads.ListBackupCandidatesAsync(TenantBackupProviderSqlServerTests.BackupFixture.PrimaryServerKey, ids[0], 100);
     Assert.DoesNotContain(ids[0], afterFirst.Select(candidate => candidate.TenantDatabaseId));
   }
 
@@ -196,13 +207,13 @@ public sealed class TenantBackupSchedulerSqlServerTests
       new TenantDatabaseBackupFleetReadRepository(context),
       fixture.Executor(),
       new SweepClock(),
-      new TenantDatabaseBackupSchedulerOptions
+      Microsoft.Extensions.Options.Options.Create(new TenantDatabaseBackupSchedulerOptions
       {
         Enabled = true,
         BatchSize = 100,
         MaxConcurrentBackups = maxConcurrent,
         MaxConcurrentPerServer = maxPerServer
-      },
+      }),
       NullLogger<TenantDatabaseBackupScheduler>.Instance);
   }
 

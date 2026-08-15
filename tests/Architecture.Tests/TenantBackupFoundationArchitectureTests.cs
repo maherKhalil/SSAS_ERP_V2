@@ -205,7 +205,8 @@ public sealed class TenantBackupFoundationArchitectureTests
       "ITenantDatabaseBackupScheduler",
       "TenantDatabaseBackupScheduler",
       "TenantDatabaseBackupSchedulerOptions",
-      "TenantDatabaseBackupSchedulerHostedService"
+      "TenantDatabaseBackupSchedulerHostedService",
+      "TenantDatabaseBackupSchedulerOptionsValidator"
     };
 
     foreach (var type in InfrastructureAssembly.GetTypes()

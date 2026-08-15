@@ -106,6 +106,7 @@ public sealed class TenantBackupProviderArchitectureTests
       "TenantDatabaseBackupScheduler",
       "TenantDatabaseBackupSchedulerOptions",
       "TenantDatabaseBackupSchedulerHostedService",
+      "TenantDatabaseBackupSchedulerOptionsValidator",
       "TenantDatabaseBackupSweepSummary"
     };
 

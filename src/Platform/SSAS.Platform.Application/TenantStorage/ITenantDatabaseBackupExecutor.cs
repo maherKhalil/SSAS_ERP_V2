@@ -22,6 +22,21 @@ public interface ITenantDatabaseBackupExecutor
     long tenantDatabaseId,
     TenantDatabaseBackupOperation operation,
     CancellationToken cancellationToken = default);
+
+  // CONDITIONAL execution, for scheduler-originated work only (TS-Backup Phase C).
+  //
+  // `dueAnchorUtc` is the last-successful timestamp the scheduling decision was based on. If a
+  // platform-managed backup of this operation has completed since then — because another instance got there
+  // first — the decision is stale and this call reports a controlled skip instead of taking a second backup.
+  //
+  // Deliberately a SEPARATE method rather than an optional argument on the one above. Manual execution means
+  // "take this backup now" and must never become conditional on a schedule; keeping the two intents apart in
+  // the contract makes that impossible to blur by passing a default.
+  Task<Result<TenantDatabaseBackupExecutionOutcome>> ExecuteScheduledAsync(
+    long tenantDatabaseId,
+    TenantDatabaseBackupOperation operation,
+    DateTimeOffset? dueAnchorUtc,
+    CancellationToken cancellationToken = default);
 }
 
 // The recorded result of one execution attempt, projected for the caller. Carries the run identifier so an

@@ -186,10 +186,14 @@ public sealed class TenantBackupSchedulerArchitectureTests
     var list = typeof(ITenantDatabaseBackupFleetReadRepository)
       .GetMethod(nameof(ITenantDatabaseBackupFleetReadRepository.ListBackupCandidatesAsync))!;
 
+    // Discovery is per server AND keyset-paged: the page is requested for one ServerKey, from an exclusive
+    // cursor, with a bounded size. The server dimension is what makes fairness cross page boundaries; the
+    // cursor is what keeps paging off OFFSET.
     var parameters = list.GetParameters();
-    Assert.Equal("afterId", parameters[0].Name);
-    Assert.Equal(typeof(long), parameters[0].ParameterType);
-    Assert.Equal("take", parameters[1].Name);
+    Assert.Equal("serverKey", parameters[0].Name);
+    Assert.Equal("afterId", parameters[1].Name);
+    Assert.Equal(typeof(long), parameters[1].ParameterType);
+    Assert.Equal("take", parameters[2].Name);
 
     // And no "skip"/"offset"/"page number" vocabulary anywhere on the contract.
     foreach (var method in typeof(ITenantDatabaseBackupFleetReadRepository).GetMethods())
@@ -210,17 +214,27 @@ public sealed class TenantBackupSchedulerArchitectureTests
     // No scheduler table, no lease table, no NextDueUtc. Due-ness is derived from policy plus the
     // successful-backup timestamps Phase B already maintains, so there is no second source of truth to
     // drift out of step with the fleet.
+    // Scoped to the concepts Phase C decided not to persist, rather than to any entity whose name happens to
+    // contain a word. A future phase may legitimately need an entity called something-Lease; what it may not
+    // do is give the BACKUP SCHEDULER persisted state, because due-ness is derived from policy plus the
+    // successful-backup timestamps Phase B already maintains.
     var model = PlatformModel();
 
     foreach (var entity in model.GetEntityTypes())
     {
-      Assert.DoesNotContain("Scheduler", entity.ClrType.Name, StringComparison.OrdinalIgnoreCase);
-      Assert.DoesNotContain("Lease", entity.ClrType.Name, StringComparison.OrdinalIgnoreCase);
+      var name = entity.ClrType.Name;
 
+      Assert.False(
+        name.Contains("BackupScheduler", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("SchedulerLease", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("BackupLease", StringComparison.OrdinalIgnoreCase),
+        $"{name} would give the backup scheduler persisted state");
+
+      // NextDueUtc is the specific denormalisation Phase C rejected: a second source of truth for due-ness
+      // that can drift out of step with the timestamps it duplicates.
       foreach (var property in entity.GetProperties())
       {
         Assert.DoesNotContain("NextDue", property.Name, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("NextRetry", property.Name, StringComparison.OrdinalIgnoreCase);
       }
     }
   }

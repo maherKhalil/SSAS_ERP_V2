@@ -188,6 +188,25 @@ public sealed class TenantDatabaseRecoveryActivationTests
     Assert.Equal(TenantDatabaseRecoveryActivationDecision.RefusedRecoveryReadinessUnknown, decision);
   }
 
+  // ...AND THE REFUSAL DOES NOT DEPEND ON THE HELD STATUS BEING HONEST.
+  //
+  // Here the durable row claims `Protected` and carries a flawless verification of the current baseline —
+  // a state the readiness evaluator would never produce for CustomerManaged, but one a persisted row could
+  // present if a hosting-mode transition were ever added. Hosting mode is asserted directly, so the refusal
+  // stands on its own rather than on a projection being trustworthy.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void A_customer_managed_database_is_refused_even_when_its_evidence_claims_protected()
+  {
+    var decision = TenantDatabaseRecoveryActivation.Decide(
+      Inputs(
+        hostingMode: TenantDatabaseHostingMode.CustomerManaged,
+        held: TenantDatabaseRecoveryReadinessStatus.Protected),
+      Now);
+
+    Assert.Equal(TenantDatabaseRecoveryActivationDecision.RefusedRecoveryReadinessUnknown, decision);
+  }
+
   // ---- THE APPLICATION GATE --------------------------------------------------------------------------
 
   [Fact]

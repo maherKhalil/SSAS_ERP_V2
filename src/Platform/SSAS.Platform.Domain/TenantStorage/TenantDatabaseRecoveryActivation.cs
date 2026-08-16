@@ -33,6 +33,22 @@ public static class TenantDatabaseRecoveryActivation
   {
     ArgumentNullException.ThrowIfNull(inputs);
 
+    // ---- HOSTING MODE, CHECKED DIRECTLY AND FIRST.
+    //
+    // The platform owns neither the server nor the recovery of a CustomerManaged database and must never
+    // activate one on the strength of an asserted recovery position (ADR-022 §12, compliance rule 7).
+    //
+    // The readiness evaluator already refuses CustomerManaged structurally, so this was previously implied
+    // — but only TRANSITIVELY, through a held status that this gate reads rather than recomputes. That
+    // relied on `HostingMode` being immutable after registration, which is true today and is not a property
+    // this gate should depend on: the day a hosting-mode transition is added, a database that had been
+    // `Protected` while PlatformManaged would carry that status across and pass. Asserting it here costs one
+    // comparison and removes the coupling.
+    if (inputs.Readiness.HostingMode != TenantDatabaseHostingMode.PlatformManaged)
+    {
+      return TenantDatabaseRecoveryActivationDecision.RefusedRecoveryReadinessUnknown;
+    }
+
     // ---- REQUIREMENT 1: the authoritative readiness verdict.
     //
     // The HELD status is used rather than recomputed here, and that is deliberate. A recomputation cannot

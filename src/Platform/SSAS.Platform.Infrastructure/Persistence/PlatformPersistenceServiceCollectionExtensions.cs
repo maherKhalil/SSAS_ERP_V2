@@ -166,7 +166,17 @@ public static class PlatformInfrastructureServiceCollectionExtensions
       TenantDatabaseRestoreVerificationOptionsValidator>();
     services.AddScoped<ITenantDatabaseVerificationConnectionFactory,
       TenantDatabaseVerificationConnectionFactory>();
-    services.AddScoped<ITenantDatabaseRestoreVerificationRunStore, TenantDatabaseRestoreVerificationRunStore>();
+    services.AddScoped<TenantDatabaseRestoreVerificationRunStore>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationRunStore>(provider =>
+      provider.GetRequiredService<TenantDatabaseRestoreVerificationRunStore>());
+    services.AddScoped<ITenantDatabaseRestoreVerificationReconciliationStore>(provider =>
+      provider.GetRequiredService<TenantDatabaseRestoreVerificationRunStore>());
+    services.AddScoped<ITenantDatabaseRestoreVerificationServerObserver,
+      SqlServerTenantDatabaseRestoreVerificationServerObserver>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationReconciler,
+      TenantDatabaseRestoreVerificationReconciler>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationFleetReadRepository,
+      TenantDatabaseRestoreVerificationFleetReadRepository>();
 
     // TS-Backup Phase D6: the isolated restore provider. Registered as a service only — nothing schedules
     // it, and it implements no cleanup, because the destructive-permission model is not yet proven against a
@@ -179,6 +189,9 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseRestoreVerificationProbe, SqlServerRestoreVerificationProbe>();
     services.AddScoped<ITenantDatabaseRestoreVerificationExecutor,
       TenantDatabaseRestoreVerificationExecutor>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationScheduler,
+      TenantDatabaseRestoreVerificationScheduler>();
+    services.AddHostedService<TenantDatabaseRestoreVerificationHostedService>();
 
     // The destination resolver becomes an injected dependency here. Phase B's backup provider constructs one
     // directly from options, which was self-contained enough at the time; the restore provider needs the same

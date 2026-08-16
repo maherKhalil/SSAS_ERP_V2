@@ -257,6 +257,9 @@ public static class TenantStorageErrors
   public static readonly Error RestoreVerificationAlreadySatisfied =
     new("TenantStorage.RestoreVerificationAlreadySatisfied", "A successful restore verification completed after this decision was made, so this verification is redundant.");
 
+  public static readonly Error RestoreVerificationReconciliationStale =
+    new("TenantStorage.RestoreVerificationReconciliationStale", "The restore verification changed before reconciliation could apply its conservative terminal transition.");
+
   // The verification target is absent, unresolvable, or not trusted for this environment. FAILS CLOSED —
   // there is no fallback to the source database's server (ADR-022 §17, compliance rule 44).
   public static readonly Error RestoreVerificationServerNotConfigured =

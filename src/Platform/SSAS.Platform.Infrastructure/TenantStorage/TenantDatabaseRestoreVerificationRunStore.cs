@@ -14,7 +14,8 @@ namespace SSAS.Platform.Infrastructure.TenantStorage;
 // THE ADMISSION METHOD IS THE LOAD-BEARING PART OF THIS SLICE. Everything else here is ordinary lifecycle.
 public sealed class TenantDatabaseRestoreVerificationRunStore(
   PlatformDbContext dbContext,
-  IDateTimeProvider clock) : ITenantDatabaseRestoreVerificationRunStore
+  IDateTimeProvider clock) : ITenantDatabaseRestoreVerificationRunStore,
+  ITenantDatabaseRestoreVerificationReconciliationStore
 {
   // SQL Server error numbers for a uniqueness violation. 2601 is a unique INDEX, 2627 a unique CONSTRAINT;
   // the filtered index below raises 2601, and both are matched so a future model change cannot silently
@@ -43,6 +44,71 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
         run.StartedUtc,
         run.CompletedUtc))
       .SingleOrDefaultAsync(cancellationToken);
+
+  public async Task<IReadOnlyList<TenantDatabaseRestoreVerificationActiveRunRecord>> ListActiveAsync(
+    long afterVerificationRunId,
+    int take,
+    CancellationToken cancellationToken = default)
+  {
+    if (afterVerificationRunId < 0 || take <= 0)
+    {
+      throw new ArgumentOutOfRangeException(take <= 0 ? nameof(take) : nameof(afterVerificationRunId));
+    }
+
+    return await (from run in dbContext.Set<TenantDatabaseRestoreVerificationRun>().AsNoTracking()
+                  join database in dbContext.TenantDatabases.AsNoTracking()
+                    on run.TenantDatabaseId equals database.Id
+                  where run.Id > afterVerificationRunId &&
+                    (run.Status == TenantDatabaseRestoreVerificationStatus.Admitted ||
+                     run.Status == TenantDatabaseRestoreVerificationStatus.Restoring)
+                  orderby run.Id
+                  select new TenantDatabaseRestoreVerificationActiveRunRecord(
+                    run.Id,
+                    run.TenantDatabaseId,
+                    run.SourceBackupRunId,
+                    run.Depth,
+                    run.RestoreServerKey,
+                    database.ServerKey,
+                    run.Status,
+                    run.VerificationDatabaseName,
+                    run.StartedUtc))
+      .Take(take)
+      .ToListAsync(cancellationToken);
+  }
+
+  public async Task<Result> ReconcileAbandonedAsync(
+    TenantDatabaseRestoreVerificationReconciliationTransitionRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    var run = request.Run;
+    if (run.Status is not (TenantDatabaseRestoreVerificationStatus.Admitted or
+      TenantDatabaseRestoreVerificationStatus.Restoring))
+    {
+      return Result.Failure(TenantStorageErrors.RestoreVerificationReconciliationStale);
+    }
+
+    var occurredUtc = clock.UtcNow.ToUniversalTime();
+    var reason = Truncate(request.ReasonSummary);
+    var affected = await dbContext.Set<TenantDatabaseRestoreVerificationRun>()
+      .Where(candidate => candidate.Id == run.VerificationRunId &&
+        candidate.TenantDatabaseId == run.TenantDatabaseId &&
+        candidate.SourceBackupRunId == run.SourceBackupRunId &&
+        candidate.RestoreServerKey == run.RestoreServerKey &&
+        candidate.Status == run.Status &&
+        candidate.VerificationDatabaseName == run.VerificationDatabaseName)
+      .ExecuteUpdateAsync(setters => setters
+        .SetProperty(candidate => candidate.Status, TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable)
+        .SetProperty(candidate => candidate.ErrorSummary, reason)
+        .SetProperty(candidate => candidate.CompletedUtc, occurredUtc)
+        .SetProperty(candidate => candidate.ModifiedUtc, occurredUtc)
+        .SetProperty(candidate => candidate.ModifiedBy, request.Actor), cancellationToken);
+
+    return affected == 1
+      ? Result.Success()
+      : Result.Failure(TenantStorageErrors.RestoreVerificationReconciliationStale);
+  }
 
   // ADMISSION (ADR-022 compliance rule 43).
   //
@@ -315,6 +381,13 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
     await dbContext.SaveChangesAsync(cancellationToken);
     return Result.Success();
   }
+
+  private static string? Truncate(string? value) =>
+    string.IsNullOrWhiteSpace(value)
+      ? null
+      : value.Length <= TenantDatabaseRestoreVerificationRun.ErrorSummaryMaximumLength
+        ? value
+        : value[..TenantDatabaseRestoreVerificationRun.ErrorSummaryMaximumLength];
 
   private static bool IsUniquenessViolation(DbUpdateException exception) =>
     exception.InnerException is SqlException sqlException &&

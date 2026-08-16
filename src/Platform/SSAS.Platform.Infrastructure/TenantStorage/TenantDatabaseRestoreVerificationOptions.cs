@@ -40,4 +40,18 @@ public sealed class TenantDatabaseRestoreVerificationOptions
   // How long a verification database must have existed before automated cleanup may consider it an orphan.
   // Deliberately generous: a long legitimate restore must never be swept out from under itself.
   public TimeSpan OrphanCleanupGracePeriod { get; set; } = TimeSpan.FromHours(6);
+
+  // D8 only releases an active admission after this grace AND authoritative verification-server observation.
+  // It is not a timeout: age alone never reconciles a run.
+  public TimeSpan ReconciliationGracePeriod { get; set; } = TimeSpan.FromHours(6);
+
+  // D8/D9 process bounded keyset pages. The default is intentionally modest because restore verification is
+  // heavier than backup scheduling and every candidate can entail trusted server observation.
+  public int SchedulerBatchSize { get; set; } = 50;
+
+  public TimeSpan SchedulerSweepInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+  public int MaxConcurrentVerifications { get; set; } = 1;
+
+  public int MaxConcurrentVerificationsPerServer { get; set; } = 1;
 }

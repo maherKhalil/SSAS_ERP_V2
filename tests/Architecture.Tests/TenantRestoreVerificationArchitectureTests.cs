@@ -96,17 +96,23 @@ public sealed class TenantRestoreVerificationArchitectureTests
 
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public void Phase_d_has_no_restore_verification_scheduler_or_cleanup_executor()
+  public void D9_scheduler_delegates_to_d7_and_no_cleanup_executor_exists()
   {
-    var forbidden = InfrastructureAssembly.GetTypes()
+    var dependencies = typeof(TenantDatabaseRestoreVerificationScheduler)
+      .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+      .SelectMany(constructor => constructor.GetParameters())
+      .Select(parameter => parameter.ParameterType)
+      .ToArray();
+    Assert.Contains(typeof(ITenantDatabaseRestoreVerificationExecutor), dependencies);
+    Assert.DoesNotContain(typeof(ITenantDatabaseRestoreVerificationProvider), dependencies);
+
+    var cleanupExecutors = InfrastructureAssembly.GetTypes()
       .Where(type => type.Namespace?.Contains("TenantStorage", StringComparison.Ordinal) == true)
-      .Where(type => type.Name.Contains("RestoreVerification", StringComparison.OrdinalIgnoreCase))
-      .Where(type => type.Name.Contains("Scheduler", StringComparison.OrdinalIgnoreCase) ||
-        type.Name.Contains("CleanupExecutor", StringComparison.OrdinalIgnoreCase))
+      .Where(type => type.Name.Contains("CleanupExecutor", StringComparison.OrdinalIgnoreCase))
       .Select(type => type.FullName)
       .ToArray();
 
-    Assert.Empty(forbidden);
+    Assert.Empty(cleanupExecutors);
   }
 
   // TWO INVARIANTS LIVE NEXT DOOR, not here: that no restore command can emit `WITH REPLACE`, and that a

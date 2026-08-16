@@ -393,7 +393,16 @@ public sealed class TenantStorageRegistryArchitectureTests
       "TenantDatabaseRestoreVerificationExecutor",
       "TenantDatabaseRestoreSequenceResult",
       "AddBackupCheckpointLsn",
-      "TenantDatabaseRestoreProbeOutcome"
+       "TenantDatabaseRestoreProbeOutcome"
+       ,"SqlServerTenantDatabaseRestoreVerificationServerObserver"
+       ,"TenantDatabaseRestoreVerificationReconciler"
+       ,"ITenantDatabaseRestoreVerificationReconciler"
+       ,"TenantDatabaseRestoreVerificationScheduler"
+       ,"ITenantDatabaseRestoreVerificationScheduler"
+       ,"TenantDatabaseRestoreVerificationHostedService"
+       ,"TenantDatabaseRestoreVerificationFleetReadRepository"
+       ,"TenantDatabaseRestoreVerificationReconciliationSummary"
+       ,"TenantDatabaseRestoreVerificationSweepSummary"
     };
 
     var offenders = InfrastructureAssembly.GetTypes()

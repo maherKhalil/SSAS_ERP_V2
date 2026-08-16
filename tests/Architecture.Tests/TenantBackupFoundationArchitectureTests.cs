@@ -266,7 +266,16 @@ public sealed class TenantBackupFoundationArchitectureTests
       "ITenantDatabaseRestoreVerificationProvider",
       "TenantDatabaseRestoreVerificationRequest",
       "TenantDatabaseRestoreVerificationResult",
-      "TenantDatabaseRestoreVerificationOutcome"
+       "TenantDatabaseRestoreVerificationOutcome"
+       ,"SqlServerTenantDatabaseRestoreVerificationServerObserver"
+       ,"TenantDatabaseRestoreVerificationReconciler"
+       ,"ITenantDatabaseRestoreVerificationReconciler"
+       ,"TenantDatabaseRestoreVerificationScheduler"
+       ,"ITenantDatabaseRestoreVerificationScheduler"
+       ,"TenantDatabaseRestoreVerificationHostedService"
+       ,"TenantDatabaseRestoreVerificationFleetReadRepository"
+       ,"TenantDatabaseRestoreVerificationReconciliationSummary"
+       ,"TenantDatabaseRestoreVerificationSweepSummary"
     };
 
     foreach (var type in InfrastructureAssembly.GetTypes()

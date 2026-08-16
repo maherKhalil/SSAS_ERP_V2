@@ -53,6 +53,32 @@ public sealed class TenantDatabaseRestoreVerificationOptionsValidator
         "grace period would make a verification database eligible for deletion while it is still in use.");
     }
 
+    if (options.ReconciliationGracePeriod <= TimeSpan.Zero)
+    {
+      failures.Add($"{section}:{nameof(options.ReconciliationGracePeriod)} must be greater than zero.");
+    }
+
+    if (options.SchedulerBatchSize <= 0)
+    {
+      failures.Add($"{section}:{nameof(options.SchedulerBatchSize)} must be greater than zero.");
+    }
+
+    if (options.SchedulerSweepInterval <= TimeSpan.Zero)
+    {
+      failures.Add($"{section}:{nameof(options.SchedulerSweepInterval)} must be greater than zero.");
+    }
+
+    if (options.MaxConcurrentVerifications <= 0)
+    {
+      failures.Add($"{section}:{nameof(options.MaxConcurrentVerifications)} must be greater than zero.");
+    }
+
+    if (options.MaxConcurrentVerificationsPerServer <= 0 ||
+      options.MaxConcurrentVerificationsPerServer > options.MaxConcurrentVerifications)
+    {
+      failures.Add($"{section}:{nameof(options.MaxConcurrentVerificationsPerServer)} must be greater than zero and must not exceed {nameof(options.MaxConcurrentVerifications)}.");
+    }
+
     return failures.Count == 0
       ? ValidateOptionsResult.Success
       : ValidateOptionsResult.Fail(failures);

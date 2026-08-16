@@ -25,7 +25,8 @@ public sealed class TenantDbContextFactory(
   ITenantDatabaseTrafficGate trafficGate,
   ICurrentUser currentUser,
   ICurrentTenant currentTenant,
-  IDateTimeProvider dateTimeProvider) : ITenantDbContextFactory
+  IDateTimeProvider dateTimeProvider,
+  ITenantWriteFence writeFence) : ITenantDbContextFactory
 {
   public async Task<Result<TenantDbContext>> CreateAsync(
     Guid tenantId,
@@ -67,6 +68,7 @@ public sealed class TenantDbContextFactory(
 
     // The context owns the connection, so disposing the context closes it. Without this a routed context
     // would leak one pooled connection per request.
-    return Result.Success(new TenantDbContext(options, currentUser, currentTenant, dateTimeProvider));
+    return Result.Success(new TenantDbContext(
+      options, currentUser, currentTenant, dateTimeProvider, writeFence));
   }
 }

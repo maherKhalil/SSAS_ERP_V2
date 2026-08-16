@@ -378,4 +378,37 @@ public static class TenantStorageErrors
 
   public static readonly Error RecoveryActivationRestoreVerificationStale =
     new("TenantStorage.RecoveryActivationRestoreVerificationStale", "The successful restore verification has aged past the interval the active policy requires, so activation is refused.");
+
+  // ---- Shared → Dedicated cutover operation and tenant write freeze (ADR-020, TS-Storage Phase E1).
+
+  public static readonly Error ActorRequired =
+    new("TenantStorage.ActorRequired", "An actor is required to record a tenant storage operation.");
+
+  public static readonly Error CutoverTargetNotEligible =
+    new("TenantStorage.CutoverTargetNotEligible", "The cutover target must be a distinct platform-managed dedicated tenant database.");
+
+  public static readonly Error CutoverSourceNotEligible =
+    new("TenantStorage.CutoverSourceNotEligible", "The cutover source must be the platform-managed database the tenant is currently assigned to.");
+
+  public static readonly Error CutoverOperationNotFound =
+    new("TenantStorage.CutoverOperationNotFound", "No cutover operation exists for the requested identifier.");
+
+  public static readonly Error CutoverOperationNotPreparing =
+    new("TenantStorage.CutoverOperationNotPreparing", "The cutover operation is not in a state that permits this freeze transition.");
+
+  public static readonly Error CutoverAlreadyActive =
+    new("TenantStorage.CutoverAlreadyActive", "An active cutover operation already exists for this tenant.");
+
+  public static readonly Error CutoverAlreadyFlipped =
+    new("TenantStorage.CutoverAlreadyFlipped", "Routing has already moved to the cutover target, so the source freeze cannot be released.");
+
+  // THE DRAIN BUDGET EXPIRED. Deliberately distinct from a frozen refusal: nothing was frozen, and the
+  // operation is terminal rather than retryable in place.
+  public static readonly Error CutoverFreezeTimedOut =
+    new("TenantStorage.CutoverFreezeTimedOut", "Existing tenant writes did not drain within the configured cutover freeze timeout.");
+
+  // What an application write sees while a cutover holds the tenant. A CONTROLLED, VISIBLE maintenance
+  // outcome rather than a generic error (ADR-020 freeze failure safety).
+  public static readonly Error TenantWritesFrozen =
+    new("TenantStorage.TenantWritesFrozen", "Writes for this tenant are temporarily frozen by an in-progress storage cutover.");
 }

@@ -217,6 +217,17 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // than being new-ed up twice.
     services.AddScoped<ITenantDatabaseBackupDestinationResolver, TenantDatabaseBackupDestinationResolver>();
 
+    // TS-Storage Phase E1: the durable cutover operation and the tenant write freeze (ADR-020).
+    //
+    // The fence is registered BEFORE the context factory that consumes it, and there is no configuration
+    // switch that disables it: a freeze that could be turned off at the write boundary would not be a
+    // freeze. Only the timeouts are configurable.
+    services.AddOptions<TenantCutoverFreezeOptions>()
+      .Bind(configuration.GetSection(TenantCutoverFreezeOptions.SectionName));
+    services.AddScoped<ITenantCutoverOperationStore, TenantCutoverOperationStore>();
+    services.AddScoped<ITenantWriteFence, TenantCutoverWriteFence>();
+    services.AddScoped<ITenantCutoverFreezeService, TenantCutoverFreezeService>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

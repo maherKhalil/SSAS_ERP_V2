@@ -3,7 +3,9 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Storage;
 using SSAS.Platform.Domain.Companies;
+using SSAS.Platform.Infrastructure.TenantStorage;
 
 namespace SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
@@ -29,7 +31,11 @@ public sealed class TenantDbContext(
   DbContextOptions<TenantDbContext> options,
   ICurrentUser currentUser,
   ICurrentTenant currentTenant,
-  IDateTimeProvider dateTimeProvider) : PersistenceDbContext(options, currentUser, currentTenant, dateTimeProvider)
+  IDateTimeProvider dateTimeProvider,
+  // The cutover write fence (ADR-020). Optional because the maintenance builders construct this context
+  // outside any tenant context for schema work, which is not an application write.
+  ITenantWriteFence? writeFence = null)
+  : PersistenceDbContext(options, currentUser, currentTenant, dateTimeProvider)
 {
   public DbSet<Company> Companies => Set<Company>();
 
@@ -45,10 +51,42 @@ public sealed class TenantDbContext(
     base.OnModelCreating(modelBuilder);
   }
 
-  public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+  // THE TENANT APPLICATION WRITE BOUNDARY (ADR-020 "The freeze covers every writer").
+  //
+  // Every application write reaches SQL Server through here — repositories track, the unit of work saves,
+  // and this is the single method underneath all of it. Enforcing the freeze at this point rather than in
+  // HTTP middleware is what makes it cover jobs, consumers, imports and workflows as well as requests: a
+  // writer is blocked wherever it originates, because there is no second path to tenant persistence.
+  //
+  // The fence needs the write to be inside a transaction it can lock against, so one is opened when the
+  // caller has not already opened one. When the caller HAS, the fence joins it and the caller keeps
+  // ownership of the commit.
+  public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
   {
     PreventCompanyDeletion();
-    return base.SaveChangesAsync(cancellationToken);
+
+    // CurrentTenantId comes from the base rather than capturing the parameter: the same trusted tenant the
+    // global query filter uses, so the fence and the filter can never disagree about who is writing.
+    if (writeFence is null || CurrentTenantId is not { } tenantId || tenantId == Guid.Empty ||
+      !ChangeTracker.HasChanges())
+    {
+      return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    if (Database.CurrentTransaction is { } ambient)
+    {
+      await writeFence.AdmitWriteAsync(
+        tenantId, Database.GetDbConnection(), ambient.GetDbTransaction(), cancellationToken);
+      return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+    await writeFence.AdmitWriteAsync(
+      tenantId, Database.GetDbConnection(), transaction.GetDbTransaction(), cancellationToken);
+
+    var written = await base.SaveChangesAsync(cancellationToken);
+    await transaction.CommitAsync(cancellationToken);
+    return written;
   }
 
   // Carried over from PlatformDbContext together with Company: lifecycle is expressed by Archive, never

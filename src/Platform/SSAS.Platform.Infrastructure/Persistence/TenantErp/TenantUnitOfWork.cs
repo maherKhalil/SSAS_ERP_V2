@@ -45,6 +45,13 @@ public sealed class TenantUnitOfWork(
     {
       return Result.Failure<int>(IdentityAccessErrors.WriteFailure);
     }
+    catch (TenantStorageUnavailableException exception)
+    {
+      // A cutover freeze is a CONTROLLED, VISIBLE maintenance outcome, not a write failure (ADR-020). It
+      // surfaces with its own TenantStorage.* code so an operator sees "frozen by a cutover" rather than a
+      // generic save error, and so a handler can distinguish it from data-integrity failures.
+      return Result.Failure<int>(exception.Error);
+    }
   }
 
   public async Task<ITransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)

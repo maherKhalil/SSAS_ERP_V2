@@ -121,6 +121,9 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "RefreshTokenRecords",
             "RolePermissionAssignments",
             "Roles",
+            // Shared → Dedicated cutover operations (ADR-020, TS-Storage Phase E1). The freeze must survive
+            // the process that established it, so it is a table rather than runtime state.
+            "TenantCutoverOperations",
             "TenantDatabaseAssignments",
             // Backup policy and run history (ADR-022, TS-Backup Phase A). Platform-plane metadata about the
             // physical database, deliberately not inside the tenant ERP database it describes.

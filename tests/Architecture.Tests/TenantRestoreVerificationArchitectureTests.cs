@@ -213,12 +213,21 @@ public sealed class TenantRestoreVerificationArchitectureTests
       "Retention", "ArtifactDeletion", "Cutover", "Activation", "PointInTime", "Stopat"
     };
 
-    // The Phase E recovery activation decision and its inputs. Nothing else.
+    // The Phase E recovery activation decision and its inputs, and the Phase E1 cutover operation and
+    // freeze. Exact names, admitted one at a time by decision — never a namespace or a pattern.
     var decided = new[]
     {
       "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivation",
       "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationInputs",
-      "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationDecision"
+      "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationDecision",
+      "SSAS.Platform.Domain.TenantStorage.TenantCutoverOperation",
+      "SSAS.Platform.Domain.TenantStorage.TenantCutoverOperationStatus",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverOperationStore",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverWriteFence",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverFreezeService",
+      "SSAS.Platform.Infrastructure.TenantStorage.ITenantCutoverFreezeService",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverFreezeOptions",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverLockResource"
     };
 
     // SCOPED TO TENANT STORAGE, deliberately. An unscoped sweep matches unrelated subsystems — localization

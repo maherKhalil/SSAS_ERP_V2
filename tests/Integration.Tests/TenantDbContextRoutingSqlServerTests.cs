@@ -413,7 +413,8 @@ public sealed class TenantDbContextRoutingSqlServerTests
         new TenantDatabaseTrafficGate(TenantDatabaseHealthFreshness.Default),
         new TestUser(),
         new FixedTenant(currentTenantId),
-        new TestClock());
+        new TestClock(),
+        UnfencedTenantWrites.Instance);
 
     public TenantDbContextProvider Provider(Guid? currentTenantId) =>
       new(Factory(currentTenantId), new FixedTenant(currentTenantId));

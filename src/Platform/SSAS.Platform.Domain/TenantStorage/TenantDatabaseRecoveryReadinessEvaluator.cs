@@ -157,10 +157,25 @@ public static class TenantDatabaseRecoveryReadinessEvaluator
       // verification is required and has now aged out. Converting a verification-host outage into
       // `Unprotected` would report a well-protected database as unrecoverable on an unrelated failure.
       TenantDatabaseVerificationFailure.VerificationInfrastructureUnavailable =>
-        Evaluate(inputs, nowUtc),
+        EvaluateDuringUncertainty(inputs, nowUtc),
 
       _ => null
     };
+  }
+
+  private static TenantDatabaseRecoveryReadinessStatus EvaluateDuringUncertainty(
+    TenantDatabaseRecoveryReadinessInputs inputs,
+    DateTimeOffset nowUtc)
+  {
+    var current = Evaluate(inputs, nowUtc);
+
+    // The aggregate row cannot yet retain why a deeper verification established `Degraded`. Until new
+    // recovery evidence resolves that fact, infrastructure or metadata uncertainty must not turn fresh
+    // timestamps into a false `Protected`. Any adverse verdict established by current evidence still wins.
+    return current == TenantDatabaseRecoveryReadinessStatus.Protected &&
+      inputs.HeldRecoveryReadinessStatus == TenantDatabaseRecoveryReadinessStatus.Degraded
+        ? TenantDatabaseRecoveryReadinessStatus.Degraded
+        : current;
   }
 
   // The PARTIAL observation available immediately after a successful backup.

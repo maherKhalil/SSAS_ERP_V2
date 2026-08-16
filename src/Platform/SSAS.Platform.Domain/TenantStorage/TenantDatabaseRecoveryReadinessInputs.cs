@@ -31,4 +31,10 @@ public sealed record TenantDatabaseRecoveryReadinessInputs(
   // Set when the platform-managed artifacts are known not to form the required restorable sequence — a
   // segment missing, superseded by an external non-copy-only backup, or expired. Outranks the depth
   // gradation (ADR-022 §17, v1.2).
-  bool PlatformChainBreakDetected = false);
+  bool PlatformChainBreakDetected = false,
+
+  // The last authoritative aggregate verdict. This is not an input to ordinary evaluation: new recovery
+  // evidence must be able to improve readiness. It is carried only so an uncertainty-only outcome can avoid
+  // upgrading a held adverse fact that the persisted evidence does not yet describe more precisely.
+  TenantDatabaseRecoveryReadinessStatus HeldRecoveryReadinessStatus =
+    TenantDatabaseRecoveryReadinessStatus.Unknown);

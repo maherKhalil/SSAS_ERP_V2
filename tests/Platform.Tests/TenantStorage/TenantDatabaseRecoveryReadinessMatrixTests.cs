@@ -289,6 +289,20 @@ public sealed class TenantDatabaseRecoveryReadinessMatrixTests
     Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Protected, status);
   }
 
+  [Fact]
+  public void A_verification_infrastructure_failure_preserves_held_degraded_when_visible_evidence_looks_protected()
+  {
+    var inputs = Healthy() with
+    {
+      HeldRecoveryReadinessStatus = TenantDatabaseRecoveryReadinessStatus.Degraded
+    };
+
+    var status = TenantDatabaseRecoveryReadinessEvaluator.EvaluateAfterVerificationFailure(
+      TenantDatabaseVerificationFailure.VerificationInfrastructureUnavailable, inputs, Now);
+
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Degraded, status);
+  }
+
   // ...but it does not conceal a verification that has since aged out either: readiness is recomputed from
   // the evidence already held.
   [Fact]

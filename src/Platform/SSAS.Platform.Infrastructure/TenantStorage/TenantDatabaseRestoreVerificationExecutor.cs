@@ -572,7 +572,9 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
           ? TenantDatabaseRecoveryModel.Simple
           : null),
       PlatformChainBreakDetected:
-        evidence?.RecoveryReadinessStatus == TenantDatabaseRecoveryReadinessStatus.Unprotected);
+        evidence?.RecoveryReadinessStatus == TenantDatabaseRecoveryReadinessStatus.Unprotected,
+      HeldRecoveryReadinessStatus:
+        evidence?.RecoveryReadinessStatus ?? TenantDatabaseRecoveryReadinessStatus.Unknown);
 
   private static TenantDatabaseRestoreVerificationExecutionOutcome Outcome(
     TenantDatabaseRestoreVerificationRunRecord run,

@@ -81,16 +81,17 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
 
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public async Task Missing_checkpoint_metadata_does_not_call_provider_or_infer_unprotected()
+  public async Task Missing_checkpoint_metadata_preserves_held_degraded_without_calling_provider()
   {
     var fixture = Fixture.Differential();
+    fixture.Reads.HeldReadinessStatus = TenantDatabaseRecoveryReadinessStatus.Degraded;
     fixture.Reads.Candidates = [FullCandidate(checkpointLsn: null)];
 
     var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.FullWithDifferential);
 
     Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, result.Value.Status);
     Assert.Equal(0, fixture.Provider.Calls);
-    Assert.NotEqual(TenantDatabaseRecoveryReadinessStatus.Unprotected, fixture.Readiness.Status);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Degraded, fixture.Readiness.Status);
   }
 
   [Fact]
@@ -283,6 +284,34 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
     await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
 
     Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Unprotected, fixture.Readiness.Status);
+  }
+
+  [Fact]
+  public async Task Infrastructure_failure_preserves_held_degraded_despite_fresh_positive_timestamps()
+  {
+    var fixture = Fixture.Differential();
+    fixture.Reads.HeldReadinessStatus = TenantDatabaseRecoveryReadinessStatus.Degraded;
+    fixture.Provider.Result = new TenantDatabaseRestoreVerificationResult(
+      TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable,
+      SafeErrorSummary: "host-unavailable");
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, result.Value.Status);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Degraded, fixture.Readiness.Status);
+  }
+
+  [Fact]
+  public async Task Successful_new_verification_can_promote_prior_degraded_to_protected()
+  {
+    var fixture = Fixture.Differential();
+    fixture.Reads.HeldReadinessStatus = TenantDatabaseRecoveryReadinessStatus.Degraded;
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.True(result.Value.RestoreVerified);
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.Succeeded, result.Value.Status);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Protected, fixture.Readiness.Status);
   }
 
   [Theory]

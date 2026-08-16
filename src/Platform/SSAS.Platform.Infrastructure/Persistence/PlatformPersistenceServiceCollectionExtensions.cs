@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.Abstractions.Queries;
@@ -232,7 +233,37 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());
     services.AddScoped<ITenantUnitOfWork, TenantUnitOfWork>();
-    services.AddScoped<ITenantDatabaseResolver, TenantDatabaseResolver>();
+
+    // TS-Storage Phase E2: version-aware routing (ADR-020 "Resolver cache").
+    //
+    // ONE RESOLVER REACHES CONSUMERS. `TenantDatabaseResolver` is registered as its CONCRETE type and is
+    // deliberately NOT registered against ITenantDatabaseResolver: everything that resolves routing —
+    // TenantDbContextFactory, the route provider, every future cutover component — receives the
+    // version-aware decorator, because a second registration would be a second routing mechanism, and the
+    // one that skipped the version check would be the one that wrote to the wrong database.
+    //
+    // THE CACHE IS ONE SINGLETON WITH TWO FACES. Registered once by concrete type and resolved through for
+    // both interfaces (the Phase D run-store precedent), so an invalidation and a read cannot land on
+    // different dictionaries. Registering the two interfaces independently would compile, start, pass a
+    // smoke test, and silently never invalidate anything.
+    //
+    // The reader is SCOPED because it reads through the scoped PlatformDbContext; the cache is a SINGLETON
+    // because a per-request cache would expire before it was ever read.
+    services.AddOptions<TenantRoutingCacheOptions>()
+      .Bind(configuration.GetSection(TenantRoutingCacheOptions.SectionName));
+    services.AddSingleton<TenantRoutingMemoryCache>();
+    services.AddSingleton<ITenantRoutingCache>(provider =>
+      provider.GetRequiredService<TenantRoutingMemoryCache>());
+    services.AddSingleton<ITenantRoutingCacheInvalidator>(provider =>
+      provider.GetRequiredService<TenantRoutingMemoryCache>());
+    services.AddScoped<ITenantRoutingVersionReader, TenantRoutingVersionReader>();
+    services.AddScoped<TenantDatabaseResolver>();
+    services.AddScoped<ITenantDatabaseResolver>(provider => new VersionAwareTenantDatabaseResolver(
+      provider.GetRequiredService<TenantDatabaseResolver>(),
+      provider.GetRequiredService<ITenantRoutingVersionReader>(),
+      provider.GetRequiredService<ITenantRoutingCache>(),
+      provider.GetRequiredService<IOptions<TenantRoutingCacheOptions>>().Value,
+      provider.GetRequiredService<IDateTimeProvider>()));
     services.AddScoped<CurrentTenantDatabaseRouteProvider>();
     services.AddSingleton<ITenantDatabaseConnectionFactory, TenantDatabaseConnectionFactory>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();

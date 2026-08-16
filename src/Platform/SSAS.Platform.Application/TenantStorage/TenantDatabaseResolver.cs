@@ -7,10 +7,13 @@ namespace SSAS.Platform.Application.TenantStorage;
 
 // Trusted tenant -> route resolution (ADR-017).
 //
-// NO CACHE by design in this slice. Every call reads current registry state, which makes correctness
-// trivial to reason about and lets RoutingVersion semantics be proven before any caching exists. When a
-// cache is eventually added, a cached entry is valid only for the RoutingVersion it was resolved under;
-// invalidation and a bounded TTL are propagation aids, not the correctness mechanism (ADR-020).
+// THIS IS THE AUTHORITATIVE RESOLVER, and it holds no cache. Every call reads current registry state.
+//
+// It is no longer what consumers receive: TS-Storage Phase E2 registered VersionAwareTenantDatabaseResolver
+// against ITenantDatabaseResolver and this type behind it, so a caller gets the version-checked path. That
+// separation is deliberate — "which database does the registry say" and "may a remembered answer be reused"
+// are different questions, and keeping them in different types is what stops the second from quietly
+// answering the first (ADR-020).
 //
 // Every failure path refuses to route. None of them substitutes another database.
 public sealed class TenantDatabaseResolver(ITenantDatabaseRegistryReadRepository repository) : ITenantDatabaseResolver

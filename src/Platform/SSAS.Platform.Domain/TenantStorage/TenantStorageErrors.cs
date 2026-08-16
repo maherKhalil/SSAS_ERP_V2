@@ -411,4 +411,17 @@ public static class TenantStorageErrors
   // outcome rather than a generic error (ADR-020 freeze failure safety).
   public static readonly Error TenantWritesFrozen =
     new("TenantStorage.TenantWritesFrozen", "Writes for this tenant are temporarily frozen by an in-progress storage cutover.");
+
+  // ---- Version-aware routing (ADR-020 "Resolver cache", TS-Storage Phase E2).
+
+  // THE AUTHORITATIVE ROUTING VERSION COULD NOT BE ESTABLISHED, so no cached route can be shown to still be
+  // current. Deliberately NOT ActiveAssignmentMissing (which states the tenant has no assignment — a fact
+  // this outcome specifically failed to determine) and NOT TenantContextMissing (which is about the caller,
+  // not the registry). Conflating them would send an operator to look at the tenant's configuration when the
+  // Platform database is what is unreachable.
+  //
+  // It exists so that "cannot check" cannot be reported as "unchanged": serving a remembered route here is
+  // how a tenant's writes land in the pre-cutover database.
+  public static readonly Error RoutingVersionUnavailable =
+    new("TenantStorage.RoutingVersionUnavailable", "The authoritative tenant routing version could not be read, so routing is refused rather than served from cache.");
 }

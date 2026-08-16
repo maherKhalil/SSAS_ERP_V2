@@ -648,21 +648,48 @@ public sealed class TenantStorageRegistryArchitectureTests
 
   [Fact]
   [Trait("Decision", "ADR-017")]
-  public void No_routing_cache_is_introduced_yet()
+  public void Every_routing_cache_is_declared_and_version_gated()
   {
-    // TS-1C is deliberately uncached: correctness first, and RoutingVersion semantics proven before any
-    // cache exists. A cache added later must key validity to RoutingVersion (ADR-020).
-    var routingTypes = typeof(ITenantDatabaseResolver).Assembly.GetTypes()
+    // SUPERSEDES the TS-1C rule that no routing cache may exist. TS-1C was deliberately uncached so that
+    // RoutingVersion semantics could be proven first; TS-Storage Phase E2 then added the cache ADR-020
+    // describes, and validity is keyed to RoutingVersion rather than to a TTL or an invalidation message.
+    //
+    // The rule is now an EXHAUSTIVE ALLOWLIST rather than a prohibition, because "no cache" no longer
+    // describes the system and a guard that no longer describes the system stops being read. Anything
+    // cache-shaped that is not one of these is a second cache, and a second cache is a second authority.
+    string[] declaredCacheTypes =
+    [
+      "SSAS.Platform.Application.TenantStorage.ITenantRoutingCache",
+      "SSAS.Platform.Application.TenantStorage.ITenantRoutingCacheInvalidator",
+      "SSAS.Platform.Application.TenantStorage.TenantRoutingCacheEntry",
+      "SSAS.Platform.Application.TenantStorage.TenantRoutingCacheOptions",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantRoutingMemoryCache"
+    ];
+
+    var storageTypes = typeof(ITenantDatabaseResolver).Assembly.GetTypes()
       .Concat(InfrastructureAssembly.GetTypes())
-      .Where(type => type.Name.Contains("TenantDatabase", StringComparison.Ordinal) ||
+      .Where(type => !type.IsNested)
+      .Where(type =>
+        type.Namespace?.Contains("TenantStorage", StringComparison.Ordinal) == true ||
+        type.Name.Contains("TenantDatabase", StringComparison.Ordinal) ||
         type.Name.Contains("TenantStorage", StringComparison.Ordinal))
       .ToArray();
 
-    Assert.DoesNotContain(routingTypes, type =>
-      type.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase));
-    Assert.DoesNotContain(routingTypes, type => type.GetConstructors()
-      .SelectMany(constructor => constructor.GetParameters())
-      .Any(parameter => parameter.ParameterType.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase)));
+    Assert.Empty(storageTypes
+      .Where(type => type.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase))
+      .Select(type => type.FullName ?? type.Name)
+      .Where(name => !declaredCacheTypes.Contains(name, StringComparer.Ordinal)));
+
+    // ...and only the version-aware resolver may hold one. Every other consumer would be a path from a
+    // remembered route to a live connection without an authoritative version comparison in between.
+    Assert.Empty(storageTypes
+      .Where(type => type.GetConstructors()
+        .SelectMany(constructor => constructor.GetParameters())
+        .Any(parameter => parameter.ParameterType.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase)))
+      .Select(type => type.FullName ?? type.Name)
+      .Where(name => !string.Equals(
+        name, "SSAS.Platform.Application.TenantStorage.VersionAwareTenantDatabaseResolver",
+        StringComparison.Ordinal)));
   }
 
   [Fact]

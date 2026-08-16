@@ -32,9 +32,11 @@ public sealed class TenantDbContextFactory(
     Guid tenantId,
     CancellationToken cancellationToken = default)
   {
-    // Routing is resolved on EVERY context creation, never cached and never captured at registration
-    // (ADR-017 binding lifetime rules 1 and 2). RoutingVersion is carried on the route for the day a
-    // cache exists; until then freshness is guaranteed by simply reading current state each time.
+    // Routing is resolved on EVERY context creation, never captured at registration (ADR-017 binding
+    // lifetime rules 1 and 2). Since TS-Storage Phase E2 the injected resolver is the version-aware one, so
+    // this call may be answered from a process-local entry — but only one whose RoutingVersion still matches
+    // the authoritative value, which is read on every resolution. A context therefore cannot be built on a
+    // route that has been superseded, and a Platform outage refuses rather than serving a remembered route.
     var route = await resolver.ResolveAsync(tenantId, cancellationToken);
     if (route.IsFailure)
     {

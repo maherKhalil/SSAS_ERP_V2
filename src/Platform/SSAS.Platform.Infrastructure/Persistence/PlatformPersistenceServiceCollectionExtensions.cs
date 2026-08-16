@@ -186,8 +186,15 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseRestoreVerificationProvider,
       SqlServerTenantDatabaseRestoreVerificationProvider>();
 
-    // TS-Backup Phase D7: the only production caller of the restore provider. The probe opens the restored
-    // catalog through VerificationServers; neither component is scheduled autonomously in Phase D.
+    // TS-Backup Phase D7: the executor is the only production caller of the restore provider, and the probe
+    // opens the restored catalog through VerificationServers.
+    //
+    // A VERIFICATION SCHEDULER AND HOSTED SERVICE ARE REGISTERED BELOW, so autonomous execution is reachable
+    // — but it is CONFIGURATION GATED and off by default: `TenantStorage:BackupVerification:Enabled` defaults
+    // to false and is checked independently by both the hosted service and the scheduler sweep.
+    //
+    // Enabling it in production remains blocked on the carried LOW-C gate: reconciliation can release an
+    // abandoned run's admission slot, and that path has not yet been proven against real process loss.
     services.AddScoped<ITenantDatabaseRestoreVerificationProbe, SqlServerRestoreVerificationProbe>();
     services.AddScoped<ITenantDatabaseRestoreVerificationExecutor,
       TenantDatabaseRestoreVerificationExecutor>();

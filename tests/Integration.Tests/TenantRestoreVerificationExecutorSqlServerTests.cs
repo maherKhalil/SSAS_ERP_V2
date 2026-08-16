@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -262,49 +263,48 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
 
     public async Task<TenantDatabaseRestoreVerificationSweepSummary> RunSchedulerAsync()
     {
-      await using var platform = PlatformContext();
       var clock = new TestClock(now.AddMinutes(10));
-      var registry = new TenantDatabaseRegistryReadRepository(platform);
-      var reads = new TenantDatabaseBackupReadRepository(platform);
-      var fleet = new TenantDatabaseRestoreVerificationFleetReadRepository(platform);
-      var runStore = new TenantDatabaseRestoreVerificationRunStore(platform, clock);
-      var readinessWriter = new TenantDatabaseRecoveryReadinessWriter(platform, clock);
-      var connections = new TenantDatabaseVerificationConnectionFactory(
-        Options.Create(storage), Options.Create(verification));
-      var executor = new TenantDatabaseRestoreVerificationExecutor(
-        registry,
-        reads,
-        runStore,
-        new SqlServerTenantDatabaseRestoreVerificationProvider(
-          connections,
-          new TenantDatabaseBackupDestinationResolver(Options.Create(storage)),
-          registry,
-          Options.Create(verification),
-          clock),
-        new SqlServerRestoreVerificationProbe(connections),
-        connections,
-        readinessWriter,
-        Options.Create(verification),
-        clock);
-      var reconciler = new TenantDatabaseRestoreVerificationReconciler(
-        runStore,
-        new SqlServerTenantDatabaseRestoreVerificationServerObserver(connections),
-        Options.Create(verification),
-        clock,
-        NullLogger<TenantDatabaseRestoreVerificationReconciler>.Instance);
-      var readinessRefresher = new TenantDatabaseRecoveryReadinessRefresher(
-        registry, reads, fleet, readinessWriter, clock);
-      var scheduler = new TenantDatabaseRestoreVerificationScheduler(
-        fleet,
-        runStore,
-        executor,
-        reconciler,
-        readinessRefresher,
-        Options.Create(verification),
-        clock,
-        NullLogger<TenantDatabaseRestoreVerificationScheduler>.Instance);
+      var services = new ServiceCollection();
+      services.AddLogging();
+      services.AddSingleton<ICurrentUser>(new TestUser());
+      services.AddSingleton<ICurrentTenant>(new NoTenant());
+      services.AddSingleton<IDateTimeProvider>(clock);
+      services.AddSingleton(Options.Create(storage));
+      services.AddSingleton(Options.Create(verification));
+      services.AddDbContext<PlatformDbContext>(options => options.UseSqlServer(
+        ConnectionFor(platformCatalog),
+        sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform")));
+      services.AddScoped<ITenantDatabaseRegistryReadRepository, TenantDatabaseRegistryReadRepository>();
+      services.AddScoped<ITenantDatabaseBackupReadRepository, TenantDatabaseBackupReadRepository>();
+      services.AddScoped<ITenantDatabaseRestoreVerificationFleetReadRepository,
+        TenantDatabaseRestoreVerificationFleetReadRepository>();
+      services.AddScoped<TenantDatabaseRestoreVerificationRunStore>();
+      services.AddScoped<ITenantDatabaseRestoreVerificationRunStore>(provider =>
+        provider.GetRequiredService<TenantDatabaseRestoreVerificationRunStore>());
+      services.AddScoped<ITenantDatabaseRestoreVerificationReconciliationStore>(provider =>
+        provider.GetRequiredService<TenantDatabaseRestoreVerificationRunStore>());
+      services.AddScoped<ITenantDatabaseRecoveryReadinessWriter, TenantDatabaseRecoveryReadinessWriter>();
+      services.AddScoped<ITenantDatabaseVerificationConnectionFactory,
+        TenantDatabaseVerificationConnectionFactory>();
+      services.AddScoped<ITenantDatabaseBackupDestinationResolver, TenantDatabaseBackupDestinationResolver>();
+      services.AddScoped<ITenantDatabaseRestoreVerificationProvider,
+        SqlServerTenantDatabaseRestoreVerificationProvider>();
+      services.AddScoped<ITenantDatabaseRestoreVerificationProbe, SqlServerRestoreVerificationProbe>();
+      services.AddScoped<ITenantDatabaseRestoreVerificationExecutor,
+        TenantDatabaseRestoreVerificationExecutor>();
+      services.AddScoped<ITenantDatabaseRestoreVerificationServerObserver,
+        SqlServerTenantDatabaseRestoreVerificationServerObserver>();
+      services.AddScoped<ITenantDatabaseRestoreVerificationReconciler,
+        TenantDatabaseRestoreVerificationReconciler>();
+      services.AddScoped<ITenantDatabaseRecoveryReadinessRefresher,
+        TenantDatabaseRecoveryReadinessRefresher>();
+      services.AddScoped<ITenantDatabaseRestoreVerificationScheduler,
+        TenantDatabaseRestoreVerificationScheduler>();
 
-      return await scheduler.RunSweepAsync();
+      await using var provider = services.BuildServiceProvider();
+      await using var scope = provider.CreateAsyncScope();
+      return await scope.ServiceProvider.GetRequiredService<ITenantDatabaseRestoreVerificationScheduler>()
+        .RunSweepAsync();
     }
 
     public async Task<PersistedOutcome> ReadPersistedOutcomeAsync(

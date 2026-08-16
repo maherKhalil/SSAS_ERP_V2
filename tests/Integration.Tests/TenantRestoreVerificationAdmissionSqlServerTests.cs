@@ -1,8 +1,14 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.TenantStorage;
@@ -256,6 +262,33 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
     Assert.True(retryResult.IsSuccess);
   }
 
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_policy_drift_refusal_frees_the_slot_for_a_fresh_later_admission()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var databaseId = await fixture.RegisterAsync("SSAS_Verify_Admission_PolicyDrift");
+    var baselineId = await fixture.RecordSuccessfulFullBackupAsync(databaseId);
+    var snapshot = Request(databaseId, baselineId, previousVerificationId: null);
+
+    var staleRunId = (await fixture.RunStore().TryAdmitAsync(snapshot)).Value;
+    Assert.True((await fixture.RunStore().MarkInfrastructureUnavailableAsync(
+      staleRunId,
+      "RestoreVerificationPolicyDrifted",
+      "test")).IsSuccess);
+    Assert.Equal(1, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [platform].[TenantDatabaseRestoreVerificationRuns] " +
+      $"WHERE [TenantDatabaseRestoreVerificationRunId] = {staleRunId} " +
+      $"AND [VerificationDatabaseName] = N'{TenantDatabaseVerificationNaming.ForRun(databaseId, staleRunId)}' " +
+      "AND [CleanupState] = N'NotRequired' " +
+      "AND [Status] = N'InfrastructureUnavailable'"));
+
+    var freshAdmission = await fixture.RunStore().TryAdmitAsync(snapshot);
+
+    Assert.True(freshAdmission.IsSuccess);
+    Assert.NotEqual(staleRunId, freshAdmission.Value);
+  }
+
   // Different physical databases never contend: the invariant is per database, not a fleet lock.
   [Fact]
   [Trait("Decision", "ADR-022")]
@@ -274,6 +307,76 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
     Assert.True(second.IsSuccess);
   }
 
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Concurrent_scheduler_workers_overlap_real_persistence_in_independent_dbcontexts()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var firstDatabase = await fixture.RegisterAsync("SSAS_Verify_Scope_A");
+    var secondDatabase = await fixture.RegisterAsync("SSAS_Verify_Scope_B");
+    var firstBaseline = await fixture.RecordSuccessfulFullBackupAsync(firstDatabase);
+    var secondBaseline = await fixture.RecordSuccessfulFullBackupAsync(secondDatabase);
+    var probe = new SqlPersistenceOverlapProbe(expectedWorkers: 2);
+    var clock = new SchedulerClock();
+
+    var services = new ServiceCollection();
+    services.AddSingleton(probe);
+    services.AddSingleton<IDateTimeProvider>(clock);
+    services.AddSingleton<ICurrentUser>(new SchedulerUser());
+    services.AddSingleton<ICurrentTenant>(new SchedulerTenant());
+    services.AddDbContext<PlatformDbContext>(options => options.UseSqlServer(
+      fixture.PlatformConnectionString,
+      sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform")));
+    services.AddScoped<TenantDatabaseRestoreVerificationRunStore>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationRunStore>(provider =>
+      provider.GetRequiredService<TenantDatabaseRestoreVerificationRunStore>());
+    services.AddScoped<ITenantDatabaseRestoreVerificationExecutor, SqlPersistenceOverlapExecutor>();
+    await using var provider = services.BuildServiceProvider();
+
+    var scheduler = new TenantDatabaseRestoreVerificationScheduler(
+      new SchedulerFleet(
+        Due(firstDatabase, firstBaseline),
+        Due(secondDatabase, secondBaseline)),
+      new NoOpReconciler(),
+      new NoOpReadinessRefresher(),
+      provider.GetRequiredService<IServiceScopeFactory>(),
+      Options.Create(new TenantDatabaseRestoreVerificationOptions
+      {
+        Enabled = true,
+        RestoreServerKey = "verify",
+        RestoreDataRoot = "D:\\verify",
+        RestoreLogRoot = "L:\\verify",
+        SchedulerBatchSize = 10,
+        MaxConcurrentVerifications = 2,
+        MaxConcurrentVerificationsPerServer = 2
+      }),
+      clock,
+      NullLogger<TenantDatabaseRestoreVerificationScheduler>.Instance);
+
+    var summary = await scheduler.RunSweepAsync();
+
+    Assert.Equal(2, probe.ContextIds.Count);
+    Assert.Equal(2, probe.ContextIds.Distinct().Count());
+    Assert.Equal(2, probe.CompletedPersistenceOperations);
+    Assert.Equal(2, summary.Dispatched);
+    Assert.Equal(2, summary.Failed);
+    Assert.Equal(0, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [platform].[TenantDatabaseRestoreVerificationRuns] " +
+      "WHERE [Status] IN (N'Admitted', N'Restoring')"));
+  }
+
+  private static TenantDatabaseRestoreVerificationDueCandidate Due(long databaseId, long baselineId) =>
+    new(databaseId, "source", TenantDatabaseHostingMode.PlatformManaged,
+      TenantDatabaseProvisioningStatus.Ready,
+      TenantDatabaseBackupManagementMode.AutomaticByPlatform,
+      PolicyEnabled: true,
+      DifferentialBackupIntervalMinutes: null,
+      TransactionLogBackupIntervalMinutes: null,
+      RestoreVerificationIntervalDays: 30,
+      SourceBackupRunId: baselineId,
+      PreviousSuccessfulVerificationRunId: null,
+      PreviousSuccessfulVerificationCompletedUtc: null);
+
   // The crash-survivability guarantee, enforced by the database rather than by convention: a restoring run
   // must name the database it is holding.
   [Fact]
@@ -286,7 +389,8 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
     var runId = (await fixture.RunStore().TryAdmitAsync(Request(databaseId, baselineId))).Value;
 
     var violation = await Assert.ThrowsAsync<SqlException>(() => fixture.ExecuteAsync(
-      "UPDATE [platform].[TenantDatabaseRestoreVerificationRuns] SET [Status] = N'Restoring' " +
+      "UPDATE [platform].[TenantDatabaseRestoreVerificationRuns] " +
+      "SET [Status] = N'Restoring', [VerificationDatabaseName] = NULL " +
       $"WHERE [TenantDatabaseRestoreVerificationRunId] = {runId}"));
 
     Assert.Contains("CK_TenantDatabaseRestoreVerificationRuns_RestoringHasDatabaseName",
@@ -310,6 +414,44 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
     Assert.Single(attempts, result => result.IsSuccess);
     Assert.Single(attempts, result => result.IsFailure &&
       result.Error.Code == TenantStorageErrors.RestoreVerificationNotAdmitted.Code);
+  }
+
+  // THE RESERVED NAME IS NOT NEGOTIABLE AFTER ADMISSION.
+  //
+  // Admission reserves this run's database name durably. A caller arriving with a different one — a stale
+  // worker, a regenerated guess, an off-by-one identity — must be refused rather than allowed to redirect the
+  // restore, and the durable value must survive the attempt untouched. Without this, the reservation would
+  // constrain nothing.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Begin_restore_refuses_a_name_that_is_not_the_reserved_one_and_leaves_it_intact()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var databaseId = await fixture.RegisterAsync("SSAS_Verify_Admission_NameBinding");
+    var baselineId = await fixture.RecordSuccessfulFullBackupAsync(databaseId);
+    var runId = (await fixture.RunStore().TryAdmitAsync(Request(databaseId, baselineId))).Value;
+
+    var reserved = TenantDatabaseVerificationNaming.ForRun(databaseId, runId);
+    var wrong = TenantDatabaseVerificationNaming.ForRun(databaseId, runId + 1);
+
+    var refused = await fixture.RunStore().BeginRestoreAsync(runId, wrong, "stale-worker");
+
+    Assert.True(refused.IsFailure);
+
+    // Still Admitted, still holding its own name: no transition, no overwrite.
+    Assert.Equal(1, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [platform].[TenantDatabaseRestoreVerificationRuns] " +
+      $"WHERE [TenantDatabaseRestoreVerificationRunId] = {runId} " +
+      $"AND [Status] = N'Admitted' AND [VerificationDatabaseName] = N'{reserved}'"));
+
+    // ...and the exact reserved name still transitions normally afterwards.
+    var accepted = await fixture.RunStore().BeginRestoreAsync(runId, reserved, "owner");
+
+    Assert.True(accepted.IsSuccess);
+    Assert.Equal(1, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [platform].[TenantDatabaseRestoreVerificationRuns] " +
+      $"WHERE [TenantDatabaseRestoreVerificationRunId] = {runId} " +
+      $"AND [Status] = N'Restoring' AND [VerificationDatabaseName] = N'{reserved}'"));
   }
 
   // Cleanup failure and verification result are separate columns as well as separate concepts, so a proven
@@ -412,6 +554,8 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
     private VerificationFixture(string platformCatalog) => PlatformCatalog = platformCatalog;
 
     private string PlatformCatalog { get; }
+
+    public string PlatformConnectionString => ConnectionFor(PlatformCatalog);
 
     public static async Task<VerificationFixture> CreateAsync()
     {
@@ -586,5 +730,117 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
     {
       public DateTimeOffset UtcNow => Now;
     }
+  }
+
+  private sealed class SchedulerFleet(params TenantDatabaseRestoreVerificationDueCandidate[] candidates)
+    : ITenantDatabaseRestoreVerificationFleetReadRepository
+  {
+    public Task<IReadOnlyList<string>> ListEligibleSourceServerKeysAsync(
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<string>>(["source"]);
+
+    public Task<IReadOnlyList<TenantDatabaseRestoreVerificationDueCandidate>> ListCandidatesAsync(
+      string sourceServerKey,
+      long afterTenantDatabaseId,
+      int take,
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<TenantDatabaseRestoreVerificationDueCandidate>>(
+        candidates.Where(candidate => candidate.TenantDatabaseId > afterTenantDatabaseId)
+          .OrderBy(candidate => candidate.TenantDatabaseId)
+          .Take(take)
+          .ToArray());
+
+    public Task<TenantDatabaseDurableRecoveryEvidence?> FindDurableRecoveryEvidenceAsync(
+      long tenantDatabaseId,
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult<TenantDatabaseDurableRecoveryEvidence?>(null);
+  }
+
+  private sealed class NoOpReconciler : ITenantDatabaseRestoreVerificationReconciler
+  {
+    public Task<TenantDatabaseRestoreVerificationReconciliationSummary> ReconcileAsync(
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult(new TenantDatabaseRestoreVerificationReconciliationSummary(
+        DateTimeOffset.UtcNow, 0, 0, 0, 0, 0, 0, 0));
+  }
+
+  private sealed class NoOpReadinessRefresher : ITenantDatabaseRecoveryReadinessRefresher
+  {
+    public Task RefreshAsync(long tenantDatabaseId, CancellationToken cancellationToken = default) =>
+      Task.CompletedTask;
+  }
+
+  private sealed class SqlPersistenceOverlapProbe(int expectedWorkers)
+  {
+    private int arrived;
+    private int completed;
+    private readonly TaskCompletionSource<bool> allArrived =
+      new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public ConcurrentBag<int> ContextIds { get; } = [];
+    public int CompletedPersistenceOperations => Volatile.Read(ref completed);
+
+    public async Task ArriveAsync(PlatformDbContext dbContext)
+    {
+      ContextIds.Add(RuntimeHelpers.GetHashCode(dbContext));
+      if (Interlocked.Increment(ref arrived) == expectedWorkers)
+      {
+        allArrived.TrySetResult(true);
+      }
+      await allArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    public void Complete() => Interlocked.Increment(ref completed);
+  }
+
+  private sealed class SqlPersistenceOverlapExecutor(
+    PlatformDbContext dbContext,
+    ITenantDatabaseRestoreVerificationRunStore runStore,
+    SqlPersistenceOverlapProbe probe) : ITenantDatabaseRestoreVerificationExecutor
+  {
+    public async Task<SSAS.BuildingBlocks.Domain.Result<TenantDatabaseRestoreVerificationExecutionOutcome>>
+      ExecuteAsync(
+        long tenantDatabaseId,
+        long expectedVerificationRunId,
+        TenantDatabaseRestoreDepth requestedDepth,
+        CancellationToken cancellationToken = default)
+    {
+      await probe.ArriveAsync(dbContext);
+      await dbContext.Database.ExecuteSqlRawAsync("WAITFOR DELAY '00:00:01'", cancellationToken);
+      probe.Complete();
+      var terminal = await runStore.MarkInfrastructureUnavailableAsync(
+        expectedVerificationRunId, "scope-overlap-proof", "test", cancellationToken);
+      Assert.True(terminal.IsSuccess);
+      return SSAS.BuildingBlocks.Domain.Result.Success(
+        new TenantDatabaseRestoreVerificationExecutionOutcome(
+          tenantDatabaseId,
+          expectedVerificationRunId,
+          TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable,
+          AchievedDepth: null,
+          RestoreVerified: false,
+          SafeErrorSummary: "scope-overlap-proof"));
+    }
+  }
+
+  private sealed class SchedulerClock : IDateTimeProvider
+  {
+    public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
+  }
+
+  private sealed class SchedulerUser : ICurrentUser
+  {
+    public string? UserId => "scope-overlap-test";
+    public string? UserName => null;
+    public string? Email => null;
+    public Guid? CompanyId => null;
+    public string? SessionId => null;
+    public string? TokenId => null;
+    public IReadOnlyCollection<string> Roles => [];
+    public IReadOnlyCollection<string> Permissions => [];
+  }
+
+  private sealed class SchedulerTenant : ICurrentTenant
+  {
+    public Guid? TenantId => null;
   }
 }

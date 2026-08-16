@@ -94,7 +94,33 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
           run, TenantStorageErrors.RestoreVerificationTargetDrifted.Code, cancellationToken);
       }
 
-      verificationDatabaseName = TenantDatabaseVerificationNaming.ForRun(tenantDatabaseId, run.VerificationRunId);
+      // THE DURABLE RESERVATION IS AUTHORITATIVE AFTER ADMISSION.
+      //
+      // Admission reserves this run's database name inside its own transaction, so execution reads that
+      // reservation rather than deriving a name of its own. Regenerating here would work today — the inputs
+      // are identical and both were verified above — but it would leave the reservation decorative, and a
+      // later change to how names are allocated would put the record and the restore silently out of step.
+      //
+      // FAILS CLOSED ON ANYTHING UNEXPECTED. A run with no reservation predates this guarantee or was written
+      // by something that did not honour it; either way the platform has no trustworthy name for it and must
+      // not invent one. The regenerated form is used ONLY as a cross-check, never as a repair — a mismatch
+      // refuses rather than overwriting the durable value.
+      if (string.IsNullOrWhiteSpace(run.VerificationDatabaseName))
+      {
+        return await RefuseAdmittedAsync(
+          run, TenantStorageErrors.RestoreVerificationDatabaseNameInvalid.Code, cancellationToken);
+      }
+
+      verificationDatabaseName = run.VerificationDatabaseName;
+      if (!string.Equals(
+        verificationDatabaseName,
+        TenantDatabaseVerificationNaming.ForRun(tenantDatabaseId, run.VerificationRunId),
+        StringComparison.Ordinal))
+      {
+        return await RefuseAdmittedAsync(
+          run, TenantStorageErrors.RestoreVerificationDatabaseNameInvalid.Code, cancellationToken);
+      }
+
       if (!TenantDatabaseVerificationTargetGuard.CanRestoreInto(
         verificationDatabaseName,
         tenantDatabaseId,
@@ -189,6 +215,8 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
         !string.Equals(currentRun.RestoreServerKey, run.RestoreServerKey, StringComparison.Ordinal) ||
         !string.Equals(currentRun.VerificationDatabaseName, verificationDatabaseName, StringComparison.Ordinal) ||
         EligibilityError(currentDatabase, currentPolicy) is not null ||
+        !TenantDatabaseRestoreVerificationPolicy.TryGetRequiredDepth(currentPolicy, out var currentRequiredDepth) ||
+        currentRequiredDepth != currentRun.Depth ||
         !CurrentVerificationConfigurationMatches(currentOptions, run.RestoreServerKey) ||
         !TenantDatabaseVerificationTargetGuard.CanRestoreInto(
           verificationDatabaseName,
@@ -529,8 +557,7 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       return TenantStorageErrors.RestoreVerificationNotEligible;
     }
 
-    if (policy is null || !policy.Enabled ||
-      policy.ManagementMode != TenantDatabaseBackupManagementMode.AutomaticByPlatform)
+    if (!TenantDatabaseRestoreVerificationPolicy.TryGetRequiredDepth(policy, out _))
     {
       return TenantStorageErrors.RestoreVerificationNotEligible;
     }

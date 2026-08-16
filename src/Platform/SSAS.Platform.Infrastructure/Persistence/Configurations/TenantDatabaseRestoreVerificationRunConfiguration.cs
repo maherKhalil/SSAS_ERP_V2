@@ -68,12 +68,9 @@ public sealed class TenantDatabaseRestoreVerificationRunConfiguration
       .UseCollation(PlatformPersistenceConstants.OrdinalCollation)
       .IsRequired();
 
-    // NULLABLE, and only until the run is about to create a database.
-    //
-    // The alternative — naming the database at admission — would require the run identity before the row
-    // exists. Assigning it inside the admission transaction keeps the identity in the name (so an operator
-    // finding a stray database can reach its record by primary key) while every committed restoring row
-    // still carries a name, which the check constraint above enforces.
+    // NULLABLE only during the first INSERT inside admission. The database-generated identity is then used
+    // to reserve the deterministic name before that transaction commits. Cleanup remains NotRequired until
+    // BeginRestore, so a reserved name is not evidence that any database was created.
     builder.Property(run => run.VerificationDatabaseName)
       .HasMaxLength(TenantDatabaseRestoreVerificationRun.VerificationDatabaseNameMaximumLength)
       .UseCollation(PlatformPersistenceConstants.OrdinalCollation);

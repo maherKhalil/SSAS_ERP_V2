@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
+using System.Collections.Concurrent;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Abstractions.Persistence;
@@ -135,6 +137,78 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
     Assert.Equal(1, fixture.Executor.Calls);
   }
 
+  [Fact]
+  public async Task Concurrent_dispatches_resolve_run_store_and_executor_from_distinct_sibling_scopes()
+  {
+    var probe = new ConcurrentScopeProbe(expectedAdmissions: 2);
+    var services = new ServiceCollection();
+    services.AddSingleton(probe);
+    services.AddScoped<ScopedIdentity>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationRunStore, ScopedRunStore>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationExecutor, ScopedExecutor>();
+    await using var provider = services.BuildServiceProvider();
+    var scheduler = Fixture.Create(
+      new FakeFleet(Candidate(), Candidate() with { TenantDatabaseId = 2 }),
+      provider.GetRequiredService<IServiceScopeFactory>(),
+      maxConcurrent: 2,
+      maxConcurrentPerServer: 2);
+
+    var summary = await scheduler.RunSweepAsync();
+
+    Assert.Equal(2, summary.Dispatched);
+    Assert.Equal(2, probe.RunStoreScopes.Count);
+    Assert.Equal(2, probe.ExecutorScopes.Count);
+    Assert.Equal(2, probe.RunStoreScopes.Values.Distinct().Count());
+    Assert.All(probe.RunStoreScopes, item => Assert.Equal(item.Value, probe.ExecutorScopes[item.Key]));
+  }
+
+  [Fact]
+  public async Task Shutdown_before_admission_starts_no_operation()
+  {
+    var store = new FakeRunStore();
+    var executor = new FakeExecutor();
+    var scheduler = Fixture.Create(new FakeFleet(Candidate()), store, executor);
+    using var shutdown = new CancellationTokenSource();
+    shutdown.Cancel();
+
+    await scheduler.RunSweepAsync(shutdown.Token);
+
+    Assert.Equal(0, store.SuccessfulAdmissions);
+    Assert.Equal(0, executor.Calls);
+  }
+
+  [Fact]
+  public async Task Shutdown_after_admission_leaves_durable_admitted_work_for_reconciliation()
+  {
+    using var shutdown = new CancellationTokenSource();
+    var store = new FakeRunStore { AfterSuccessfulAdmission = shutdown.Cancel };
+    var executor = new FakeExecutor();
+    var scheduler = Fixture.Create(new FakeFleet(Candidate()), store, executor);
+
+    await scheduler.RunSweepAsync(shutdown.Token);
+
+    Assert.Equal(1, store.SuccessfulAdmissions);
+    Assert.Equal(0, executor.Calls);
+  }
+
+  [Fact]
+  public async Task Shutdown_after_d7_starts_does_not_cancel_the_started_restore()
+  {
+    using var shutdown = new CancellationTokenSource();
+    var executor = new BlockingExecutor();
+    var scheduler = Fixture.Create(new FakeFleet(Candidate()), new FakeRunStore(), executor);
+
+    var sweep = scheduler.RunSweepAsync(shutdown.Token);
+    await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    shutdown.Cancel();
+    executor.Release.TrySetResult(true);
+    var summary = await sweep;
+
+    Assert.False(executor.ExecutionToken.CanBeCanceled);
+    Assert.Equal(1, summary.Dispatched);
+    Assert.Equal(1, summary.Succeeded);
+  }
+
   private static TenantDatabaseRestoreVerificationDueCandidate Candidate() => new(
     1, "source", TenantDatabaseHostingMode.PlatformManaged, TenantDatabaseProvisioningStatus.Ready,
     TenantDatabaseBackupManagementMode.AutomaticByPlatform, true, null, null, 30, 101, null, null);
@@ -158,14 +232,47 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
       new(new FakeFleet(candidate), new FakeRunStore(), new FakeExecutor());
 
     public static TenantDatabaseRestoreVerificationScheduler Create(
-      FakeFleet fleet, FakeRunStore store, FakeExecutor executor,
+      FakeFleet fleet, FakeRunStore store, ITenantDatabaseRestoreVerificationExecutor executor,
       FakeReadinessRefresher? readiness = null) => new(
-      fleet, store, executor, new FakeReconciler(), readiness ?? new FakeReadinessRefresher(), Options.Create(new TenantDatabaseRestoreVerificationOptions
+      fleet, new FakeReconciler(), readiness ?? new FakeReadinessRefresher(), WorkScopes(store, executor), Options.Create(new TenantDatabaseRestoreVerificationOptions
       {
         Enabled = true, RestoreServerKey = "verify", RestoreDataRoot = "D:\\verify", RestoreLogRoot = "L:\\verify",
         SchedulerBatchSize = 10, SchedulerSweepInterval = TimeSpan.FromMinutes(1),
         MaxConcurrentVerifications = 1, MaxConcurrentVerificationsPerServer = 1
       }), new FakeClock(), NullLogger<TenantDatabaseRestoreVerificationScheduler>.Instance);
+
+    public static TenantDatabaseRestoreVerificationScheduler Create(
+      FakeFleet fleet,
+      IServiceScopeFactory scopeFactory,
+      int maxConcurrent,
+      int maxConcurrentPerServer) => new(
+      fleet,
+      new FakeReconciler(),
+      new FakeReadinessRefresher(),
+      scopeFactory,
+      Options.Create(new TenantDatabaseRestoreVerificationOptions
+      {
+        Enabled = true,
+        RestoreServerKey = "verify",
+        RestoreDataRoot = "D:\\verify",
+        RestoreLogRoot = "L:\\verify",
+        SchedulerBatchSize = 10,
+        SchedulerSweepInterval = TimeSpan.FromMinutes(1),
+        MaxConcurrentVerifications = maxConcurrent,
+        MaxConcurrentVerificationsPerServer = maxConcurrentPerServer
+      }),
+      new FakeClock(),
+      NullLogger<TenantDatabaseRestoreVerificationScheduler>.Instance);
+
+    private static IServiceScopeFactory WorkScopes(
+      FakeRunStore store,
+      ITenantDatabaseRestoreVerificationExecutor executor)
+    {
+      var services = new ServiceCollection();
+      services.AddSingleton<ITenantDatabaseRestoreVerificationRunStore>(store);
+      services.AddSingleton<ITenantDatabaseRestoreVerificationExecutor>(executor);
+      return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+    }
   }
 
   private sealed class FakeFleet(params TenantDatabaseRestoreVerificationDueCandidate[] candidates)
@@ -179,8 +286,9 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
       Task.FromResult<IReadOnlyList<TenantDatabaseRestoreVerificationDueCandidate>>(
         candidates.Where(candidate => candidate.TenantDatabaseId > afterTenantDatabaseId).Take(take).ToArray());
 
-    public Task<DateTimeOffset?> FindLatestSuccessfulVerificationCompletedUtcAsync(
-      long tenantDatabaseId, CancellationToken cancellationToken = default) => Task.FromResult<DateTimeOffset?>(null);
+    public Task<TenantDatabaseDurableRecoveryEvidence?> FindDurableRecoveryEvidenceAsync(
+      long tenantDatabaseId, CancellationToken cancellationToken = default) =>
+      Task.FromResult<TenantDatabaseDurableRecoveryEvidence?>(null);
   }
 
   private sealed class FakeRunStore : ITenantDatabaseRestoreVerificationRunStore
@@ -188,6 +296,7 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
     private int admission;
     public int SuccessfulAdmissions { get; private set; }
     public Error? AdmissionError { get; set; }
+    public Action? AfterSuccessfulAdmission { get; init; }
 
     public Task<Result<long>> TryAdmitAsync(TenantDatabaseRestoreVerificationAdmissionRequest request,
       CancellationToken cancellationToken = default)
@@ -198,6 +307,7 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
       }
 
       SuccessfulAdmissions++;
+      AfterSuccessfulAdmission?.Invoke();
       return Task.FromResult(Result.Success(10L));
     }
 
@@ -221,6 +331,100 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
       return Task.FromResult(Result.Success(new TenantDatabaseRestoreVerificationExecutionOutcome(
         tenantDatabaseId, expectedVerificationRunId, TenantDatabaseRestoreVerificationStatus.Succeeded,
         requestedDepth, true, null)));
+    }
+  }
+
+  private sealed class BlockingExecutor : ITenantDatabaseRestoreVerificationExecutor
+  {
+    public TaskCompletionSource<bool> Started { get; } =
+      new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<bool> Release { get; } =
+      new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public CancellationToken ExecutionToken { get; private set; }
+
+    public async Task<Result<TenantDatabaseRestoreVerificationExecutionOutcome>> ExecuteAsync(
+      long tenantDatabaseId,
+      long expectedVerificationRunId,
+      TenantDatabaseRestoreDepth requestedDepth,
+      CancellationToken cancellationToken = default)
+    {
+      ExecutionToken = cancellationToken;
+      Started.TrySetResult(true);
+      await Release.Task;
+      return Result.Success(new TenantDatabaseRestoreVerificationExecutionOutcome(
+        tenantDatabaseId,
+        expectedVerificationRunId,
+        TenantDatabaseRestoreVerificationStatus.Succeeded,
+        requestedDepth,
+        true,
+        null));
+    }
+  }
+
+  private sealed class ScopedIdentity
+  {
+    public Guid Value { get; } = Guid.NewGuid();
+  }
+
+  private sealed class ConcurrentScopeProbe(int expectedAdmissions)
+  {
+    private int admissions;
+    private readonly TaskCompletionSource<bool> allAdmissions =
+      new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public ConcurrentDictionary<long, Guid> RunStoreScopes { get; } = new();
+    public ConcurrentDictionary<long, Guid> ExecutorScopes { get; } = new();
+
+    public async Task RecordAdmissionAsync(long tenantDatabaseId, Guid scope, CancellationToken cancellationToken)
+    {
+      RunStoreScopes[tenantDatabaseId] = scope;
+      if (Interlocked.Increment(ref admissions) == expectedAdmissions)
+      {
+        allAdmissions.TrySetResult(true);
+      }
+
+      await allAdmissions.Task.WaitAsync(cancellationToken);
+    }
+  }
+
+  private sealed class ScopedRunStore(ScopedIdentity identity, ConcurrentScopeProbe probe)
+    : ITenantDatabaseRestoreVerificationRunStore
+  {
+    public async Task<Result<long>> TryAdmitAsync(
+      TenantDatabaseRestoreVerificationAdmissionRequest request,
+      CancellationToken cancellationToken = default)
+    {
+      await probe.RecordAdmissionAsync(request.TenantDatabaseId, identity.Value, cancellationToken);
+      return Result.Success(request.TenantDatabaseId + 10);
+    }
+
+    public Task<TenantDatabaseRestoreVerificationRunRecord?> FindAsync(long id, CancellationToken ct = default) =>
+      Task.FromResult<TenantDatabaseRestoreVerificationRunRecord?>(null);
+    public Task<Result> BeginRestoreAsync(long id, string name, string actor, CancellationToken ct = default) => Task.FromResult(Result.Success());
+    public Task<Result> MarkSucceededAsync(long id, string actor, CancellationToken ct = default) => Task.FromResult(Result.Success());
+    public Task<Result<DateTimeOffset>> MarkSucceededAndRecordEvidenceAsync(long id, long backupId, string actor, CancellationToken ct = default) => Task.FromResult(Result.Success(Now));
+    public Task<Result> MarkFailedAsync(long id, string? reason, string actor, CancellationToken ct = default) => Task.FromResult(Result.Success());
+    public Task<Result> MarkInfrastructureUnavailableAsync(long id, string? reason, string actor, CancellationToken ct = default) => Task.FromResult(Result.Success());
+    public Task<Result> RecordCleanupAsync(long id, TenantDatabaseVerificationCleanupState state, string? reason, string actor, CancellationToken ct = default) => Task.FromResult(Result.Success());
+  }
+
+  private sealed class ScopedExecutor(ScopedIdentity identity, ConcurrentScopeProbe probe)
+    : ITenantDatabaseRestoreVerificationExecutor
+  {
+    public Task<Result<TenantDatabaseRestoreVerificationExecutionOutcome>> ExecuteAsync(
+      long tenantDatabaseId,
+      long expectedVerificationRunId,
+      TenantDatabaseRestoreDepth requestedDepth,
+      CancellationToken cancellationToken = default)
+    {
+      probe.ExecutorScopes[tenantDatabaseId] = identity.Value;
+      return Task.FromResult(Result.Success(new TenantDatabaseRestoreVerificationExecutionOutcome(
+        tenantDatabaseId,
+        expectedVerificationRunId,
+        TenantDatabaseRestoreVerificationStatus.Succeeded,
+        requestedDepth,
+        true,
+        null)));
     }
   }
 

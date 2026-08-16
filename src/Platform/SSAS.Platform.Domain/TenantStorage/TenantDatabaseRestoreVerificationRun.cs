@@ -137,6 +137,32 @@ public sealed class TenantDatabaseRestoreVerificationRun : AggregateRoot<long>, 
       tenantDatabaseId, sourceBackupRunId, depth, normalizedKey, actor, occurredUtc));
   }
 
+  // Admission learns the database-generated run identity only after the INSERT. The store reserves the
+  // deterministic target name inside that same transaction so an eligibility refusal can become terminal
+  // without pretending a database was created: CleanupState remains NotRequired until BeginRestore.
+  public Result ReserveVerificationDatabaseName(
+    string verificationDatabaseName,
+    string actor,
+    DateTimeOffset occurredUtc)
+  {
+    if (Status != TenantDatabaseRestoreVerificationStatus.Admitted ||
+      VerificationDatabaseName is not null ||
+      Id <= 0)
+    {
+      return Result.Failure(TenantStorageErrors.RestoreVerificationNotAdmitted);
+    }
+
+    var expected = TenantDatabaseVerificationNaming.ForRun(TenantDatabaseId, Id);
+    if (!string.Equals(verificationDatabaseName?.Trim(), expected, StringComparison.Ordinal))
+    {
+      return Result.Failure(TenantStorageErrors.RestoreVerificationDatabaseNameInvalid);
+    }
+
+    VerificationDatabaseName = expected;
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
   // Records the database this run is ABOUT to create, and moves to Restoring.
   //
   // ORDER IS THE WHOLE POINT: the name is durable before the database exists, never after. A process that
@@ -152,6 +178,12 @@ public sealed class TenantDatabaseRestoreVerificationRun : AggregateRoot<long>, 
 
     var normalized = verificationDatabaseName?.Trim();
     if (string.IsNullOrEmpty(normalized) || normalized.Length > VerificationDatabaseNameMaximumLength)
+    {
+      return Result.Failure(TenantStorageErrors.RestoreVerificationDatabaseNameInvalid);
+    }
+
+    if (VerificationDatabaseName is not null &&
+      !string.Equals(VerificationDatabaseName, normalized, StringComparison.Ordinal))
     {
       return Result.Failure(TenantStorageErrors.RestoreVerificationDatabaseNameInvalid);
     }

@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
@@ -103,10 +104,12 @@ public sealed class TenantRestoreVerificationArchitectureTests
       .SelectMany(constructor => constructor.GetParameters())
       .Select(parameter => parameter.ParameterType)
       .ToArray();
-    Assert.Contains(typeof(ITenantDatabaseRestoreVerificationExecutor), dependencies);
+    Assert.Contains(typeof(IServiceScopeFactory), dependencies);
     Assert.Contains(typeof(ITenantDatabaseRecoveryReadinessRefresher), dependencies);
     Assert.DoesNotContain(typeof(ITenantDatabaseRestoreVerificationProvider), dependencies);
     Assert.DoesNotContain(typeof(ITenantDatabaseRecoveryReadinessWriter), dependencies);
+    Assert.DoesNotContain(typeof(ITenantDatabaseRestoreVerificationExecutor), dependencies);
+    Assert.DoesNotContain(typeof(ITenantDatabaseRestoreVerificationRunStore), dependencies);
 
     var cleanupExecutors = InfrastructureAssembly.GetTypes()
       .Where(type => type.Namespace?.Contains("TenantStorage", StringComparison.Ordinal) == true)

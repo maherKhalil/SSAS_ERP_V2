@@ -34,9 +34,9 @@ public sealed class TenantDatabaseRecoveryReadinessRefresher(
 
     var policy = await backupReads.FindPolicyAsync(tenantDatabaseId, cancellationToken);
     var evidence = await backupReads.FindRecoveryEvidenceAsync(tenantDatabaseId, cancellationToken);
-    var durableVerificationUtc = await verificationReads.FindLatestSuccessfulVerificationCompletedUtcAsync(
+    var durableEvidence = await verificationReads.FindDurableRecoveryEvidenceAsync(
       tenantDatabaseId, cancellationToken);
-    var inputs = Inputs(database, policy, evidence, durableVerificationUtc);
+    var inputs = Inputs(database, policy, evidence, durableEvidence);
 
     // This is an evidence refresh, not a new recovery-model observation. Reuse the evaluator's
     // uncertainty path so a held D7 Degraded outcome cannot become Protected merely from fresh timestamps.
@@ -51,10 +51,10 @@ public sealed class TenantDatabaseRecoveryReadinessRefresher(
       tenantDatabaseId,
       status.Value,
       Actor,
-      evidence?.LastSuccessfulFullBackupUtc,
-      evidence?.LastSuccessfulDifferentialBackupUtc,
-      evidence?.LastSuccessfulLogBackupUtc,
-      durableVerificationUtc,
+      durableEvidence?.LastSuccessfulFullBackupUtc,
+      durableEvidence?.LastSuccessfulDifferentialBackupUtc,
+      durableEvidence?.LastSuccessfulLogBackupUtc,
+      durableEvidence?.LastSuccessfulRestoreVerificationUtc,
       cancellationToken);
   }
 
@@ -62,7 +62,7 @@ public sealed class TenantDatabaseRecoveryReadinessRefresher(
     TenantDatabaseDescriptor database,
     TenantDatabaseBackupPolicyRecord? policy,
     TenantDatabaseRecoveryEvidenceRecord? evidence,
-    DateTimeOffset? durableVerificationUtc) =>
+    TenantDatabaseDurableRecoveryEvidence? durableEvidence) =>
     new(
       database.HostingMode,
       PolicyExists: policy is not null,
@@ -73,10 +73,10 @@ public sealed class TenantDatabaseRecoveryReadinessRefresher(
       TransactionLogBackupIntervalMinutes: policy?.TransactionLogBackupIntervalMinutes,
       RestoreVerificationIntervalDays: policy?.RestoreVerificationIntervalDays,
       MaximumBackupAgeMinutes: policy?.MaximumBackupAgeMinutes,
-      evidence?.LastSuccessfulFullBackupUtc,
-      evidence?.LastSuccessfulDifferentialBackupUtc,
-      evidence?.LastSuccessfulLogBackupUtc,
-      durableVerificationUtc,
+      durableEvidence?.LastSuccessfulFullBackupUtc,
+      durableEvidence?.LastSuccessfulDifferentialBackupUtc,
+      durableEvidence?.LastSuccessfulLogBackupUtc,
+      durableEvidence?.LastSuccessfulRestoreVerificationUtc,
       evidence?.RecoveryReadinessStatus == TenantDatabaseRecoveryReadinessStatus.RecoveryModelInvalid
         ? TenantDatabaseRecoveryModel.Simple
         : null,

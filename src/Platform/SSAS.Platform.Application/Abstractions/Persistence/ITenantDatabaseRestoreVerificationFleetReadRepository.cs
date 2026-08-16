@@ -18,7 +18,14 @@ public interface ITenantDatabaseRestoreVerificationFleetReadRepository
   // The durable operation row is the authority for verification freshness. The aggregate timestamp is a
   // projection which may lag a completed D7 operation, so readiness refresh never derives its cadence from
   // that projection alone.
-  Task<DateTimeOffset?> FindLatestSuccessfulVerificationCompletedUtcAsync(
+  Task<TenantDatabaseDurableRecoveryEvidence?> FindDurableRecoveryEvidenceAsync(
     long tenantDatabaseId,
     CancellationToken cancellationToken = default);
 }
+
+public sealed record TenantDatabaseDurableRecoveryEvidence(
+  long TenantDatabaseId,
+  DateTimeOffset? LastSuccessfulFullBackupUtc,
+  DateTimeOffset? LastSuccessfulDifferentialBackupUtc,
+  DateTimeOffset? LastSuccessfulLogBackupUtc,
+  DateTimeOffset? LastSuccessfulRestoreVerificationUtc);

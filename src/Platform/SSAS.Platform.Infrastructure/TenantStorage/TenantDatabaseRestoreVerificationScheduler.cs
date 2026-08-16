@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.TenantStorage;
@@ -17,10 +18,9 @@ public interface ITenantDatabaseRestoreVerificationScheduler
 // admitted run into recovery evidence. This type deliberately has no dependency on the D6 provider.
 public sealed class TenantDatabaseRestoreVerificationScheduler(
   ITenantDatabaseRestoreVerificationFleetReadRepository fleetReads,
-  ITenantDatabaseRestoreVerificationRunStore runStore,
-  ITenantDatabaseRestoreVerificationExecutor executor,
   ITenantDatabaseRestoreVerificationReconciler reconciler,
   ITenantDatabaseRecoveryReadinessRefresher readinessRefresher,
+  IServiceScopeFactory scopeFactory,
   IOptions<TenantDatabaseRestoreVerificationOptions> options,
   IDateTimeProvider clock,
   ILogger<TenantDatabaseRestoreVerificationScheduler> logger)
@@ -150,11 +150,17 @@ public sealed class TenantDatabaseRestoreVerificationScheduler(
       return false;
     }
 
-    var depth = candidate.TransactionLogBackupIntervalMinutes is > 0
-      ? TenantDatabaseRestoreDepth.FullWithDifferentialAndLog
-      : candidate.DifferentialBackupIntervalMinutes is > 0
-        ? TenantDatabaseRestoreDepth.FullWithDifferential
-        : TenantDatabaseRestoreDepth.Full;
+    if (!TenantDatabaseRestoreVerificationPolicy.TryGetRequiredDepth(
+      candidate.PolicyEnabled,
+      candidate.ManagementMode,
+      candidate.RestoreVerificationIntervalDays,
+      candidate.DifferentialBackupIntervalMinutes,
+      candidate.TransactionLogBackupIntervalMinutes,
+      out var depth))
+    {
+      return false;
+    }
+
     due = new DueWork(candidate, baseline, candidate.PreviousSuccessfulVerificationRunId, depth,
       options.Value.RestoreServerKey!.Trim());
     return true;
@@ -221,6 +227,13 @@ public sealed class TenantDatabaseRestoreVerificationScheduler(
       try
       {
         cancellationToken.ThrowIfCancellationRequested();
+        // Every concurrent dispatch owns a sibling DI scope. In production that means a distinct scoped
+        // PlatformDbContext, run store, executor, repositories and readiness writer for this operation.
+        await using var workScope = scopeFactory.CreateAsyncScope();
+        var runStore = workScope.ServiceProvider
+          .GetRequiredService<ITenantDatabaseRestoreVerificationRunStore>();
+        var executor = workScope.ServiceProvider
+          .GetRequiredService<ITenantDatabaseRestoreVerificationExecutor>();
         var admission = await runStore.TryAdmitAsync(
           new TenantDatabaseRestoreVerificationAdmissionRequest(
             work.Candidate.TenantDatabaseId,

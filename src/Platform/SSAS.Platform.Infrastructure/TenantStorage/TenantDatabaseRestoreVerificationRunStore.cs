@@ -220,6 +220,17 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
       return Result.Failure<long>(TenantStorageErrors.RestoreVerificationAlreadyAdmitted);
     }
 
+    var reserved = admitted.Value.ReserveVerificationDatabaseName(
+      TenantDatabaseVerificationNaming.ForRun(admitted.Value.TenantDatabaseId, admitted.Value.Id),
+      request.Actor,
+      clock.UtcNow);
+    if (reserved.IsFailure)
+    {
+      await transaction.RollbackAsync(CancellationToken.None);
+      return Result.Failure<long>(reserved.Error);
+    }
+    await dbContext.SaveChangesAsync(cancellationToken);
+
     await transaction.CommitAsync(cancellationToken);
     // Admission and execution may be orchestrated in one dependency-injection scope. Detaching prevents
     // the just-inserted Admitted snapshot from masking the CAS update when execution immediately re-reads
@@ -247,9 +258,9 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
     var occurredUtc = clock.UtcNow.ToUniversalTime();
     var affected = await dbContext.Set<TenantDatabaseRestoreVerificationRun>()
       .Where(run => run.Id == verificationRunId &&
-        run.Status == TenantDatabaseRestoreVerificationStatus.Admitted)
+        run.Status == TenantDatabaseRestoreVerificationStatus.Admitted &&
+        run.VerificationDatabaseName == normalized)
       .ExecuteUpdateAsync(setters => setters
-        .SetProperty(run => run.VerificationDatabaseName, normalized)
         .SetProperty(run => run.Status, TenantDatabaseRestoreVerificationStatus.Restoring)
         .SetProperty(run => run.CleanupState, TenantDatabaseVerificationCleanupState.Pending)
         .SetProperty(run => run.ModifiedUtc, occurredUtc)

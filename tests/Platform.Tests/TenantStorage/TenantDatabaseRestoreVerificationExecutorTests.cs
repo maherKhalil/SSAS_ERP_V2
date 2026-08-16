@@ -61,6 +61,40 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
     Assert.Equal(0, fixture.Probe.Calls);
   }
 
+  // THE DURABLE RESERVATION IS AUTHORITATIVE, AND ITS ABSENCE IS NOT RECOVERABLE.
+  //
+  // A run with no reserved name predates the guarantee or was written by something that did not honour it.
+  // The executor must not derive a replacement — deriving one would restore into a database the durable
+  // record never claimed, which is exactly the correlation the reservation exists to provide.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_run_without_a_reserved_database_name_fails_closed_before_the_provider()
+  {
+    var fixture = Fixture.Full();
+    fixture.Store.OverrideVerificationDatabaseName(null);
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
+
+    Assert.True(result.IsSuccess);
+    Assert.Equal(0, fixture.Provider.Calls);
+    Assert.False(result.Value.RestoreVerified);
+  }
+
+  // ...and a reservation that disagrees with the run's own identity is refused rather than repaired.
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_reserved_name_inconsistent_with_the_run_identity_fails_closed()
+  {
+    var fixture = Fixture.Full();
+    fixture.Store.OverrideVerificationDatabaseName(TenantDatabaseVerificationNaming.ForRun(1, 999));
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
+
+    Assert.True(result.IsSuccess);
+    Assert.Equal(0, fixture.Provider.Calls);
+    Assert.False(result.Value.RestoreVerified);
+  }
+
   [Fact]
   [Trait("Decision", "ADR-022")]
   public async Task Known_chain_break_does_not_call_provider_and_is_unprotected()
@@ -136,6 +170,63 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
     Assert.True(result.IsSuccess);
     Assert.Equal(0, fixture.Provider.Calls);
     Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, fixture.Store.Status);
+  }
+
+  [Fact]
+  public async Task Full_run_is_refused_when_current_policy_now_requires_log_depth()
+  {
+    var fixture = Fixture.Full();
+    fixture.Reads.PolicyAfterFirstRead = fixture.Reads.Policy! with
+    {
+      DifferentialBackupIntervalMinutes = 1_440,
+      TransactionLogBackupIntervalMinutes = 15
+    };
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
+
+    Assert.True(result.IsSuccess);
+    Assert.Equal(0, fixture.Provider.Calls);
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, fixture.Store.Status);
+    Assert.Null(fixture.Store.VerifiedSourceBackupRunId);
+    Assert.Null(fixture.Readiness.LastRestoreVerificationUtc);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Degraded, fixture.Readiness.Status);
+  }
+
+  [Fact]
+  public async Task Log_run_is_refused_when_current_policy_now_requires_full_depth()
+  {
+    var fixture = Fixture.Log();
+    fixture.Reads.PolicyAfterFirstRead = fixture.Reads.Policy! with
+    {
+      DifferentialBackupIntervalMinutes = null,
+      TransactionLogBackupIntervalMinutes = null
+    };
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.FullWithDifferentialAndLog);
+
+    Assert.True(result.IsSuccess);
+    Assert.Equal(0, fixture.Provider.Calls);
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, fixture.Store.Status);
+    Assert.Null(fixture.Store.VerifiedSourceBackupRunId);
+    Assert.Null(fixture.Readiness.LastRestoreVerificationUtc);
+  }
+
+  [Fact]
+  public async Task Run_is_refused_when_current_policy_loses_periodic_verification_interval()
+  {
+    var fixture = Fixture.Full();
+    fixture.Reads.PolicyAfterFirstRead = fixture.Reads.Policy! with
+    {
+      RestoreVerificationIntervalDays = null
+    };
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
+
+    Assert.True(result.IsSuccess);
+    Assert.Equal(0, fixture.Provider.Calls);
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, fixture.Store.Status);
+    Assert.Null(fixture.Store.VerifiedSourceBackupRunId);
+    Assert.Null(fixture.Readiness.LastRestoreVerificationUtc);
   }
 
   [Theory]
@@ -473,8 +564,12 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
     private Fixture(TenantDatabaseRestoreDepth depth, TenantDatabaseRestoreVerificationStatus status)
     {
       Events = [];
+      // An admitted run ALWAYS carries its reserved database name: admission reserves it inside the same
+      // transaction that creates the row. A fixture leaving it null would model a state the store can no
+      // longer produce, and would let the executor's fail-closed path pass for the wrong reason.
       Run = new TenantDatabaseRestoreVerificationRunRecord(
-        10, 1, 101, depth, "verify", status, null, Now.AddMinutes(-10), null);
+        10, 1, 101, depth, "verify", status,
+        TenantDatabaseVerificationNaming.ForRun(1, 10), Now.AddMinutes(-10), null);
       Store = new FakeRunStore(Run, Events);
       Registry = new FakeRegistry();
       Reads = new FakeBackupReads(depth);
@@ -638,6 +733,11 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
     public long? VerifiedSourceBackupRunId { get; private set; }
     public DateTimeOffset? CompletedUtc { get; private set; }
     public string? VerificationDatabaseName { get; private set; } = run.VerificationDatabaseName;
+
+    // Models a durable record whose reservation is absent or inconsistent — states admission cannot produce
+    // today, but which an upgraded or externally written row could present to the executor.
+    public void OverrideVerificationDatabaseName(string? verificationDatabaseName) =>
+      VerificationDatabaseName = verificationDatabaseName;
 
     public Task<TenantDatabaseRestoreVerificationRunRecord?> FindAsync(
       long verificationRunId, CancellationToken cancellationToken = default) =>

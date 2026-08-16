@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using System.Data;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Domain.TenantStorage;
 
@@ -32,7 +33,18 @@ public sealed class SqlServerTenantDatabaseRestoreVerificationServerObserver(
     await using var sqlConnection = connection.Value;
     try
     {
-      await sqlConnection.OpenAsync(cancellationToken);
+      if (sqlConnection.State != ConnectionState.Open)
+      {
+        await sqlConnection.OpenAsync(cancellationToken);
+      }
+
+      // sys.dm_exec_requests silently narrows to the caller's session when this permission is absent. A
+      // successful but filtered query is therefore unobservable, not authoritative evidence of absence.
+      if (!await SqlServerBackupVisibility.HasInFlightVisibilityAsync(sqlConnection, cancellationToken))
+      {
+        return Unobserved("RestoreVerificationActivityVisibilityUnavailable");
+      }
+
       await using var command = sqlConnection.CreateCommand();
       command.CommandTimeout = 30;
       command.CommandText = """

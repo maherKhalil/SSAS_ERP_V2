@@ -83,15 +83,44 @@ public sealed class TenantDatabaseRestoreVerificationFleetReadRepository(Platfor
       .ToListAsync(cancellationToken);
   }
 
-  public Task<DateTimeOffset?> FindLatestSuccessfulVerificationCompletedUtcAsync(
+  public Task<TenantDatabaseDurableRecoveryEvidence?> FindDurableRecoveryEvidenceAsync(
     long tenantDatabaseId,
     CancellationToken cancellationToken = default) =>
-    dbContext.TenantDatabaseRestoreVerificationRuns
+    dbContext.TenantDatabases
       .AsNoTracking()
-      .Where(run => run.TenantDatabaseId == tenantDatabaseId &&
-        run.Status == TenantDatabaseRestoreVerificationStatus.Succeeded)
-      .OrderByDescending(run => run.CompletedUtc)
-      .ThenByDescending(run => run.Id)
-      .Select(run => run.CompletedUtc)
-      .FirstOrDefaultAsync(cancellationToken);
+      .Where(database => database.Id == tenantDatabaseId)
+      .Select(database => new TenantDatabaseDurableRecoveryEvidence(
+        database.Id,
+        dbContext.TenantDatabaseBackupRuns
+          .Where(run => run.TenantDatabaseId == database.Id &&
+            run.Status == TenantDatabaseBackupRunStatus.Succeeded &&
+            run.Operation.ProviderKey == "SqlServer" && run.Operation.OperationCode == "Full")
+          .OrderByDescending(run => run.CompletedUtc)
+          .ThenByDescending(run => run.Id)
+          .Select(run => run.CompletedUtc)
+          .FirstOrDefault(),
+        dbContext.TenantDatabaseBackupRuns
+          .Where(run => run.TenantDatabaseId == database.Id &&
+            run.Status == TenantDatabaseBackupRunStatus.Succeeded &&
+            run.Operation.ProviderKey == "SqlServer" && run.Operation.OperationCode == "Differential")
+          .OrderByDescending(run => run.CompletedUtc)
+          .ThenByDescending(run => run.Id)
+          .Select(run => run.CompletedUtc)
+          .FirstOrDefault(),
+        dbContext.TenantDatabaseBackupRuns
+          .Where(run => run.TenantDatabaseId == database.Id &&
+            run.Status == TenantDatabaseBackupRunStatus.Succeeded &&
+            run.Operation.ProviderKey == "SqlServer" && run.Operation.OperationCode == "TransactionLog")
+          .OrderByDescending(run => run.CompletedUtc)
+          .ThenByDescending(run => run.Id)
+          .Select(run => run.CompletedUtc)
+          .FirstOrDefault(),
+        dbContext.TenantDatabaseRestoreVerificationRuns
+          .Where(run => run.TenantDatabaseId == database.Id &&
+            run.Status == TenantDatabaseRestoreVerificationStatus.Succeeded)
+          .OrderByDescending(run => run.CompletedUtc)
+          .ThenByDescending(run => run.Id)
+          .Select(run => run.CompletedUtc)
+          .FirstOrDefault()))
+      .SingleOrDefaultAsync(cancellationToken);
 }

@@ -20,6 +20,7 @@ public sealed class TenantDatabaseRestoreVerificationScheduler(
   ITenantDatabaseRestoreVerificationRunStore runStore,
   ITenantDatabaseRestoreVerificationExecutor executor,
   ITenantDatabaseRestoreVerificationReconciler reconciler,
+  ITenantDatabaseRecoveryReadinessRefresher readinessRefresher,
   IOptions<TenantDatabaseRestoreVerificationOptions> options,
   IDateTimeProvider clock,
   ILogger<TenantDatabaseRestoreVerificationScheduler> logger)
@@ -82,6 +83,7 @@ public sealed class TenantDatabaseRestoreVerificationScheduler(
           counters.Eligible += page.Count;
           foreach (var candidate in page)
           {
+            await RefreshReadinessAsync(candidate.TenantDatabaseId, cancellationToken);
             if (TryCreateDueWork(candidate, clock.UtcNow, out var due))
             {
               round.Add(due);
@@ -107,6 +109,22 @@ public sealed class TenantDatabaseRestoreVerificationScheduler(
     }
 
     return counters.ToSummary(startedUtc, clock.UtcNow);
+  }
+
+  private async Task RefreshReadinessAsync(long tenantDatabaseId, CancellationToken cancellationToken)
+  {
+    try
+    {
+      await readinessRefresher.RefreshAsync(tenantDatabaseId, cancellationToken);
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+      throw;
+    }
+    catch (Exception exception)
+    {
+      LogReadinessRefreshFaulted(logger, tenantDatabaseId, exception.GetType().Name, exception);
+    }
   }
 
   private bool TryCreateDueWork(
@@ -283,6 +301,11 @@ public sealed class TenantDatabaseRestoreVerificationScheduler(
     LoggerMessage.Define<long, string>(LogLevel.Error,
       new EventId(4351, nameof(LogCandidateFaulted)),
       "Restore verification scheduling faulted for database {TenantDatabaseId} with {ExceptionType}; the sweep continues.");
+
+  private static readonly Action<ILogger, long, string, Exception?> LogReadinessRefreshFaulted =
+    LoggerMessage.Define<long, string>(LogLevel.Warning,
+      new EventId(4352, nameof(LogReadinessRefreshFaulted)),
+      "Recovery-readiness refresh faulted for database {TenantDatabaseId} with {ExceptionType}; scheduling continues.");
 }
 
 public sealed record TenantDatabaseRestoreVerificationSweepSummary(

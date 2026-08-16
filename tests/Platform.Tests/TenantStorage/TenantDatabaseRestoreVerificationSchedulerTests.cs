@@ -77,6 +77,37 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
     Assert.Equal(0, fixture.Executor.Calls);
   }
 
+  [Theory]
+  [InlineData("AlreadyAdmitted")]
+  [InlineData("AlreadySatisfied")]
+  public async Task Readiness_refresh_is_not_contingent_on_admission(string reason)
+  {
+    var fixture = Fixture.For(Candidate());
+    fixture.Store.AdmissionError = reason == "AlreadyAdmitted"
+      ? TenantStorageErrors.RestoreVerificationAlreadyAdmitted
+      : TenantStorageErrors.RestoreVerificationAlreadySatisfied;
+
+    await fixture.Scheduler.RunSweepAsync();
+
+    Assert.Equal(1, fixture.Readiness.Refreshes);
+    Assert.Equal(0, fixture.Executor.Calls);
+  }
+
+  [Fact]
+  public async Task One_readiness_refresh_failure_does_not_stop_the_fleet_sweep()
+  {
+    var first = Candidate();
+    var second = Candidate() with { TenantDatabaseId = 2 };
+    var fleet = new FakeFleet(first, second);
+    var readiness = new FakeReadinessRefresher { FailingTenantDatabaseId = first.TenantDatabaseId };
+    var scheduler = Fixture.Create(fleet, new FakeRunStore(), new FakeExecutor(), readiness);
+
+    var summary = await scheduler.RunSweepAsync();
+
+    Assert.Equal(2, readiness.Refreshes);
+    Assert.Equal(1, summary.Dispatched);
+  }
+
   [Fact]
   public async Task Two_scheduler_instances_admit_and_execute_one_effective_operation()
   {
@@ -114,19 +145,22 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
     {
       Store = store;
       Executor = executor;
-      Scheduler = Create(fleet, store, executor);
+      Readiness = new FakeReadinessRefresher();
+      Scheduler = Create(fleet, store, executor, Readiness);
     }
 
     public FakeRunStore Store { get; }
     public FakeExecutor Executor { get; }
+    public FakeReadinessRefresher Readiness { get; }
     public TenantDatabaseRestoreVerificationScheduler Scheduler { get; }
 
     public static Fixture For(TenantDatabaseRestoreVerificationDueCandidate candidate) =>
       new(new FakeFleet(candidate), new FakeRunStore(), new FakeExecutor());
 
     public static TenantDatabaseRestoreVerificationScheduler Create(
-      FakeFleet fleet, FakeRunStore store, FakeExecutor executor) => new(
-      fleet, store, executor, new FakeReconciler(), Options.Create(new TenantDatabaseRestoreVerificationOptions
+      FakeFleet fleet, FakeRunStore store, FakeExecutor executor,
+      FakeReadinessRefresher? readiness = null) => new(
+      fleet, store, executor, new FakeReconciler(), readiness ?? new FakeReadinessRefresher(), Options.Create(new TenantDatabaseRestoreVerificationOptions
       {
         Enabled = true, RestoreServerKey = "verify", RestoreDataRoot = "D:\\verify", RestoreLogRoot = "L:\\verify",
         SchedulerBatchSize = 10, SchedulerSweepInterval = TimeSpan.FromMinutes(1),
@@ -134,7 +168,7 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
       }), new FakeClock(), NullLogger<TenantDatabaseRestoreVerificationScheduler>.Instance);
   }
 
-  private sealed class FakeFleet(TenantDatabaseRestoreVerificationDueCandidate candidate)
+  private sealed class FakeFleet(params TenantDatabaseRestoreVerificationDueCandidate[] candidates)
     : ITenantDatabaseRestoreVerificationFleetReadRepository
   {
     public Task<IReadOnlyList<string>> ListEligibleSourceServerKeysAsync(CancellationToken cancellationToken = default) =>
@@ -143,7 +177,10 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
     public Task<IReadOnlyList<TenantDatabaseRestoreVerificationDueCandidate>> ListCandidatesAsync(
       string sourceServerKey, long afterTenantDatabaseId, int take, CancellationToken cancellationToken = default) =>
       Task.FromResult<IReadOnlyList<TenantDatabaseRestoreVerificationDueCandidate>>(
-        afterTenantDatabaseId == 0 ? [candidate] : []);
+        candidates.Where(candidate => candidate.TenantDatabaseId > afterTenantDatabaseId).Take(take).ToArray());
+
+    public Task<DateTimeOffset?> FindLatestSuccessfulVerificationCompletedUtcAsync(
+      long tenantDatabaseId, CancellationToken cancellationToken = default) => Task.FromResult<DateTimeOffset?>(null);
   }
 
   private sealed class FakeRunStore : ITenantDatabaseRestoreVerificationRunStore
@@ -191,6 +228,20 @@ public sealed class TenantDatabaseRestoreVerificationSchedulerTests
   {
     public Task<TenantDatabaseRestoreVerificationReconciliationSummary> ReconcileAsync(CancellationToken cancellationToken = default) =>
       Task.FromResult(new TenantDatabaseRestoreVerificationReconciliationSummary(Now, 0, 0, 0, 0, 0, 0, 0));
+  }
+
+  private sealed class FakeReadinessRefresher : ITenantDatabaseRecoveryReadinessRefresher
+  {
+    public int Refreshes { get; private set; }
+    public long? FailingTenantDatabaseId { get; init; }
+
+    public Task RefreshAsync(long tenantDatabaseId, CancellationToken cancellationToken = default)
+    {
+      Refreshes++;
+      return tenantDatabaseId == FailingTenantDatabaseId
+        ? Task.FromException(new InvalidOperationException("refresh failed"))
+        : Task.CompletedTask;
+    }
   }
 
   private sealed class FakeClock : IDateTimeProvider { public DateTimeOffset UtcNow => Now; }

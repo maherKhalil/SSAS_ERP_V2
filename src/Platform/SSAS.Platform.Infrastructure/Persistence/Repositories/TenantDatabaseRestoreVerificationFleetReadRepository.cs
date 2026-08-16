@@ -82,4 +82,16 @@ public sealed class TenantDatabaseRestoreVerificationFleetReadRepository(Platfor
       .Take(take)
       .ToListAsync(cancellationToken);
   }
+
+  public Task<DateTimeOffset?> FindLatestSuccessfulVerificationCompletedUtcAsync(
+    long tenantDatabaseId,
+    CancellationToken cancellationToken = default) =>
+    dbContext.TenantDatabaseRestoreVerificationRuns
+      .AsNoTracking()
+      .Where(run => run.TenantDatabaseId == tenantDatabaseId &&
+        run.Status == TenantDatabaseRestoreVerificationStatus.Succeeded)
+      .OrderByDescending(run => run.CompletedUtc)
+      .ThenByDescending(run => run.Id)
+      .Select(run => run.CompletedUtc)
+      .FirstOrDefaultAsync(cancellationToken);
 }

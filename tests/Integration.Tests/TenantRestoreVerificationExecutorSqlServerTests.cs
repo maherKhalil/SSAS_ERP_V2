@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -48,6 +49,36 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
     Assert.Equal(TenantDatabaseBackupVerificationState.RestoreVerified, persisted.BackupVerificationState);
     Assert.NotNull(persisted.LastRestoreVerificationUtc);
     Assert.Equal(persisted.RunCompletedUtc, persisted.LastRestoreVerificationUtc);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Scheduler_discovers_a_due_platform_database_and_drives_the_complete_d7_sql_path()
+  {
+    await using var fixture = await FullPathFixture.CreateAsync();
+
+    var backup = await fixture.TakePlatformFullAsync();
+    Assert.Equal(TenantDatabaseBackupRunStatus.Succeeded, backup.Status);
+    var baseline = await fixture.LatestFullAsync();
+    Assert.NotNull(baseline);
+    Assert.NotNull((await fixture.ChainCandidatesAsync()).Single().CheckpointLsn);
+
+    var summary = await fixture.RunSchedulerAsync();
+
+    Assert.Equal(1, summary.Due);
+    Assert.Equal(1, summary.Dispatched);
+    Assert.Equal(1, summary.Succeeded);
+    var persisted = await fixture.ReadSchedulerPersistedOutcomeAsync(baseline!.TenantDatabaseBackupRunId);
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.Succeeded, persisted.RunStatus);
+    Assert.Equal(fixture.TenantDatabaseId, persisted.TenantDatabaseId);
+    Assert.Equal(baseline.TenantDatabaseBackupRunId, persisted.SourceBackupRunId);
+    Assert.Equal(TenantDatabaseRestoreDepth.Full, persisted.RequestedDepth);
+    Assert.Equal("VerificationSqlServer", persisted.RestoreServerKey);
+    Assert.Equal(TenantDatabaseVerificationNaming.ForRun(fixture.TenantDatabaseId, persisted.VerificationRunId),
+      persisted.VerificationDatabaseName);
+    Assert.Equal(TenantDatabaseBackupVerificationState.RestoreVerified, persisted.BackupVerificationState);
+    Assert.Equal(persisted.RunCompletedUtc, persisted.LastRestoreVerificationUtc);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Protected, persisted.RecoveryReadinessStatus);
   }
 
   private sealed class FullPathFixture : IAsyncDisposable
@@ -142,6 +173,9 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
       verification.RestoreDataRoot = root;
       verification.RestoreLogRoot = root;
       verification.AllowSameInstanceVerification = true;
+      verification.SchedulerBatchSize = 10;
+      verification.MaxConcurrentVerifications = 1;
+      verification.MaxConcurrentVerificationsPerServer = 1;
     }
 
     public async Task<TenantDatabaseBackupExecutionOutcome> TakePlatformFullAsync()
@@ -226,6 +260,53 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
         TenantDatabaseId, verificationRunId, TenantDatabaseRestoreDepth.Full);
     }
 
+    public async Task<TenantDatabaseRestoreVerificationSweepSummary> RunSchedulerAsync()
+    {
+      await using var platform = PlatformContext();
+      var clock = new TestClock(now.AddMinutes(10));
+      var registry = new TenantDatabaseRegistryReadRepository(platform);
+      var reads = new TenantDatabaseBackupReadRepository(platform);
+      var fleet = new TenantDatabaseRestoreVerificationFleetReadRepository(platform);
+      var runStore = new TenantDatabaseRestoreVerificationRunStore(platform, clock);
+      var readinessWriter = new TenantDatabaseRecoveryReadinessWriter(platform, clock);
+      var connections = new TenantDatabaseVerificationConnectionFactory(
+        Options.Create(storage), Options.Create(verification));
+      var executor = new TenantDatabaseRestoreVerificationExecutor(
+        registry,
+        reads,
+        runStore,
+        new SqlServerTenantDatabaseRestoreVerificationProvider(
+          connections,
+          new TenantDatabaseBackupDestinationResolver(Options.Create(storage)),
+          registry,
+          Options.Create(verification),
+          clock),
+        new SqlServerRestoreVerificationProbe(connections),
+        connections,
+        readinessWriter,
+        Options.Create(verification),
+        clock);
+      var reconciler = new TenantDatabaseRestoreVerificationReconciler(
+        runStore,
+        new SqlServerTenantDatabaseRestoreVerificationServerObserver(connections),
+        Options.Create(verification),
+        clock,
+        NullLogger<TenantDatabaseRestoreVerificationReconciler>.Instance);
+      var readinessRefresher = new TenantDatabaseRecoveryReadinessRefresher(
+        registry, reads, fleet, readinessWriter, clock);
+      var scheduler = new TenantDatabaseRestoreVerificationScheduler(
+        fleet,
+        runStore,
+        executor,
+        reconciler,
+        readinessRefresher,
+        Options.Create(verification),
+        clock,
+        NullLogger<TenantDatabaseRestoreVerificationScheduler>.Instance);
+
+      return await scheduler.RunSweepAsync();
+    }
+
     public async Task<PersistedOutcome> ReadPersistedOutcomeAsync(
       long verificationRunId,
       long backupRunId)
@@ -242,6 +323,30 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
         run.CompletedUtc,
         backup.VerificationState,
         database.LastRestoreVerificationUtc);
+    }
+
+    public async Task<SchedulerPersistedOutcome> ReadSchedulerPersistedOutcomeAsync(long backupRunId)
+    {
+      await using var platform = PlatformContext();
+      var run = await platform.TenantDatabaseRestoreVerificationRuns.AsNoTracking()
+        .SingleAsync(candidate => candidate.TenantDatabaseId == TenantDatabaseId);
+      verificationCatalog = run.VerificationDatabaseName;
+      var backup = await platform.TenantDatabaseBackupRuns.AsNoTracking()
+        .SingleAsync(candidate => candidate.Id == backupRunId);
+      var database = await platform.TenantDatabases.AsNoTracking()
+        .SingleAsync(candidate => candidate.Id == TenantDatabaseId);
+      return new SchedulerPersistedOutcome(
+        run.Id,
+        run.Status,
+        run.TenantDatabaseId,
+        run.SourceBackupRunId,
+        run.Depth,
+        run.RestoreServerKey,
+        run.VerificationDatabaseName,
+        run.CompletedUtc,
+        backup.VerificationState,
+        database.LastRestoreVerificationUtc,
+        database.RecoveryReadinessStatus);
     }
 
     private PlatformDbContext PlatformContext()
@@ -306,6 +411,19 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
     DateTimeOffset? RunCompletedUtc,
     TenantDatabaseBackupVerificationState BackupVerificationState,
     DateTimeOffset? LastRestoreVerificationUtc);
+
+  private sealed record SchedulerPersistedOutcome(
+    long VerificationRunId,
+    TenantDatabaseRestoreVerificationStatus RunStatus,
+    long TenantDatabaseId,
+    long SourceBackupRunId,
+    TenantDatabaseRestoreDepth RequestedDepth,
+    string RestoreServerKey,
+    string? VerificationDatabaseName,
+    DateTimeOffset? RunCompletedUtc,
+    TenantDatabaseBackupVerificationState BackupVerificationState,
+    DateTimeOffset? LastRestoreVerificationUtc,
+    TenantDatabaseRecoveryReadinessStatus RecoveryReadinessStatus);
 
   private sealed class TestClock(DateTimeOffset utcNow) : IDateTimeProvider
   {

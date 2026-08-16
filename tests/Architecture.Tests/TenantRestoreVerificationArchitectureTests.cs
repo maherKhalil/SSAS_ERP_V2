@@ -104,7 +104,9 @@ public sealed class TenantRestoreVerificationArchitectureTests
       .Select(parameter => parameter.ParameterType)
       .ToArray();
     Assert.Contains(typeof(ITenantDatabaseRestoreVerificationExecutor), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseRecoveryReadinessRefresher), dependencies);
     Assert.DoesNotContain(typeof(ITenantDatabaseRestoreVerificationProvider), dependencies);
+    Assert.DoesNotContain(typeof(ITenantDatabaseRecoveryReadinessWriter), dependencies);
 
     var cleanupExecutors = InfrastructureAssembly.GetTypes()
       .Where(type => type.Namespace?.Contains("TenantStorage", StringComparison.Ordinal) == true)
@@ -113,6 +115,22 @@ public sealed class TenantRestoreVerificationArchitectureTests
       .ToArray();
 
     Assert.Empty(cleanupExecutors);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void Readiness_refresher_owns_the_recovery_dimension_write_boundary()
+  {
+    var dependencies = typeof(TenantDatabaseRecoveryReadinessRefresher)
+      .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+      .Single()
+      .GetParameters()
+      .Select(parameter => parameter.ParameterType)
+      .ToArray();
+
+    Assert.Contains(typeof(ITenantDatabaseRecoveryReadinessWriter), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseBackupReadRepository), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseRestoreVerificationFleetReadRepository), dependencies);
   }
 
   // TWO INVARIANTS LIVE NEXT DOOR, not here: that no restore command can emit `WITH REPLACE`, and that a

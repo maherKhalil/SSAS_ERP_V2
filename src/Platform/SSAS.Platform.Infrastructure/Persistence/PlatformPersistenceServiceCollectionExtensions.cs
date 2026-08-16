@@ -175,6 +175,8 @@ public static class PlatformInfrastructureServiceCollectionExtensions
       SqlServerTenantDatabaseRestoreVerificationServerObserver>();
     services.AddScoped<ITenantDatabaseRestoreVerificationReconciler,
       TenantDatabaseRestoreVerificationReconciler>();
+    services.AddScoped<ITenantDatabaseRecoveryReadinessRefresher,
+      TenantDatabaseRecoveryReadinessRefresher>();
     services.AddScoped<ITenantDatabaseRestoreVerificationFleetReadRepository,
       TenantDatabaseRestoreVerificationFleetReadRepository>();
 

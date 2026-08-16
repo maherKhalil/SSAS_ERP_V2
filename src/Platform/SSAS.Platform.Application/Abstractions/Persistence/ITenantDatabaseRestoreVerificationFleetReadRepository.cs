@@ -14,4 +14,11 @@ public interface ITenantDatabaseRestoreVerificationFleetReadRepository
     long afterTenantDatabaseId,
     int take,
     CancellationToken cancellationToken = default);
+
+  // The durable operation row is the authority for verification freshness. The aggregate timestamp is a
+  // projection which may lag a completed D7 operation, so readiness refresh never derives its cadence from
+  // that projection alone.
+  Task<DateTimeOffset?> FindLatestSuccessfulVerificationCompletedUtcAsync(
+    long tenantDatabaseId,
+    CancellationToken cancellationToken = default);
 }

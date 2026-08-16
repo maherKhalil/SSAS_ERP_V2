@@ -68,5 +68,10 @@ public enum TenantDatabaseRestoreVerificationOutcome
 
   // Could not begin or complete for reasons independent of the artifacts — verification host unavailable,
   // configuration unresolvable. NOT evidence about the backup (ADR-022 §17, v1.2).
-  InfrastructureUnavailable = 5
+  InfrastructureUnavailable = 5,
+
+  // A required platform-owned artifact could not be opened or read from its trusted destination. This is
+  // distinct from a topology refusal and from losing the verification host: the durable recovery path is
+  // known to be unavailable, so D7 applies the hard-chain-break readiness rule.
+  ArtifactUnavailable = 6
 }

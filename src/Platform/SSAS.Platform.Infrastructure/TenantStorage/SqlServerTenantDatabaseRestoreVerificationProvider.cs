@@ -102,15 +102,36 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
       var devices = ResolveDevices(request.Chain);
       if (devices.IsFailure)
       {
-        return Blocked(devices.Error.Code, startedUtc);
+        return devices.Error.Code == TenantStorageErrors.RestoreVerificationArtifactUnavailable.Code
+          ? ArtifactUnavailable(devices.Error.Code, startedUtc, request.VerificationDatabaseName)
+          : Unavailable(devices.Error.Code, startedUtc);
       }
 
       // The logical file list comes from the SOURCE FULL, and it is the only trustworthy source for the
       // MOVE clauses — a backup's layout is a property of the backup, never something to assume.
-      var fileList = await ReadFileListAsync(sqlConnection, devices.Value[0].Device, cancellationToken);
+      IReadOnlyList<TenantDatabaseBackupFileEntry> fileList;
+      try
+      {
+        fileList = await ReadFileListAsync(sqlConnection, devices.Value[0].Device, cancellationToken);
+      }
+      catch (SqlException exception) when (IsInfrastructure(exception))
+      {
+        return Unavailable(Safe(exception), startedUtc);
+      }
+      catch (SqlException exception)
+      {
+        // FILELISTONLY addressed the exact durable artifact. A non-transport rejection here establishes that
+        // the required artifact is absent or unreadable; it is recovery evidence, not topology uncertainty.
+        return ArtifactUnavailable(
+          Safe(exception), startedUtc, request.VerificationDatabaseName);
+      }
+
       if (fileList.Count == 0)
       {
-        return Blocked(TenantStorageErrors.RestoreVerificationArtifactUnavailable.Code, startedUtc);
+        return ArtifactUnavailable(
+          TenantStorageErrors.RestoreVerificationArtifactUnavailable.Code,
+          startedUtc,
+          request.VerificationDatabaseName);
       }
 
       var placements = TenantDatabaseVerificationFileLayout.Plan(
@@ -123,6 +144,21 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
         sqlConnection, request, devices.Value, placements, cancellationToken);
       if (restored.SafeErrorSummary is not null)
       {
+        if (restored.InfrastructureUnavailable)
+        {
+          return Unavailable(restored.SafeErrorSummary, startedUtc);
+        }
+
+        if (restored.ArtifactUnavailable)
+        {
+          return ArtifactUnavailable(
+            restored.SafeErrorSummary,
+            startedUtc,
+            request.VerificationDatabaseName,
+            restored.RestoredStepCount,
+            AchievedDepth(request.Chain.Steps, restored.RestoredStepCount));
+        }
+
         return Failed(
           restored.SafeErrorSummary,
           startedUtc,
@@ -132,8 +168,18 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
       }
 
       // ONLINE is the minimum evidence that the sequence produced a database rather than a set of files.
-      var state = await ReadDatabaseStateAsync(
-        sqlConnection, request.VerificationDatabaseName, cancellationToken);
+      string? state;
+      try
+      {
+        state = await ReadDatabaseStateAsync(
+          sqlConnection, request.VerificationDatabaseName, cancellationToken);
+      }
+      catch (SqlException exception)
+      {
+        // The restore sequence completed; failure to query the verification host afterwards does not prove
+        // the artifact unusable. Preserve the successful steps and classify this as infrastructure.
+        return Unavailable(Safe(exception), startedUtc);
+      }
       if (!string.Equals(state, "ONLINE", StringComparison.OrdinalIgnoreCase))
       {
         return new TenantDatabaseRestoreVerificationResult(
@@ -163,7 +209,9 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
     }
     catch (SqlException exception)
     {
-      return Failed(Safe(exception), startedUtc, request.VerificationDatabaseName);
+      return IsInfrastructure(exception)
+        ? Unavailable(Safe(exception), startedUtc)
+        : Failed(Safe(exception), startedUtc, request.VerificationDatabaseName);
     }
   }
 
@@ -278,11 +326,19 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
       }
       catch (SqlException exception)
       {
-        return new TenantDatabaseRestoreSequenceResult(index, Safe(exception));
+        return new TenantDatabaseRestoreSequenceResult(
+          index,
+          Safe(exception),
+          IsInfrastructure(exception),
+          IsArtifactUnavailable(exception));
       }
     }
 
-    return new TenantDatabaseRestoreSequenceResult(devices.Count, SafeErrorSummary: null);
+    return new TenantDatabaseRestoreSequenceResult(
+      devices.Count,
+      SafeErrorSummary: null,
+      InfrastructureUnavailable: false,
+      ArtifactUnavailable: false);
   }
 
   private static TenantDatabaseRestoreDepth? AchievedDepth(
@@ -333,9 +389,25 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
   private static string Safe(SqlException exception) =>
     string.Create(CultureInfo.InvariantCulture, $"SqlError:{exception.Number}");
 
-  // Every non-success path carries a NULL achieved depth: nothing was demonstrated, so there is no level to
-  // report. Named arguments throughout, so adding a field to the result cannot silently shift a value into
-  // the wrong parameter.
+  // Errors that prevent the verification service from learning anything about the artifact. Permission and
+  // catalog-login failures are trusted configuration/credential failures; transport and timeout failures
+  // leave the restore result unknown. Artifact/device errors are intentionally absent and are classified at
+  // FILELISTONLY/RESTORE, where the operation being attempted supplies the missing semantics.
+  private static bool IsInfrastructure(SqlException exception) =>
+    exception.Errors.OfType<SqlError>().Any(error =>
+      error.Number is -2 or 0 or 53 or 64 or 229 or 233 or 262 or 916 or 1_0053 or 1_0054 or 1_0060 or
+        18_452 or 18_456);
+
+  // SQL Server has reached the trusted device operation and established that the selected artifact cannot
+  // be opened or read. This is stronger than a generic RESTORE rejection: the required managed chain is
+  // known to be unavailable. 3013 is only the companion "terminating abnormally" message, so classification
+  // keys on the device errors themselves.
+  private static bool IsArtifactUnavailable(SqlException exception) =>
+    exception.Errors.OfType<SqlError>().Any(error => error.Number is 3_201 or 3_203);
+
+  // Precondition/infrastructure paths carry no achieved depth. Artifact-unavailable may carry the shallower
+  // steps completed before a later required device failed, so the executor can retain accurate diagnostics
+  // while still applying the hard-chain-break rule.
   private TenantDatabaseRestoreVerificationResult Blocked(string reason, DateTimeOffset startedUtc) =>
     new(TenantDatabaseRestoreVerificationOutcome.BlockedByPrecondition,
       AchievedDepth: null, StartedUtc: startedUtc, CompletedUtc: clock.UtcNow, SafeErrorSummary: reason);
@@ -343,6 +415,20 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
   private TenantDatabaseRestoreVerificationResult Unavailable(string reason, DateTimeOffset startedUtc) =>
     new(TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable,
       AchievedDepth: null, StartedUtc: startedUtc, CompletedUtc: clock.UtcNow, SafeErrorSummary: reason);
+
+  private TenantDatabaseRestoreVerificationResult ArtifactUnavailable(
+    string reason,
+    DateTimeOffset startedUtc,
+    string databaseName,
+    int restoredStepCount = 0,
+    TenantDatabaseRestoreDepth? achievedDepth = null) =>
+    new(TenantDatabaseRestoreVerificationOutcome.ArtifactUnavailable,
+      VerificationDatabaseName: databaseName,
+      RestoredStepCount: restoredStepCount,
+      AchievedDepth: achievedDepth,
+      StartedUtc: startedUtc,
+      CompletedUtc: clock.UtcNow,
+      SafeErrorSummary: reason);
 
   private TenantDatabaseRestoreVerificationResult Failed(
     string reason,
@@ -362,4 +448,8 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
 // One resolved artifact location, paired with the chain role it plays.
 internal sealed record TenantDatabaseRestoreDevice(TenantDatabaseRestoreStepKind Kind, string Device);
 
-internal sealed record TenantDatabaseRestoreSequenceResult(int RestoredStepCount, string? SafeErrorSummary);
+internal sealed record TenantDatabaseRestoreSequenceResult(
+  int RestoredStepCount,
+  string? SafeErrorSummary,
+  bool InfrastructureUnavailable,
+  bool ArtifactUnavailable);

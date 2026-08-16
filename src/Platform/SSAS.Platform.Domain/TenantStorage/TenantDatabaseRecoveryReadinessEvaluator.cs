@@ -71,6 +71,15 @@ public static class TenantDatabaseRecoveryReadinessEvaluator
       return TenantDatabaseRecoveryReadinessStatus.VerificationOverdue;
     }
 
+    // A log-protection claim cannot become Protected without an observed recovery model. In particular, an
+    // infrastructure-only verification outcome has learned nothing new about that model and must not erase
+    // a held non-Protected verdict merely because the input is absent. `Degraded` is the conservative D1
+    // result until a later successful probe supplies Full, BulkLogged, or Simple.
+    if (RequiresLogChain(inputs) && inputs.ObservedRecoveryModel is null)
+    {
+      return TenantDatabaseRecoveryReadinessStatus.Degraded;
+    }
+
     if (IsAnyScheduledBackupOverdue(inputs, nowUtc) || IsRecoveryPointStale(inputs, nowUtc))
     {
       return TenantDatabaseRecoveryReadinessStatus.Degraded;

@@ -79,7 +79,8 @@ public sealed class TenantDatabaseBackupReadRepository(PlatformDbContext dbConte
         database.LastSuccessfulFullBackupUtc,
         database.LastSuccessfulDifferentialBackupUtc,
         database.LastSuccessfulLogBackupUtc,
-        database.LastRestoreVerificationUtc))
+        database.LastRestoreVerificationUtc,
+        database.RecoveryReadinessStatus))
       .FirstOrDefaultAsync(cancellationToken)!;
 
   // Successful platform-managed runs, projected into chain candidates.

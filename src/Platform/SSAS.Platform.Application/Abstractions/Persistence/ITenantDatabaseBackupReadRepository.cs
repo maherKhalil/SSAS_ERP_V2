@@ -1,5 +1,6 @@
 using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Application.TenantStorage;
+using SSAS.Platform.Domain.Enums;
 
 namespace SSAS.Platform.Application.Abstractions.Persistence;
 
@@ -61,4 +62,6 @@ public sealed record TenantDatabaseRecoveryEvidenceRecord(
   DateTimeOffset? LastSuccessfulFullBackupUtc,
   DateTimeOffset? LastSuccessfulDifferentialBackupUtc,
   DateTimeOffset? LastSuccessfulLogBackupUtc,
-  DateTimeOffset? LastRestoreVerificationUtc);
+  DateTimeOffset? LastRestoreVerificationUtc,
+  TenantDatabaseRecoveryReadinessStatus RecoveryReadinessStatus =
+    TenantDatabaseRecoveryReadinessStatus.Unknown);

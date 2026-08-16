@@ -132,8 +132,7 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
     }
     catch (Exception exception)
     {
-      return await InfrastructureUnavailableAsync(
-        run, database: null, policy: null, Safe(exception), CancellationToken.None);
+      return await InfrastructureUnavailableAsync(run, Safe(exception), CancellationToken.None);
     }
 
     try
@@ -148,14 +147,14 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
         {
           var code when code == TenantStorageErrors.RestoreChainBroken.Code =>
             await VerificationFailedAsync(
-              run, database!, policy!, TenantDatabaseVerificationFailure.RequiredChainBreak,
+              run, TenantDatabaseVerificationFailure.RequiredChainBreak,
               achievedDepth: null, code, cancellationToken),
 
           var code when code == TenantStorageErrors.RestoreChainMetadataUnavailable.Code =>
-            await InfrastructureUnavailableAsync(run, database, policy, code, cancellationToken),
+            await InfrastructureUnavailableAsync(run, code, cancellationToken),
 
           _ => await VerificationFailedAsync(
-            run, database!, policy!, TenantDatabaseVerificationFailure.BaselineRestoreFailed,
+            run, TenantDatabaseVerificationFailure.BaselineRestoreFailed,
             achievedDepth: null, selected.Error.Code, cancellationToken)
         };
       }
@@ -167,7 +166,7 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
         selected.Value.Steps[0].Kind != TenantDatabaseRestoreStepKind.Full)
       {
         return await InfrastructureUnavailableAsync(
-          run, database, policy, TenantStorageErrors.RestoreVerificationTargetDrifted.Code, cancellationToken);
+          run, TenantStorageErrors.RestoreVerificationTargetDrifted.Code, cancellationToken);
       }
 
       // EXECUTION-TIME RECHECK, immediately before the first component allowed to issue RESTORE. The
@@ -198,21 +197,18 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
           currentRegistered.Select(candidate => candidate.DatabaseName)))
       {
         return await InfrastructureUnavailableAsync(
-          run, currentDatabase ?? database, currentPolicy ?? policy,
-          TenantStorageErrors.RestoreVerificationNotEligible.Code, cancellationToken);
+          run, TenantStorageErrors.RestoreVerificationNotEligible.Code, cancellationToken);
       }
 
       var currentTarget = verificationConnections.Create(
         new TenantDatabaseVerificationTarget(run.RestoreServerKey, currentDatabase.ServerKey));
       if (currentTarget.IsFailure)
       {
-        return await InfrastructureUnavailableAsync(
-          run, currentDatabase, currentPolicy, currentTarget.Error.Code, cancellationToken);
+        return await InfrastructureUnavailableAsync(run, currentTarget.Error.Code, cancellationToken);
       }
       await currentTarget.Value.DisposeAsync();
 
       database = currentDatabase;
-      policy = currentPolicy!;
 
       TenantDatabaseRestoreVerificationResult restored;
       try
@@ -234,12 +230,12 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       }
       catch (Exception exception)
       {
-        return await InfrastructureUnavailableAsync(run, database, policy, Safe(exception), cancellationToken);
+        return await InfrastructureUnavailableAsync(run, Safe(exception), cancellationToken);
       }
 
       if (restored.Outcome != TenantDatabaseRestoreVerificationOutcome.RestoredAndOnline)
       {
-        return await RecordProviderFailureAsync(run, database!, policy!, restored, cancellationToken);
+        return await RecordProviderFailureAsync(run, restored, cancellationToken);
       }
 
       if (!string.Equals(
@@ -248,8 +244,6 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       {
         return await VerificationFailedAsync(
           run,
-          database!,
-          policy!,
           requestedDepth == TenantDatabaseRestoreDepth.Full
             ? TenantDatabaseVerificationFailure.BaselineRestoreFailed
             : TenantDatabaseVerificationFailure.DeeperChainRestoreFailed,
@@ -263,8 +257,6 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       {
         return await VerificationFailedAsync(
           run,
-          database!,
-          policy!,
           TenantDatabaseVerificationFailure.DeeperChainRestoreFailed,
           achievedDepth,
           TenantStorageErrors.RestoreVerificationDepthNotAchieved.Code,
@@ -290,13 +282,12 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       }
       catch (Exception exception)
       {
-        return await InfrastructureUnavailableAsync(run, database, policy, Safe(exception), cancellationToken);
+        return await InfrastructureUnavailableAsync(run, Safe(exception), cancellationToken);
       }
 
       if (probed.Outcome == TenantDatabaseRestoreProbeOutcome.Unavailable)
       {
-        return await InfrastructureUnavailableAsync(
-          run, database, policy, probed.SafeErrorSummary, cancellationToken);
+        return await InfrastructureUnavailableAsync(run, probed.SafeErrorSummary, cancellationToken);
       }
 
       if (probed.Outcome != TenantDatabaseRestoreProbeOutcome.Succeeded ||
@@ -304,8 +295,6 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       {
         return await VerificationFailedAsync(
           run,
-          database!,
-          policy!,
           TenantDatabaseVerificationFailure.PostRestoreProbeFailed,
           achievedDepth,
           probed.SafeErrorSummary ?? TenantStorageErrors.RestoreVerificationSchemaPositionUnexpected.Code,
@@ -320,13 +309,12 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       }
       catch (Exception exception)
       {
-        return await InfrastructureUnavailableAsync(run, database, policy, Safe(exception), cancellationToken);
+        return await InfrastructureUnavailableAsync(run, Safe(exception), cancellationToken);
       }
 
       if (persisted.IsFailure)
       {
-        return await InfrastructureUnavailableAsync(
-          run, database, policy, persisted.Error.Code, cancellationToken);
+        return await InfrastructureUnavailableAsync(run, persisted.Error.Code, cancellationToken);
       }
 
       // Projection follows durable success. If it fails, the run and exact source backup still carry the
@@ -335,7 +323,7 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       try
       {
         await RecordSuccessfulReadinessAsync(
-          database!, policy!, probed.ObservedRecoveryModel.Value, persisted.Value, cancellationToken);
+          tenantDatabaseId, probed.ObservedRecoveryModel.Value, persisted.Value, cancellationToken);
       }
       catch (Exception exception)
       {
@@ -357,59 +345,54 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
     }
     catch (Exception exception)
     {
-      return await InfrastructureUnavailableAsync(run, database, policy, Safe(exception), CancellationToken.None);
+      return await InfrastructureUnavailableAsync(run, Safe(exception), CancellationToken.None);
     }
   }
 
   private async Task<Result<TenantDatabaseRestoreVerificationExecutionOutcome>> RecordProviderFailureAsync(
     TenantDatabaseRestoreVerificationRunRecord run,
-    TenantDatabaseDescriptor database,
-    TenantDatabaseBackupPolicyRecord policy,
     TenantDatabaseRestoreVerificationResult restored,
     CancellationToken cancellationToken) => restored.Outcome switch
   {
     TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable or
       TenantDatabaseRestoreVerificationOutcome.BlockedByPrecondition =>
-      await InfrastructureUnavailableAsync(run, database, policy, restored.SafeErrorSummary, cancellationToken),
+      await InfrastructureUnavailableAsync(run, restored.SafeErrorSummary, cancellationToken),
+
+    // A durable selected artifact that cannot be opened is a known required-chain break, including when the
+    // missing segment is deeper than Full. It is not the same as a deeper RESTORE statement failing after a
+    // usable baseline was already established.
+    TenantDatabaseRestoreVerificationOutcome.ArtifactUnavailable =>
+      await VerificationFailedAsync(
+        run, TenantDatabaseVerificationFailure.RequiredChainBreak,
+        restored.AchievedDepth, restored.SafeErrorSummary, cancellationToken),
 
     TenantDatabaseRestoreVerificationOutcome.RestoreFailed when restored.RestoredStepCount > 0 &&
       run.Depth > TenantDatabaseRestoreDepth.Full =>
       await VerificationFailedAsync(
-        run, database, policy, TenantDatabaseVerificationFailure.DeeperChainRestoreFailed,
+        run, TenantDatabaseVerificationFailure.DeeperChainRestoreFailed,
         restored.AchievedDepth, restored.SafeErrorSummary, cancellationToken),
 
     _ => await VerificationFailedAsync(
-      run, database, policy, TenantDatabaseVerificationFailure.BaselineRestoreFailed,
+      run, TenantDatabaseVerificationFailure.BaselineRestoreFailed,
       restored.AchievedDepth, restored.SafeErrorSummary, cancellationToken)
   };
 
   private async Task<Result<TenantDatabaseRestoreVerificationExecutionOutcome>> RefuseAdmittedAsync(
     TenantDatabaseRestoreVerificationRunRecord run,
     string reason,
-    CancellationToken cancellationToken)
-  {
-    await TryMarkUnavailableAsync(run.VerificationRunId, reason, cancellationToken);
-    return Result.Success(Outcome(
-      run, TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, null, false, reason));
-  }
+    CancellationToken cancellationToken) =>
+    await InfrastructureUnavailableAsync(run, reason, cancellationToken);
 
   private async Task<Result<TenantDatabaseRestoreVerificationExecutionOutcome>> InfrastructureUnavailableAsync(
     TenantDatabaseRestoreVerificationRunRecord run,
-    TenantDatabaseDescriptor? database,
-    TenantDatabaseBackupPolicyRecord? policy,
     string? reason,
     CancellationToken cancellationToken)
   {
     await TryMarkUnavailableAsync(run.VerificationRunId, reason, cancellationToken);
-
-    if (database is not null && policy is not null)
-    {
-      await TryRecordFailureReadinessAsync(
-        database,
-        policy,
-        TenantDatabaseVerificationFailure.VerificationInfrastructureUnavailable,
-        cancellationToken);
-    }
+    await TryRecordFailureReadinessAsync(
+      run.TenantDatabaseId,
+      TenantDatabaseVerificationFailure.VerificationInfrastructureUnavailable,
+      cancellationToken);
 
     return Result.Success(Outcome(
       run,
@@ -421,8 +404,6 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
 
   private async Task<Result<TenantDatabaseRestoreVerificationExecutionOutcome>> VerificationFailedAsync(
     TenantDatabaseRestoreVerificationRunRecord run,
-    TenantDatabaseDescriptor database,
-    TenantDatabaseBackupPolicyRecord policy,
     TenantDatabaseVerificationFailure failure,
     TenantDatabaseRestoreDepth? achievedDepth,
     string? reason,
@@ -434,20 +415,25 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       return Result.Failure<TenantDatabaseRestoreVerificationExecutionOutcome>(marked.Error);
     }
 
-    await TryRecordFailureReadinessAsync(database, policy, failure, cancellationToken);
+    await TryRecordFailureReadinessAsync(run.TenantDatabaseId, failure, cancellationToken);
     return Result.Success(Outcome(
       run, TenantDatabaseRestoreVerificationStatus.Failed, achievedDepth, false, reason));
   }
 
   private async Task RecordSuccessfulReadinessAsync(
-    TenantDatabaseDescriptor database,
-    TenantDatabaseBackupPolicyRecord policy,
+    long tenantDatabaseId,
     TenantDatabaseRecoveryModel recoveryModel,
     DateTimeOffset completedUtc,
     CancellationToken cancellationToken)
   {
-    var evidence = await backupReads.FindRecoveryEvidenceAsync(database.TenantDatabaseId, cancellationToken);
-    var inputs = Inputs(database, policy, evidence, recoveryModel) with
+    var inputs = await BuildCurrentReadinessInputsAsync(
+      tenantDatabaseId, recoveryModel, cancellationToken);
+    if (inputs is null)
+    {
+      throw new InvalidOperationException(TenantStorageErrors.TenantDatabaseRequired.Code);
+    }
+
+    inputs = inputs with
     {
       LastRestoreVerificationUtc = completedUtc,
       PlatformChainBreakDetected = false
@@ -455,7 +441,7 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
     var status = TenantDatabaseRecoveryReadinessEvaluator.Evaluate(inputs, completedUtc);
 
     await recoveryWriter.RecordRecoveryReadinessAsync(
-      database.TenantDatabaseId,
+      tenantDatabaseId,
       status,
       Actor,
       lastRestoreVerificationUtc: completedUtc,
@@ -463,24 +449,31 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
   }
 
   private async Task TryRecordFailureReadinessAsync(
-    TenantDatabaseDescriptor database,
-    TenantDatabaseBackupPolicyRecord policy,
+    long tenantDatabaseId,
     TenantDatabaseVerificationFailure failure,
     CancellationToken cancellationToken)
   {
     try
     {
-      var evidence = await backupReads.FindRecoveryEvidenceAsync(database.TenantDatabaseId, cancellationToken);
-      var inputs = Inputs(database, policy, evidence, observedRecoveryModel: null) with
+      var inputs = await BuildCurrentReadinessInputsAsync(
+        tenantDatabaseId, observedRecoveryModel: null, cancellationToken);
+      if (inputs is null)
       {
-        PlatformChainBreakDetected = failure == TenantDatabaseVerificationFailure.RequiredChainBreak
+        return;
+      }
+
+      inputs = inputs with
+      {
+        PlatformChainBreakDetected = failure == TenantDatabaseVerificationFailure.RequiredChainBreak ||
+          failure == TenantDatabaseVerificationFailure.VerificationInfrastructureUnavailable &&
+          inputs.PlatformChainBreakDetected
       };
       var status = TenantDatabaseRecoveryReadinessEvaluator.EvaluateAfterVerificationFailure(
         failure, inputs, clock.UtcNow);
       if (status is { } observed)
       {
         await recoveryWriter.RecordRecoveryReadinessAsync(
-          database.TenantDatabaseId, observed, Actor, cancellationToken: cancellationToken);
+          tenantDatabaseId, observed, Actor, cancellationToken: cancellationToken);
       }
     }
     catch
@@ -488,6 +481,26 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
       // The terminal verification row is authoritative. A projection failure must not strand Restoring or
       // replace the classified verification result with a second, less useful exception.
     }
+  }
+
+  // One reconstruction path for every D7 exit. Policy and evidence are reloaded after the outcome rather
+  // than reusing admission/execution snapshots. A removed policy is represented explicitly as absent, and
+  // an unobserved recovery model stays null so the D1 evaluator can conservatively refuse false protection.
+  private async Task<TenantDatabaseRecoveryReadinessInputs?> BuildCurrentReadinessInputsAsync(
+    long tenantDatabaseId,
+    TenantDatabaseRecoveryModel? observedRecoveryModel,
+    CancellationToken cancellationToken)
+  {
+    var registered = await registry.ListPhysicalDatabasesAsync(0, int.MaxValue, cancellationToken);
+    var database = registered.SingleOrDefault(candidate => candidate.TenantDatabaseId == tenantDatabaseId);
+    if (database is null)
+    {
+      return null;
+    }
+
+    var policy = await backupReads.FindPolicyAsync(tenantDatabaseId, cancellationToken);
+    var evidence = await backupReads.FindRecoveryEvidenceAsync(tenantDatabaseId, cancellationToken);
+    return Inputs(database, policy, evidence, observedRecoveryModel);
   }
 
   private async Task TryMarkUnavailableAsync(
@@ -537,24 +550,29 @@ internal sealed class TenantDatabaseRestoreVerificationExecutor(
 
   private static TenantDatabaseRecoveryReadinessInputs Inputs(
     TenantDatabaseDescriptor database,
-    TenantDatabaseBackupPolicyRecord policy,
+    TenantDatabaseBackupPolicyRecord? policy,
     TenantDatabaseRecoveryEvidenceRecord? evidence,
     TenantDatabaseRecoveryModel? observedRecoveryModel) =>
     new(
       database.HostingMode,
-      PolicyExists: true,
-      policy.Enabled,
-      policy.ManagementMode,
-      policy.FullBackupIntervalMinutes,
-      policy.DifferentialBackupIntervalMinutes,
-      policy.TransactionLogBackupIntervalMinutes,
-      policy.RestoreVerificationIntervalDays,
-      policy.MaximumBackupAgeMinutes,
+      PolicyExists: policy is not null,
+      PolicyEnabled: policy?.Enabled ?? false,
+      ManagementMode: policy?.ManagementMode ?? TenantDatabaseBackupManagementMode.CustomerDba,
+      FullBackupIntervalMinutes: policy?.FullBackupIntervalMinutes,
+      DifferentialBackupIntervalMinutes: policy?.DifferentialBackupIntervalMinutes,
+      TransactionLogBackupIntervalMinutes: policy?.TransactionLogBackupIntervalMinutes,
+      RestoreVerificationIntervalDays: policy?.RestoreVerificationIntervalDays,
+      MaximumBackupAgeMinutes: policy?.MaximumBackupAgeMinutes,
       evidence?.LastSuccessfulFullBackupUtc,
       evidence?.LastSuccessfulDifferentialBackupUtc,
       evidence?.LastSuccessfulLogBackupUtc,
       evidence?.LastRestoreVerificationUtc,
-      observedRecoveryModel);
+      observedRecoveryModel ??
+        (evidence?.RecoveryReadinessStatus == TenantDatabaseRecoveryReadinessStatus.RecoveryModelInvalid
+          ? TenantDatabaseRecoveryModel.Simple
+          : null),
+      PlatformChainBreakDetected:
+        evidence?.RecoveryReadinessStatus == TenantDatabaseRecoveryReadinessStatus.Unprotected);
 
   private static TenantDatabaseRestoreVerificationExecutionOutcome Outcome(
     TenantDatabaseRestoreVerificationRunRecord run,

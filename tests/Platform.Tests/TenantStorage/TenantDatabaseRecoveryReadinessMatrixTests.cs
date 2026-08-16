@@ -189,6 +189,21 @@ public sealed class TenantDatabaseRecoveryReadinessMatrixTests
       TenantDatabaseRecoveryReadinessEvaluator.Evaluate(inputs, Now));
   }
 
+  [Fact]
+  public void A_log_policy_with_no_observed_recovery_model_is_degraded_not_protected()
+  {
+    var inputs = Healthy() with
+    {
+      TransactionLogBackupIntervalMinutes = 15,
+      LastSuccessfulLogBackupUtc = Now.AddMinutes(-5),
+      ObservedRecoveryModel = null
+    };
+
+    Assert.Equal(
+      TenantDatabaseRecoveryReadinessStatus.Degraded,
+      TenantDatabaseRecoveryReadinessEvaluator.Evaluate(inputs, Now));
+  }
+
   // ---- Degradation.
 
   [Fact]

@@ -256,18 +256,114 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
   }
 
   [Fact]
-  public async Task Infrastructure_failure_does_not_automatically_infer_unprotected()
+  public async Task Infrastructure_failure_preserves_held_simple_recovery_model_evidence()
   {
-    var fixture = Fixture.Full();
+    var fixture = Fixture.Log();
+    fixture.Reads.HeldReadinessStatus = TenantDatabaseRecoveryReadinessStatus.RecoveryModelInvalid;
     fixture.Provider.Result = new TenantDatabaseRestoreVerificationResult(
       TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable,
       SafeErrorSummary: "host-unavailable");
 
-    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.FullWithDifferentialAndLog);
 
     Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, result.Value.Status);
-    Assert.NotEqual(TenantDatabaseRecoveryReadinessStatus.Unprotected, fixture.Readiness.Status);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.RecoveryModelInvalid, fixture.Readiness.Status);
     Assert.Null(fixture.Readiness.LastRestoreVerificationUtc);
+  }
+
+  [Fact]
+  public async Task Infrastructure_failure_does_not_promote_held_unprotected_chain_evidence()
+  {
+    var fixture = Fixture.Full();
+    fixture.Reads.HeldReadinessStatus = TenantDatabaseRecoveryReadinessStatus.Unprotected;
+    fixture.Provider.Result = new TenantDatabaseRestoreVerificationResult(
+      TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable,
+      SafeErrorSummary: "host-unavailable");
+
+    await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
+
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Unprotected, fixture.Readiness.Status);
+  }
+
+  [Theory]
+  [InlineData(TenantDatabaseRestoreDepth.Full)]
+  [InlineData(TenantDatabaseRestoreDepth.FullWithDifferential)]
+  public async Task A_required_artifact_that_is_unavailable_is_a_hard_chain_break(
+    TenantDatabaseRestoreDepth depth)
+  {
+    var fixture = depth == TenantDatabaseRestoreDepth.Full ? Fixture.Full() : Fixture.Differential();
+    fixture.Provider.Result = new TenantDatabaseRestoreVerificationResult(
+      TenantDatabaseRestoreVerificationOutcome.ArtifactUnavailable,
+      SafeErrorSummary: TenantStorageErrors.RestoreVerificationArtifactUnavailable.Code);
+
+    var result = await fixture.ExecuteAsync(depth);
+
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.Failed, result.Value.Status);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Unprotected, fixture.Readiness.Status);
+    Assert.Null(fixture.Store.VerifiedSourceBackupRunId);
+  }
+
+  [Fact]
+  public async Task A_topology_precondition_is_not_interpreted_as_an_artifact_failure()
+  {
+    var fixture = Fixture.Log();
+    fixture.Provider.Result = new TenantDatabaseRestoreVerificationResult(
+      TenantDatabaseRestoreVerificationOutcome.BlockedByPrecondition,
+      SafeErrorSummary: TenantStorageErrors.RestoreVerificationTargetAlreadyExists.Code);
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.FullWithDifferentialAndLog);
+
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, result.Value.Status);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Degraded, fixture.Readiness.Status);
+  }
+
+  [Fact]
+  public async Task Policy_removed_after_cas_is_current_for_readiness_and_refuses_execution()
+  {
+    var fixture = Fixture.Full();
+    fixture.Reads.PolicyReadSequence = [fixture.Reads.Policy, null, null];
+
+    var result = await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
+
+    Assert.Equal(0, fixture.Provider.Calls);
+    Assert.Equal(TenantDatabaseRestoreVerificationStatus.InfrastructureUnavailable, result.Value.Status);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Unprotected, fixture.Readiness.Status);
+  }
+
+  [Fact]
+  public async Task Policy_changed_during_execution_is_current_for_readiness()
+  {
+    var fixture = Fixture.Full();
+    fixture.Provider.Result = new TenantDatabaseRestoreVerificationResult(
+      TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable,
+      SafeErrorSummary: "transport");
+    fixture.Reads.PolicyReadSequence =
+    [
+      fixture.Reads.Policy,
+      fixture.Reads.Policy,
+      fixture.Reads.Policy! with { ManagementMode = TenantDatabaseBackupManagementMode.CustomerDba }
+    ];
+
+    await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.Full);
+
+    Assert.Equal(1, fixture.Provider.Calls);
+    Assert.Equal(TenantDatabaseRecoveryReadinessStatus.Unprotected, fixture.Readiness.Status);
+  }
+
+  [Theory]
+  [InlineData(TenantDatabaseRecoveryModel.Simple, TenantDatabaseRecoveryReadinessStatus.RecoveryModelInvalid)]
+  [InlineData(TenantDatabaseRecoveryModel.Full, TenantDatabaseRecoveryReadinessStatus.Protected)]
+  [InlineData(TenantDatabaseRecoveryModel.BulkLogged, TenantDatabaseRecoveryReadinessStatus.Protected)]
+  public async Task Successful_log_verification_uses_the_observed_recovery_model(
+    TenantDatabaseRecoveryModel model,
+    TenantDatabaseRecoveryReadinessStatus expected)
+  {
+    var fixture = Fixture.Log();
+    fixture.Probe.Result = TenantDatabaseRestoreProbeResult.Succeeded(model, "latest");
+
+    await fixture.ExecuteAsync(TenantDatabaseRestoreDepth.FullWithDifferentialAndLog);
+
+    Assert.Equal(expected, fixture.Readiness.Status);
   }
 
   [Fact]
@@ -444,6 +540,11 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
 
     public TenantDatabaseBackupPolicyRecord? PolicyAfterFirstRead { get; set; }
 
+    public IReadOnlyList<TenantDatabaseBackupPolicyRecord?>? PolicyReadSequence { get; set; }
+
+    public TenantDatabaseRecoveryReadinessStatus HeldReadinessStatus { get; set; } =
+      TenantDatabaseRecoveryReadinessStatus.Unknown;
+
     public IReadOnlyList<TenantDatabaseBackupChainCandidate> Candidates { get; set; } = depth switch
     {
       TenantDatabaseRestoreDepth.FullWithDifferential => [FullCandidate(), DifferentialCandidate()],
@@ -463,6 +564,11 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
       long tenantDatabaseId, CancellationToken cancellationToken = default)
     {
       policyReads++;
+      if (PolicyReadSequence is { Count: > 0 } sequence)
+      {
+        return Task.FromResult(sequence[Math.Min(policyReads - 1, sequence.Count - 1)]);
+      }
+
       return Task.FromResult(policyReads > 1 && PolicyAfterFirstRead is not null
         ? PolicyAfterFirstRead
         : Policy);
@@ -483,7 +589,8 @@ public sealed class TenantDatabaseRestoreVerificationExecutorTests
         Now.AddHours(-1),
         depth >= TenantDatabaseRestoreDepth.FullWithDifferential ? Now.AddMinutes(-30) : null,
         depth >= TenantDatabaseRestoreDepth.FullWithDifferentialAndLog ? Now.AddMinutes(-5) : null,
-        Now.AddDays(-1)));
+        Now.AddDays(-1),
+        HeldReadinessStatus));
 
     public Task<IReadOnlyList<TenantDatabaseBackupChainCandidate>> ListChainCandidatesAsync(
       long tenantDatabaseId, CancellationToken cancellationToken = default) =>

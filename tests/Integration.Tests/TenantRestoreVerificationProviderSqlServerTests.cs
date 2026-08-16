@@ -183,8 +183,43 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
 
     var result = await fixture.VerifyAsync(TenantDatabaseRestoreDepth.Full);
 
-    Assert.Equal(TenantDatabaseRestoreVerificationOutcome.RestoreFailed, result.Outcome);
+    Assert.Equal(TenantDatabaseRestoreVerificationOutcome.ArtifactUnavailable, result.Outcome);
+    Assert.StartsWith("SqlError:", result.SafeErrorSummary, StringComparison.Ordinal);
     Assert.Null(await RestoreFixture.StateOfAsync(RestoreFixture.VerificationDatabaseName));
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Sql_restore_rejection_of_the_required_full_is_an_artifact_restore_failure()
+  {
+    await using var fixture = await RestoreFixture.CreateAsync();
+    await fixture.TakeFullAsync();
+    await fixture.TakeDifferentialAsync();
+
+    // Present the newest differential artifact as the durable Full. FILELISTONLY can read it, but SQL
+    // Server rejects it when the provider issues the required baseline RESTORE DATABASE operation.
+    var result = await fixture.VerifyAsync(
+      TenantDatabaseRestoreDepth.Full, useNewestArtifactAsFull: true);
+
+    Assert.Equal(TenantDatabaseRestoreVerificationOutcome.RestoreFailed, result.Outcome);
+    Assert.Equal(0, result.RestoredStepCount);
+    Assert.StartsWith("SqlError:", result.SafeErrorSummary, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_missing_required_deeper_artifact_is_reported_as_artifact_unavailable()
+  {
+    await using var fixture = await RestoreFixture.CreateAsync();
+    await fixture.TakeFullAsync();
+    await fixture.TakeDifferentialAsync();
+    fixture.DeleteNewestArtifactFile();
+
+    var result = await fixture.VerifyAsync(TenantDatabaseRestoreDepth.FullWithDifferential);
+
+    Assert.Equal(TenantDatabaseRestoreVerificationOutcome.ArtifactUnavailable, result.Outcome);
+    Assert.Equal(1, result.RestoredStepCount);
+    Assert.Equal(TenantDatabaseRestoreDepth.Full, result.AchievedDepth);
   }
 
   // 8. AN EXISTING TARGET IS NEVER OVERWRITTEN. No REPLACE, no drop-and-retry.
@@ -335,6 +370,30 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
 
     Assert.Equal(TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable, result.Outcome);
     Assert.Null(await RestoreFixture.StateOfAsync(RestoreFixture.VerificationDatabaseName));
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task A_verification_server_transport_failure_is_infrastructure_unavailable()
+  {
+    await using var fixture = await RestoreFixture.CreateAsync();
+    await fixture.TakeFullAsync();
+
+    var unreachable = new SqlConnectionStringBuilder
+    {
+      DataSource = "127.0.0.1,1",
+      InitialCatalog = "master",
+      IntegratedSecurity = true,
+      Encrypt = false,
+      ConnectTimeout = 1,
+      Pooling = false
+    }.ConnectionString;
+
+    var result = await fixture.VerifyAsync(
+      TenantDatabaseRestoreDepth.Full, overrideVerificationConnection: unreachable);
+
+    Assert.Equal(TenantDatabaseRestoreVerificationOutcome.InfrastructureUnavailable, result.Outcome);
+    Assert.StartsWith("SqlError:", result.SafeErrorSummary, StringComparison.Ordinal);
   }
 
   private sealed class RestoreFixture : IAsyncDisposable
@@ -500,10 +559,23 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     public async Task<TenantDatabaseRestoreVerificationResult> VerifyAsync(
       TenantDatabaseRestoreDepth depth,
       string? overrideTargetName = null,
-      string? overrideRestoreServerKey = null)
+      string? overrideRestoreServerKey = null,
+      string? overrideVerificationConnection = null,
+      bool useNewestArtifactAsFull = false)
     {
       var chain = SelectChain(depth);
       Assert.True(chain.IsSuccess);
+
+      var selected = chain.Value;
+      if (useNewestArtifactAsFull)
+      {
+        var artifact = platformRuns[^1];
+        selected = new TenantDatabaseRestoreChain(
+          [new TenantDatabaseRestoreChainStep(TenantDatabaseRestoreStepKind.Full, artifact)],
+          artifact.LastLsn,
+          artifact.BackupRunId,
+          TenantDatabaseRestoreDepth.Full);
+      }
 
       var storage = new TenantStorageOptions();
       storage.BackupDestinations[DestinationKey] =
@@ -512,7 +584,10 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
       // The "verification server" is this same instance, reached through the explicit non-production
       // exception. A dedicated instance is the production rule; a developer machine has one.
       storage.VerificationServers[RestoreServerKey] =
-        new TenantStorageServerOptions { ConnectionString = Configured() };
+        new TenantStorageServerOptions
+        {
+          ConnectionString = overrideVerificationConnection ?? Configured()
+        };
 
       var verificationOptions = new TenantDatabaseRestoreVerificationOptions
       {
@@ -537,7 +612,7 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
       return await provider.ExecuteAsync(new TenantDatabaseRestoreVerificationRequest(
         TenantDatabaseId,
         VerificationRunId,
-        chain.Value,
+        selected,
         overrideRestoreServerKey ?? RestoreServerKey,
         SourceServerKey,
         target));

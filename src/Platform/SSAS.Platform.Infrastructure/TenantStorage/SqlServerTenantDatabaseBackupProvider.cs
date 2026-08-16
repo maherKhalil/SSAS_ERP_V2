@@ -181,6 +181,7 @@ public sealed class SqlServerTenantDatabaseBackupProvider(
         FirstLsn: evidence.Value.FirstLsn,
         LastLsn: evidence.Value.LastLsn,
         DatabaseBackupLsn: evidence.Value.DatabaseBackupLsn,
+        CheckpointLsn: evidence.Value.CheckpointLsn,
         BackupSetGuid: evidence.Value.BackupSetGuid,
         StartedUtc: startedUtc,
         CompletedUtc: evidence.Value.FinishedUtc ?? DateTimeOffset.UtcNow);

@@ -44,14 +44,14 @@ public sealed class TenantDatabaseBackupRunTests
     var run = Start().Value;
 
     var withoutEvidence = run.Succeed(
-      "   ", null, null, null, null, null, null, "actor", Now.AddMinutes(5));
+      "   ", null, null, null, null, null, null, null, "actor", Now.AddMinutes(5));
 
     Assert.True(withoutEvidence.IsFailure);
     Assert.Equal(TenantStorageErrors.BackupProviderEvidenceRequired.Code, withoutEvidence.Error.Code);
     Assert.Equal(TenantDatabaseBackupRunStatus.Running, run.Status);
 
     var withEvidence = run.Succeed(
-      "backup-set-4711", "vault/full/4711", 2_048, 100m, 200m, 100m, Guid.NewGuid(), "actor", Now.AddMinutes(5));
+      "backup-set-4711", "vault/full/4711", 2_048, 100m, 200m, 100m, 100m, Guid.NewGuid(), "actor", Now.AddMinutes(5));
 
     Assert.True(withEvidence.IsSuccess);
     Assert.Equal(TenantDatabaseBackupRunStatus.Succeeded, run.Status);
@@ -68,7 +68,7 @@ public sealed class TenantDatabaseBackupRunTests
     var run = Start().Value;
     var setGuid = Guid.NewGuid();
 
-    run.Succeed("set-1", null, null, 10m, 20m, 5m, setGuid, "actor", Now.AddMinutes(1));
+    run.Succeed("set-1", null, null, 10m, 20m, 5m, null, setGuid, "actor", Now.AddMinutes(1));
 
     Assert.Equal(10m, run.FirstLsn);
     Assert.Equal(20m, run.LastLsn);
@@ -127,7 +127,7 @@ public sealed class TenantDatabaseBackupRunTests
     // RESTORE VERIFYONLY proves the set is readable, not that the database is recoverable (ADR-022 §17), so
     // the two levels are different values rather than one verified flag.
     var run = Start().Value;
-    run.Succeed("set-1", null, null, null, null, null, null, "actor", Now.AddMinutes(1));
+    run.Succeed("set-1", null, null, null, null, null, null, null, "actor", Now.AddMinutes(1));
 
     run.RecordVerification(
       TenantDatabaseBackupVerificationState.ReadabilityVerified, null, "actor", Now.AddMinutes(2));
@@ -159,7 +159,7 @@ public sealed class TenantDatabaseBackupRunTests
   {
     var run = Start().Value;
 
-    var result = run.Succeed("set-1", null, -1, null, null, null, null, "actor", Now.AddMinutes(1));
+    var result = run.Succeed("set-1", null, -1, null, null, null, null, null, "actor", Now.AddMinutes(1));
 
     Assert.True(result.IsFailure);
     Assert.Equal(TenantStorageErrors.BackupRunSizeInvalid.Code, result.Error.Code);

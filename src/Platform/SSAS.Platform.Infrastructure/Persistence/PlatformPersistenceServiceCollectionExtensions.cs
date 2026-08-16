@@ -149,6 +149,65 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseBackupScheduler, TenantDatabaseBackupScheduler>();
     services.AddHostedService<TenantDatabaseBackupSchedulerHostedService>();
 
+    // TS-Backup Phase D: restore-verification foundation (ADR-022 §17, v1.2).
+    //
+    // DEFAULTS OFF, and separately from the backup scheduler. Enabling restore verification additionally
+    // requires a dedicated verification server, a privileged verification identity that can create and drop
+    // databases, and file roots the verification instance's service account can write to — so a deployment
+    // that has not been prepared fails startup validation rather than attempting restores it cannot perform.
+    //
+    // NOTE the asymmetry with backup credentials: VerificationServers is a SEPARATE key namespace, not a
+    // second identity on the same keys. Verification reaches a server that hosts no authoritative tenant
+    // data, and there is deliberately no fallback from it to BackupServers or Servers.
+    services.AddOptions<TenantDatabaseRestoreVerificationOptions>()
+      .Bind(configuration.GetSection(TenantDatabaseRestoreVerificationOptions.SectionName))
+      .ValidateOnStart();
+    services.AddSingleton<IValidateOptions<TenantDatabaseRestoreVerificationOptions>,
+      TenantDatabaseRestoreVerificationOptionsValidator>();
+    services.AddScoped<ITenantDatabaseVerificationConnectionFactory,
+      TenantDatabaseVerificationConnectionFactory>();
+    services.AddScoped<TenantDatabaseRestoreVerificationRunStore>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationRunStore>(provider =>
+      provider.GetRequiredService<TenantDatabaseRestoreVerificationRunStore>());
+    services.AddScoped<ITenantDatabaseRestoreVerificationReconciliationStore>(provider =>
+      provider.GetRequiredService<TenantDatabaseRestoreVerificationRunStore>());
+    services.AddScoped<ITenantDatabaseRestoreVerificationServerObserver,
+      SqlServerTenantDatabaseRestoreVerificationServerObserver>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationReconciler,
+      TenantDatabaseRestoreVerificationReconciler>();
+    services.AddScoped<ITenantDatabaseRecoveryReadinessRefresher,
+      TenantDatabaseRecoveryReadinessRefresher>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationFleetReadRepository,
+      TenantDatabaseRestoreVerificationFleetReadRepository>();
+
+    // TS-Backup Phase D6: the isolated restore provider. Registered as a service only — nothing schedules
+    // it, and it implements no cleanup, because the destructive-permission model is not yet proven against a
+    // directly-connected least-privilege identity on this Windows-auth-only instance.
+    services.AddScoped<ITenantDatabaseRestoreVerificationProvider,
+      SqlServerTenantDatabaseRestoreVerificationProvider>();
+
+    // TS-Backup Phase D7: the executor is the only production caller of the restore provider, and the probe
+    // opens the restored catalog through VerificationServers.
+    //
+    // A VERIFICATION SCHEDULER AND HOSTED SERVICE ARE REGISTERED BELOW, so autonomous execution is reachable
+    // — but it is CONFIGURATION GATED and off by default: `TenantStorage:BackupVerification:Enabled` defaults
+    // to false and is checked independently by both the hosted service and the scheduler sweep.
+    //
+    // Enabling it in production remains blocked on the carried LOW-C gate: reconciliation can release an
+    // abandoned run's admission slot, and that path has not yet been proven against real process loss.
+    services.AddScoped<ITenantDatabaseRestoreVerificationProbe, SqlServerRestoreVerificationProbe>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationExecutor,
+      TenantDatabaseRestoreVerificationExecutor>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationScheduler,
+      TenantDatabaseRestoreVerificationScheduler>();
+    services.AddHostedService<TenantDatabaseRestoreVerificationHostedService>();
+
+    // The destination resolver becomes an injected dependency here. Phase B's backup provider constructs one
+    // directly from options, which was self-contained enough at the time; the restore provider needs the same
+    // trust boundary, and two components sharing it is the point at which it belongs in the container rather
+    // than being new-ed up twice.
+    services.AddScoped<ITenantDatabaseBackupDestinationResolver, TenantDatabaseBackupDestinationResolver>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

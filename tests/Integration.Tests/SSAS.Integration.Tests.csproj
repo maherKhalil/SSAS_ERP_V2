@@ -30,4 +30,19 @@
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- The process-loss harness LAUNCHES this project rather than referencing it: the LOW-C proof needs a
+       separate OS process to kill. ReferenceOutputAssembly is false so nothing links against it and its
+       assembly never lands in the test output — the reference exists only to guarantee it is built. -->
+  <ItemGroup>
+    <ProjectReference Include="..\TestSupport\SSAS.TestSupport.VerificationHost\SSAS.TestSupport.VerificationHost.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="VerificationProcessHostPath"
+      Value="$(MSBuildThisFileDirectory)..\TestSupport\SSAS.TestSupport.VerificationHost\bin\$(Configuration)\net8.0\SSAS.TestSupport.VerificationHost.exe" />
+  </ItemGroup>
+
 </Project>

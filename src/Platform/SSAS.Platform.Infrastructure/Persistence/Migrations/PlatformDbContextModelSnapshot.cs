@@ -1559,6 +1559,9 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("BackupSetGuid")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal?>("CheckpointLsn")
+                        .HasColumnType("decimal(25,0)");
+
                     b.Property<DateTimeOffset?>("CompletedUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -1670,6 +1673,110 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_TenantDatabaseBackupRuns_SucceededHasEvidence", "[Status] <> N'Succeeded' OR ([ProviderBackupIdentity] IS NOT NULL AND [CompletedUtc] IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_TenantDatabaseBackupRuns_VerificationState", "[VerificationState] IN (N'NotVerified', N'ReadabilityVerified', N'RestoreVerified', N'VerificationFailed')");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.TenantStorage.TenantDatabaseRestoreVerificationRun", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("TenantDatabaseRestoreVerificationRunId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CleanupState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTimeOffset?>("CompletedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Depth")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RestoreServerKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<long>("SourceBackupRunId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("StartedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<long>("TenantDatabaseId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("VerificationDatabaseName")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceBackupRunId");
+
+                    b.HasIndex("TenantDatabaseId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantDatabaseRestoreVerificationRuns_ActiveTenantDatabase")
+                        .HasFilter("[Status] IN (N'Admitted', N'Restoring')");
+
+                    b.HasIndex("VerificationDatabaseName")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantDatabaseRestoreVerificationRuns_DatabaseName")
+                        .HasFilter("[VerificationDatabaseName] IS NOT NULL");
+
+                    b.ToTable("TenantDatabaseRestoreVerificationRuns", "platform", t =>
+                        {
+                            t.HasCheckConstraint("CK_TenantDatabaseRestoreVerificationRuns_CleanupRequiresDatabaseName", "[CleanupState] = N'NotRequired' OR [VerificationDatabaseName] IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_TenantDatabaseRestoreVerificationRuns_CleanupState", "[CleanupState] IN (N'NotRequired', N'Pending', N'Succeeded', N'Failed')");
+
+                            t.HasCheckConstraint("CK_TenantDatabaseRestoreVerificationRuns_CompletedNotBeforeStarted", "[CompletedUtc] IS NULL OR [CompletedUtc] >= [StartedUtc]");
+
+                            t.HasCheckConstraint("CK_TenantDatabaseRestoreVerificationRuns_Depth", "[Depth] IN (N'Full', N'FullWithDifferential', N'FullWithDifferentialAndLog')");
+
+                            t.HasCheckConstraint("CK_TenantDatabaseRestoreVerificationRuns_RestoringHasDatabaseName", "[Status] = N'Admitted' OR [VerificationDatabaseName] IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_TenantDatabaseRestoreVerificationRuns_Status", "[Status] IN (N'Admitted', N'Restoring', N'Succeeded', N'Failed', N'InfrastructureUnavailable')");
                         });
                 });
 
@@ -2066,6 +2173,21 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("SSAS.Platform.Domain.TenantStorage.TenantDatabaseBackupRun", b =>
                 {
+                    b.HasOne("SSAS.Platform.Domain.TenantStorage.TenantDatabase", null)
+                        .WithMany()
+                        .HasForeignKey("TenantDatabaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.TenantStorage.TenantDatabaseRestoreVerificationRun", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.TenantStorage.TenantDatabaseBackupRun", null)
+                        .WithMany()
+                        .HasForeignKey("SourceBackupRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("SSAS.Platform.Domain.TenantStorage.TenantDatabase", null)
                         .WithMany()
                         .HasForeignKey("TenantDatabaseId")

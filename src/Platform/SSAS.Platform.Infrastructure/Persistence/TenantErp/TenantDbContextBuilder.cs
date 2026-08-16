@@ -36,6 +36,23 @@ internal static class TenantDbContextBuilder
       options, MaintenanceUser.Instance, MaintenanceTenant.Instance, MaintenanceClock.Instance);
   }
 
+  // A schema-only application-model probe needs the real tenant query filters to compile, but it must not
+  // choose or inspect any customer tenant. Guid.Empty is a reserved non-customer probe identity, paired with
+  // a constant-false predicate by the caller so the database returns no business rows.
+  public static TenantDbContext ForSchemaProbeConnection(SqlConnection connection)
+  {
+    ArgumentNullException.ThrowIfNull(connection);
+
+    var options = new DbContextOptionsBuilder<TenantDbContext>()
+      .UseSqlServer(connection, sql => sql.MigrationsHistoryTable(
+        TenantPersistenceConstants.MigrationHistoryTable,
+        TenantPersistenceConstants.MigrationHistorySchema))
+      .Options;
+
+    return new TenantDbContext(
+      options, MaintenanceUser.Instance, SchemaProbeTenant.Instance, MaintenanceClock.Instance);
+  }
+
   private static IReadOnlyList<string> ReadKnownMigrations()
   {
     // A throwaway context built only to read the migration catalog. The connection string is never opened:
@@ -75,6 +92,13 @@ internal static class TenantDbContextBuilder
 
     // Null on purpose — see the type comment.
     public Guid? TenantId => null;
+  }
+
+  private sealed class SchemaProbeTenant : ICurrentTenant
+  {
+    public static readonly SchemaProbeTenant Instance = new();
+
+    public Guid? TenantId => Guid.Empty;
   }
 
   private sealed class MaintenanceClock : IDateTimeProvider

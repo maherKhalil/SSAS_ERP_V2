@@ -126,6 +126,11 @@ public sealed class PlatformIdentityAccessPersistenceTests
             // physical database, deliberately not inside the tenant ERP database it describes.
             "TenantDatabaseBackupPolicies",
             "TenantDatabaseBackupRuns",
+            // Restore-verification operations (ADR-022 §17, TS-Backup Phase D). A separate history from
+            // backup runs because a verification creates a disposable database that can outlive the process
+            // that created it, and safe automated cleanup depends on a durable record of which operation
+            // created which database.
+            "TenantDatabaseRestoreVerificationRuns",
             "TenantDatabases",
             "TenantLocalizationOverrideVersions",
             "TenantLocalizationOverrides",

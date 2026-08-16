@@ -143,7 +143,7 @@ public sealed class TenantBackupFoundationSqlServerTests
     // Created by the test, not by any background component: nothing in Phase A produces runs on its own.
     var setGuid = Guid.NewGuid();
     await fixture.AddRunAsync(id, TenantDatabaseBackupOperation.SqlServerFull(), run =>
-      run.Succeed("backup-set-1", "vault/full/1", 4_096, 100m, 220m, 100m, setGuid, "backup-tests",
+      run.Succeed("backup-set-1", "vault/full/1", 4_096, 100m, 220m, 100m, null, setGuid, "backup-tests",
         BackupFixture.Now.AddMinutes(3)));
 
     var latest = await fixture.BackupReads()

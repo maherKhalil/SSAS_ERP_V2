@@ -1,4 +1,6 @@
+using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Application.TenantStorage;
+using SSAS.Platform.Domain.Enums;
 
 namespace SSAS.Platform.Application.Abstractions.Persistence;
 
@@ -31,4 +33,35 @@ public interface ITenantDatabaseBackupReadRepository
     string operationProviderKey,
     string operationCode,
     CancellationToken cancellationToken = default);
+
+  // The cached recovery observations from the physical database row (ADR-022 §6, TS-Backup Phase D).
+  //
+  // Needed because readiness is a comparison of POLICY against EVIDENCE, and the verification half of that
+  // evidence lives on `TenantDatabase` rather than in run history. Reading it is what stops a database with
+  // a recent successful verification being reported `VerificationOverdue` after every backup.
+  //
+  // Null when the physical database does not exist.
+  Task<TenantDatabaseRecoveryEvidenceRecord?> FindRecoveryEvidenceAsync(
+    long tenantDatabaseId,
+    CancellationToken cancellationToken = default);
+
+  // The successful platform-managed backup runs a restore verification may select from (TS-Backup Phase D5).
+  //
+  // PLATFORM RECORDS ARE AUTHORITATIVE FOR ARTIFACT OWNERSHIP. Chain selection reads this and nothing else:
+  // `msdb` on the source instance holds far more backup sets, and letting it supply candidates would make an
+  // externally taken backup selectable, which ADR-022 §17 forbids.
+  Task<IReadOnlyList<TenantDatabaseBackupChainCandidate>> ListChainCandidatesAsync(
+    long tenantDatabaseId,
+    CancellationToken cancellationToken = default);
 }
+
+// The recovery observations cached on the physical database row. Timestamps only: the STATUS is a
+// conclusion drawn from these against policy, never a stored input to that conclusion.
+public sealed record TenantDatabaseRecoveryEvidenceRecord(
+  long TenantDatabaseId,
+  DateTimeOffset? LastSuccessfulFullBackupUtc,
+  DateTimeOffset? LastSuccessfulDifferentialBackupUtc,
+  DateTimeOffset? LastSuccessfulLogBackupUtc,
+  DateTimeOffset? LastRestoreVerificationUtc,
+  TenantDatabaseRecoveryReadinessStatus RecoveryReadinessStatus =
+    TenantDatabaseRecoveryReadinessStatus.Unknown);

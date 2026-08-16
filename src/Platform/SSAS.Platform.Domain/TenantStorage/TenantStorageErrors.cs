@@ -217,4 +217,123 @@ public static class TenantStorageErrors
 
   public static readonly Error BackupSupersededByRecentRun =
     new("TenantStorage.BackupSupersededByRecentRun", "A platform-managed backup of this operation completed after the scheduling decision was made, so this run is redundant.");
+
+  // ---- Restore verification (ADR-022 §17, TS-Backup Phase D). Operator-facing, and never carrying a
+  // server name, path, credential or restored data.
+
+  public static readonly Error RestoreVerificationBaselineRequired =
+    new("TenantStorage.RestoreVerificationBaselineRequired", "A restore verification requires a successful full backup baseline to restore.");
+
+  public static readonly Error RestoreVerificationServerKeyInvalid =
+    new("TenantStorage.RestoreVerificationServerKeyInvalid", "The restore verification server key is not valid.");
+
+  public static readonly Error RestoreVerificationDatabaseNameInvalid =
+    new("TenantStorage.RestoreVerificationDatabaseNameInvalid", "The generated verification database name is not valid.");
+
+  public static readonly Error RestoreVerificationNotAdmitted =
+    new("TenantStorage.RestoreVerificationNotAdmitted", "The restore verification is not in an admitted state.");
+
+  public static readonly Error RestoreVerificationNotRunning =
+    new("TenantStorage.RestoreVerificationNotRunning", "The restore verification is not running.");
+
+  public static readonly Error RestoreVerificationAlreadyCompleted =
+    new("TenantStorage.RestoreVerificationAlreadyCompleted", "The restore verification has already reached a terminal result.");
+
+  public static readonly Error RestoreVerificationCleanupStateInvalid =
+    new("TenantStorage.RestoreVerificationCleanupStateInvalid", "The requested cleanup state is not a terminal cleanup outcome.");
+
+  // Another application instance already holds the effective verification for this database's due state.
+  // NOT a failure: the admission invariant worked exactly as intended (ADR-022 §17, compliance rule 43).
+  public static readonly Error RestoreVerificationAlreadyAdmitted =
+    new("TenantStorage.RestoreVerificationAlreadyAdmitted", "An effective restore verification is already admitted for this tenant database.");
+
+  public static readonly Error RestoreVerificationNotDue =
+    new("TenantStorage.RestoreVerificationNotDue", "The tenant database does not currently require a restore verification.");
+
+  // The due state this decision was made against has since been satisfied by another successful verification.
+  // NOT the same as ownership contention: nothing is running now, and nothing failed — the work was already
+  // done (ADR-022 §17, compliance rule 43). Distinguished from AlreadyAdmitted because the two call for
+  // different operator responses.
+  public static readonly Error RestoreVerificationAlreadySatisfied =
+    new("TenantStorage.RestoreVerificationAlreadySatisfied", "A successful restore verification completed after this decision was made, so this verification is redundant.");
+
+  public static readonly Error RestoreVerificationReconciliationStale =
+    new("TenantStorage.RestoreVerificationReconciliationStale", "The restore verification changed before reconciliation could apply its conservative terminal transition.");
+
+  // The verification target is absent, unresolvable, or not trusted for this environment. FAILS CLOSED —
+  // there is no fallback to the source database's server (ADR-022 §17, compliance rule 44).
+  public static readonly Error RestoreVerificationServerNotConfigured =
+    new("TenantStorage.RestoreVerificationServerNotConfigured", "No trusted restore verification server is configured for the requested key.");
+
+  // The configured verification target is the server hosting the authoritative tenant database, and the
+  // deployment has not declared itself non-production. Refused (ADR-022 §17, compliance rule 32).
+  public static readonly Error RestoreVerificationTargetNotIsolated =
+    new("TenantStorage.RestoreVerificationTargetNotIsolated", "The restore verification target must not be the server hosting the authoritative tenant database.");
+
+  public static readonly Error RestoreVerificationNotConfigured =
+    new("TenantStorage.RestoreVerificationNotConfigured", "Restore verification is not configured for this deployment.");
+
+  // A generated verification name collided with a registered authoritative database. Refused rather than
+  // resolved: nothing that could be a production database may be a restore target (ADR-022 §17).
+  public static readonly Error RestoreVerificationTargetNameNotSafe =
+    new("TenantStorage.RestoreVerificationTargetNameNotSafe", "The verification database name does not satisfy the platform's reserved verification vocabulary or collides with a registered tenant database.");
+
+  // ---- Chain selection and restore execution (ADR-022 §17, TS-Backup Phase D5/D6).
+
+  public static readonly Error RestoreChainBaselineMissing =
+    new("TenantStorage.RestoreChainBaselineMissing", "No successful platform-managed full backup is available to restore.");
+
+  // The platform's own artifacts cannot form the required restorable sequence — a segment is missing,
+  // superseded by an externally taken backup, or expired. Reported rather than silently downgraded to a
+  // shallower restore, so readiness degrades honestly (ADR-022 §17, compliance rule 37).
+  public static readonly Error RestoreChainBroken =
+    new("TenantStorage.RestoreChainBroken", "The platform-managed backup artifacts do not form a complete restorable sequence.");
+
+  // A verification database already exists under the generated name. FAILS SAFE — never overwritten, never
+  // dropped and retried (ADR-022 §17, compliance rule 38).
+  public static readonly Error RestoreVerificationTargetAlreadyExists =
+    new("TenantStorage.RestoreVerificationTargetAlreadyExists", "A database already exists under the generated verification name.");
+
+  public static readonly Error RestoreVerificationArtifactUnavailable =
+    new("TenantStorage.RestoreVerificationArtifactUnavailable", "A selected backup artifact could not be read from its trusted destination.");
+
+  public static readonly Error RestoreVerificationRestoreFailed =
+    new("TenantStorage.RestoreVerificationRestoreFailed", "The selected restore sequence did not complete.");
+
+  // The restore completed but the database did not come online, so nothing was demonstrated.
+  public static readonly Error RestoreVerificationDatabaseNotOnline =
+    new("TenantStorage.RestoreVerificationDatabaseNotOnline", "The restored verification database did not come online.");
+
+  // Something the admission decision depended on changed before execution began. Fails closed rather than
+  // restoring against drifted state.
+  public static readonly Error RestoreVerificationTargetDrifted =
+    new("TenantStorage.RestoreVerificationTargetDrifted", "The verification target or its admitted operation changed before the restore began.");
+
+  // ---- Post-restore probes (ADR-022 §17, TS-Backup Phase D7).
+
+  // The restored database came online but carries no readable tenant migration history. Whatever restored,
+  // it is not a recoverable tenant database.
+  public static readonly Error RestoreVerificationMigrationHistoryUnreadable =
+    new("TenantStorage.RestoreVerificationMigrationHistoryUnreadable", "The restored verification database has no readable tenant migration history.");
+
+  // The restored schema is at a position the deployed application does not recognise, so its lineage
+  // diverged from the tenant migration catalog.
+  public static readonly Error RestoreVerificationSchemaPositionUnexpected =
+    new("TenantStorage.RestoreVerificationSchemaPositionUnexpected", "The restored verification database is not at a schema position this application recognises.");
+
+  // The restore reached a shallower recovery path than the active policy requires, so the deeper capability
+  // the policy claims was never exercised (ADR-022 §17, v1.2).
+  public static readonly Error RestoreVerificationDepthNotAchieved =
+    new("TenantStorage.RestoreVerificationDepthNotAchieved", "The restore did not reach the recovery depth the active policy requires.");
+
+  // Eligibility changed between admission and execution — hosting mode, policy, authority or the admitted
+  // operation itself. Fails closed rather than restoring against drifted state.
+  // The selected baseline predates checkpoint-LSN capture, so differential applicability cannot be decided.
+  // DISTINCT FROM A CHAIN BREAK: the platform has not established that SQL Server's chain is broken, only
+  // that it cannot tell from its own records (TS-Backup Phase D7).
+  public static readonly Error RestoreChainMetadataUnavailable =
+    new("TenantStorage.RestoreChainMetadataUnavailable", "The selected full backup lacks the checkpoint metadata required to establish differential applicability.");
+
+  public static readonly Error RestoreVerificationNotEligible =
+    new("TenantStorage.RestoreVerificationNotEligible", "The tenant database is no longer eligible for platform restore verification.");
 }

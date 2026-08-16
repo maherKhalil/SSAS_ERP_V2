@@ -1,5 +1,8 @@
 using System.Globalization;
 using Microsoft.Data.SqlClient;
+using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Application.TenantStorage;
+using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Infrastructure.TenantStorage;
 
 namespace SSAS.Integration.Tests;
@@ -40,6 +43,92 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
     var visibleOtherSessions = await ScalarAsync(connection,
       "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE session_id <> @@SPID");
     Assert.Equal(0, visibleOtherSessions);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Restore_observer_fails_closed_under_a_real_permission_filtered_dmv_token()
+  {
+    await using var principal = await LowPrivilegePrincipal.CreateAsync(grantVisibility: false);
+    await using var competingConnection = new SqlConnection(
+      TenantBackupProviderSqlServerTests.BackupFixture.ConnectionFor("master"));
+    await competingConnection.OpenAsync();
+    var competingSessionId = competingConnection.ServerProcessId;
+    await using var competingCommand = competingConnection.CreateCommand();
+    competingCommand.CommandText = "WAITFOR DELAY '00:00:30'";
+    var liveWork = competingCommand.ExecuteNonQueryAsync();
+
+    try
+    {
+      await using var authoritativeConnection = new SqlConnection(
+        TenantBackupProviderSqlServerTests.BackupFixture.ConnectionFor("master"));
+      await authoritativeConnection.OpenAsync();
+      var visibleToAuthoritativeIdentity = false;
+      var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+      while (!visibleToAuthoritativeIdentity && DateTimeOffset.UtcNow < deadline)
+      {
+        visibleToAuthoritativeIdentity = await ScalarAsync(authoritativeConnection,
+          $"SELECT COUNT(*) FROM sys.dm_exec_requests WHERE session_id = {competingSessionId}") == 1;
+        if (!visibleToAuthoritativeIdentity)
+        {
+          await Task.Delay(10);
+        }
+      }
+      Assert.True(visibleToAuthoritativeIdentity);
+
+      await using var observerConnection = await principal.OpenImpersonatedAsync();
+      Assert.Equal(0, await ScalarAsync(observerConnection,
+        $"SELECT COUNT(*) FROM sys.dm_exec_requests WHERE session_id = {competingSessionId}"));
+
+      var observer = new SqlServerTenantDatabaseRestoreVerificationServerObserver(
+        new PreopenedConnectionFactory(observerConnection));
+      var observation = await observer.ObserveAsync(
+        new TenantDatabaseRestoreVerificationServerObservationRequest(
+          VerificationRunId: 10,
+          TenantDatabaseId: 1,
+          RestoreServerKey: "verify",
+          SourceServerKey: "source",
+          VerificationDatabaseName: TenantDatabaseVerificationNaming.ForRun(1, 10)));
+
+      Assert.False(observation.ServerStateObserved);
+      Assert.False(observation.VerificationDatabaseExists);
+      Assert.False(observation.RestoreIsActiveOnServer);
+      Assert.Equal("RestoreVerificationActivityVisibilityUnavailable", observation.UnavailableReason);
+    }
+    finally
+    {
+      competingCommand.Cancel();
+      try
+      {
+        await liveWork;
+      }
+      catch (SqlException)
+      {
+      }
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Restore_observer_is_authoritative_with_the_exact_granular_visibility_permission()
+  {
+    await using var principal = await LowPrivilegePrincipal.CreateAsync(grantVisibility: true);
+    var connection = await principal.OpenImpersonatedAsync();
+    var observer = new SqlServerTenantDatabaseRestoreVerificationServerObserver(
+      new PreopenedConnectionFactory(connection));
+
+    var observation = await observer.ObserveAsync(
+      new TenantDatabaseRestoreVerificationServerObservationRequest(
+        VerificationRunId: 10,
+        TenantDatabaseId: 1,
+        RestoreServerKey: "verify",
+        SourceServerKey: "source",
+        VerificationDatabaseName: TenantDatabaseVerificationNaming.ForRun(1, 10)));
+
+    Assert.True(observation.ServerStateObserved);
+    Assert.False(observation.VerificationDatabaseExists);
+    Assert.False(observation.RestoreIsActiveOnServer);
+    Assert.Null(observation.UnavailableReason);
   }
 
   [Fact]
@@ -125,6 +214,17 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
     catch (InvalidOperationException)
     {
     }
+  }
+
+  private sealed class PreopenedConnectionFactory(SqlConnection connection)
+    : ITenantDatabaseVerificationConnectionFactory
+  {
+    public Result<SqlConnection> Create(TenantDatabaseVerificationTarget target) =>
+      Result.Success(connection);
+
+    public Result<SqlConnection> CreateForVerificationDatabase(
+      TenantDatabaseVerificationTarget target,
+      string verificationDatabaseName) => Result.Success(connection);
   }
 
   // A disposable login, a database user, db_backupoperator, and optionally the one server-level permission

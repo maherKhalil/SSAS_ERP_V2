@@ -13,6 +13,12 @@ namespace SSAS.Platform.Application.TenantStorage;
 // Every method is a SHORT write. No Platform transaction is held across a restore, which can run for hours.
 public interface ITenantDatabaseRestoreVerificationRunStore
 {
+  // Execution always starts by loading the EXACT durable operation it was handed. This is intentionally
+  // not a "find active run" query: an old worker must never substitute a newer operation for its own.
+  Task<TenantDatabaseRestoreVerificationRunRecord?> FindAsync(
+    long verificationRunId,
+    CancellationToken cancellationToken = default);
+
   // ADMISSION — the serialising event (ADR-022 compliance rule 43).
   //
   // Returns the admitted run, or a failure when another application instance already holds the effective
@@ -32,6 +38,16 @@ public interface ITenantDatabaseRestoreVerificationRunStore
 
   Task<Result> MarkSucceededAsync(
     long verificationRunId,
+    string actor,
+    CancellationToken cancellationToken = default);
+
+  // The authoritative D7 success write. The verification run and the exact admitted full baseline become
+  // successful evidence in one short Platform transaction. Aggregate readiness is projected afterwards,
+  // so a stale admission decision can already observe the durable Succeeded run even if that projection is
+  // temporarily behind.
+  Task<Result<DateTimeOffset>> MarkSucceededAndRecordEvidenceAsync(
+    long verificationRunId,
+    long sourceBackupRunId,
     string actor,
     CancellationToken cancellationToken = default);
 
@@ -58,6 +74,17 @@ public interface ITenantDatabaseRestoreVerificationRunStore
     string actor,
     CancellationToken cancellationToken = default);
 }
+
+public sealed record TenantDatabaseRestoreVerificationRunRecord(
+  long VerificationRunId,
+  long TenantDatabaseId,
+  long SourceBackupRunId,
+  TenantDatabaseRestoreDepth Depth,
+  string RestoreServerKey,
+  TenantDatabaseRestoreVerificationStatus Status,
+  string? VerificationDatabaseName,
+  DateTimeOffset StartedUtc,
+  DateTimeOffset? CompletedUtc);
 
 // What admission needs to decide whether this instance may take the work.
 //

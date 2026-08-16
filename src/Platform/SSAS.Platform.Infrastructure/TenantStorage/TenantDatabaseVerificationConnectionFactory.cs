@@ -28,6 +28,16 @@ public interface ITenantDatabaseVerificationConnectionFactory
   // Opens against the verification instance's `master`: a restore into a database that does not exist yet
   // cannot connect to that database, and no restore ever connects to the source tenant database.
   Result<SqlConnection> Create(TenantDatabaseVerificationTarget target);
+
+  // Opens against a RESTORED verification database, for the post-restore probes (ADR-022 §17, TS-Backup D7).
+  //
+  // Same trust boundary and the same isolation rule as above — this only changes which catalog on the
+  // verification instance is addressed. The database name must come from the durable verification run, never
+  // from a caller, and it is re-validated against the reserved vocabulary here because this is the last layer
+  // before a connection is opened to it.
+  Result<SqlConnection> CreateForVerificationDatabase(
+    TenantDatabaseVerificationTarget target,
+    string verificationDatabaseName);
 }
 
 // What the factory needs to decide whether a verification connection is permitted.
@@ -44,7 +54,25 @@ public sealed class TenantDatabaseVerificationConnectionFactory(
   // never from the database being created and never from the source database.
   private const string VerificationCatalog = "master";
 
-  public Result<SqlConnection> Create(TenantDatabaseVerificationTarget target)
+  public Result<SqlConnection> CreateForVerificationDatabase(
+    TenantDatabaseVerificationTarget target,
+    string verificationDatabaseName)
+  {
+    // REFUSED UNLESS THE NAME IS INSIDE THE RESERVED VOCABULARY. Probing connects to a database by name, and
+    // a name outside the platform's own generated namespace is by definition not one this capability created
+    // — so it must not be opened, whatever the caller believes (ADR-022 §17).
+    if (!TenantDatabaseVerificationNaming.IsVerificationDatabaseName(verificationDatabaseName))
+    {
+      return Result.Failure<SqlConnection>(TenantStorageErrors.RestoreVerificationTargetNameNotSafe);
+    }
+
+    return Create(target, verificationDatabaseName);
+  }
+
+  public Result<SqlConnection> Create(TenantDatabaseVerificationTarget target) =>
+    Create(target, VerificationCatalog);
+
+  private Result<SqlConnection> Create(TenantDatabaseVerificationTarget target, string catalog)
   {
     ArgumentNullException.ThrowIfNull(target);
 
@@ -80,7 +108,7 @@ public sealed class TenantDatabaseVerificationConnectionFactory(
 
     var builder = new SqlConnectionStringBuilder(server.ConnectionString)
     {
-      InitialCatalog = VerificationCatalog,
+      InitialCatalog = catalog,
 
       // POOLING DISABLED, for the same reason the backup connection disables it: a restore verification will
       // hold session-scoped state and long-running operations, and returning such a connection to a pool

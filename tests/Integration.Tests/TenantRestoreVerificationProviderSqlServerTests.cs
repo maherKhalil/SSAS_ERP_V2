@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
@@ -7,6 +8,7 @@ using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Infrastructure.TenantStorage;
+using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
 namespace SSAS.Integration.Tests;
 
@@ -29,6 +31,55 @@ namespace SSAS.Integration.Tests;
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantRestoreVerificationProviderSqlServerTests
 {
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task D7_probe_rechecks_online_migration_history_and_real_tenant_model()
+  {
+    await using var fixture = await RestoreFixture.CreateAsync();
+    await fixture.PrepareTenantSchemaAsync();
+    await fixture.TakeFullAsync();
+    Assert.Equal(TenantDatabaseRestoreVerificationOutcome.RestoredAndOnline,
+      (await fixture.VerifyAsync(TenantDatabaseRestoreDepth.Full)).Outcome);
+
+    var probe = await fixture.ProbeAsync();
+
+    Assert.Equal(TenantDatabaseRestoreProbeOutcome.Succeeded, probe.Outcome);
+    Assert.Equal(TenantDatabaseRecoveryModel.Full, probe.ObservedRecoveryModel);
+    Assert.Equal(TenantDbContextBuilder.KnownMigrations[^1], probe.AppliedMigration);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task D7_probe_refuses_a_restored_database_without_tenant_migration_history()
+  {
+    await using var fixture = await RestoreFixture.CreateAsync();
+    await fixture.TakeFullAsync();
+    await fixture.VerifyAsync(TenantDatabaseRestoreDepth.Full);
+
+    var probe = await fixture.ProbeAsync();
+
+    Assert.Equal(TenantDatabaseRestoreProbeOutcome.Failed, probe.Outcome);
+    Assert.Equal(
+      TenantStorageErrors.RestoreVerificationMigrationHistoryUnreadable.Code,
+      probe.SafeErrorSummary);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task D7_real_model_probe_fails_when_migration_history_claims_a_schema_that_is_not_usable()
+  {
+    await using var fixture = await RestoreFixture.CreateAsync();
+    await fixture.PrepareTenantSchemaAsync();
+    await fixture.BreakApplicationSchemaAsync();
+    await fixture.TakeFullAsync();
+    await fixture.VerifyAsync(TenantDatabaseRestoreDepth.Full);
+
+    var probe = await fixture.ProbeAsync();
+
+    Assert.Equal(TenantDatabaseRestoreProbeOutcome.Failed, probe.Outcome);
+    Assert.StartsWith("SqlError:", probe.SafeErrorSummary, StringComparison.Ordinal);
+  }
+
   // 1. Level A — full only.
   [Fact]
   [Trait("Decision", "ADR-022")]
@@ -358,6 +409,16 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     public Task WriteSomeDataAsync() =>
       ExecuteAsync(SourceDatabase, $"INSERT INTO dbo.Marker (Value) VALUES (N'{Guid.NewGuid():N}')");
 
+    public async Task PrepareTenantSchemaAsync()
+    {
+      await using var connection = new SqlConnection(ConnectionFor(SourceDatabase));
+      await using var context = TenantDbContextBuilder.ForConnection(connection);
+      await context.Database.MigrateAsync();
+    }
+
+    public Task BreakApplicationSchemaAsync() =>
+      ExecuteAsync(SourceDatabase, "DROP TABLE [tenant].[Companies]");
+
     // ---- Platform-managed backups. Each records a chain candidate exactly as the Phase B provider would:
     // the trusted destination key plus a safe artifact FILE NAME, never a resolved path.
 
@@ -480,6 +541,40 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
         overrideRestoreServerKey ?? RestoreServerKey,
         SourceServerKey,
         target));
+    }
+
+    public Task<TenantDatabaseRestoreProbeResult> ProbeAsync()
+    {
+      var (storage, verification) = VerificationConfiguration();
+      var probe = new SqlServerRestoreVerificationProbe(
+        new TenantDatabaseVerificationConnectionFactory(
+          Options.Create(storage), Options.Create(verification)));
+
+      return probe.ExecuteAsync(new TenantDatabaseRestoreProbeRequest(
+        TenantDatabaseId,
+        VerificationRunId,
+        RestoreServerKey,
+        SourceServerKey,
+        VerificationDatabaseName));
+    }
+
+    private (TenantStorageOptions Storage, TenantDatabaseRestoreVerificationOptions Verification)
+      VerificationConfiguration()
+    {
+      var storage = new TenantStorageOptions();
+      storage.BackupDestinations[DestinationKey] =
+        new TenantStorageBackupDestinationOptions { DirectoryPath = workingDirectory };
+      storage.VerificationServers[RestoreServerKey] =
+        new TenantStorageServerOptions { ConnectionString = Configured() };
+
+      return (storage, new TenantDatabaseRestoreVerificationOptions
+      {
+        Enabled = true,
+        RestoreServerKey = RestoreServerKey,
+        RestoreDataRoot = workingDirectory,
+        RestoreLogRoot = workingDirectory,
+        AllowSameInstanceVerification = true
+      });
     }
 
     public void DeleteNewestArtifactFile()

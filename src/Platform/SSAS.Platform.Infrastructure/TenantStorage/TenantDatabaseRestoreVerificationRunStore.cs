@@ -26,6 +26,24 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
   private static readonly int[] UniquenessViolationNumbers =
     [DuplicateKeyErrorNumber, UniqueConstraintErrorNumber];
 
+  public Task<TenantDatabaseRestoreVerificationRunRecord?> FindAsync(
+    long verificationRunId,
+    CancellationToken cancellationToken = default) =>
+    dbContext.Set<TenantDatabaseRestoreVerificationRun>()
+      .AsNoTracking()
+      .Where(run => run.Id == verificationRunId)
+      .Select(run => new TenantDatabaseRestoreVerificationRunRecord(
+        run.Id,
+        run.TenantDatabaseId,
+        run.SourceBackupRunId,
+        run.Depth,
+        run.RestoreServerKey,
+        run.Status,
+        run.VerificationDatabaseName,
+        run.StartedUtc,
+        run.CompletedUtc))
+      .SingleOrDefaultAsync(cancellationToken);
+
   // ADMISSION (ADR-022 compliance rule 43).
   //
   // THE INVARIANT IS PER DUE STATE, NOT PER ACTIVE RUN. "At most one verification running at a time" is a
@@ -137,24 +155,116 @@ public sealed class TenantDatabaseRestoreVerificationRunStore(
     }
 
     await transaction.CommitAsync(cancellationToken);
+    // Admission and execution may be orchestrated in one dependency-injection scope. Detaching prevents
+    // the just-inserted Admitted snapshot from masking the CAS update when execution immediately re-reads
+    // the same row.
+    dbContext.Entry(admitted.Value).State = EntityState.Detached;
     return Result.Success(admitted.Value.Id);
   }
 
-  public Task<Result> BeginRestoreAsync(
+  public async Task<Result> BeginRestoreAsync(
     long verificationRunId,
     string verificationDatabaseName,
     string actor,
-    CancellationToken cancellationToken = default) =>
-    ApplyAsync(
-      verificationRunId,
-      run => run.BeginRestore(verificationDatabaseName, actor, clock.UtcNow),
-      cancellationToken);
+    CancellationToken cancellationToken = default)
+  {
+    var normalized = verificationDatabaseName?.Trim();
+    if (string.IsNullOrEmpty(normalized) ||
+      normalized.Length > TenantDatabaseRestoreVerificationRun.VerificationDatabaseNameMaximumLength)
+    {
+      return Result.Failure(TenantStorageErrors.RestoreVerificationDatabaseNameInvalid);
+    }
+
+    // COMPARE-AND-SET. The WHERE clause is the authority: exactly this run, while still Admitted, moves to
+    // Restoring. Two executors can both have read Admitted, but only one can affect the row; the loser must
+    // not call the provider. No admission lock is acquired here, preserving the D1-D4 lock order.
+    var occurredUtc = clock.UtcNow.ToUniversalTime();
+    var affected = await dbContext.Set<TenantDatabaseRestoreVerificationRun>()
+      .Where(run => run.Id == verificationRunId &&
+        run.Status == TenantDatabaseRestoreVerificationStatus.Admitted)
+      .ExecuteUpdateAsync(setters => setters
+        .SetProperty(run => run.VerificationDatabaseName, normalized)
+        .SetProperty(run => run.Status, TenantDatabaseRestoreVerificationStatus.Restoring)
+        .SetProperty(run => run.CleanupState, TenantDatabaseVerificationCleanupState.Pending)
+        .SetProperty(run => run.ModifiedUtc, occurredUtc)
+        .SetProperty(run => run.ModifiedBy, actor), cancellationToken);
+
+    return affected == 1
+      ? Result.Success()
+      : Result.Failure(TenantStorageErrors.RestoreVerificationNotAdmitted);
+  }
 
   public Task<Result> MarkSucceededAsync(
     long verificationRunId,
     string actor,
     CancellationToken cancellationToken = default) =>
     ApplyAsync(verificationRunId, run => run.Succeed(actor, clock.UtcNow), cancellationToken);
+
+  public async Task<Result<DateTimeOffset>> MarkSucceededAndRecordEvidenceAsync(
+    long verificationRunId,
+    long sourceBackupRunId,
+    string actor,
+    CancellationToken cancellationToken = default)
+  {
+    var occurredUtc = clock.UtcNow.ToUniversalTime();
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+    var run = await dbContext.Set<TenantDatabaseRestoreVerificationRun>()
+      .SingleOrDefaultAsync(candidate => candidate.Id == verificationRunId, cancellationToken);
+    if (run is null || run.SourceBackupRunId != sourceBackupRunId)
+    {
+      return Result.Failure<DateTimeOffset>(TenantStorageErrors.RestoreVerificationTargetDrifted);
+    }
+
+    var backup = await dbContext.Set<TenantDatabaseBackupRun>()
+      .SingleOrDefaultAsync(candidate => candidate.Id == sourceBackupRunId &&
+        candidate.TenantDatabaseId == run.TenantDatabaseId &&
+        candidate.Status == TenantDatabaseBackupRunStatus.Succeeded &&
+        candidate.Operation.ProviderKey == "SqlServer" &&
+        candidate.Operation.OperationCode == "Full", cancellationToken);
+    if (backup is null)
+    {
+      return Result.Failure<DateTimeOffset>(TenantStorageErrors.RestoreVerificationTargetDrifted);
+    }
+
+    var succeeded = run.Succeed(actor, occurredUtc);
+    if (succeeded.IsFailure)
+    {
+      return Result.Failure<DateTimeOffset>(succeeded.Error);
+    }
+
+    var verified = backup.RecordVerification(
+      TenantDatabaseBackupVerificationState.RestoreVerified,
+      errorSummary: null,
+      actor,
+      occurredUtc);
+    if (verified.IsFailure)
+    {
+      return Result.Failure<DateTimeOffset>(verified.Error);
+    }
+
+    try
+    {
+      await dbContext.SaveChangesAsync(cancellationToken);
+      await transaction.CommitAsync(cancellationToken);
+    }
+    catch
+    {
+      try
+      {
+        await transaction.RollbackAsync(CancellationToken.None);
+      }
+      finally
+      {
+        // The transaction restored the database row to Restoring; the change tracker must agree before the
+        // executor attempts its terminal infrastructure-unavailable write in the same scope.
+        dbContext.Entry(run).State = EntityState.Detached;
+        dbContext.Entry(backup).State = EntityState.Detached;
+      }
+      throw;
+    }
+    return Result.Success(occurredUtc);
+  }
 
   public Task<Result> MarkFailedAsync(
     long verificationRunId,

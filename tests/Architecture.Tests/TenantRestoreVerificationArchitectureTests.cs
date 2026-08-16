@@ -7,6 +7,8 @@ using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.TenantStorage;
+using SSAS.Platform.Application.TenantStorage;
+using SSAS.Platform.Application.Abstractions.Persistence;
 
 namespace SSAS.Architecture.Tests;
 
@@ -22,6 +24,90 @@ public sealed class TenantRestoreVerificationArchitectureTests
     typeof(TenantDatabaseVerificationConnectionFactory).Assembly;
 
   private static readonly Assembly DomainAssembly = typeof(TenantDatabaseVerificationNaming).Assembly;
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void The_d7_executor_is_the_only_production_consumer_of_the_restore_provider()
+  {
+    var consumers = InfrastructureAssembly.GetTypes()
+      .Where(type => !type.IsInterface &&
+        !type.GetInterfaces().Contains(typeof(ITenantDatabaseRestoreVerificationProvider)))
+      .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+        .SelectMany(constructor => constructor.GetParameters())
+        .Any(parameter => parameter.ParameterType == typeof(ITenantDatabaseRestoreVerificationProvider)))
+      .ToArray();
+
+    Assert.Single(consumers);
+    Assert.Equal("TenantDatabaseRestoreVerificationExecutor", consumers[0].Name);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void The_d7_executor_carries_every_execution_authority_boundary()
+  {
+    var dependencies = InfrastructureType("TenantDatabaseRestoreVerificationExecutor")
+      .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+      .Single()
+      .GetParameters()
+      .Select(parameter => parameter.ParameterType)
+      .ToArray();
+
+    Assert.Contains(typeof(ITenantDatabaseRegistryReadRepository), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseBackupReadRepository), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseRestoreVerificationRunStore), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseVerificationConnectionFactory), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseRestoreVerificationProbe), dependencies);
+    Assert.Contains(typeof(ITenantDatabaseRecoveryReadinessWriter), dependencies);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void Post_restore_probe_uses_only_the_verification_connection_boundary()
+  {
+    var dependencies = InfrastructureType("SqlServerRestoreVerificationProbe")
+      .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+      .Single()
+      .GetParameters()
+      .Select(parameter => parameter.ParameterType)
+      .ToArray();
+
+    Assert.Contains(typeof(ITenantDatabaseVerificationConnectionFactory), dependencies);
+    Assert.DoesNotContain(typeof(ITenantDatabaseConnectionFactory), dependencies);
+    Assert.DoesNotContain(typeof(ITenantDatabaseBackupConnectionFactory), dependencies);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void Restore_provider_and_probe_cannot_write_recovery_readiness()
+  {
+    foreach (var type in new[]
+    {
+      InfrastructureType("SqlServerTenantDatabaseRestoreVerificationProvider"),
+      InfrastructureType("SqlServerRestoreVerificationProbe")
+    })
+    {
+      var dependencies = type
+        .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+        .SelectMany(constructor => constructor.GetParameters())
+        .Select(parameter => parameter.ParameterType);
+      Assert.DoesNotContain(typeof(ITenantDatabaseRecoveryReadinessWriter), dependencies);
+    }
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void Phase_d_has_no_restore_verification_scheduler_or_cleanup_executor()
+  {
+    var forbidden = InfrastructureAssembly.GetTypes()
+      .Where(type => type.Namespace?.Contains("TenantStorage", StringComparison.Ordinal) == true)
+      .Where(type => type.Name.Contains("RestoreVerification", StringComparison.OrdinalIgnoreCase))
+      .Where(type => type.Name.Contains("Scheduler", StringComparison.OrdinalIgnoreCase) ||
+        type.Name.Contains("CleanupExecutor", StringComparison.OrdinalIgnoreCase))
+      .Select(type => type.FullName)
+      .ToArray();
+
+    Assert.Empty(forbidden);
+  }
 
   // TWO INVARIANTS LIVE NEXT DOOR, not here: that no restore command can emit `WITH REPLACE`, and that a
   // restore layout cannot be planned for a name outside the reserved vocabulary. Both are enforced in
@@ -211,6 +297,9 @@ public sealed class TenantRestoreVerificationArchitectureTests
       .Options;
     return new PlatformDbContext(options, new ModelUser(), new ModelTenant(), new ModelClock());
   }
+
+  private static Type InfrastructureType(string name) =>
+    InfrastructureAssembly.GetTypes().Single(type => type.Name == name);
 
   private sealed class ModelUser : ICurrentUser
   {

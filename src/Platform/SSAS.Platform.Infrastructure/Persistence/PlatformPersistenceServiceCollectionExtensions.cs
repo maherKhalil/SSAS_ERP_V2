@@ -174,6 +174,12 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseRestoreVerificationProvider,
       SqlServerTenantDatabaseRestoreVerificationProvider>();
 
+    // TS-Backup Phase D7: the only production caller of the restore provider. The probe opens the restored
+    // catalog through VerificationServers; neither component is scheduled autonomously in Phase D.
+    services.AddScoped<ITenantDatabaseRestoreVerificationProbe, SqlServerRestoreVerificationProbe>();
+    services.AddScoped<ITenantDatabaseRestoreVerificationExecutor,
+      TenantDatabaseRestoreVerificationExecutor>();
+
     // The destination resolver becomes an injected dependency here. Phase B's backup provider constructs one
     // directly from options, which was self-contained enough at the time; the restore provider needs the same
     // trust boundary, and two components sharing it is the point at which it belongs in the container rather

@@ -256,6 +256,8 @@ public sealed class TenantBackupFoundationArchitectureTests
       "SqlServerRestoreVerificationProbe",
       "TenantDatabaseRestoreProbeResult",
       "TenantDatabaseRestoreProbeOutcome",
+      "TenantDatabaseRestoreVerificationExecutor",
+      "TenantDatabaseRestoreSequenceResult",
       "AddBackupCheckpointLsn",
 
       // TS-Backup Phase D6: the isolated restore provider and its contract. Still no verification SCHEDULER,

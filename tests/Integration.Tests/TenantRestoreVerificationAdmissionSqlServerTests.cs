@@ -293,6 +293,25 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
       violation.Message, StringComparison.Ordinal);
   }
 
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public async Task Exactly_one_executor_can_compare_and_set_admitted_to_restoring()
+  {
+    await using var fixture = await VerificationFixture.CreateAsync();
+    var databaseId = await fixture.RegisterAsync("SSAS_Verify_Admission_CAS");
+    var baselineId = await fixture.RecordSuccessfulFullBackupAsync(databaseId);
+    var runId = (await fixture.RunStore().TryAdmitAsync(Request(databaseId, baselineId))).Value;
+    var name = TenantDatabaseVerificationNaming.ForRun(databaseId, runId);
+
+    var attempts = await Task.WhenAll(
+      fixture.RunStore().BeginRestoreAsync(runId, name, "first"),
+      fixture.RunStore().BeginRestoreAsync(runId, name, "second"));
+
+    Assert.Single(attempts, result => result.IsSuccess);
+    Assert.Single(attempts, result => result.IsFailure &&
+      result.Error.Code == TenantStorageErrors.RestoreVerificationNotAdmitted.Code);
+  }
+
   // Cleanup failure and verification result are separate columns as well as separate concepts, so a proven
   // restore survives a failed drop in storage, not only in memory.
   [Fact]

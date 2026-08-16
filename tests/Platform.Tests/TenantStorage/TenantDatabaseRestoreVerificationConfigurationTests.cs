@@ -171,6 +171,36 @@ public sealed class TenantDatabaseRestoreVerificationConfigurationTests
     Assert.Contains("Pooling=False", connection.ConnectionString, StringComparison.OrdinalIgnoreCase);
   }
 
+  [Fact]
+  public void Post_restore_connection_refuses_a_catalog_outside_the_reserved_verification_vocabulary()
+  {
+    var factory = Factory(Enabled(), storage =>
+      storage.VerificationServers["verify"] =
+        new TenantStorageServerOptions { ConnectionString = "Server=verifyhost;Integrated Security=True;" });
+
+    var result = factory.CreateForVerificationDatabase(
+      new TenantDatabaseVerificationTarget("verify", "primary"), "TenantProduction");
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(TenantStorageErrors.RestoreVerificationTargetNameNotSafe.Code, result.Error.Code);
+  }
+
+  [Fact]
+  public void Post_restore_connection_uses_the_durable_reserved_verification_catalog()
+  {
+    var factory = Factory(Enabled(), storage =>
+      storage.VerificationServers["verify"] =
+        new TenantStorageServerOptions { ConnectionString = "Server=verifyhost;Integrated Security=True;" });
+    var name = TenantDatabaseVerificationNaming.ForRun(42, 9);
+
+    var result = factory.CreateForVerificationDatabase(
+      new TenantDatabaseVerificationTarget("verify", "primary"), name);
+
+    Assert.True(result.IsSuccess);
+    using var connection = result.Value;
+    Assert.Equal(name, connection.Database, StringComparer.Ordinal);
+  }
+
   private static TenantDatabaseRestoreVerificationOptions Enabled() =>
     new()
     {

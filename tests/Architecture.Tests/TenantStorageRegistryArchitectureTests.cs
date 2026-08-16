@@ -390,6 +390,8 @@ public sealed class TenantStorageRegistryArchitectureTests
       // TS-Backup Phase D7 (ADR-022 §17): post-restore probes and the checkpoint-LSN migration.
       "SqlServerRestoreVerificationProbe",
       "TenantDatabaseRestoreProbeResult",
+      "TenantDatabaseRestoreVerificationExecutor",
+      "TenantDatabaseRestoreSequenceResult",
       "AddBackupCheckpointLsn",
       "TenantDatabaseRestoreProbeOutcome"
     };

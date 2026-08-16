@@ -121,9 +121,14 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
 
       var restored = await RestoreSequenceAsync(
         sqlConnection, request, devices.Value, placements, cancellationToken);
-      if (restored is not null)
+      if (restored.SafeErrorSummary is not null)
       {
-        return Failed(restored, startedUtc, request.VerificationDatabaseName);
+        return Failed(
+          restored.SafeErrorSummary,
+          startedUtc,
+          request.VerificationDatabaseName,
+          restored.RestoredStepCount,
+          AchievedDepth(request.Chain.Steps, restored.RestoredStepCount));
       }
 
       // ONLINE is the minimum evidence that the sequence produced a database rather than a set of files.
@@ -225,11 +230,13 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
     return entries;
   }
 
-  // Issues the sequence. Returns null on success, or a safe reason.
+  // Issues the sequence and reports exactly how many steps completed. D7 uses that fact to distinguish a
+  // full baseline that could not restore (Unprotected) from a deeper segment failure after the full already
+  // succeeded (Degraded); a generic exception catch must never flatten those two meanings.
   //
   // RECOVERY ONLY AT THE END: every step but the last runs NORECOVERY, because recovering early makes the
   // remaining segments unrestorable (ADR-022 §17, Level C).
-  private static async Task<string?> RestoreSequenceAsync(
+  private static async Task<TenantDatabaseRestoreSequenceResult> RestoreSequenceAsync(
     SqlConnection connection,
     TenantDatabaseRestoreVerificationRequest request,
     IReadOnlyList<TenantDatabaseRestoreDevice> devices,
@@ -271,11 +278,28 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
       }
       catch (SqlException exception)
       {
-        return Safe(exception);
+        return new TenantDatabaseRestoreSequenceResult(index, Safe(exception));
       }
     }
 
-    return null;
+    return new TenantDatabaseRestoreSequenceResult(devices.Count, SafeErrorSummary: null);
+  }
+
+  private static TenantDatabaseRestoreDepth? AchievedDepth(
+    IReadOnlyList<TenantDatabaseRestoreChainStep> steps,
+    int restoredStepCount)
+  {
+    if (restoredStepCount <= 0)
+    {
+      return null;
+    }
+
+    var restored = steps.Take(restoredStepCount);
+    return restored.Any(step => step.Kind == TenantDatabaseRestoreStepKind.Log)
+      ? TenantDatabaseRestoreDepth.FullWithDifferentialAndLog
+      : restored.Any(step => step.Kind == TenantDatabaseRestoreStepKind.Differential)
+        ? TenantDatabaseRestoreDepth.FullWithDifferential
+        : TenantDatabaseRestoreDepth.Full;
   }
 
   private static async Task<bool> DatabaseExistsAsync(
@@ -323,11 +347,19 @@ internal sealed class SqlServerTenantDatabaseRestoreVerificationProvider(
   private TenantDatabaseRestoreVerificationResult Failed(
     string reason,
     DateTimeOffset startedUtc,
-    string databaseName) =>
+    string databaseName,
+    int restoredStepCount = 0,
+    TenantDatabaseRestoreDepth? achievedDepth = null) =>
     new(TenantDatabaseRestoreVerificationOutcome.RestoreFailed,
       VerificationDatabaseName: databaseName,
-      AchievedDepth: null, StartedUtc: startedUtc, CompletedUtc: clock.UtcNow, SafeErrorSummary: reason);
+      RestoredStepCount: restoredStepCount,
+      AchievedDepth: achievedDepth,
+      StartedUtc: startedUtc,
+      CompletedUtc: clock.UtcNow,
+      SafeErrorSummary: reason);
 }
 
 // One resolved artifact location, paired with the chain role it plays.
 internal sealed record TenantDatabaseRestoreDevice(TenantDatabaseRestoreStepKind Kind, string Device);
+
+internal sealed record TenantDatabaseRestoreSequenceResult(int RestoredStepCount, string? SafeErrorSummary);

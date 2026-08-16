@@ -336,4 +336,46 @@ public static class TenantStorageErrors
 
   public static readonly Error RestoreVerificationNotEligible =
     new("TenantStorage.RestoreVerificationNotEligible", "The tenant database is no longer eligible for platform restore verification.");
+
+  // ---- Recovery-gated Dedicated activation (ADR-017 cutover ordering, ADR-022 §18, TS-Storage Phase E).
+  //
+  // ONE ERROR PER REFUSAL, because each one sends an operator somewhere different. Collapsing them into a
+  // single "not ready" would leave the most common case — a verification that ran against a full backup that
+  // has since been superseded — indistinguishable from a database with no backups at all.
+
+  public static readonly Error RecoveryActivationEvidenceUnavailable =
+    new("TenantStorage.RecoveryActivationEvidenceUnavailable", "No recovery activation evidence exists for the requested tenant database.");
+
+  public static readonly Error RecoveryActivationReadinessUnknown =
+    new("TenantStorage.RecoveryActivationReadinessUnknown", "Recovery readiness has not been established for this tenant database, so activation cannot be authorised.");
+
+  public static readonly Error RecoveryActivationUnprotected =
+    new("TenantStorage.RecoveryActivationUnprotected", "The tenant database has no usable recovery position, so activation is refused.");
+
+  public static readonly Error RecoveryActivationDegraded =
+    new("TenantStorage.RecoveryActivationDegraded", "The tenant database's recovery evidence is degraded, so activation is refused.");
+
+  public static readonly Error RecoveryActivationRecoveryModelInvalid =
+    new("TenantStorage.RecoveryActivationRecoveryModelInvalid", "The tenant database's recovery model cannot support the protection its policy requires, so activation is refused.");
+
+  public static readonly Error RecoveryActivationVerificationOverdue =
+    new("TenantStorage.RecoveryActivationVerificationOverdue", "The tenant database's restore verification is overdue under the active policy, so activation is refused.");
+
+  public static readonly Error RecoveryActivationBaselineUnavailable =
+    new("TenantStorage.RecoveryActivationBaselineUnavailable", "No current full backup baseline could be identified for the tenant database, so activation is refused.");
+
+  // PROTECTED IS NOT SUFFICIENT. Where a policy sets no verification interval, `Protected` is reached
+  // without any restore ever having been performed (ADR-022 §6) — and moving live traffic onto a database
+  // whose recoverability has never been demonstrated is exactly what this gate exists to prevent.
+  public static readonly Error RecoveryActivationRestoreVerificationRequired =
+    new("TenantStorage.RecoveryActivationRestoreVerificationRequired", "No successful restore verification exists for the tenant database, so activation is refused.");
+
+  public static readonly Error RecoveryActivationRestoreVerificationSuperseded =
+    new("TenantStorage.RecoveryActivationRestoreVerificationSuperseded", "The successful restore verification exercised a superseded baseline that is no longer the current recovery path, so activation is refused.");
+
+  public static readonly Error RecoveryActivationRestoreVerificationDepthInsufficient =
+    new("TenantStorage.RecoveryActivationRestoreVerificationDepthInsufficient", "The successful restore verification did not exercise the recovery depth the active policy requires, so activation is refused.");
+
+  public static readonly Error RecoveryActivationRestoreVerificationStale =
+    new("TenantStorage.RecoveryActivationRestoreVerificationStale", "The successful restore verification has aged past the interval the active policy requires, so activation is refused.");
 }

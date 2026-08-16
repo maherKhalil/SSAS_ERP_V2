@@ -120,6 +120,15 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseRecoveryReadinessWriter, TenantDatabaseRecoveryReadinessWriter>();
     services.AddScoped<ITenantDatabaseBackupReadRepository, TenantDatabaseBackupReadRepository>();
 
+    // TS-Storage Phase E: the recovery-gated Dedicated activation boundary.
+    //
+    // READ AND DECIDE ONLY. The gate authorises; it performs no freeze, copy, validation, routing flip or
+    // invalidation, and registering it makes nothing writable that was not writable before. A cutover
+    // orchestration calls it between validation and the routing flip.
+    services.AddScoped<ITenantDatabaseRecoveryActivationReadRepository,
+      TenantDatabaseRecoveryActivationReadRepository>();
+    services.AddScoped<ITenantDatabaseRecoveryActivationGate, TenantDatabaseRecoveryActivationGate>();
+
     // TS-Backup Phase B: single-database SQL Server backup execution.
     //
     // The backup connection factory is registered SEPARATELY from ITenantDatabaseConnectionFactory and the

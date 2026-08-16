@@ -200,15 +200,25 @@ public sealed class TenantRestoreVerificationArchitectureTests
     }
   }
 
-  // Phase D is a foundation slice. A retention worker, an artifact-deletion component or a Phase E cutover
-  // guard appearing here would mean scope had moved without a decision.
+  // Retention workers, artifact deletion and point-in-time restore remain OUT OF SCOPE. The recovery
+  // activation gate is now IN scope BY DECISION (TS-Storage Phase E) — and is admitted by an exhaustive
+  // allowlist rather than by dropping the term, so a SECOND activation or cutover type still trips this
+  // guard until someone decides it belongs.
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public void Phase_d_introduces_no_retention_deletion_or_cutover_component()
+  public void Tenant_storage_introduces_no_retention_deletion_or_undecided_cutover_component()
   {
     var forbidden = new[]
     {
       "Retention", "ArtifactDeletion", "Cutover", "Activation", "PointInTime", "Stopat"
+    };
+
+    // The Phase E recovery activation decision and its inputs. Nothing else.
+    var decided = new[]
+    {
+      "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivation",
+      "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationInputs",
+      "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationDecision"
     };
 
     // SCOPED TO TENANT STORAGE, deliberately. An unscoped sweep matches unrelated subsystems — localization
@@ -221,6 +231,7 @@ public sealed class TenantRestoreVerificationArchitectureTests
       .Where(type => type.Namespace?.Contains("TenantStorage", StringComparison.Ordinal) == true)
       .Where(type => forbidden.Any(term => type.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))
       .Select(type => type.FullName)
+      .Where(name => !decided.Contains(name, StringComparer.Ordinal))
       .ToArray();
 
     Assert.Empty(offenders);

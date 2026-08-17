@@ -4,6 +4,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Domain.Authentication;
+using SSAS.Platform.Domain.Branches;
 using SSAS.Platform.Domain.Localization;
 using SSAS.Platform.Domain.PlatformSupport;
 using SSAS.Platform.Domain.Roles;
@@ -23,6 +24,10 @@ public sealed class PlatformDbContext(
   public DbSet<PlatformIdentity> Identities => Set<PlatformIdentity>();
 
   public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
+
+  // Which branches a tenant user may enter. Platform-plane because authentication must read it before a
+  // tenant database is reached; the branch rows themselves live in the tenant database.
+  public DbSet<UserBranchAccess> UserBranchAccess => Set<UserBranchAccess>();
 
   public DbSet<Role> Roles => Set<Role>();
 

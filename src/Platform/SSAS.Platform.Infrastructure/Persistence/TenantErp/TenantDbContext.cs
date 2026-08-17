@@ -2,8 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore.Storage;
+using SSAS.Platform.Domain.Branches;
 using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Infrastructure.TenantStorage;
 
@@ -35,6 +37,10 @@ public sealed class TenantDbContext(
   // The cutover write fence (ADR-020). Optional because the maintenance builders construct this context
   // outside any tenant context for schema work, which is not an application write.
   ITenantWriteFence? writeFence = null,
+  // THE ACTIVE BRANCH (Branch foundation B0/B1). Optional for the same reason the fence is: maintenance
+  // builders construct this context for schema work, which writes no branch-owned data. Null here is what
+  // makes a branch-owned write fail closed rather than pick a branch.
+  ICurrentBranch? currentBranch = null,
   // WHICH PHYSICAL DATABASE THIS CONTEXT IS BOUND TO (ADR-020, TS-Storage Phase E4). Captured at creation
   // from the route that chose the connection, and never re-read: a context's database is fixed for its
   // lifetime, which is exactly why a context created before a cutover flip is still pointing at the source
@@ -43,6 +49,8 @@ public sealed class TenantDbContext(
   : PersistenceDbContext(options, currentUser, currentTenant, dateTimeProvider)
 {
   public DbSet<Company> Companies => Set<Company>();
+
+  public DbSet<Branch> Branches => Set<Branch>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
@@ -77,6 +85,7 @@ public sealed class TenantDbContext(
     CancellationToken cancellationToken = default)
   {
     PreventCompanyDeletion();
+    ApplyBranchRules();
 
     // CurrentTenantId comes from the base rather than capturing the parameter: the same trusted tenant the
     // global query filter uses, so the fence and the filter can never disagree about who is writing.
@@ -117,6 +126,66 @@ public sealed class TenantDbContext(
     throw new InvalidOperationException(
       "Synchronous SaveChanges is not supported on TenantDbContext: the cutover write fence (ADR-020) " +
       "cannot be enforced synchronously. Use SaveChangesAsync.");
+
+  // ---- THE BRANCH OWNERSHIP BOUNDARY (Branch foundation B0/B1).
+  //
+  // IT TOUCHES ONLY IBranchOwnedEntity. Tenant-global data — Branch itself, Company — is unaffected, which
+  // is what lets a tenant administrator create the very first branch: demanding an active branch context in
+  // order to write a Branch would be unsatisfiable by construction.
+  //
+  // IT RUNS ALONGSIDE THE EXISTING RULES, NOT INSTEAD OF THEM. This is called from the one async SaveChanges
+  // funnel, before the cutover fence and before base.SaveChangesAsync applies the tenant guard and audit
+  // stamping — so branch enforcement composes with Phase E rather than bypassing it, and every hook still
+  // runs exactly once.
+  //
+  // IT IS DELIBERATELY NOT AN AUTHORIZATION CHECK. Whether the user may enter this branch is answered by
+  // ITenantBranchAccessResolver against the platform database; this is the ownership stamp, and a context
+  // that reached here without a branch has no business writing branch-owned rows regardless of authority.
+  private void ApplyBranchRules()
+  {
+    foreach (var entry in ChangeTracker.Entries<IBranchOwnedEntity>())
+    {
+      switch (entry.State)
+      {
+        case EntityState.Added:
+          AssignBranch(entry.Entity);
+          break;
+
+        // BRANCH OWNERSHIP IS IMMUTABLE, exactly as tenant ownership is. Moving a document between
+        // branches by editing the column would relocate history with no record that it moved; if that ever
+        // becomes a real operation it needs to be an explicit, audited transfer rather than an update.
+        case EntityState.Modified when entry.Property(nameof(IBranchOwnedEntity.BranchId)).IsModified:
+          throw new InvalidOperationException(
+            "Branch ownership cannot be changed after an entity is created.");
+
+        default:
+          break;
+      }
+    }
+  }
+
+  private void AssignBranch(IBranchOwnedEntity entity)
+  {
+    if (currentBranch?.BranchId is not { } branchId || branchId == Guid.Empty)
+    {
+      throw new InvalidOperationException(
+        "A trusted branch context is required to save branch-owned entities.");
+    }
+
+    if (entity.BranchId == Guid.Empty)
+    {
+      entity.BranchId = branchId;
+      return;
+    }
+
+    // A CALLER-SUPPLIED BranchId IS ONLY EVER CONFIRMED, NEVER TRUSTED. An entity arriving with a branch
+    // that is not the active one is a write aimed at somewhere the caller is not — refused rather than
+    // quietly rewritten, because silently correcting it would hide the attempt.
+    if (entity.BranchId != branchId)
+    {
+      throw new InvalidOperationException("Branch ownership must match the trusted branch context.");
+    }
+  }
 
   // Carried over from PlatformDbContext together with Company: lifecycle is expressed by Archive, never
   // by a physical delete, so history stays reconstructable.

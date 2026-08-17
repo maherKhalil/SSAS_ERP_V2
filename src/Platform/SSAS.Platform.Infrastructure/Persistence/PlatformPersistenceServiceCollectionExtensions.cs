@@ -17,6 +17,8 @@ using SSAS.Platform.Application.Roles;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Tenants;
+using SSAS.Platform.Application.Branches;
+using SSAS.Platform.Infrastructure.Branches;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -260,6 +262,11 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // A SERVICE ONLY. No HTTP route, no hosted service, no scheduler — activating a one-way operation on
     // customer data is a separate operational and security decision this slice does not take.
     services.AddScoped<ITenantCutoverOrchestrator, TenantCutoverOrchestrator>();
+
+    // Branch foundation B0/B1. The resolver is the ONE place branch scope is decided, and the authority
+    // predicate behind it is the one place tenant-administrator status is decided.
+    services.AddScoped<ITenantAdministratorAuthority, TenantAdministratorAuthority>();
+    services.AddScoped<ITenantBranchAccessResolver, TenantBranchAccessResolver>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();

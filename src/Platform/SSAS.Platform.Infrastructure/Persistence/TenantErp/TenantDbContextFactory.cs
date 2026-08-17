@@ -26,7 +26,10 @@ public sealed class TenantDbContextFactory(
   ICurrentUser currentUser,
   ICurrentTenant currentTenant,
   IDateTimeProvider dateTimeProvider,
-  ITenantWriteFence writeFence) : ITenantDbContextFactory
+  ITenantWriteFence writeFence,
+  // Optional so every existing construction site — tests and maintenance paths included — keeps working
+  // and simply has no active branch, which is the correct answer for them.
+  ICurrentBranch? currentBranch = null) : ITenantDbContextFactory
 {
   public async Task<Result<TenantDbContext>> CreateAsync(
     Guid tenantId,
@@ -75,7 +78,11 @@ public sealed class TenantDbContextFactory(
     // tell a writer bound to the cutover SOURCE from one bound to the TARGET. It is captured here, at the
     // moment routing was resolved, which is precisely what makes a context created before a flip still
     // identify itself as the source afterwards.
+    // The ACTIVE BRANCH travels with the context too (Branch foundation B0/B1). Like the tenant, it is an
+    // ambient server-side fact rather than something a caller passes per write; null means no branch has
+    // been selected yet, which the write boundary turns into a refusal for branch-owned data only.
     return Result.Success(new TenantDbContext(
-      options, currentUser, currentTenant, dateTimeProvider, writeFence, route.Value.TenantDatabaseId));
+      options, currentUser, currentTenant, dateTimeProvider, writeFence, currentBranch,
+      route.Value.TenantDatabaseId));
   }
 }

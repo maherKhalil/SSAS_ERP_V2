@@ -21,7 +21,12 @@ public sealed class TenantCutoverCopyPlanTests
   // against a missed table. It is protecting against an UNCONSIDERED one: a new entity may need a copy
   // order, may carry an identity key, may have a computed column, and "the copy compiled" settles none of
   // that. Failing here is the prompt to decide those things deliberately.
-  private static readonly string[] DeclaredTenantOwnedEntities = ["Company"];
+  // Branch joined the tenant model in Branch foundation B0/B1, and this guard is what forced the decision
+  // to be made rather than assumed: a tenant's branches are tenant-owned business data, so a
+  // Shared -> Dedicated cutover MUST carry them. Had the manifest not picked Branch up, a promoted tenant
+  // would have arrived at its new database with its operating locations missing and every branch-scoped
+  // row orphaned.
+  private static readonly string[] DeclaredTenantOwnedEntities = ["Branch", "Company"];
 
   [Fact]
   [Trait("Decision", "ADR-020")]

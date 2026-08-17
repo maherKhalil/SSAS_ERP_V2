@@ -26,6 +26,9 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.ViewLocalization, "View localization resources"),
       Define(PlatformPermissionNames.ManageLocalization, "Manage localization overrides"),
       Define(PlatformPermissionNames.ViewLocalizationHistory, "View localization history"),
+      // Tenant scope, deliberately: a tenant administers itself through an ordinary tenant role. The
+      // PlatformSupport-scoped permissions below are the cross-tenant ones and are never tenant-assignable.
+      Define(PlatformPermissionNames.AdministerTenant, "Administer the tenant and reach every active branch"),
       Define(PlatformPermissionNames.ViewCompanies, "View companies"),
       Define(PlatformPermissionNames.ManageCompanies, "Create and update companies"),
       Define(PlatformPermissionNames.CompanyLifecycle, "Change company lifecycle state"),

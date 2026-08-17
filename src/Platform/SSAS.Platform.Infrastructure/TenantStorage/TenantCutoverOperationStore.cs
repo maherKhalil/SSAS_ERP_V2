@@ -1,4 +1,6 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Abstractions.Persistence;
@@ -11,8 +13,11 @@ namespace SSAS.Platform.Infrastructure.TenantStorage;
 // Durable cutover-operation persistence (ADR-020, TS-Storage Phase E1).
 public sealed class TenantCutoverOperationStore(
   PlatformDbContext dbContext,
-  IDateTimeProvider clock) : ITenantCutoverOperationStore
+  IDateTimeProvider clock,
+  TimeSpan? releaseOwnershipTimeout = null) : ITenantCutoverOperationStore
 {
+  private readonly TimeSpan releaseOwnershipTimeout = releaseOwnershipTimeout ?? TimeSpan.FromSeconds(5);
+
   public async Task<Result<long>> BeginAsync(
     TenantCutoverBeginRequest request,
     CancellationToken cancellationToken = default)
@@ -136,15 +141,66 @@ public sealed class TenantCutoverOperationStore(
       operation => operation.FailFreeze(failureSummary, actor, clock.UtcNow),
       cancellationToken);
 
-  public Task<Result> ReleaseFreezeAsync(
+  // RELEASE CONTENDS WITH A RUNNING COPY (ADR-020, TS-Storage Phase E3).
+  //
+  // E1 deliberately took no lock here, because release must work when the SOURCE database is unhealthy —
+  // and it still does: this lock lives in the Platform database, which release is already connected to.
+  //
+  // What changed is that a copy now exists. Releasing under one would make the source writable again while
+  // the copy is still streaming from it, so the copy would validate a target against a source that moved
+  // after it was read. A release that cannot take the operation is REFUSED rather than queued: an operator
+  // needs an answer, and "a copy is running" is the answer.
+  //
+  // A dead copy holds nothing — its ownership is session-scoped — so this cannot leave a tenant permanently
+  // frozen, which is the property ADR-020 requires release to keep.
+  public async Task<Result> ReleaseFreezeAsync(
     long cutoverOperationId,
     string? failureSummary,
     string actor,
-    CancellationToken cancellationToken = default) =>
-    ApplyAsync(
+    CancellationToken cancellationToken = default)
+  {
+    var connection = dbContext.Database.GetDbConnection();
+    if (connection is not SqlConnection sqlConnection)
+    {
+      return await ApplyAsync(
+        cutoverOperationId,
+        operation => operation.ReleaseFreeze(failureSummary, actor, clock.UtcNow),
+        cancellationToken);
+    }
+
+    if (connection.State != System.Data.ConnectionState.Open)
+    {
+      await connection.OpenAsync(cancellationToken);
+    }
+
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+    var owned = await TenantCutoverOperationLock.TryAcquireForTransactionAsync(
+      sqlConnection,
+      (SqlTransaction)transaction.GetDbTransaction(),
+      cutoverOperationId,
+      releaseOwnershipTimeout,
+      cancellationToken);
+
+    if (!owned)
+    {
+      await transaction.RollbackAsync(cancellationToken);
+      return Result.Failure(TenantStorageErrors.CutoverReleaseBlockedByActiveCopy);
+    }
+
+    var released = await ApplyAsync(
       cutoverOperationId,
       operation => operation.ReleaseFreeze(failureSummary, actor, clock.UtcNow),
       cancellationToken);
+
+    if (released.IsFailure)
+    {
+      await transaction.RollbackAsync(cancellationToken);
+      return released;
+    }
+
+    await transaction.CommitAsync(cancellationToken);
+    return released;
+  }
 
   private async Task<Result> ApplyAsync(
     long cutoverOperationId,

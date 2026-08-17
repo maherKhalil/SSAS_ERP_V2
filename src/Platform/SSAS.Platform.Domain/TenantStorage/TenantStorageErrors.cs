@@ -412,6 +412,54 @@ public static class TenantStorageErrors
   public static readonly Error TenantWritesFrozen =
     new("TenantStorage.TenantWritesFrozen", "Writes for this tenant are temporarily frozen by an in-progress storage cutover.");
 
+  // ---- Shared → Dedicated copy and exact validation (ADR-020, TS-Storage Phase E3).
+  //
+  // EVERY ONE OF THESE LEAVES THE OPERATION FROZEN. A copy that cannot prove it succeeded must not release
+  // the tenant, mark progress, or advance the operation: retrying and abandoning are orchestration
+  // decisions, and the durable state has to still be true when that decision is made.
+
+  // The copy runs only inside an established freeze. Preparing means the source is still writable, and the
+  // post-flip states mean the source is no longer the tenant's database.
+  public static readonly Error CutoverOperationNotFrozen =
+    new("TenantStorage.CutoverOperationNotFrozen", "The cutover operation is not frozen, so its source cannot be copied.");
+
+  // Another instance is executing this cutover. NOT a failure of the copy — the ownership invariant worked.
+  public static readonly Error CutoverCopyOwnershipNotAcquired =
+    new("TenantStorage.CutoverCopyOwnershipNotAcquired", "Another instance is already executing this cutover operation.");
+
+  // A release was attempted while a copy holds the operation. Refused: unfreezing under a running copy
+  // would let source writes resume against data the copy is midway through reading.
+  public static readonly Error CutoverReleaseBlockedByActiveCopy =
+    new("TenantStorage.CutoverReleaseBlockedByActiveCopy", "The cutover freeze cannot be released while a copy is executing against this operation.");
+
+  // The dedicated target holds rows belonging to a DIFFERENT tenant. Fails closed and copies nothing: a
+  // dedicated database is dedicated, and this one is not what the registry says it is.
+  public static readonly Error CutoverTargetContaminated =
+    new("TenantStorage.CutoverTargetContaminated", "The cutover target already contains rows belonging to another tenant.");
+
+  // The target holds rows for the requested tenant that are not an exact copy of the source. Deliberately
+  // NOT repaired and NOT overwritten — a partial or divergent target is evidence that something is wrong,
+  // and deleting it to make progress would destroy the evidence along with the data.
+  public static readonly Error CutoverTargetInconsistent =
+    new("TenantStorage.CutoverTargetInconsistent", "The cutover target already contains tenant rows that are not an exact copy of the source.");
+
+  public static readonly Error CutoverCopyValidationFailed =
+    new("TenantStorage.CutoverCopyValidationFailed", "The copied tenant data did not validate exactly against the source.");
+
+  public static readonly Error CutoverCopyFailed =
+    new("TenantStorage.CutoverCopyFailed", "The tenant data copy did not complete.");
+
+  // Source and target must be at the same, current tenant schema. Copying across a schema difference would
+  // produce a target that validates against nothing.
+  public static readonly Error CutoverSchemaIncompatible =
+    new("TenantStorage.CutoverSchemaIncompatible", "The cutover source and target tenant schemas are not both current, so the copy is refused.");
+
+  // The tenant model contains a foreign-key cycle, so no safe insertion order exists. Reported rather than
+  // resolved by disabling constraints: turning off referential integrity to make a copy fit is how a copy
+  // silently produces a database the application cannot trust.
+  public static readonly Error CutoverCopyOrderUndecidable =
+    new("TenantStorage.CutoverCopyOrderUndecidable", "The tenant model contains a foreign-key cycle, so a safe copy order cannot be established.");
+
   // ---- Version-aware routing (ADR-020 "Resolver cache", TS-Storage Phase E2).
 
   // THE AUTHORITATIVE ROUTING VERSION COULD NOT BE ESTABLISHED, so no cached route can be shown to still be

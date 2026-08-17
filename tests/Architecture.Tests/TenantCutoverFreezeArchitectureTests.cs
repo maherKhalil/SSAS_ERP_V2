@@ -14,9 +14,14 @@ public sealed class TenantCutoverFreezeArchitectureTests
 {
   private static readonly Assembly InfrastructureAssembly = typeof(TenantCutoverWriteFence).Assembly;
 
-  // The cutover components that are DELIBERATELY NOT in this slice. Each is its own decision.
-  private static readonly string[] DeferredComponents =
-    ["Copy", "RoutingCache", "Invalidation", "Convergence", "Cleanup"];
+  // The cutover components still DELIBERATELY absent. Each is its own decision.
+  //
+  // `RoutingCache` and `Invalidation` were dropped from this list when TS-Storage Phase E2 delivered them:
+  // leaving them here would have been a guard asserting the absence of something the estate now contains,
+  // passing only because E2's type names happen not to contain those exact substrings. What E2 introduced
+  // is guarded properly — by exact-type allowlist — in TenantStorageRegistryArchitectureTests and
+  // TenantRoutingArchitectureTests, which is a stronger statement than this list ever made.
+  private static readonly string[] DeferredComponents = ["Cleanup"];
 
   // TENANT-SCOPED, NEVER DATABASE-WIDE. One tenant's promotion is not an outage for its co-tenants, so the
   // lock resource carries the TenantId and two tenants can never collide on one name.

@@ -225,9 +225,21 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // freeze. Only the timeouts are configurable.
     services.AddOptions<TenantCutoverFreezeOptions>()
       .Bind(configuration.GetSection(TenantCutoverFreezeOptions.SectionName));
-    services.AddScoped<ITenantCutoverOperationStore, TenantCutoverOperationStore>();
+    services.AddScoped<ITenantCutoverOperationStore>(provider => new TenantCutoverOperationStore(
+      provider.GetRequiredService<PlatformDbContext>(),
+      provider.GetRequiredService<IDateTimeProvider>(),
+      provider.GetRequiredService<IOptions<TenantCutoverCopyOptions>>().Value.ReleaseOwnershipTimeout));
     services.AddScoped<ITenantWriteFence, TenantCutoverWriteFence>();
     services.AddScoped<ITenantCutoverFreezeService, TenantCutoverFreezeService>();
+
+    // TS-Storage Phase E3: the Shared → Dedicated copy primitive (ADR-020).
+    //
+    // A SERVICE ONLY. Nothing schedules it, nothing exposes it over HTTP, and it advances no cutover state:
+    // it copies an already-frozen operation's tenant data, validates it exactly, and reports. The routing
+    // flip, the RoutingVersion increment and cache invalidation are the next slice and are absent here.
+    services.AddOptions<TenantCutoverCopyOptions>()
+      .Bind(configuration.GetSection(TenantCutoverCopyOptions.SectionName));
+    services.AddScoped<ITenantCutoverCopyService, TenantCutoverCopyService>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();

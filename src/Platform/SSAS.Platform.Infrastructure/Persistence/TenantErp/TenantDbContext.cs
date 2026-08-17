@@ -61,7 +61,15 @@ public sealed class TenantDbContext(
   // The fence needs the write to be inside a transaction it can lock against, so one is opened when the
   // caller has not already opened one. When the caller HAS, the fence joins it and the caller keeps
   // ownership of the commit.
-  public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+  //
+  // IT HOOKS `SaveChangesAsync(bool, CancellationToken)`, WHICH IS THE ONLY ASYNC PATH TO THE DATABASE.
+  // EF Core's `SaveChangesAsync(ct)` calls this overload by virtual dispatch, so both async entry points
+  // are fenced here and are fenced EXACTLY ONCE. Overriding the convenience overload as well would take the
+  // application lock twice for one write; overriding only the convenience overload — as this type
+  // previously did — left `SaveChangesAsync(true, ct)` able to commit against a frozen tenant.
+  public override async Task<int> SaveChangesAsync(
+    bool acceptAllChangesOnSuccess,
+    CancellationToken cancellationToken = default)
   {
     PreventCompanyDeletion();
 
@@ -70,24 +78,40 @@ public sealed class TenantDbContext(
     if (writeFence is null || CurrentTenantId is not { } tenantId || tenantId == Guid.Empty ||
       !ChangeTracker.HasChanges())
     {
-      return await base.SaveChangesAsync(cancellationToken);
+      return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
     if (Database.CurrentTransaction is { } ambient)
     {
       await writeFence.AdmitWriteAsync(
         tenantId, Database.GetDbConnection(), ambient.GetDbTransaction(), cancellationToken);
-      return await base.SaveChangesAsync(cancellationToken);
+      return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
     await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
     await writeFence.AdmitWriteAsync(
       tenantId, Database.GetDbConnection(), transaction.GetDbTransaction(), cancellationToken);
 
-    var written = await base.SaveChangesAsync(cancellationToken);
+    var written = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     await transaction.CommitAsync(cancellationToken);
     return written;
   }
+
+  // SYNCHRONOUS TENANT PERSISTENCE IS REFUSED, NOT SILENTLY UNFENCED (option B).
+  //
+  // The fence is a real SQL round trip — `sys.sp_getapplock` on the tenant's own connection — and there is
+  // no correct synchronous form of it here: blocking on the async path would be sync-over-async on a
+  // request thread, and a second synchronous SQL path would be a duplicate of the one mechanism the whole
+  // freeze depends on. Every tenant writer in this codebase is already async (ITenantUnitOfWork exposes
+  // only SaveChangesAsync), so nothing legitimate reaches this.
+  //
+  // It throws rather than falling through to base, because falling through is precisely the unfenced path
+  // that would let a write commit against a frozen tenant. This overload covers `SaveChanges()` too, which
+  // EF Core routes here by virtual dispatch.
+  public override int SaveChanges(bool acceptAllChangesOnSuccess) =>
+    throw new InvalidOperationException(
+      "Synchronous SaveChanges is not supported on TenantDbContext: the cutover write fence (ADR-020) " +
+      "cannot be enforced synchronously. Use SaveChangesAsync.");
 
   // Carried over from PlatformDbContext together with Company: lifecycle is expressed by Archive, never
   // by a physical delete, so history stays reconstructable.

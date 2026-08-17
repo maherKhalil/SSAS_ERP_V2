@@ -213,10 +213,19 @@ public sealed class TenantRestoreVerificationArchitectureTests
       "Retention", "ArtifactDeletion", "Cutover", "Activation", "PointInTime", "Stopat"
     };
 
-    // The Phase E recovery activation decision and its inputs, and the Phase E1 cutover operation and
-    // freeze. Exact names, admitted one at a time by decision — never a namespace or a pattern.
+    // The Phase E recovery activation decision and its inputs, the Phase E1 cutover operation and freeze,
+    // and the Phase E3 copy engine. Exact names, admitted one at a time by decision — never a namespace or
+    // a pattern, so a SECOND cutover or activation component still trips this guard.
     var decided = new[]
     {
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyService",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyPlan",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverTablePlan",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverTableCopier",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyValidator",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverTableValidation",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyOptions",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverOperationLock",
       "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivation",
       "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationInputs",
       "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationDecision",

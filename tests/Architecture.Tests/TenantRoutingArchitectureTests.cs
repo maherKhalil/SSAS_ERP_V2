@@ -187,8 +187,11 @@ public sealed class TenantRoutingArchitectureTests
     Assert.Contains(Dependencies(factory!), parameter => parameter == typeof(ITenantDatabaseResolver));
   }
 
-  // The cutover components E2 still does not deliver. Each is its own decision.
-  private static readonly string[] DeferredComponents = ["Copy", "Cleanup", "Convergence"];
+  // The cutover components still absent. "Copy" left this list when TS-Storage Phase E3 delivered the copy
+  // engine; keeping it would have been a guard asserting the absence of something the estate now contains.
+  // What E3 introduced is guarded by exact-type allowlist in TenantRestoreVerificationArchitectureTests and
+  // by its own boundaries in TenantCutoverCopyArchitectureTests.
+  private static readonly string[] DeferredComponents = ["Cleanup", "Convergence"];
 
   private static IEnumerable<Type> RoutingTypes() =>
     ProductionTypes().Where(type => type.Name.Contains("Routing", StringComparison.Ordinal));

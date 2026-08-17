@@ -38,6 +38,18 @@ public interface ITenantCutoverOperationStore
     string actor,
     CancellationToken cancellationToken = default);
 
+  // Marks orchestration finished after a committed flip and successful post-flip verification. Idempotent.
+  Task<Result> CompleteAsync(
+    long cutoverOperationId,
+    string actor,
+    CancellationToken cancellationToken = default);
+
+  // The tenant's active cutover, whatever its phase. The orchestrator needs this to decide whether a Start
+  // is a fresh cutover or a collision, and to resume without being handed an identifier.
+  Task<TenantCutoverOperationRecord?> FindActiveForTenantAsync(
+    Guid tenantId,
+    CancellationToken cancellationToken = default);
+
   Task<Result> RequestFreezeAsync(
     long cutoverOperationId,
     string actor,

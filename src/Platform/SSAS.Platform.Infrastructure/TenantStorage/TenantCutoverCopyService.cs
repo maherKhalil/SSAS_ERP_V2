@@ -78,6 +78,31 @@ internal sealed class TenantCutoverCopyService(
     return await ExecuteAsync(eligibility.Value, cutoverOperationId, copyMissing: true, cancellationToken);
   }
 
+  // THE SAME COPY, FOR A CALLER THAT ALREADY OWNS THE OPERATION (TS-Storage Phase E5).
+  //
+  // The orchestrator holds one session-scoped ownership lease across freeze, copy, flip and finalisation.
+  // Calling the public CopyAsync from inside that would try to take the same resource on a second
+  // connection and deadlock against itself — the exact defect E4 review found. Requiring the ownership
+  // token in the signature makes this path impossible to enter without ownership and impossible to confuse
+  // with the standalone one.
+  //
+  // IT SHARES THE CORE. Eligibility, the schema gate, contamination and the per-table copy/validate loop
+  // are the same code as the public path; only the acquisition differs, so the two can never drift on
+  // anything that decides correctness.
+  public async Task<Result<TenantCutoverCopyReport>> CopyUnderOwnershipAsync(
+    TenantCutoverOwnership ownership,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(ownership);
+
+    var eligibility = await ResolveEligibleEndpointsAsync(
+      ownership.CutoverOperationId, cancellationToken);
+    return eligibility.IsFailure
+      ? Result.Failure<TenantCutoverCopyReport>(eligibility.Error)
+      : await ExecuteAsync(
+        eligibility.Value, ownership.CutoverOperationId, copyMissing: true, cancellationToken);
+  }
+
   // Deliberately acquires NO ownership — see the interface comment. The flip calls this while already
   // holding the operation, and taking the same resource on a second connection would deadlock it.
   public async Task<Result<TenantCutoverCopyReport>> ValidateAsync(
@@ -183,11 +208,12 @@ internal sealed class TenantCutoverCopyService(
     bool copyMissing,
     CancellationToken cancellationToken)
   {
-    var existing = await validator.CountTenantRowsAsync(table, tenantId, target, null, cancellationToken);
-
     // VALIDATION-ONLY NEVER WRITES. An absent or incomplete table is a refusal here, not something to
     // finish: the flip is asking "is the target already exactly this tenant's data", and copying to make
     // the answer yes would be answering a different question.
+    //
+    // It does not count first: the lockstep walk below decides emptiness, divergence and completeness
+    // alike, so a preceding COUNT was a per-table round trip whose result nothing read.
     if (!copyMissing)
     {
       var proof = await validator.ValidateAsync(table, tenantId, source, target, null, cancellationToken);
@@ -196,6 +222,8 @@ internal sealed class TenantCutoverCopyService(
           table.EntityName, table.TableName, proof.Rows, TenantCutoverTableDisposition.AlreadyComplete))
         : Result.Failure<TenantCutoverTableReport>(TenantStorageErrors.CutoverTargetInconsistent);
     }
+
+    var existing = await validator.CountTenantRowsAsync(table, tenantId, target, null, cancellationToken);
 
     if (existing > 0)
     {

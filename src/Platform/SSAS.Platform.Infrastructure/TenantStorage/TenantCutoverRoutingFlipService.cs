@@ -43,9 +43,28 @@ internal sealed class TenantCutoverRoutingFlipService(
 {
   private const string Actor = "tenant-cutover-flip";
 
-  public async Task<Result<TenantCutoverFlipReport>> FlipAsync(
-    long cutoverOperationId,
+  // THE SAME FLIP, FOR A CALLER THAT ALREADY OWNS THE OPERATION (TS-Storage Phase E5).
+  //
+  // Shares the entire core with the public path — preconditions, revalidation, the atomic transaction and
+  // post-commit invalidation — and differs only in not acquiring ownership, which the token proves the
+  // caller already holds. Re-acquiring from a second connection is the self-deadlock E4 review found.
+  public async Task<Result<TenantCutoverFlipReport>> FlipUnderOwnershipAsync(
+    TenantCutoverOwnership ownership,
     CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(ownership);
+    return await FlipCoreAsync(ownership.CutoverOperationId, owned: true, cancellationToken);
+  }
+
+  public Task<Result<TenantCutoverFlipReport>> FlipAsync(
+    long cutoverOperationId,
+    CancellationToken cancellationToken = default) =>
+    FlipCoreAsync(cutoverOperationId, owned: false, cancellationToken);
+
+  private async Task<Result<TenantCutoverFlipReport>> FlipCoreAsync(
+    long cutoverOperationId,
+    bool owned,
+    CancellationToken cancellationToken)
   {
     var options = optionsAccessor.Value;
 
@@ -70,13 +89,22 @@ internal sealed class TenantCutoverRoutingFlipService(
 
     // ---- OWNERSHIP, ON THE SAME RESOURCE THE COPY AND THE RELEASE USE. Copy, release and flip are three
     // things that must never overlap on one operation, so they contend for one lock rather than three.
-    await using var ownership = new SqlConnection(platform.Database.GetConnectionString());
-    await ownership.OpenAsync(cancellationToken);
-    if (!await TenantCutoverOperationLock.TryAcquireForSessionAsync(
-      ownership, cutoverOperationId, options.OwnershipTimeout, cancellationToken))
+    //
+    // SKIPPED WHEN THE CALLER ALREADY OWNS IT. An orchestrator holds one lease across every phase, and
+    // taking the same resource again on a second connection would block on itself forever.
+    await using var ownershipConnection = owned
+      ? null
+      : new SqlConnection(platform.Database.GetConnectionString());
+
+    if (ownershipConnection is not null)
     {
-      return Result.Failure<TenantCutoverFlipReport>(
-        TenantStorageErrors.CutoverCopyOwnershipNotAcquired);
+      await ownershipConnection.OpenAsync(cancellationToken);
+      if (!await TenantCutoverOperationLock.TryAcquireForSessionAsync(
+        ownershipConnection, cutoverOperationId, options.OwnershipTimeout, cancellationToken))
+      {
+        return Result.Failure<TenantCutoverFlipReport>(
+          TenantStorageErrors.CutoverCopyOwnershipNotAcquired);
+      }
     }
 
     // ---- THE TARGET STILL MATCHES THE SOURCE, checked under ownership and immediately before the flip.

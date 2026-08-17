@@ -338,7 +338,13 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
     Assert.Equal("TR_TenantDatabaseAssignments_EnforceRoutingVersion", trigger.Name);
     Assert.Contains("INSERT", trigger.Events, StringComparison.Ordinal);
     Assert.Contains("UPDATE", trigger.Events, StringComparison.Ordinal);
-    Assert.DoesNotContain("DELETE", trigger.Events, StringComparison.Ordinal);
+    // DELETE joined the guard in TS-Storage Phase E5. E4 shipped it as INSERT/UPDATE only, on the reasoning
+    // that assignments are retained as history so there was no routing-significant delete to guard — but
+    // that reasoning assumed the retention it was meant to enforce. A direct actor could delete a tenant's
+    // assignment history and re-insert at version 1, and the insert check compares only against rows that
+    // still exist, so with the history gone the reset looked legal. Asserted here against the LIVE trigger,
+    // so this test tracks the database that actually ships rather than the one E4 described.
+    Assert.Contains("DELETE", trigger.Events, StringComparison.Ordinal);
     Assert.False(trigger.Disabled);
 
     // ---- O. A new assignment that REUSES the tenant's current version is refused by the trigger. This is

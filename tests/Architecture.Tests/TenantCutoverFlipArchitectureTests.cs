@@ -194,7 +194,10 @@ public sealed class TenantCutoverFlipArchitectureTests
   [Trait("Decision", "ADR-020")]
   public void A_routing_version_guard_trigger_is_shipped_and_never_assigns_the_version()
   {
-    var migration = MigrationSourceContaining("TR_TenantDatabaseAssignments_EnforceRoutingVersion");
+    // PINNED TO E4'S OWN MIGRATION BY NAME. Two migrations now create this trigger — E4's original and the
+    // E5 one that strengthens it — and selecting "the first file containing the name" silently depended on
+    // directory enumeration order to decide which slice this test was describing.
+    var migration = MigrationSourceNamed("AddRoutingVersionGuard");
     Assert.NotNull(migration);
 
     // ASSERTED AGAINST THE SQL, NOT THE FILE. Scanning the whole migration would match ordinary English in
@@ -202,10 +205,11 @@ public sealed class TenantCutoverFlipArchitectureTests
     // gets deleted rather than heeded.
     var sql = Between(migration!, "CREATE TRIGGER", "DROP TRIGGER");
 
-    // AFTER INSERT, UPDATE only — assignments are retained as history, so there is no routing-significant
-    // delete to guard, and declaring the event would claim protection that was never designed.
+    // AFTER INSERT, UPDATE — what E4 shipped. NOT a claim about the trigger in the database today: E5 added
+    // DELETE to it, and the assertion that the live guard covers deletion belongs to that slice's test
+    // (TenantCutoverOrchestrationArchitectureTests). Repeating the old "and no DELETE" here would make this
+    // file assert the opposite of what ships.
     Assert.Contains("AFTER INSERT, UPDATE", sql, StringComparison.Ordinal);
-    Assert.DoesNotContain("AFTER INSERT, UPDATE, DELETE", sql, StringComparison.Ordinal);
 
     // IT REJECTS; IT NEVER WRITES. A trigger that supplied the next version would hide a caller that forgot
     // to advance it.
@@ -277,14 +281,14 @@ public sealed class TenantCutoverFlipArchitectureTests
     return File.ReadAllText(full);
   }
 
-  private static string? MigrationSourceContaining(string token)
+  // Selected by FILE NAME, so a test that describes one migration cannot end up reading another.
+  private static string? MigrationSourceNamed(string migrationName)
   {
     var directory = Path.Combine(
       RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure", "Persistence", "Migrations");
 
-    return Directory.EnumerateFiles(directory, "*.cs")
-      .Select(File.ReadAllText)
-      .FirstOrDefault(content => content.Contains(token, StringComparison.Ordinal));
+    var file = Directory.EnumerateFiles(directory, $"*_{migrationName}.cs").SingleOrDefault();
+    return file is null ? null : File.ReadAllText(file);
   }
 
   private static string RepositoryRoot()

@@ -237,7 +237,11 @@ public sealed class TenantRestoreVerificationArchitectureTests
       "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverFreezeService",
       "SSAS.Platform.Infrastructure.TenantStorage.ITenantCutoverFreezeService",
       "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverFreezeOptions",
-      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverLockResource"
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverLockResource",
+      // TS-Storage Phase E5: the orchestrator that composes E1-E4, and the non-forgeable proof of
+      // operation ownership that lets its inner calls skip re-acquiring the lock they already hold.
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverOrchestrator",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverOwnership"
     };
 
     // SCOPED TO TENANT STORAGE, deliberately. An unscoped sweep matches unrelated subsystems — localization

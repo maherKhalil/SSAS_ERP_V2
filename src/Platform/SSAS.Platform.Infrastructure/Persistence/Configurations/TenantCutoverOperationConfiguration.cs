@@ -83,10 +83,17 @@ public sealed class TenantCutoverOperationConfiguration
       .IsUnique()
       .HasFilter("[Status] IN (N'Preparing', N'Frozen', N'RoutingFlipped')");
 
-    // NO SEPARATE WRITE-PATH INDEX. Every tenant write asks "does an active cutover hold this tenant?", and
-    // the filtered unique index above is already exactly that structure: keyed on TenantId, and containing
-    // only the active statuses. Cutover history — the rows that will accumulate — is excluded from it by
-    // the filter, so the hot lookup stays a seek over a handful of rows without a second index to maintain.
+    // THE WRITE-PATH INDEX (TS-Storage Phase E5). Every tenant write asks "which cutover, if any, governs
+    // this tenant's route?", and since E5 that question includes COMPLETED operations — a context bound to a
+    // database the tenant was moved off must stay refused long after orchestration finished.
+    //
+    // The unique index above cannot answer it: its filter excludes Completed by design, so a query spanning
+    // Completed would scan the whole table, and cutover history is precisely the part that accumulates.
+    // This one is filtered to exactly the statuses the fence asks about and ordered so the newest operation
+    // — the one describing where the tenant is now — is the first row of the seek.
+    builder.HasIndex(operation => new { operation.TenantId, operation.Id })
+      .HasDatabaseName("IX_TenantCutoverOperations_WriteGate")
+      .HasFilter("[Status] IN (N'Frozen', N'RoutingFlipped', N'Completed')");
     // Restrict, like backup and verification history: a cutover record is the evidence of when a tenant's
     // authoritative database changed, and the moment a row would be removed is when that matters most.
     builder.HasOne<TenantDatabase>()

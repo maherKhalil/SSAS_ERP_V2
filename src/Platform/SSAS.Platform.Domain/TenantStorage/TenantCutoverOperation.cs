@@ -226,6 +226,37 @@ public sealed class TenantCutoverOperation : AggregateRoot<long>, IAuditableEnti
     return Result.Success();
   }
 
+  // ORCHESTRATION IS FINISHED (ADR-020, TS-Storage Phase E5).
+  //
+  // Completed means: the flip committed, the Dedicated route is authoritative, post-flip verification
+  // succeeded, and no pre-traffic step remains. It deliberately does NOT mean every instance received an
+  // invalidation (they converge through the version check instead), that a target write has happened (an
+  // idle tenant must be able to finish), or that source data has been removed (retention is a separate
+  // operational capability that does not exist).
+  //
+  // REACHABLE ONLY FROM RoutingFlipped, so completion cannot be claimed for a cutover whose routing never
+  // moved. Idempotent, because finalisation is the step most likely to be retried after a lost response.
+  //
+  // No new persisted field: CompletedUtc already exists for exactly this, and ModifiedUtc/ModifiedBy carry
+  // the provenance.
+  public Result Complete(string actor, DateTimeOffset occurredUtc)
+  {
+    if (Status == TenantCutoverOperationStatus.Completed)
+    {
+      return Result.Success();
+    }
+
+    if (Status != TenantCutoverOperationStatus.RoutingFlipped)
+    {
+      return Result.Failure(TenantStorageErrors.CutoverNotFlipped);
+    }
+
+    Status = TenantCutoverOperationStatus.Completed;
+    CompletedUtc = occurredUtc.ToUniversalTime();
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
   // THE FIRST APPLICATION WRITE THAT LANDED ON THE NEW DATABASE.
   //
   // ADR-020 requires this as a recorded fact because it decides which rollback regime is available at all —

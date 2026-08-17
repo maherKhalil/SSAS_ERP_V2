@@ -239,14 +239,27 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // flip, the RoutingVersion increment and cache invalidation are the next slice and are absent here.
     services.AddOptions<TenantCutoverCopyOptions>()
       .Bind(configuration.GetSection(TenantCutoverCopyOptions.SectionName));
-    services.AddScoped<ITenantCutoverCopyService, TenantCutoverCopyService>();
+    // The concrete types are registered as well as their interfaces so the orchestrator can enter their
+    // UNDER-OWNERSHIP paths — which take a non-forgeable ownership token and therefore cannot sit on the
+    // Application-layer interfaces. Both registrations resolve the SAME scoped instance.
+    services.AddScoped<TenantCutoverCopyService>();
+    services.AddScoped<ITenantCutoverCopyService>(provider =>
+      provider.GetRequiredService<TenantCutoverCopyService>());
 
     // TS-Storage Phase E4: the authoritative routing flip (ADR-020).
     //
     // It receives the INVALIDATOR rather than the cache: a flip may evict after committing, and must not be
     // able to write cache entries. Invalidation is an optimisation — E2's version check is what makes every
     // other instance converge — so nothing here can undo a committed flip.
-    services.AddScoped<ITenantCutoverRoutingFlipService, TenantCutoverRoutingFlipService>();
+    services.AddScoped<TenantCutoverRoutingFlipService>();
+    services.AddScoped<ITenantCutoverRoutingFlipService>(provider =>
+      provider.GetRequiredService<TenantCutoverRoutingFlipService>());
+
+    // TS-Storage Phase E5: the orchestrator that composes E1-E4 (ADR-020).
+    //
+    // A SERVICE ONLY. No HTTP route, no hosted service, no scheduler — activating a one-way operation on
+    // customer data is a separate operational and security decision this slice does not take.
+    services.AddScoped<ITenantCutoverOrchestrator, TenantCutoverOrchestrator>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();

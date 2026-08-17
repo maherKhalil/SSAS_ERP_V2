@@ -111,8 +111,19 @@ public sealed class TenantCutoverOperationStore(
   // READ FROM THE DURABLE ROW, ALWAYS. This is the half of the fence that survives process loss: the drain
   // lock stops writers that are already in flight, and this stops the ones that arrive afterwards.
   //
-  // At most one row can match: the filtered unique index admits one active cutover per tenant, and the
-  // statuses below are a subset of that filter.
+  // COMPLETED COUNTS, TOO (TS-Storage Phase E5).
+  //
+  // Marking orchestration finished does not make a stale writer safe. A context created before the cutover
+  // still holds a connection to the SOURCE and still never re-resolves, so if this stopped matching at
+  // Completed the fence would return "no cutover holds this tenant" and admit that writer straight into the
+  // database the tenant was moved off — hours or days later. Completion is an orchestration milestone; the
+  // source is wrong forever.
+  //
+  // THE MOST RECENT ONE DECIDES. Unlike the active statuses, Completed is not unique per tenant: a tenant
+  // can be cut over more than once over its life, and each completed operation names the target that was
+  // authoritative at the time. The latest is the one describing where the tenant is now, so a writer bound
+  // to any earlier database — the original Shared one, or the target of a cutover before last — fails the
+  // target comparison and is refused.
   public Task<TenantCutoverWriteGate?> FindActiveWriteGateAsync(
     Guid tenantId,
     CancellationToken cancellationToken = default) =>
@@ -120,7 +131,9 @@ public sealed class TenantCutoverOperationStore(
       .AsNoTracking()
       .Where(operation => operation.TenantId == tenantId &&
         (operation.Status == TenantCutoverOperationStatus.Frozen ||
-         operation.Status == TenantCutoverOperationStatus.RoutingFlipped))
+         operation.Status == TenantCutoverOperationStatus.RoutingFlipped ||
+         operation.Status == TenantCutoverOperationStatus.Completed))
+      .OrderByDescending(operation => operation.Id)
       .Select(operation => new TenantCutoverWriteGate(
         operation.Id,
         operation.TenantId,
@@ -128,16 +141,81 @@ public sealed class TenantCutoverOperationStore(
         operation.TargetTenantDatabaseId,
         operation.Status,
         operation.PostCutoverWriteObservedUtc))
-      .SingleOrDefaultAsync(cancellationToken);
+      .FirstOrDefaultAsync(cancellationToken);
 
-  public Task<Result> RecordPostCutoverWriteAsync(
+  // WRITE-ONCE, AND A LOST RACE IS NOT A FAILURE (E4 review LOW-1).
+  //
+  // Two application writes can both be the "first" one from their own point of view: both read the gate
+  // before either recorded, so both attempt the update and one loses on the RowVersion token. Surfacing
+  // that as a concurrency conflict would fail a legitimate tenant write for a conflict that does not exist
+  // — the loser wanted the timestamp set, and it is set.
+  //
+  // NARROWLY, THOUGH. The conflict is only absorbed after RE-READING and confirming the observation is
+  // genuinely now recorded. A concurrency failure for any other reason still surfaces, because a blanket
+  // catch here would hide real contention on this row.
+  public async Task<Result> RecordPostCutoverWriteAsync(
+    long cutoverOperationId,
+    string actor,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      return await ApplyAsync(
+        cutoverOperationId,
+        operation => operation.RecordPostCutoverWrite(actor, clock.UtcNow),
+        cancellationToken);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+      // Detach so the re-read observes the database rather than the failed attempt still in the tracker.
+      foreach (var entry in dbContext.ChangeTracker.Entries<TenantCutoverOperation>().ToArray())
+      {
+        entry.State = EntityState.Detached;
+      }
+
+      var observed = await dbContext.TenantCutoverOperations
+        .AsNoTracking()
+        .Where(operation => operation.Id == cutoverOperationId)
+        .Select(operation => operation.PostCutoverWriteObservedUtc)
+        .SingleOrDefaultAsync(cancellationToken);
+
+      // Someone else recorded it: what this call wanted is true, so the write it fences may proceed.
+      return observed is not null
+        ? Result.Success()
+        : Result.Failure(TenantStorageErrors.CutoverConcurrencyConflict);
+    }
+  }
+
+  public Task<Result> CompleteAsync(
     long cutoverOperationId,
     string actor,
     CancellationToken cancellationToken = default) =>
     ApplyAsync(
       cutoverOperationId,
-      operation => operation.RecordPostCutoverWrite(actor, clock.UtcNow),
+      operation => operation.Complete(actor, clock.UtcNow),
       cancellationToken);
+
+  // At most one row can match: the filtered unique index admits one active cutover per tenant.
+  public Task<TenantCutoverOperationRecord?> FindActiveForTenantAsync(
+    Guid tenantId,
+    CancellationToken cancellationToken = default) =>
+    dbContext.TenantCutoverOperations
+      .AsNoTracking()
+      .Where(operation => operation.TenantId == tenantId &&
+        (operation.Status == TenantCutoverOperationStatus.Preparing ||
+         operation.Status == TenantCutoverOperationStatus.Frozen ||
+         operation.Status == TenantCutoverOperationStatus.RoutingFlipped))
+      .Select(operation => new TenantCutoverOperationRecord(
+        operation.Id,
+        operation.TenantId,
+        operation.SourceTenantDatabaseId,
+        operation.TargetTenantDatabaseId,
+        operation.Status,
+        operation.FreezeRequestedUtc,
+        operation.FrozenUtc,
+        operation.FreezeReleasedUtc,
+        operation.FailureSummary))
+      .SingleOrDefaultAsync(cancellationToken)!;
 
   public Task<Result> RequestFreezeAsync(
     long cutoverOperationId,

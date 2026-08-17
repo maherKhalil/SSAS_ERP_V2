@@ -42,6 +42,21 @@ internal static class TenantCutoverOperationLock
     CancellationToken cancellationToken = default) =>
     TryAcquireAsync(connection, null, cutoverOperationId, "Session", timeout, cancellationToken);
 
+  // THE SAME ACQUISITION, RETURNING PROOF OF IT (TS-Storage Phase E5).
+  //
+  // The token exists so an "under ownership" entry point can REQUIRE ownership in its signature rather than
+  // trusting a caller to have taken it. It cannot be constructed outside this type, so the only way to hold
+  // one is to have actually won the lock — which is what stops the orchestrator's inner calls from either
+  // re-acquiring (the E4 self-deadlock) or proceeding without ownership at all.
+  public static async Task<TenantCutoverOwnership?> AcquireForSessionAsync(
+    SqlConnection connection,
+    long cutoverOperationId,
+    TimeSpan timeout,
+    CancellationToken cancellationToken = default) =>
+    await TryAcquireForSessionAsync(connection, cutoverOperationId, timeout, cancellationToken)
+      ? TenantCutoverOwnership.Grant(cutoverOperationId)
+      : null;
+
   // Released by the caller's commit or rollback. Used by release, whose whole unit of work is one short
   // transaction.
   public static Task<bool> TryAcquireForTransactionAsync(
@@ -81,4 +96,22 @@ internal static class TenantCutoverOperationLock
     // the operation, and a participant that does not own it does not proceed.
     return Convert.ToInt32(result.Value, CultureInfo.InvariantCulture) is 0 or 1;
   }
+}
+
+// PROOF THAT THE HOLDER OWNS A CUTOVER OPERATION (ADR-020, TS-Storage Phase E5).
+//
+// NOT FORGEABLE: the only constructor is private and the only factory is called by the lock helper after a
+// successful acquisition, so a method that takes one in its signature genuinely cannot be entered without
+// ownership. That turns "the caller must already hold the lock" from a comment into a compile-time demand.
+//
+// It carries no connection and no disposal responsibility. Ownership lives and dies with the SESSION that
+// took it — the orchestrator's own connection — so this is evidence, not a resource; releasing is closing
+// that connection, which a dying process does for free.
+internal sealed class TenantCutoverOwnership
+{
+  private TenantCutoverOwnership(long cutoverOperationId) => CutoverOperationId = cutoverOperationId;
+
+  public long CutoverOperationId { get; }
+
+  internal static TenantCutoverOwnership Grant(long cutoverOperationId) => new(cutoverOperationId);
 }

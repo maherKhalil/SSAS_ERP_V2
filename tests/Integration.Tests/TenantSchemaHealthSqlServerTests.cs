@@ -680,7 +680,8 @@ public sealed class TenantSchemaHealthSqlServerTests
         new TenantDatabaseTrafficGate(TenantDatabaseHealthFreshness.Default),
         new TestUser(),
         new FixedTenant(tenantId),
-        new TestClock());
+        new TestClock(),
+        UnfencedTenantWrites.Instance);
     }
 
     public async Task<long> RegisterAsync(

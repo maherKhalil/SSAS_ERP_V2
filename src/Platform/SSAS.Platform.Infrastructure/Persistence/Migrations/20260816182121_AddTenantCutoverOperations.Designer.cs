@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SSAS.Platform.Infrastructure.Persistence;
 
@@ -12,9 +13,11 @@ using SSAS.Platform.Infrastructure.Persistence;
 namespace SSAS.Platform.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(PlatformDbContext))]
-    partial class PlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260816182121_AddTenantCutoverOperations")]
+    partial class AddTenantCutoverOperations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1286,10 +1289,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_TenantCutoverOperations_ActiveTenant")
                         .HasFilter("[Status] IN (N'Preparing', N'Frozen', N'RoutingFlipped')");
 
-                    b.HasIndex("TenantId", "Id")
-                        .HasDatabaseName("IX_TenantCutoverOperations_WriteGate")
-                        .HasFilter("[Status] IN (N'Frozen', N'RoutingFlipped', N'Completed')");
-
                     b.ToTable("TenantCutoverOperations", "platform", t =>
                         {
                             t.HasCheckConstraint("CK_TenantCutoverOperations_DistinctEndpoints", "[SourceTenantDatabaseId] <> [TargetTenantDatabaseId]");
@@ -1540,14 +1539,10 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
 
                     b.ToTable("TenantDatabaseAssignments", "platform", t =>
                         {
-                            t.HasTrigger("TR_TenantDatabaseAssignments_EnforceRoutingVersion");
-
                             t.HasCheckConstraint("CK_TenantDatabaseAssignments_EndedUtc", "[EndedUtc] IS NULL OR [EndedUtc] >= [AssignedUtc]");
 
                             t.HasCheckConstraint("CK_TenantDatabaseAssignments_RoutingVersion", "[RoutingVersion] > 0");
                         });
-
-                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("SSAS.Platform.Domain.TenantStorage.TenantDatabaseBackupPolicy", b =>

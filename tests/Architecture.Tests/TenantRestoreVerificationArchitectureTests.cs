@@ -200,15 +200,48 @@ public sealed class TenantRestoreVerificationArchitectureTests
     }
   }
 
-  // Phase D is a foundation slice. A retention worker, an artifact-deletion component or a Phase E cutover
-  // guard appearing here would mean scope had moved without a decision.
+  // Retention workers, artifact deletion and point-in-time restore remain OUT OF SCOPE. The recovery
+  // activation gate is now IN scope BY DECISION (TS-Storage Phase E) — and is admitted by an exhaustive
+  // allowlist rather than by dropping the term, so a SECOND activation or cutover type still trips this
+  // guard until someone decides it belongs.
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public void Phase_d_introduces_no_retention_deletion_or_cutover_component()
+  public void Tenant_storage_introduces_no_retention_deletion_or_undecided_cutover_component()
   {
     var forbidden = new[]
     {
       "Retention", "ArtifactDeletion", "Cutover", "Activation", "PointInTime", "Stopat"
+    };
+
+    // The Phase E recovery activation decision and its inputs, the Phase E1 cutover operation and freeze,
+    // and the Phase E3 copy engine. Exact names, admitted one at a time by decision — never a namespace or
+    // a pattern, so a SECOND cutover or activation component still trips this guard.
+    var decided = new[]
+    {
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverRoutingFlipService",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyService",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyPlan",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverTablePlan",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverTableCopier",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyValidator",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverTableValidation",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyOptions",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverOperationLock",
+      "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivation",
+      "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationInputs",
+      "SSAS.Platform.Domain.TenantStorage.TenantDatabaseRecoveryActivationDecision",
+      "SSAS.Platform.Domain.TenantStorage.TenantCutoverOperation",
+      "SSAS.Platform.Domain.TenantStorage.TenantCutoverOperationStatus",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverOperationStore",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverWriteFence",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverFreezeService",
+      "SSAS.Platform.Infrastructure.TenantStorage.ITenantCutoverFreezeService",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverFreezeOptions",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverLockResource",
+      // TS-Storage Phase E5: the orchestrator that composes E1-E4, and the non-forgeable proof of
+      // operation ownership that lets its inner calls skip re-acquiring the lock they already hold.
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverOrchestrator",
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverOwnership"
     };
 
     // SCOPED TO TENANT STORAGE, deliberately. An unscoped sweep matches unrelated subsystems — localization
@@ -221,6 +254,7 @@ public sealed class TenantRestoreVerificationArchitectureTests
       .Where(type => type.Namespace?.Contains("TenantStorage", StringComparison.Ordinal) == true)
       .Where(type => forbidden.Any(term => type.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))
       .Select(type => type.FullName)
+      .Where(name => !decided.Contains(name, StringComparer.Ordinal))
       .ToArray();
 
     Assert.Empty(offenders);

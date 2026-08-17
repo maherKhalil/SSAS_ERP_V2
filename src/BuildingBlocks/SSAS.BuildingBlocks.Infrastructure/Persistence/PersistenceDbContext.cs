@@ -46,10 +46,26 @@ public abstract class PersistenceDbContext(
     }
   }
 
-  public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+  // AUDITING AND THE TENANT GUARD HOOK THE INNERMOST OVERLOADS, and deliberately not the convenience ones.
+  //
+  // EF Core's own chain is `SaveChanges()` -> `SaveChanges(bool)` and `SaveChangesAsync(ct)` ->
+  // `SaveChangesAsync(bool, ct)`, both by virtual dispatch. Overriding only the convenience overloads — as
+  // this type previously did for the async pair — leaves `SaveChanges()`, `SaveChanges(bool)` and
+  // `SaveChangesAsync(bool, ct)` writing without audit stamps or the tenant-ownership guard. Hooking the
+  // two innermost overloads covers all four entry points and applies the rules exactly once, because the
+  // convenience overloads reach the database only through these.
+  public override Task<int> SaveChangesAsync(
+    bool acceptAllChangesOnSuccess,
+    CancellationToken cancellationToken = default)
   {
     ApplyPersistenceRules();
-    return base.SaveChangesAsync(cancellationToken);
+    return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+  }
+
+  public override int SaveChanges(bool acceptAllChangesOnSuccess)
+  {
+    ApplyPersistenceRules();
+    return base.SaveChanges(acceptAllChangesOnSuccess);
   }
 
   private void ConfigureTenantFilter<TEntity>(ModelBuilder modelBuilder)

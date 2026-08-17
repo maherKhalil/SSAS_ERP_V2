@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SSAS.Platform.Infrastructure.Persistence;
 
@@ -12,9 +13,11 @@ using SSAS.Platform.Infrastructure.Persistence;
 namespace SSAS.Platform.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(PlatformDbContext))]
-    partial class PlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260817051112_AddRoutingVersionGuard")]
+    partial class AddRoutingVersionGuard
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1285,10 +1288,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("UX_TenantCutoverOperations_ActiveTenant")
                         .HasFilter("[Status] IN (N'Preparing', N'Frozen', N'RoutingFlipped')");
-
-                    b.HasIndex("TenantId", "Id")
-                        .HasDatabaseName("IX_TenantCutoverOperations_WriteGate")
-                        .HasFilter("[Status] IN (N'Frozen', N'RoutingFlipped', N'Completed')");
 
                     b.ToTable("TenantCutoverOperations", "platform", t =>
                         {

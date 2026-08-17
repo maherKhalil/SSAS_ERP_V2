@@ -77,6 +77,11 @@ public sealed class PlatformDbContext(
   public DbSet<TenantDatabaseRestoreVerificationRun> TenantDatabaseRestoreVerificationRuns =>
     Set<TenantDatabaseRestoreVerificationRun>();
 
+  // Shared → Dedicated cutover operations (ADR-020). Durable because the freeze must survive the process
+  // that established it, and because ADR-020 requires the flip transaction to cover this record alongside
+  // the assignment change and the version increment.
+  public DbSet<TenantCutoverOperation> TenantCutoverOperations => Set<TenantCutoverOperation>();
+
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
     // Only PLATFORM configurations. Company moved to TenantDbContext (ADR-017) and its configuration now

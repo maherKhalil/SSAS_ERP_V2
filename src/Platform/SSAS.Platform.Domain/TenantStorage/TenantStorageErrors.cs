@@ -336,4 +336,163 @@ public static class TenantStorageErrors
 
   public static readonly Error RestoreVerificationNotEligible =
     new("TenantStorage.RestoreVerificationNotEligible", "The tenant database is no longer eligible for platform restore verification.");
+
+  // ---- Recovery-gated Dedicated activation (ADR-017 cutover ordering, ADR-022 §18, TS-Storage Phase E).
+  //
+  // ONE ERROR PER REFUSAL, because each one sends an operator somewhere different. Collapsing them into a
+  // single "not ready" would leave the most common case — a verification that ran against a full backup that
+  // has since been superseded — indistinguishable from a database with no backups at all.
+
+  public static readonly Error RecoveryActivationEvidenceUnavailable =
+    new("TenantStorage.RecoveryActivationEvidenceUnavailable", "No recovery activation evidence exists for the requested tenant database.");
+
+  public static readonly Error RecoveryActivationReadinessUnknown =
+    new("TenantStorage.RecoveryActivationReadinessUnknown", "Recovery readiness has not been established for this tenant database, so activation cannot be authorised.");
+
+  public static readonly Error RecoveryActivationUnprotected =
+    new("TenantStorage.RecoveryActivationUnprotected", "The tenant database has no usable recovery position, so activation is refused.");
+
+  public static readonly Error RecoveryActivationDegraded =
+    new("TenantStorage.RecoveryActivationDegraded", "The tenant database's recovery evidence is degraded, so activation is refused.");
+
+  public static readonly Error RecoveryActivationRecoveryModelInvalid =
+    new("TenantStorage.RecoveryActivationRecoveryModelInvalid", "The tenant database's recovery model cannot support the protection its policy requires, so activation is refused.");
+
+  public static readonly Error RecoveryActivationVerificationOverdue =
+    new("TenantStorage.RecoveryActivationVerificationOverdue", "The tenant database's restore verification is overdue under the active policy, so activation is refused.");
+
+  public static readonly Error RecoveryActivationBaselineUnavailable =
+    new("TenantStorage.RecoveryActivationBaselineUnavailable", "No current full backup baseline could be identified for the tenant database, so activation is refused.");
+
+  // PROTECTED IS NOT SUFFICIENT. Where a policy sets no verification interval, `Protected` is reached
+  // without any restore ever having been performed (ADR-022 §6) — and moving live traffic onto a database
+  // whose recoverability has never been demonstrated is exactly what this gate exists to prevent.
+  public static readonly Error RecoveryActivationRestoreVerificationRequired =
+    new("TenantStorage.RecoveryActivationRestoreVerificationRequired", "No successful restore verification exists for the tenant database, so activation is refused.");
+
+  public static readonly Error RecoveryActivationRestoreVerificationSuperseded =
+    new("TenantStorage.RecoveryActivationRestoreVerificationSuperseded", "The successful restore verification exercised a superseded baseline that is no longer the current recovery path, so activation is refused.");
+
+  public static readonly Error RecoveryActivationRestoreVerificationDepthInsufficient =
+    new("TenantStorage.RecoveryActivationRestoreVerificationDepthInsufficient", "The successful restore verification did not exercise the recovery depth the active policy requires, so activation is refused.");
+
+  public static readonly Error RecoveryActivationRestoreVerificationStale =
+    new("TenantStorage.RecoveryActivationRestoreVerificationStale", "The successful restore verification has aged past the interval the active policy requires, so activation is refused.");
+
+  // ---- Shared → Dedicated cutover operation and tenant write freeze (ADR-020, TS-Storage Phase E1).
+
+  public static readonly Error ActorRequired =
+    new("TenantStorage.ActorRequired", "An actor is required to record a tenant storage operation.");
+
+  public static readonly Error CutoverTargetNotEligible =
+    new("TenantStorage.CutoverTargetNotEligible", "The cutover target must be a distinct platform-managed dedicated tenant database.");
+
+  public static readonly Error CutoverSourceNotEligible =
+    new("TenantStorage.CutoverSourceNotEligible", "The cutover source must be the platform-managed database the tenant is currently assigned to.");
+
+  public static readonly Error CutoverOperationNotFound =
+    new("TenantStorage.CutoverOperationNotFound", "No cutover operation exists for the requested identifier.");
+
+  public static readonly Error CutoverOperationNotPreparing =
+    new("TenantStorage.CutoverOperationNotPreparing", "The cutover operation is not in a state that permits this freeze transition.");
+
+  public static readonly Error CutoverAlreadyActive =
+    new("TenantStorage.CutoverAlreadyActive", "An active cutover operation already exists for this tenant.");
+
+  public static readonly Error CutoverAlreadyFlipped =
+    new("TenantStorage.CutoverAlreadyFlipped", "Routing has already moved to the cutover target, so the source freeze cannot be released.");
+
+  // THE DRAIN BUDGET EXPIRED. Deliberately distinct from a frozen refusal: nothing was frozen, and the
+  // operation is terminal rather than retryable in place.
+  public static readonly Error CutoverFreezeTimedOut =
+    new("TenantStorage.CutoverFreezeTimedOut", "Existing tenant writes did not drain within the configured cutover freeze timeout.");
+
+  // What an application write sees while a cutover holds the tenant. A CONTROLLED, VISIBLE maintenance
+  // outcome rather than a generic error (ADR-020 freeze failure safety).
+  public static readonly Error TenantWritesFrozen =
+    new("TenantStorage.TenantWritesFrozen", "Writes for this tenant are temporarily frozen by an in-progress storage cutover.");
+
+  // ---- Shared → Dedicated copy and exact validation (ADR-020, TS-Storage Phase E3).
+  //
+  // EVERY ONE OF THESE LEAVES THE OPERATION FROZEN. A copy that cannot prove it succeeded must not release
+  // the tenant, mark progress, or advance the operation: retrying and abandoning are orchestration
+  // decisions, and the durable state has to still be true when that decision is made.
+
+  // The copy runs only inside an established freeze. Preparing means the source is still writable, and the
+  // post-flip states mean the source is no longer the tenant's database.
+  public static readonly Error CutoverOperationNotFrozen =
+    new("TenantStorage.CutoverOperationNotFrozen", "The cutover operation is not frozen, so its source cannot be copied.");
+
+  // Another instance is executing this cutover. NOT a failure of the copy — the ownership invariant worked.
+  public static readonly Error CutoverCopyOwnershipNotAcquired =
+    new("TenantStorage.CutoverCopyOwnershipNotAcquired", "Another instance is already executing this cutover operation.");
+
+  // A release was attempted while a copy holds the operation. Refused: unfreezing under a running copy
+  // would let source writes resume against data the copy is midway through reading.
+  public static readonly Error CutoverReleaseBlockedByActiveCopy =
+    new("TenantStorage.CutoverReleaseBlockedByActiveCopy", "The cutover freeze cannot be released while a copy is executing against this operation.");
+
+  // The dedicated target holds rows belonging to a DIFFERENT tenant. Fails closed and copies nothing: a
+  // dedicated database is dedicated, and this one is not what the registry says it is.
+  public static readonly Error CutoverTargetContaminated =
+    new("TenantStorage.CutoverTargetContaminated", "The cutover target already contains rows belonging to another tenant.");
+
+  // The target holds rows for the requested tenant that are not an exact copy of the source. Deliberately
+  // NOT repaired and NOT overwritten — a partial or divergent target is evidence that something is wrong,
+  // and deleting it to make progress would destroy the evidence along with the data.
+  public static readonly Error CutoverTargetInconsistent =
+    new("TenantStorage.CutoverTargetInconsistent", "The cutover target already contains tenant rows that are not an exact copy of the source.");
+
+  public static readonly Error CutoverCopyValidationFailed =
+    new("TenantStorage.CutoverCopyValidationFailed", "The copied tenant data did not validate exactly against the source.");
+
+  public static readonly Error CutoverCopyFailed =
+    new("TenantStorage.CutoverCopyFailed", "The tenant data copy did not complete.");
+
+  // Source and target must be at the same, current tenant schema. Copying across a schema difference would
+  // produce a target that validates against nothing.
+  public static readonly Error CutoverSchemaIncompatible =
+    new("TenantStorage.CutoverSchemaIncompatible", "The cutover source and target tenant schemas are not both current, so the copy is refused.");
+
+  // The tenant model contains a foreign-key cycle, so no safe insertion order exists. Reported rather than
+  // resolved by disabling constraints: turning off referential integrity to make a copy fit is how a copy
+  // silently produces a database the application cannot trust.
+  public static readonly Error CutoverCopyOrderUndecidable =
+    new("TenantStorage.CutoverCopyOrderUndecidable", "The tenant model contains a foreign-key cycle, so a safe copy order cannot be established.");
+
+  // ---- Atomic routing flip (ADR-020, TS-Storage Phase E4).
+
+  public static readonly Error CutoverNotFlipped =
+    new("TenantStorage.CutoverNotFlipped", "The cutover operation has not moved routing to its target.");
+
+  // Another instance changed the operation or the assignment between this flip reading them and committing.
+  // A CONTROLLED refusal rather than a raw concurrency exception: exactly one flip may win, and the loser
+  // needs to be able to tell that from a failure.
+  public static readonly Error CutoverConcurrencyConflict =
+    new("TenantStorage.CutoverConcurrencyConflict", "The cutover operation changed while the routing flip was being applied.");
+
+  // A routing version that did not advance. Refused in the application AND by a database guard, because an
+  // alternate writer would otherwise be able to make a cached route valid again.
+  public static readonly Error RoutingVersionNotAdvancing =
+    new("TenantStorage.RoutingVersionNotAdvancing", "A routing change must advance the tenant's routing version.");
+
+  // The flip committed, but evicting this process's cached route afterwards did not succeed. NOT a routing
+  // failure: routing is authoritative and every instance converges on the next resolution through the
+  // version check (ADR-020). Reported so an operator can see that convergence here is by TTL rather than
+  // immediate.
+  public static readonly Error CutoverInvalidationIncomplete =
+    new("TenantStorage.CutoverInvalidationIncomplete", "Routing was flipped successfully, but the local route cache could not be invalidated.");
+
+  // ---- Version-aware routing (ADR-020 "Resolver cache", TS-Storage Phase E2).
+
+  // THE AUTHORITATIVE ROUTING VERSION COULD NOT BE ESTABLISHED, so no cached route can be shown to still be
+  // current. Deliberately NOT ActiveAssignmentMissing (which states the tenant has no assignment — a fact
+  // this outcome specifically failed to determine) and NOT TenantContextMissing (which is about the caller,
+  // not the registry). Conflating them would send an operator to look at the tenant's configuration when the
+  // Platform database is what is unreachable.
+  //
+  // It exists so that "cannot check" cannot be reported as "unchanged": serving a remembered route here is
+  // how a tenant's writes land in the pre-cutover database.
+  public static readonly Error RoutingVersionUnavailable =
+    new("TenantStorage.RoutingVersionUnavailable", "The authoritative tenant routing version could not be read, so routing is refused rather than served from cache.");
 }

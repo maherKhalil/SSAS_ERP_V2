@@ -22,6 +22,12 @@ internal static class TenantDbContextBuilder
   // The deployed Tenant migration catalog — EF's own list, so it cannot drift from what is shipped.
   public static IReadOnlyList<string> KnownMigrations { get; } = ReadKnownMigrations();
 
+  // The tenant model itself, for components that must reason about what a tenant's data IS rather than
+  // query it — the cutover copy engine derives its table manifest, column lists and foreign-key ordering
+  // from exactly this (ADR-020, TS-Storage Phase E3). Built once from the same context type the application
+  // uses, so a manifest can never describe a different model from the one that is mapped.
+  public static Microsoft.EntityFrameworkCore.Metadata.IModel TenantModel { get; } = ReadTenantModel();
+
   public static TenantDbContext ForConnection(SqlConnection connection)
   {
     ArgumentNullException.ThrowIfNull(connection);
@@ -51,6 +57,18 @@ internal static class TenantDbContextBuilder
 
     return new TenantDbContext(
       options, MaintenanceUser.Instance, SchemaProbeTenant.Instance, MaintenanceClock.Instance);
+  }
+
+  private static Microsoft.EntityFrameworkCore.Metadata.IModel ReadTenantModel()
+  {
+    // Model metadata only. EF builds the model without opening the connection, so the placeholder string is
+    // never dialled.
+    var options = new DbContextOptionsBuilder<TenantDbContext>()
+      .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
+      .Options;
+    using var context = new TenantDbContext(
+      options, MaintenanceUser.Instance, MaintenanceTenant.Instance, MaintenanceClock.Instance);
+    return context.Model;
   }
 
   private static IReadOnlyList<string> ReadKnownMigrations()

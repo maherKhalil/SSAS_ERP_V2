@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.Abstractions.Queries;
@@ -120,6 +121,15 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantDatabaseRecoveryReadinessWriter, TenantDatabaseRecoveryReadinessWriter>();
     services.AddScoped<ITenantDatabaseBackupReadRepository, TenantDatabaseBackupReadRepository>();
 
+    // TS-Storage Phase E: the recovery-gated Dedicated activation boundary.
+    //
+    // READ AND DECIDE ONLY. The gate authorises; it performs no freeze, copy, validation, routing flip or
+    // invalidation, and registering it makes nothing writable that was not writable before. A cutover
+    // orchestration calls it between validation and the routing flip.
+    services.AddScoped<ITenantDatabaseRecoveryActivationReadRepository,
+      TenantDatabaseRecoveryActivationReadRepository>();
+    services.AddScoped<ITenantDatabaseRecoveryActivationGate, TenantDatabaseRecoveryActivationGate>();
+
     // TS-Backup Phase B: single-database SQL Server backup execution.
     //
     // The backup connection factory is registered SEPARATELY from ITenantDatabaseConnectionFactory and the
@@ -208,11 +218,84 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // than being new-ed up twice.
     services.AddScoped<ITenantDatabaseBackupDestinationResolver, TenantDatabaseBackupDestinationResolver>();
 
+    // TS-Storage Phase E1: the durable cutover operation and the tenant write freeze (ADR-020).
+    //
+    // The fence is registered BEFORE the context factory that consumes it, and there is no configuration
+    // switch that disables it: a freeze that could be turned off at the write boundary would not be a
+    // freeze. Only the timeouts are configurable.
+    services.AddOptions<TenantCutoverFreezeOptions>()
+      .Bind(configuration.GetSection(TenantCutoverFreezeOptions.SectionName));
+    services.AddScoped<ITenantCutoverOperationStore>(provider => new TenantCutoverOperationStore(
+      provider.GetRequiredService<PlatformDbContext>(),
+      provider.GetRequiredService<IDateTimeProvider>(),
+      provider.GetRequiredService<IOptions<TenantCutoverCopyOptions>>().Value.ReleaseOwnershipTimeout));
+    services.AddScoped<ITenantWriteFence, TenantCutoverWriteFence>();
+    services.AddScoped<ITenantCutoverFreezeService, TenantCutoverFreezeService>();
+
+    // TS-Storage Phase E3: the Shared → Dedicated copy primitive (ADR-020).
+    //
+    // A SERVICE ONLY. Nothing schedules it, nothing exposes it over HTTP, and it advances no cutover state:
+    // it copies an already-frozen operation's tenant data, validates it exactly, and reports. The routing
+    // flip, the RoutingVersion increment and cache invalidation are the next slice and are absent here.
+    services.AddOptions<TenantCutoverCopyOptions>()
+      .Bind(configuration.GetSection(TenantCutoverCopyOptions.SectionName));
+    // The concrete types are registered as well as their interfaces so the orchestrator can enter their
+    // UNDER-OWNERSHIP paths — which take a non-forgeable ownership token and therefore cannot sit on the
+    // Application-layer interfaces. Both registrations resolve the SAME scoped instance.
+    services.AddScoped<TenantCutoverCopyService>();
+    services.AddScoped<ITenantCutoverCopyService>(provider =>
+      provider.GetRequiredService<TenantCutoverCopyService>());
+
+    // TS-Storage Phase E4: the authoritative routing flip (ADR-020).
+    //
+    // It receives the INVALIDATOR rather than the cache: a flip may evict after committing, and must not be
+    // able to write cache entries. Invalidation is an optimisation — E2's version check is what makes every
+    // other instance converge — so nothing here can undo a committed flip.
+    services.AddScoped<TenantCutoverRoutingFlipService>();
+    services.AddScoped<ITenantCutoverRoutingFlipService>(provider =>
+      provider.GetRequiredService<TenantCutoverRoutingFlipService>());
+
+    // TS-Storage Phase E5: the orchestrator that composes E1-E4 (ADR-020).
+    //
+    // A SERVICE ONLY. No HTTP route, no hosted service, no scheduler — activating a one-way operation on
+    // customer data is a separate operational and security decision this slice does not take.
+    services.AddScoped<ITenantCutoverOrchestrator, TenantCutoverOrchestrator>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());
     services.AddScoped<ITenantUnitOfWork, TenantUnitOfWork>();
-    services.AddScoped<ITenantDatabaseResolver, TenantDatabaseResolver>();
+
+    // TS-Storage Phase E2: version-aware routing (ADR-020 "Resolver cache").
+    //
+    // ONE RESOLVER REACHES CONSUMERS. `TenantDatabaseResolver` is registered as its CONCRETE type and is
+    // deliberately NOT registered against ITenantDatabaseResolver: everything that resolves routing —
+    // TenantDbContextFactory, the route provider, every future cutover component — receives the
+    // version-aware decorator, because a second registration would be a second routing mechanism, and the
+    // one that skipped the version check would be the one that wrote to the wrong database.
+    //
+    // THE CACHE IS ONE SINGLETON WITH TWO FACES. Registered once by concrete type and resolved through for
+    // both interfaces (the Phase D run-store precedent), so an invalidation and a read cannot land on
+    // different dictionaries. Registering the two interfaces independently would compile, start, pass a
+    // smoke test, and silently never invalidate anything.
+    //
+    // The reader is SCOPED because it reads through the scoped PlatformDbContext; the cache is a SINGLETON
+    // because a per-request cache would expire before it was ever read.
+    services.AddOptions<TenantRoutingCacheOptions>()
+      .Bind(configuration.GetSection(TenantRoutingCacheOptions.SectionName));
+    services.AddSingleton<TenantRoutingMemoryCache>();
+    services.AddSingleton<ITenantRoutingCache>(provider =>
+      provider.GetRequiredService<TenantRoutingMemoryCache>());
+    services.AddSingleton<ITenantRoutingCacheInvalidator>(provider =>
+      provider.GetRequiredService<TenantRoutingMemoryCache>());
+    services.AddScoped<ITenantRoutingVersionReader, TenantRoutingVersionReader>();
+    services.AddScoped<TenantDatabaseResolver>();
+    services.AddScoped<ITenantDatabaseResolver>(provider => new VersionAwareTenantDatabaseResolver(
+      provider.GetRequiredService<TenantDatabaseResolver>(),
+      provider.GetRequiredService<ITenantRoutingVersionReader>(),
+      provider.GetRequiredService<ITenantRoutingCache>(),
+      provider.GetRequiredService<IOptions<TenantRoutingCacheOptions>>().Value,
+      provider.GetRequiredService<IDateTimeProvider>()));
     services.AddScoped<CurrentTenantDatabaseRouteProvider>();
     services.AddSingleton<ITenantDatabaseConnectionFactory, TenantDatabaseConnectionFactory>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();

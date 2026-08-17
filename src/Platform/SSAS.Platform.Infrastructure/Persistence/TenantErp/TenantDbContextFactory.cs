@@ -25,15 +25,18 @@ public sealed class TenantDbContextFactory(
   ITenantDatabaseTrafficGate trafficGate,
   ICurrentUser currentUser,
   ICurrentTenant currentTenant,
-  IDateTimeProvider dateTimeProvider) : ITenantDbContextFactory
+  IDateTimeProvider dateTimeProvider,
+  ITenantWriteFence writeFence) : ITenantDbContextFactory
 {
   public async Task<Result<TenantDbContext>> CreateAsync(
     Guid tenantId,
     CancellationToken cancellationToken = default)
   {
-    // Routing is resolved on EVERY context creation, never cached and never captured at registration
-    // (ADR-017 binding lifetime rules 1 and 2). RoutingVersion is carried on the route for the day a
-    // cache exists; until then freshness is guaranteed by simply reading current state each time.
+    // Routing is resolved on EVERY context creation, never captured at registration (ADR-017 binding
+    // lifetime rules 1 and 2). Since TS-Storage Phase E2 the injected resolver is the version-aware one, so
+    // this call may be answered from a process-local entry — but only one whose RoutingVersion still matches
+    // the authoritative value, which is read on every resolution. A context therefore cannot be built on a
+    // route that has been superseded, and a Platform outage refuses rather than serving a remembered route.
     var route = await resolver.ResolveAsync(tenantId, cancellationToken);
     if (route.IsFailure)
     {
@@ -67,6 +70,12 @@ public sealed class TenantDbContextFactory(
 
     // The context owns the connection, so disposing the context closes it. Without this a routed context
     // would leak one pooled connection per request.
-    return Result.Success(new TenantDbContext(options, currentUser, currentTenant, dateTimeProvider));
+    //
+    // The route's TenantDatabaseId travels with the context (TS-Storage Phase E4) so the write fence can
+    // tell a writer bound to the cutover SOURCE from one bound to the TARGET. It is captured here, at the
+    // moment routing was resolved, which is precisely what makes a context created before a flip still
+    // identify itself as the source afterwards.
+    return Result.Success(new TenantDbContext(
+      options, currentUser, currentTenant, dateTimeProvider, writeFence, route.Value.TenantDatabaseId));
   }
 }

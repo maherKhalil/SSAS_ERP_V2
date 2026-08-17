@@ -3,8 +3,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
+using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Authentication;
+using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Application.TenantStorage;
@@ -350,6 +353,219 @@ public sealed class TenantBranchLifecycleSqlServerTests
     Assert.Equal(1, await fixture.BranchRowCountAsync());
   }
 
+  // ================= B1b: MANDATORY USER BRANCH ASSIGNMENTS =================
+
+  // ---- A + B. A NORMAL USER MUST NAME AT LEAST ONE BRANCH, and nothing is persisted when they do not.
+  [Fact]
+  public async Task A_normal_user_cannot_be_created_without_branches_and_can_be_with_one()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var branch = (await fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+
+    var identityId = await fixture.SeedIdentityAsync();
+    var refused = await fixture.CreateUser().HandleAsync(
+      new CreateTenantUserMembershipCommand(identityId, "none@example.test", "No Branch", [], []));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(BranchErrors.UserMustHaveAtLeastOneBranch.Code, refused.Error.Code);
+    Assert.Equal(0, await fixture.UserRowCountAsync("none@example.test"));
+
+    var created = await fixture.CreateUser().HandleAsync(
+      new CreateTenantUserMembershipCommand(identityId, "ok@example.test", "One Branch", [], [branch.BranchId]));
+
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+    Assert.Equal(1, await fixture.AccessRowCountAsync(created.Value));
+  }
+
+  // ---- D + E + F. ONE BAD BRANCH REJECTS THE WHOLE REQUEST, AND NO USER SURVIVES IT.
+  [Theory]
+  [InlineData("inactive")]
+  [InlineData("foreign")]
+  [InlineData("unknown")]
+  public async Task One_unassignable_branch_rolls_the_whole_user_creation_back(string flavour)
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var good = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var spare = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    var bad = flavour switch
+    {
+      "inactive" => await fixture.DeactivatedBranchAsync(spare),
+      "foreign" => (await fixture.ServiceForTenantB().CreateAsync(
+        new CreateBranchRequest("XXX", "Foreign", true))).Value.BranchId,
+      _ => Guid.NewGuid()
+    };
+
+    var identityId = await fixture.SeedIdentityAsync();
+    var result = await fixture.CreateUser().HandleAsync(
+      new CreateTenantUserMembershipCommand(
+        identityId, "partial@example.test", "Partial", [], [good.BranchId, bad]));
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(BranchErrors.AssignmentInvalid.Code, result.Error.Code);
+
+    // NO PARTIAL USER, and no partial assignment either.
+    Assert.Equal(0, await fixture.UserRowCountAsync("partial@example.test"));
+  }
+
+  // ---- H + I + J. THE ADMINISTRATOR EXEMPTION, end to end.
+  [Fact]
+  public async Task An_administrator_is_created_without_branches_and_sees_every_active_branch()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+
+    // Created BEFORE the tenant has any branch at all — the case that makes the exemption necessary.
+    var roleId = await fixture.SeedAdministratorRoleAsync();
+    var identityId = await fixture.SeedIdentityAsync();
+    var created = await fixture.CreateUser().HandleAsync(
+      new CreateTenantUserMembershipCommand(identityId, "newadmin@example.test", "Admin", [roleId], []));
+
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+    Assert.Equal(0, await fixture.AccessRowCountAsync(created.Value));
+
+    // Branches created afterwards appear in scope with no backfill of access rows.
+    var riyadh = (await fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var jeddah = (await fixture.Service().CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    var scope = await fixture.Resolver().GetPermittedBranchesAsync(fixture.TenantA, created.Value);
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+    Assert.Equal(
+      new[] { jeddah.BranchId, riyadh.BranchId }.OrderBy(id => id),
+      scope.Value.Select(branch => branch.BranchId).OrderBy(id => id));
+    Assert.Equal(0, await fixture.AccessRowCountAsync(created.Value));
+  }
+
+  // ---- K + L + T + U. THE REPLACE-SET UPDATE AND THE NEVER-ZERO RULE.
+  [Fact]
+  public async Task A_branch_set_can_be_narrowed_but_never_emptied_for_an_active_normal_user()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var riyadh = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    var identityId = await fixture.SeedIdentityAsync();
+    var userId = (await fixture.CreateUser().HandleAsync(new CreateTenantUserMembershipCommand(
+      identityId, "clerk@example.test", "Clerk", [], [riyadh.BranchId, jeddah.BranchId]))).Value;
+
+    // Riyadh + Jeddah -> Jeddah: allowed.
+    var narrowed = await fixture.SetBranches().HandleAsync(
+      new SetTenantUserBranchesCommand(userId, [jeddah.BranchId]));
+    Assert.True(narrowed.IsSuccess, narrowed.IsFailure ? narrowed.Error.Code : null);
+    Assert.Equal(1, await fixture.AccessRowCountAsync(userId));
+
+    // Jeddah -> []: refused, and the surviving assignment is untouched.
+    var emptied = await fixture.SetBranches().HandleAsync(new SetTenantUserBranchesCommand(userId, []));
+    Assert.True(emptied.IsFailure);
+    Assert.Equal(BranchErrors.UserMustHaveAtLeastOneBranch.Code, emptied.Error.Code);
+    Assert.Equal(1, await fixture.AccessRowCountAsync(userId));
+
+    // The resolver sees exactly the surviving ACTIVE branch — a retained row for an inactive branch would
+    // not have granted anything either.
+    var scope = await fixture.Resolver().GetPermittedBranchesAsync(fixture.TenantA, userId);
+    Assert.Equal(jeddah.BranchId, Assert.Single(scope.Value).BranchId);
+  }
+
+  // ---- Q. R1: DEACTIVATION vs A CONCURRENT NARROWING OF THE SURVIVING BRANCH.
+  //
+  // The B1a race, now closed. Admin 1 retires Riyadh believing Jeddah keeps the user safe; Admin 2
+  // simultaneously narrows that same user to Riyadh only. Serialised on one tenant resource, whichever runs
+  // second sees the first's committed effect — so the user cannot end with no active branch.
+  [Fact]
+  public async Task A_deactivation_racing_a_branch_set_update_cannot_strand_the_user()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var riyadh = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    var identityId = await fixture.SeedIdentityAsync();
+    var userId = (await fixture.CreateUser().HandleAsync(new CreateTenantUserMembershipCommand(
+      identityId, "race1@example.test", "Race", [], [riyadh.BranchId, jeddah.BranchId]))).Value;
+
+    await Task.WhenAll(
+      Task.Run(() => fixture.Service().DeactivateAsync(
+        new DeactivateBranchRequest(jeddah.BranchId, null, jeddah.RowVersion))),
+      Task.Run(() => fixture.SetBranches().HandleAsync(
+        new SetTenantUserBranchesCommand(userId, [jeddah.BranchId]))));
+
+    // WHATEVER THE ORDER, the user retains at least one ACTIVE branch.
+    var scope = await fixture.Resolver().GetPermittedBranchesAsync(fixture.TenantA, userId);
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+    Assert.NotEmpty(scope.Value);
+  }
+
+  // ---- R. R2: DEACTIVATION vs A CONCURRENT CREATE ASSIGNED ONLY TO THAT BRANCH.
+  [Fact]
+  public async Task A_deactivation_racing_a_user_creation_cannot_create_a_stranded_user()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    Assert.True((await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).IsSuccess);
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    var identityId = await fixture.SeedIdentityAsync();
+
+    var outcomes = await Task.WhenAll(
+      Task.Run(async () => (object)await fixture.Service().DeactivateAsync(
+        new DeactivateBranchRequest(jeddah.BranchId, null, jeddah.RowVersion))),
+      Task.Run(async () => (object)await fixture.CreateUser().HandleAsync(
+        new CreateTenantUserMembershipCommand(identityId, "race2@example.test", "Race2", [], [jeddah.BranchId]))));
+
+    // EXACTLY ONE OF THE TWO MAY WIN. If the deactivation went first the creation revalidates Jeddah under
+    // the lease and refuses it as inactive; if the creation went first the deactivation sees the new user
+    // and refuses to strand them. Both succeeding is the state that must be impossible.
+    var deactivated = ((Result)outcomes[0]).IsSuccess;
+    var createdUser = (Result<long>)outcomes[1];
+    Assert.False(deactivated && createdUser.IsSuccess);
+
+    if (createdUser.IsSuccess)
+    {
+      var scope = await fixture.Resolver().GetPermittedBranchesAsync(fixture.TenantA, createdUser.Value);
+      Assert.NotEmpty(scope.Value);
+    }
+    else
+    {
+      Assert.Equal(0, await fixture.UserRowCountAsync("race2@example.test"));
+    }
+  }
+
+  // ---- S. TWO TENANTS ARE INDEPENDENT: the lease is per tenant, not global.
+  [Fact]
+  public async Task Two_tenants_can_change_their_branch_topology_independently()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+
+    var results = await Task.WhenAll(
+      Task.Run(() => fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))),
+      Task.Run(() => fixture.ServiceForTenantB().CreateAsync(new CreateBranchRequest("RUH", "Riyadh B", true))));
+
+    Assert.All(results, result => Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null));
+  }
+
+  // ---- §20/§24. THE DEACTIVATION-IMPACT QUERY AT REALISTIC CARDINALITY.
+  //
+  // This is what closes B1a LOW-b: the index was previously matched by SHAPE, which proves nothing. Measured
+  // against thousands of assignment rows, because a scan here runs while an administrator waits and grows
+  // with the estate.
+  [Fact]
+  public async Task The_deactivation_impact_query_seeks_its_index_at_realistic_cardinality()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var branch = (await fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+
+    await fixture.SeedAccessRowsAsync(5_000);
+
+    var plan = await fixture.CaptureImpactPlanAsync(branch.BranchId);
+
+    Assert.NotNull(plan);
+    Assert.Contains("IX_UserBranchAccess_TenantId_BranchId", plan!.Indexes, StringComparison.Ordinal);
+    Assert.Contains("Index Seek", plan.Operations, StringComparison.Ordinal);
+    Assert.DoesNotContain("Index Scan", plan.Operations, StringComparison.Ordinal);
+    Assert.DoesNotContain("Table Scan", plan.Operations, StringComparison.Ordinal);
+  }
+
   private sealed class BranchFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -506,6 +722,149 @@ public sealed class TenantBranchLifecycleSqlServerTests
         .CountAsync(access => access.TenantId == TenantA && access.TenantUserId == tenantUserId);
     }
 
+    // ---- B1b wiring: the real handlers over the real repositories, no fakes.
+    public CreateTenantUserMembershipCommandHandler CreateUser()
+    {
+      var platform = PlatformContext(TenantA);
+      return new CreateTenantUserMembershipCommandHandler(
+        new IdentityRepository(platform),
+        new TenantUserRepository(platform),
+        new RoleRepository(platform),
+        new UserBranchAccessRepository(platform),
+        new TenantAdministratorAuthority(platform),
+        new TenantBranchValidator(TenantContextFactory(TenantA)),
+        new BranchTopologyGuard(platform),
+        new PlatformUnitOfWork(platform, new NoOpDomainEventDispatcher()),
+        new TestTenant(TenantA), new TestUser(), new TestClock());
+    }
+
+    public SetTenantUserBranchesCommandHandler SetBranches()
+    {
+      var platform = PlatformContext(TenantA);
+      return new SetTenantUserBranchesCommandHandler(
+        new TenantUserRepository(platform),
+        new UserBranchAccessRepository(platform),
+        new TenantAdministratorAuthority(platform),
+        new TenantBranchValidator(TenantContextFactory(TenantA)),
+        new BranchTopologyGuard(platform),
+        new PlatformUnitOfWork(platform, new NoOpDomainEventDispatcher()),
+        new TestTenant(TenantA), new TestUser());
+    }
+
+    public TenantBranchAccessResolver Resolver()
+    {
+      var platform = PlatformContext(TenantA);
+      return new TenantBranchAccessResolver(
+        platform, TenantContextFactory(TenantA), new TenantAdministratorAuthority(platform));
+    }
+
+    public async Task<long> SeedIdentityAsync()
+    {
+      await using var platform = PlatformContext(TenantA);
+      var identity = Identity.Create(AuthenticationSubject.Create($"sub-{Guid.NewGuid():N}").Value);
+      platform.Identities.Add(identity);
+      await platform.SaveChangesAsync();
+      return identity.Id;
+    }
+
+    // A role carrying Platform.Tenant.Administer, granted the ordinary way.
+    public async Task<long> SeedAdministratorRoleAsync()
+    {
+      await using var platform = PlatformContext(TenantA);
+      var role = Role.CreateCustom(
+        TenantA, RoleName.Create($"Admins {Guid.NewGuid():N}"[..20]).Value, null, Guid.NewGuid(), Now);
+      platform.Roles.Add(role);
+      await platform.SaveChangesAsync();
+
+      var definition = new PermissionDefinition(
+        PermissionName.Create(PlatformPermissionNames.AdministerTenant).Value,
+        PermissionScope.Tenant, "Administer the tenant");
+      Assert.True(role.AssignPermission(definition, Actor, Guid.NewGuid(), Now).IsSuccess);
+      await platform.SaveChangesAsync();
+      return role.Id;
+    }
+
+    public async Task<Guid> DeactivatedBranchAsync(BranchDto branch)
+    {
+      var deactivated = await Service().DeactivateAsync(
+        new DeactivateBranchRequest(branch.BranchId, null, branch.RowVersion));
+      Assert.True(deactivated.IsSuccess, deactivated.IsFailure ? deactivated.Error.Code : null);
+      return branch.BranchId;
+    }
+
+    // Raw SQL: Email is a value object, so an equality predicate on its inner value does not translate —
+    // and the question here is simply whether a row exists at all.
+    public async Task<int> UserRowCountAsync(string email)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(platformCatalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText =
+        "SELECT COUNT(*) FROM [platform].[TenantUsers] WHERE [TenantId] = @tenant AND [Email] = @email";
+      command.Parameters.AddWithValue("@tenant", TenantA);
+      command.Parameters.AddWithValue("@email", email);
+      return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // Bulk assignment rows so the impact query is measured against a realistic estate rather than a
+    // one-row fixture, where every plan looks like a seek.
+    public async Task SeedAccessRowsAsync(int count)
+    {
+      // Rows must satisfy the composite FK to TenantUsers, so they hang off a REAL membership. Distinct
+      // BranchIds keep them unique and give the (TenantId, BranchId) index a realistic key distribution.
+      await ExecuteAsync(platformCatalog, $"""
+        SET NOCOUNT ON;
+        DECLARE @i INT = 0;
+        WHILE @i < {count}
+        BEGIN
+          INSERT INTO [platform].[UserBranchAccess]
+            ([TenantId], [TenantUserId], [BranchId], [CreatedUtc], [ModifiedUtc])
+          VALUES ('{TenantA:D}', {AdministratorUserId}, NEWID(), SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET());
+          SET @i = @i + 1;
+        END;
+        """);
+
+      await ExecuteAsync(platformCatalog,
+        "UPDATE STATISTICS [platform].[UserBranchAccess] WITH FULLSCAN;");
+    }
+
+    public async Task<MeasuredPlan?> CaptureImpactPlanAsync(Guid branchId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(platformCatalog));
+      await connection.OpenAsync();
+
+      // SET SHOWPLAN_XML must be alone in its batch, so the switch and the measured statement are three
+      // separate commands on one connection.
+      await using (var on = connection.CreateCommand())
+      {
+        on.CommandText = "SET SHOWPLAN_XML ON";
+        await on.ExecuteNonQueryAsync();
+      }
+
+      string? xml = null;
+      await using (var measured = connection.CreateCommand())
+      {
+        measured.CommandText = $"""
+          SELECT DISTINCT [TenantUserId] FROM [platform].[UserBranchAccess]
+          WHERE [TenantId] = '{TenantA:D}' AND [BranchId] = '{branchId:D}'
+          """;
+
+        await using var reader = await measured.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+          xml = reader.GetString(0);
+        }
+      }
+
+      await using (var off = connection.CreateCommand())
+      {
+        off.CommandText = "SET SHOWPLAN_XML OFF";
+        await off.ExecuteNonQueryAsync();
+      }
+
+      return xml is null ? null : new MeasuredPlan(xml, xml);
+    }
+
     public async Task<int> BranchRowCountAsync()
     {
       await using var connection = new SqlConnection(ConnectionFor(TenantCatalog));
@@ -640,5 +999,28 @@ public sealed class TenantBranchLifecycleSqlServerTests
       public CurrentAuthenticationSession? Value => new(
         1, tenantId, tenantUserId, 1, AuthenticationClientId.Create("web").Value, 1);
     }
+
+    private sealed class NoOpDomainEventDispatcher : IDomainEventDispatcher
+    {
+      public Task DispatchAsync(
+        IReadOnlyCollection<DomainEvent> domainEvents, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+    }
+
+    private TenantDbContextFactory TenantContextFactory(Guid tenantId)
+    {
+      var platform = PlatformContext(tenantId);
+      return new TenantDbContextFactory(
+        new TenantDatabaseResolver(new TenantDatabaseRegistryReadRepository(platform)),
+        new TenantDatabaseConnectionFactory(Options.Create(storage)),
+        new TenantDatabaseTrafficGate(TenantDatabaseHealthFreshness.Default),
+        new TestUser(), new TestTenant(tenantId), new TestClock(),
+        new TenantCutoverWriteFence(
+          new TenantCutoverOperationStore(platform, new TestClock(), TimeSpan.FromSeconds(5)),
+          Options.Create(freeze)));
+    }
+
+    // The plan XML, kept whole: the assertions look for operator and index names inside it.
+    public sealed record MeasuredPlan(string Operations, string Indexes);
   }
 }

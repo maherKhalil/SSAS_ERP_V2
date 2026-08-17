@@ -20,4 +20,18 @@ public interface ITenantAdministratorAuthority
     Guid tenantId,
     long tenantUserId,
     CancellationToken cancellationToken = default);
+
+  // WOULD A USER HOLDING EXACTLY THESE ROLES BE AN ADMINISTRATOR? (Branch foundation B1b.)
+  //
+  // Asked while CREATING a user, when the membership does not exist yet and so cannot be asked about. It
+  // decides whether the mandatory-branch rule applies: an administrator's scope is every active branch and
+  // needs no assignment rows, which is what makes the very first administrator creatable before the tenant
+  // has any branches at all.
+  //
+  // Same predicate, same permission, same place — so "is an administrator" and "will be an administrator"
+  // can never disagree about what administration means.
+  Task<bool> RolesConferAdministrationAsync(
+    Guid tenantId,
+    IReadOnlyCollection<long> roleIds,
+    CancellationToken cancellationToken = default);
 }

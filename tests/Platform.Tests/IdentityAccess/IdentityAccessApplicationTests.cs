@@ -4,9 +4,12 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Abstractions.Persistence;
+using SSAS.Platform.Application.Abstractions.Queries;
+using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Application.Roles;
 using SSAS.Platform.Application.TenantUsers;
+using SSAS.Platform.Domain.Branches;
 using SSAS.Platform.Domain.Identities;
 using SSAS.Platform.Domain.Roles;
 using SSAS.Platform.Domain.TenantUsers;
@@ -44,16 +47,80 @@ public sealed class IdentityAccessApplicationTests
     var handler = new CreateTenantUserMembershipCommandHandler(
       new FakeIdentityRepository(identity),
       userRepository,
+      new FakeRoleRepository(),
+      new FakeUserBranchAccessRepository(),
+      new FakeTenantAdministratorAuthority(),
+      new FakeTenantBranchValidator(),
+      new FakeBranchTopologyGuard(),
       new FakeUnitOfWork(),
       new TestCurrentTenant(TenantId),
       new TestCurrentUser("actor"),
       new TestClock());
 
-    var result = await handler.HandleAsync(new CreateTenantUserMembershipCommand(7, "user@example.com", "User"));
+    // Branch foundation B1b: a normal user names the branches they may work in. This case fails earlier, on
+    // the duplicate membership, which is the point — the branch rules must not mask an existing refusal.
+    var result = await handler.HandleAsync(
+      new CreateTenantUserMembershipCommand(7, "user@example.com", "User", [], [Guid.NewGuid()]));
 
     Assert.True(result.IsFailure);
     Assert.Equal("TenantUser.MembershipExists", result.Error.Code);
     Assert.Null(userRepository.Added);
+  }
+
+  // ---- B1b. A NORMAL USER WITHOUT BRANCHES IS REFUSED BEFORE ANYTHING IS PERSISTED.
+  [Fact]
+  public async Task Membership_creation_refuses_a_normal_user_with_no_branches_and_persists_nothing()
+  {
+    var identity = Identity.Create(AuthenticationSubject.Create("oidc|nobranch").Value);
+    SetEntityId(identity, 9);
+    var userRepository = new FakeTenantUserRepository();
+    var unitOfWork = new FakeUnitOfWork();
+    var handler = new CreateTenantUserMembershipCommandHandler(
+      new FakeIdentityRepository(identity),
+      userRepository,
+      new FakeRoleRepository(),
+      new FakeUserBranchAccessRepository(),
+      new FakeTenantAdministratorAuthority(),
+      new FakeTenantBranchValidator(),
+      new FakeBranchTopologyGuard(),
+      unitOfWork,
+      new TestCurrentTenant(TenantId),
+      new TestCurrentUser("actor"),
+      new TestClock());
+
+    var result = await handler.HandleAsync(
+      new CreateTenantUserMembershipCommand(9, "user@example.com", "User", [], []));
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(BranchErrors.UserMustHaveAtLeastOneBranch.Code, result.Error.Code);
+    Assert.Null(userRepository.Added);
+  }
+
+  // ---- B1b. AN ADMINISTRATOR NEEDS NO BRANCHES, which is what makes the first one creatable.
+  [Fact]
+  public async Task Membership_creation_allows_an_administrator_with_no_branches()
+  {
+    var identity = Identity.Create(AuthenticationSubject.Create("oidc|admin").Value);
+    SetEntityId(identity, 11);
+    var userRepository = new FakeTenantUserRepository();
+    var handler = new CreateTenantUserMembershipCommandHandler(
+      new FakeIdentityRepository(identity),
+      userRepository,
+      new FakeRoleRepository(),
+      new FakeUserBranchAccessRepository(),
+      new FakeTenantAdministratorAuthority { ConfersAdministration = true },
+      new FakeTenantBranchValidator(),
+      new FakeBranchTopologyGuard(),
+      new FakeUnitOfWork(),
+      new TestCurrentTenant(TenantId),
+      new TestCurrentUser("actor"),
+      new TestClock());
+
+    var result = await handler.HandleAsync(
+      new CreateTenantUserMembershipCommand(11, "admin@example.com", "Admin", [], []));
+
+    Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+    Assert.NotNull(userRepository.Added);
   }
 
   [Fact]
@@ -239,6 +306,63 @@ public sealed class IdentityAccessApplicationTests
     }
   }
 
+  // ---- Branch foundation B1b fakes. Each is deliberately permissive so these tests keep exercising the
+  // membership rules they were written for; the branch rules themselves are proven against real SQL.
+  private sealed class FakeUserBranchAccessRepository : IUserBranchAccessRepository
+  {
+    public List<Guid> Added { get; } = [];
+
+    public Task<IReadOnlyList<Guid>> GetBranchIdsAsync(
+      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<Guid>>([]);
+
+    public Task AddAsync(UserBranchAccess access, CancellationToken cancellationToken = default)
+    {
+      Added.Add(access.BranchId);
+      return Task.CompletedTask;
+    }
+
+    public Task RemoveAsync(
+      Guid tenantId, long tenantUserId, IReadOnlyCollection<Guid> branchIds,
+      CancellationToken cancellationToken = default) => Task.CompletedTask;
+  }
+
+  private sealed class FakeTenantAdministratorAuthority : ITenantAdministratorAuthority
+  {
+    public bool IsAdministrator { get; init; }
+
+    public bool ConfersAdministration { get; init; }
+
+    public Task<bool> IsTenantAdministratorAsync(
+      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(IsAdministrator);
+
+    public Task<bool> RolesConferAdministrationAsync(
+      Guid tenantId, IReadOnlyCollection<long> roleIds, CancellationToken cancellationToken = default) =>
+      Task.FromResult(ConfersAdministration);
+  }
+
+  private sealed class FakeTenantBranchValidator : ITenantBranchValidator
+  {
+    public Task<Result> ValidateAssignableAsync(
+      Guid tenantId, IReadOnlyCollection<Guid> branchIds, CancellationToken cancellationToken = default) =>
+      Task.FromResult(Result.Success());
+  }
+
+  private sealed class FakeBranchTopologyGuard : IBranchTopologyGuard
+  {
+    public Task<IBranchTopologyLease?> AcquireAsync(
+      Guid tenantId, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IBranchTopologyLease?>(new Lease(tenantId));
+
+    private sealed class Lease(Guid tenantId) : IBranchTopologyLease
+    {
+      public Guid TenantId => tenantId;
+
+      public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+  }
+
   private sealed class FakeUnitOfWork : IPlatformUnitOfWork
   {
     public int SaveCount { get; private set; }
@@ -250,8 +374,25 @@ public sealed class IdentityAccessApplicationTests
       return Task.FromResult(Result.Success(1));
     }
 
+    public bool Committed { get; private set; }
+
+    // Supported since Branch foundation B1b: membership creation now commits the user, its roles and its
+    // branch assignments as one unit, so the handler genuinely opens a transaction.
     public Task<ITransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
-      throw new NotSupportedException();
+      Task.FromResult<ITransaction>(new NoOpTransaction(() => Committed = true));
+
+    private sealed class NoOpTransaction(Action onCommit) : ITransaction
+    {
+      public Task CommitAsync(CancellationToken cancellationToken = default)
+      {
+        onCommit();
+        return Task.CompletedTask;
+      }
+
+      public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+      public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
   }
 
   private sealed class TestCurrentTenant(Guid? tenantId) : ICurrentTenant

@@ -269,6 +269,13 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ITenantBranchAccessResolver, TenantBranchAccessResolver>();
     services.AddScoped<ITenantBranchService, TenantBranchService>();
 
+    // Branch foundation B1b. The guard delegates to the SAME per-tenant resource B1a's deactivation takes,
+    // which is what closes the R1/R2 races between assignment edits and branch deactivation.
+    services.AddScoped<IBranchTopologyGuard, BranchTopologyGuard>();
+    services.AddScoped<ITenantBranchValidator, TenantBranchValidator>();
+    services.AddScoped<IUserBranchAccessRepository, UserBranchAccessRepository>();
+    services.AddScoped<SetTenantUserBranchesCommandHandler>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

@@ -68,10 +68,27 @@ internal sealed class TenantAdministratorAuthority(PlatformDbContext dbContext) 
       return false;
     }
 
+    return await RolesConferAdministrationAsync(tenantId, roleIds, cancellationToken);
+  }
+
+  public async Task<bool> RolesConferAdministrationAsync(
+    Guid tenantId,
+    IReadOnlyCollection<long> roleIds,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(roleIds);
+
+    if (tenantId == Guid.Empty || roleIds.Count == 0)
+    {
+      return false;
+    }
+
+    var candidates = roleIds.ToArray();
+
     var liveRoleIds = await dbContext.Roles
       .IgnoreQueryFilters()
       .AsNoTracking()
-      .Where(role => role.TenantId == tenantId && roleIds.Contains(role.Id) && role.Status != RoleStatus.Retired)
+      .Where(role => role.TenantId == tenantId && candidates.Contains(role.Id) && role.Status != RoleStatus.Retired)
       .Select(role => role.Id)
       .ToListAsync(cancellationToken);
 

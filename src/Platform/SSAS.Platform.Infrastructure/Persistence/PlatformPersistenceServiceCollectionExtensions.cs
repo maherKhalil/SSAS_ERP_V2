@@ -267,6 +267,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // predicate behind it is the one place tenant-administrator status is decided.
     services.AddScoped<ITenantAdministratorAuthority, TenantAdministratorAuthority>();
     services.AddScoped<ITenantBranchAccessResolver, TenantBranchAccessResolver>();
+    services.AddScoped<ITenantBranchService, TenantBranchService>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();

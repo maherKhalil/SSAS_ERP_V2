@@ -40,4 +40,27 @@ public static class BranchErrors
     new("Branch.AssignmentInvalid", "One or more requested branches are not assignable.");
   public static readonly Error DeactivationWouldStrandUsers =
     new("Branch.DeactivationWouldStrandUsers", "Deactivating the branch would leave a user with no active branch.");
+
+  // ---- LIFECYCLE (B1a).
+  //
+  // A tenant that has finished onboarding must keep at least one active branch: zero is a provisioning
+  // state, not something an administrator may return to by deactivating the last one.
+  public static readonly Error CannotDeactivateOnlyActiveBranch =
+    new("Branch.CannotDeactivateOnlyActiveBranch", "The tenant's only active branch cannot be deactivated.");
+
+  // Deactivating the active main branch requires naming its successor in the same operation, so the tenant
+  // is never left with active branches and no main among them.
+  public static readonly Error ReplacementMainBranchRequired =
+    new("Branch.ReplacementMainBranchRequired", "Deactivating the main branch requires a replacement main branch.");
+
+  public static readonly Error ConcurrencyConflict =
+    new("Branch.ConcurrencyConflict", "The branch was modified concurrently; reload and retry.");
+
+  // The branch topology is being changed by someone else right now. Distinct from a concurrency conflict:
+  // nothing was attempted and nothing was lost, so the caller should simply retry.
+  public static readonly Error TopologyBusy =
+    new("Branch.TopologyBusy", "Another branch administration operation is in progress for this tenant.");
+
+  public static readonly Error TenantAdministratorRequired =
+    new("Branch.TenantAdministratorRequired", "Tenant administrator authority is required to administer branches.");
 }

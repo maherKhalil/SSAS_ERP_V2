@@ -460,6 +460,29 @@ public static class TenantStorageErrors
   public static readonly Error CutoverCopyOrderUndecidable =
     new("TenantStorage.CutoverCopyOrderUndecidable", "The tenant model contains a foreign-key cycle, so a safe copy order cannot be established.");
 
+  // ---- Atomic routing flip (ADR-020, TS-Storage Phase E4).
+
+  public static readonly Error CutoverNotFlipped =
+    new("TenantStorage.CutoverNotFlipped", "The cutover operation has not moved routing to its target.");
+
+  // Another instance changed the operation or the assignment between this flip reading them and committing.
+  // A CONTROLLED refusal rather than a raw concurrency exception: exactly one flip may win, and the loser
+  // needs to be able to tell that from a failure.
+  public static readonly Error CutoverConcurrencyConflict =
+    new("TenantStorage.CutoverConcurrencyConflict", "The cutover operation changed while the routing flip was being applied.");
+
+  // A routing version that did not advance. Refused in the application AND by a database guard, because an
+  // alternate writer would otherwise be able to make a cached route valid again.
+  public static readonly Error RoutingVersionNotAdvancing =
+    new("TenantStorage.RoutingVersionNotAdvancing", "A routing change must advance the tenant's routing version.");
+
+  // The flip committed, but evicting this process's cached route afterwards did not succeed. NOT a routing
+  // failure: routing is authoritative and every instance converges on the next resolution through the
+  // version check (ADR-020). Reported so an operator can see that convergence here is by TTL rather than
+  // immediate.
+  public static readonly Error CutoverInvalidationIncomplete =
+    new("TenantStorage.CutoverInvalidationIncomplete", "Routing was flipped successfully, but the local route cache could not be invalidated.");
+
   // ---- Version-aware routing (ADR-020 "Resolver cache", TS-Storage Phase E2).
 
   // THE AUTHORITATIVE ROUTING VERSION COULD NOT BE ESTABLISHED, so no cached route can be shown to still be

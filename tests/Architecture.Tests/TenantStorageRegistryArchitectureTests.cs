@@ -680,12 +680,17 @@ public sealed class TenantStorageRegistryArchitectureTests
       .Select(type => type.FullName ?? type.Name)
       .Where(name => !declaredCacheTypes.Contains(name, StringComparer.Ordinal)));
 
-    // ...and only the version-aware resolver may hold one. Every other consumer would be a path from a
-    // remembered route to a live connection without an authoritative version comparison in between.
+    // ...and only the version-aware resolver may hold the CACHE ITSELF. Every other consumer would be a
+    // path from a remembered route to a live connection with no authoritative version comparison between.
+    //
+    // The routing flip is admitted separately below because it holds the narrow INVALIDATOR, which can
+    // evict but cannot read or write an entry — it can therefore never serve a route, which is the property
+    // this guard actually protects.
     Assert.Empty(storageTypes
       .Where(type => type.GetConstructors()
         .SelectMany(constructor => constructor.GetParameters())
-        .Any(parameter => parameter.ParameterType.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase)))
+        .Any(parameter => parameter.ParameterType.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase) &&
+          parameter.ParameterType != typeof(SSAS.Platform.Application.TenantStorage.ITenantRoutingCacheInvalidator)))
       .Select(type => type.FullName ?? type.Name)
       .Where(name => !string.Equals(
         name, "SSAS.Platform.Application.TenantStorage.VersionAwareTenantDatabaseResolver",

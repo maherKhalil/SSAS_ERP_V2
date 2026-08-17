@@ -57,8 +57,6 @@ internal sealed class TenantCutoverCopyService(
       return Result.Failure<TenantCutoverCopyReport>(eligibility.Error);
     }
 
-    var endpoints = eligibility.Value;
-
     // ---- OWNERSHIP. Session-owned on a connection this run holds for its whole duration, so a dead
     // process releases it without a lease to expire. A release attempt contends for the same resource.
     await using var ownership = new SqlConnection(platform.Database.GetConnectionString());
@@ -76,6 +74,29 @@ internal sealed class TenantCutoverCopyService(
     {
       return Result.Failure<TenantCutoverCopyReport>(TenantStorageErrors.CutoverOperationNotFrozen);
     }
+
+    return await ExecuteAsync(eligibility.Value, cutoverOperationId, copyMissing: true, cancellationToken);
+  }
+
+  // Deliberately acquires NO ownership — see the interface comment. The flip calls this while already
+  // holding the operation, and taking the same resource on a second connection would deadlock it.
+  public async Task<Result<TenantCutoverCopyReport>> ValidateAsync(
+    long cutoverOperationId,
+    CancellationToken cancellationToken = default)
+  {
+    var eligibility = await ResolveEligibleEndpointsAsync(cutoverOperationId, cancellationToken);
+    return eligibility.IsFailure
+      ? Result.Failure<TenantCutoverCopyReport>(eligibility.Error)
+      : await ExecuteAsync(eligibility.Value, cutoverOperationId, copyMissing: false, cancellationToken);
+  }
+
+  private async Task<Result<TenantCutoverCopyReport>> ExecuteAsync(
+    CutoverEndpoints endpoints,
+    long cutoverOperationId,
+    bool copyMissing,
+    CancellationToken cancellationToken)
+  {
+    var options = optionsAccessor.Value;
 
     var source = connectionFactory.Create(endpoints.Source);
     if (source.IsFailure)
@@ -127,7 +148,8 @@ internal sealed class TenantCutoverCopyService(
     foreach (var table in plan.Value)
     {
       var outcome = await CopyOrVerifyAsync(
-        table, endpoints.TenantId, sourceConnection, targetConnection, copier, validator, cancellationToken);
+        table, endpoints.TenantId, sourceConnection, targetConnection, copier, validator,
+        copyMissing, cancellationToken);
       if (outcome.IsFailure)
       {
         return Result.Failure<TenantCutoverCopyReport>(outcome.Error);
@@ -158,9 +180,22 @@ internal sealed class TenantCutoverCopyService(
     SqlConnection target,
     TenantCutoverTableCopier copier,
     TenantCutoverCopyValidator validator,
+    bool copyMissing,
     CancellationToken cancellationToken)
   {
     var existing = await validator.CountTenantRowsAsync(table, tenantId, target, null, cancellationToken);
+
+    // VALIDATION-ONLY NEVER WRITES. An absent or incomplete table is a refusal here, not something to
+    // finish: the flip is asking "is the target already exactly this tenant's data", and copying to make
+    // the answer yes would be answering a different question.
+    if (!copyMissing)
+    {
+      var proof = await validator.ValidateAsync(table, tenantId, source, target, null, cancellationToken);
+      return proof.IsExact
+        ? Result.Success(new TenantCutoverTableReport(
+          table.EntityName, table.TableName, proof.Rows, TenantCutoverTableDisposition.AlreadyComplete))
+        : Result.Failure<TenantCutoverTableReport>(TenantStorageErrors.CutoverTargetInconsistent);
+    }
 
     if (existing > 0)
     {

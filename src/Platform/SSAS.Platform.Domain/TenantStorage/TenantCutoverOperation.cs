@@ -192,6 +192,70 @@ public sealed class TenantCutoverOperation : AggregateRoot<long>, IAuditableEnti
     return Result.Success();
   }
 
+  // THE POINT OF NO RETURN (ADR-020, TS-Storage Phase E4).
+  //
+  // Written in the SAME Platform transaction as ending the Shared assignment and inserting the Dedicated
+  // one, so there is no committed state in which routing has moved and this row still says Frozen, or this
+  // row says RoutingFlipped and routing is still Shared.
+  //
+  // It records the version it flipped TO, so the authoritative RoutingVersion an operator sees on the
+  // operation is the same number the assignment carries — reconstructing it later from assignment history
+  // would be a guess during an incident.
+  public Result RecordRoutingFlip(long routingVersion, string actor, DateTimeOffset occurredUtc)
+  {
+    // Idempotent for the SAME version: a retry that finds its own flip already committed has succeeded.
+    if (Status == TenantCutoverOperationStatus.RoutingFlipped && RoutingVersion == routingVersion)
+    {
+      return Result.Success();
+    }
+
+    if (Status != TenantCutoverOperationStatus.Frozen)
+    {
+      return Result.Failure(TenantStorageErrors.CutoverOperationNotFrozen);
+    }
+
+    if (routingVersion <= 0)
+    {
+      return Result.Failure(TenantStorageErrors.RoutingVersionInvalid);
+    }
+
+    Status = TenantCutoverOperationStatus.RoutingFlipped;
+    RoutingVersion = routingVersion;
+    RoutingFlippedUtc = occurredUtc.ToUniversalTime();
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  // THE FIRST APPLICATION WRITE THAT LANDED ON THE NEW DATABASE.
+  //
+  // ADR-020 requires this as a recorded fact because it decides which rollback regime is available at all —
+  // and that decision is otherwise made under incident pressure from someone's recollection.
+  //
+  // WRITE-ONCE AND IDEMPOTENT. Only the first observation matters; later writes must not move it, or "when
+  // did the target become authoritative in practice" would drift forward forever.
+  public Result RecordPostCutoverWrite(string actor, DateTimeOffset occurredUtc)
+  {
+    if (Status is not (TenantCutoverOperationStatus.RoutingFlipped or TenantCutoverOperationStatus.Completed))
+    {
+      return Result.Failure(TenantStorageErrors.CutoverNotFlipped);
+    }
+
+    if (PostCutoverWriteObservedUtc is not null)
+    {
+      return Result.Success();
+    }
+
+    var observedUtc = occurredUtc.ToUniversalTime();
+
+    // The check constraint requires the observation not to precede the flip. A clock that disagrees is
+    // clamped rather than allowed to fail the write it is only observing.
+    PostCutoverWriteObservedUtc = RoutingFlippedUtc is { } flipped && observedUtc < flipped
+      ? flipped
+      : observedUtc;
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
   // A drain that could not complete inside its budget. Terminal, and deliberately NOT "Frozen": a partial
   // freeze claim is the one outcome that would make every later step unsafe.
   public Result FailFreeze(string? failureSummary, string actor, DateTimeOffset occurredUtc)

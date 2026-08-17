@@ -218,6 +218,7 @@ public sealed class TenantRestoreVerificationArchitectureTests
     // a pattern, so a SECOND cutover or activation component still trips this guard.
     var decided = new[]
     {
+      "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverRoutingFlipService",
       "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyService",
       "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverCopyPlan",
       "SSAS.Platform.Infrastructure.TenantStorage.TenantCutoverTablePlan",

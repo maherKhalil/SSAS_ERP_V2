@@ -1110,7 +1110,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       }
 
       // LOW-3: the E1 write-fence lookup, through the real store.
-      await Store().RefusesApplicationWritesAsync(TenantA);
+      await Store().FindActiveWriteGateAsync(TenantA);
     }
 
     // The plans SQL Server actually used, identified by text so they cannot be confused with each other.
@@ -1126,11 +1126,13 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         measured.Add(source);
       }
 
-      // LOW-3: the E1 write-fence lookup — "does an active cutover hold this tenant?". Matched on the table
-      // plus EXISTS rather than on a literal "CASE WHEN EXISTS": EF Core emits that across a line break.
+      // LOW-3: the write-fence lookup — "which cutover, if any, holds this tenant?". Identified by the
+      // projection rather than by a keyword: since E4 the fence reads the operation's endpoints and
+      // post-cutover observation instead of asking a yes/no question, so the shape changed with it.
       var fence = await PlanAsync(
-        "E1 active-cutover write-fence lookup",
-        "CHARINDEX(N'[TenantCutoverOperations]', st.text) > 0 AND CHARINDEX(N'EXISTS', st.text) > 0");
+        "cutover write-fence lookup",
+        "CHARINDEX(N'[TenantCutoverOperations]', st.text) > 0 AND " +
+        "CHARINDEX(N'[PostCutoverWriteObservedUtc]', st.text) > 0");
       if (fence is not null)
       {
         measured.Add(fence);

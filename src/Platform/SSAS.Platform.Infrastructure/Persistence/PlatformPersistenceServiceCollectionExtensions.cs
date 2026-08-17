@@ -241,6 +241,13 @@ public static class PlatformInfrastructureServiceCollectionExtensions
       .Bind(configuration.GetSection(TenantCutoverCopyOptions.SectionName));
     services.AddScoped<ITenantCutoverCopyService, TenantCutoverCopyService>();
 
+    // TS-Storage Phase E4: the authoritative routing flip (ADR-020).
+    //
+    // It receives the INVALIDATOR rather than the cache: a flip may evict after committing, and must not be
+    // able to write cache entries. Invalidation is an optimisation — E2's version check is what makes every
+    // other instance converge — so nothing here can undo a committed flip.
+    services.AddScoped<ITenantCutoverRoutingFlipService, TenantCutoverRoutingFlipService>();
+
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
     services.AddScoped<ITenantDbContextProvider>(provider => provider.GetRequiredService<TenantDbContextProvider>());

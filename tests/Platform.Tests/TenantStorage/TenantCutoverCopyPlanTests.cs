@@ -182,6 +182,7 @@ public sealed class TenantCutoverCopyPlanTests
 
     public Task AdmitWriteAsync(
       Guid tenantId,
+      long tenantDatabaseId,
       System.Data.Common.DbConnection connection,
       System.Data.Common.DbTransaction transaction,
       CancellationToken cancellationToken = default) =>

@@ -15,6 +15,12 @@ public sealed class TenantDatabaseAssignmentConfiguration : IEntityTypeConfigura
       table.HasCheckConstraint(
         "CK_TenantDatabaseAssignments_EndedUtc",
         "[EndedUtc] IS NULL OR [EndedUtc] >= [AssignedUtc]");
+
+      // EF MUST BE TOLD THIS TABLE HAS A TRIGGER (TS-Storage Phase E4). It is metadata only — no DDL is
+      // generated from it — but without it EF reads the generated identity back with a bare `OUTPUT`, and
+      // SQL Server refuses `OUTPUT` without `INTO` on any table carrying an enabled trigger. Declaring it
+      // switches EF to the trigger-compatible strategy. The trigger itself is created by the migration.
+      table.HasTrigger("TR_TenantDatabaseAssignments_EnforceRoutingVersion");
     });
 
     builder.HasKey(assignment => assignment.Id);

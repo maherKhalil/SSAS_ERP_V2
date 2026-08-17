@@ -16,6 +16,7 @@ internal sealed class UnfencedTenantWrites : ITenantWriteFence
 
   public Task AdmitWriteAsync(
     Guid tenantId,
+    long tenantDatabaseId,
     DbConnection connection,
     DbTransaction transaction,
     CancellationToken cancellationToken = default) => Task.CompletedTask;

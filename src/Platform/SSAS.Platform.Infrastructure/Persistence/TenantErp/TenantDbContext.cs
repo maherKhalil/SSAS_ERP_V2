@@ -34,7 +34,12 @@ public sealed class TenantDbContext(
   IDateTimeProvider dateTimeProvider,
   // The cutover write fence (ADR-020). Optional because the maintenance builders construct this context
   // outside any tenant context for schema work, which is not an application write.
-  ITenantWriteFence? writeFence = null)
+  ITenantWriteFence? writeFence = null,
+  // WHICH PHYSICAL DATABASE THIS CONTEXT IS BOUND TO (ADR-020, TS-Storage Phase E4). Captured at creation
+  // from the route that chose the connection, and never re-read: a context's database is fixed for its
+  // lifetime, which is exactly why a context created before a cutover flip is still pointing at the source
+  // afterwards — and why the fence needs to be told, rather than asked to guess from the connection.
+  long tenantDatabaseId = 0)
   : PersistenceDbContext(options, currentUser, currentTenant, dateTimeProvider)
 {
   public DbSet<Company> Companies => Set<Company>();
@@ -84,13 +89,13 @@ public sealed class TenantDbContext(
     if (Database.CurrentTransaction is { } ambient)
     {
       await writeFence.AdmitWriteAsync(
-        tenantId, Database.GetDbConnection(), ambient.GetDbTransaction(), cancellationToken);
+        tenantId, tenantDatabaseId, Database.GetDbConnection(), ambient.GetDbTransaction(), cancellationToken);
       return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
     await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
     await writeFence.AdmitWriteAsync(
-      tenantId, Database.GetDbConnection(), transaction.GetDbTransaction(), cancellationToken);
+      tenantId, tenantDatabaseId, Database.GetDbConnection(), transaction.GetDbTransaction(), cancellationToken);
 
     var written = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     await transaction.CommitAsync(cancellationToken);

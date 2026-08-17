@@ -70,7 +70,12 @@ public sealed class TenantDbContextFactory(
 
     // The context owns the connection, so disposing the context closes it. Without this a routed context
     // would leak one pooled connection per request.
+    //
+    // The route's TenantDatabaseId travels with the context (TS-Storage Phase E4) so the write fence can
+    // tell a writer bound to the cutover SOURCE from one bound to the TARGET. It is captured here, at the
+    // moment routing was resolved, which is precisely what makes a context created before a flip still
+    // identify itself as the source afterwards.
     return Result.Success(new TenantDbContext(
-      options, currentUser, currentTenant, dateTimeProvider, writeFence));
+      options, currentUser, currentTenant, dateTimeProvider, writeFence, route.Value.TenantDatabaseId));
   }
 }

@@ -110,14 +110,34 @@ public sealed class TenantCutoverOperationStore(
 
   // READ FROM THE DURABLE ROW, ALWAYS. This is the half of the fence that survives process loss: the drain
   // lock stops writers that are already in flight, and this stops the ones that arrive afterwards.
-  public Task<bool> RefusesApplicationWritesAsync(
+  //
+  // At most one row can match: the filtered unique index admits one active cutover per tenant, and the
+  // statuses below are a subset of that filter.
+  public Task<TenantCutoverWriteGate?> FindActiveWriteGateAsync(
     Guid tenantId,
     CancellationToken cancellationToken = default) =>
     dbContext.TenantCutoverOperations
       .AsNoTracking()
-      .AnyAsync(operation => operation.TenantId == tenantId &&
+      .Where(operation => operation.TenantId == tenantId &&
         (operation.Status == TenantCutoverOperationStatus.Frozen ||
-         operation.Status == TenantCutoverOperationStatus.RoutingFlipped), cancellationToken);
+         operation.Status == TenantCutoverOperationStatus.RoutingFlipped))
+      .Select(operation => new TenantCutoverWriteGate(
+        operation.Id,
+        operation.TenantId,
+        operation.SourceTenantDatabaseId,
+        operation.TargetTenantDatabaseId,
+        operation.Status,
+        operation.PostCutoverWriteObservedUtc))
+      .SingleOrDefaultAsync(cancellationToken);
+
+  public Task<Result> RecordPostCutoverWriteAsync(
+    long cutoverOperationId,
+    string actor,
+    CancellationToken cancellationToken = default) =>
+    ApplyAsync(
+      cutoverOperationId,
+      operation => operation.RecordPostCutoverWrite(actor, clock.UtcNow),
+      cancellationToken);
 
   public Task<Result> RequestFreezeAsync(
     long cutoverOperationId,

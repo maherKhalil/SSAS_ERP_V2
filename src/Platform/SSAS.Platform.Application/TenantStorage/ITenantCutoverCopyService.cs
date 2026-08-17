@@ -18,6 +18,20 @@ public interface ITenantCutoverCopyService
   Task<Result<TenantCutoverCopyReport>> CopyAsync(
     long cutoverOperationId,
     CancellationToken cancellationToken = default);
+
+  // THE SAME EXACT VALIDATION, WITHOUT COPYING AND WITHOUT TAKING OWNERSHIP.
+  //
+  // It exists for the routing flip, which must re-prove the target immediately before committing — a
+  // validation that passed minutes ago is not evidence about now. The flip already holds the operation's
+  // ownership lock at that point, so this must NOT acquire it: taking the same resource on a second
+  // connection would deadlock the flip against itself.
+  //
+  // READ-ONLY, and therefore safe without ownership on its own terms. The caller is responsible for
+  // ensuring no copy can be mutating the target concurrently, which for the flip means holding ownership.
+  // It never copies: a target that is incomplete fails rather than being quietly finished.
+  Task<Result<TenantCutoverCopyReport>> ValidateAsync(
+    long cutoverOperationId,
+    CancellationToken cancellationToken = default);
 }
 
 // STRUCTURED EVIDENCE, NOT A BOOL. A cutover is a one-way operation performed on customer data; what an

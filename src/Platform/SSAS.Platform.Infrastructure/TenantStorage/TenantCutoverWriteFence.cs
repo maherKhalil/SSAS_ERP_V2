@@ -37,6 +37,7 @@ public sealed class TenantCutoverWriteFence(
 {
   public async Task AdmitWriteAsync(
     Guid tenantId,
+    long tenantDatabaseId,
     DbConnection connection,
     DbTransaction transaction,
     CancellationToken cancellationToken = default)
@@ -57,12 +58,49 @@ public sealed class TenantCutoverWriteFence(
     }
 
     // ...and only now is the durable answer meaningful.
-    if (await operations.RefusesApplicationWritesAsync(tenantId, cancellationToken))
+    var gate = await operations.FindActiveWriteGateAsync(tenantId, cancellationToken);
+    if (gate is null)
+    {
+      return;
+    }
+
+    // ---- THE COPY WINDOW. Nothing writes anywhere: the copy is reading a source that must not move, and
+    // the target is not the tenant's database yet.
+    if (gate.RefusesEveryWrite)
     {
       throw new Persistence.TenantErp.TenantStorageUnavailableException(
         TenantStorageErrors.TenantWritesFrozen);
     }
+
+    // ---- AFTER THE FLIP THE ANSWER DEPENDS ON WHICH DATABASE THIS WRITER IS BOUND TO (E4).
+    //
+    // A context created BEFORE the flip still holds a connection to the source, and its RoutingVersion is
+    // stale — but it does not re-resolve, so E2's version check never runs for it. This is the only place
+    // that in-flight writer is caught, and catching it is the whole point of the fence being route-aware
+    // rather than tenant-aware: refusing by TenantId alone would also refuse the target, freezing the
+    // tenant permanently, while permitting by TenantId alone would let the stale context write into the
+    // database the tenant was just moved off.
+    if (!gate.PermitsWriteTo(tenantDatabaseId))
+    {
+      throw new Persistence.TenantErp.TenantStorageUnavailableException(
+        TenantStorageErrors.TenantWritesFrozen);
+    }
+
+    // ---- THE FIRST WRITE ONTO THE NEW DATABASE, recorded because it decides which rollback regime is
+    // available at all (ADR-020).
+    //
+    // RECORDED AT ADMISSION, WHICH IS DELIBERATELY CONSERVATIVE. The tenant write commits in the TENANT
+    // database and this observation lives in the PLATFORM database, so they cannot share a transaction; if
+    // the tenant write later rolls back, this will have recorded a write that did not land. That direction
+    // is the safe one — it can only make the platform MORE reluctant to consider a flipback, never less —
+    // whereas recording after commit could miss a write that did land, which is the failure that matters.
+    if (gate.IsFirstTargetWrite)
+    {
+      await operations.RecordPostCutoverWriteAsync(gate.CutoverOperationId, PostCutoverActor, cancellationToken);
+    }
   }
+
+  private const string PostCutoverActor = "tenant-cutover-post-write";
 
   // `sys.sp_getapplock` at Shared mode, owned by the TRANSACTION so it is released by commit, rollback, or
   // the connection dying — never left behind by a crashed writer.
@@ -109,10 +147,16 @@ public sealed class TenantCutoverWriteFence(
 }
 
 // The boundary the tenant persistence context consults before any application write commits.
+//
+// IT TAKES THE PHYSICAL DATABASE AS WELL AS THE TENANT (TS-Storage Phase E4). Once a cutover can move a
+// tenant between databases, "may this tenant write?" has no single answer: the same tenant is refused on
+// the database it left and permitted on the one it moved to, and only the caller's route knows which one
+// this write is bound for.
 public interface ITenantWriteFence
 {
   Task AdmitWriteAsync(
     Guid tenantId,
+    long tenantDatabaseId,
     DbConnection connection,
     DbTransaction transaction,
     CancellationToken cancellationToken = default);

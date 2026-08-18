@@ -8,6 +8,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.TenantStorage;
+using SSAS.Platform.Domain.Branches;
 using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.TenantStorage;
@@ -46,9 +47,15 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     Assert.True(copied.IsSuccess);
     Assert.Equal(3, copied.Value.TotalRows);
-    Assert.Equal(1, copied.Value.TablesCopied);
+
+    // TWO TENANT-OWNED TABLES since Branch foundation B0: Branch joined Company in the model-derived copy
+    // manifest, which is exactly what a Shared -> Dedicated cutover must carry. Branch is empty in this
+    // fixture, so TotalRows is unchanged while the table count is not.
+    Assert.Equal(2, copied.Value.TablesCopied);
     Assert.Equal(0, copied.Value.TablesAlreadyComplete);
-    Assert.Equal(nameof(Company), Assert.Single(copied.Value.Tables).EntityName);
+    Assert.Equal(
+      [nameof(Branch), nameof(Company)],
+      copied.Value.Tables.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
 
     // TENANT A IS ON THE TARGET, AND ONLY TENANT A.
     Assert.Equal(3, await fixture.TargetCompanyCountAsync(fixture.TenantA));
@@ -127,13 +134,19 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     var first = await fixture.CopyService().CopyAsync(operationId);
     Assert.True(first.IsSuccess);
-    Assert.Equal(1, first.Value.TablesCopied);
+    // Branch and Company — the whole tenant-owned manifest (Branch foundation B0).
+    Assert.Equal(2, first.Value.TablesCopied);
 
     // The retry a dead process's replacement would perform.
     var second = await fixture.CopyService().CopyAsync(operationId);
 
     Assert.True(second.IsSuccess);
-    Assert.Equal(0, second.Value.TablesCopied);
+
+    // COMPANY IS RECOGNISED AS ALREADY COMPLETE. Branch is not, and that is correct rather than a gap: it
+    // holds no rows in this fixture, and an empty table is indistinguishable from one that was never
+    // copied — so the engine copies it again, moving nothing. The retry's safety claim is about not
+    // DUPLICATING rows, which the counts below still prove exactly.
+    Assert.Equal(1, second.Value.TablesCopied);
     Assert.Equal(1, second.Value.TablesAlreadyComplete);
     Assert.Equal(5, second.Value.TotalRows);
 
@@ -518,8 +531,9 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       allocated < 256L * 1024 * 1024,
       $"copy allocated {allocated / 1024 / 1024}MB for {rows} rows, which is not streaming behaviour");
 
-    // Re-issue both shapes immediately before reading the cache, so a plan-cache eviction between the copy
-    // and the capture cannot turn a measurement into a silent skip.
+    // Issue both shapes through the real components, which records the exact statements production sends.
+    // The plans are then taken from the server by replaying those statements, so nothing here depends on
+    // what the plan cache still happens to remember.
     await fixture.ReissueMeasuredQueriesAsync();
 
     var plans = await fixture.CapturePlansAsync();
@@ -1072,16 +1086,14 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       END
       """);
 
+    // Statistics only. The procedure cache is deliberately NOT cleared any more: the plans are now returned
+    // by the server rather than looked up in a cache, so emptying three caches would buy nothing. The target
+    // catalog is not touched at all — it was only ever cleared, never measured.
     public async Task RefreshStatisticsAsync()
     {
-      await ExecuteAsync(SourceCatalog,
-        "UPDATE STATISTICS [tenant].[Companies] WITH FULLSCAN; " +
-        "ALTER DATABASE SCOPED CONFIGURATION CLEAR PROCEDURE_CACHE;");
-      await ExecuteAsync(TargetCatalog,
-        "ALTER DATABASE SCOPED CONFIGURATION CLEAR PROCEDURE_CACHE;");
+      await ExecuteAsync(SourceCatalog, "UPDATE STATISTICS [tenant].[Companies] WITH FULLSCAN;");
       await ExecuteAsync(platformCatalog,
-        "UPDATE STATISTICS [platform].[TenantCutoverOperations] WITH FULLSCAN; " +
-        "ALTER DATABASE SCOPED CONFIGURATION CLEAR PROCEDURE_CACHE;");
+        "UPDATE STATISTICS [platform].[TenantCutoverOperations] WITH FULLSCAN;");
     }
 
     // Runs the two shapes under review once each, through the SAME code the engine and the fence use, so the
@@ -1089,7 +1101,12 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     public async Task ReissueMeasuredQueriesAsync()
     {
       var plan = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
-      var table = plan.Value.Single();
+
+      // NAMED EXPLICITLY, not taken positionally. The manifest holds more than one table since Branch
+      // foundation B0, and the shapes measured below are COMPANY's — the seeded, non-trivial table whose
+      // plans this test exists to review. Picking whichever table happened to come first would silently
+      // change what is being measured every time the model grows.
+      var table = plan.Value.Single(candidate => candidate.EntityName == nameof(Company));
       var validator = new TenantCutoverCopyValidator(copy);
 
       await using var source = new SqlConnection(ConnectionFor(SourceCatalog));
@@ -1102,6 +1119,17 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         $"SELECT {table.ColumnList} FROM {table.QualifiedName} " +
         $"WHERE [{table.TenantIdColumn}] = @TenantId ORDER BY {table.OrderByPrimaryKey}";
       command.Parameters.Add("@TenantId", System.Data.SqlDbType.UniqueIdentifier).Value = TenantA;
+
+      // Recorded here rather than by the EF interceptor, because this shape is issued over a raw connection
+      // to the SOURCE catalog — it is the engine's own projection, built from the same copy-plan metadata,
+      // so recording the command is recording production.
+      sourceRead = new RecordedCommand(
+        command.CommandText,
+        command.Parameters
+          .OfType<SqlParameter>()
+          .Select(parameter => (SqlParameter)((ICloneable)parameter).Clone())
+          .ToArray());
+
       await using (var reader = await command.ExecuteReaderAsync())
       {
         while (await reader.ReadAsync())
@@ -1113,67 +1141,45 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       await Store().FindActiveWriteGateAsync(TenantA);
     }
 
-    // The plans SQL Server actually used, identified by text so they cannot be confused with each other.
-    public async Task<IReadOnlyList<MeasuredPlan>> CapturePlansAsync()
-    {
-      var measured = new List<MeasuredPlan>();
-
-      var source = await PlanAsync(
+    // Both shapes, replayed exactly as production issued them. The two live in DIFFERENT catalogs — the copy
+    // source read against the tenant source, the fence lookup against the Platform registry — so each is
+    // explained on its own connection rather than through one server-wide lookup that happened to see both.
+    public async Task<IReadOnlyList<MeasuredPlan>> CapturePlansAsync() =>
+    [
+      await PlanAsync(
         "copy source read (tenant-filtered, PK-ordered)",
-        "CHARINDEX(N'[Companies]', st.text) > 0 AND CHARINDEX(N'ORDER BY', st.text) > 0");
-      if (source is not null)
-      {
-        measured.Add(source);
-      }
+        ConnectionFor(SourceCatalog),
+        sourceRead ?? throw new InvalidOperationException(
+          "The copy source read was never issued; call ReissueMeasuredQueriesAsync first.")),
 
       // LOW-3: the write-fence lookup — "which cutover, if any, holds this tenant?". Identified by the
       // projection rather than by a keyword: since E4 the fence reads the operation's endpoints and
       // post-cutover observation instead of asking a yes/no question, so the shape changed with it.
-      var fence = await PlanAsync(
+      await PlanAsync(
         "cutover write-fence lookup",
-        "CHARINDEX(N'[TenantCutoverOperations]', st.text) > 0 AND " +
-        "CHARINDEX(N'[PostCutoverWriteObservedUtc]', st.text) > 0");
-      if (fence is not null)
-      {
-        measured.Add(fence);
-      }
+        ConnectionFor(platformCatalog),
+        recorder.Match(["[TenantCutoverOperations]", "[PostCutoverWriteObservedUtc]"])),
+    ];
 
-      return measured;
-    }
-
-    private async Task<MeasuredPlan?> PlanAsync(string label, string predicate)
+    private static async Task<MeasuredPlan> PlanAsync(
+      string label, string connectionString, RecordedCommand recorded)
     {
-      await using var connection = new SqlConnection(ConnectionFor(platformCatalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = $"""
-        SELECT TOP (1)
-          CAST(qp.query_plan AS nvarchar(max)),
-          qs.total_logical_reads, qs.total_elapsed_time, qs.execution_count
-        FROM sys.dm_exec_query_stats AS qs
-        CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
-        CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
-        WHERE {predicate}
-        ORDER BY qs.last_execution_time DESC;
-        """;
-
-      await using var reader = await command.ExecuteReaderAsync();
-      if (!await reader.ReadAsync())
-      {
-        return null;
-      }
-
-      var executions = Math.Max(reader.GetInt64(3), 1);
-      return new MeasuredPlan(
-        label, reader.GetString(0), reader.GetInt64(1) / executions,
-        reader.GetInt64(2) / executions, executions);
+      var captured = await QueryPlanCapture.ExplainAsync(connectionString, recorded);
+      return new MeasuredPlan(label, captured.PlanXml, captured.LogicalReads, captured.Microseconds, 1);
     }
+
+    // The recorder observes every statement the PRODUCTION components issue through this context; the copy
+    // source read is captured separately because it runs over a raw connection. See QueryPlanCapture.
+    private readonly ProductionSqlRecorder recorder = new();
+
+    private RecordedCommand? sourceRead;
 
     private PlatformDbContext PlatformContext()
     {
       var options = new DbContextOptionsBuilder<PlatformDbContext>()
         .UseSqlServer(ConnectionFor(platformCatalog),
           sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform"))
+        .AddInterceptors(recorder)
         .Options;
       return new PlatformDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
     }

@@ -272,7 +272,19 @@ public sealed class TenantRoutingConvergenceSqlServerTests(Xunit.Abstractions.IT
     private static string CatalogConnection(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog }.ConnectionString;
 
-    public PlatformDbContext PlatformContext() => PlatformContextFor(platformCatalog);
+    // The recorder observes every statement the PRODUCTION version reader issues, so the plan test can
+    // measure the real query without hand-writing it. See QueryPlanCapture.
+    private readonly ProductionSqlRecorder recorder = new();
+
+    public PlatformDbContext PlatformContext()
+    {
+      var options = new DbContextOptionsBuilder<PlatformDbContext>()
+        .UseSqlServer(CatalogConnection(platformCatalog), sql => sql.MigrationsHistoryTable(
+          "__EFMigrationsHistory", "platform"))
+        .AddInterceptors(recorder)
+        .Options;
+      return new PlatformDbContext(options, new TestUser(), new NoTenant(), new TestClock());
+    }
 
     private static PlatformDbContext PlatformContextFor(string catalog)
     {
@@ -418,8 +430,8 @@ public sealed class TenantRoutingConvergenceSqlServerTests(Xunit.Abstractions.IT
       await platform.SaveChangesAsync();
     }
 
-    // A fair measurement needs current statistics and a fresh compilation. Both are scoped to this test's
-    // own database — nothing here touches the server-wide plan cache.
+    // A fair measurement needs current statistics. It no longer needs a fresh compilation: the plan is
+    // returned by the server rather than looked up in a cache, so clearing the cache would buy nothing.
     public async Task RefreshStatisticsAndPlanCacheAsync()
     {
       await using var connection = new SqlConnection(CatalogConnection(platformCatalog));
@@ -427,47 +439,25 @@ public sealed class TenantRoutingConvergenceSqlServerTests(Xunit.Abstractions.IT
       await using var command = connection.CreateCommand();
       command.CommandText = """
         UPDATE STATISTICS [platform].[TenantDatabaseAssignments] WITH FULLSCAN;
-        ALTER DATABASE SCOPED CONFIGURATION CLEAR PROCEDURE_CACHE;
         """;
       await command.ExecuteNonQueryAsync();
     }
 
-    // The plan for the NARROW version query, taken from the server's own statistics. Identified by the
-    // columns it projects and by the absence of the registry join, so it cannot be confused with the wide
-    // route read. CHARINDEX rather than LIKE: bracketed identifiers are LIKE wildcards.
-    public async Task<MeasuredPlan?> CaptureVersionQueryPlanAsync()
+    // The plan for the NARROW version query, replayed exactly as the production version reader issued it.
+    // Identified by the columns it projects and by the absence of the registry join, so it cannot be
+    // confused with the wide route read.
+    //
+    // ONE execution, so "per execution" is now literal rather than an average over whatever the server
+    // happened to have counted — a strictly tighter reading of the same threshold.
+    public async Task<MeasuredPlan> CaptureVersionQueryPlanAsync()
     {
-      await using var connection = new SqlConnection(CatalogConnection(platformCatalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = """
-        SELECT TOP (1)
-          CAST(qp.query_plan AS nvarchar(max)) AS PlanXml,
-          qs.total_logical_reads AS LogicalReads,
-          qs.total_elapsed_time AS ElapsedMicroseconds,
-          qs.execution_count AS Executions
-        FROM sys.dm_exec_query_stats AS qs
-        CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
-        CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
-        WHERE CHARINDEX(N'[TenantDatabaseAssignments]', st.text) > 0
-          AND CHARINDEX(N'[RoutingVersion]', st.text) > 0
-          AND CHARINDEX(N'[TenantDatabases]', st.text) = 0
-        ORDER BY qs.last_execution_time DESC;
-        """;
+      var captured = await QueryPlanCapture.ExplainAsync(
+        CatalogConnection(platformCatalog),
+        recorder.Match(
+          ["[TenantDatabaseAssignments]", "[RoutingVersion]"],
+          "[TenantDatabases]"));
 
-      await using var reader = await command.ExecuteReaderAsync();
-      if (!await reader.ReadAsync())
-      {
-        return null;
-      }
-
-      var executions = reader.GetInt64(3);
-      var divisor = executions == 0 ? 1 : executions;
-      return new MeasuredPlan(
-        reader.GetString(0),
-        reader.GetInt64(1) / divisor,
-        reader.GetInt64(2) / divisor,
-        executions);
+      return new MeasuredPlan(captured.PlanXml, captured.LogicalReads, captured.Microseconds, 1);
     }
 
     private static TenantDbContext TenantContext(string catalog)

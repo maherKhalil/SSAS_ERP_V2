@@ -828,11 +828,22 @@ public sealed class TenantBackupProviderSqlServerTests
       start.ArgumentList.Add(TargetCatalog);
       start.ArgumentList.Add("-Q");
       // BACKED UP REPEATEDLY, not once. A single backup of this database completes in well under a second,
-      // so a one-shot competitor turns the test into a race it usually loses. A loop keeps a BACKUP request
-      // continuously present for long enough that the provider's check is deterministic rather than lucky.
+      // so a one-shot competitor turns the test into a race it usually loses.
+      //
+      // THE COMPETITOR RUNS UNTIL THE TEST KILLS IT, not for a fixed number of iterations. A fixed count was
+      // a second elapsed-time dependence hiding inside the first: 30 quick backups take a couple of seconds,
+      // while the observing test may spend up to five 30-second waits looking for one. Under load the
+      // competitor finished before the sweep ever inspected, and the test failed with "the competing backup
+      // stopped before the sweep could observe it" — reporting a race it lost rather than a defect.
+      //
+      // Correctness now comes from the caller: every call site starts this inside a try/finally whose finally
+      // calls KillProcess, so the competitor is alive for exactly as long as the observation needs and no
+      // longer. The wall-clock cap below is ONLY a leak guard for a process that dies without its finally —
+      // it is deliberately far longer than any observation, so it never bounds the test.
       start.ArgumentList.Add(
-        $"DECLARE @i int = 0; WHILE @i < 30 BEGIN " +
-        $"BACKUP DATABASE [{TargetCatalog}] TO DISK = N'{path}' WITH INIT, CHECKSUM; SET @i += 1; END");
+        $"DECLARE @deadline datetime2 = DATEADD(minute, 10, SYSDATETIME()); " +
+        $"WHILE SYSDATETIME() < @deadline BEGIN " +
+        $"BACKUP DATABASE [{TargetCatalog}] TO DISK = N'{path}' WITH INIT, CHECKSUM; END");
 
       return System.Diagnostics.Process.Start(start)!;
     }

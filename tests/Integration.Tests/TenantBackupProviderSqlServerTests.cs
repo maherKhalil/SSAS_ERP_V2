@@ -917,8 +917,9 @@ public sealed class TenantBackupProviderSqlServerTests
             $"IF DB_ID(N'{catalog}') IS NOT NULL BEGIN ALTER DATABASE [{catalog}] " +
             $"SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{catalog}]; END");
         }
-        catch (SqlException)
+        catch (SqlException error)
         {
+          TestCatalogJanitor.RecordLeak(catalog, error);
           // A leftover catalog is housekeeping, never a reason to fail the test that created it.
         }
       }

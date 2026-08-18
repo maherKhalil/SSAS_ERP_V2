@@ -859,8 +859,9 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
           $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
           $"DROP DATABASE [{catalog}]; END", 300);
       }
-      catch (SqlException)
+      catch (SqlException error)
       {
+        TestCatalogJanitor.RecordLeak(catalog, error);
       }
     }
 

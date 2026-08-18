@@ -308,8 +308,9 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
           $"IF DB_ID(N'{catalog}') IS NOT NULL BEGIN ALTER DATABASE [{catalog}] " +
           $"SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{catalog}]; END", 300);
       }
-      catch (SqlException)
+      catch (SqlException error)
       {
+        TestCatalogJanitor.RecordLeak(catalog, error);
       }
 
       // Scoped to this run's own folder. No wildcard sweep, and no xp_delete_file.

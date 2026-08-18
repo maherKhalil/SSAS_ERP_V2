@@ -734,6 +734,20 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     {
       foreach (var database in createdDatabases.Distinct(StringComparer.OrdinalIgnoreCase))
       {
+        // DIRECT DROP FIRST. This fixture leaves verification databases in RESTORING, and a RESTORING
+        // database cannot be put into SINGLE_USER — the dance fails with "ALTER DATABASE is not permitted
+        // while a database is in the Restoring state" and the catalog leaks. That is not hypothetical: it
+        // leaked SSAS_Verify_4242_77 on a real run. Same pattern as ProcessLoss.DropAsync.
+        try
+        {
+          await ExecuteAsync("master", $"IF DB_ID(N'{database}') IS NOT NULL DROP DATABASE [{database}]");
+          continue;
+        }
+        catch (SqlException)
+        {
+        }
+
+        // Fallback for an ONLINE database still holding sessions, where the direct drop is refused.
         try
         {
           await ExecuteAsync("master",
@@ -741,8 +755,9 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
             $"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
             $"DROP DATABASE [{database}]; END");
         }
-        catch (SqlException)
+        catch (SqlException error)
         {
+          TestCatalogJanitor.RecordLeak(database, error);
           // Teardown is best-effort: a cleanup failure must not mask the assertion that ran before it.
         }
       }

@@ -1376,8 +1376,9 @@ public sealed class TenantBranchLifecycleSqlServerTests
           await ExecuteAsync("master",
             $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{catalog}]");
         }
-        catch (SqlException)
+        catch (SqlException error)
         {
+          TestCatalogJanitor.RecordLeak(catalog, error);
           // A catalog that never got created, or is still held by a pooled connection, must not fail the
           // test that already made its point.
         }

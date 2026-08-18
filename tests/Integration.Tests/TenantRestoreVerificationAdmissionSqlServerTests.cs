@@ -696,8 +696,9 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
           $"DROP DATABASE [{PlatformCatalog}]; END";
         await command.ExecuteNonQueryAsync();
       }
-      catch (SqlException)
+      catch (SqlException error)
       {
+        TestCatalogJanitor.RecordLeak(PlatformCatalog, error);
         // A leftover test catalog is an untidy environment, not a failed assertion.
       }
     }

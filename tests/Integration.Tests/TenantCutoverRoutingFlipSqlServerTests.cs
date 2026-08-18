@@ -978,8 +978,9 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
             $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
             $"DROP DATABASE [{catalog}]; END");
         }
-        catch (SqlException)
+        catch (SqlException error)
         {
+          TestCatalogJanitor.RecordLeak(catalog, error);
         }
       }
     }

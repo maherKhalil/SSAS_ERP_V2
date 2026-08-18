@@ -532,8 +532,9 @@ public sealed class TenantDbContextRoutingSqlServerTests
           await using var context = RoutingFixture.TenantContext(catalog);
           await context.Database.EnsureDeletedAsync();
         }
-        catch (SqlException)
+        catch (SqlException error)
         {
+          TestCatalogJanitor.RecordLeak(catalog, error);
           // A catalog that was never created is not a failure worth masking the real one for.
         }
       }

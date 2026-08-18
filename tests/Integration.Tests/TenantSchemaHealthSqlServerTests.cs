@@ -792,8 +792,9 @@ public sealed class TenantSchemaHealthSqlServerTests
           await using var context = TenantContext(catalog);
           await context.Database.EnsureDeletedAsync();
         }
-        catch (SqlException)
+        catch (SqlException error)
         {
+          TestCatalogJanitor.RecordLeak(catalog, error);
           // A catalog that was never created is not worth masking a real failure for.
         }
       }

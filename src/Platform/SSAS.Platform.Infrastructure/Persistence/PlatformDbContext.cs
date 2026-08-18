@@ -5,6 +5,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Branches;
+using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Domain.Localization;
 using SSAS.Platform.Domain.PlatformSupport;
 using SSAS.Platform.Domain.Roles;
@@ -28,6 +29,11 @@ public sealed class PlatformDbContext(
   // Which branches a tenant user may enter. Platform-plane because authentication must read it before a
   // tenant database is reached; the branch rows themselves live in the tenant database.
   public DbSet<UserBranchAccess> UserBranchAccess => Set<UserBranchAccess>();
+
+  // Which companies a tenant user may act within. Platform-plane for the same reason branch access is: the
+  // relationship that needs enforcing is the one to TenantUser, which is in this catalog, while the company
+  // rows themselves live in the tenant database (ADR-025 decision 5).
+  public DbSet<UserCompanyAccess> UserCompanyAccess => Set<UserCompanyAccess>();
 
   public DbSet<Role> Roles => Set<Role>();
 

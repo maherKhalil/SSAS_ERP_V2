@@ -6,6 +6,7 @@ using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore.Storage;
 using SSAS.Platform.Application.Branches;
+using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Domain.Branches;
 using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Infrastructure.TenantStorage;
@@ -46,6 +47,14 @@ public sealed class TenantDbContext(
   // session) and re-authorizing it is another, so it cannot be answered by a synchronous property without
   // either blocking a request thread or trusting a value nobody re-checked.
   IBranchWriteAuthorizer? branchAuthorizer = null,
+  // THE COMPANY WRITE BOUNDARY (FP-006C1, ADR-025 decision 9). Optional for exactly the reasons the branch
+  // authorizer is: maintenance builders construct this context for schema work, which writes no
+  // company-owned data. Null here makes a company-owned write fail closed rather than pick a company — it
+  // never permits one.
+  //
+  // A SEPARATE AUTHORIZER FROM THE BRANCH ONE, deliberately. Company and Branch are independent dimensions,
+  // and one authorizer answering both would make it possible for a change in either to widen the other.
+  ICompanyWriteAuthorizer? companyAuthorizer = null,
   // WHICH PHYSICAL DATABASE THIS CONTEXT IS BOUND TO (ADR-020, TS-Storage Phase E4). Captured at creation
   // from the route that chose the connection, and never re-read: a context's database is fixed for its
   // lifetime, which is exactly why a context created before a cutover flip is still pointing at the source
@@ -90,6 +99,22 @@ public sealed class TenantDbContext(
     CancellationToken cancellationToken = default)
   {
     PreventCompanyDeletion();
+
+    // ---- COMPANY AUTHORIZATION, BEFORE BRANCH AND BEFORE ANYTHING TOUCHES THE DATABASE (FP-006C1).
+    //
+    // ORDER: tenant -> company -> branch -> persistence. Company runs BEFORE branch because the two
+    // dimensions must be settled outside-in and independently: a save that is refused on company grounds
+    // must never have had its branch authorized first, or a log would record branch admission for a write
+    // that was never permitted to exist. Neither call can widen the other — each resolves its own dimension
+    // from its own authority and returns only its own identifier — and running company first means the
+    // cheaper, request-scoped refusal happens before the durable-session read that branch requires.
+    //
+    // The TENANT boundary bookends both: CurrentTenantId is the trusted tenant both rules verify against
+    // here, and the tenant STAMP plus the post-creation immutability guard run in base.SaveChangesAsync
+    // below. An Added entity therefore still carries an unstamped TenantId at this point, which is why
+    // neither rule reads it — both authorize against the ambient trusted tenant instead, and AssignTenant
+    // independently refuses a mismatched one afterwards.
+    await ApplyCompanyRulesAsync(cancellationToken);
 
     // ---- BRANCH AUTHORIZATION, BEFORE ANYTHING ELSE TOUCHES THE DATABASE (Branch foundation B1c).
     //
@@ -208,6 +233,95 @@ public sealed class TenantDbContext(
         default:
           break;
       }
+    }
+  }
+
+  // ---- THE COMPANY OWNERSHIP BOUNDARY (FP-006C1, ADR-025 decision 9).
+  //
+  // IT TOUCHES ONLY ICompanyOwnedEntity. Tenant-global data — Company itself, Branch — is unaffected, which
+  // is what lets an administrator create the very first company: demanding a company context in order to
+  // write a Company would be unsatisfiable by construction, exactly as it would be for the first branch.
+  //
+  // IT IS THE SAME SHAPE AS THE BRANCH RULE AND A SEPARATE DECISION FROM IT. Company and Branch are sibling
+  // dimensions beneath the tenant (ADR-023, ADR-025): an entity may be owned along either, both or neither,
+  // and neither authorization can substitute for or widen the other. Sharing one code path would make that
+  // independence an implementation detail rather than a boundary.
+  //
+  // IT IS DELIBERATELY NOT THE FUNCTIONAL PERMISSION CHECK. Whether the user may perform this OPERATION is
+  // answered by the ordinary permission pipeline; this is the ownership stamp and the scope refusal.
+  private async Task ApplyCompanyRulesAsync(CancellationToken cancellationToken)
+  {
+    var entries = ChangeTracker.Entries<ICompanyOwnedEntity>()
+      .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+      .ToArray();
+
+    // Nothing company-owned is being written, so no company is needed. This is what keeps company creation
+    // and all tenant-global administration possible with no company selected.
+    if (entries.Length == 0)
+    {
+      return;
+    }
+
+    if (companyAuthorizer is null || CurrentTenantId is not { } tenantId)
+    {
+      throw new InvalidOperationException(
+        "A trusted company context is required to save company-owned entities.");
+    }
+
+    // ---- ONE AUTHORITATIVE ANSWER PER SAVE, used for every entry below. Asked once rather than per entity
+    // so a single save cannot straddle two answers, and so the cost is one check per write rather than one
+    // per row — the same economy the branch rule makes.
+    var authorized = await companyAuthorizer.AuthorizeCurrentCompanyAsync(tenantId, cancellationToken);
+    if (authorized.IsFailure)
+    {
+      throw new Persistence.TenantErp.TenantStorageUnavailableException(authorized.Error);
+    }
+
+    var companyId = authorized.Value;
+
+    foreach (var entry in entries)
+    {
+      switch (entry.State)
+      {
+        case EntityState.Added:
+          AssignCompany(entry.Entity, companyId);
+          break;
+
+        // COMPANY OWNERSHIP IS IMMUTABLE, exactly as tenant ownership is, and unlike branch there is no
+        // sanctioned transfer: an employee does not move between legal entities, they are employed by a
+        // different one. Reassigning a record's company by editing the column would relocate it across a
+        // legal boundary with no record that it moved.
+        case EntityState.Modified when entry.Property(nameof(ICompanyOwnedEntity.CompanyId)).IsModified:
+          throw new InvalidOperationException(
+            "Company ownership cannot be changed after an entity is created.");
+
+        // ---- MODIFYING OR DELETING ANOTHER COMPANY'S ROW IS STILL A CROSS-COMPANY WRITE. Authorizing only
+        // inserts would let a user acting within one legal entity edit or delete another's records, which is
+        // the same breach as creating one there.
+        case EntityState.Modified or EntityState.Deleted when entry.Entity.CompanyId != companyId:
+          throw new InvalidOperationException(
+            "Company ownership must match the trusted company context.");
+
+        default:
+          break;
+      }
+    }
+  }
+
+  private static void AssignCompany(ICompanyOwnedEntity entity, Guid companyId)
+  {
+    if (entity.CompanyId == Guid.Empty)
+    {
+      entity.CompanyId = companyId;
+      return;
+    }
+
+    // A CALLER-SUPPLIED CompanyId IS ONLY EVER CONFIRMED, NEVER TRUSTED. An entity arriving with a company
+    // that is not the trusted one is a write aimed at a legal entity the caller is not acting within —
+    // refused rather than quietly rewritten, because silently correcting it would hide the attempt.
+    if (entity.CompanyId != companyId)
+    {
+      throw new InvalidOperationException("Company ownership must match the trusted company context.");
     }
   }
 

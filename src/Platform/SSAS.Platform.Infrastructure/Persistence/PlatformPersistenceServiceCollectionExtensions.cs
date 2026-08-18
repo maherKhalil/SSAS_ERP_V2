@@ -20,6 +20,7 @@ using SSAS.Platform.Application.Tenants;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Infrastructure.Branches;
+using SSAS.Platform.Infrastructure.Companies;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -296,6 +297,29 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // Branch foundation B1c. The write authorizer is what makes the session's branch non-authoritative on
     // its own: it re-reads the durable session AND re-asks the resolver on every branch-owned write.
     services.AddScoped<IBranchWriteAuthorizer, BranchWriteAuthorizer>();
+
+    // ---- FP-006C1: THE COMPANY DIMENSION (ADR-025). Registered alongside branch and shaped identically,
+    // because ADR-025 chose the branch pattern for the sibling dimension.
+    //
+    // THE COMPANY READ PATH USES A CONTEXT FACTORY WITHOUT THE WRITE AUTHORIZERS, for the same reason the
+    // branch read path does: otherwise the graph is circular — the routed factory needs the company write
+    // authorizer, which needs the context resolver, which needs the access resolver, which needs a routed
+    // context to read the tenant's companies. The cycle is not real, because the resolver only ever READS
+    // companies; giving it a factory that omits the authorizers states that fact instead of concealing it.
+    services.AddScoped<ITenantCompanyAccessResolver>(provider => new TenantCompanyAccessResolver(
+      provider.GetRequiredService<PlatformDbContext>(),
+      BranchReadContextFactory(provider),
+      provider.GetRequiredService<ITenantAdministratorAuthority>()));
+
+    // The five-step validation, in one place, used by BOTH the request path and the write boundary. Two
+    // copies of "is this company usable" is how a read path and a write path come to disagree.
+    services.AddScoped<ICompanyContextResolver, CompanyContextResolver>();
+
+    // The write authorizer re-asks that validation on EVERY company-owned save, which is what makes a
+    // company established at the start of a request non-authoritative by the time the request writes.
+    services.AddScoped<ICompanyWriteAuthorizer, CompanyWriteAuthorizer>();
+
+    services.AddScoped<IUserCompanyAccessRepository, UserCompanyAccessRepository>();
     services.AddScoped<IBranchSessionService, BranchSessionService>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();

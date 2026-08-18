@@ -22,15 +22,38 @@ public sealed class CompanyArchitectureTests
     Assert.DoesNotContain(interfaces, contract => contract.Name == "ICompanyOwnedEntity");
   }
 
+  // ---- SUPERSEDED PREMISE, RETAINED PROTECTION (FP-006C1).
+  //
+  // This assertion previously required that `ICompanyOwnedEntity` did NOT exist. That was correct for FP-005
+  // Milestone 1 and only for it: `DEC-CMP-0005` and `ADR-014` decision 6 deferred the interface "until the
+  // first real company-owned business record", and FP-006C1 is that moment — `ADR-025` decision 1 introduces
+  // it as shared infrastructure ahead of Employee.
+  //
+  // So the deferral half is retired by approved decision rather than by convenience, and what remains is the
+  // half that never expired: the interface is a SEPARATE, OPT-IN contract in the shared Domain layer, and
+  // `Company` is the company ROOT and must never implement it. That is the assertion with a live failure
+  // mode — a Company scoped by company would be self-referential nonsense that nothing else would catch.
   [Fact]
   [Trait("Decision", "DEC-CMP-0005")]
+  [Trait("Decision", "DEC-EMP-0002")]
   [Trait("Scenario", "TS-CMP-0086")]
-  public void ICompanyOwnedEntity_interface_is_not_introduced_in_milestone_one()
+  public void ICompanyOwnedEntity_is_a_separate_opt_in_contract_that_company_does_not_implement()
   {
-    var domainTypes = typeof(Company).Assembly.GetTypes()
-      .Concat(typeof(ITenantOwnedEntity).Assembly.GetTypes());
+    var companyOwned = typeof(ITenantOwnedEntity).Assembly.GetTypes()
+      .SingleOrDefault(type => type.Name == "ICompanyOwnedEntity");
 
-    Assert.DoesNotContain(domainTypes, type => type.Name == "ICompanyOwnedEntity");
+    // It lives beside ITenantOwnedEntity in the shared Domain layer, not in Platform: otherwise every future
+    // company-owned module would depend on Platform's Domain to declare its own ownership.
+    Assert.NotNull(companyOwned);
+    Assert.True(companyOwned!.IsInterface);
+
+    // OPT-IN, NOT INHERITED. Adding CompanyId to ITenantOwnedEntity would force a company dimension onto
+    // every tenant-wide record that has none (`ADR-014` decision 4).
+    Assert.DoesNotContain(companyOwned, typeof(ITenantOwnedEntity).GetInterfaces());
+    Assert.DoesNotContain(typeof(ITenantOwnedEntity), companyOwned.GetInterfaces());
+
+    // And the company root is still not company-owned.
+    Assert.DoesNotContain(typeof(Company).GetInterfaces(), contract => contract == companyOwned);
   }
 
   [Fact]

@@ -141,7 +141,11 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "TenantSelectionTransactions",
             "TenantUserRoleAssignments",
             "TenantUsers",
-            "Tenants"
+            "Tenants",
+            // Which branches a tenant user may enter (Branch foundation B0). Platform-plane because
+            // authentication reads it before a tenant database is reached; the branch rows themselves live
+            // in the tenant ERP database and are deliberately referenced by identifier only.
+            "UserBranchAccess"
           ],
           tables.Where(name => !name.StartsWith("__", StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal));
         Assert.Contains("__EFMigrationsHistory", tables);

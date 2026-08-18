@@ -11,6 +11,7 @@ using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Application.TenantStorage;
+using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Branches;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Identities;
@@ -566,6 +567,292 @@ public sealed class TenantBranchLifecycleSqlServerTests
     Assert.DoesNotContain("Table Scan", plan.Operations, StringComparison.Ordinal);
   }
 
+  // ================= B1c: ACTIVE BRANCH SESSION FLOW =================
+
+  // ---- A + L. EXACTLY ONE AUTHORIZED BRANCH IS CHOSEN FOR THE USER, and the choice is durable.
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public async Task A_session_with_exactly_one_authorized_branch_is_auto_selected(bool administrator)
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var riyadh = (await fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+
+    var userId = administrator
+      ? fixture.AdministratorUserId
+      : await fixture.SeedUserWithBranchesAsync("one@example.test", riyadh.BranchId);
+    var sessionId = await fixture.OpenSessionAsync(userId);
+
+    var state = await fixture.BranchSessions().ResolveForSessionAsync(sessionId);
+
+    Assert.True(state.IsSuccess, state.IsFailure ? state.Error.Code : null);
+    Assert.Equal(BranchSessionOutcome.Active, state.Value.Outcome);
+    Assert.Equal(riyadh.BranchId, state.Value.ActiveBranchId);
+
+    // Durable, not just returned.
+    Assert.Equal(riyadh.BranchId, await fixture.StoredBranchAsync(sessionId));
+  }
+
+  // ---- B + M. MORE THAN ONE MEANS THE USER MUST CHOOSE, and the session stays branch-less meanwhile.
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public async Task A_session_with_several_authorized_branches_must_select_before_working(bool administrator)
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var riyadh = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    var userId = administrator
+      ? fixture.AdministratorUserId
+      : await fixture.SeedUserWithBranchesAsync("many@example.test", riyadh.BranchId, jeddah.BranchId);
+    var sessionId = await fixture.OpenSessionAsync(userId);
+
+    var state = await fixture.BranchSessions().ResolveForSessionAsync(sessionId);
+
+    Assert.True(state.IsSuccess, state.IsFailure ? state.Error.Code : null);
+    Assert.Equal(BranchSessionOutcome.BranchSelectionRequired, state.Value.Outcome);
+    Assert.Null(state.Value.ActiveBranchId);
+    Assert.Equal(2, state.Value.SelectableBranches.Count);
+
+    // NO SKIP: nothing was written, so branch-owned work stays refused.
+    Assert.Null(await fixture.StoredBranchAsync(sessionId));
+  }
+
+  // ---- K. AN ADMINISTRATOR WITH NO BRANCHES IS ONBOARDING, not broken.
+  [Fact]
+  public async Task An_administrator_whose_tenant_has_no_branches_is_sent_to_onboarding()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var sessionId = await fixture.OpenSessionAsync(fixture.AdministratorUserId);
+
+    var state = await fixture.BranchSessions().ResolveForSessionAsync(sessionId);
+
+    Assert.True(state.IsSuccess, state.IsFailure ? state.Error.Code : null);
+    Assert.Equal(BranchSessionOutcome.FirstBranchRequired, state.Value.Outcome);
+    Assert.Null(await fixture.StoredBranchAsync(sessionId));
+  }
+
+  // ---- O. A NORMAL USER WITH NOTHING REACHABLE FAILS CLOSED. B1b makes this unreachable through supported
+  // workflows, so it means the account is in a state it should not be in — never an empty picker.
+  [Fact]
+  public async Task A_normal_user_with_no_reachable_branch_fails_closed()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    Assert.True((await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).IsSuccess);
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    var userId = await fixture.SeedUserWithBranchesAsync("orphan@example.test", jeddah.BranchId);
+
+    // Their only branch is retired out from under them, leaving a retained row pointing nowhere active.
+    Assert.True((await service.DeactivateAsync(
+      new DeactivateBranchRequest(jeddah.BranchId, null, jeddah.RowVersion))).IsFailure);
+    await fixture.ForceDeactivateBranchAsync(jeddah.BranchId);
+
+    var state = await fixture.BranchSessions().ResolveForSessionAsync(await fixture.OpenSessionAsync(userId));
+
+    Assert.True(state.IsFailure);
+    Assert.Equal(BranchErrors.AccountIntegrityFailure.Code, state.Error.Code);
+  }
+
+  // ---- D + E + F + G + H + I + J. SELECTION AND SWITCHING, INCLUDING EVERY REFUSAL.
+  [Fact]
+  public async Task Branch_selection_and_switching_revalidate_and_never_strand_the_current_branch()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var riyadh = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+    var dammam = (await service.CreateAsync(new CreateBranchRequest("DMM", "Dammam", false))).Value;
+
+    var userId = await fixture.SeedUserWithBranchesAsync(
+      "switcher@example.test", riyadh.BranchId, jeddah.BranchId);
+    var sessionId = await fixture.OpenSessionAsync(userId);
+    var sessions = fixture.BranchSessions();
+
+    // D. A valid selection lands.
+    Assert.True((await sessions.SelectActiveBranchAsync(sessionId, riyadh.BranchId)).IsSuccess);
+    Assert.Equal(riyadh.BranchId, await fixture.StoredBranchAsync(sessionId));
+
+    // H. A valid switch moves it.
+    Assert.True((await sessions.SelectActiveBranchAsync(sessionId, jeddah.BranchId)).IsSuccess);
+    Assert.Equal(jeddah.BranchId, await fixture.StoredBranchAsync(sessionId));
+
+    // J. Re-selecting the current branch is idempotent, not an error.
+    Assert.True((await sessions.SelectActiveBranchAsync(sessionId, jeddah.BranchId)).IsSuccess);
+    Assert.Equal(jeddah.BranchId, await fixture.StoredBranchAsync(sessionId));
+
+    // E + I. An unauthorized branch is refused AND leaves the current one alone.
+    var unauthorized = await sessions.SelectActiveBranchAsync(sessionId, dammam.BranchId);
+    Assert.True(unauthorized.IsFailure);
+    Assert.Equal(BranchErrors.InvalidSelection.Code, unauthorized.Error.Code);
+    Assert.Equal(jeddah.BranchId, await fixture.StoredBranchAsync(sessionId));
+
+    // G. Another tenant's branch is refused identically — no existence disclosure.
+    var foreign = (await fixture.ServiceForTenantB().CreateAsync(
+      new CreateBranchRequest("XXX", "Foreign", true))).Value;
+    var crossTenant = await sessions.SelectActiveBranchAsync(sessionId, foreign.BranchId);
+    Assert.True(crossTenant.IsFailure);
+    Assert.Equal(BranchErrors.InvalidSelection.Code, crossTenant.Error.Code);
+    Assert.Equal(jeddah.BranchId, await fixture.StoredBranchAsync(sessionId));
+
+    // F. A deactivated branch is refused, and the current branch survives.
+    await fixture.ForceDeactivateBranchAsync(riyadh.BranchId);
+    var inactive = await sessions.SelectActiveBranchAsync(sessionId, riyadh.BranchId);
+    Assert.True(inactive.IsFailure);
+    Assert.Equal(jeddah.BranchId, await fixture.StoredBranchAsync(sessionId));
+  }
+
+  // ---- N. AN ADMINISTRATOR SELECTS THROUGH IMPLICIT SCOPE, holding no assignment rows at all.
+  [Fact]
+  public async Task An_administrator_selects_a_branch_without_any_access_rows()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var riyadh = (await fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var sessionId = await fixture.OpenSessionAsync(fixture.AdministratorUserId);
+
+    Assert.Equal(0, await fixture.AccessRowCountAsync(fixture.AdministratorUserId));
+    var selected = await fixture.BranchSessions().SelectActiveBranchAsync(sessionId, riyadh.BranchId);
+
+    Assert.True(selected.IsSuccess, selected.IsFailure ? selected.Error.Code : null);
+    Assert.Equal(riyadh.BranchId, await fixture.StoredBranchAsync(sessionId));
+  }
+
+  // ---- P + Q + R + T + U. THE MID-SESSION REVOCATION MATRIX — the security core of B1c.
+  //
+  // In every case the session still stores a perfectly readable branch id, and in every case the write
+  // boundary must refuse. This is what makes the stored branch context rather than authorization.
+  [Theory]
+  [InlineData("assignment-revoked")]
+  [InlineData("branch-deactivated")]
+  [InlineData("admin-authority-revoked")]
+  [InlineData("session-revoked")]
+  [InlineData("session-expired")]
+  [InlineData("no-branch-selected")]
+  public async Task A_stored_branch_stops_authorizing_writes_the_moment_the_grounds_change(string change)
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var riyadh = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+
+    var administrator = change == "admin-authority-revoked";
+    var userId = administrator
+      ? fixture.AdministratorUserId
+      : await fixture.SeedUserWithBranchesAsync($"{change}@example.test", riyadh.BranchId);
+    var sessionId = await fixture.OpenSessionAsync(userId);
+
+    if (change != "no-branch-selected")
+    {
+      var selected = await fixture.BranchSessions().SelectActiveBranchAsync(sessionId, riyadh.BranchId);
+      Assert.True(selected.IsSuccess, selected.IsFailure ? selected.Error.Code : null);
+      Assert.Equal(riyadh.BranchId, await fixture.StoredBranchAsync(sessionId));
+    }
+
+    // ---- The grounds change underneath the session.
+    switch (change)
+    {
+      case "assignment-revoked":
+        await fixture.RevokeAssignmentAsync(userId, riyadh.BranchId);
+        break;
+      case "branch-deactivated":
+        await fixture.ForceDeactivateBranchAsync(riyadh.BranchId);
+        break;
+      case "admin-authority-revoked":
+        await fixture.RevokeAdministratorAuthorityAsync();
+        break;
+      case "session-revoked":
+        await fixture.RevokeSessionAsync(sessionId);
+        break;
+      case "session-expired":
+        await fixture.ExpireSessionAsync(sessionId);
+        break;
+      default:
+        break;
+    }
+
+    var authorized = await fixture.WriteAuthorizer(sessionId, userId)
+      .AuthorizeCurrentBranchAsync(fixture.TenantA);
+
+    Assert.True(authorized.IsFailure, $"a branch-owned write was still authorized after: {change}");
+  }
+
+  // ---- S. TWO SWITCHES ON ONE SESSION: controlled, never corrupt.
+  [Fact]
+  public async Task Concurrent_branch_switches_leave_the_session_on_exactly_one_authorized_branch()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var riyadh = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    var userId = await fixture.SeedUserWithBranchesAsync(
+      "race@example.test", riyadh.BranchId, jeddah.BranchId);
+    var sessionId = await fixture.OpenSessionAsync(userId);
+
+    await Task.WhenAll(
+      Task.Run(() => fixture.BranchSessions().SelectActiveBranchAsync(sessionId, riyadh.BranchId)),
+      Task.Run(() => fixture.BranchSessions().SelectActiveBranchAsync(sessionId, jeddah.BranchId)));
+
+    var stored = await fixture.StoredBranchAsync(sessionId);
+    Assert.True(stored == riyadh.BranchId || stored == jeddah.BranchId);
+  }
+
+  // ---- AB. NO WEB SESSION AT ALL: fail closed rather than fail to compose.
+  [Fact]
+  public async Task A_composition_without_a_current_session_refuses_branch_owned_writes()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    Assert.True((await fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).IsSuccess);
+
+    var authorized = await fixture.WriteAuthorizerWithoutSession().AuthorizeCurrentBranchAsync(fixture.TenantA);
+
+    Assert.True(authorized.IsFailure);
+    Assert.Equal(BranchErrors.ContextRequired.Code, authorized.Error.Code);
+  }
+
+  // ---- AA. TENANT-GLOBAL WRITES REMAIN LEGAL WITH NO BRANCH SELECTED. This is what keeps first-branch
+  // onboarding reachable: creating the very first Branch is itself a tenant-global write.
+  [Fact]
+  public async Task Tenant_global_writes_need_no_branch_context()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var sessionId = await fixture.OpenSessionAsync(fixture.AdministratorUserId);
+    Assert.Null(await fixture.StoredBranchAsync(sessionId));
+
+    // Branch itself is tenant-global, so this succeeds with no active branch anywhere.
+    var created = await fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true));
+
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+    Assert.Null(await fixture.StoredBranchAsync(sessionId));
+  }
+
+  // ---- §7. THE PER-WRITE REAUTHORIZATION COST, measured at realistic cardinality.
+  [Fact]
+  public async Task The_per_write_branch_authorization_seeks_its_indexes_at_realistic_cardinality()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var riyadh = (await fixture.Service().CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var userId = await fixture.SeedUserWithBranchesAsync("perf@example.test", riyadh.BranchId);
+    var sessionId = await fixture.OpenSessionAsync(userId);
+    Assert.True((await fixture.BranchSessions().SelectActiveBranchAsync(sessionId, riyadh.BranchId)).IsSuccess);
+
+    await fixture.SeedAccessRowsAsync(5_000);
+
+    var session = await fixture.CapturePlanAsync(
+      $"SELECT [ActiveBranchId], [Status] FROM [platform].[AuthenticationSessions] WHERE [AuthenticationSessionId] = {sessionId}");
+    var authorization = await fixture.CapturePlanAsync(
+      $"SELECT TOP 1 1 FROM [platform].[UserBranchAccess] WHERE [TenantId] = '{fixture.TenantA:D}' AND [TenantUserId] = {userId} AND [BranchId] = '{riyadh.BranchId:D}'");
+
+    // Both hot-path reads must be seeks; a scan on either runs on every branch-owned write.
+    Assert.NotNull(session);
+    Assert.NotNull(authorization);
+    Assert.DoesNotContain("Table Scan", session!.Operations, StringComparison.Ordinal);
+    Assert.Contains("Seek", authorization!.Operations, StringComparison.Ordinal);
+    Assert.DoesNotContain("Table Scan", authorization.Operations, StringComparison.Ordinal);
+  }
+
   private sealed class BranchFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -865,6 +1152,138 @@ public sealed class TenantBranchLifecycleSqlServerTests
       return xml is null ? null : new MeasuredPlan(xml, xml);
     }
 
+    // ---- B1c wiring.
+    public BranchSessionService BranchSessions()
+    {
+      var platform = PlatformContext(TenantA);
+      return new BranchSessionService(
+        platform,
+        new TenantBranchAccessResolver(
+          platform, TenantContextFactory(TenantA), new TenantAdministratorAuthority(platform)),
+        new TenantAdministratorAuthority(platform),
+        new TestClock());
+    }
+
+    public BranchWriteAuthorizer WriteAuthorizer(long sessionId, long tenantUserId)
+    {
+      var platform = PlatformContext(TenantA);
+      return new BranchWriteAuthorizer(
+        platform,
+        new TenantBranchAccessResolver(
+          platform, TenantContextFactory(TenantA), new TenantAdministratorAuthority(platform)),
+        new TestClock(),
+        new TestSession(TenantA, tenantUserId, sessionId));
+    }
+
+    // The non-web composition: no ICurrentAuthenticationSession at all.
+    public BranchWriteAuthorizer WriteAuthorizerWithoutSession()
+    {
+      var platform = PlatformContext(TenantA);
+      return new BranchWriteAuthorizer(
+        platform,
+        new TenantBranchAccessResolver(
+          platform, TenantContextFactory(TenantA), new TenantAdministratorAuthority(platform)),
+        new TestClock());
+    }
+
+    public async Task<long> OpenSessionAsync(long tenantUserId)
+    {
+      await using var platform = PlatformContext(TenantA);
+      var identityId = await platform.TenantUsers
+        .IgnoreQueryFilters()
+        .Where(user => user.Id == tenantUserId)
+        .Select(user => user.IdentityId)
+        .SingleAsync();
+
+      var now = DateTimeOffset.UtcNow;
+      var session = AuthenticationSession.Create(
+        identityId, tenantUserId, TenantA, "web", Guid.NewGuid(), 1,
+        now, now.AddDays(30), now.AddDays(90));
+      platform.Set<AuthenticationSession>().Add(session);
+      await platform.SaveChangesAsync();
+      return session.Id;
+    }
+
+    public async Task<Guid?> StoredBranchAsync(long sessionId)
+    {
+      await using var platform = PlatformContext(TenantA);
+      return await platform.Set<AuthenticationSession>()
+        .AsNoTracking()
+        .Where(session => session.Id == sessionId)
+        .Select(session => session.ActiveBranchId)
+        .SingleAsync();
+    }
+
+    public async Task<long> SeedUserWithBranchesAsync(string email, params Guid[] branchIds)
+    {
+      var identityId = await SeedIdentityAsync();
+      var created = await CreateUser().HandleAsync(
+        new CreateTenantUserMembershipCommand(identityId, email, "User", [], branchIds));
+      Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+      return created.Value;
+    }
+
+    public Task RevokeAssignmentAsync(long tenantUserId, Guid branchId) => ExecuteAsync(platformCatalog,
+      $"DELETE FROM [platform].[UserBranchAccess] WHERE [TenantId] = '{TenantA:D}' AND [TenantUserId] = {tenantUserId} AND [BranchId] = '{branchId:D}'");
+
+    // Direct SQL: B1a legitimately REFUSES a deactivation that would strand someone, and these cases need
+    // the stranded state itself in order to prove the write boundary still refuses.
+    public Task ForceDeactivateBranchAsync(Guid branchId) => ExecuteAsync(TenantCatalog,
+      $"UPDATE [tenant].[Branches] SET [IsActive] = 0, [IsMainBranch] = 0 WHERE [BranchId] = '{branchId:D}'");
+
+    public Task RevokeAdministratorAuthorityAsync() => ExecuteAsync(platformCatalog,
+      $"UPDATE [platform].[RolePermissionAssignments] SET [RemovedUtc] = SYSDATETIMEOFFSET(), [RemovedBy] = 'test' WHERE [TenantId] = '{TenantA:D}'");
+
+    // Through the DOMAIN, not raw SQL: the sessions table carries a lifecycle-metadata CHECK constraint, so
+    // stamping Status alone produces a row the database rightly refuses. Revoking the way production
+    // revokes is also what makes this a real test of the revocation path.
+    public async Task RevokeSessionAsync(long sessionId)
+    {
+      await using var platform = PlatformContext(TenantA);
+      var session = await platform.Set<AuthenticationSession>()
+        .SingleAsync(candidate => candidate.Id == sessionId);
+
+      var revoked = session.Revoke(
+        AuthenticationSessionRevocationReason.Administrative, "test", Guid.NewGuid(), DateTimeOffset.UtcNow);
+      Assert.True(revoked.IsSuccess, revoked.IsFailure ? revoked.Error.Code : null);
+      await platform.SaveChangesAsync();
+    }
+
+    // The expiry CHECK relates created/idle/absolute, so the whole window moves into the past together
+    // rather than idle alone being dragged behind creation.
+    public Task ExpireSessionAsync(long sessionId) => ExecuteAsync(platformCatalog, $"""
+      UPDATE [platform].[AuthenticationSessions]
+      SET [CreatedUtc] = DATEADD(day, -40, SYSDATETIMEOFFSET()),
+          [IdleExpiresUtc] = DATEADD(day, -10, SYSDATETIMEOFFSET()),
+          [AbsoluteExpiresUtc] = DATEADD(day, 50, SYSDATETIMEOFFSET())
+      WHERE [AuthenticationSessionId] = {sessionId}
+      """);
+
+    public async Task<MeasuredPlan?> CapturePlanAsync(string sql)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(platformCatalog));
+      await connection.OpenAsync();
+
+      await using (var on = connection.CreateCommand())
+      {
+        on.CommandText = "SET SHOWPLAN_XML ON";
+        await on.ExecuteNonQueryAsync();
+      }
+
+      string? xml = null;
+      await using (var measured = connection.CreateCommand())
+      {
+        measured.CommandText = sql;
+        await using var reader = await measured.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+          xml = reader.GetString(0);
+        }
+      }
+
+      return xml is null ? null : new MeasuredPlan(xml, xml);
+    }
+
     public async Task<int> BranchRowCountAsync()
     {
       await using var connection = new SqlConnection(ConnectionFor(TenantCatalog));
@@ -994,10 +1413,12 @@ public sealed class TenantBranchLifecycleSqlServerTests
       public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
     }
 
-    private sealed class TestSession(Guid tenantId, long tenantUserId) : ICurrentAuthenticationSession
+    // The session id matters for B1c: the write authorizer looks the durable row up by it.
+    private sealed class TestSession(Guid tenantId, long tenantUserId, long sessionId = 1)
+      : ICurrentAuthenticationSession
     {
       public CurrentAuthenticationSession? Value => new(
-        1, tenantId, tenantUserId, 1, AuthenticationClientId.Create("web").Value, 1);
+        1, tenantId, tenantUserId, sessionId, AuthenticationClientId.Create("web").Value, 1);
     }
 
     private sealed class NoOpDomainEventDispatcher : IDomainEventDispatcher

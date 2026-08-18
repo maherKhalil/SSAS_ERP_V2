@@ -61,6 +61,12 @@ public static class BranchErrors
   public static readonly Error TopologyBusy =
     new("Branch.TopologyBusy", "Another branch administration operation is in progress for this tenant.");
 
+  // A normal user with no reachable branch. B1b's invariant makes this unreachable through supported
+  // workflows, so it means the account has been left in a state it should not be in — refused rather than
+  // presented as an empty branch picker.
+  public static readonly Error AccountIntegrityFailure =
+    new("Branch.AccountIntegrityFailure", "The account has no active branch and cannot be used.");
+
   public static readonly Error TenantAdministratorRequired =
     new("Branch.TenantAdministratorRequired", "Tenant administrator authority is required to administer branches.");
 }

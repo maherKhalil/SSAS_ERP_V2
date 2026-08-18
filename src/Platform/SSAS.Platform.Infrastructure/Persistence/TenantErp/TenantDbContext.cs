@@ -5,6 +5,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore.Storage;
+using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Domain.Branches;
 using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Infrastructure.TenantStorage;
@@ -37,10 +38,14 @@ public sealed class TenantDbContext(
   // The cutover write fence (ADR-020). Optional because the maintenance builders construct this context
   // outside any tenant context for schema work, which is not an application write.
   ITenantWriteFence? writeFence = null,
-  // THE ACTIVE BRANCH (Branch foundation B0/B1). Optional for the same reason the fence is: maintenance
-  // builders construct this context for schema work, which writes no branch-owned data. Null here is what
-  // makes a branch-owned write fail closed rather than pick a branch.
-  ICurrentBranch? currentBranch = null,
+  // THE BRANCH WRITE BOUNDARY (Branch foundation B1c). Optional for the same reason the fence is:
+  // maintenance builders construct this context for schema work, which writes no branch-owned data. Null
+  // here makes a branch-owned write fail closed rather than pick a branch — it never permits one.
+  //
+  // It replaced a plain ICurrentBranch: reading the active branch is a database question (the durable
+  // session) and re-authorizing it is another, so it cannot be answered by a synchronous property without
+  // either blocking a request thread or trusting a value nobody re-checked.
+  IBranchWriteAuthorizer? branchAuthorizer = null,
   // WHICH PHYSICAL DATABASE THIS CONTEXT IS BOUND TO (ADR-020, TS-Storage Phase E4). Captured at creation
   // from the route that chose the connection, and never re-read: a context's database is fixed for its
   // lifetime, which is exactly why a context created before a cutover flip is still pointing at the source
@@ -85,7 +90,14 @@ public sealed class TenantDbContext(
     CancellationToken cancellationToken = default)
   {
     PreventCompanyDeletion();
-    ApplyBranchRules();
+
+    // ---- BRANCH AUTHORIZATION, BEFORE ANYTHING ELSE TOUCHES THE DATABASE (Branch foundation B1c).
+    //
+    // Runs only when branch-owned entities are actually in play, so tenant-global writes — Company, Branch
+    // itself — are unaffected and remain possible before any branch has been selected. When it does run it
+    // is authoritative: the active branch comes from the durable session and is re-authorized against the
+    // resolver on EVERY save, because access, authority and branch state can all change inside a session.
+    await ApplyBranchRulesAsync(cancellationToken);
 
     // CurrentTenantId comes from the base rather than capturing the parameter: the same trusted tenant the
     // global query filter uses, so the fence and the filter can never disagree about who is writing.
@@ -141,14 +153,42 @@ public sealed class TenantDbContext(
   // IT IS DELIBERATELY NOT AN AUTHORIZATION CHECK. Whether the user may enter this branch is answered by
   // ITenantBranchAccessResolver against the platform database; this is the ownership stamp, and a context
   // that reached here without a branch has no business writing branch-owned rows regardless of authority.
-  private void ApplyBranchRules()
+  private async Task ApplyBranchRulesAsync(CancellationToken cancellationToken)
   {
-    foreach (var entry in ChangeTracker.Entries<IBranchOwnedEntity>())
+    var entries = ChangeTracker.Entries<IBranchOwnedEntity>()
+      .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+      .ToArray();
+
+    // Nothing branch-owned is being written, so no branch is needed. This is what keeps first-branch
+    // onboarding and all tenant-global administration possible with no branch selected.
+    if (entries.Length == 0)
+    {
+      return;
+    }
+
+    if (branchAuthorizer is null || CurrentTenantId is not { } tenantId)
+    {
+      throw new InvalidOperationException(
+        "A trusted branch context is required to save branch-owned entities.");
+    }
+
+    // ---- ONE AUTHORITATIVE ANSWER PER SAVE, used for every entry below. Asked once rather than per entity
+    // so a single save cannot straddle two answers, and so the cost is one check per write rather than one
+    // per row.
+    var authorized = await branchAuthorizer.AuthorizeCurrentBranchAsync(tenantId, cancellationToken);
+    if (authorized.IsFailure)
+    {
+      throw new Persistence.TenantErp.TenantStorageUnavailableException(authorized.Error);
+    }
+
+    var branchId = authorized.Value;
+
+    foreach (var entry in entries)
     {
       switch (entry.State)
       {
         case EntityState.Added:
-          AssignBranch(entry.Entity);
+          AssignBranch(entry.Entity, branchId);
           break;
 
         // BRANCH OWNERSHIP IS IMMUTABLE, exactly as tenant ownership is. Moving a document between
@@ -158,20 +198,21 @@ public sealed class TenantDbContext(
           throw new InvalidOperationException(
             "Branch ownership cannot be changed after an entity is created.");
 
+        // ---- MODIFYING OR DELETING SOMEONE ELSE'S BRANCH IS STILL A CROSS-BRANCH WRITE. Authorizing only
+        // inserts would let a user in Riyadh edit or delete Jeddah's rows, which is the same breach as
+        // creating one there.
+        case EntityState.Modified or EntityState.Deleted when entry.Entity.BranchId != branchId:
+          throw new InvalidOperationException(
+            "Branch ownership must match the trusted branch context.");
+
         default:
           break;
       }
     }
   }
 
-  private void AssignBranch(IBranchOwnedEntity entity)
+  private static void AssignBranch(IBranchOwnedEntity entity, Guid branchId)
   {
-    if (currentBranch?.BranchId is not { } branchId || branchId == Guid.Empty)
-    {
-      throw new InvalidOperationException(
-        "A trusted branch context is required to save branch-owned entities.");
-    }
-
     if (entity.BranchId == Guid.Empty)
     {
       entity.BranchId = branchId;

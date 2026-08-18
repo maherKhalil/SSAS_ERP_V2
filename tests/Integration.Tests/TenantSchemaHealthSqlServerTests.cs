@@ -106,7 +106,8 @@ public sealed class TenantSchemaHealthSqlServerTests
     var migrate = await fixture.Orchestrator().MigrateAsync(id, new TenantMigrationRunOptions());
     Assert.Equal(TenantDatabaseMigrationOutcomeKind.MigrationHistoryMismatch, migrate.Value.Kind);
 
-    // Nothing was applied on top of the unknown lineage.
+    // Nothing was applied on top of the unknown lineage — so this stays at the ONE seeded foreign row,
+    // deliberately unaffected by how many real tenant migrations exist.
     Assert.Equal(1, await HealthFixture.ScalarAsync(fixture.CatalogB,
       "SELECT COUNT(*) FROM [tenant].[__EFMigrationsHistory]"));
   }
@@ -187,7 +188,7 @@ public sealed class TenantSchemaHealthSqlServerTests
     // The tenant schema really exists now, and the tenant history advanced.
     Assert.Equal(1, await HealthFixture.ScalarAsync(fixture.CatalogB,
       "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[tenant].[Companies]')"));
-    Assert.Equal(1, await HealthFixture.ScalarAsync(fixture.CatalogB,
+    Assert.Equal(2, await HealthFixture.ScalarAsync(fixture.CatalogB,
       "SELECT COUNT(*) FROM [tenant].[__EFMigrationsHistory]"));
 
     // Status is persisted, and success is recorded only after post-verification re-read the history.
@@ -250,7 +251,7 @@ public sealed class TenantSchemaHealthSqlServerTests
         or TenantDatabaseMigrationOutcomeKind.SkippedOwnershipHeld);
     Assert.DoesNotContain(TenantDatabaseMigrationOutcomeKind.Failed, kinds);
 
-    Assert.Equal(1, await HealthFixture.ScalarAsync(fixture.CatalogB,
+    Assert.Equal(2, await HealthFixture.ScalarAsync(fixture.CatalogB,
       "SELECT COUNT(*) FROM [tenant].[__EFMigrationsHistory]"));
   }
 

@@ -89,6 +89,43 @@ public sealed class AuthenticationSession : AggregateRoot<long>, IAuditableEntit
       idleExpiresUtc,
       absoluteExpiresUtc);
 
+  // ---- THE BRANCH THIS SESSION IS CURRENTLY WORKING IN (Branch foundation B1c).
+  //
+  // CONTEXT, NOT AUTHORIZATION. It records which branch the user selected, so every request does not have
+  // to ask again — it does NOT record that they are still allowed to be there. Access can be revoked and a
+  // branch deactivated inside a session's lifetime, so every branch-sensitive operation re-asks the
+  // authoritative resolver and this value only says WHICH branch to re-ask about.
+  //
+  // NULL IS A REAL STATE, not an absence of data: a user authorized for several branches is authenticated
+  // with no branch chosen yet, and branch-scoped work must be refused until they choose.
+  //
+  // NO FOREIGN KEY. The branch row lives in the tenant database; this session lives in the platform one.
+  // The identifier travels, the constraint cannot — the same boundary UserBranchAccess observes.
+  public Guid? ActiveBranchId { get; private set; }
+
+  // Set only after the branch has been authorized against the resolver. The session is the record of the
+  // decision, never the maker of it.
+  public Result SelectBranch(Guid branchId)
+  {
+    if (branchId == Guid.Empty)
+    {
+      return Result.Failure(AuthenticationErrors.GenericTenantSelectionFailure);
+    }
+
+    if (Status != AuthenticationSessionStatus.Active)
+    {
+      // A revoked or compromised session does not get to acquire new context.
+      return Result.Failure(AuthenticationErrors.GenericTenantSelectionFailure);
+    }
+
+    ActiveBranchId = branchId;
+    return Result.Success();
+  }
+
+  // Used when a refusal proves the stored branch is no longer usable. Clearing is a convenience that
+  // returns the session to "must select"; the refusal itself is what protects the write.
+  public void ClearBranch() => ActiveBranchId = null;
+
   public bool IsUsable(DateTimeOffset utcNow)
   {
     var utc = utcNow.ToUniversalTime();

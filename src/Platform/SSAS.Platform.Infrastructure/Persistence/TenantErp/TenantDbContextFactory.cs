@@ -3,6 +3,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Infrastructure.TenantStorage;
 
@@ -29,7 +30,7 @@ public sealed class TenantDbContextFactory(
   ITenantWriteFence writeFence,
   // Optional so every existing construction site — tests and maintenance paths included — keeps working
   // and simply has no active branch, which is the correct answer for them.
-  ICurrentBranch? currentBranch = null) : ITenantDbContextFactory
+  IBranchWriteAuthorizer? branchAuthorizer = null) : ITenantDbContextFactory
 {
   public async Task<Result<TenantDbContext>> CreateAsync(
     Guid tenantId,
@@ -82,7 +83,7 @@ public sealed class TenantDbContextFactory(
     // ambient server-side fact rather than something a caller passes per write; null means no branch has
     // been selected yet, which the write boundary turns into a refusal for branch-owned data only.
     return Result.Success(new TenantDbContext(
-      options, currentUser, currentTenant, dateTimeProvider, writeFence, currentBranch,
+      options, currentUser, currentTenant, dateTimeProvider, writeFence, branchAuthorizer,
       route.Value.TenantDatabaseId));
   }
 }

@@ -17,6 +17,7 @@ using SSAS.Platform.Application.Roles;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Tenants;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Infrastructure.Branches;
 using SSAS.Platform.Infrastructure.TenantStorage;
@@ -266,15 +267,36 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // Branch foundation B0/B1. The resolver is the ONE place branch scope is decided, and the authority
     // predicate behind it is the one place tenant-administrator status is decided.
     services.AddScoped<ITenantAdministratorAuthority, TenantAdministratorAuthority>();
-    services.AddScoped<ITenantBranchAccessResolver, TenantBranchAccessResolver>();
+
+    // ---- THE BRANCH READ PATH USES A CONTEXT FACTORY WITHOUT THE WRITE AUTHORIZER, deliberately.
+    //
+    // Otherwise the graph is circular: the routed context factory needs the branch write authorizer, which
+    // needs the access resolver, which needs a routed context to read the tenant's branches. Resolving that
+    // with lazy injection would hide the layering rather than fix it.
+    //
+    // The cycle is not real, because the resolver only ever READS branches — it never saves branch-owned
+    // entities, so it has no use for the authorizer. Giving it a factory that omits one states that fact
+    // instead of concealing it, and a context built here cannot be used to write branch-owned data because
+    // a null authorizer refuses.
+    services.AddScoped<ITenantBranchAccessResolver>(provider => new TenantBranchAccessResolver(
+      provider.GetRequiredService<PlatformDbContext>(),
+      BranchReadContextFactory(provider),
+      provider.GetRequiredService<ITenantAdministratorAuthority>()));
     services.AddScoped<ITenantBranchService, TenantBranchService>();
 
     // Branch foundation B1b. The guard delegates to the SAME per-tenant resource B1a's deactivation takes,
     // which is what closes the R1/R2 races between assignment edits and branch deactivation.
     services.AddScoped<IBranchTopologyGuard, BranchTopologyGuard>();
-    services.AddScoped<ITenantBranchValidator, TenantBranchValidator>();
+    // Same reasoning: validating that branches are assignable is a read.
+    services.AddScoped<ITenantBranchValidator>(provider =>
+      new TenantBranchValidator(BranchReadContextFactory(provider)));
     services.AddScoped<IUserBranchAccessRepository, UserBranchAccessRepository>();
     services.AddScoped<SetTenantUserBranchesCommandHandler>();
+
+    // Branch foundation B1c. The write authorizer is what makes the session's branch non-authoritative on
+    // its own: it re-reads the durable session AND re-asks the resolver on every branch-owned write.
+    services.AddScoped<IBranchWriteAuthorizer, BranchWriteAuthorizer>();
+    services.AddScoped<IBranchSessionService, BranchSessionService>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
@@ -488,4 +510,16 @@ public static class PlatformInfrastructureServiceCollectionExtensions
 
     return services;
   }
+
+  // A routed tenant context factory with NO branch write authorizer — the read-only half of the branch
+  // graph. See the resolver registration above for why the alternative is a dependency cycle.
+  private static TenantDbContextFactory BranchReadContextFactory(IServiceProvider provider) =>
+    new(
+      provider.GetRequiredService<ITenantDatabaseResolver>(),
+      provider.GetRequiredService<ITenantDatabaseConnectionFactory>(),
+      provider.GetRequiredService<ITenantDatabaseTrafficGate>(),
+      provider.GetRequiredService<ICurrentUser>(),
+      provider.GetRequiredService<ICurrentTenant>(),
+      provider.GetRequiredService<IDateTimeProvider>(),
+      provider.GetRequiredService<ITenantWriteFence>());
 }

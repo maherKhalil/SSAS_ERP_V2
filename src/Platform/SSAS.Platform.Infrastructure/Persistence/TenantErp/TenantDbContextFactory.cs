@@ -34,7 +34,10 @@ public sealed class TenantDbContextFactory(
   IBranchWriteAuthorizer? branchAuthorizer = null,
   // Optional for exactly the same reason (FP-006C1). A context built without one has no company context,
   // which refuses every company-owned write rather than permitting one.
-  ICompanyWriteAuthorizer? companyAuthorizer = null) : ITenantDbContextFactory
+  ICompanyWriteAuthorizer? companyAuthorizer = null,
+  // Optional again (FP-006C2). A context built without one authorizes no branch transfer at all, which
+  // leaves the original immutability invariant fully in force.
+  IBranchTransferAuthorizer? branchTransferAuthorizer = null) : ITenantDbContextFactory
 {
   public async Task<Result<TenantDbContext>> CreateAsync(
     Guid tenantId,
@@ -88,6 +91,6 @@ public sealed class TenantDbContextFactory(
     // been selected yet, which the write boundary turns into a refusal for branch-owned data only.
     return Result.Success(new TenantDbContext(
       options, currentUser, currentTenant, dateTimeProvider, writeFence, branchAuthorizer, companyAuthorizer,
-      route.Value.TenantDatabaseId));
+      branchTransferAuthorizer, route.Value.TenantDatabaseId));
   }
 }

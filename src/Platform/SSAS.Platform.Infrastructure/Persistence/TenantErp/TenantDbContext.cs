@@ -55,6 +55,12 @@ public sealed class TenantDbContext(
   // A SEPARATE AUTHORIZER FROM THE BRANCH ONE, deliberately. Company and Branch are independent dimensions,
   // and one authorizer answering both would make it possible for a change in either to widen the other.
   ICompanyWriteAuthorizer? companyAuthorizer = null,
+  // THE SANCTIONED BRANCH-TRANSFER CHANNEL (FP-006C2, ADR-024 decision 3). Optional for the same reason the
+  // other two are: maintenance builders write no branch-owned data.
+  //
+  // NULL MEANS NO TRANSFER IS EVER AUTHORIZED, never that one is assumed. A context built without it keeps
+  // the original invariant in full — ordinary BranchId mutation is refused, with no exception available.
+  IBranchTransferAuthorizer? branchTransferAuthorizer = null,
   // WHICH PHYSICAL DATABASE THIS CONTEXT IS BOUND TO (ADR-020, TS-Storage Phase E4). Captured at creation
   // from the route that chose the connection, and never re-read: a context's database is fixed for its
   // lifetime, which is exactly why a context created before a cutover flip is still pointing at the source
@@ -197,9 +203,36 @@ public sealed class TenantDbContext(
         "A trusted branch context is required to save branch-owned entities.");
     }
 
+    // ---- THE SANCTIONED TRANSFER, RE-VALIDATED NOW (FP-006C2, ADR-024 decision 3).
+    //
+    // Asked before the execution branch because the answer changes how the declared SOURCE is judged below,
+    // and because a declaration that is no longer valid should refuse the save on its own terms rather than
+    // surface later as a confusing ordinary refusal.
+    //
+    // A null result means no transfer is open, which is not a failure — the ordinary rules below then refuse
+    // every BranchId modification exactly as before. A FAILURE means a declaration is open and is no longer
+    // valid, and that refuses the save rather than quietly falling through to the ordinary refusal.
+    BranchTransferDeclaration? transfer = null;
+    if (branchTransferAuthorizer is not null)
+    {
+      var openTransfer = await branchTransferAuthorizer.AuthorizeOpenTransferAsync(tenantId, cancellationToken);
+      if (openTransfer.IsFailure)
+      {
+        throw new Persistence.TenantErp.TenantStorageUnavailableException(openTransfer.Error);
+      }
+
+      transfer = openTransfer.Value;
+    }
+
     // ---- ONE AUTHORITATIVE ANSWER PER SAVE, used for every entry below. Asked once rather than per entity
     // so a single save cannot straddle two answers, and so the cost is one check per write rather than one
     // per row.
+    //
+    // ASKED EVEN FOR AN INACTIVE-SOURCE RECOVERY, and that is deliberate. This call is also where the
+    // DURABLE SESSION is re-read — status and expiry included — so skipping it for the recovery path would
+    // let a revoked or expired session keep transferring. The recovery relaxes exactly one thing, below:
+    // which branch the entity may be leaving. It does not relax who the caller is, whether their session is
+    // still usable, or whether they hold a valid branch context at all.
     var authorized = await branchAuthorizer.AuthorizeCurrentBranchAsync(tenantId, cancellationToken);
     if (authorized.IsFailure)
     {
@@ -208,8 +241,31 @@ public sealed class TenantDbContext(
 
     var branchId = authorized.Value;
 
+    // AN ORDINARY TRANSFER LEAVES THE BRANCH THE CALLER IS ACTUALLY IN. The declaration does not get to name
+    // a source the caller has not been proven to hold; this is where the two facts are joined.
+    //
+    // The recovery is the one exception (ADR-024 decision 12): its source is an INACTIVE branch, which no
+    // principal can hold as an execution context, so requiring the two to match would refuse the very
+    // operation that exists to recover from that state. Every other guard still applies — the transfer
+    // authorizer has already re-verified administrator authority and that the source really is inactive.
+    if (transfer is not null &&
+      transfer.Mode != BranchTransferMode.InactiveSourceRecovery &&
+      transfer.SourceBranchId != branchId)
+    {
+      throw new InvalidOperationException(
+        "A branch transfer must originate in the trusted branch context.");
+    }
+
     foreach (var entry in entries)
     {
+      // THE ONE EXCEPTION, AND IT IS PER ENTRY. A declaration authorizes exactly the entity it names moving
+      // exactly the way it names; every other entry in the same save — including another entity moving
+      // between the same two branches — falls through to the ordinary rules and is refused.
+      if (transfer is not null && IsSanctionedTransfer(entry, transfer))
+      {
+        continue;
+      }
+
       switch (entry.State)
       {
         case EntityState.Added:
@@ -217,8 +273,8 @@ public sealed class TenantDbContext(
           break;
 
         // BRANCH OWNERSHIP IS IMMUTABLE, exactly as tenant ownership is. Moving a document between
-        // branches by editing the column would relocate history with no record that it moved; if that ever
-        // becomes a real operation it needs to be an explicit, audited transfer rather than an update.
+        // branches by editing the column would relocate history with no record that it moved; that is why
+        // a transfer must be the explicit, audited operation above rather than a property assignment.
         case EntityState.Modified when entry.Property(nameof(IBranchOwnedEntity.BranchId)).IsModified:
           throw new InvalidOperationException(
             "Branch ownership cannot be changed after an entity is created.");
@@ -234,6 +290,30 @@ public sealed class TenantDbContext(
           break;
       }
     }
+  }
+
+  // Does the open declaration authorize exactly this change? (FP-006C2, ADR-024 decision 3.)
+  //
+  // THE SOURCE IS READ FROM THE ORIGINAL VALUE, not the current one: the caller has already overwritten
+  // BranchId with the destination by the time the change tracker sees it, so comparing the current value
+  // against the source would never match and comparing it against nothing would match everything.
+  //
+  // Only a MODIFIED entry whose BranchId actually changed can be a transfer. An Added entity is stamped, and
+  // a Deleted one is not moving anywhere.
+  private static bool IsSanctionedTransfer(
+    Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<IBranchOwnedEntity> entry,
+    BranchTransferDeclaration transfer)
+  {
+    if (entry.State != EntityState.Modified)
+    {
+      return false;
+    }
+
+    var branchProperty = entry.Property(nameof(IBranchOwnedEntity.BranchId));
+
+    return branchProperty.IsModified &&
+      branchProperty.OriginalValue is Guid originalBranchId &&
+      transfer.Authorizes(entry.Entity, originalBranchId, entry.Entity.BranchId);
   }
 
   // ---- THE COMPANY OWNERSHIP BOUNDARY (FP-006C1, ADR-025 decision 9).

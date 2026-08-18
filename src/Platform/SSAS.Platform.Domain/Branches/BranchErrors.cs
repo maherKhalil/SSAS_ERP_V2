@@ -69,4 +69,23 @@ public static class BranchErrors
 
   public static readonly Error TenantAdministratorRequired =
     new("Branch.TenantAdministratorRequired", "Tenant administrator authority is required to administer branches.");
+
+  // ---- THE SANCTIONED TRANSFER CHANNEL (FP-006C2, ADR-024 decisions 3 and 12).
+  //
+  // A malformed declaration: no entity, an empty branch identifier, or a source equal to the destination.
+  // Safe to distinguish because it describes the REQUEST rather than any branch's existence or state.
+  public static readonly Error TransferInvalid =
+    new("Branch.TransferInvalid", "The branch transfer declaration is not valid.");
+
+  // Two open declarations would make "which transfer is in force" ambiguous at the write boundary, and the
+  // safe reading of an ambiguous authorization is none.
+  public static readonly Error TransferAlreadyInProgress =
+    new("Branch.TransferAlreadyInProgress", "A branch transfer is already in progress for this operation.");
+
+  // ONE GENERIC REFUSAL FOR EVERY WAY A TRANSFER CAN BE UNAUTHORIZED at save time — authority withdrawn,
+  // the source no longer qualifying for recovery, or the declaration no longer matching live state.
+  // Destination failures deliberately surface as InvalidSelection instead, unchanged from the resolver, so
+  // a destination identifier cannot be probed for existence through the transfer path either.
+  public static readonly Error TransferNotPermitted =
+    new("Branch.TransferNotPermitted", "The branch transfer is not permitted.");
 }

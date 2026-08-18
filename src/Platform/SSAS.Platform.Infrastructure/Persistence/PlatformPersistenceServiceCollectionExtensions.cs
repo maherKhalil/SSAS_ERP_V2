@@ -298,6 +298,23 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // its own: it re-reads the durable session AND re-asks the resolver on every branch-owned write.
     services.AddScoped<IBranchWriteAuthorizer, BranchWriteAuthorizer>();
 
+    // ---- FP-006C2: THE SANCTIONED BRANCH-TRANSFER CHANNEL (ADR-024 decision 3).
+    //
+    // SCOPED, so a declaration is reachable only from the operation that opened it — never static, which
+    // would share it across concurrent requests, and never AsyncLocal, which would flow it into background
+    // work that outlives the operation.
+    //
+    // The authorizer reads companies-free tenant state, so it takes the read-only context factory for the
+    // same reason the branch and company resolvers do: the routed factory needs the authorizers, and the
+    // authorizers need a context to read branches. The cycle is not real because this only ever READS.
+    services.AddScoped<IBranchTransferScope, BranchTransferScope>();
+    services.AddScoped<IBranchTransferAuthorizer>(provider => new BranchTransferAuthorizer(
+      provider.GetRequiredService<IBranchTransferScope>(),
+      provider.GetRequiredService<ITenantBranchAccessResolver>(),
+      provider.GetRequiredService<ITenantAdministratorAuthority>(),
+      BranchReadContextFactory(provider),
+      provider.GetService<ICurrentAuthenticationSession>()));
+
     // ---- FP-006C1: THE COMPANY DIMENSION (ADR-025). Registered alongside branch and shaped identically,
     // because ADR-025 chose the branch pattern for the sibling dimension.
     //

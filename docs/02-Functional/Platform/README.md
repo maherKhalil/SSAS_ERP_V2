@@ -18,6 +18,7 @@ Platform capabilities include:
 - Authorization
 - Tenant Management
 - Company Management
+- Branch Management
 - User Management
 - Roles
 - Permissions

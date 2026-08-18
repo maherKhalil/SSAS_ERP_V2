@@ -463,6 +463,24 @@ TenantId required on tenant-owned data.
 
 CompanyId required where applicable.
 
+BranchId required on branch-owned data.
+
+---
+
+## Branch Ownership
+
+Every tenant entity SHALL be explicitly classified as tenant-global or branch-owned. Unclassified is a defect.
+
+Branch-owned entities implement `IBranchOwnedEntity` in addition to `ITenantOwnedEntity` and carry both `TenantId` and `BranchId`.
+
+`BranchId` is assigned by the server from the authenticated execution context. It SHALL NOT be accepted from a request DTO, header, form field, or token claim, and SHALL NOT change after creation.
+
+Branch-scoped queries SHALL carry an explicit `BranchId` predicate over the current branch or an authorized branch set. Omitting the predicate is a defect.
+
+No foreign key SHALL be created from the platform database to the tenant `Branches` table. `BranchId` is an opaque cross-database identifier.
+
+Reference: ADR-023
+
 ---
 
 # Testing

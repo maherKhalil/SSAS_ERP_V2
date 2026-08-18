@@ -94,6 +94,100 @@ Each company shall maintain independent fiscal settings, currencies, language an
 
 ---
 
+# Branch Management
+
+Reference
+
+ADR-023
+
+## REQ-PLT-0060
+
+Title
+
+Support Multiple Branches
+
+Priority
+
+Critical
+
+Description
+
+A tenant shall support one or more branches representing its operating locations, independently of its companies.
+
+Acceptance Criteria
+
+• A branch belongs to exactly one tenant.
+
+• Branch codes are unique within a tenant.
+
+• A tenant has at most one active main branch.
+
+---
+
+## REQ-PLT-0061
+
+Branch Lifecycle
+
+Branches shall be created, renamed, designated as main, and deactivated by authorized tenant administrators.
+
+Branches shall never be deleted. Reactivation is supported by the domain model and is not yet exposed as an administration operation.
+
+---
+
+## REQ-PLT-0062
+
+Branch Authorization
+
+Normal tenant users shall be authorized for specific branches.
+
+Tenant administrators shall be authorized for all active branches of their tenant without stored assignments.
+
+---
+
+## REQ-PLT-0063
+
+First Branch Onboarding
+
+A tenant with no active branch shall direct its administrator to create the first branch, and shall refuse normal user access until one exists.
+
+---
+
+## REQ-PLT-0064
+
+Branch Selection
+
+An authenticated session shall establish an active branch before branch-scoped operations.
+
+A single authorized branch shall be selected automatically. Multiple authorized branches shall require explicit selection and shall support switching.
+
+---
+
+## REQ-PLT-0065
+
+Branch Ownership Of Business Data
+
+Branch-owned business records shall carry the identifier of the branch that produced them.
+
+The branch shall be assigned by the server and shall be immutable after creation.
+
+---
+
+## REQ-PLT-0066
+
+Server-Side Branch Reauthorization
+
+The platform shall re-evaluate branch authorization against live state on every branch-owned write and on every branch switch, and shall fail closed.
+
+---
+
+## REQ-PLT-0067
+
+Branch Reporting Scope
+
+Reporting over branch-owned data shall support the current branch and an explicitly authorized set of branches, and shall never omit the branch predicate.
+
+---
+
 # Identity
 
 ## REQ-PLT-0020

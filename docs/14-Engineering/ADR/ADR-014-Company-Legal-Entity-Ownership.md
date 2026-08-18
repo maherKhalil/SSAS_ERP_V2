@@ -2,7 +2,7 @@
 id: ADR-014
 title: Company / Legal-Entity Ownership and Scoping
 category: Architecture Decision Record
-version: 1.0
+version: 1.1
 status: Accepted
 date: 2026-08-09
 owner: Solution Architecture Team
@@ -33,6 +33,22 @@ used_by:
 **Accepted**
 
 Accepted alongside the FP-005 documentation package. It establishes the ownership and scoping model that FP-005 implements and that HR and GL will consume.
+
+## Partially superseded by ADR-025 (revision 1.1)
+
+The **ownership** decisions in this ADR stand unchanged: Company is tenant-owned, is a true data-partition dimension, is the company root and does not implement `ICompanyOwnedEntity`, `ITenantOwnedEntity` is unmodified, and `CompanyId` is a `Guid`.
+
+The decisions this ADR deliberately **deferred or left unchosen** have since been made by `ADR-025 — Company Execution Context and Authorization`, because FP-006 introduces `Employee` as the first company-owned business record:
+
+| This ADR | Status |
+|----------|--------|
+| Decision 6 — company-ownership machinery deferred | **Discharged** by `ADR-025`. The company query-filter portion is **superseded**: see *Correction D* below |
+| Decision 7 — company scope-resolution mechanism deferred and unchosen | **Superseded** by `ADR-025` decisions 2, 3 and 4 |
+| Decision 8 — user↔company authorization deferred | **Superseded** by `ADR-025` decisions 5, 6, 7 and 8 |
+
+The original text of those decisions is retained below, unedited, so the deferral and its reasoning stay visible. Where a later decision replaces one, an inline note names `ADR-025` at the point of replacement rather than rewriting the original.
+
+Revision 1.1 also corrects one factual statement about database placement that changed after this ADR was written; see *Correction A* in the **For HR** section.
 
 ---
 
@@ -127,6 +143,14 @@ public interface ICompanyOwnedEntity
 
 When that record arrives, the persistence layer gains a parallel company query filter and a company write-guard that mirror the existing tenant filter and `AssignTenant` behavior (assign on insert from trusted current company context, reject post-creation change, require the company to belong to the current tenant). FP-005 Milestone 1 does **not** add this machinery, to avoid unused infrastructure.
 
+> **Correction D (revision 1.1) — the query-filter half of this sketch is superseded by `ADR-025` decision 10.**
+>
+> The **write-guard** half is adopted as written: `ADR-025` decision 9 stamps `CompanyId` on insert from the trusted context, refuses post-creation change, and refuses cross-company modification and deletion.
+>
+> The **parallel global company query filter** is **not** adopted. A global filter pinned to a single current company would make authorized *multi-company* reads unexpressible, and would defeat the cross-company query capability this ADR itself cites as a reason to carry `TenantId` alongside `CompanyId`. `ADR-025` instead requires explicit authorized-company predicates plus an executable architecture guard, mirroring the choice `ADR-023` decision 22 made for branch.
+>
+> The original reasoning is retained because it was sound for the information available at the time: the authorized-*set* requirement only became visible when company-scoped business reads were designed in FP-006. `ADR-025` records the rejected global filter as its Option 3.
+
 ---
 
 # Tenant-wide records that remain Company-neutral
@@ -170,6 +194,16 @@ Whichever mechanism is later chosen, these invariants are mandatory:
 
 The existing `ICurrentUser.CompanyId` and `JwtClaimTypes.CompanyId = "company_id"` are documented here only as **existing plumbing**; their presence is not a commitment to a claim-based mechanism. FP-005 Milestone 1 implements no company selection and populates no company scope.
 
+> **Correction B (revision 1.1) — the mechanism is no longer deferred; `ADR-025` chooses it.**
+>
+> `ADR-025` selects **per-request, server-validated company selection**: a caller-supplied `CompanyId` expresses intent only, and the trusted context (`ICurrentCompany`) is established only after a live five-step validation — trusted tenant known, company exists, belongs to that tenant, is active, and the caller is currently authorized for it — failing closed at every step, with one generic refusal that discloses nothing about existence.
+>
+> Of the four mechanisms this section listed as possible, the **token scope claim** is explicitly **rejected** (`ADR-025` decision 4 and Option 1): it would make company scope client-presentable and would survive revocation until the token expired. `ICurrentUser.CompanyId` and the `company_id` claim remain plumbing and must **never** be read as authorization proof — `ADR-025` decision 4 makes that binding rather than advisory.
+>
+> A **durable session `ActiveCompanyId`** is deferred, not rejected (`ADR-025` decision 11, Option 2); adding it later is additive.
+>
+> Every invariant this section declared mandatory is preserved by `ADR-025` unchanged.
+
 ---
 
 # Authorization
@@ -178,6 +212,16 @@ The existing `ICurrentUser.CompanyId` and `JwtClaimTypes.CompanyId = "company_id
 - A company operation always targets a company **belonging to the current tenant**; a company identifier from another tenant must never reveal existence.
 - User↔company access control (which users may act within which companies, `BR-PLT-0002`) is deferred; Milestone 1 defines no company-membership model.
 
+> **Correction C (revision 1.1) — user↔company authorization is no longer deferred; `ADR-025` defines it.**
+>
+> `BR-PLT-0002` gains an enforcement mechanism with FP-006, because `Employee` is the first company-owned business record and the gap becomes load-bearing the moment such data exists.
+>
+> `ADR-025` introduces `UserCompanyAccess` in the **platform** database — carrying `TenantId`, `TenantUserId`, `CompanyId`, unique on `(TenantId, TenantUserId, CompanyId)`, with **no** cross-database foreign key to `tenant.Companies` (`ADR-017`, `ADR-013`) — and `ITenantCompanyAccessResolver` as the single source of truth, resolved against live state per request and per write.
+>
+> `Platform.Tenant.Administer` grants implicit scope over all **active** companies of the tenant with no assignment rows, mirroring `ADR-023` decision 5 for branch. It grants **no** module functional permission.
+>
+> Company administration continues to be authorized by the Platform company permissions this section names; `ADR-025` adds no new administration permission in V1. Functional permission, company scope and branch scope remain three independent dimensions (`ADR-025` decision 8).
+
 ---
 
 # Consequences
@@ -185,6 +229,14 @@ The existing `ICurrentUser.CompanyId` and `JwtClaimTypes.CompanyId = "company_id
 ## For HR
 
 HR employee/department/position aggregates will implement `ITenantOwnedEntity` + `ICompanyOwnedEntity`, carry `TenantId` + `CompanyId`, and reference `platform.Companies(CompanyId)` via a restricted foreign key. Employee-number uniqueness is scoped `(TenantId, CompanyId, ...)`. HR is expected to introduce the company-ownership machinery.
+
+> **Correction A (revision 1.1) — the foreign-key target above is stale.**
+>
+> When this ADR was written, `Company` lived in the platform catalog. It has since moved to the tenant ERP database through the documented Company transition migrations (`ADR-018`), which rename `platform.Companies` to `platform.Companies_MigratedToTenant` and create and populate `tenant.Companies`. `Company` is configured as **`tenant.Companies`**, and the current platform model snapshot contains no `Companies` table. A future Employee therefore references **`tenant.Companies(CompanyId)`**, not `platform.Companies(CompanyId)`.
+>
+> This is a **factual correction**, not a change of decision. It is favourable: because `Employee` also lives in the tenant database, Employee→Company is an **intra-catalog** restricted foreign key and is legal. Had Company remained in the platform catalog, the reference would have been impossible once a tenant is promoted to dedicated storage (`ADR-017`), for the same reason `UserBranchAccess` has no foreign key to `Branch` (`ADR-023` decision 4).
+>
+> The company-ownership machinery this section anticipates is specified by `ADR-025` and delivered by FP-006. Employee-number uniqueness remains scoped `(TenantId, CompanyId, ...)` as stated, and deliberately does not include `BranchId` (`ADR-023`, *For HR*).
 
 ## For GL
 
@@ -262,7 +314,7 @@ The selected model is the only one that makes Company a true partition while reu
 - `Company : AggregateRoot<Guid>, IAuditableEntity, ITenantOwnedEntity`.
 - Do not implement `ICompanyOwnedEntity` on `Company`.
 - Do not add company filter/write-guard machinery in FP-005 Milestone 1.
-- Introduce `ICompanyOwnedEntity`, the company filter, and the company write-guard together with the first company-owned business record.
+- Introduce `ICompanyOwnedEntity`, the company filter, and the company write-guard together with the first company-owned business record. *(Revision 1.1: superseded in part — `ADR-025` decision 10 replaces "the company filter" with explicit authorized-company predicates plus an architecture guard. See Correction D.)*
 - Validate company status live; never trust a company status claim.
 
 ---
@@ -298,9 +350,13 @@ Revisit when the first company-owned record is introduced (company machinery), w
 - ADR-008 – Entity Framework Core (query filters, restricted deletes)
 - ADR-010 – Repository Pattern
 - ADR-013 – Primary Key & Identifier Strategy (CompanyId = Guid)
+- ADR-017 – Tenant Storage Topology and Routing (platform/tenant split; no cross-catalog FK)
+- ADR-018 – Tenant Schema Health and Migration Orchestration (the Company platform → tenant transition; see Correction A)
+- ADR-023 – Tenant Branch Model, Authorization and Execution Context (sibling dimension)
+- ADR-025 – Company Execution Context and Authorization (supersedes decisions 7 and 8, and the query-filter portion of decision 6)
 - FP-003 – Tenant Lifecycle (root-type/not-self-scoped precedent)
 - FP-005 – Company / Legal-Entity feature package
-- REQ-PLT-0010, REQ-PLT-0011, REQ-PLT-0012
+- REQ-PLT-0010, REQ-PLT-0011, REQ-PLT-0012, BR-PLT-0002
 
 ---
 
@@ -319,3 +375,4 @@ This ADR should be reviewed when:
 | Version | Date | Author | Description |
 |----------|------|--------|-------------|
 | 1.0 | 2026-08-09 | Solution Architecture Team | Establishes Company ownership and scoping. Accepted after final approval review. |
+| 1.1 | 2026-08-18 | Solution Architecture Team | Correction A: the Employee foreign-key target is `tenant.Companies`, not `platform.Companies`, following Company's move to the tenant catalog; Employee→Company is intra-catalog. Corrections B and C: decisions 7 and 8 superseded by ADR-025. Correction D: the global company query filter sketched in decision 6 superseded by ADR-025 decision 10 (explicit predicates plus architecture guard); the company write-guard half is adopted. Ownership decisions 1–5, 9 and 10 unchanged. Original text retained throughout; corrections recorded inline. |

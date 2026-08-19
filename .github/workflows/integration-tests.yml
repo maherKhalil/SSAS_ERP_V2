@@ -127,10 +127,28 @@ jobs:
       # directory holds nothing but generated .bak and .mdf files for the life of an ephemeral job.
       - name: Grant the shared backup directory to SQL Server and the runner
         run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq acl > /dev/null
+
           sudo mkdir -p /var/opt/mssql/backup
           sudo chown 10001:1001 /var/opt/mssql/backup
-          sudo chmod 0775 /var/opt/mssql/backup
+          sudo chmod 2775 /var/opt/mssql/backup
+
+          # ---- THE SUBDIRECTORIES ARE THE PART THAT MATTERS.
+          #
+          # Permissions on the root alone are not enough. Each fixture creates its own
+          # <root>/<guid>/ directory, and it is the TEST PROCESS that creates it — so the directory lands
+          # owned by the runner with a default mask that leaves SQL Server only "other" rights. sqlservr
+          # then cannot write src.mdf or a .bak inside it, which is the second access-denied wave.
+          #
+          # A DEFAULT ACL is inherited by everything created underneath, so both identities keep access no
+          # matter which of them creates a directory. Named users rather than 0777: exactly the two
+          # principals that need it, and nothing else on the machine.
+          sudo setfacl -m u:10001:rwx -m u:1001:rwx /var/opt/mssql/backup
+          sudo setfacl -d -m u:10001:rwx -m u:1001:rwx -m o::rx /var/opt/mssql/backup
+
           ls -ld /var/opt/mssql/backup
+          getfacl -p /var/opt/mssql/backup
 
       # ---- THE SQL CLIENT, FOR THE COMPETING-PROCESS TESTS ONLY.
       #

@@ -7,6 +7,7 @@ using SSAS.Host.API.Configuration;
 using SSAS.Host.API.Diagnostics;
 using SSAS.Host.API.Errors;
 using SSAS.HR.API;
+using SSAS.HR.Infrastructure;
 using SSAS.Platform.API;
 using SSAS.Platform.API.Authentication;
 using SSAS.Platform.API.Companies;
@@ -37,6 +38,9 @@ try
     .AddHostApiInfrastructure()
     .AddPlatformModule()
     .AddHrModule()
+    // HR persistence and its contribution to the single tenant model (ADR-012: the Host is the one place
+    // permitted to see a module's Infrastructure, and module registration is explicit, never discovered).
+    .AddHrInfrastructure()
     .AddGlModule();
 
   var app = builder.Build();

@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.BuildingBlocks.Tenancy.Branches;
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 
 namespace SSAS.Architecture.Tests;
@@ -168,13 +169,19 @@ public sealed class ModuleTenantContractArchitectureTests
         nameof(BranchTransferMode),
         nameof(IBranchTransferAuthorizer),
         nameof(IBranchTransferScope),
+        // The trusted execution branch, needed so a module can record which branch an operation happened in
+        // on a record that is not itself branch-owned (FP-006C3).
+        nameof(ICurrentBranchResolver),
+        // The acting tenant user, needed so a module can name WHO is asking when resolving scope. It carries
+        // no roles, permissions, session or claims: what they may DO stays with the permission pipeline.
+        nameof(ICurrentTenantUser),
         nameof(ITenantBranchAccessResolver),
         nameof(ITenantUnitOfWork)
       ],
       exported);
   }
 
-  private static IReadOnlyDictionary<string, IReadOnlyCollection<string>> ProjectReferences()
+  private static Dictionary<string, IReadOnlyCollection<string>> ProjectReferences()
   {
     var root = RepositoryRoot();
 
@@ -183,7 +190,7 @@ public sealed class ModuleTenantContractArchitectureTests
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
         !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .ToDictionary(
-        Path.GetFileNameWithoutExtension,
+        path => Path.GetFileNameWithoutExtension(path)!,
         path => (IReadOnlyCollection<string>)XDocument.Load(path)
           .Descendants("ProjectReference")
           .Select(reference => reference.Attribute("Include")?.Value)

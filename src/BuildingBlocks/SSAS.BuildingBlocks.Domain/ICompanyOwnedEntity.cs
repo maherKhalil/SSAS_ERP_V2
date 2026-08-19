@@ -19,3 +19,15 @@ public interface ICompanyOwnedEntity
 {
   Guid CompanyId { get; set; }
 }
+
+// APPEND-ONLY PERSISTENCE, ENFORCED BY THE WRITE BOUNDARY (FP-006C3, ADR-024 decision 5).
+//
+// Some records exist to say what happened, and a record of what happened that can be edited afterwards is
+// not one. Employee branch history is the first: a correction is another transfer, never a rewrite.
+//
+// IMPLEMENTING THIS IS A DELIBERATE CLASSIFICATION, and it is enforced centrally rather than by convention.
+// "There is no repository method for it" protects only the callers who go through the repository; the write
+// boundary refuses a Modified or Deleted entry for any type marked here, whatever path tracked it.
+public interface IAppendOnlyEntity
+{
+}

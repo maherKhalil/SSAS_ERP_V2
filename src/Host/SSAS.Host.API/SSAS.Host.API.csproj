@@ -13,6 +13,7 @@
     <ProjectReference Include="..\..\Platform\SSAS.Platform.API\SSAS.Platform.API.csproj" />
     <ProjectReference Include="..\..\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\HR\SSAS.HR.API\SSAS.HR.API.csproj" />
+    <ProjectReference Include="..\..\Modules\HR\SSAS.HR.Infrastructure\SSAS.HR.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Finance\SSAS.GL.API\SSAS.GL.API.csproj" />
   </ItemGroup>
 

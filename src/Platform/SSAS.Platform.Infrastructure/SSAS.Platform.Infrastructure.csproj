@@ -23,6 +23,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="SSAS.Platform.Tests" />
     <InternalsVisibleTo Include="SSAS.Integration.Tests" />
+    <!-- Design-time only: the migration tool reuses the ONE fail-fast connection-string contract rather
+         than restating it, so ADR-018's operational procedure cannot drift between them. -->
+    <InternalsVisibleTo Include="SSAS.Tenant.MigrationTool" />
   </ItemGroup>
 
 </Project>

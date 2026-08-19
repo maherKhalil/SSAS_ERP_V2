@@ -155,6 +155,7 @@ public sealed class TenantDbContext(
     CancellationToken cancellationToken = default)
   {
     PreventCompanyDeletion();
+    PreventAppendOnlyMutation();
 
     // ---- COMPANY AUTHORIZATION, BEFORE BRANCH AND BEFORE ANYTHING TOUCHES THE DATABASE (FP-006C1).
     //
@@ -469,6 +470,26 @@ public sealed class TenantDbContext(
     if (entity.BranchId != branchId)
     {
       throw new InvalidOperationException("Branch ownership must match the trusted branch context.");
+    }
+  }
+
+  // ---- APPEND-ONLY RECORDS ARE NEVER UPDATED AND NEVER DELETED (FP-006C3, ADR-024 decision 5).
+  //
+  // Enforced centrally rather than by the absence of a repository method, because the absence of a method
+  // protects only the callers who use the repository. A record of what happened that can be edited
+  // afterwards is not a record of what happened, and Employee branch history is the first of them.
+  //
+  // The refusal names no entity type: it is a rule about a classification, and the message a caller sees
+  // should describe the rule rather than the row.
+  private void PreventAppendOnlyMutation()
+  {
+    var mutated = ChangeTracker.Entries<IAppendOnlyEntity>()
+      .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+    if (mutated)
+    {
+      throw new InvalidOperationException(
+        "Append-only records cannot be modified or deleted after they are written.");
     }
   }
 

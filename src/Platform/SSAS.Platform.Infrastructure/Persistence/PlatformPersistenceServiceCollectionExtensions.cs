@@ -310,6 +310,14 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // same reason the branch and company resolvers do: the routed factory needs the authorizers, and the
     // authorizers need a context to read branches. The cycle is not real because this only ever READS.
     services.AddScoped<IBranchTransferScope, BranchTransferScope>();
+
+    // ---- FP-006C3: THE MODULE-FACING READS (ADR-012).
+    //
+    // Both delegate to the contracts Platform already owns rather than resolving anything themselves, so a
+    // module and Platform cannot disagree about who is acting or which branch is current.
+    services.AddScoped<SSAS.BuildingBlocks.Tenancy.ICurrentTenantUser, RequestContext.CurrentTenantUser>();
+    services.AddScoped<ICurrentBranchResolver, CurrentBranchResolver>();
+    services.AddScoped<BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor, TenantDbContextAccessor>();
     services.AddScoped<IBranchTransferAuthorizer>(provider => new BranchTransferAuthorizer(
       provider.GetRequiredService<IBranchTransferScope>(),
       provider.GetRequiredService<ITenantBranchAccessResolver>(),

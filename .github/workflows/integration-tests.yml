@@ -49,9 +49,28 @@ jobs:
           MSSQL_PID: Developer
         ports:
           - 1433:1433
+        # ---- THE ONE DIRECTORY BOTH SIDES CAN REACH (CI-004).
+        #
+        # The backup and restore suites hand SQL Server a path and then inspect the resulting file
+        # themselves, so the string has to mean the same thing to two processes. The test process runs on
+        # the RUNNER; BACKUP, RESTORE and CREATE FILE are executed by sqlservr INSIDE this container. With
+        # no shared mount those are different filesystems, which is why every one of them failed with
+        # "Operating system error 5 (Access is denied)" against /usr/share/SSAS_BackupTests.
+        #
+        # Mounted at the SAME absolute path on both sides deliberately. Path identity here is engineered,
+        # not assumed: a mount of host X to container Y would leave the tests passing a string that is only
+        # valid on one side.
+        volumes:
+          - /var/opt/mssql/backup:/var/opt/mssql/backup
 
     env:
       SSAS_TEST_SQLSERVER: "Server=localhost,1433;User Id=sa;Password=Local_CI_Only_Pa55word!;TrustServerCertificate=True;Encrypt=False"
+
+      # The seam the fixtures already offer. TestBackupRoot() reads this and otherwise falls back to
+      # CommonApplicationData — C:\ProgramData on Windows, where a local SQL Server service can reach it,
+      # and /usr/share on Linux, where a containerised one cannot. Pointing it at the shared mount is the
+      # whole fix; no test code needed changing for it.
+      SSAS_TEST_BACKUP_ROOT: /var/opt/mssql/backup
       DOTNET_NOLOGO: "true"
       DOTNET_CLI_TELEMETRY_OPTOUT: "true"
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
@@ -97,11 +116,59 @@ jobs:
           echo "::error::SQL Server did not become available within 120 seconds."
           exit 1
 
+      # ---- BOTH PROCESSES MUST BE ABLE TO WRITE THE SHARED DIRECTORY.
+      #
+      # Docker creates the host side of the bind mount as root, which neither party can write. Inside the
+      # container SQL Server runs as uid 10001 (`mssql`); on the runner the test process is uid 1001
+      # (`runner`). A bind mount shares ownership metadata, so setting owner and group once here satisfies
+      # both — 10001 owns it, 1001 has it as group.
+      #
+      # 0775 rather than 0777 on purpose: this grants exactly the two identities that need access, and the
+      # directory holds nothing but generated .bak and .mdf files for the life of an ephemeral job.
+      - name: Grant the shared backup directory to SQL Server and the runner
+        run: |
+          sudo mkdir -p /var/opt/mssql/backup
+          sudo chown 10001:1001 /var/opt/mssql/backup
+          sudo chmod 0775 /var/opt/mssql/backup
+          ls -ld /var/opt/mssql/backup
+
+      # ---- THE SQL CLIENT, FOR THE COMPETING-PROCESS TESTS ONLY.
+      #
+      # Three fixtures start a SEPARATE PROCESS that holds no application lock, to prove the backup guard
+      # reacts to a backup it did not initiate. That genuinely needs an external client rather than another
+      # connection from the test process, so sqlcmd is required rather than convenient. Nothing else here
+      # uses it, and `bcp` and the rest of the toolset are not installed.
+      - name: Install sqlcmd
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" \
+            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          sudo apt-get update -qq
+          sudo ACCEPT_EULA=Y apt-get install -y -qq mssql-tools18 > /dev/null
+          echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
+
+      - name: Verify sqlcmd is on PATH
+        run: sqlcmd -? > /dev/null && echo "sqlcmd available"
+
       - name: Integration.Tests
         run: >
           dotnet test tests/Integration.Tests/SSAS.Integration.Tests.csproj
           --configuration Debug --no-build
           --logger "trx;LogFileName=integration.trx"
+
+      # ---- CLEANUP RUNS WHETHER OR NOT THE SUITE PASSED.
+      #
+      # The runner is ephemeral, so this cannot leak across jobs — but a cleanup that only ran on success
+      # would hide a suite that leaves files behind, and that is worth seeing. Reported, never failed on:
+      # a tidy-up problem must not turn a green suite red.
+      - name: Report leftover backup artefacts
+        if: always()
+        run: |
+          echo "Remaining files in the shared backup directory:"
+          sudo find /var/opt/mssql/backup -type f | head -50
+          echo "count: $(sudo find /var/opt/mssql/backup -type f | wc -l)"
+          sudo rm -rf /var/opt/mssql/backup/* || true
 
       # Always, not only on failure. A run this expensive should leave its results behind whatever the
       # outcome — a green run's timings are the data that decides whether this can ever become automatic.

@@ -822,7 +822,11 @@ public sealed class TenantBackupProviderSqlServerTests
       };
       start.ArgumentList.Add("-S");
       start.ArgumentList.Add(server);
-      start.ArgumentList.Add("-E");
+      // Integrated Security on a developer machine; SQL authentication where the environment supplies it
+
+      // (CI-004). Derived from the same connection string the suite itself uses.
+
+      start.ArgumentList.AddAuthentication(TenantBackupProviderSqlServerTests.BackupFixture.Configured());
       start.ArgumentList.Add("-C");
       start.ArgumentList.Add("-d");
       start.ArgumentList.Add(TargetCatalog);

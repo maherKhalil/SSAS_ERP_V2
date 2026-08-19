@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 
-namespace SSAS.Platform.API.Transport;
+namespace SSAS.BuildingBlocks.Api.Transport;
 
 // Neutral strict-request parsing for admin route groups (and future Company API).
 // Mirrors the established localization strict-parsing convention: JSON bodies must be an

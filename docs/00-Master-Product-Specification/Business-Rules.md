@@ -170,6 +170,216 @@ Disabled modules shall not appear in menus or APIs.
 
 ---
 
+## BR-PLT-0009
+
+### Title
+
+Tenant Branch Onboarding
+
+### Description
+
+A tenant shall retain at least one active branch once branch onboarding is complete.
+
+Zero active branches is a provisioning state only. An administrator shall not return a tenant to it by deactivating the last active branch.
+
+### Applies To
+
+Platform
+
+### Priority
+
+Critical
+
+### Related Requirements
+
+REQ-PLT-0060, REQ-PLT-0061
+
+---
+
+## BR-PLT-0010
+
+### Title
+
+Mandatory Branch Assignment
+
+### Description
+
+An active normal tenant user shall be authorized for at least one active branch.
+
+The rule is enforced when the user is created and whenever branch assignments are edited. It shall not be deferred to login.
+
+### Applies To
+
+Platform
+
+### Priority
+
+Critical
+
+### Related Requirements
+
+REQ-PLT-0062
+
+---
+
+## BR-PLT-0011
+
+### Title
+
+Tenant Administrator Branch Scope
+
+### Description
+
+A holder of tenant administration authority shall have access to all active branches of the current tenant, derived from authority rather than stored assignments.
+
+No branch assignment records shall be created for tenant administrators.
+
+### Applies To
+
+Platform
+
+### Priority
+
+High
+
+### Related Requirements
+
+REQ-PLT-0062, REQ-PLT-0063
+
+---
+
+## BR-PLT-0012
+
+### Title
+
+Branch Selection
+
+### Description
+
+A user authorized for exactly one active branch shall enter that branch automatically.
+
+A user authorized for more than one active branch shall select a branch explicitly. The selection shall not be skippable, and branch-scoped operations shall be refused until it is made.
+
+### Applies To
+
+Platform
+
+### Priority
+
+Critical
+
+### Related Requirements
+
+REQ-PLT-0064
+
+---
+
+## BR-PLT-0013
+
+### Title
+
+Branch Transaction Ownership
+
+### Description
+
+Every branch-owned business transaction shall belong to exactly one active branch.
+
+The branch shall be assigned by the server from the authenticated session context. It shall never be accepted from client-supplied request data, and shall not change after the record is created.
+
+### Applies To
+
+Platform, HR, General Ledger, Sales, Inventory
+
+### Priority
+
+Critical
+
+### Related Requirements
+
+REQ-PLT-0065
+
+---
+
+## BR-PLT-0014
+
+### Title
+
+Branch Authorization Freshness
+
+### Description
+
+Authorization for the active branch shall be re-evaluated against live state on every branch-owned write and at every branch switch.
+
+A recorded active branch is execution context, not proof of authorization. Revoked access, revoked authority, a deactivated branch, or a revoked or expired session shall each refuse the operation.
+
+### Applies To
+
+Platform
+
+### Priority
+
+Critical
+
+### Related Requirements
+
+REQ-PLT-0066
+
+---
+
+## BR-PLT-0015
+
+### Title
+
+Branch Retirement
+
+### Description
+
+Branches shall be deactivated, never deleted.
+
+Deactivation shall be refused when it would remove the tenant's only active branch, retire the active main branch without a named replacement, or leave an active normal user with no active branch.
+
+Branch assignments shall be retained through deactivation so that reactivation restores prior access. A retained assignment shall grant no access while its branch is inactive.
+
+### Applies To
+
+Platform
+
+### Priority
+
+High
+
+### Related Requirements
+
+REQ-PLT-0061, REQ-PLT-0067
+
+---
+
+## BR-PLT-0016
+
+### Title
+
+Branch Reporting Scope
+
+### Description
+
+Reports over branch-owned data shall be scoped to the current branch or to an explicitly authorized set of branches.
+
+"All branches" shall mean all branches currently authorized to the requesting user. A report shall never be produced by omitting the branch predicate.
+
+### Applies To
+
+Platform, Reporting
+
+### Priority
+
+Critical
+
+### Related Requirements
+
+REQ-PLT-0067
+
+---
+
 # Security Rules
 
 ## BR-PLT-0100

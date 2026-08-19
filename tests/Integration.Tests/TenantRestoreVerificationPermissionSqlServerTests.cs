@@ -437,8 +437,9 @@ public sealed class TenantRestoreVerificationPermissionSqlServerTests
       {
         await ExecuteAsync(catalog, sql);
       }
-      catch (SqlException)
+      catch (SqlException error)
       {
+        TestCatalogJanitor.RecordLeak(catalog, error);
         // Teardown is best-effort by design: a cleanup failure must not mask the assertion that ran before it.
       }
     }

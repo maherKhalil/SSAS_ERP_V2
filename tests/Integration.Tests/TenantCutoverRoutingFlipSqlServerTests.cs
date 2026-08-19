@@ -614,7 +614,7 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
       var platform = PlatformContext();
       return new TenantCutoverCopyService(
         new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout),
-        ConnectionFactory(), platform, Options.Create(copy));
+        ConnectionFactory(), platform, Options.Create(copy), CutoverTenantModel.Source);
     }
 
     public TenantCutoverRoutingFlipService FlipService(ITenantRoutingCacheInvalidator? invalidator = null)
@@ -896,10 +896,11 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
         """);
     }
 
+    // Statistics only. The procedure cache is deliberately NOT cleared any more: the plan is now returned by
+    // the server rather than looked up in a cache, so emptying the cache would buy nothing.
     public Task RefreshStatisticsAsync() => ExecuteAsync(platformCatalog, """
       UPDATE STATISTICS [platform].[TenantDatabaseAssignments] WITH FULLSCAN;
       UPDATE STATISTICS [platform].[TenantCutoverOperations] WITH FULLSCAN;
-      ALTER DATABASE SCOPED CONFIGURATION CLEAR PROCEDURE_CACHE;
       """);
 
     // Runs the two hot shapes through the real components so the captured plans are production queries.
@@ -911,63 +912,38 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
       await new TenantRoutingVersionReader(platform).ReadCurrentRoutingVersionAsync(TenantId);
     }
 
-    public async Task<IReadOnlyList<MeasuredPlan>> CapturePlansAsync()
-    {
-      var plans = new List<MeasuredPlan>();
-
-      var gate = await PlanAsync(
+    // Both hot shapes, replayed exactly as the production components issued them above. A shape that was
+    // never issued now THROWS naming what was recorded, instead of being quietly dropped from the list —
+    // the old silent skip is what turned "nothing was captured" into an empty label list rather than a
+    // diagnosis.
+    public async Task<IReadOnlyList<MeasuredPlan>> CapturePlansAsync() =>
+    [
+      await PlanAsync(
         "cutover write-fence gate lookup",
-        "CHARINDEX(N'[TenantCutoverOperations]', st.text) > 0 AND " +
-        "CHARINDEX(N'[PostCutoverWriteObservedUtc]', st.text) > 0");
-      if (gate is not null)
-      {
-        plans.Add(gate);
-      }
-
-      var version = await PlanAsync(
+        ["[TenantCutoverOperations]", "[PostCutoverWriteObservedUtc]"]),
+      await PlanAsync(
         "authoritative RoutingVersion read",
-        "CHARINDEX(N'[TenantDatabaseAssignments]', st.text) > 0 AND " +
-        "CHARINDEX(N'[RoutingVersion]', st.text) > 0 AND " +
-        "CHARINDEX(N'[TenantDatabases]', st.text) = 0");
-      if (version is not null)
-      {
-        plans.Add(version);
-      }
+        ["[TenantDatabaseAssignments]", "[RoutingVersion]"],
+        "[TenantDatabases]"),
+    ];
 
-      return plans;
-    }
-
-    private async Task<MeasuredPlan?> PlanAsync(string label, string predicate)
+    private async Task<MeasuredPlan> PlanAsync(string label, string[] required, params string[] excluded)
     {
-      await using var connection = new SqlConnection(ConnectionFor(platformCatalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = $"""
-        SELECT TOP (1) CAST(qp.query_plan AS nvarchar(max)),
-               qs.total_logical_reads, qs.total_elapsed_time, qs.execution_count
-        FROM sys.dm_exec_query_stats AS qs
-        CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
-        CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
-        WHERE {predicate}
-        ORDER BY qs.last_execution_time DESC;
-        """;
-
-      await using var reader = await command.ExecuteReaderAsync();
-      if (!await reader.ReadAsync())
-      {
-        return null;
-      }
-
-      var executions = Math.Max(reader.GetInt64(3), 1);
-      return new MeasuredPlan(
-        label, reader.GetString(0), reader.GetInt64(1) / executions, reader.GetInt64(2) / executions);
+      var captured = await QueryPlanCapture.ExplainAsync(
+        ConnectionFor(platformCatalog), recorder.Match(required, excluded));
+      return new MeasuredPlan(label, captured.PlanXml, captured.LogicalReads, captured.Microseconds);
     }
+
+    // The recorder observes every statement the PRODUCTION components issue through this context, so the
+    // plan test can measure the real queries without hand-writing them. See QueryPlanCapture.
+    private readonly ProductionSqlRecorder recorder = new();
 
     private PlatformDbContext PlatformContext()
     {
       var options = new DbContextOptionsBuilder<PlatformDbContext>()
         .UseSqlServer(ConnectionFor(platformCatalog),
           sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform"))
+        .AddInterceptors(recorder)
         .Options;
       return new PlatformDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
     }
@@ -1002,8 +978,9 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
             $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
             $"DROP DATABASE [{catalog}]; END");
         }
-        catch (SqlException)
+        catch (SqlException error)
         {
+          TestCatalogJanitor.RecordLeak(catalog, error);
         }
       }
     }

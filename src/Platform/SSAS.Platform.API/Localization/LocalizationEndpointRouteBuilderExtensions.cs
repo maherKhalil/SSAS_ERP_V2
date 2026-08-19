@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;

@@ -260,6 +260,8 @@ Current implementation state is tracked through approved Feature Packages and th
 
 Sprint-00 (Foundation) and the Sprint-01 Platform feature packages are delivered and merged: FP-001 Identity & Access, FP-002 Authentication & Token Lifecycle, FP-003 Tenant Lifecycle, and FP-004 Localization. To determine what exists, read the approved Feature Packages under `docs/17-features/` and the commit history.
 
+The **Branch foundation** (branch persistence, lifecycle, mandatory user branch assignment, and the active-branch session flow) is delivered on the `codex/branch-foundation-b0-b1` branch and is not yet merged to `main`. Its architecture is recorded in `ADR-023` and its behaviour in `docs/02-Functional/Platform/Branch-Management.md`. Three of its decisions are structurally implemented but not runtime-proven, because no production entity implements `IBranchOwnedEntity` yet; `ADR-023` states which, and names the obligations the first branch-owned entity must close.
+
 Do not resume completed work on the basis of an older "current sprint" heading. The repository state and the approved Feature Packages are authoritative for what has been built and what comes next.
 
 ---

@@ -46,6 +46,12 @@ public sealed class AuthenticationSessionConfiguration : IEntityTypeConfiguratio
     builder.Property(session => session.IdleExpiresUtc).IsRequired();
     builder.Property(session => session.AbsoluteExpiresUtc).IsRequired();
     builder.Property(session => session.SecurityVersionAtCreation).IsRequired();
+
+    // Branch foundation B1c. NULLABLE because "authenticated but no branch chosen yet" is a legitimate
+    // state, and deliberately UNCONSTRAINED: the branch row lives in the tenant database, so a foreign key
+    // would cross catalogs — impossible once a tenant is promoted to dedicated storage. No index: it is
+    // read by session identity, never searched by branch.
+    builder.Property(session => session.ActiveBranchId);
     builder.Property(session => session.RevokedUtc);
     builder.Property(session => session.RevokedBy).HasMaxLength(256);
     builder.Property(session => session.RevocationReason)

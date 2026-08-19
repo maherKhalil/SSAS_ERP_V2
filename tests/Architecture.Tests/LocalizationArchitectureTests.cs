@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using SSAS.BuildingBlocks.Domain;

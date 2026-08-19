@@ -14,8 +14,18 @@ namespace SSAS.Architecture.Tests;
 [Trait("Acceptance", "AC-AUTH-0035")]
 public sealed class AuthenticationSessionArchitectureTests
 {
+  // Admitted ONE AT A TIME BY DECISION, never by pattern: bypassing the tenant filter is the one change
+  // that can silently widen a query across tenants, so a new file appearing here must be argued for.
+  //
+  // TenantAdministratorAuthority.cs joined in Branch foundation B1a for the same reason the membership
+  // paths did: it resolves tenant-administrator authority for AUTHENTICATION, which asks before any
+  // ambient tenant context exists. Left filtered it would answer "not an administrator" for everyone.
+  // It states the tenant explicitly in every clause instead, so nothing is widened.
   private static readonly string[] ApprovedQueryFilterBypassFiles =
-    ["AccessTokenClaimsProvider.cs", "IdentityTenantMembershipReadService.cs", "TenantUserRepository.cs"];
+  [
+    "AccessTokenClaimsProvider.cs", "IdentityTenantMembershipReadService.cs",
+    "TenantAdministratorAuthority.cs", "TenantUserRepository.cs"
+  ];
 
   [Fact]
   public void Session_repositories_are_narrow_and_expose_no_delete_or_queryable_boundary()

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.Platform.API.Transport;
 
 namespace SSAS.Architecture.Tests;
@@ -56,7 +57,9 @@ public sealed class CompanyApiArchitectureTests
   public void Company_api_reuses_the_shared_transport_primitives_and_stays_in_the_api_layer()
   {
     // The Company transport contracts live in the Platform API assembly alongside the shared codec.
-    var apiAssembly = typeof(RowVersionCodec).Assembly;
+    // Anchored on a PLATFORM-owned transport type. RowVersionCodec no longer identifies this assembly: it
+    // moved to the shared API project in FP-006C5, and anchoring on it would silently retarget this test.
+    var apiAssembly = typeof(ProblemResults).Assembly;
     var contract = apiAssembly.GetType("SSAS.Platform.API.Companies.CreateCompanyRequest");
     Assert.NotNull(contract);
     Assert.Equal("SSAS.Platform.API", apiAssembly.GetName().Name);

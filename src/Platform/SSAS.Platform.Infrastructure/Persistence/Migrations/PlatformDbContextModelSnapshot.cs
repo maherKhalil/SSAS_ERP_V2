@@ -223,6 +223,9 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("AbsoluteExpiresUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<Guid?>("ActiveBranchId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ClientId")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -475,6 +478,94 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_TenantSelectionTransactions_Lifecycle", "NOT ([ConsumedUtc] IS NOT NULL AND [RevokedUtc] IS NOT NULL)");
                         });
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Branches.UserBranchAccess", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("UserBranchAccessId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("TenantUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "BranchId")
+                        .HasDatabaseName("IX_UserBranchAccess_TenantId_BranchId");
+
+                    b.HasIndex("TenantId", "TenantUserId", "BranchId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_UserBranchAccess_TenantId_TenantUserId_BranchId");
+
+                    b.ToTable("UserBranchAccess", "platform");
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Companies.UserCompanyAccess", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("UserCompanyAccessId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("TenantUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CompanyId")
+                        .HasDatabaseName("IX_UserCompanyAccess_TenantId_CompanyId");
+
+                    b.HasIndex("TenantId", "TenantUserId", "CompanyId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_UserCompanyAccess_TenantId_TenantUserId_CompanyId");
+
+                    b.ToTable("UserCompanyAccess", "platform");
                 });
 
             modelBuilder.Entity("SSAS.Platform.Domain.Identities.Identity", b =>
@@ -2160,6 +2251,26 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                     b.HasOne("SSAS.Platform.Domain.Identities.Identity", null)
                         .WithMany()
                         .HasForeignKey("IdentityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Branches.UserBranchAccess", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.TenantUsers.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "TenantUserId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Companies.UserCompanyAccess", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.TenantUsers.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "TenantUserId")
+                        .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

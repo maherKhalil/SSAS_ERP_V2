@@ -1,4 +1,4 @@
-namespace SSAS.Platform.API.Transport;
+namespace SSAS.BuildingBlocks.Api.Transport;
 
 // Neutral, platform-wide SQL Server rowversion <-> HTTP codec implementing the approved
 // convention in docs/08-Development/Development-Standards.md ("Optimistic Concurrency

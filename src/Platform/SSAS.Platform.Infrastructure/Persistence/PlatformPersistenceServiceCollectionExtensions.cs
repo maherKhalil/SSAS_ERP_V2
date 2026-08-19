@@ -1,3 +1,6 @@
+using SSAS.BuildingBlocks.Tenancy.Persistence;
+using SSAS.BuildingBlocks.Tenancy.Branches;
+using SSAS.BuildingBlocks.Tenancy.Companies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
@@ -17,6 +20,10 @@ using SSAS.Platform.Application.Roles;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Application.TenantUsers;
 using SSAS.Platform.Application.Tenants;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
+using SSAS.Platform.Application.Branches;
+using SSAS.Platform.Infrastructure.Branches;
+using SSAS.Platform.Infrastructure.Companies;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -24,6 +31,7 @@ using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Identity;
 using SSAS.Platform.Infrastructure.PlatformSupport;
+using SSAS.Platform.Infrastructure.RequestContext;
 using SSAS.BuildingBlocks.Localization.Catalog;
 using SSAS.BuildingBlocks.Localization.Generated;
 using SSAS.Platform.Application.Localization;
@@ -242,6 +250,14 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // The concrete types are registered as well as their interfaces so the orchestrator can enter their
     // UNDER-OWNERSHIP paths — which take a non-forgeable ownership token and therefore cannot sit on the
     // Application-layer interfaces. Both registrations resolve the SAME scoped instance.
+    // ---- THE TENANT MODEL THE CUTOVER COPIES FROM (FP-006C6, ADR-020).
+    //
+    // SINGLETON, because the contributor set is a composition fact fixed for the process, and building an EF
+    // model is expensive. It resolves the SAME IEnumerable<ITenantModelContributor> the runtime context
+    // factory resolves, which is what makes it impossible for the copy manifest and the application's own
+    // persistence to describe different sets of tables.
+    services.AddSingleton<ITenantModelSource, ComposedTenantModelSource>();
+
     services.AddScoped<TenantCutoverCopyService>();
     services.AddScoped<ITenantCutoverCopyService>(provider =>
       provider.GetRequiredService<TenantCutoverCopyService>());
@@ -260,6 +276,93 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // A SERVICE ONLY. No HTTP route, no hosted service, no scheduler — activating a one-way operation on
     // customer data is a separate operational and security decision this slice does not take.
     services.AddScoped<ITenantCutoverOrchestrator, TenantCutoverOrchestrator>();
+
+    // Branch foundation B0/B1. The resolver is the ONE place branch scope is decided, and the authority
+    // predicate behind it is the one place tenant-administrator status is decided.
+    services.AddScoped<ITenantAdministratorAuthority, TenantAdministratorAuthority>();
+
+    // ---- THE BRANCH READ PATH USES A CONTEXT FACTORY WITHOUT THE WRITE AUTHORIZER, deliberately.
+    //
+    // Otherwise the graph is circular: the routed context factory needs the branch write authorizer, which
+    // needs the access resolver, which needs a routed context to read the tenant's branches. Resolving that
+    // with lazy injection would hide the layering rather than fix it.
+    //
+    // The cycle is not real, because the resolver only ever READS branches — it never saves branch-owned
+    // entities, so it has no use for the authorizer. Giving it a factory that omits one states that fact
+    // instead of concealing it, and a context built here cannot be used to write branch-owned data because
+    // a null authorizer refuses.
+    services.AddScoped<ITenantBranchAccessResolver>(provider => new TenantBranchAccessResolver(
+      provider.GetRequiredService<PlatformDbContext>(),
+      BranchReadContextFactory(provider),
+      provider.GetRequiredService<ITenantAdministratorAuthority>()));
+    services.AddScoped<ITenantBranchService, TenantBranchService>();
+
+    // Branch foundation B1b. The guard delegates to the SAME per-tenant resource B1a's deactivation takes,
+    // which is what closes the R1/R2 races between assignment edits and branch deactivation.
+    services.AddScoped<IBranchTopologyGuard, BranchTopologyGuard>();
+    // Same reasoning: validating that branches are assignable is a read.
+    services.AddScoped<ITenantBranchValidator>(provider =>
+      new TenantBranchValidator(BranchReadContextFactory(provider)));
+    services.AddScoped<IUserBranchAccessRepository, UserBranchAccessRepository>();
+    services.AddScoped<SetTenantUserBranchesCommandHandler>();
+
+    // Branch foundation B1c. The write authorizer is what makes the session's branch non-authoritative on
+    // its own: it re-reads the durable session AND re-asks the resolver on every branch-owned write.
+    services.AddScoped<IBranchWriteAuthorizer, BranchWriteAuthorizer>();
+
+    // ---- FP-006C2: THE SANCTIONED BRANCH-TRANSFER CHANNEL (ADR-024 decision 3).
+    //
+    // SCOPED, so a declaration is reachable only from the operation that opened it — never static, which
+    // would share it across concurrent requests, and never AsyncLocal, which would flow it into background
+    // work that outlives the operation.
+    //
+    // The authorizer reads companies-free tenant state, so it takes the read-only context factory for the
+    // same reason the branch and company resolvers do: the routed factory needs the authorizers, and the
+    // authorizers need a context to read branches. The cycle is not real because this only ever READS.
+    services.AddScoped<IBranchTransferScope, BranchTransferScope>();
+
+    // ---- FP-006C3: THE MODULE-FACING READS (ADR-012).
+    //
+    // Both delegate to the contracts Platform already owns rather than resolving anything themselves, so a
+    // module and Platform cannot disagree about who is acting or which branch is current.
+    services.AddScoped<SSAS.BuildingBlocks.Tenancy.ICurrentTenantUser, RequestContext.CurrentTenantUser>();
+    services.AddScoped<ICurrentBranchResolver, CurrentBranchResolver>();
+    services.AddScoped<BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor, TenantDbContextAccessor>();
+    services.AddScoped<IBranchTransferAuthorizer>(provider => new BranchTransferAuthorizer(
+      provider.GetRequiredService<IBranchTransferScope>(),
+      provider.GetRequiredService<ITenantBranchAccessResolver>(),
+      provider.GetRequiredService<ITenantAdministratorAuthority>(),
+      BranchReadContextFactory(provider),
+      provider.GetService<ICurrentAuthenticationSession>()));
+
+    // ---- FP-006C1: THE COMPANY DIMENSION (ADR-025). Registered alongside branch and shaped identically,
+    // because ADR-025 chose the branch pattern for the sibling dimension.
+    //
+    // THE COMPANY READ PATH USES A CONTEXT FACTORY WITHOUT THE WRITE AUTHORIZERS, for the same reason the
+    // branch read path does: otherwise the graph is circular — the routed factory needs the company write
+    // authorizer, which needs the context resolver, which needs the access resolver, which needs a routed
+    // context to read the tenant's companies. The cycle is not real, because the resolver only ever READS
+    // companies; giving it a factory that omits the authorizers states that fact instead of concealing it.
+    services.AddScoped<ITenantCompanyAccessResolver>(provider => new TenantCompanyAccessResolver(
+      provider.GetRequiredService<PlatformDbContext>(),
+      BranchReadContextFactory(provider),
+      provider.GetRequiredService<ITenantAdministratorAuthority>()));
+
+    // The five-step validation, in one place, used by BOTH the request path and the write boundary. Two
+    // copies of "is this company usable" is how a read path and a write path come to disagree.
+    services.AddScoped<ICompanyContextResolver, CompanyContextResolver>();
+
+    // The trusted company context is composed HERE, with the resolver it depends on, rather than alongside
+    // the request accessors that cannot satisfy it (FP-006C5). Idempotent, so a host may also call it
+    // directly without producing a second registration.
+    services.AddPlatformCompanyContext();
+
+    // The write authorizer re-asks that validation on EVERY company-owned save, which is what makes a
+    // company established at the start of a request non-authoritative by the time the request writes.
+    services.AddScoped<ICompanyWriteAuthorizer, CompanyWriteAuthorizer>();
+
+    services.AddScoped<IUserCompanyAccessRepository, UserCompanyAccessRepository>();
+    services.AddScoped<IBranchSessionService, BranchSessionService>();
 
     services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
     services.AddScoped<TenantDbContextProvider>();
@@ -299,7 +402,16 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<CurrentTenantDatabaseRouteProvider>();
     services.AddSingleton<ITenantDatabaseConnectionFactory, TenantDatabaseConnectionFactory>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
-    services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
+    // ---- THE PERMISSION CATALOG IS COMPOSED, NOT PLATFORM-ONLY (FP-006P, ADR-012 r1.2).
+    //
+    // Platform's built-in definitions plus every EXPLICITLY registered module contribution. Registering
+    // PlatformPermissionCatalog directly here is what left HR's five permissions unassignable: a role may
+    // only be granted a name the catalog defines, and no catalog defined them.
+    //
+    // The built-in set is still registered as its own concrete type, because it remains the authoritative
+    // Platform-owned half and several call sites want exactly that half.
+    services.AddSingleton<PlatformPermissionCatalog>();
+    services.AddSingleton<IPermissionCatalog, ComposedPermissionCatalog>();
     services.AddSingleton<ILocalizationCatalog>(GeneratedLocalizationCatalog.Instance);
     services.AddSingleton<ILocalizationTenantCache, LocalizationMemoryCache>();
     services.AddSingleton<ILocalizationDiagnostics, LocalizationDiagnostics>();
@@ -473,4 +585,16 @@ public static class PlatformInfrastructureServiceCollectionExtensions
 
     return services;
   }
+
+  // A routed tenant context factory with NO branch write authorizer — the read-only half of the branch
+  // graph. See the resolver registration above for why the alternative is a dependency cycle.
+  private static TenantDbContextFactory BranchReadContextFactory(IServiceProvider provider) =>
+    new(
+      provider.GetRequiredService<ITenantDatabaseResolver>(),
+      provider.GetRequiredService<ITenantDatabaseConnectionFactory>(),
+      provider.GetRequiredService<ITenantDatabaseTrafficGate>(),
+      provider.GetRequiredService<ICurrentUser>(),
+      provider.GetRequiredService<ICurrentTenant>(),
+      provider.GetRequiredService<IDateTimeProvider>(),
+      provider.GetRequiredService<ITenantWriteFence>());
 }

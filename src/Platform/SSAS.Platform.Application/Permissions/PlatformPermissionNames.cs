@@ -20,6 +20,23 @@ public static class PlatformPermissionNames
   public const string ViewLocalization = "Platform.Localization.View";
   public const string ManageLocalization = "Platform.Localization.Manage";
   public const string ViewLocalizationHistory = "Platform.Localization.ViewHistory";
+  // TENANT ADMINISTRATION, TENANT-PLANE (Branch foundation B0/B1).
+  //
+  // The authority that makes a user a TENANT ADMINISTRATOR: someone who administers their own tenant, as
+  // distinct from Platform.Support.Administer, which is cross-tenant platform authority and is never
+  // assignable to a tenant role.
+  //
+  // BRANCH SCOPE DERIVES FROM THIS ONE PERMISSION, and deliberately from nothing else. A tenant
+  // administrator's branch scope is every active branch in the tenant, held implicitly rather than as
+  // UserBranchAccess rows — the first administrator has to exist before the first branch does, and rows
+  // would then need synchronising on every branch created.
+  //
+  // IT IS NOT A SHORTCUT TO FUNCTIONAL AUTHORITY. Holding it says which BRANCHES are reachable; it says
+  // nothing about which OPERATIONS are permitted, which remains the ordinary permission check. Deriving
+  // branch scope from a functional permission such as Users.Create instead would fuse the two dimensions
+  // the branch model exists to keep apart.
+  public const string AdministerTenant = "Platform.Tenant.Administer";
+
   public const string ViewCompanies = "Platform.Companies.View";
   public const string ManageCompanies = "Platform.Companies.Manage";
   public const string CompanyLifecycle = "Platform.Companies.Lifecycle";

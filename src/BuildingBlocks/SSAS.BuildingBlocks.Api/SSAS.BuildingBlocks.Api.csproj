@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    THE SHARED HTTP TRANSPORT PRIMITIVES, AND NOTHING ELSE (FP-006C5).
+
+    HR is the first business module to expose HTTP endpoints, and ADR-012 makes SSAS.Platform.* a module —
+    so SSAS.HR.API referencing SSAS.Platform.API would be a module-to-module reference, which the dependency
+    architecture tests enforce. The primitives both module APIs need are therefore neither module's to own.
+
+    IT REFERENCES NOTHING. No Platform, no HR, no GL, no Application, Domain or Infrastructure project. A
+    single ProjectReference here would let module-specific vocabulary leak into every module's transport, and
+    is exactly what the architecture tests below pin against.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

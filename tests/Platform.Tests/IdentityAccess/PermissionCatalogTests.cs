@@ -90,8 +90,12 @@ public sealed class PermissionCatalogTests
     var catalog = new PlatformPermissionCatalog();
     var identifiers = catalog.All.Select(item => item.Name.Value).ToArray();
 
-    Assert.Equal(25, identifiers.Length);
-    Assert.Equal(21, catalog.All.Count(item => item.Scope == PermissionScope.Tenant));
+    // 26 since Branch foundation B0/B1 added Platform.Tenant.Administer at TENANT scope: a tenant
+    // administering itself, as opposed to the PlatformSupport-scoped family below, which is cross-tenant
+    // authority and is never assignable to a tenant role. The count is asserted so a new permission cannot
+    // enter the catalog without someone deciding which plane it belongs to.
+    Assert.Equal(26, identifiers.Length);
+    Assert.Equal(22, catalog.All.Count(item => item.Scope == PermissionScope.Tenant));
     Assert.Equal(4, catalog.All.Count(item => item.Scope == PermissionScope.PlatformSupport));
 
     // The platform-plane (PlatformSupport) family is exactly the tenant-admin permissions plus the

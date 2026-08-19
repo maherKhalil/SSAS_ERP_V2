@@ -784,7 +784,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       var platform = PlatformContext();
       return new TenantCutoverCopyService(
         new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout),
-        ConnectionFactory(), platform, Options.Create(copy));
+        ConnectionFactory(), platform, Options.Create(copy), CutoverTenantModel.Source);
     }
 
     public TenantCutoverRoutingFlipService FlipService(ITenantRoutingCacheInvalidator? invalidator = null)
@@ -803,7 +803,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       var platform = PlatformContext();
       var store = new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout);
       var copyService = new TenantCutoverCopyService(
-        store, ConnectionFactory(), platform, Options.Create(copy));
+        store, ConnectionFactory(), platform, Options.Create(copy), CutoverTenantModel.Source);
 
       return new TenantCutoverOrchestrator(
         platform,
@@ -1029,36 +1029,23 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       END
       """);
 
+    // Statistics only. The procedure cache is deliberately NOT cleared any more: the plan is now returned by
+    // the server rather than looked up in a cache, so emptying the cache would buy nothing and cost the rest
+    // of the suite its compiled plans.
     public Task RefreshStatisticsAsync() => ExecuteAsync(platformCatalog, """
       UPDATE STATISTICS [platform].[TenantCutoverOperations] WITH FULLSCAN;
-      ALTER DATABASE SCOPED CONFIGURATION CLEAR PROCEDURE_CACHE;
       """);
 
-    public async Task<MeasuredPlan?> CaptureWriteGatePlanAsync()
+    // Identified by the table and the column the write gate reads. The same fragments the DMV predicate
+    // used, applied to the recorded production statement instead of to a cache that may have forgotten it.
+    public Task<MeasuredPlan> CaptureWriteGatePlanAsync() =>
+      Explain(["[TenantCutoverOperations]", "[PostCutoverWriteObservedUtc]"]);
+
+    private async Task<MeasuredPlan> Explain(string[] required)
     {
-      await using var connection = new SqlConnection(ConnectionFor(platformCatalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = """
-        SELECT TOP (1) CAST(qp.query_plan AS nvarchar(max)),
-               qs.total_logical_reads, qs.total_elapsed_time, qs.execution_count
-        FROM sys.dm_exec_query_stats AS qs
-        CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
-        CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
-        WHERE CHARINDEX(N'[TenantCutoverOperations]', st.text) > 0
-          AND CHARINDEX(N'[PostCutoverWriteObservedUtc]', st.text) > 0
-        ORDER BY qs.last_execution_time DESC;
-        """;
-
-      await using var reader = await command.ExecuteReaderAsync();
-      if (!await reader.ReadAsync())
-      {
-        return null;
-      }
-
-      var executions = Math.Max(reader.GetInt64(3), 1);
-      return new MeasuredPlan(
-        reader.GetString(0), reader.GetInt64(1) / executions, reader.GetInt64(2) / executions);
+      var captured = await QueryPlanCapture.ExplainAsync(
+        ConnectionFor(platformCatalog), recorder.Match(required));
+      return new MeasuredPlan(captured.PlanXml, captured.LogicalReads, captured.Microseconds);
     }
 
     public async Task<List<(string Name, string Events, bool Disabled)>> RoutingTriggersAsync()
@@ -1087,11 +1074,16 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       return triggers;
     }
 
+    // The recorder observes every statement the PRODUCTION components issue through this context, so the
+    // plan test can measure the real query without hand-writing it. See QueryPlanCapture.
+    private readonly ProductionSqlRecorder recorder = new();
+
     private PlatformDbContext PlatformContext()
     {
       var options = new DbContextOptionsBuilder<PlatformDbContext>()
         .UseSqlServer(ConnectionFor(platformCatalog),
           sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform"))
+        .AddInterceptors(recorder)
         .Options;
       return new PlatformDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
     }
@@ -1126,8 +1118,9 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
             $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
             $"DROP DATABASE [{catalog}]; END");
         }
-        catch (SqlException)
+        catch (SqlException error)
         {
+          TestCatalogJanitor.RecordLeak(catalog, error);
         }
       }
     }

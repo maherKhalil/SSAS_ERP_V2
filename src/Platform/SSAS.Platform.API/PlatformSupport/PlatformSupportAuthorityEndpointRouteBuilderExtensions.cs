@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -64,7 +65,7 @@ public static class PlatformSupportAuthorityEndpointRouteBuilderExtensions
     [FromServices] RegisterPlatformSupportPrincipalCommandHandler handler,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var request = await StrictRequestReader.ReadStrictJsonAsync<RegisterPlatformSupportPrincipalRequest>(
       context,
       new Dictionary<string, JsonValueKind[]> { ["identityId"] = [JsonValueKind.Number] },
@@ -122,7 +123,7 @@ public static class PlatformSupportAuthorityEndpointRouteBuilderExtensions
     Func<string, Task<Result>> mutate,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var request = await StrictRequestReader.ReadStrictJsonAsync<PlatformPermissionRequest>(
       context,
       new Dictionary<string, JsonValueKind[]> { ["permissionName"] = [JsonValueKind.String] },
@@ -143,7 +144,7 @@ public static class PlatformSupportAuthorityEndpointRouteBuilderExtensions
     Func<byte[], Task<Result>> transition,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var request = await StrictRequestReader.ReadStrictJsonAsync<PlatformSupportPrincipalLifecycleRequest>(
       context,
       new Dictionary<string, JsonValueKind[]> { ["expectedRowVersion"] = [JsonValueKind.String] },
@@ -171,7 +172,7 @@ public static class PlatformSupportAuthorityEndpointRouteBuilderExtensions
     [FromServices] ListPlatformSupportPrincipalsQueryHandler handler,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     if (!StrictRequestReader.HasOnly(context.Request.Query, ["pageNumber", "pageSize"]) ||
       !StrictRequestReader.TryInt(context.Request.Query, "pageNumber", 1, out var pageNumber) ||
       !StrictRequestReader.TryInt(context.Request.Query, "pageSize", 50, out var pageSize))
@@ -201,7 +202,7 @@ public static class PlatformSupportAuthorityEndpointRouteBuilderExtensions
     [FromServices] GetPlatformSupportPrincipalQueryHandler handler,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var result = await handler.HandleAsync(new GetPlatformSupportPrincipalQuery(principalId), cancellationToken);
     return result.IsFailure
       ? ProblemResults.Problem(context, PlatformSupportAuthorityApiErrorMapper.Map(result.Error))
@@ -214,7 +215,7 @@ public static class PlatformSupportAuthorityEndpointRouteBuilderExtensions
     [FromServices] ListPlatformPermissionAssignmentsQueryHandler handler,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var result = await handler.HandleAsync(
       new ListPlatformPermissionAssignmentsQuery(principalId), cancellationToken);
     return result.IsFailure
@@ -228,7 +229,7 @@ public static class PlatformSupportAuthorityEndpointRouteBuilderExtensions
     [FromServices] GetActivePlatformSupportPermissionsQueryHandler handler,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var result = await handler.HandleAsync(
       new GetActivePlatformSupportPermissionsQuery(principalId), cancellationToken);
     return result.IsFailure

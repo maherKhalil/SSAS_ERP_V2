@@ -23,6 +23,13 @@
   <ItemGroup>
     <InternalsVisibleTo Include="SSAS.Platform.Tests" />
     <InternalsVisibleTo Include="SSAS.Integration.Tests" />
+    <!-- FP-006C6: the host-composition tests assert that the PRODUCTION container resolves a tenant model
+         containing the module-contributed entities. That is a fact about an internal service, and proving it
+         from outside the container would prove something else. -->
+    <InternalsVisibleTo Include="SSAS.API.Tests" />
+    <!-- Design-time only: the migration tool reuses the ONE fail-fast connection-string contract rather
+         than restating it, so ADR-018's operational procedure cannot drift between them. -->
+    <InternalsVisibleTo Include="SSAS.Tenant.MigrationTool" />
   </ItemGroup>
 
 </Project>

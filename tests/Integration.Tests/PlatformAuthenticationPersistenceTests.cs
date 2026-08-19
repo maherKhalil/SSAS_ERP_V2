@@ -55,7 +55,7 @@ public sealed class PlatformAuthenticationPersistenceTests
     await using (var migrationContext = database.CreateContext(Guid.NewGuid()))
       await migrationContext.GetService<IMigrator>().MigrateAsync(AuthenticationSessionsMigration);
     var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
-    var seed = await CreateRefreshSessionSeedAsync(database, 91, clientId);
+    var seed = await CreateRefreshSessionSeedAsync(database, 91, clientId, historicalSchema: true);
 
     await using (var upgradeContext = database.CreateContext(seed.TenantId))
       await upgradeContext.GetService<IMigrator>().MigrateAsync(UserLogoutMigration);
@@ -753,10 +753,15 @@ public sealed class PlatformAuthenticationPersistenceTests
     return new SelectionSeed(tenant.Id, tenantUserId, raw);
   }
 
+  // historicalSchema seeds the session and its refresh token through RAW SQL, naming only the columns that
+  // existed at the PINNED migration. The EF model has moved on since — ActiveBranchId arrived with Branch
+  // foundation B1c — and inserting through the current model would couple a historical-compatibility test
+  // to today's schema, which is precisely what it exists not to do.
   private static async Task<RefreshSessionSeed> CreateRefreshSessionSeedAsync(
     SqlTestDatabase database,
     int iteration,
-    AuthenticationClientId clientId)
+    AuthenticationClientId clientId,
+    bool historicalSchema = false)
   {
     var tenant = Tenant.Create(
       TenantCode.Create($"AUTH{iteration}").Value,
@@ -803,6 +808,14 @@ public sealed class PlatformAuthenticationPersistenceTests
     }
 
     await using var authenticationContext = database.CreateContext(tenant.Id);
+
+    if (historicalSchema)
+    {
+      return await SeedHistoricalRefreshSessionAsync(
+        authenticationContext, database, tenant.Id, identityId, tenantUserId,
+        accountSecurityVersion, clientId);
+    }
+
     var session = AuthenticationSession.Create(
       identityId,
       tenantUserId,
@@ -821,6 +834,52 @@ public sealed class PlatformAuthenticationPersistenceTests
     session.CreateInitialRefreshToken(generated.PublicId, generated.SecretHash, database.Clock.UtcNow, Guid.NewGuid());
     Assert.True((await SaveAsync(authenticationContext)).IsSuccess);
     return new RefreshSessionSeed(tenant.Id, session.Id, raw);
+  }
+
+  // The session and refresh token AS THEY EXISTED AT THE PINNED MIGRATION. Every column is named
+  // explicitly — no INSERT without a column list — so the row describes the historical schema rather than
+  // whatever the current model happens to contain, and no constraint is disabled or bypassed to place it.
+  private static async Task<RefreshSessionSeed> SeedHistoricalRefreshSessionAsync(
+    PlatformDbContext context,
+    SqlTestDatabase database,
+    Guid tenantId,
+    long identityId,
+    long tenantUserId,
+    long accountSecurityVersion,
+    AuthenticationClientId clientId)
+  {
+    var now = database.Clock.UtcNow;
+    var tokenFamilyId = Guid.NewGuid();
+
+    var client = clientId.Value;
+    var idleExpires = now.AddDays(30);
+    var absoluteExpires = now.AddDays(90);
+
+    // SqlQuery/ExecuteSqlAsync rather than the Raw variants: these parameterize the interpolated values
+    // instead of pasting them into the text.
+    var sessionId = context.Database.SqlQuery<long>($"""
+      INSERT INTO [platform].[AuthenticationSessions]
+        ([IdentityId], [TenantUserId], [TenantId], [ClientId], [TokenFamilyId], [Status],
+         [CreatedUtc], [IdleExpiresUtc], [AbsoluteExpiresUtc], [SecurityVersionAtCreation], [ModifiedUtc])
+      OUTPUT INSERTED.[AuthenticationSessionId] AS [Value]
+      VALUES ({identityId}, {tenantUserId}, {tenantId}, {client}, {tokenFamilyId}, N'Active',
+        {now}, {idleExpires}, {absoluteExpires}, {accountSecurityVersion}, {now})
+      """).AsEnumerable().Single();
+
+    var tokenService = new AuthenticationTokenService();
+    var generated = tokenService.GenerateRefreshToken(sessionId, tokenFamilyId, clientId);
+    var raw = generated.SensitiveToken.RevealOnce().Value;
+    var secretHash = generated.SecretHash;
+    var publicId = generated.PublicId;
+
+    await context.Database.ExecuteSqlAsync($"""
+      INSERT INTO [platform].[RefreshTokenRecords]
+        ([AuthenticationSessionId], [PublicId], [TokenFamilyId], [ClientId], [CreatedUtc], [ExpiresUtc],
+         [SecretHash])
+      VALUES ({sessionId}, {publicId}, {tokenFamilyId}, {client}, {now}, {idleExpires}, {secretHash})
+      """);
+
+    return new RefreshSessionSeed(tenantId, sessionId, raw);
   }
 
   private static async Task<ClaimsCorruptionSeed> CreateClaimsSeedWithCorruptPlatformAssignmentAsync(

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -52,7 +53,7 @@ public static class CompanyEndpointRouteBuilderExtensions
     ICompanyReadService readService,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var request = await StrictRequestReader.ReadStrictJsonAsync<CreateCompanyRequest>(
       context,
       new Dictionary<string, JsonValueKind[]>
@@ -92,7 +93,7 @@ public static class CompanyEndpointRouteBuilderExtensions
     ListCompaniesQueryHandler handler,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     if (!TryListQuery(context.Request.Query, out var query))
     {
       return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
@@ -119,7 +120,7 @@ public static class CompanyEndpointRouteBuilderExtensions
     GetCompanyByIdQueryHandler handler,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var result = await handler.HandleAsync(new GetCompanyByIdQuery(companyId), cancellationToken);
     if (result.IsFailure)
     {
@@ -155,7 +156,7 @@ public static class CompanyEndpointRouteBuilderExtensions
     ICompanyReadService readService,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var request = await StrictRequestReader.ReadStrictJsonAsync<UpdateCompanyProfileRequest>(
       context,
       new Dictionary<string, JsonValueKind[]>
@@ -201,7 +202,7 @@ public static class CompanyEndpointRouteBuilderExtensions
     Func<Guid, CompanyStatusChangeReason, byte[], Task<Result>> execute,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     var request = await StrictRequestReader.ReadStrictJsonAsync<CompanyLifecycleRequest>(
       context,
       new Dictionary<string, JsonValueKind[]>

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
@@ -44,6 +45,16 @@ public sealed class TenantUnitOfWork(
     catch (DbUpdateException)
     {
       return Result.Failure<int>(IdentityAccessErrors.WriteFailure);
+    }
+    // ---- AN AUTHORIZATION REFUSAL, KEPT SEPARATE FROM AN OUTAGE (FP-006C5).
+    //
+    // Caught before the storage case below and returned with the authorizer's own Company.*, Branch.* or
+    // BranchTransfer.* code, so the caller — and the HTTP mapper above it — can tell "you may not write
+    // here" from "the database is unreachable". They are different answers with different status codes and
+    // opposite retry advice.
+    catch (TenantWriteAuthorizationException exception)
+    {
+      return Result.Failure<int>(exception.Error);
     }
     catch (TenantStorageUnavailableException exception)
     {

@@ -1,3 +1,5 @@
+using SSAS.BuildingBlocks.Api.Authorization;
+
 namespace SSAS.Host.API.Authorization;
 
 // Platform-plane dynamic authorization-policy naming (ADR-015 §8 / DEC-TEN-0022). Structurally distinct from
@@ -6,7 +8,8 @@ namespace SSAS.Host.API.Authorization;
 // two never collide in the shared policy provider.
 public static class PlatformPermissionAuthorizationDefaults
 {
-  public const string PolicyPrefix = "PlatformPermission:";
+  // THE CANONICAL SPELLING, read from the one shared contract rather than repeated here (FP-006C5).
+  public const string PolicyPrefix = PermissionPolicyNames.PlatformPrefix;
 
   public static string CreatePolicyName(string permission)
   {

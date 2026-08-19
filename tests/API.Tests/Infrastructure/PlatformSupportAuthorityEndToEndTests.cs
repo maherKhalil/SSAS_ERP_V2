@@ -460,9 +460,17 @@ public sealed class PlatformSupportAuthorityEndToEndHost : IAsyncLifetime
     await using var scope = App.Services.CreateAsyncScope();
     var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
     var account = await context.AuthenticationAccounts.AsNoTracking().SingleAsync(a => a.IdentityId == identityId);
+    // ---- THE EXPIRY WINDOW IS ANCHORED TO THE REAL CLOCK, NOT THE FROZEN TEST CLOCK.
+    //
+    // CK_PlatformAuthenticationSessions_Expiry requires both expiries to be later than CreatedUtc, and
+    // CreatedUtc is stamped by the AUDIT pipeline at save time with the real clock — the value passed here is
+    // overwritten. Anchoring the window to the frozen Now made the seed valid only while the real date stayed
+    // within a day of it, so this insert began failing once the wall clock moved past that window rather than
+    // because anything about the behaviour under test changed.
+    var seededAt = DateTimeOffset.UtcNow;
     var session = PlatformAuthenticationSession.Create(
       identityId, principalId, AuthenticationClientId.V1Web, Guid.NewGuid(), account.SecurityVersion,
-      Now, Now.AddDays(1), Now.AddDays(7));
+      seededAt, seededAt.AddDays(1), seededAt.AddDays(7));
     context.PlatformAuthenticationSessions.Add(session);
     await context.SaveChangesAsync();
     return session.Id;

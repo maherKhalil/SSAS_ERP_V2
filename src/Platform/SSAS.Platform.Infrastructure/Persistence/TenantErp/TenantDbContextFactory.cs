@@ -1,9 +1,13 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Application.Branches;
+using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Application.TenantStorage;
+using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.TenantStorage;
 
 namespace SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -26,7 +30,19 @@ public sealed class TenantDbContextFactory(
   ICurrentUser currentUser,
   ICurrentTenant currentTenant,
   IDateTimeProvider dateTimeProvider,
-  ITenantWriteFence writeFence) : ITenantDbContextFactory
+  ITenantWriteFence writeFence,
+  // Optional so every existing construction site — tests and maintenance paths included — keeps working
+  // and simply has no active branch, which is the correct answer for them.
+  IBranchWriteAuthorizer? branchAuthorizer = null,
+  // Optional for exactly the same reason (FP-006C1). A context built without one has no company context,
+  // which refuses every company-owned write rather than permitting one.
+  ICompanyWriteAuthorizer? companyAuthorizer = null,
+  // Optional again (FP-006C2). A context built without one authorizes no branch transfer at all, which
+  // leaves the original immutability invariant fully in force.
+  IBranchTransferAuthorizer? branchTransferAuthorizer = null,
+  // The business modules' contributions to the tenant model (FP-006C3-pre, ADR-012). Empty for maintenance
+  // and schema tooling, which reason about Platform's own tenant entities only.
+  IEnumerable<ITenantModelContributor>? modelContributors = null) : ITenantDbContextFactory
 {
   public async Task<Result<TenantDbContext>> CreateAsync(
     Guid tenantId,
@@ -75,7 +91,11 @@ public sealed class TenantDbContextFactory(
     // tell a writer bound to the cutover SOURCE from one bound to the TARGET. It is captured here, at the
     // moment routing was resolved, which is precisely what makes a context created before a flip still
     // identify itself as the source afterwards.
+    // The ACTIVE BRANCH travels with the context too (Branch foundation B0/B1). Like the tenant, it is an
+    // ambient server-side fact rather than something a caller passes per write; null means no branch has
+    // been selected yet, which the write boundary turns into a refusal for branch-owned data only.
     return Result.Success(new TenantDbContext(
-      options, currentUser, currentTenant, dateTimeProvider, writeFence, route.Value.TenantDatabaseId));
+      options, currentUser, currentTenant, dateTimeProvider, writeFence, branchAuthorizer, companyAuthorizer,
+      branchTransferAuthorizer, modelContributors, route.Value.TenantDatabaseId));
   }
 }

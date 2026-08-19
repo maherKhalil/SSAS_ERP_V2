@@ -307,8 +307,9 @@ public sealed class TenantRecoveryActivationSqlServerTests
           $"ALTER DATABASE [{platformCatalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
           $"DROP DATABASE [{platformCatalog}]; END");
       }
-      catch (SqlException)
+      catch (SqlException error)
       {
+        TestCatalogJanitor.RecordLeak(platformCatalog, error);
       }
     }
 

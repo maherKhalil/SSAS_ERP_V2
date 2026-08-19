@@ -43,7 +43,11 @@ internal sealed class TenantCutoverCopyService(
   ITenantCutoverOperationStore operations,
   ITenantDatabaseConnectionFactory connectionFactory,
   Persistence.PlatformDbContext platform,
-  IOptions<TenantCutoverCopyOptions> optionsAccessor) : ITenantCutoverCopyService
+  IOptions<TenantCutoverCopyOptions> optionsAccessor,
+  // THE MODEL THE APPLICATION ACTUALLY MAPS, contributors included (FP-006C6). Injected rather than read
+  // from a static so the manifest is derived from the same tenant model the runtime persists through — the
+  // two cannot describe different sets of tables.
+  Persistence.TenantErp.ITenantModelSource tenantModel) : ITenantCutoverCopyService
 {
   public async Task<Result<TenantCutoverCopyReport>> CopyAsync(
     long cutoverOperationId,
@@ -149,7 +153,7 @@ internal sealed class TenantCutoverCopyService(
       return Result.Failure<TenantCutoverCopyReport>(schema.Error);
     }
 
-    var plan = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
+    var plan = TenantCutoverCopyPlan.Build(tenantModel.Model);
     if (plan.IsFailure)
     {
       return Result.Failure<TenantCutoverCopyReport>(plan.Error);

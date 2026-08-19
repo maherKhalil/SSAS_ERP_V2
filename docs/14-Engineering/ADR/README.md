@@ -30,3 +30,6 @@ Every significant architectural decision must be documented before implementatio
 | ADR-020 | Shared-to-Dedicated Tenant Migration and Cutover | Proposed |
 | ADR-021 | Customer-Managed Tenant Database Connectivity and Operations | Proposed |
 | ADR-022 | Tenant Database Backup and Recovery Orchestration | Proposed |
+| ADR-023 | Tenant Branch Model, Authorization and Execution Context | Accepted |
+| ADR-024 | Employee Branch Assignment and Transfer Model | Proposed |
+| ADR-025 | Company Execution Context and Authorization | Proposed |

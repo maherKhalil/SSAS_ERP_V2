@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -27,7 +28,7 @@ public static class IdentityAccessEndpointRouteBuilderExtensions
     ListRolesQueryHandler handler,
     CancellationToken cancellationToken)
   {
-    AdminResponseSecurity.Apply(context);
+    ApiResponseSecurity.Apply(context);
     if (!TryListRolesQuery(context.Request.Query, out var query))
     {
       return ProblemResults.Problem(context, ProblemResults.RequestInvalid);

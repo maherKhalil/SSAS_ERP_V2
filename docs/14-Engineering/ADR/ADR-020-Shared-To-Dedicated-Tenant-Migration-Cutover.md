@@ -116,6 +116,8 @@ Source and target schema versions **must** be compatible before any data movemen
 16. Retain a rollback window.
 17. Purge or archive source tenant rows only later, through an explicit process.
 
+**Branch is included by construction.** `Branch` is tenant-owned (`ADR-023`) and therefore appears in the tenant-owned copy manifest derived from the `TenantDbContext` model. No manifest edit was required for it, and none should be added — the manifest is derived, not hand-maintained. `UserBranchAccess` is platform-owned and is deliberately **not** part of the tenant copy.
+
 ## Identifier preservation
 
 Primary and foreign identifiers **must** be preserved. Placement is a storage concern and must not change the identity of business records referenced by the application, exports, integrations, or printed documents.

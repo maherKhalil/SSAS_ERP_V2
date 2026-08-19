@@ -124,6 +124,42 @@ Assets
 
 ---
 
+# Execution Context Dimensions
+
+Tenant
+
+Company
+
+Branch
+
+Tenant is the isolation boundary. Company is a legal entity within a tenant. Branch is an operating location within a tenant.
+
+Company and Branch are sibling dimensions beneath the tenant, not nested.
+
+```
+
+Tenant
+
+├── Company        legal entity          (ADR-014)
+
+└── Branch         operating location    (ADR-023)
+
+      └── Branch-owned business data
+
+```
+
+Branch lives in the tenant database. User branch authorization lives in the platform database. No foreign key crosses between them.
+
+The active branch is held on the authentication session as durable execution context. It is not authorization proof, and is re-authorized against live state on every branch-owned write.
+
+Reference
+
+ADR-014
+
+ADR-023
+
+---
+
 # Cross-Cutting Services
 
 Authentication

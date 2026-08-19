@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using System.Reflection;
 using SSAS.Host.API.Authorization;
 using SSAS.Platform.API.Transport;
@@ -8,9 +9,11 @@ namespace SSAS.Architecture.Tests;
 public sealed class AdminTransportArchitectureTests
 {
   [Fact]
-  public void RowVersion_codec_is_neutral_and_lives_in_the_platform_api_transport_namespace()
+  public void RowVersion_codec_is_neutral_and_lives_in_the_shared_api_transport_namespace()
   {
-    Assert.Equal("SSAS.Platform.API.Transport", typeof(RowVersionCodec).Namespace);
+    // It moved to the shared API project in FP-006C5 so HR could use the SAME codec: a module-owned codec
+    // would have meant two rowversion encodings on one wire format.
+    Assert.Equal("SSAS.BuildingBlocks.Api.Transport", typeof(RowVersionCodec).Namespace);
   }
 
   [Fact]
@@ -21,7 +24,7 @@ public sealed class AdminTransportArchitectureTests
       .Select(type => type.FullName)
       .ToArray();
 
-    Assert.Equal(["SSAS.Platform.API.Transport.RowVersionCodec"], codecs);
+    Assert.Equal(["SSAS.BuildingBlocks.Api.Transport.RowVersionCodec"], codecs);
   }
 
   [Fact]
@@ -30,6 +33,7 @@ public sealed class AdminTransportArchitectureTests
     var forbidden = new[]
     {
       "SSAS.Platform.Infrastructure",
+      // The shared transport project must not drag persistence in either.
       "Microsoft.EntityFrameworkCore",
       "Microsoft.Data.SqlClient"
     };
@@ -44,7 +48,7 @@ public sealed class AdminTransportArchitectureTests
   [Fact]
   public void RequirePermission_convention_matches_the_host_policy_prefix()
   {
-    Assert.Equal(PermissionAuthorizationDefaults.PolicyPrefix, AdminAuthorizationConventions.PermissionPolicyPrefix);
+    Assert.Equal(PermissionAuthorizationDefaults.PolicyPrefix, SSAS.BuildingBlocks.Api.Authorization.PermissionPolicyNames.TenantPrefix);
   }
 
   [Fact]

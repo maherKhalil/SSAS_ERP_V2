@@ -463,6 +463,24 @@ TenantId required on tenant-owned data.
 
 CompanyId required where applicable.
 
+BranchId required on branch-owned data.
+
+---
+
+## Branch Ownership
+
+Every tenant entity SHALL be explicitly classified as tenant-global or branch-owned. Unclassified is a defect.
+
+Branch-owned entities implement `IBranchOwnedEntity` in addition to `ITenantOwnedEntity` and carry both `TenantId` and `BranchId`.
+
+`BranchId` is assigned by the server from the authenticated execution context. It SHALL NOT be accepted from a request DTO, header, form field, or token claim, and SHALL NOT change after creation.
+
+Branch-scoped queries SHALL carry an explicit `BranchId` predicate over the current branch or an authorized branch set. Omitting the predicate is a defect.
+
+No foreign key SHALL be created from the platform database to the tenant `Branches` table. `BranchId` is an opaque cross-database identifier.
+
+Reference: ADR-023
+
 ---
 
 # Testing
@@ -478,6 +496,41 @@ UI Tests
 Performance Tests
 
 Every critical business workflow shall be covered by automated tests.
+
+## Query plan capture
+
+Tests SHALL NOT assert on plan-cache residency, and SHALL NOT read server-wide plan DMVs
+(`sys.dm_exec_query_stats` and related) to obtain a query plan. Plan capture SHALL be in-session and
+deterministic. `tests/Integration.Tests/QueryPlanCapture.cs` is the supported mechanism.
+
+The plan cache is a cache, not a record: it holds what the server still happens to remember. Reads of it were
+measured returning nothing on a developer instance running this suite, twice, so a test built on it cannot
+distinguish "the query scanned" from "the server forgot" — and a test that cannot tell those apart is not a
+guard. `QueryPlanCapture` instead replays the exact statement production issued, under `SET STATISTICS XML ON`,
+and reads the actual plan back from the same session, where it cannot be evicted.
+
+This rule does not depend on any particular explanation for why the cache empties. That question was
+investigated and left INCONCLUSIVE; the measured unreliability of the reads is sufficient on its own.
+
+## Test gates and stale binaries
+
+A test gate SHALL NOT be trusted unless the compiled test output is newer than every source file under test.
+`--no-build` is permitted only immediately after a build in the same sequence. A green run on a stale binary
+reports success for code that was never executed.
+
+This is not hypothetical. A full 376/376 Integration run passed while the fix under test had not been
+compiled in — the Debug output predated the source by four minutes, because the preceding build had been
+`-c Release`, which does not refresh the Debug output the test runner loads. The leak that fix was written to
+prevent appeared in that same green run, which is the only reason the stale binary was noticed at all.
+
+## Test catalogs
+
+`SSAS_` is a RESERVED PREFIX for test databases. Do not name a scratch or personal database with it. Cleanup
+failures are reported by `CatalogLeakGuardTests`; the reaping procedure is in
+`tests/Integration.Tests/README.md`.
+
+Suites SHALL be run serially against one SQL Server instance. Concurrent Integration and API runs will fail
+the catalog leak guard, which cannot distinguish a sibling suite's live catalog from a leaked one.
 
 ---
 

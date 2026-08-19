@@ -159,6 +159,24 @@ Reference: ADR-011
 
 ---
 
+# Principle 11 – Branch-Scoped Execution Context
+
+Tenant ownership answers *whose data is this*. Branch ownership answers *which operating location inside that tenant produced it*. They are independent dimensions.
+
+Every tenant entity shall be **explicitly classified** as tenant-global or branch-owned. There is no default, and unclassified is a defect: an entity that should have been branch-scoped and was not is readable by every branch in the tenant, and nothing about it looks wrong.
+
+Branch-owned entities shall implement `IBranchOwnedEntity` in addition to `ITenantOwnedEntity`, and carry both `TenantId` and `BranchId`.
+
+`BranchId` shall be assigned by the server from the authenticated execution context. It shall never be accepted from a request DTO, header, form field, or token claim, and shall never change after the record is created.
+
+Branch authorization shall be re-evaluated against live state on every branch-owned write and shall fail closed.
+
+Branch-scoped queries shall carry an explicit `BranchId` predicate over the current branch or an authorized branch set. Omitting the predicate is a defect, not an optimization.
+
+Reference: ADR-023
+
+---
+
 # General Rules
 
 Developers and AI coding agents shall:
@@ -166,6 +184,8 @@ Developers and AI coding agents shall:
 - Keep controllers thin.
 - Keep business logic in Application and Domain layers.
 - Never bypass tenant isolation.
+- Never bypass branch scoping on branch-owned data.
+- Never accept `BranchId` from client-supplied request data.
 - Never inject DbContext into controllers.
 - Never expose entities directly through APIs.
 - Always use DTOs.
@@ -231,6 +251,7 @@ Every pull request should verify:
 
 - Architecture compliance.
 - Tenant isolation.
+- Branch classification of every new tenant entity.
 - Authorization checks.
 - Unit tests.
 - Naming conventions.

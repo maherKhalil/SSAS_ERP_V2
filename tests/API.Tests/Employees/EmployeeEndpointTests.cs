@@ -94,7 +94,8 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   {
     host.CompanyContext.Error = new Error("Company.InvalidSelectionFormat", "malformed");
 
-    var request = host.Request(HttpMethod.Post, Route, CreateToken, ValidCreateBody, companyHeader: header);
+    var request = EmployeeApiTestHost.Request(
+      HttpMethod.Post, Route, CreateToken, ValidCreateBody, companyHeader: header);
     var response = await host.Client.SendAsync(request);
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -764,7 +765,7 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
     host.TokenWith(HrPermissionNames.TransferEmployees, HrPermissionNames.ViewEmployees);
 
   private Task<HttpResponseMessage> Send(HttpMethod method, string path, string? token, string? body = null) =>
-    host.Client.SendAsync(host.Request(method, path, token, body));
+    host.Client.SendAsync(EmployeeApiTestHost.Request(method, path, token, body));
 
   // The correlation id differs per request by design, so comparing raw bodies would always differ. Removing
   // it is what makes "identical" mean identical in every part the caller could learn from.

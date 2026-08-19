@@ -182,7 +182,7 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     UnitOfWork.Failure = null;
   }
 
-  public HttpRequestMessage Request(
+  public static HttpRequestMessage Request(
     HttpMethod method,
     string path,
     string? token,

@@ -19,7 +19,9 @@ namespace SSAS.HR.Infrastructure.Persistence;
 // decision 10), so stating it is the only thing scoping these reads.
 //
 // THERE IS NO DELETE. Physical Employee deletion is prohibited, and the absence of a method here is the
-// first of the two protections; the persistence guard in the context is the second.
+// first of the two protections. The second is the RESTRICTED foreign key from EmployeeBranchAssignments,
+// which is itself append-only: an Employee always has at least its initial assignment, so the database
+// refuses the delete and the history that would have to go with it cannot be removed either.
 internal sealed class EmployeeRepository(ITenantDbContextAccessor contextAccessor) : IEmployeeRepository
 {
   public async Task<Employee?> GetByIdAsync(Guid employeeId, CancellationToken cancellationToken = default)

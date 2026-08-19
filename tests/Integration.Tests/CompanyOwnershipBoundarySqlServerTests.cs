@@ -40,10 +40,11 @@ namespace SSAS.Integration.Tests;
 //
 // ---- WHY A TEST-ONLY PROBE ENTITY.
 //
-// Employee does not exist yet, and no production entity implements ICompanyOwnedEntity — that is precisely
-// what this slice is building the infrastructure for. Proving the generic company-write path only when the
-// first real consumer arrives is the mistake ADR-023 LOW-1 records for the branch dimension: its boundary
-// shipped structurally implemented and unproven, because there was nothing to exercise it.
+// When this slice was written no production entity implemented ICompanyOwnedEntity — Employee arrived in
+// FP-006C3 and is proven against the real boundary in EmployeeBoundarySqlServerTests. The probe stays
+// because it proves the GENERIC company-write path rather than one consumer of it: waiting for a real
+// consumer is the mistake ADR-023 LOW-1 records for the branch dimension, whose boundary shipped
+// structurally implemented and unproven because there was nothing to exercise it.
 //
 // So the probe is a REAL ICompanyOwnedEntity saved through the REAL TenantDbContext, added to the model by
 // a test-only IModelCustomizer. Nothing about it reaches production: the entity, the customizer and the

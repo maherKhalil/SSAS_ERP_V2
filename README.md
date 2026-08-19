@@ -54,6 +54,40 @@ dotnet test SSAS.ERP.sln
 dotnet test tests/Architecture.Tests/SSAS.Architecture.Tests.csproj
 ```
 
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every pull request into `main`, on every push
+to `main`, and on demand. It is the same sequence you can run locally:
+
+```powershell
+dotnet build SSAS.ERP.sln --no-incremental
+dotnet test tests/Architecture.Tests/SSAS.Architecture.Tests.csproj --no-build
+dotnet test tests/Platform.Tests/SSAS.Platform.Tests.csproj --no-build
+dotnet test tests/HR.Tests/SSAS.HR.Tests.csproj --no-build
+dotnet test tests/API.Tests/SSAS.API.Tests.csproj --no-build
+```
+
+Architecture, Platform and HR tests need no database. **API tests do**: two
+platform-support end-to-end classes create and migrate a real database, and they
+fail rather than skip when no server is reachable. CI supplies an ephemeral SQL
+Server service container; locally they use `Server=localhost` with Windows
+authentication unless `SSAS_TEST_SQLSERVER` overrides it:
+
+```powershell
+$env:SSAS_TEST_SQLSERVER = "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False"
+```
+
+**Real-SQL integration tests are not automated.** `tests/Integration.Tests` is
+roughly 489 tests and about 79 minutes locally, most of it serialized cutover and
+backup suites that create and drop databases one at a time. Running it on every
+pull request would produce a gate people wait out rather than trust, so it is
+`.github/workflows/integration-tests.yml`, triggered manually. Run it before a
+release, or when a change reaches cutover, storage or routing behaviour:
+
+```powershell
+dotnet test tests/Integration.Tests/SSAS.Integration.Tests.csproj
+```
+
 ## Operational Endpoints
 
 | Endpoint | Purpose | Expected response |

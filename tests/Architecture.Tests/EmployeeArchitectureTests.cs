@@ -1,4 +1,7 @@
 using System.Reflection;
+using Microsoft.EntityFrameworkCore;
+using SSAS.HR.Infrastructure.Persistence;
+using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 using System.Text.RegularExpressions;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.HR.Application.Employees;
@@ -305,7 +308,12 @@ public sealed class EmployeeArchitectureTests
   [Fact]
   public void Every_persisted_employee_string_is_nvarchar()
   {
-    var migration = ReadMigrations("Persistence", "TenantErp", "Migrations");
+    // ONE FILE, NOT A CONCATENATION (TEST-001). Slicing from a marker to the end of every joined migration
+    // made the examined text depend on `Directory.EnumerateFiles` order, which is alphabetical on NTFS and
+    // arbitrary on ext4 — the same order dependence that broke the index test on Linux. Reading the single
+    // migration that creates the table is deterministic everywhere and is what this assertion was ever
+    // about.
+    var migration = ReadMigrationFile("AddHrEmployee");
 
     var employeeSection = migration[migration.IndexOf("name: \"Employees\"", StringComparison.Ordinal)..];
 
@@ -319,18 +327,131 @@ public sealed class EmployeeArchitectureTests
   //
   // BR-HR-0001 scopes it to the company and ADR-023 forbids BranchId participating. Getting this wrong would
   // be invisible until two branches of one company disagreed about who holds a number.
+  //
+  // ---- ASSERTED FROM THE MODEL, NOT FROM CONCATENATED MIGRATION SOURCE (TEST-001).
+  //
+  // This previously joined every migration file, found the first occurrence of the index name, and sliced
+  // forward to the next `"unique: true"`. Two things made that unsafe, and Linux exposed both:
+  //
+  //   * The index name appears TWICE — in the migration and in the model snapshot.
+  //   * `Directory.EnumerateFiles` returns alphabetical order on NTFS and DIRECTORY order on ext4, so which
+  //     of the two came first depended on the filesystem.
+  //
+  // When the snapshot sorted first the slice began there, found no `"unique: true"` (snapshots write
+  // `.IsUnique()`), and ran on through unrelated content until it hit that text in another file — sweeping
+  // up a `BranchId` that had nothing to do with this index.
+  //
+  // The model states the same invariant exactly and cannot be reordered. It is also STRONGER: the old test
+  // could only prove a substring was absent, while this pins the precise column set, so an index that
+  // gained a fourth column or lost `CompanyId` now fails too.
   [Fact]
   public void The_employee_number_index_is_company_scoped_and_excludes_the_branch()
   {
-    var migration = ReadMigrations("Persistence", "TenantErp", "Migrations");
+    var employee = ComposedTenantModel().FindEntityType(typeof(Employee));
+    Assert.NotNull(employee);
 
-    var index = migration[migration.IndexOf(
-      "UX_Employees_TenantId_CompanyId_NormalizedEmployeeNumber", StringComparison.Ordinal)..];
-    var columns = index[..index.IndexOf("unique: true", StringComparison.Ordinal)];
+    var index = employee!.GetIndexes().SingleOrDefault(candidate =>
+      candidate.GetDatabaseName() == "UX_Employees_TenantId_CompanyId_NormalizedEmployeeNumber");
 
-    Assert.DoesNotContain("BranchId", columns, StringComparison.Ordinal);
+    Assert.NotNull(index);
+
+    // Uniqueness is the point of the index: without it the per-company rule is a hint, not a constraint.
+    Assert.True(index!.IsUnique);
+
+    // COMPANY-SCOPED, AND DELIBERATELY NOT BRANCH-SCOPED. BR-HR-0001 makes the number unique within the
+    // COMPANY, so adding BranchId would let the same number exist twice in one company (BRULE-EMP-0009).
+    Assert.Equal(
+      ["TenantId", "CompanyId", "NormalizedEmployeeNumber"],
+      index.Properties.Select(property => property.Name));
+
+    Assert.DoesNotContain(index.Properties, property => property.Name == nameof(Employee.BranchId));
   }
 
+
+  // The composed tenant model — Platform's own entities plus HR's contribution, exactly as the Host builds
+  // it. A contributor-free model would not contain Employee at all, so the index assertion above would pass
+  // by finding nothing.
+  private static Microsoft.EntityFrameworkCore.Metadata.IModel ComposedTenantModel()
+  {
+    var options = new DbContextOptionsBuilder<TenantDbContext>()
+      .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
+      .Options;
+
+    using var context = new TenantDbContext(
+      options,
+      new ModelOnlyUser(),
+      new ModelOnlyTenant(),
+      new ModelOnlyClock(),
+      modelContributors: [new HrTenantModelContributor()]);
+
+    return context.Model;
+  }
+
+  private sealed class ModelOnlyUser : SSAS.BuildingBlocks.Application.Abstractions.Identity.ICurrentUser
+  {
+    public string? UserId => "architecture-tests";
+
+    public string? UserName => "architecture-tests";
+
+    public string? Email => null;
+
+    public Guid? CompanyId => null;
+
+    public string? SessionId => null;
+
+    public string? TokenId => null;
+
+    public IReadOnlyCollection<string> Roles => [];
+
+    public IReadOnlyCollection<string> Permissions => [];
+  }
+
+  private sealed class ModelOnlyTenant : SSAS.BuildingBlocks.Application.Abstractions.Tenancy.ICurrentTenant
+  {
+    public Guid? TenantId => null;
+  }
+
+  private sealed class ModelOnlyClock : SSAS.BuildingBlocks.Application.Abstractions.Time.IDateTimeProvider
+  {
+    public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
+  }
+
+  // ---- ONE NAMED MIGRATION, DETERMINISTICALLY.
+  //
+  // `Directory.EnumerateFiles` does not promise an order, and the two operating systems disagree about what
+  // it gives. Any assertion that slices concatenated migration text is therefore reading different input on
+  // different machines. Selecting the single file by name removes the question.
+  private static string ReadMigrationFile(string nameFragment)
+  {
+    var directory = Path.Combine(
+      RepositoryRootDirectory(), "src", "Platform", "SSAS.Platform.Infrastructure",
+      "Persistence", "TenantErp", "Migrations");
+
+    var matches = Directory
+      .EnumerateFiles(directory, "*.cs")
+      .Where(file => Path.GetFileName(file).Contains(nameFragment, StringComparison.Ordinal) &&
+        !file.EndsWith("Designer.cs", StringComparison.Ordinal))
+      .ToArray();
+
+    // Exactly one, or the fragment no longer identifies a single migration and the assertion below would be
+    // reading whichever file happened to sort first — the defect this method exists to remove.
+    var file = Assert.Single(matches);
+
+    return File.ReadAllText(file);
+  }
+
+  private static string RepositoryRootDirectory()
+  {
+    for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+    {
+      if (File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln")))
+      {
+        return directory.FullName;
+      }
+    }
+
+    throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
+  }
   private static string ReadMigrations(params string[] segments)
   {
     var directory = new DirectoryInfo(AppContext.BaseDirectory);

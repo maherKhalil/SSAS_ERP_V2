@@ -394,11 +394,11 @@ public sealed class ProjectDependencyArchitectureTests
         .Descendants("ProjectReference")
         .Select(reference => reference.Attribute("Include")?.Value)
         .Where(reference => !string.IsNullOrWhiteSpace(reference))
-        .Select(reference => Path.GetFileNameWithoutExtension(reference!))
+        .Select(reference => RepositoryPaths.ProjectName(reference!))
         .OrderBy(reference => reference, StringComparer.Ordinal)
         .ToArray();
 
-      return new ProjectNode(Path.GetFileNameWithoutExtension(projectPath), references);
+      return new ProjectNode(RepositoryPaths.ProjectNameFromFile(projectPath), references);
     }
 
     private bool Visit(

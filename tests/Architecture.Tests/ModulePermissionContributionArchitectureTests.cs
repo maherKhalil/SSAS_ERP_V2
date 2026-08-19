@@ -241,12 +241,12 @@ public sealed class ModulePermissionContributionArchitectureTests
       .EnumerateFiles(Path.Combine(root, "src"), "*.csproj", SearchOption.AllDirectories)
       .Where(path => !IsBuildOutput(path))
       .ToDictionary(
-        path => Path.GetFileNameWithoutExtension(path)!,
+        path => RepositoryPaths.ProjectNameFromFile(path),
         path => (IReadOnlyCollection<string>)XDocument.Load(path)
           .Descendants("ProjectReference")
           .Select(reference => reference.Attribute("Include")?.Value)
           .Where(reference => !string.IsNullOrWhiteSpace(reference))
-          .Select(reference => Path.GetFileNameWithoutExtension(reference!))
+          .Select(reference => RepositoryPaths.ProjectName(reference!))
           .ToArray(),
         StringComparer.Ordinal);
   }

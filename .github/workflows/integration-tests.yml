@@ -1,0 +1,115 @@
+# =====================================================================================================
+# THE REAL-SQL INTEGRATION SUITE — MANUAL ONLY (CI-001).
+# =====================================================================================================
+#
+# ---- WHY THIS IS NOT PART OF THE PULL-REQUEST GATE.
+#
+# It is 489 tests and roughly 79 minutes locally, most of it serialized real-SQL cutover and backup suites
+# that create and drop databases one at a time. On a hosted runner it will be slower still. Putting that in
+# front of every pull request would make the gate something people learn to wait out or work around, and a
+# gate that is routinely bypassed protects nothing.
+#
+# The fast gate in ci.yml is the mandatory one. This is here so the suite CAN be run against a clean
+# checkout on demand — before a release, or when a change reaches cutover, storage or routing behaviour.
+#
+# ---- IT USES EXACTLY THE MECHANISM THE FAST GATE PROVES.
+#
+# Same image, same SSAS_TEST_SQLSERVER override, same SQL authentication. Nothing here is a second way of
+# reaching a database.
+#
+# ---- HONEST STATUS.
+#
+# This workflow has not yet been observed to complete a full run in GitHub Actions. The connection
+# mechanism is shared with the fast gate, but the RUNTIME and stability of the long serialized suites on a
+# hosted runner are unmeasured. Treat a first run as an experiment, not as a gate.
+name: Integration tests (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Real-SQL integration suite
+    runs-on: ubuntu-latest
+    # Generously above the ~79-minute local run, because a hosted runner is slower and a timeout kill
+    # would leave the result ambiguous rather than informative.
+    timeout-minutes: 180
+
+    services:
+      # Ephemeral, job-scoped, and holding nothing but generated test databases. The password is not a
+      # secret: see the note in ci.yml.
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Local_CI_Only_Pa55word!"
+          MSSQL_PID: Developer
+        ports:
+          - 1433:1433
+
+    env:
+      SSAS_TEST_SQLSERVER: "Server=localhost,1433;User Id=sa;Password=Local_CI_Only_Pa55word!;TrustServerCertificate=True;Encrypt=False"
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore SSAS.ERP.sln
+
+      - name: Build
+        run: dotnet build SSAS.ERP.sln --configuration Debug --no-incremental --no-restore
+
+      - name: Wait for SQL Server
+        run: |
+          # Same two probes as the fast gate; see ci.yml for why the TCP fallback exists.
+          for attempt in $(seq 1 60); do
+            if docker exec "${{ job.services.mssql.id }}" /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -P "Local_CI_Only_Pa55word!" -C -Q "SELECT 1" > /dev/null 2>&1; then
+              echo "SQL Server answered a query after ${attempt} attempt(s)."
+              exit 0
+            fi
+            if (echo > /dev/tcp/127.0.0.1/1433) > /dev/null 2>&1; then
+              echo "SQL Server is accepting TCP connections after ${attempt} attempt(s) (sqlcmd probe unavailable)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::SQL Server did not become available within 120 seconds."
+          exit 1
+
+      - name: Integration.Tests
+        run: >
+          dotnet test tests/Integration.Tests/SSAS.Integration.Tests.csproj
+          --configuration Debug --no-build
+          --logger "trx;LogFileName=integration.trx"
+
+      # Always, not only on failure. A run this expensive should leave its results behind whatever the
+      # outcome — a green run's timings are the data that decides whether this can ever become automatic.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: "**/TestResults/*.trx"
+          retention-days: 14
+          if-no-files-found: ignore

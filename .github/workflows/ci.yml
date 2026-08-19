@@ -1,0 +1,166 @@
+# =====================================================================================================
+# THE FAST VALIDATION GATE (CI-001).
+# =====================================================================================================
+#
+# Runs on every pull request into main and on every push to main, so a merge carries its own evidence
+# that it did not break the repository. FP-006 merged with no automated verification at all; this is the
+# smallest thing that would have caught the class of defect that slice kept finding late.
+#
+# ---- WHY THESE FOUR SUITES ARE THE MANDATORY SET.
+#
+# They are the ones that actually caught the FP-006 blind spots: module dependency violations, the
+# permission-catalog contribution gap, Employee API host composition, and the scoped-read, permission
+# contributor and tenant-model contributor architecture guards. A gate without them would be green for
+# exactly the failures worth catching.
+#
+# ---- WHY SQL SERVER IS HERE FOR A "FAST" GATE.
+#
+# Architecture, Platform and HR tests need no database — Platform uses in-memory SQLite. API.Tests does:
+# two platform-support end-to-end classes create and migrate a real database, and they FAIL rather than
+# skip when no server is reachable. Dropping them would remove the host-composition coverage that is half
+# the reason this gate exists, so the container stays and the whole gate still runs in about a minute of
+# test time.
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Read-only. Nothing here writes to the repository, publishes a package, or comments on a pull request.
+permissions:
+  contents: read
+
+# A superseded pull-request run is wasted work; a push to main is evidence about a specific commit and is
+# never cancelled.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-test:
+    name: Build and fast tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # ---- AN EPHEMERAL SQL SERVER, CREATED AND DESTROYED WITH THE JOB.
+      #
+      # The password below is NOT a secret. It authenticates to a throwaway container that exists only for
+      # this run, is reachable only from this job, and holds nothing but generated test databases. Putting a
+      # repository secret here would imply it guards something.
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Local_CI_Only_Pa55word!"
+          MSSQL_PID: Developer
+        ports:
+          - 1433:1433
+
+    env:
+      # The tests build their own connection from this, overriding the Windows-authentication default they
+      # use locally. That override is why no test-infrastructure change was needed to run them on Linux.
+      SSAS_TEST_SQLSERVER: "Server=localhost,1433;User Id=sa;Password=Local_CI_Only_Pa55word!;TrustServerCertificate=True;Encrypt=False"
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      # A CI run is one shot: the first-run experience only costs time here.
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # The SDK comes from global.json rather than a version pinned here, so the toolchain cannot drift
+      # from what developers build with.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # Keyed on the lock-free package inputs this repository actually uses: central package management
+      # plus every project file. A change to any of them produces a different key rather than a stale hit.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore SSAS.ERP.sln
+
+      # --no-incremental matches the locally proven command. Warnings stay visible: the repository builds
+      # at zero warnings today, and hiding them is how that stops being true.
+      - name: Build
+        run: dotnet build SSAS.ERP.sln --configuration Debug --no-incremental --no-restore
+
+      # ---- WAIT FOR THE DATABASE, THEN PROVE IT ANSWERS.
+      #
+      # The service container is reported started before SQL Server finishes its own initialisation, so a
+      # test run beginning immediately fails on connect for reasons that have nothing to do with the code.
+      # Failing HERE, with a clear message, is far cheaper to diagnose than a test suite failing to connect.
+      - name: Wait for SQL Server
+        run: |
+          # Two probes, deliberately. sqlcmd proves the SERVER is answering queries, which is what the
+          # tests need; the bare TCP check is the fallback for an image whose tools live somewhere else.
+          # Without the fallback, a tool-path change in a future image tag would fail this job for a reason
+          # that has nothing to do with the repository.
+          for attempt in $(seq 1 60); do
+            if docker exec "${{ job.services.mssql.id }}" /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -P "Local_CI_Only_Pa55word!" -C -Q "SELECT 1" > /dev/null 2>&1; then
+              echo "SQL Server answered a query after ${attempt} attempt(s)."
+              exit 0
+            fi
+            if (echo > /dev/tcp/127.0.0.1/1433) > /dev/null 2>&1; then
+              echo "SQL Server is accepting TCP connections after ${attempt} attempt(s) (sqlcmd probe unavailable)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::SQL Server did not become available within 120 seconds."
+          exit 1
+
+      # ---- THE FOUR SUITES, RUN SEPARATELY AND ON PURPOSE.
+      #
+      # One command per project so a failure names the suite in the job list rather than burying it in a
+      # combined summary. --no-build reuses the build above, so a compile error is reported once.
+      - name: Architecture.Tests
+        run: >
+          dotnet test tests/Architecture.Tests/SSAS.Architecture.Tests.csproj
+          --configuration Debug --no-build
+          --logger "trx;LogFileName=architecture.trx"
+
+      - name: Platform.Tests
+        run: >
+          dotnet test tests/Platform.Tests/SSAS.Platform.Tests.csproj
+          --configuration Debug --no-build
+          --logger "trx;LogFileName=platform.trx"
+
+      - name: HR.Tests
+        run: >
+          dotnet test tests/HR.Tests/SSAS.HR.Tests.csproj
+          --configuration Debug --no-build
+          --logger "trx;LogFileName=hr.trx"
+
+      - name: API.Tests
+        run: >
+          dotnet test tests/API.Tests/SSAS.API.Tests.csproj
+          --configuration Debug --no-build
+          --logger "trx;LogFileName=api.trx"
+
+      # Only on failure. A green run's logs already say everything, and uploading results every time is
+      # storage spent on nothing.
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: "**/TestResults/*.trx"
+          retention-days: 7
+          if-no-files-found: ignore

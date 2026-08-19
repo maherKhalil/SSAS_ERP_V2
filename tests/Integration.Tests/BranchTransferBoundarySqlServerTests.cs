@@ -215,7 +215,7 @@ public sealed class BranchTransferBoundarySqlServerTests
     // The declaration is already open and the mutation already applied. Only the authoritative state changes.
     await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchA);
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
 
     Assert.Equal(fixture.BranchA, await fixture.ProbeBranchAsync(probeId));
   }
@@ -235,7 +235,7 @@ public sealed class BranchTransferBoundarySqlServerTests
     using var transfer = fixture.Declare(probe, fixture.BranchA, fixture.BranchC);
     probe.BranchId = fixture.BranchC;
 
-    var refusal = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
+    var refusal = await Assert.ThrowsAsync<TenantWriteAuthorizationException>(
       () => context.SaveChangesAsync());
     Assert.Equal(BranchErrors.InvalidSelection.Code, refusal.Error.Code);
 
@@ -257,7 +257,7 @@ public sealed class BranchTransferBoundarySqlServerTests
 
     await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchB);
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
 
     Assert.Equal(fixture.BranchA, await fixture.ProbeBranchAsync(probeId));
   }
@@ -276,7 +276,7 @@ public sealed class BranchTransferBoundarySqlServerTests
     using var transfer = fixture.DeclareRecovery(probe, fixture.BranchC, fixture.BranchB);
     probe.BranchId = fixture.BranchB;
 
-    var refusal = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
+    var refusal = await Assert.ThrowsAsync<TenantWriteAuthorizationException>(
       () => context.SaveChangesAsync());
     Assert.Equal(BranchTransferErrors.TransferNotPermitted.Code, refusal.Error.Code);
 
@@ -337,7 +337,7 @@ public sealed class BranchTransferBoundarySqlServerTests
     using var transfer = fixture.DeclareRecovery(probe, fixture.BranchC, fixture.BranchB);
     probe.BranchId = fixture.BranchB;
 
-    var refusal = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
+    var refusal = await Assert.ThrowsAsync<TenantWriteAuthorizationException>(
       () => context.SaveChangesAsync());
     Assert.Equal(BranchTransferErrors.TransferNotPermitted.Code, refusal.Error.Code);
 
@@ -360,7 +360,7 @@ public sealed class BranchTransferBoundarySqlServerTests
 
     await fixture.RevokeAdministratorAuthorityAsync();
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
 
     Assert.Equal(fixture.BranchC, await fixture.ProbeBranchAsync(probeId));
   }
@@ -386,7 +386,7 @@ public sealed class BranchTransferBoundarySqlServerTests
 
     await fixture.RevokeSessionAsync(sessionId);
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
 
     Assert.Equal(fixture.BranchC, await fixture.ProbeBranchAsync(probeId));
   }
@@ -406,7 +406,7 @@ public sealed class BranchTransferBoundarySqlServerTests
 
     await fixture.RevokeSessionAsync(sessionId);
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
 
     Assert.Equal(fixture.BranchA, await fixture.ProbeBranchAsync(probeId));
   }
@@ -428,7 +428,7 @@ public sealed class BranchTransferBoundarySqlServerTests
     using var transfer = fixture.DeclareRecovery(probe, fixture.BranchC, fixture.BranchB);
     probe.BranchId = fixture.BranchB;
 
-    var refusal = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
+    var refusal = await Assert.ThrowsAsync<TenantWriteAuthorizationException>(
       () => context.SaveChangesAsync());
     Assert.Equal(BranchErrors.SelectionRequired.Code, refusal.Error.Code);
 
@@ -450,7 +450,7 @@ public sealed class BranchTransferBoundarySqlServerTests
     using var transfer = fixture.Declare(probe, fixture.BranchA, fixture.BranchC);
     probe.BranchId = fixture.BranchC;
 
-    var refusal = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
+    var refusal = await Assert.ThrowsAsync<TenantWriteAuthorizationException>(
       () => context.SaveChangesAsync());
     Assert.Equal(BranchErrors.InvalidSelection.Code, refusal.Error.Code);
 
@@ -473,7 +473,7 @@ public sealed class BranchTransferBoundarySqlServerTests
 
     await fixture.DeactivateBranchAsync(fixture.BranchB);
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
 
     Assert.Equal(fixture.BranchA, await fixture.ProbeBranchAsync(probeId));
   }

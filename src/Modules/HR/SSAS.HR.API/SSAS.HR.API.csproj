@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Api\SSAS.BuildingBlocks.Api.csproj" />
     <ProjectReference Include="..\SSAS.HR.Application\SSAS.HR.Application.csproj" />
     <ProjectReference Include="..\SSAS.HR.Contracts\SSAS.HR.Contracts.csproj" />
   </ItemGroup>

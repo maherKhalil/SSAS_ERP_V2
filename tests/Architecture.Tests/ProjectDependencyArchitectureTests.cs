@@ -124,6 +124,166 @@ public sealed class ProjectDependencyArchitectureTests
       ]);
   }
 
+  // ==================================================================================================
+  // THE SHARED API BOUNDARY (FP-006C5).
+  // ==================================================================================================
+  //
+  // HR is the first business module to expose HTTP endpoints, and every transport primitive it needs lived
+  // in SSAS.Platform.API. ADR-012 makes SSAS.Platform.* a module, so HR.API referencing it would have been a
+  // module-to-module reference — refused by the rules above.
+  //
+  // SSAS.BuildingBlocks.Api is the approved answer: the primitives that are no single module's to own.
+  // These tests exist so the boundary got MORE explicit rather than weaker — the alternative on the table
+  // was excluding API projects from the module rule, which would have permitted exactly what it forbids.
+
+  // ---- IT DEPENDS ON NOTHING.
+  //
+  // Not on a module, not on a layer, not on BuildingBlocks.Application or Domain. Every module API compiles
+  // against it, so a single reference here would put that dependency in every module's transport — and a
+  // reference to a MODULE would reintroduce the coupling the project was created to remove.
+  [Fact]
+  public void The_shared_api_project_references_no_module_and_no_layer()
+  {
+    AssertProjectReferences("SSAS.BuildingBlocks.Api", []);
+  }
+
+  // ---- AND MODULE API PROJECTS MAY DEPEND ON IT.
+  //
+  // The rule that forbids module-to-module API references stays exactly as strict; this records that the
+  // shared project is the sanctioned way to satisfy the need that would otherwise break it.
+  [Fact]
+  public void Module_api_projects_may_reference_only_the_shared_api_project_for_transport()
+  {
+    var moduleApis = Graph.ModuleProjects("API").ToArray();
+
+    Assert.NotEmpty(moduleApis);
+
+    foreach (var project in moduleApis)
+    {
+      var crossModule = project.References
+        .Where(reference => ProjectGraph.IsModuleProject(reference) &&
+          !StringComparer.Ordinal.Equals(GetModuleName(project.Name), GetModuleName(reference)))
+        .ToArray();
+
+      Assert.Empty(crossModule);
+    }
+
+    // Named explicitly, so "HR.API must not reach Platform.API" is a stated fact rather than something a
+    // reader has to derive from the general rule.
+    Assert.DoesNotContain("SSAS.Platform.API", Graph.GetProject("SSAS.HR.API").References);
+    Assert.DoesNotContain("SSAS.HR.API", Graph.GetProject("SSAS.Platform.API").References);
+    Assert.DoesNotContain("SSAS.HR.API", Graph.GetProject("SSAS.GL.API").References);
+    Assert.DoesNotContain("SSAS.Platform.API", Graph.GetProject("SSAS.GL.API").References);
+  }
+
+  // ---- ONLY THE APPROVED PRIMITIVES LIVE THERE.
+  //
+  // ENUMERATED ON PURPOSE. A shared project with no membership rule becomes the place everything ends up,
+  // and every addition is a new dependency for every module. Adding a type here fails this test and forces
+  // the case to be made — which is the conversation that should happen.
+  [Fact]
+  public void The_shared_api_project_contains_only_the_approved_transport_primitives()
+  {
+    var exported = typeof(SSAS.BuildingBlocks.Api.Transport.ApiError).Assembly
+      .GetExportedTypes()
+      .Select(type => type.FullName)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Equal(
+      [
+        // The canonical policy-name spelling, shared by the Host that reads it and the endpoints that emit it.
+        "SSAS.BuildingBlocks.Api.Authorization.PermissionPolicyNames",
+        // A (status, code) pair, and the five generic transport failures every module hits.
+        "SSAS.BuildingBlocks.Api.Transport.ApiError",
+        "SSAS.BuildingBlocks.Api.Transport.ApiErrors",
+        // The RFC 7807 projection.
+        "SSAS.BuildingBlocks.Api.Transport.ApiProblems",
+        // "This endpoint requires permission X" — the mechanism, never the permissions.
+        "SSAS.BuildingBlocks.Api.Transport.PermissionEndpointConventions",
+        // One rowversion wire format for the whole estate.
+        "SSAS.BuildingBlocks.Api.Transport.RowVersionCodec",
+        // Strict JSON and query parsing.
+        "SSAS.BuildingBlocks.Api.Transport.StrictRequestReader"
+      ],
+      exported);
+  }
+
+  // ---- AND NOTHING THERE KNOWS A BUSINESS CONCEPT.
+  //
+  // The failure this prevents is gradual: one module's error code added "because another module will need it
+  // too", until the shared project is a business vocabulary that every module inherits. Transport failures
+  // are generic; employees, companies, branches and tenants are not.
+  [Fact]
+  public void The_shared_api_project_names_no_business_concept()
+  {
+    // ---- WHAT COUNTS AS A BUSINESS CONCEPT HERE.
+    //
+    // Aggregate names and the ownership columns that carry them. Note "TenantId" rather than bare "Tenant":
+    // the TENANT PLANE is legitimate authorization vocabulary in this project — PermissionPolicyNames must be
+    // able to distinguish the tenant plane from the platform-support plane, and that distinction is exactly
+    // the ADR-015 contract this project is allowed to own. What it must never learn is the tenant, company,
+    // branch or employee as DATA: an ownership column, an entity, or an error code about one.
+    string[] businessWords =
+      ["Employee", "Company", "Branch", "TenantId", "TenantOwned", "Ledger", "Journal"];
+
+    var sharedApiSources = Directory
+      .EnumerateFiles(
+        Path.Combine(RepositoryRoot(), "src", "BuildingBlocks", "SSAS.BuildingBlocks.Api"), "*.cs",
+        SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+        !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+
+    var offenders = new List<string>();
+    foreach (var path in sharedApiSources)
+    {
+      // Comments are stripped first: these files EXPLAIN why business vocabulary is excluded, and a scan
+      // that read the prose would fail because someone documented the rule it enforces.
+      var code = string.Join(
+        Environment.NewLine,
+        File.ReadAllText(path).Split('\n').Select(line =>
+        {
+          var comment = line.IndexOf("//", StringComparison.Ordinal);
+          return comment >= 0 ? line[..comment] : line;
+        }));
+
+      offenders.AddRange(businessWords
+        .Where(word => code.Contains(word.Replace(" ", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal))
+        .Select(word => $"{Path.GetFileName(path)} -> {word}"));
+    }
+
+    Assert.Empty(offenders);
+  }
+
+  // ---- ENDPOINTS STAY WITH THEIR MODULE.
+  //
+  // The shared project supplies the mechanism; it must never acquire a route, a DTO or a handler. Those
+  // belong to whoever owns the concept.
+  [Fact]
+  public void Business_endpoints_and_contracts_stay_in_their_own_module()
+  {
+    var sharedApiTypes = typeof(SSAS.BuildingBlocks.Api.Transport.ApiError).Assembly.GetTypes();
+
+    Assert.DoesNotContain(sharedApiTypes, type =>
+      type.Name.EndsWith("EndpointRouteBuilderExtensions", StringComparison.Ordinal) ||
+      type.Name.EndsWith("Request", StringComparison.Ordinal) ||
+      type.Name.EndsWith("Response", StringComparison.Ordinal) ||
+      type.Name.EndsWith("ApiErrorMapper", StringComparison.Ordinal));
+  }
+
+  private static string RepositoryRoot()
+  {
+    for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+    {
+      if (File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln")))
+      {
+        return directory.FullName;
+      }
+    }
+
+    throw new InvalidOperationException("Repository root not found.");
+  }
+
   private static bool IsAnyLayer(string projectName, params string[] layers)
   {
     return layers.Any(layer => projectName.EndsWith($".{layer}", StringComparison.Ordinal));

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;

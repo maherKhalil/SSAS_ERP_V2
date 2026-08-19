@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.API.Transport;
 

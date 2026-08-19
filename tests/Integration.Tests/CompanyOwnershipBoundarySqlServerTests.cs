@@ -246,7 +246,7 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
 
     context.Set<CompanyOwnedProbe>().Add(new CompanyOwnedProbe { Id = Guid.NewGuid(), Label = "after" });
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
     Assert.Null(await fixture.ProbeCompanyAsync("after"));
   }
 
@@ -265,7 +265,7 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
 
     context.Set<CompanyOwnedProbe>().Add(new CompanyOwnedProbe { Id = Guid.NewGuid(), Label = "inactive" });
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
     Assert.Null(await fixture.ProbeCompanyAsync("inactive"));
   }
 
@@ -290,7 +290,7 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
 
     context.Set<CompanyOwnedProbe>().Add(new CompanyOwnedProbe { Id = Guid.NewGuid(), Label = "admin-after" });
 
-    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+    await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
     Assert.Null(await fixture.ProbeCompanyAsync("admin-after"));
   }
 
@@ -304,7 +304,7 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
     await using (var context = fixture.TenantContext(fixture.ProductionAuthorizer(null, fixture.NormalUserId)))
     {
       context.Set<CompanyOwnedProbe>().Add(new CompanyOwnedProbe { Id = Guid.NewGuid(), Label = "none" });
-      await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+      await Assert.ThrowsAsync<TenantWriteAuthorizationException>(() => context.SaveChangesAsync());
     }
 
     // No authorizer at all — the maintenance composition.

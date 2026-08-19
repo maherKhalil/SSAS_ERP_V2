@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using System.Net;
 using System.Security.Claims;
 using System.Text;

@@ -1,38 +1,31 @@
 using Microsoft.AspNetCore.Http;
+using SSAS.BuildingBlocks.Api.Transport;
 
 namespace SSAS.Platform.API.Transport;
 
-// A transport-neutral (status, code) pair for RFC 7807 ProblemDetails projection.
-public sealed record ApiError(int StatusCode, string Code);
-
-// Narrow, reusable ProblemDetails projection preserving the established platform
-// extensions (code, correlationId, resourceKey). Shared transport failures live here;
-// feature-specific domain-conflict codes live in per-feature mappers.
+// PLATFORM'S VIEW OF THE SHARED TRANSPORT FAILURES (FP-006C5).
+//
+// The (status, code) pairs and the RFC 7807 projection are now shared primitives in
+// SSAS.BuildingBlocks.Api, because HR needs exactly the same five transport failures and ADR-012 forbids it
+// referencing Platform to get them.
+//
+// WHAT STAYED BEHIND IS THE ONE PLATFORM-SPECIFIC THING: the i18n resource key. It names a Platform
+// translation catalogue entry, so it is not module-neutral and did not move — a shared default would have
+// labelled HR's failures with Platform's key. It remains the default HERE, which is why every existing
+// Platform call site is unchanged and emits exactly the same body as before.
 public static class ProblemResults
 {
   // Generic platform problem i18n key, matching the existing Platform transports.
   public const string DefaultResourceKey = "platform.authentication.errors.request_rejected";
 
-  // Shared transport failures common to every admin feature.
-  public static readonly ApiError RequestInvalid = new(400, "request.invalid");
-  public static readonly ApiError RowVersionInvalid = new(400, "platform.rowversion_invalid");
-  public static readonly ApiError Forbidden = new(403, "authorization.forbidden");
-  public static readonly ApiError ConcurrencyConflict = new(409, "concurrency.conflict");
-  public static readonly ApiError WriteFailure = new(500, "request.failed");
+  // Shared transport failures common to every admin feature. Aliases of the shared definitions rather than
+  // copies, so Platform and HR cannot drift to different codes for the same condition.
+  public static readonly ApiError RequestInvalid = ApiErrors.RequestInvalid;
+  public static readonly ApiError RowVersionInvalid = ApiErrors.RowVersionInvalid;
+  public static readonly ApiError Forbidden = ApiErrors.Forbidden;
+  public static readonly ApiError ConcurrencyConflict = ApiErrors.ConcurrencyConflict;
+  public static readonly ApiError WriteFailure = ApiErrors.WriteFailure;
 
-  public static IResult Problem(HttpContext context, ApiError error, string resourceKey = DefaultResourceKey)
-  {
-    ArgumentNullException.ThrowIfNull(context);
-    ArgumentNullException.ThrowIfNull(error);
-    return Results.Problem(
-      type: $"https://httpstatuses.com/{error.StatusCode}",
-      statusCode: error.StatusCode,
-      title: error.Code,
-      extensions: new Dictionary<string, object?>
-      {
-        ["code"] = error.Code,
-        ["correlationId"] = context.Response.Headers["X-Correlation-ID"].ToString(),
-        ["resourceKey"] = resourceKey
-      });
-  }
+  public static IResult Problem(HttpContext context, ApiError error, string resourceKey = DefaultResourceKey) =>
+    ApiProblems.Problem(context, error, resourceKey);
 }

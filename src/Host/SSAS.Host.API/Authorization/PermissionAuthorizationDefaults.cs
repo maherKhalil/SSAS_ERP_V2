@@ -1,8 +1,11 @@
+using SSAS.BuildingBlocks.Api.Authorization;
+
 namespace SSAS.Host.API.Authorization;
 
 public static class PermissionAuthorizationDefaults
 {
-  public const string PolicyPrefix = "Permission:";
+  // THE CANONICAL SPELLING, read from the one shared contract rather than repeated here (FP-006C5).
+  public const string PolicyPrefix = PermissionPolicyNames.TenantPrefix;
 
   public static string CreatePolicyName(string permission)
   {

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Api.Transport;
 using System.Reflection;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.API.Transport;
@@ -86,7 +87,9 @@ public sealed class PlatformSupportAuthorityArchitectureTests
 
     // ...and Phase 4D exposes it over HTTP through a single authority transport, which must project
     // transport-owned DTOs rather than leaking Application/EF read types onto the wire (DEC-TEN-0025).
-    var apiAssembly = typeof(RowVersionCodec).Assembly;
+    // Anchored on a PLATFORM-owned transport type. RowVersionCodec no longer identifies this assembly: it
+    // moved to the shared API project in FP-006C5, and anchoring on it would silently retarget this test.
+    var apiAssembly = typeof(ProblemResults).Assembly;
     Assert.Contains(apiAssembly.GetTypes(), type =>
       type.Name == "PlatformSupportAuthorityEndpointRouteBuilderExtensions");
     Assert.Contains(apiAssembly.GetTypes(), type => type.Name == "PlatformSupportPrincipalResponse");
@@ -109,15 +112,19 @@ public sealed class PlatformSupportAuthorityArchitectureTests
     var hostAssembly = typeof(SSAS.Host.API.Authorization.PermissionAuthorizationHandler).Assembly;
     Assert.Contains(hostAssembly.GetTypes(), type => type.Name == "PlatformPermissionAuthorizationHandler");
 
-    var apiAssembly = typeof(RowVersionCodec).Assembly;
+    // The convention itself is module-neutral and moved to the shared API project in FP-006C5 — the platform
+    // PLANE is expressed by which helper an endpoint calls, not by which assembly owns the helper.
+    var sharedApiAssembly = typeof(PermissionEndpointConventions).Assembly;
     Assert.Contains(
-      apiAssembly.GetTypes().SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)),
+      sharedApiAssembly.GetTypes().SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)),
       method => method.Name == "RequirePlatformPermission");
 
     // But no platform authentication/admin HTTP transport is exposed yet (Phase 4B/4D remain deferred): no
-    // endpoint route builder maps the internal platform session creator or refresh handler.
-    Assert.DoesNotContain(apiAssembly.GetTypes(), type => type.Name.Contains("PlatformAuthorityEndpoint", StringComparison.Ordinal));
-    Assert.DoesNotContain(apiAssembly.GetTypes(), type => type.Name.Contains("PlatformSessionEndpoint", StringComparison.Ordinal));
+    // endpoint route builder maps the internal platform session creator or refresh handler. Checked in the
+    // PLATFORM API assembly, which is where such a transport would have to live.
+    var platformApiAssembly = typeof(ProblemResults).Assembly;
+    Assert.DoesNotContain(platformApiAssembly.GetTypes(), type => type.Name.Contains("PlatformAuthorityEndpoint", StringComparison.Ordinal));
+    Assert.DoesNotContain(platformApiAssembly.GetTypes(), type => type.Name.Contains("PlatformSessionEndpoint", StringComparison.Ordinal));
   }
 
   [Fact]

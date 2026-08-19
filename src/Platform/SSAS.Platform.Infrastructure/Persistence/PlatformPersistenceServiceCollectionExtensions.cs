@@ -31,6 +31,7 @@ using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Identity;
 using SSAS.Platform.Infrastructure.PlatformSupport;
+using SSAS.Platform.Infrastructure.RequestContext;
 using SSAS.BuildingBlocks.Localization.Catalog;
 using SSAS.BuildingBlocks.Localization.Generated;
 using SSAS.Platform.Application.Localization;
@@ -342,6 +343,11 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // The five-step validation, in one place, used by BOTH the request path and the write boundary. Two
     // copies of "is this company usable" is how a read path and a write path come to disagree.
     services.AddScoped<ICompanyContextResolver, CompanyContextResolver>();
+
+    // The trusted company context is composed HERE, with the resolver it depends on, rather than alongside
+    // the request accessors that cannot satisfy it (FP-006C5). Idempotent, so a host may also call it
+    // directly without producing a second registration.
+    services.AddPlatformCompanyContext();
 
     // The write authorizer re-asks that validation on EVERY company-owned save, which is what makes a
     // company established at the start of a request non-authoritative by the time the request writes.

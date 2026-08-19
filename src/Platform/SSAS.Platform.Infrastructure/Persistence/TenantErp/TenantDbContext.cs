@@ -269,7 +269,7 @@ public sealed class TenantDbContext(
       var openTransfer = await branchTransferAuthorizer.AuthorizeOpenTransferAsync(tenantId, cancellationToken);
       if (openTransfer.IsFailure)
       {
-        throw new Persistence.TenantErp.TenantStorageUnavailableException(openTransfer.Error);
+        throw new Persistence.TenantErp.TenantWriteAuthorizationException(openTransfer.Error);
       }
 
       transfer = openTransfer.Value;
@@ -287,7 +287,7 @@ public sealed class TenantDbContext(
     var authorized = await branchAuthorizer.AuthorizeCurrentBranchAsync(tenantId, cancellationToken);
     if (authorized.IsFailure)
     {
-      throw new Persistence.TenantErp.TenantStorageUnavailableException(authorized.Error);
+      throw new Persistence.TenantErp.TenantWriteAuthorizationException(authorized.Error);
     }
 
     var branchId = authorized.Value;
@@ -405,7 +405,7 @@ public sealed class TenantDbContext(
     var authorized = await companyAuthorizer.AuthorizeCurrentCompanyAsync(tenantId, cancellationToken);
     if (authorized.IsFailure)
     {
-      throw new Persistence.TenantErp.TenantStorageUnavailableException(authorized.Error);
+      throw new Persistence.TenantErp.TenantWriteAuthorizationException(authorized.Error);
     }
 
     var companyId = authorized.Value;

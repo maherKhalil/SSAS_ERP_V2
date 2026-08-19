@@ -43,6 +43,9 @@ public static class ServiceCollectionExtensions
     services.AddScoped<SearchEmployeesQueryHandler>();
     services.AddScoped<GetEmployeeBranchHistoryQueryHandler>();
 
+    services.AddScoped<ActivateEmployeeCommandHandler>();
+    services.AddScoped<DeactivateEmployeeCommandHandler>();
+
     return services;
   }
 }

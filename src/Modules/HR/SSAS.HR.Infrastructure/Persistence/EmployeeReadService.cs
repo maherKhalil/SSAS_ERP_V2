@@ -64,7 +64,8 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
         employee.TerminationDate,
         employee.Status,
         employee.StatusChangeReasonCode,
-        employee.StatusChangedUtc))
+        employee.StatusChangedUtc,
+        employee.RowVersion))
       .SingleOrDefaultAsync(cancellationToken);
   }
 

@@ -22,7 +22,10 @@ public sealed record EmployeeDetail(
   DateTimeOffset? TerminationDate,
   EmployeeStatus Status,
   EmployeeStatusChangeReason StatusChangeReasonCode,
-  DateTimeOffset StatusChangedUtc);
+  DateTimeOffset StatusChangedUtc,
+  // The concurrency version, required by every mutating contract as `expectedRowVersion` and therefore part
+  // of the detail a caller reads before they can write (FP-006 api-contracts, rowversion transport).
+  byte[] RowVersion);
 
 // The list row. Narrower than the detail on purpose: a search result set is the widest read in the module,
 // and the national identifier — the one sensitive field — is not part of it.

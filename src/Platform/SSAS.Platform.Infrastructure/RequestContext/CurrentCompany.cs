@@ -19,7 +19,7 @@ namespace SSAS.Platform.Infrastructure.RequestContext;
 //
 // ESTABLISHING TWICE IS IDEMPOTENT BY RE-VALIDATION, not by memoisation: each call runs the validation
 // again, so a company revoked mid-request cannot be re-established from a cached answer.
-public sealed class CurrentCompany(ICompanyContextResolver contextResolver) : ICurrentCompany
+public sealed class CurrentCompany(ICompanyContextResolver contextResolver) : ICurrentCompany, ICompanyContextEstablisher
 {
   private Guid? established;
 

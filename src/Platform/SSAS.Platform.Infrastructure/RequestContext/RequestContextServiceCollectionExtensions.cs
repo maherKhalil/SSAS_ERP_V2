@@ -71,6 +71,10 @@ public static class RequestContextServiceCollectionExtensions
     services.TryAddScoped<CurrentCompany>();
     services.TryAddScoped<ICurrentCompany>(serviceProvider => serviceProvider.GetRequiredService<CurrentCompany>());
 
+    // The same scoped instance answers both: establishing and reporting must not be able to disagree about
+    // which company this request is in.
+    services.TryAddScoped<ICompanyContextEstablisher>(serviceProvider => serviceProvider.GetRequiredService<CurrentCompany>());
+
     return services;
   }
 }

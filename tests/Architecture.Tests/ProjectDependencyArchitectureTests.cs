@@ -199,6 +199,9 @@ public sealed class ProjectDependencyArchitectureTests
         "SSAS.BuildingBlocks.Api.Transport.ApiErrors",
         // The RFC 7807 projection.
         "SSAS.BuildingBlocks.Api.Transport.ApiProblems",
+        // The response security headers. Shared for the same reason as the rest: two "single sources of
+        // truth" for the same headers would drift, and the FP-006 contract requires HR to set them.
+        "SSAS.BuildingBlocks.Api.Transport.ApiResponseSecurity",
         // "This endpoint requires permission X" — the mechanism, never the permissions.
         "SSAS.BuildingBlocks.Api.Transport.PermissionEndpointConventions",
         // One rowversion wire format for the whole estate.

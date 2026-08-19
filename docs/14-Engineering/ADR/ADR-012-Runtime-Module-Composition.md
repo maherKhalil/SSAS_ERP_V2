@@ -2,7 +2,7 @@
 id: ADR-012
 title: Runtime Module Composition
 category: Architecture Decision Record
-version: 1.0
+version: 1.1
 status: Accepted
 date: 2026-07-30
 owner: Solution Architecture Team
@@ -56,6 +56,42 @@ SSAS.Host.API is the composition root.
 - Cross-module business communication must use approved public contracts, integration events, or explicitly authorized module-facing abstractions. Direct references to another module's internal Domain, Application, API, or Infrastructure assemblies are forbidden.
 - Reflection-based runtime module discovery is not used in V1.
 - Architecture tests must enforce these rules.
+
+## The module-facing tenant contract set (revision 1.1)
+
+`SSAS.Platform.*` is a module under the rules above, so a business module may not reference it. But every
+business module needs Platform's **tenant execution plane**: an Employee, a journal or a stock movement must
+save through the tenant unit of work, be authorized against branch scope, and — where it is transferable —
+open the sanctioned branch-transfer channel (`ADR-023`, `ADR-024`, `ADR-025`).
+
+`SSAS.BuildingBlocks.Tenancy` is the first concrete set of the *explicitly authorized module-facing
+abstractions* this ADR already permits. Platform implements those contracts; business modules consume them;
+neither references the other.
+
+```
+SSAS.BuildingBlocks.Tenancy          (contracts)
+        ▲                    ▲
+        │                    │
+SSAS.Platform.*         SSAS.HR.* / SSAS.GL.*
+   (implements)              (consumes)
+```
+
+A contract belongs there only when **a business module must call it** and **Platform must implement it**.
+That test is deliberately narrow: every type added widens its blast radius permanently, so contracts only
+Platform uses — `IBranchWriteAuthorizer`, `ICompanyWriteAuthorizer`, `ICompanyContextResolver` — stay in
+Platform. The set is enumerated by an architecture test rather than left to grow by habit.
+
+**Module entities in the tenant model.** Tenant business data lives in one context and one migration stream
+(`ADR-017`), which Platform owns and may not extend with another module's types. A module therefore supplies
+its own EF mapping through `ITenantModelContributor` (in `SSAS.BuildingBlocks.Infrastructure`, which already
+owns EF Core), and the **Host registers the set explicitly**. This is registration, not discovery: the
+prohibition on reflection-based module discovery is unchanged.
+
+Because contributors shape the model, the contributor set participates in the EF model cache key. Without
+that, a context built with no contributors and one built with a module's would share whichever model was
+created first in the process — a silent, order-dependent defect. Contributors must therefore be
+deterministic: the same set must always produce the same model, and a contributor must not vary its mapping
+by tenant, request, or ambient state.
 
 ---
 
@@ -141,3 +177,4 @@ projects. This option requires a future architecture decision if needed.
 | Version | Date | Author | Description |
 |---------|------|--------|-------------|
 | 1.0 | 2026-07-30 | Solution Architecture Team | Initial accepted decision |
+| 1.1 | 2026-08-19 | Solution Architecture Team | Adds the module-facing tenant contract set (`SSAS.BuildingBlocks.Tenancy`) and `ITenantModelContributor`, the first concrete instances of the "explicitly authorized module-facing abstractions" this ADR already permitted. Surfaced by FP-006C3, where HR's Employee became the first module entity needing the tenant execution plane. Module-to-module reference rules and the no-reflection-discovery rule are unchanged. |

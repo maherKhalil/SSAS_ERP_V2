@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Abstractions.Persistence;
 

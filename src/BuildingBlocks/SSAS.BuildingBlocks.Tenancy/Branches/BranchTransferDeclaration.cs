@@ -1,7 +1,6 @@
 using SSAS.BuildingBlocks.Domain;
-using SSAS.Platform.Domain.Branches;
 
-namespace SSAS.Platform.Application.Branches;
+namespace SSAS.BuildingBlocks.Tenancy.Branches;
 
 // HOW THE SOURCE BRANCH OF A SANCTIONED TRANSFER IS REACHED (FP-006C2, ADR-024 decisions 6 and 12).
 public enum BranchTransferMode
@@ -74,7 +73,7 @@ public sealed class BranchTransferDeclaration
   {
     if (entity is null || sourceBranchId == Guid.Empty || destinationBranchId == Guid.Empty)
     {
-      return Result.Failure<BranchTransferDeclaration>(BranchErrors.TransferInvalid);
+      return Result.Failure<BranchTransferDeclaration>(BranchTransferErrors.TransferInvalid);
     }
 
     // A transfer to the branch the entity is already in is not a transfer. Permitting it would let a
@@ -82,7 +81,7 @@ public sealed class BranchTransferDeclaration
     // audit record and a pointless one to re-validate.
     if (sourceBranchId == destinationBranchId)
     {
-      return Result.Failure<BranchTransferDeclaration>(BranchErrors.TransferInvalid);
+      return Result.Failure<BranchTransferDeclaration>(BranchTransferErrors.TransferInvalid);
     }
 
     return Result.Success(new BranchTransferDeclaration(

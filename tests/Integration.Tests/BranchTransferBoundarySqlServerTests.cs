@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -277,7 +278,7 @@ public sealed class BranchTransferBoundarySqlServerTests
 
     var refusal = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
       () => context.SaveChangesAsync());
-    Assert.Equal(BranchErrors.TransferNotPermitted.Code, refusal.Error.Code);
+    Assert.Equal(BranchTransferErrors.TransferNotPermitted.Code, refusal.Error.Code);
 
     Assert.Equal(fixture.BranchC, await fixture.ProbeBranchAsync(probeId));
   }
@@ -338,7 +339,7 @@ public sealed class BranchTransferBoundarySqlServerTests
 
     var refusal = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
       () => context.SaveChangesAsync());
-    Assert.Equal(BranchErrors.TransferNotPermitted.Code, refusal.Error.Code);
+    Assert.Equal(BranchTransferErrors.TransferNotPermitted.Code, refusal.Error.Code);
 
     Assert.Equal(fixture.BranchC, await fixture.ProbeBranchAsync(probeId));
   }

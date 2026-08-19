@@ -5,6 +5,7 @@
     <ProjectReference Include="..\SSAS.HR.Contracts\SSAS.HR.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Tenancy\SSAS.BuildingBlocks.Tenancy.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -6,6 +7,7 @@ using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Application.TenantStorage;
+using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.TenantStorage;
 
 namespace SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -37,7 +39,10 @@ public sealed class TenantDbContextFactory(
   ICompanyWriteAuthorizer? companyAuthorizer = null,
   // Optional again (FP-006C2). A context built without one authorizes no branch transfer at all, which
   // leaves the original immutability invariant fully in force.
-  IBranchTransferAuthorizer? branchTransferAuthorizer = null) : ITenantDbContextFactory
+  IBranchTransferAuthorizer? branchTransferAuthorizer = null,
+  // The business modules' contributions to the tenant model (FP-006C3-pre, ADR-012). Empty for maintenance
+  // and schema tooling, which reason about Platform's own tenant entities only.
+  IEnumerable<ITenantModelContributor>? modelContributors = null) : ITenantDbContextFactory
 {
   public async Task<Result<TenantDbContext>> CreateAsync(
     Guid tenantId,
@@ -91,6 +96,6 @@ public sealed class TenantDbContextFactory(
     // been selected yet, which the write boundary turns into a refusal for branch-owned data only.
     return Result.Success(new TenantDbContext(
       options, currentUser, currentTenant, dateTimeProvider, writeFence, branchAuthorizer, companyAuthorizer,
-      branchTransferAuthorizer, route.Value.TenantDatabaseId));
+      branchTransferAuthorizer, modelContributors, route.Value.TenantDatabaseId));
   }
 }

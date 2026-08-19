@@ -1,6 +1,6 @@
 using SSAS.BuildingBlocks.Domain;
 
-namespace SSAS.Platform.Application.Branches;
+namespace SSAS.BuildingBlocks.Tenancy.Branches;
 
 // RE-VALIDATES THE OPEN TRANSFER AT SAVE TIME (FP-006C2, ADR-024 decisions 3 and 6).
 //

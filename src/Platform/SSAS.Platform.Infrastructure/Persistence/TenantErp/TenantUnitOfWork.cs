@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;

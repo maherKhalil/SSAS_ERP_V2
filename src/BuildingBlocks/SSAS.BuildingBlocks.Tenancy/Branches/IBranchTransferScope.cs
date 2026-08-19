@@ -1,6 +1,6 @@
 using SSAS.BuildingBlocks.Domain;
 
-namespace SSAS.Platform.Application.Branches;
+namespace SSAS.BuildingBlocks.Tenancy.Branches;
 
 // THE SANCTIONED BRANCH-TRANSFER CHANNEL (FP-006C2, ADR-024 decision 3).
 //

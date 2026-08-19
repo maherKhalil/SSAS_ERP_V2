@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;

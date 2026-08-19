@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Abstractions.Queries;
@@ -38,7 +39,7 @@ internal sealed class BranchTransferAuthorizer(
       session.TenantId != tenantId ||
       session.TenantUserId <= 0)
     {
-      return Result.Failure<BranchTransferDeclaration?>(BranchErrors.TransferNotPermitted);
+      return Result.Failure<BranchTransferDeclaration?>(BranchTransferErrors.TransferNotPermitted);
     }
 
     // ---- THE DESTINATION IS AUTHORIZED HERE, AND ONLY THROUGH THE RESOLVER.
@@ -70,7 +71,7 @@ internal sealed class BranchTransferAuthorizer(
     if (!await administratorAuthority.IsTenantAdministratorAsync(
       tenantId, session.TenantUserId, cancellationToken))
     {
-      return Result.Failure<BranchTransferDeclaration?>(BranchErrors.TransferNotPermitted);
+      return Result.Failure<BranchTransferDeclaration?>(BranchTransferErrors.TransferNotPermitted);
     }
 
     var sourceIsInactive = await SourceBranchIsInactiveAsync(
@@ -82,7 +83,7 @@ internal sealed class BranchTransferAuthorizer(
 
     return sourceIsInactive.Value
       ? Result.Success<BranchTransferDeclaration?>(declaration)
-      : Result.Failure<BranchTransferDeclaration?>(BranchErrors.TransferNotPermitted);
+      : Result.Failure<BranchTransferDeclaration?>(BranchTransferErrors.TransferNotPermitted);
   }
 
   // EXISTS, BELONGS TO THIS TENANT, AND IS NOT ACTIVE. A source that does not exist is not a recovery

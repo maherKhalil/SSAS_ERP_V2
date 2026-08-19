@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;

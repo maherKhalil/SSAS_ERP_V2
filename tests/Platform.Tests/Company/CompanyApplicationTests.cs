@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Persistence;
 using System.Reflection;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;

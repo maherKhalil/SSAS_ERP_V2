@@ -1,3 +1,5 @@
+using SSAS.BuildingBlocks.Tenancy.Persistence;
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -5,6 +7,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Domain.Branches;
@@ -61,6 +64,16 @@ public sealed class TenantDbContext(
   // NULL MEANS NO TRANSFER IS EVER AUTHORIZED, never that one is assumed. A context built without it keeps
   // the original invariant in full — ordinary BranchId mutation is refused, with no exception available.
   IBranchTransferAuthorizer? branchTransferAuthorizer = null,
+  // THE BUSINESS MODULES' CONTRIBUTIONS TO THE TENANT MODEL (FP-006C3-pre, ADR-012).
+  //
+  // Tenant business data lives in ONE context and ONE migration stream (ADR-017), but Platform may not
+  // reference HR or GL to map their entities. Each module supplies its own mapping through
+  // ITenantModelContributor, which neither side owns, and the Host registers the set.
+  //
+  // EMPTY IS THE CORRECT DEFAULT for maintenance and schema tooling, which reason about Platform's own
+  // tenant entities only. It is not a degraded mode — it is a genuinely different model, and
+  // TenantModelCacheKeyFactory is what keeps EF from confusing the two.
+  IEnumerable<ITenantModelContributor>? modelContributors = null,
   // WHICH PHYSICAL DATABASE THIS CONTEXT IS BOUND TO (ADR-020, TS-Storage Phase E4). Captured at creation
   // from the route that chose the connection, and never re-read: a context's database is fixed for its
   // lifetime, which is exactly why a context created before a cutover flip is still pointing at the source
@@ -72,6 +85,32 @@ public sealed class TenantDbContext(
 
   public DbSet<Branch> Branches => Set<Branch>();
 
+  // THE CONTRIBUTOR SET THIS CONTEXT'S MODEL WAS BUILT FROM (FP-006C3-pre).
+  //
+  // Ordered and de-duplicated so registration order cannot produce two cache entries for the same model, and
+  // exposed for TenantModelCacheKeyFactory alone — it is model metadata, not a capability.
+  internal string ModelSignature { get; } = modelContributors is null
+    ? string.Empty
+    : string.Join(
+      "|",
+      modelContributors
+        .Where(contributor => contributor is not null)
+        .Select(contributor => contributor.GetType().FullName ?? contributor.GetType().Name)
+        .Distinct(StringComparer.Ordinal)
+        .OrderBy(name => name, StringComparer.Ordinal));
+
+  protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+  {
+    ArgumentNullException.ThrowIfNull(optionsBuilder);
+
+    // INSTALLED HERE RATHER THAN AT EVERY OPTION-BUILDING SITE, deliberately. Options for this context are
+    // built by the routed factory, by the maintenance builders, and by tests; a replacement any one of them
+    // forgot would silently reintroduce the shared-model bug this factory exists to prevent.
+    optionsBuilder.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
+
+    base.OnConfiguring(optionsBuilder);
+  }
+
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
     // Only tenant configurations are applied. The two contexts share an assembly today, so an unfiltered
@@ -80,6 +119,17 @@ public sealed class TenantDbContext(
     modelBuilder.ApplyConfigurationsFromAssembly(
       typeof(TenantDbContext).Assembly,
       type => type.Namespace == TenantPersistenceConstants.ConfigurationNamespace);
+
+    // ---- THE BUSINESS MODULES MAP THEIR OWN ENTITIES (ADR-012).
+    //
+    // Applied BEFORE base.OnModelCreating so contributed entities are visible to the shared conventions
+    // that run there — the global tenant query filter and the restricted delete behaviour. A module entity
+    // added afterwards would be unfiltered, which is exactly the silent cross-tenant leak the filter exists
+    // to prevent.
+    foreach (var contributor in modelContributors ?? [])
+    {
+      contributor.Configure(modelBuilder);
+    }
 
     base.OnModelCreating(modelBuilder);
   }

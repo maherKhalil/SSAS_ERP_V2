@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Domain;
@@ -22,17 +23,28 @@ public sealed class BranchTransferArchitectureTests
   private static readonly string TenantDbContextSource = ReadSource(
     "Persistence", "TenantErp", "TenantDbContext.cs");
 
-  // ---- THE CONTRACTS LIVE IN THE APPLICATION LAYER, beside the branch authorization they extend.
+  // ---- THE TRANSFER CONTRACTS ARE MODULE-FACING; THE WRITE AUTHORIZER IS NOT (FP-006C3-pre, ADR-012).
   //
-  // Putting them in Infrastructure would leave command handlers unable to declare a transfer without
-  // depending on persistence, which is exactly the layering the write boundary exists above.
+  // A business module OPENS the channel, so IBranchTransferScope, its declaration and its errors live in
+  // SSAS.BuildingBlocks.Tenancy where HR and GL can reach them without referencing Platform.
+  //
+  // IBranchWriteAuthorizer is consulted only by TenantDbContext and stays in Platform deliberately: moving
+  // a contract into the shared set widens its blast radius permanently, so only the ones a module must call
+  // belong there.
   [Fact]
-  public void The_transfer_contracts_live_beside_the_other_branch_application_contracts()
+  public void The_transfer_contracts_are_module_facing_and_the_write_authorizer_is_not()
   {
-    Assert.Equal(typeof(IBranchWriteAuthorizer).Assembly, typeof(IBranchTransferScope).Assembly);
-    Assert.Equal(typeof(IBranchWriteAuthorizer).Namespace, typeof(IBranchTransferScope).Namespace);
-    Assert.Equal(typeof(IBranchWriteAuthorizer).Namespace, typeof(IBranchTransferAuthorizer).Namespace);
-    Assert.Equal(typeof(IBranchWriteAuthorizer).Namespace, typeof(BranchTransferDeclaration).Namespace);
+    var tenancy = typeof(IBranchTransferScope).Assembly;
+
+    Assert.Equal("SSAS.BuildingBlocks.Tenancy", tenancy.GetName().Name);
+    Assert.Equal(tenancy, typeof(IBranchTransferAuthorizer).Assembly);
+    Assert.Equal(tenancy, typeof(BranchTransferDeclaration).Assembly);
+    Assert.Equal(tenancy, typeof(BranchTransferErrors).Assembly);
+    Assert.Equal(tenancy, typeof(ITenantBranchAccessResolver).Assembly);
+
+    // Platform-internal, and staying that way.
+    Assert.NotEqual(tenancy, typeof(IBranchWriteAuthorizer).Assembly);
+    Assert.NotEqual(tenancy, typeof(SSAS.Platform.Application.Companies.ICompanyWriteAuthorizer).Assembly);
   }
 
   // ---- THE DECLARATION IS ENTITY-SPECIFIC, AND THERE IS NO WAY TO EXPRESS ANYTHING BROADER.

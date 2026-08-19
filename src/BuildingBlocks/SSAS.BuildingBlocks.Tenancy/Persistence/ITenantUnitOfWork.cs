@@ -1,7 +1,7 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Domain;
 
-namespace SSAS.Platform.Application.Abstractions.Persistence;
+namespace SSAS.BuildingBlocks.Tenancy.Persistence;
 
 // Unit of work for tenant ERP persistence (ADR-017), distinct from IPlatformUnitOfWork.
 //

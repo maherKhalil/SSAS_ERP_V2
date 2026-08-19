@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Domain.Branches;
@@ -31,7 +32,7 @@ internal sealed class BranchTransferScope : IBranchTransferScope
     // inner transfer silently re-enables an outer one, and the boundary can only ever act on one.
     if (Current is not null)
     {
-      return Result.Failure<IDisposable>(BranchErrors.TransferAlreadyInProgress);
+      return Result.Failure<IDisposable>(BranchTransferErrors.TransferAlreadyInProgress);
     }
 
     Current = declaration;

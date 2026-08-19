@@ -1,6 +1,6 @@
 using SSAS.BuildingBlocks.Domain;
 
-namespace SSAS.Platform.Application.Branches;
+namespace SSAS.BuildingBlocks.Tenancy.Branches;
 
 // WHICH BRANCHES A USER MAY ENTER, AND THE ONLY PLACE THAT DECIDES IT (Branch foundation B0/B1).
 //

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Domain.Branches;
@@ -39,12 +40,12 @@ public sealed class BranchTransferScopeTests
   public void An_empty_branch_identifier_is_refused()
   {
     Assert.Equal(
-      BranchErrors.TransferInvalid.Code,
+      BranchTransferErrors.TransferInvalid.Code,
       BranchTransferDeclaration.Create(new Probe(), Guid.Empty, Destination, BranchTransferMode.CurrentBranch)
         .Error.Code);
 
     Assert.Equal(
-      BranchErrors.TransferInvalid.Code,
+      BranchTransferErrors.TransferInvalid.Code,
       BranchTransferDeclaration.Create(new Probe(), Source, Guid.Empty, BranchTransferMode.CurrentBranch)
         .Error.Code);
   }
@@ -57,7 +58,7 @@ public sealed class BranchTransferScopeTests
       new Probe(), Source, Source, BranchTransferMode.CurrentBranch);
 
     Assert.True(declaration.IsFailure);
-    Assert.Equal(BranchErrors.TransferInvalid.Code, declaration.Error.Code);
+    Assert.Equal(BranchTransferErrors.TransferInvalid.Code, declaration.Error.Code);
   }
 
   // ---- IT AUTHORIZES EXACTLY THE TRANSITION IT NAMES, and only when every clause holds.
@@ -163,7 +164,7 @@ public sealed class BranchTransferScopeTests
     var second = scope.Begin(Declaration(new Probe()));
 
     Assert.True(second.IsFailure);
-    Assert.Equal(BranchErrors.TransferAlreadyInProgress.Code, second.Error.Code);
+    Assert.Equal(BranchTransferErrors.TransferAlreadyInProgress.Code, second.Error.Code);
 
     // The refusal changed nothing: the first declaration is still the one in force.
     Assert.Same(first, scope.Current);

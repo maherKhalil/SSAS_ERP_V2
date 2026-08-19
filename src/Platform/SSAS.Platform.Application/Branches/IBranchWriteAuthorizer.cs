@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.BuildingBlocks.Domain;
 
 namespace SSAS.Platform.Application.Branches;

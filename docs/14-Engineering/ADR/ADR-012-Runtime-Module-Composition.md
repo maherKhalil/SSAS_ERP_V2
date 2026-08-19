@@ -2,7 +2,7 @@
 id: ADR-012
 title: Runtime Module Composition
 category: Architecture Decision Record
-version: 1.1
+version: 1.2
 status: Accepted
 date: 2026-07-30
 owner: Solution Architecture Team
@@ -93,6 +93,42 @@ created first in the process — a silent, order-dependent defect. Contributors 
 deterministic: the same set must always produce the same model, and a contributor must not vary its mapping
 by tenant, request, or ambient state.
 
+
+## Module permission definitions (revision 1.2)
+
+Functional permissions are **code-owned**: a tenant role may only be granted a permission the catalog
+defines, because `AssignPermissionToRoleCommandHandler` refuses any other name and `Role.AssignPermission`
+requires a definition only the catalog can produce. That rule is unchanged and is the reason the gap below
+was total rather than partial.
+
+Platform owns the catalog and, under the rules above, may not reference a business module. A module
+therefore had nowhere to put its own definitions: HR declared five `HR.Employees.*` constants that no
+catalog knew, so no role could be granted one and every Employee endpoint refused every caller.
+
+A module supplies its definitions through `IPermissionCatalogContributor` (in
+`SSAS.BuildingBlocks.Tenancy`, alongside the other module-facing contracts), and the **Host registers the
+set explicitly**. This is registration, not discovery: the prohibition on reflection-based module discovery
+is unchanged. Platform composes the registered set with its own definitions into the one
+`IPermissionCatalog` the container hands out.
+
+Writing a module's permission name into Platform's catalog is **not** an acceptable alternative. It is the
+same coupling with the project reference removed: Platform would own a decision the module owns, and the
+next module would repeat the argument.
+
+Three properties make the composition safe:
+
+- **The composer applies Platform's own validation.** A contributed name goes through the same
+  `PermissionName` grammar as a Platform-owned one. There is no second, laxer path.
+- **Scope is stamped, not accepted.** The contribution contract carries no scope, so a business module
+  cannot mint `PermissionScope.PlatformSupport` — cross-tenant operator authority — however it is written.
+  Business-module permissions are tenant authority by definition.
+- **A duplicate name fails the composition.** Two modules claiming one name, or a module shadowing a
+  Platform permission, refuses startup rather than resolving by registration order. Last-write-wins would
+  decide which owner's definition applies by the Host's composition order, which is to say by accident.
+
+The catalog is composed at startup and immutable afterwards, so the set a request is authorized against is
+the set composition validated.
+
 ---
 
 # Rationale
@@ -178,3 +214,4 @@ projects. This option requires a future architecture decision if needed.
 |---------|------|--------|-------------|
 | 1.0 | 2026-07-30 | Solution Architecture Team | Initial accepted decision |
 | 1.1 | 2026-08-19 | Solution Architecture Team | Adds the module-facing tenant contract set (`SSAS.BuildingBlocks.Tenancy`) and `ITenantModelContributor`, the first concrete instances of the "explicitly authorized module-facing abstractions" this ADR already permitted. Surfaced by FP-006C3, where HR's Employee became the first module entity needing the tenant execution plane. Module-to-module reference rules and the no-reflection-discovery rule are unchanged. |
+| 1.2 | 2026-08-19 | Solution Architecture Team | Adds the module permission-contribution seam (`IPermissionCatalogContributor` in `SSAS.BuildingBlocks.Tenancy`) and the composed `IPermissionCatalog`. Surfaced by the FP-006 release review, where HR's five code-owned Employee permissions were defined nowhere the role-assignment path could see, making every Employee endpoint unreachable in production. Module-to-module reference rules, the Host-as-composition-root rule and the no-reflection-discovery rule are unchanged. |

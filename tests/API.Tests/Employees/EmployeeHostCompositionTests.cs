@@ -10,6 +10,7 @@ using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.BuildingBlocks.Tenancy.Companies;
+using SSAS.BuildingBlocks.Tenancy.Permissions;
 using SSAS.Host.API.Authentication;
 using SSAS.Host.API.Authorization;
 using SSAS.Host.API.Configuration;
@@ -18,11 +19,14 @@ using SSAS.HR.API.Employees;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Infrastructure;
+using SSAS.HR.Application.Permissions;
 using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Application.Companies;
+using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.API;
 using SSAS.Platform.Infrastructure;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
+using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Infrastructure.RequestContext;
 
 namespace SSAS.API.Tests.Employees;
@@ -247,6 +251,70 @@ public sealed class EmployeeHostCompositionTests
     Assert.NotNull(model.FindEntityType(typeof(SSAS.HR.Domain.Employees.Employee)));
   }
 
+  // ================================================================================================
+  // H11 — THE PRODUCTION CONTAINER HANDS OUT A COMPOSED PERMISSION CATALOG (FP-006P, ADR-012 r1.2).
+  // ================================================================================================
+  //
+  // ---- THE HALF THAT WAS MISSING, AND THE REASON NOTHING CAUGHT IT.
+  //
+  // A role may only be granted a permission the catalog defines. HR's five names were constants no catalog
+  // knew, so nothing could grant them and every Employee endpoint refused every caller — while every test
+  // passed, because tests supply permissions directly and never ask whether one is grantable.
+  //
+  // This resolves IPermissionCatalog from the REAL container. If the composition regressed to Platform's
+  // own catalog, or the contributor stopped being registered, this fails here rather than in production.
+  [Fact]
+  public void H11_The_host_permission_catalog_contains_the_contributed_hr_permissions()
+  {
+    using var provider = BuildProductionProvider();
+
+    var catalog = provider.GetRequiredService<IPermissionCatalog>();
+
+    Assert.IsType<ComposedPermissionCatalog>(catalog);
+
+    foreach (var permission in new HrPermissionCatalogContributor().Permissions)
+    {
+      Assert.True(catalog.TryGet(permission.Name, out var definition), permission.Name);
+
+      // TENANT SCOPE, so it is assignable to an ordinary tenant role. A PlatformSupport-scoped definition
+      // would be refused by Role.AssignPermission and the permission would still be ungrantable.
+      Assert.Equal(PermissionScope.Tenant, definition.Scope);
+    }
+  }
+
+  // ---- H12. AND PLATFORM'S OWN CATALOG IS UNCHANGED BY THE COMPOSITION.
+  //
+  // Composing must ADD. If a module could displace or reshape a platform permission, this slice would have
+  // quietly changed the platform authorization surface for every tenant.
+  [Fact]
+  public void H12_Composing_module_permissions_leaves_the_platform_catalog_intact()
+  {
+    using var provider = BuildProductionProvider();
+
+    var catalog = provider.GetRequiredService<IPermissionCatalog>();
+    var platformOnly = new PlatformPermissionCatalog();
+
+    foreach (var expected in platformOnly.All)
+    {
+      Assert.True(catalog.TryGet(expected.Name.Value, out var actual), expected.Name.Value);
+      Assert.Equal(expected.Scope, actual.Scope);
+      Assert.Equal(expected.Description, actual.Description);
+    }
+
+    // ---- AND THE ADMINISTRATOR PERMISSION STILL GRANTS NO HR AUTHORITY.
+    //
+    // Platform.Tenant.Administer widens the company and branch SCOPE dimensions and confers no functional
+    // permission (ADR-025 decision 8). Putting HR's names in the same catalog must not have blurred that:
+    // they remain five separate definitions a role has to be granted individually.
+    Assert.True(catalog.TryGet(PlatformPermissionNames.AdministerTenant, out var administer));
+    Assert.Equal(PermissionScope.Tenant, administer.Scope);
+
+    Assert.DoesNotContain(
+      new HrPermissionCatalogContributor().Permissions,
+      permission => StringComparer.Ordinal.Equals(
+        permission.Name, PlatformPermissionNames.AdministerTenant));
+  }
+
   // The Host's own composition, minus the HTTP pipeline. Connection strings point at a server that is never
   // contacted: building and validating a graph resolves no DbContext, and these tests deliberately never
   // execute a query.
@@ -288,6 +356,14 @@ public sealed class EmployeeHostCompositionTests
       .AddPlatformModule()
       .AddHrModule()
       .AddHrInfrastructure();
+
+    // ---- MIRRORS THE ONE LINE Program.cs USES TO REGISTER HR'S PERMISSION DEFINITIONS (FP-006P).
+    //
+    // Program.cs is top-level statements, so this graph is assembled rather than shared with it. That
+    // divergence is exactly how a test proves a composition production does not have, which is why
+    // ModulePermissionContributionArchitectureTests pins the literal registration line in Program.cs as
+    // well. Both are needed: one proves the line exists, this one proves the graph it produces resolves.
+    builder.Services.AddSingleton<IPermissionCatalogContributor, HrPermissionCatalogContributor>();
 
     return builder.Services;
   }

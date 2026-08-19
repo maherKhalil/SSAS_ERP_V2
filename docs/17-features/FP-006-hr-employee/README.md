@@ -152,4 +152,14 @@ These are carried commitments that inspection of the codebase will not reveal, b
 >
 > Obligation 5 turned out to require more than extending the declared list. The copy plan derived its manifest from a tenant model built with **no module contributors**, so `Employee` could not appear in it however the inventory was written — a promotion would have copied Platform's tables, validated every row it copied, reported success, and left every employee behind. The manifest is now derived from the contributor-composed model resolved from the same registration the runtime uses, and the contributor-free static it previously read was removed rather than corrected, so no future caller can reach for one by accident.
 
+> **`DEC-EMP-0030` / `AC-EMP-0040` are implemented as of `FP-006P`.** The five permissions were declared as
+> code-owned constants in `FP-006C5`, and the release review found they were defined in no permission
+> catalog — so no tenant role could be granted one and every Employee endpoint refused every caller, while
+> the whole suite passed because tests supply permissions directly and never travel the assignment path.
+> `FP-006P` adds the module permission-contribution seam (`ADR-012` r1.2): HR owns the definitions, the Host
+> registers the contributor explicitly, and Platform composes them into the one catalog. The design decided
+> here is unchanged — five permissions, tenant scope, activate and deactivate under `Update` — and the proof
+> that closes the gap is a real role assignment through `AssignPermissionToRoleCommandHandler` followed by a
+> real Employee read authorized by nothing but the resulting access-token claims.
+
 No migration is created by this documentation package.

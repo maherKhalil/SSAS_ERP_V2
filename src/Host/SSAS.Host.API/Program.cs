@@ -8,7 +8,9 @@ using SSAS.Host.API.Configuration;
 using SSAS.Host.API.Diagnostics;
 using SSAS.Host.API.Errors;
 using SSAS.HR.API;
+using SSAS.HR.Application.Permissions;
 using SSAS.HR.Infrastructure;
+using SSAS.BuildingBlocks.Tenancy.Permissions;
 using SSAS.Platform.API;
 using SSAS.Platform.API.Authentication;
 using SSAS.Platform.API.Companies;
@@ -16,6 +18,7 @@ using SSAS.Platform.API.IdentityAccess;
 using SSAS.Platform.API.Localization;
 using SSAS.Platform.API.PlatformSupport;
 using SSAS.Platform.Infrastructure;
+using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Infrastructure.RequestContext;
 
 Log.Logger = new LoggerConfiguration()
@@ -44,7 +47,23 @@ try
     .AddHrInfrastructure()
     .AddGlModule();
 
+  // ---- MODULE PERMISSION DEFINITIONS, REGISTERED EXPLICITLY (ADR-012 r1.2, FP-006P).
+  //
+  // A role may only be granted a permission the composed catalog defines, so a module that is not named
+  // here contributes nothing and its endpoints refuse everyone. That is a loud, reviewable omission rather
+  // than a silent one, and it is registration -- never reflection-based discovery.
+  //
+  // GL adds its line here when it defines permissions of its own.
+  builder.Services.AddSingleton<IPermissionCatalogContributor, HrPermissionCatalogContributor>();
+
   var app = builder.Build();
+
+  // ---- COMPOSE THE PERMISSION CATALOG NOW, NOT ON THE FIRST REQUEST THAT NEEDS IT.
+  //
+  // A duplicate or malformed module contribution is a composition defect. The catalog is a singleton, so
+  // without this it would be built lazily and the failure would surface as a 500 on whichever request
+  // happened to authorize first. A host that refuses to start is the correct answer.
+  _ = app.Services.GetRequiredService<IPermissionCatalog>();
 
   app.ConfigureTrustedForwarding(builder.Configuration);
   app.UseCorrelationId();

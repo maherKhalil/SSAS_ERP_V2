@@ -3,8 +3,16 @@ namespace SSAS.HR.Application.Permissions;
 // THE CODE-OWNED HR EMPLOYEE PERMISSION SET (FP-006 authorization-model, DEC-EMP-0030).
 //
 // `<Plane>.<Resource>.<Action>`, matching the established platform convention and satisfying the platform
-// permission-name grammar of exactly three ASCII-identifier segments — so no framework change is required
-// to register them.
+// permission-name grammar of exactly three ASCII-identifier segments, so the names themselves need no
+// framework change.
+//
+// ---- NAMING THEM IS NOT REGISTERING THEM (FP-006P).
+//
+// This file is the single source of the names; it is not a catalog. A role may only be granted a permission
+// the composed IPermissionCatalog DEFINES, and until FP-006P these constants were defined nowhere the
+// role-assignment path could see them: no role could hold one, and every Employee endpoint refused every
+// caller. HrPermissionCatalogContributor turns these constants into definitions, and the Host registers it.
+// Adding a constant here without adding it there produces a permission that authorizes nothing.
 //
 // ---- THESE ARE FUNCTIONAL AUTHORITY, AND NOTHING ELSE.
 //

@@ -20,7 +20,9 @@ using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.Application.Roles;
 using SSAS.Platform.Application.TenantStorage;
+using SSAS.Platform.Domain;
 using SSAS.Platform.Domain.Branches;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Identities;
@@ -1443,6 +1445,172 @@ public sealed class EmployeeBoundarySqlServerTests
   // FIXTURE
   // ================================================================================================
 
+  // ================================================================================================
+  // P — THE PERMISSION IS ACTUALLY GRANTABLE (FP-006P, ADR-012 r1.2, DEC-EMP-0030, AC-EMP-0040).
+  // ================================================================================================
+  //
+  // ---- WHAT ESCAPED EVERY EARLIER TEST.
+  //
+  // Every Employee test above supplies its permissions directly, and the API tests mint them into a token.
+  // Both are legitimate ways to test what a permission ALLOWS, and neither touches the question of whether
+  // a real tenant role can ever hold one. It could not: the five names existed as constants that no catalog
+  // defined, `AssignPermissionToRoleCommandHandler` refuses anything the catalog does not know, and
+  // `Role.AssignPermission` needs a definition only the catalog can produce. Production answered 403 to
+  // every caller while 2,202 tests passed.
+  //
+  // These proofs travel the real path end to end: composed catalog, real handler, real role, real role
+  // assignment, real access-token claims, and a real Employee read authorized by NOTHING BUT those claims.
+
+  // ---- P1. THE COMPOSED CATALOG DEFINES ALL FIVE, AT TENANT SCOPE — AND PLATFORM'S ALONE DEFINES NONE.
+  //
+  // The second half is the control: it is the catalog that shipped, and it is why nothing could be granted.
+  [Fact]
+  public void P1_The_composed_catalog_defines_the_hr_permissions_and_the_platform_catalog_does_not()
+  {
+    var composed = EmployeeFixture.ComposedCatalog();
+    var platformOnly = new PlatformPermissionCatalog();
+
+    foreach (var permission in new[]
+    {
+      HrPermissionNames.ViewEmployees,
+      HrPermissionNames.CreateEmployees,
+      HrPermissionNames.UpdateEmployees,
+      HrPermissionNames.TransferEmployees,
+      HrPermissionNames.TerminateEmployees
+    })
+    {
+      Assert.True(composed.TryGet(permission, out var definition), permission);
+      Assert.Equal(PermissionScope.Tenant, definition.Scope);
+      Assert.False(string.IsNullOrWhiteSpace(definition.Description));
+
+      Assert.False(platformOnly.TryGet(permission, out _), permission);
+    }
+
+    // Composing ADDED; it did not disturb what Platform already owned.
+    Assert.All(platformOnly.All, definition => Assert.True(composed.TryGet(definition.Name.Value, out _)));
+  }
+
+  // ---- P2. THE REAL HANDLER GRANTS IT, AND THE ASSIGNMENT IS PERSISTED.
+  //
+  // `AssignPermissionToRoleCommandHandler` over real SQL, with the real role repository and the real
+  // platform unit of work. No claim minting anywhere: this is the path a tenant administrator's request
+  // takes.
+  [Fact]
+  public async Task P2_The_real_role_assignment_handler_grants_an_hr_permission_through_the_composed_catalog()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var granted = await fixture.GrantThroughRealHandlerAsync(
+      fixture.NormalUserId, HrPermissionNames.ViewEmployees, EmployeeFixture.ComposedCatalog());
+
+    Assert.True(granted.IsSuccess, granted.IsFailure ? granted.Error.Code : null);
+
+    // Read back from SQL, so "granted" means a row exists rather than a Result that said so.
+    Assert.True(await fixture.RoleHoldsPermissionAsync(granted.Value, HrPermissionNames.ViewEmployees));
+  }
+
+  // ---- P2b. AND THE CATALOG IS WHAT MAKES THE DIFFERENCE.
+  //
+  // The identical command against the Platform-only catalog is refused as an invalid permission. This is
+  // the blocker reproduced: without composition the handler cannot grant an HR permission at all.
+  [Fact]
+  public async Task P2b_The_same_command_is_refused_by_the_platform_only_catalog()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var refused = await fixture.GrantThroughRealHandlerAsync(
+      fixture.NormalUserId, HrPermissionNames.ViewEmployees, new PlatformPermissionCatalog());
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(IdentityAccessErrors.InvalidPermission.Code, refused.Error.Code);
+  }
+
+  // ---- P3. GRANTED -> CLAIMS -> A REAL EMPLOYEE READ SUCCEEDS.
+  //
+  // The permission set handed to the read path comes from the REAL access-token claims provider, which
+  // derives it from the role assignments in SQL and filters it through the real tenant-scope filter. If the
+  // permission were not genuinely assignable, or did not survive to a token, this read could not succeed —
+  // which is precisely the gap that let the blocker ship.
+  [Fact]
+  public async Task P3_A_permission_granted_to_a_real_role_authorizes_a_real_employee_read()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-P3", fixture.BranchA);
+
+    var granted = await fixture.GrantThroughRealHandlerAsync(
+      fixture.NormalUserId, HrPermissionNames.ViewEmployees, EmployeeFixture.ComposedCatalog());
+    Assert.True(granted.IsSuccess, granted.IsFailure ? granted.Error.Code : null);
+
+    var claimed = await fixture.ClaimedPermissionsAsync(fixture.NormalUserId);
+
+    // The permission survived assignment, persistence, the claims join and the tenant-scope filter.
+    Assert.Contains(HrPermissionNames.ViewEmployees, claimed);
+
+    var read = await fixture.GetWithClaimedPermissionsAsync(
+      fixture.BranchA, employeeId, fixture.NormalUserId, claimed);
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(employeeId, read.Value.EmployeeId);
+  }
+
+  // ---- P4. NEGATIVE CONTROL: THE SAME USER WITHOUT THE PERMISSION IS REFUSED.
+  //
+  // Granted a real, legitimate tenant permission that is simply not this one. Everything else about the
+  // request is identical, so the refusal is attributable to the functional permission and nothing else.
+  [Fact]
+  public async Task P4_A_real_role_without_the_hr_permission_is_refused()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-P4", fixture.BranchA);
+
+    var granted = await fixture.GrantThroughRealHandlerAsync(
+      fixture.NormalUserId, PlatformPermissionNames.ViewCompanies, EmployeeFixture.ComposedCatalog());
+    Assert.True(granted.IsSuccess, granted.IsFailure ? granted.Error.Code : null);
+
+    var claimed = await fixture.ClaimedPermissionsAsync(fixture.NormalUserId);
+
+    Assert.Contains(PlatformPermissionNames.ViewCompanies, claimed);
+    Assert.DoesNotContain(HrPermissionNames.ViewEmployees, claimed);
+
+    var read = await fixture.GetWithClaimedPermissionsAsync(
+      fixture.BranchA, employeeId, fixture.NormalUserId, claimed);
+
+    Assert.True(read.IsFailure);
+    Assert.Equal(EmployeeErrors.ReadPermissionDenied.Code, read.Error.Code);
+  }
+
+  // ---- P5. NEGATIVE CONTROL: TENANT ADMINISTRATOR ALONE IS STILL REFUSED.
+  //
+  // `Platform.Tenant.Administer` widens the two SCOPE dimensions and grants no functional authority
+  // (ADR-025 decision 8). Composing HR's permissions into the catalog must not have quietly made an
+  // administrator able to read employees — which is the failure mode a shared catalog invites.
+  [Fact]
+  public async Task P5_A_tenant_administrator_without_the_hr_permission_is_still_refused()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-P5", fixture.BranchA);
+
+    // The administrator user is seeded holding Platform.Tenant.Administer and nothing else.
+    var claimed = await fixture.ClaimedPermissionsAsync(fixture.AdministratorUserId);
+
+    Assert.Contains(PlatformPermissionNames.AdministerTenant, claimed);
+    Assert.DoesNotContain(HrPermissionNames.ViewEmployees, claimed);
+
+    var read = await fixture.GetWithClaimedPermissionsAsync(
+      fixture.BranchA, employeeId, fixture.AdministratorUserId, claimed);
+
+    Assert.True(read.IsFailure);
+    Assert.Equal(EmployeeErrors.ReadPermissionDenied.Code, read.Error.Code);
+
+    // And the scope dimensions really were reachable for this user, so the refusal is the permission and
+    // not an incidental scope failure.
+    var withPermission = await fixture.GetWithClaimedPermissionsAsync(
+      fixture.BranchA, employeeId, fixture.AdministratorUserId,
+      [.. claimed, HrPermissionNames.ViewEmployees]);
+
+    Assert.True(withPermission.IsSuccess, withPermission.IsFailure ? withPermission.Error.Code : null);
+  }
+
   private sealed class EmployeeFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -1541,6 +1709,109 @@ public sealed class EmployeeBoundarySqlServerTests
       var platform = PlatformContext(Tenant);
       return new TenantCompanyAccessResolver(
         platform, ReadContextFactory(), new TenantAdministratorAuthority(platform));
+    }
+
+
+    // ---- THE PERMISSION CATALOG THE HOST COMPOSES (FP-006P, ADR-012 r1.2).
+    //
+    // Platform's own definitions plus HR's contribution, exactly as Program.cs composes them. Built here
+    // rather than stubbed, because the thing under test IS the composition.
+    public static ComposedPermissionCatalog ComposedCatalog() =>
+      new ComposedPermissionCatalog(new PlatformPermissionCatalog(), [new HrPermissionCatalogContributor()]);
+
+    // ---- GRANT A PERMISSION THE WAY A TENANT ADMINISTRATOR'S REQUEST DOES.
+    //
+    // A real custom role, the real AssignPermissionToRoleCommandHandler over real SQL, and the real role
+    // assignment onto the user. Nothing here writes a claim: if the catalog does not define the permission,
+    // the handler refuses and this returns that refusal.
+    public async Task<Result<long>> GrantThroughRealHandlerAsync(
+      long tenantUserId, string permissionName, IPermissionCatalog catalog)
+    {
+      await using var platform = PlatformContext(Tenant);
+
+      var role = Role.CreateCustom(
+        Tenant, RoleName.Create($"Grant {Guid.NewGuid():N}"[..20]).Value, null, Guid.NewGuid(), Seeded);
+      platform.Roles.Add(role);
+      await platform.SaveChangesAsync();
+
+      var handler = new AssignPermissionToRoleCommandHandler(
+        new RoleRepository(platform),
+        catalog,
+        new PlatformUnitOfWork(platform, new NoOpDispatcher()),
+        new TestTenant(Tenant),
+        new TestUser(),
+        new TestClock());
+
+      var assigned = await handler.HandleAsync(
+        new AssignPermissionToRoleCommand(role.Id, permissionName, role.RowVersion));
+
+      if (assigned.IsFailure)
+      {
+        return Result.Failure<long>(assigned.Error);
+      }
+
+      var user = await platform.TenantUsers
+        .IgnoreQueryFilters()
+        .SingleAsync(candidate => candidate.Id == tenantUserId);
+
+      Assert.True(user.AssignRole(role, Actor, Guid.NewGuid(), Seeded).IsSuccess);
+      await platform.SaveChangesAsync();
+
+      return Result.Success(role.Id);
+    }
+
+    // Read back from SQL: "granted" has to mean a row exists, not that a Result said so.
+    public async Task<bool> RoleHoldsPermissionAsync(long roleId, string permissionName)
+    {
+      await using var platform = PlatformContext(Tenant);
+
+      return await platform.Database
+        .SqlQueryRaw<int>(
+          "SELECT COUNT(*) AS [Value] FROM [platform].[RolePermissionAssignments] " +
+          "WHERE [RoleId] = {0} AND [PermissionName] = {1} AND [RemovedUtc] IS NULL",
+          roleId,
+          permissionName)
+        .SingleAsync() == 1;
+    }
+
+    // ---- THE PERMISSIONS A REAL ACCESS TOKEN WOULD CARRY.
+    //
+    // The real AccessTokenClaimsProvider, over the real session, joining the real role assignments and
+    // filtering through the real tenant-scope filter. This is the only permission source the read proofs
+    // use, so a permission that could not be granted could not appear here.
+    public async Task<IReadOnlyCollection<string>> ClaimedPermissionsAsync(long tenantUserId)
+    {
+      var sessionId = await SessionFor(tenantUserId, BranchA);
+
+      await using var platform = PlatformContext(Tenant);
+
+      var binding = await platform.TenantUsers
+        .IgnoreQueryFilters()
+        .Where(user => user.Id == tenantUserId)
+        .Select(user => new { user.IdentityId })
+        .SingleAsync();
+
+      var claims = await new AccessTokenClaimsProvider(platform, ComposedCatalog()).GetClaimsAsync(
+        sessionId,
+        binding.IdentityId,
+        tenantUserId,
+        Tenant,
+        AuthenticationClientId.Create("web").Value,
+        1);
+
+      Assert.True(claims.IsSuccess, claims.IsFailure ? claims.Error.Code : null);
+
+      return claims.Value.Permissions;
+    }
+
+    // A real scoped Employee read whose FUNCTIONAL permission comes from the claims above and nowhere else.
+    public async Task<Result<EmployeeDetail>> GetWithClaimedPermissionsAsync(
+      Guid activeBranch, Guid employeeId, long tenantUserId, IReadOnlyCollection<string> permissions)
+    {
+      using var graph = Graph(activeBranch, tenantUserId, CompanyA);
+
+      return await new GetEmployeeQueryHandler(graph.Scope(permissions), graph.Reads())
+        .HandleAsync(new GetEmployeeQuery(employeeId));
     }
 
     public static Employee NewAggregate(string number) =>
@@ -1927,6 +2198,11 @@ public sealed class EmployeeBoundarySqlServerTests
         TenantCode.Create(code).Value, TenantName.Create($"Employee {code}").Value,
         Actor, Guid.NewGuid(), Seeded).Value;
       platform.Tenants.Add(tenant);
+      await platform.SaveChangesAsync();
+
+      // ACTIVE, because the real access-token claims provider only issues claims for an active tenant and
+      // the permission proofs below travel that path (FP-006P).
+      Assert.True(tenant.Activate(Actor, Guid.NewGuid(), Seeded.AddMinutes(1)).IsSuccess);
       await platform.SaveChangesAsync();
 
       platform.TenantDatabaseAssignments.Add(

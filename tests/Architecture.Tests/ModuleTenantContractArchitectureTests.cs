@@ -5,6 +5,7 @@ using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.BuildingBlocks.Tenancy;
+using SSAS.BuildingBlocks.Tenancy.Permissions;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 
 namespace SSAS.Architecture.Tests;
@@ -33,7 +34,10 @@ public sealed class ModuleTenantContractArchitectureTests
       .Where(type => type != typeof(BranchTransferDeclaration) &&
         type != typeof(BranchTransferErrors) &&
         type != typeof(BranchAccessSummary) &&
-        type != typeof(CompanyAccessSummary))
+        type != typeof(CompanyAccessSummary) &&
+        // What a module DECLARES one of its permissions to be. Data a contributor hands over, with no
+        // behaviour and no scope of its own -- the composer stamps that (ADR-012 r1.2).
+        type != typeof(ModulePermissionDefinition))
       .Where(type => !type.IsCompilerGenerated())
       .Select(type => type.FullName)
       .ToArray();
@@ -180,9 +184,17 @@ public sealed class ModuleTenantContractArchitectureTests
         // The acting tenant user, needed so a module can name WHO is asking when resolving scope. It carries
         // no roles, permissions, session or claims: what they may DO stays with the permission pipeline.
         nameof(ICurrentTenantUser),
+        // A module's own permission definitions, offered to the one composed catalog. Platform composes and
+        // validates; the module owns the names. Without it a module's permissions cannot be granted to any
+        // role, which is the FP-006 release blocker this contract closes (ADR-012 r1.2).
+        nameof(IPermissionCatalogContributor),
         nameof(ITenantBranchAccessResolver),
         nameof(ITenantCompanyAccessResolver),
-        nameof(ITenantUnitOfWork)
+        nameof(ITenantUnitOfWork),
+        // The data half of the permission contribution: a name and the description a tenant administrator
+        // reads. Deliberately carries NO scope -- the composer stamps Tenant, so a module cannot mint
+        // cross-tenant PlatformSupport authority (ADR-012 r1.2).
+        nameof(ModulePermissionDefinition)
       ],
       exported);
   }

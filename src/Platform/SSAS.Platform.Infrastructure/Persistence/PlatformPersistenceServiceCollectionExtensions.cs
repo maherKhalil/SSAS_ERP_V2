@@ -402,7 +402,16 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<CurrentTenantDatabaseRouteProvider>();
     services.AddSingleton<ITenantDatabaseConnectionFactory, TenantDatabaseConnectionFactory>();
     services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
-    services.AddSingleton<IPermissionCatalog, PlatformPermissionCatalog>();
+    // ---- THE PERMISSION CATALOG IS COMPOSED, NOT PLATFORM-ONLY (FP-006P, ADR-012 r1.2).
+    //
+    // Platform's built-in definitions plus every EXPLICITLY registered module contribution. Registering
+    // PlatformPermissionCatalog directly here is what left HR's five permissions unassignable: a role may
+    // only be granted a name the catalog defines, and no catalog defined them.
+    //
+    // The built-in set is still registered as its own concrete type, because it remains the authoritative
+    // Platform-owned half and several call sites want exactly that half.
+    services.AddSingleton<PlatformPermissionCatalog>();
+    services.AddSingleton<IPermissionCatalog, ComposedPermissionCatalog>();
     services.AddSingleton<ILocalizationCatalog>(GeneratedLocalizationCatalog.Instance);
     services.AddSingleton<ILocalizationTenantCache, LocalizationMemoryCache>();
     services.AddSingleton<ILocalizationDiagnostics, LocalizationDiagnostics>();

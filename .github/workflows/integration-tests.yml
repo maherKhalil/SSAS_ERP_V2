@@ -157,6 +157,7 @@ jobs:
       # connection from the test process, so sqlcmd is required rather than convenient. Nothing else here
       # uses it, and `bcp` and the rest of the toolset are not installed.
       - name: Install sqlcmd
+        timeout-minutes: 5
         run: |
           set -euo pipefail
 
@@ -174,7 +175,20 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
 
           sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18
+
+          # ---- THE EULA IS ANSWERED BEFORE apt IS ASKED.
+          #
+          # mssql-tools18 prompts for licence acceptance through debconf. `sudo ACCEPT_EULA=Y apt-get …`
+          # looks like it answers that, but sudo strips the variable from the environment it passes on, so
+          # the prompt still appears — and with no terminal the step does not fail, it HANGS. One run sat on
+          # it for 38 minutes before being cancelled.
+          #
+          # Preseeding the answer removes the question entirely, and DEBIAN_FRONTEND=noninteractive is
+          # carried through `sudo env` rather than assumed.
+          echo 'mssql-tools18 mssql-tools/accept_eula boolean true' | sudo debconf-set-selections
+          sudo env DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y \
+            apt-get install -y --no-install-recommends mssql-tools18
+
           echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
 
       - name: Verify sqlcmd is on PATH

@@ -2,7 +2,7 @@
 id: ADR-023
 title: Tenant Branch Model, Authorization and Execution Context
 category: Architecture Decision Record
-version: 1.0
+version: 1.1
 status: Accepted
 date: 2026-08-18
 owner: Solution Architecture Team
@@ -261,6 +261,16 @@ Decision **22**.
 
 It is neither implemented nor enforced. No reporting exists. `ITenantBranchAccessResolver` supplies the scope primitives — current branch, authorized set — but nothing prevents a future report from omitting the branch predicate. The executable guard must be written alongside the first branch-scoped report, in the same slice.
 
+> **Correction A (revision 1.1) — decision 22 is now implemented and enforced.**
+>
+> `FP-006C4` delivered the first branch-scoped read (`GetEmployee`, `SearchEmployees`, `GetEmployeeBranchHistory`) and the guard in the same slice, discharging the forward requirement below.
+>
+> The enforcement is **structural rather than procedural**. `EmployeeReadScope` carries the resolved tenant, company and branch sets; its constructor is private and its only factory is internal, called from `EmployeeScopeResolver` alone. Every method on `IEmployeeReadService` requires one as its first, non-optional parameter. An unscoped employee read is therefore a compile error, not a review finding, and a scope naming branches the caller cannot reach cannot be fabricated.
+>
+> `AllAuthorizedBranches` is materialized into an identifier list by the resolver, so the composed SQL is an `IN` list in every mode and predicate omission has no representation. An empty authorized set refuses the read.
+>
+> The guard is `tests/Architecture.Tests/EmployeeReadScopeArchitectureTests.cs` (19 tests), which asserts against the compiled model and the type system rather than naming or comments — including that no global query filter on the composed tenant model references `CompanyId` or `BranchId`. `EmployeeBoundarySqlServerTests` proofs `R1`–`R23` prove the same properties against real SQL Server, with negative controls seeded in branches and companies the reader is not authorized for.
+
 ## Delivered scope
 
 **Implemented:** branch persistence, `UserBranchAccess`, branch lifecycle (create, rename, deactivate, main-branch switching, first-branch onboarding), mandatory user branch assignments, topology locking, `ActiveBranchId` session foundation, branch selection and switching, write-time reauthorization.
@@ -290,6 +300,8 @@ Functional authorization for the user-management commands is deferred until thos
 ## Forward requirement — the reporting guard
 
 The first branch-scoped reporting implementation must add both the executable enforcement pattern and an architecture guard proving that authorized branch predicates cannot be omitted. Until then, decision 22 is an architectural requirement, not a control.
+
+> **Discharged (revision 1.1) by `FP-006C4`.** Decision 22 is now a control. See *Correction A* above for the mechanism and the guards.
 
 ---
 
@@ -484,3 +496,4 @@ This ADR should be reviewed when:
 | Version | Date | Author | Description |
 |----------|------|--------|-------------|
 | 1.0 | 2026-08-18 | Solution Architecture Team | Establishes the tenant branch model, authorization and execution context. Records the twenty-two decisions with their implementation status and deferred obligations. |
+| 1.1 | 2026-08-19 | Solution Architecture Team | Correction A: decision 22 is implemented and enforced as of `FP-006C4`, which delivered the first branch-scoped reads together with the required executable guard. The forward requirement for the reporting guard is discharged; enforcement is structural (an unforgeable resolved scope required by every read) rather than procedural, and is proven by 19 architecture guards and real-SQL proofs `R1`–`R23`. LOW-1 remains closed by `FP-006C3`. No decision text changed. |

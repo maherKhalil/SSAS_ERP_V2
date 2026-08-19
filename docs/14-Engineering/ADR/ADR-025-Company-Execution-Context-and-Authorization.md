@@ -2,7 +2,7 @@
 id: ADR-025
 title: Company Execution Context and Authorization
 category: Architecture Decision Record
-version: 1.0
+version: 1.1
 status: Proposed
 date: 2026-08-18
 owner: Solution Architecture Team
@@ -100,6 +100,15 @@ Define the company execution context and authorization model such that:
 8. **Functional permission, company scope and branch scope are three independent authorization dimensions.** For a company-and-branch-owned entity such as `Employee`, an operation requires **all three**, and none substitutes for another. Holding a functional permission grants no company or branch scope. Holding company or branch scope grants no operation.
 9. **The company write boundary mirrors the proven branch philosophy.** Company-owned writes stamp `CompanyId` on insert from the trusted context; a caller-supplied value is **confirmed, never trusted**, and refused if it does not match; post-creation `CompanyId` change is refused; modification and deletion of a record owned by another company are refused; and company authorization is re-asked against live state on the write.
 10. **Company-scoped reads use explicit authorized-company predicates, and there is no global current-company query filter.** A global filter pinned to one company would make authorized multi-company reads unexpressible, and would defeat the reason `ADR-014` gives for carrying `TenantId` alongside `CompanyId`. "All companies" means **all companies currently authorized to the requesting user**, materialized as an explicit predicate. A read is never produced by omitting the `CompanyId` predicate. An **executable architecture guard** is required, analogous to `ADR-023` decision 22, asserting that company-scoped predicates cannot be omitted; it must be written in the same slice as the first company-scoped read.
+
+> **Correction A (revision 1.1) — the guard required by this decision now exists.**
+>
+> `FP-006C4` delivered the first company-scoped reads (`GetEmployee`, `SearchEmployees`, `GetEmployeeBranchHistory`) and the guard in the same slice, as this decision requires.
+>
+> Company scope is carried by `AuthorizedCompanyScope` inside an `EmployeeReadScope`, which every read requires as its first, non-optional parameter and which only `EmployeeScopeResolver` can construct. `AllAuthorizedCompanies` is materialized into an identifier list before any query is composed, so the predicate is an `IN` list in both modes and omission has no representation; an empty authorized set refuses the read rather than degrading to unfiltered.
+>
+> The guard is `tests/Architecture.Tests/EmployeeReadScopeArchitectureTests.cs`. It asserts against the composed EF model — with the HR contributor applied — that **no** global query filter references `CompanyId` or `BranchId`, and that the tenant filter is still present; the remaining tests assert properties of the type system rather than of naming, so none can be satisfied by a rename or a comment. Real-SQL proofs `R1`–`R23` in `EmployeeBoundarySqlServerTests` prove the same behaviour against SQL Server, seeding a sibling company in the *same* branch so the company predicate is load-bearing rather than incidental.
+
 11. **Durable company selection is deferred.** No `ActiveCompanyId` is added to the session record in V1. Per-request selection makes it unnecessary, and adding a nullable session column later is additive and changes no business schema.
 12. **No company topology lock is introduced.** `BranchTopologyLock` exists because the branch invariant — that an active normal user always retains at least one active branch — spans two databases and cannot be held by a transaction. No equivalent company invariant exists: no authority requires a user to hold at least one company, so zero authorized companies is simply no company-owned access, refused at the operation. Adding a second application lock without that justification would add contention and a failure mode for nothing.
 
@@ -350,3 +359,4 @@ This ADR should be reviewed when:
 | Version | Date | Author | Description |
 |----------|------|--------|-------------|
 | 1.0 | 2026-08-18 | Solution Architecture Team | Establishes the company execution context and authorization model. Supersedes ADR-014 decisions 7 and 8 and the company query-filter machinery sketched in ADR-014 decision 6. |
+| 1.1 | 2026-08-19 | Solution Architecture Team | Correction A: the executable architecture guard required by decision 10 exists as of `FP-006C4`, delivered in the same slice as the first company-scoped reads. Enforcement is structural — an unforgeable resolved scope that every read requires — and is proven by 19 architecture guards, including one asserting that no global query filter on the composed tenant model references `CompanyId` or `BranchId`, plus real-SQL proofs `R1`–`R23`. No decision text changed. |

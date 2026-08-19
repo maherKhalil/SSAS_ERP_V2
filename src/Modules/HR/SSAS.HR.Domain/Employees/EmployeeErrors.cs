@@ -62,4 +62,35 @@ public static class EmployeeErrors
 
   public static readonly Error ConcurrencyConflict =
     new("Employee.ConcurrencyConflict", "The employee was modified concurrently; reload and retry.");
+
+  // ---- READ SCOPE (FP-006C4, ADR-023 decision 22, ADR-025 decision 10).
+  //
+  // THE FUNCTIONAL DIMENSION IS DISTINGUISHABLE FROM THE SCOPE DIMENSIONS, deliberately. "You may not
+  // perform this operation" discloses nothing about which companies or branches exist, so telling a caller
+  // they lack the permission is safe and far more useful than a generic refusal.
+  public static readonly Error ReadPermissionDenied =
+    new("Employee.ReadPermissionDenied", "The HR employee view permission is required.");
+
+  // ---- ONE ANSWER PER DIMENSION, GENERIC WITHIN IT.
+  //
+  // Unauthorized, inactive and nonexistent are INDISTINGUISHABLE (api-contracts). Whatever the resolver
+  // underneath distinguishes, the HR surface collapses it, so a read cannot be used to probe which companies
+  // or branches exist. An empty authorized set answers the same way — it never degrades to unfiltered.
+  //
+  // The two dimensions stay separable FROM EACH OTHER because a caller has to be able to tell whether to
+  // select a different company or a different branch, and neither answer reveals anything about the other.
+  public static readonly Error CompanyScopeDenied =
+    new("Employee.CompanyScopeDenied", "The requested company scope is not available to this user.");
+
+  public static readonly Error BranchScopeDenied =
+    new("Employee.BranchScopeDenied", "The requested branch scope is not available to this user.");
+
+  // A malformed scope REQUEST: branch identifiers supplied for a mode that takes none, an empty selection,
+  // or an empty identifier. Safe to distinguish because it describes the REQUEST rather than any branch's
+  // existence or state.
+  public static readonly Error InvalidReadScope =
+    new("Employee.InvalidReadScope", "The requested employee scope is not valid.");
+
+  public static readonly Error InvalidPagination =
+    new("Employee.InvalidPagination", "The requested page number or page size is out of range.");
 }

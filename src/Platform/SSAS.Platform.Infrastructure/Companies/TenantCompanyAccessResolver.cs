@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.Platform.Application.Abstractions.Queries;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Domain.Companies;

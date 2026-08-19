@@ -7,6 +7,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Application.Permissions;

@@ -1,5 +1,6 @@
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.BuildingBlocks.Tenancy.Branches;
+using SSAS.BuildingBlocks.Tenancy.Companies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;

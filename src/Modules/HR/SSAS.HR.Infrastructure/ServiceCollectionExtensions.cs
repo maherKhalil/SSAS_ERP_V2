@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.HR.Application.Employees;
+using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Infrastructure.Persistence;
 
 namespace SSAS.HR.Infrastructure;
@@ -25,10 +26,22 @@ public static class ServiceCollectionExtensions
 
     services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 
+    // ---- THE READ SIDE (FP-006C4).
+    //
+    // The resolver is SCOPED because everything it consults — the acting user, the selected company, the
+    // execution branch — is per-request, and because a longer lifetime would be a cache of authorization
+    // state, which is precisely what ADR-025 decision 7 forbids.
+    services.AddScoped<IEmployeeScopeResolver, EmployeeScopeResolver>();
+    services.AddScoped<IEmployeeReadService, EmployeeReadService>();
+
     services.AddScoped<CreateEmployeeCommandHandler>();
     services.AddScoped<UpdateEmployeeProfileCommandHandler>();
     services.AddScoped<TerminateEmployeeCommandHandler>();
     services.AddScoped<TransferEmployeeCommandHandler>();
+
+    services.AddScoped<GetEmployeeQueryHandler>();
+    services.AddScoped<SearchEmployeesQueryHandler>();
+    services.AddScoped<GetEmployeeBranchHistoryQueryHandler>();
 
     return services;
   }

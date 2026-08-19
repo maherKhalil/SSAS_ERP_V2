@@ -1,14 +1,19 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Branches;
+using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.HR.Application.Employees;
+using SSAS.HR.Application.Employees.Reads;
+using SSAS.HR.Application.Permissions;
 using SSAS.HR.Domain.Employees;
 using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Application.Authentication;
@@ -823,6 +828,614 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Contains(employee!.GetProperties(), property => property.Name == nameof(Employee.BranchId));
   }
 
+  // ================================================================================================
+  // R — THE READ SCOPE AGAINST REAL SQL (FP-006C4, ADR-023 decision 22, ADR-025 decision 10)
+  // ================================================================================================
+  //
+  // The architecture guards prove the read surface CANNOT be written unscoped. These prove the scope it
+  // requires actually restricts what SQL Server returns.
+  //
+  // ---- EVERY PROOF CARRIES A NEGATIVE CONTROL.
+  //
+  // The data is seeded across TWO companies and THREE branches, and the rows that must not come back are
+  // seeded FIRST. A scoping test on single-branch, single-company data passes whether or not any predicate
+  // exists — it proves only that the row you inserted is the row you got. Where it matters, the proof also
+  // counts the raw table, so "the predicate excluded it" is distinguishable from "it was never there".
+
+  // ---- R1/R2/R3. ALL THREE COLUMNS APPEAR IN THE GENERATED SQL.
+  //
+  // Not "a filter was configured" and not "the right rows came back" — the actual command text that reached
+  // the server, produced by the real read service. This is what ADR-025 decision 10 means by an EXPLICIT
+  // predicate.
+  [Fact]
+  public async Task R1_R3_Every_employee_read_sends_tenant_company_and_branch_predicates_to_the_server()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    await fixture.SeedEmployeeAsync("EMP-R1", fixture.BranchA);
+
+    var (context, sql) = fixture.LoggingContext();
+    await using (context)
+    {
+      var reads = new EmployeeReadService(new StaticAccessor(context));
+      using var graph = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+      var scope = await graph.Scope().ResolveAsync(new EmployeeScopeRequest(
+        CompanyScope: EmployeeCompanyScopeMode.AllAuthorizedCompanies,
+        BranchScope: EmployeeBranchScopeMode.AllAuthorizedBranches));
+
+      Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+
+      await reads.SearchEmployeesAsync(scope.Value, new EmployeeSearchCriteria());
+    }
+
+    var commands = string.Join(Environment.NewLine, sql);
+    var where = commands.IndexOf("WHERE", StringComparison.Ordinal);
+
+    Assert.True(where >= 0, commands);
+    Assert.Contains("[TenantId]", commands[where..], StringComparison.Ordinal);
+    Assert.Contains("[CompanyId]", commands[where..], StringComparison.Ordinal);
+    Assert.Contains("[BranchId]", commands[where..], StringComparison.Ordinal);
+  }
+
+  // ---- R4. THE DEFAULT SCOPE IS ONE BRANCH, and the other branches' employees are genuinely excluded.
+  [Fact]
+  public async Task R4_The_current_branch_scope_excludes_employees_of_other_branches()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    // NEGATIVE CONTROLS FIRST.
+    await fixture.SeedEmployeeAsync("EMP-R4B", fixture.BranchB);
+    await fixture.SeedEmployeeAsync("EMP-R4C", fixture.BranchC);
+    var expected = await fixture.SeedEmployeeAsync("EMP-R4A", fixture.BranchA);
+
+    var page = await fixture.SearchAsync(fixture.BranchA, new EmployeeScopeRequest());
+
+    Assert.Equal([expected], page.Items.Select(item => item.EmployeeId));
+
+    // AND THE EXCLUDED ROWS EXIST. Without this the assertion above would also pass on an empty table.
+    Assert.Equal(3, await fixture.EmployeeCountAsync());
+  }
+
+  // ---- R5. A SUBSET OF THE AUTHORIZED BRANCHES IS HONOURED EXACTLY.
+  [Fact]
+  public async Task R5_A_selected_subset_returns_exactly_those_branches()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var inA = await fixture.SeedEmployeeAsync("EMP-R5A", fixture.BranchA);
+    var inB = await fixture.SeedEmployeeAsync("EMP-R5B", fixture.BranchB);
+    await fixture.SeedEmployeeAsync("EMP-R5C", fixture.BranchC);
+
+    var page = await fixture.SearchAsync(fixture.BranchA, new EmployeeScopeRequest(
+      BranchScope: EmployeeBranchScopeMode.SelectedAuthorizedBranches,
+      SelectedBranchIds: [fixture.BranchA, fixture.BranchB]));
+
+    // Compared as a SET: the server orders identifiers by its own uniqueidentifier collation, so asserting a
+    // .NET-sorted sequence here would be a fact about the client that happens to hold for some Guids.
+    Assert.Equal([inA, inB], page.Items.Select(item => item.EmployeeId).ToHashSet());
+    Assert.Equal(3, await fixture.EmployeeCountAsync());
+  }
+
+  // ---- R6. A NON-SUBSET SELECTION IS REFUSED, and no query is issued at all.
+  //
+  // Refused rather than intersected down to BranchA: a caller must never be told they saw every branch they
+  // named when one of them was silently dropped.
+  [Fact]
+  public async Task R6_A_selection_outside_the_authorized_set_is_refused_before_any_query_runs()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    await fixture.SeedEmployeeAsync("EMP-R6", fixture.BranchA);
+
+    using var graph = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+
+    // The normal user reaches A and B, never C.
+    var scope = await graph.Scope().ResolveAsync(new EmployeeScopeRequest(
+      BranchScope: EmployeeBranchScopeMode.SelectedAuthorizedBranches,
+      SelectedBranchIds: [fixture.BranchA, fixture.BranchC]));
+
+    Assert.True(scope.IsFailure);
+    Assert.Equal(EmployeeErrors.BranchScopeDenied, scope.Error);
+  }
+
+  // ================================================================================================
+  // R7. THE PROOF THAT "ALL" IS MATERIALIZED RATHER THAN OMITTED.
+  // ================================================================================================
+  //
+  // This is the single most important read proof in the slice. An implementation that dropped the branch
+  // predicate when the caller asks for "all authorized branches" would pass every other test here — it would
+  // return MORE rows, and every other test asserts on rows it expects to see.
+  //
+  // So the fixture seeds an employee in BranchC, which the normal user is NOT authorized for, and asserts it
+  // does not come back. A predicate-omission implementation returns it. There is no other way to tell.
+  [Fact]
+  public async Task R7_All_authorized_branches_is_a_materialized_list_not_a_missing_predicate()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var inA = await fixture.SeedEmployeeAsync("EMP-R7A", fixture.BranchA);
+    var inB = await fixture.SeedEmployeeAsync("EMP-R7B", fixture.BranchB);
+    var unauthorized = await fixture.SeedEmployeeAsync("EMP-R7C", fixture.BranchC);
+
+    var page = await fixture.SearchAsync(
+      fixture.BranchA,
+      new EmployeeScopeRequest(BranchScope: EmployeeBranchScopeMode.AllAuthorizedBranches),
+      asUserId: fixture.NormalUserId);
+
+    var returned = page.Items.Select(item => item.EmployeeId).ToHashSet();
+
+    Assert.Equal([inA, inB], returned);
+    Assert.DoesNotContain(unauthorized, returned);
+    Assert.Equal(3, await fixture.EmployeeCountAsync());
+  }
+
+  // ---- R8. AN EMPTY AUTHORIZED SET REFUSES; it never degrades to unfiltered.
+  //
+  // The dangerous version of this bug returns EVERY employee in the tenant, because an empty set became an
+  // empty condition. Here the user's last branch grant is removed and the read is asked for again.
+  [Fact]
+  public async Task R8_An_empty_authorized_branch_set_refuses_rather_than_returning_everything()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    await fixture.SeedEmployeeAsync("EMP-R8A", fixture.BranchA);
+    await fixture.SeedEmployeeAsync("EMP-R8B", fixture.BranchB);
+
+    using var graph = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+
+    await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchA);
+    await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchB);
+
+    var scope = await graph.Scope().ResolveAsync(
+      new EmployeeScopeRequest(BranchScope: EmployeeBranchScopeMode.AllAuthorizedBranches));
+
+    Assert.True(scope.IsFailure);
+    Assert.Equal(EmployeeErrors.BranchScopeDenied, scope.Error);
+    Assert.Equal(2, await fixture.EmployeeCountAsync());
+  }
+
+  // ---- R9. COMPANY AND BRANCH ARE INDEPENDENT DIMENSIONS.
+  //
+  // Two employees in the SAME branch, in DIFFERENT companies. Branch scope alone would return both. This is
+  // what makes the company predicate load-bearing rather than incidental.
+  [Fact]
+  public async Task R9_The_company_predicate_excludes_a_sibling_company_in_the_same_branch()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var inA = await fixture.SeedEmployeeAsync("EMP-R9A", fixture.BranchA, fixture.CompanyA);
+    var inB = await fixture.SeedEmployeeAsync("EMP-R9B", fixture.BranchA, fixture.CompanyB);
+
+    var page = await fixture.SearchAsync(
+      fixture.BranchA, new EmployeeScopeRequest(), company: fixture.CompanyA);
+
+    Assert.Equal([inA], page.Items.Select(item => item.EmployeeId));
+    Assert.DoesNotContain(inB, page.Items.Select(item => item.EmployeeId));
+    Assert.Equal(2, await fixture.EmployeeCountAsync());
+  }
+
+  // ---- R10. SEARCH MAY SPAN THE CALLER'S OWN AUTHORIZED COMPANIES, and only those.
+  [Fact]
+  public async Task R10_All_authorized_companies_spans_companies_and_stays_inside_the_authorized_set()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var inA = await fixture.SeedEmployeeAsync("EMP-R10A", fixture.BranchA, fixture.CompanyA);
+    var inB = await fixture.SeedEmployeeAsync("EMP-R10B", fixture.BranchA, fixture.CompanyB);
+
+    // The user keeps CompanyA only. CompanyB's employee must disappear from the "all companies" read, which
+    // is what makes "all" mean "all AUTHORIZED".
+    await fixture.RevokeCompanyAssignmentAsync(fixture.NormalUserId, fixture.CompanyB);
+
+    var page = await fixture.SearchAsync(
+      fixture.BranchA,
+      new EmployeeScopeRequest(CompanyScope: EmployeeCompanyScopeMode.AllAuthorizedCompanies),
+      asUserId: fixture.NormalUserId);
+
+    Assert.Equal([inA], page.Items.Select(item => item.EmployeeId));
+    Assert.DoesNotContain(inB, page.Items.Select(item => item.EmployeeId));
+  }
+
+  // ---- R11. AN EMPTY AUTHORIZED COMPANY SET REFUSES, for the same reason R8 does.
+  [Fact]
+  public async Task R11_An_empty_authorized_company_set_refuses_rather_than_returning_everything()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    await fixture.SeedEmployeeAsync("EMP-R11", fixture.BranchA);
+
+    using var graph = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+
+    await fixture.RevokeCompanyAssignmentAsync(fixture.NormalUserId, fixture.CompanyA);
+    await fixture.RevokeCompanyAssignmentAsync(fixture.NormalUserId, fixture.CompanyB);
+
+    var scope = await graph.Scope().ResolveAsync(
+      new EmployeeScopeRequest(CompanyScope: EmployeeCompanyScopeMode.AllAuthorizedCompanies));
+
+    Assert.True(scope.IsFailure);
+    Assert.Equal(EmployeeErrors.CompanyScopeDenied, scope.Error);
+  }
+
+  // ---- R12. AN EMPLOYEE OUTSIDE THE SCOPE IS NOT FOUND, not forbidden.
+  //
+  // The caller names a real identifier and is told nothing about it — the same answer they get for an
+  // identifier that never existed, so the read cannot be used to probe.
+  [Fact]
+  public async Task R12_An_employee_outside_the_scope_is_indistinguishable_from_one_that_does_not_exist()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var elsewhere = await fixture.SeedEmployeeAsync("EMP-R12", fixture.BranchB);
+
+    var outOfScope = await fixture.GetAsync(fixture.BranchA, elsewhere);
+    var nonexistent = await fixture.GetAsync(fixture.BranchA, Guid.NewGuid());
+
+    Assert.True(outOfScope.IsFailure);
+    Assert.Equal(EmployeeErrors.NotFound, outOfScope.Error);
+    Assert.Equal(outOfScope.Error, nonexistent.Error);
+  }
+
+  // ---- R13. AND AN EMPLOYEE INSIDE THE SCOPE IS RETURNED, with its scope columns on the row.
+  [Fact]
+  public async Task R13_An_employee_inside_the_scope_is_returned_with_its_company_and_branch()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-R13", fixture.BranchA);
+
+    var result = await fixture.GetAsync(fixture.BranchA, employeeId);
+
+    Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+    Assert.Equal(employeeId, result.Value.EmployeeId);
+    Assert.Equal(fixture.CompanyA, result.Value.CompanyId);
+    Assert.Equal(fixture.BranchA, result.Value.BranchId);
+    Assert.Equal("EMP-R13", result.Value.EmployeeNumber);
+    Assert.Equal(EmployeeStatus.Active, result.Value.Status);
+
+    // ---- AND A TERMINATED EMPLOYEE IS STILL RETRIEVABLE BY IDENTIFIER.
+    //
+    // The Terminated default belongs to SEARCH, where it keeps routine lists from quietly including people
+    // who have left. A direct lookup carries no such default: the record is retained for history and
+    // reporting (`BRULE-EMP-0021`), and hiding it here would make a retained record unreachable — which is
+    // indistinguishable, to a caller, from having deleted it.
+    var terminated = await fixture.SeedEmployeeAsync("EMP-R13T", fixture.BranchA);
+    await fixture.TerminateAsync(terminated, fixture.BranchA);
+
+    var afterTermination = await fixture.GetAsync(fixture.BranchA, terminated);
+
+    Assert.True(afterTermination.IsSuccess, afterTermination.IsFailure ? afterTermination.Error.Code : null);
+    Assert.Equal(EmployeeStatus.Terminated, afterTermination.Value.Status);
+    Assert.NotNull(afterTermination.Value.TerminationDate);
+  }
+
+  // ================================================================================================
+  // R14. THE HISTORY LEAK THAT THE EMPLOYEE-FIRST ORDERING PREVENTS.
+  // ================================================================================================
+  //
+  // EmployeeBranchAssignment is NOT branch-owned, so no branch predicate can be written over it. If the
+  // history read did not prove the employee was in scope first, a caller confined to BranchA could name an
+  // employee in BranchB and receive every branch that employee has ever worked in — a list of branch
+  // identifiers they are not authorized to see, from a table that cannot filter them out.
+  [Fact]
+  public async Task R14_Branch_history_of_an_out_of_scope_employee_is_refused()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var elsewhere = await fixture.SeedEmployeeAsync("EMP-R14", fixture.BranchB);
+
+    // The rows exist and name BranchB. Only the employee scope check stands between them and the caller.
+    Assert.NotEmpty(await fixture.HistoryAsync(elsewhere));
+
+    var history = await fixture.HistoryQueryAsync(fixture.BranchA, elsewhere);
+
+    Assert.True(history.IsFailure);
+    Assert.Equal(EmployeeErrors.NotFound, history.Error);
+
+    // ================================================================================================
+    // THE OTHER HALF OF THE RULE: HISTORICAL BRANCHES ARE NOT RE-AUTHORIZED INDIVIDUALLY.
+    // ================================================================================================
+    //
+    // Access to history is authorized through the employee's CURRENT authorized scope, once. A past
+    // assignment naming a branch the caller can no longer reach is still returned — the employee genuinely
+    // worked there, and suppressing the row would silently corrupt the record rather than protect anything.
+    //
+    // Here an employee moves from BranchB to BranchA, and the reader's access to BranchB is then revoked.
+    // The caller can still reach the employee through BranchA, so the BranchB row must still come back.
+    var moved = await fixture.SeedEmployeeAsync("EMP-R14M", fixture.BranchB);
+    await fixture.TransferAsync(moved, fixture.BranchB, fixture.BranchA);
+
+    await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchB);
+
+    var retained = await fixture.HistoryQueryAsync(fixture.BranchA, moved);
+
+    Assert.True(retained.IsSuccess, retained.IsFailure ? retained.Error.Code : null);
+    Assert.Equal(2, retained.Value.Count);
+
+    // The now-unauthorized branch is still named in the history.
+    Assert.Contains(retained.Value, entry => entry.DestinationBranchId == fixture.BranchB);
+    Assert.Contains(retained.Value, entry => entry.SourceBranchId == fixture.BranchB);
+  }
+
+  // ---- R15. IN SCOPE, THE HISTORY COMES BACK IN EFFECTIVE ORDER.
+  [Fact]
+  public async Task R15_Branch_history_is_returned_in_effective_order_with_the_initial_assignment_first()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-R15", fixture.BranchA);
+    await fixture.TransferAsync(employeeId, fixture.BranchA, fixture.BranchB);
+
+    var history = await fixture.HistoryQueryAsync(fixture.BranchB, employeeId);
+
+    Assert.True(history.IsSuccess, history.IsFailure ? history.Error.Code : null);
+    Assert.Equal(2, history.Value.Count);
+
+    // The initial assignment records where employment STARTED, so it has no source.
+    Assert.Null(history.Value[0].SourceBranchId);
+    Assert.Equal(fixture.BranchA, history.Value[0].DestinationBranchId);
+
+    Assert.Equal(fixture.BranchA, history.Value[1].SourceBranchId);
+    Assert.Equal(fixture.BranchB, history.Value[1].DestinationBranchId);
+
+    Assert.True(history.Value[0].EffectiveFromUtc <= history.Value[1].EffectiveFromUtc);
+  }
+
+  // ================================================================================================
+  // R16. THE POINT-IN-TIME PRIMITIVE, AT EVERY BOUNDARY.
+  // ================================================================================================
+  //
+  // "Where was this employee at time T" is the LAST row whose `EffectiveFromUtc` is at or before T. The read
+  // returns a TOTAL order — `EffectiveFromUtc` then `AssignmentId` — so that answer is deterministic rather
+  // than dependent on an ordering that merely happened to hold. Two assignments can share an instant, and
+  // without the identifier tiebreaker the answer at that instant would be whichever row the server felt like
+  // returning first.
+  //
+  // Every boundary is checked, because the interesting failures are all at the edges: an implementation
+  // using `<` instead of `<=` is correct everywhere except exactly on a transfer instant.
+  //
+  // ---- AND IT IS ANSWERED FROM HISTORY, NEVER FROM Employee.BranchId.
+  //
+  // The employee's CURRENT branch answers "where are they now". Using it for a historical question would
+  // report today's branch for every date in the past — which is precisely the attribution error the
+  // append-only history exists to prevent, and it is asserted against below.
+  [Fact]
+  public async Task R16_The_history_answers_point_in_time_at_every_boundary()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-R16", fixture.BranchA);
+    await fixture.TransferAsync(employeeId, fixture.BranchA, fixture.BranchB);
+    await fixture.TransferAsync(employeeId, fixture.BranchB, fixture.BranchC);
+
+    // Read from BranchC, the employee's current branch, so the read itself is in scope.
+    var history = await fixture.HistoryQueryAsync(fixture.BranchC, employeeId, asUserId: fixture.AdministratorUserId);
+    Assert.True(history.IsSuccess, history.IsFailure ? history.Error.Code : null);
+    Assert.Equal(3, history.Value.Count);
+
+    var initial = history.Value[0].EffectiveFromUtc;
+    var firstTransfer = history.Value[1].EffectiveFromUtc;
+    var secondTransfer = history.Value[2].EffectiveFromUtc;
+
+    // 1. BEFORE THE INITIAL ASSIGNMENT — no row applies. The employee was not employed yet, and the correct
+    //    answer is "nothing", not the earliest branch on file.
+    Assert.Empty(history.Value.Where(entry => entry.EffectiveFromUtc <= initial.AddTicks(-1)));
+
+    // 2. EXACTLY AT THE INITIAL INSTANT — inclusive, so the initial assignment applies.
+    Assert.Equal(fixture.BranchA, BranchAt(history.Value, initial));
+
+    // 3. BETWEEN THE TWO TRANSFERS.
+    Assert.Equal(fixture.BranchB, BranchAt(history.Value, firstTransfer.AddTicks(1)));
+
+    // 4. EXACTLY AT A TRANSFER INSTANT — inclusive, so the transfer has already taken effect. This is the
+    //    case that separates `<=` from `<`.
+    Assert.Equal(fixture.BranchB, BranchAt(history.Value, firstTransfer));
+    Assert.Equal(fixture.BranchC, BranchAt(history.Value, secondTransfer));
+
+    // 5. AFTER THE LATEST TRANSFER.
+    Assert.Equal(fixture.BranchC, BranchAt(history.Value, secondTransfer.AddDays(1)));
+
+    // ---- THE ATTRIBUTION CONTROL.
+    //
+    // The employee's CURRENT branch is BranchC. If historical attribution came from that column instead of
+    // from the history, every assertion above would answer BranchC — so the fact that the earlier instants
+    // answer BranchA and BranchB is what proves it does not.
+    Assert.Equal(fixture.BranchC, await fixture.EmployeeBranchAsync(employeeId));
+    Assert.NotEqual(fixture.BranchC, BranchAt(history.Value, initial));
+  }
+
+  // The primitive itself: the greatest EffectiveFromUtc at or before T, broken by assignment identifier.
+  private static Guid BranchAt(IReadOnlyList<EmployeeBranchHistoryEntry> history, DateTimeOffset at) =>
+    history
+      .Where(entry => entry.EffectiveFromUtc <= at)
+      .OrderBy(entry => entry.EffectiveFromUtc)
+      .ThenBy(entry => entry.AssignmentId)
+      .Last()
+      .DestinationBranchId;
+
+  // ---- R17. TERMINATED IS EXCLUDED FROM A ROUTINE SEARCH.
+  [Fact]
+  public async Task R17_Search_excludes_terminated_employees_by_default()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var active = await fixture.SeedEmployeeAsync("EMP-R17A", fixture.BranchA);
+    var terminated = await fixture.SeedEmployeeAsync("EMP-R17T", fixture.BranchA);
+    await fixture.TerminateAsync(terminated, fixture.BranchA);
+
+    var page = await fixture.SearchAsync(fixture.BranchA, new EmployeeScopeRequest());
+
+    Assert.Equal([active], page.Items.Select(item => item.EmployeeId));
+    Assert.Equal(1, page.TotalCount);
+    Assert.Equal(2, await fixture.EmployeeCountAsync());
+  }
+
+  // ---- R18. AND IS AVAILABLE WHEN ASKED FOR BY NAME, so audit reads remain possible.
+  [Fact]
+  public async Task R18_Search_includes_terminated_employees_when_the_status_is_named()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("EMP-R18A", fixture.BranchA);
+    var terminated = await fixture.SeedEmployeeAsync("EMP-R18T", fixture.BranchA);
+    await fixture.TerminateAsync(terminated, fixture.BranchA);
+
+    var page = await fixture.SearchAsync(
+      fixture.BranchA,
+      new EmployeeScopeRequest(),
+      statuses: [EmployeeStatus.Terminated]);
+
+    Assert.Equal([terminated], page.Items.Select(item => item.EmployeeId));
+  }
+
+  // ---- R19. THE EMPLOYEE NUMBER FILTER MATCHES THE NORMALIZED COLUMN.
+  //
+  // The stored column is binary-collated, so a case-sensitive comparison against the display value would
+  // miss — and would disagree with the unique index that decides what "the same number" means on write.
+  [Fact]
+  public async Task R19_The_employee_number_filter_is_an_exact_normalized_match()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-R19", fixture.BranchA);
+    await fixture.SeedEmployeeAsync("EMP-R19X", fixture.BranchA);
+
+    var matched = await fixture.SearchAsync(
+      fixture.BranchA, new EmployeeScopeRequest(), employeeNumber: "  emp-r19  ");
+
+    Assert.Equal([employeeId], matched.Items.Select(item => item.EmployeeId));
+
+    // EXACT, not a prefix: EMP-R19X must not answer a search for EMP-R19.
+    Assert.Equal(1, matched.TotalCount);
+  }
+
+  // ---- R20. PAGING IS STABLE, because the ordering is total.
+  //
+  // FullName alone is not unique. An unstable sort silently drops rows from one page and repeats them on the
+  // next, which looks like data loss and is nearly impossible to reproduce.
+  [Fact]
+  public async Task R20_Paging_is_stable_across_pages_with_duplicate_names()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    for (var index = 0; index < 5; index++)
+    {
+      await fixture.SeedEmployeeAsync($"EMP-R20-{index}", fixture.BranchA, name: "Identical Name");
+    }
+
+    var first = await fixture.SearchAsync(fixture.BranchA, new EmployeeScopeRequest(), pageNumber: 1, pageSize: 2);
+    var second = await fixture.SearchAsync(fixture.BranchA, new EmployeeScopeRequest(), pageNumber: 2, pageSize: 2);
+    var third = await fixture.SearchAsync(fixture.BranchA, new EmployeeScopeRequest(), pageNumber: 3, pageSize: 2);
+
+    var seen = first.Items.Concat(second.Items).Concat(third.Items)
+      .Select(item => item.EmployeeId).ToArray();
+
+    Assert.Equal(5, seen.Length);
+    Assert.Equal(5, seen.Distinct().Count());
+    Assert.Equal(5, first.TotalCount);
+
+    // ---- AND REPRODUCIBLE, not merely complete.
+    //
+    // Asking for the same page again returns the same rows in the same order. The tiebreaker is the
+    // EmployeeId column, so the sequence is whatever SQL Server's uniqueidentifier collation makes of it —
+    // deliberately NOT compared against .NET Guid ordering, which sorts the bytes differently and would make
+    // this assert a fact about the client rather than about the paging.
+    var firstAgain = await fixture.SearchAsync(fixture.BranchA, new EmployeeScopeRequest(), pageNumber: 1, pageSize: 2);
+
+    Assert.Equal(
+      first.Items.Select(item => item.EmployeeId),
+      firstAgain.Items.Select(item => item.EmployeeId));
+  }
+
+  // ---- R21. THE TOTAL COUNT IS SCOPED TOO.
+  //
+  // A count computed from a wider query would leak the SIZE of the data outside the caller's scope even
+  // though none of the rows were returned — and would make the pager offer pages that come back empty.
+  [Fact]
+  public async Task R21_The_total_count_is_computed_through_the_same_scoped_query()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("EMP-R21A", fixture.BranchA);
+    await fixture.SeedEmployeeAsync("EMP-R21B", fixture.BranchB);
+    await fixture.SeedEmployeeAsync("EMP-R21C", fixture.BranchC);
+
+    // ---- AND A ROW BELONGING TO ANOTHER TENANT ENTIRELY.
+    //
+    // Inserted with raw SQL, because no application path can create one: every write stamps the routed
+    // tenant. It sits in the same physical table, in the caller's own company and branch, differing ONLY in
+    // TenantId — so it is exactly the row that a lost tenant predicate would return.
+    await fixture.InsertForeignTenantEmployeeAsync("EMP-R21F", fixture.CompanyA, fixture.BranchA);
+
+    var page = await fixture.SearchAsync(fixture.BranchA, new EmployeeScopeRequest());
+
+    Assert.Equal(1, page.TotalCount);
+    Assert.Equal(4, await fixture.EmployeeCountAsync());
+
+    // The foreign-tenant row is in the table and out of the result.
+    Assert.DoesNotContain(page.Items, item => item.EmployeeNumber == "EMP-R21F");
+  }
+
+  // ---- R22. THE SCOPE IS RE-RESOLVED, NOT CACHED.
+  //
+  // Access is revocable inside a session's lifetime. The same graph — the same session, the same context —
+  // is asked twice, with a grant removed in between, and the second answer must reflect the removal.
+  [Fact]
+  public async Task R22_Revoking_branch_access_mid_session_narrows_the_next_read()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var inA = await fixture.SeedEmployeeAsync("EMP-R22A", fixture.BranchA);
+    var inB = await fixture.SeedEmployeeAsync("EMP-R22B", fixture.BranchB);
+
+    using var graph = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+    var reads = graph.Reads();
+    var request = new EmployeeScopeRequest(BranchScope: EmployeeBranchScopeMode.AllAuthorizedBranches);
+
+    var before = await graph.Scope().ResolveAsync(request);
+    Assert.True(before.IsSuccess, before.IsFailure ? before.Error.Code : null);
+
+    var firstPage = await reads.SearchEmployeesAsync(before.Value, new EmployeeSearchCriteria());
+    Assert.Equal(2, firstPage.TotalCount);
+
+    await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchB);
+
+    var after = await graph.Scope().ResolveAsync(request);
+    Assert.True(after.IsSuccess, after.IsFailure ? after.Error.Code : null);
+
+    var secondPage = await reads.SearchEmployeesAsync(after.Value, new EmployeeSearchCriteria());
+
+    Assert.Equal([inA], secondPage.Items.Select(item => item.EmployeeId));
+    Assert.DoesNotContain(inB, secondPage.Items.Select(item => item.EmployeeId));
+  }
+
+  // ---- R23. NO GLOBAL FILTER IS DOING THIS WORK.
+  //
+  // The composed model — the real one, with HR's contributor applied — carries a TENANT filter and nothing
+  // else. If a company or branch filter were ever added, every proof above would still pass while the
+  // explicit predicates quietly became decoration, and IgnoreQueryFilters() would become a tenant-wide read
+  // of every employee.
+  [Fact]
+  public async Task R23_The_composed_model_filters_on_tenant_only()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var (context, _) = fixture.LoggingContext();
+    await using (context)
+    {
+      var employee = context.Model.FindEntityType(typeof(Employee));
+      Assert.NotNull(employee);
+
+      var filter = employee!.GetQueryFilter()?.ToString();
+      Assert.NotNull(filter);
+      Assert.Contains("TenantId", filter!, StringComparison.Ordinal);
+      Assert.DoesNotContain("CompanyId", filter!, StringComparison.Ordinal);
+      Assert.DoesNotContain("BranchId", filter!, StringComparison.Ordinal);
+
+      // The append-only history has no branch column at all, which is why its scope has to be inherited.
+      var assignment = context.Model.FindEntityType(typeof(EmployeeBranchAssignment));
+      Assert.DoesNotContain(
+        assignment!.GetProperties(),
+        property => string.Equals(property.Name, "BranchId", StringComparison.Ordinal));
+    }
+  }
+
+
   private static CreateEmployeeCommand NewEmployee(string number, string? nationalId = null) =>
     new(number, "Layla Haddad", new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), nationalId);
 
@@ -940,10 +1553,94 @@ public sealed class EmployeeBoundarySqlServerTests
         Guid.NewGuid(),
         DateTimeOffset.UtcNow).Value;
 
-    public async Task<Guid> SeedEmployeeAsync(string number, Guid branchId)
+    // ---- THE READ PATH, ASKED THE WAY PRODUCTION ASKS IT (FP-006C4).
+    //
+    // Each call builds a fresh graph — a fresh session, a fresh scoped context — resolves a scope through the
+    // real resolver, and reads through the real read service. The scope is never fabricated here, because a
+    // test that fabricated one would prove nothing about the thing under test.
+    public async Task<PagedResult<EmployeeSummary>> SearchAsync(
+      Guid activeBranch,
+      EmployeeScopeRequest request,
+      long? asUserId = null,
+      Guid? company = null,
+      int pageNumber = 1,
+      int pageSize = 50,
+      string? employeeNumber = null,
+      IReadOnlyCollection<EmployeeStatus>? statuses = null)
     {
-      var created = await Graph(branchId).Create().HandleAsync(
-        new CreateEmployeeCommand(number, "Seeded Person",
+      using var graph = Graph(activeBranch, asUserId ?? NormalUserId, company);
+
+      var scope = await graph.Scope().ResolveAsync(request);
+      Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+
+      return await graph.Reads().SearchEmployeesAsync(
+        scope.Value,
+        new EmployeeSearchCriteria(pageNumber, pageSize, employeeNumber, statuses));
+    }
+
+    public async Task<Result<EmployeeDetail>> GetAsync(
+      Guid activeBranch, Guid employeeId, long? asUserId = null, Guid? company = null)
+    {
+      using var graph = Graph(activeBranch, asUserId ?? NormalUserId, company);
+
+      return await new GetEmployeeQueryHandler(graph.Scope(), graph.Reads())
+        .HandleAsync(new GetEmployeeQuery(employeeId));
+    }
+
+    public async Task<Result<IReadOnlyList<EmployeeBranchHistoryEntry>>> HistoryQueryAsync(
+      Guid activeBranch, Guid employeeId, long? asUserId = null, Guid? company = null)
+    {
+      using var graph = Graph(activeBranch, asUserId ?? NormalUserId, company);
+
+      return await new GetEmployeeBranchHistoryQueryHandler(graph.Scope(), graph.Reads())
+        .HandleAsync(new GetEmployeeBranchHistoryQuery(employeeId));
+    }
+
+    public async Task TransferAsync(Guid employeeId, Guid fromBranch, Guid toBranch)
+    {
+      using var graph = Graph(fromBranch);
+
+      var moved = await graph.Transfer().HandleAsync(new TransferEmployeeCommand(
+        employeeId, toBranch, EmployeeBranchTransferReason.Reorganisation, "read proofs",
+        await RowVersionAsync(employeeId)));
+
+      Assert.True(moved.IsSuccess, moved.IsFailure ? moved.Error.Code : null);
+    }
+
+    public async Task TerminateAsync(Guid employeeId, Guid activeBranch)
+    {
+      using var graph = Graph(activeBranch);
+
+      var terminated = await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+        employeeId, DateTimeOffset.UtcNow, EmployeeStatusChangeReason.Resignation,
+        await RowVersionAsync(employeeId)));
+
+      Assert.True(terminated.IsSuccess, terminated.IsFailure ? terminated.Error.Code : null);
+    }
+
+    // A context that records the command text it sends, so a proof can assert on the SQL that actually
+    // reached the server rather than on a configuration that was supposed to produce it. It is the REAL read
+    // service that runs against it — only the logging is added.
+    public (TenantDbContext Context, List<string> Sql) LoggingContext()
+    {
+      var sql = new List<string>();
+
+      var options = new DbContextOptionsBuilder<TenantDbContext>()
+        .UseSqlServer(ConnectionFor(tenantCatalog))
+        .LogTo(sql.Add, [RelationalEventId.CommandExecuting])
+        .Options;
+
+      return (
+        new TenantDbContext(
+          options, new TestUser(), new TestTenant(Tenant), new TestClock(),
+          modelContributors: [new HrTenantModelContributor()]),
+        sql);
+    }
+
+    public async Task<Guid> SeedEmployeeAsync(string number, Guid branchId, Guid? company = null, string name = "Seeded Person")
+    {
+      var created = await Graph(branchId, company: company).Create().HandleAsync(
+        new CreateEmployeeCommand(number, name,
           new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), null));
       Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
       return created.Value;
@@ -956,6 +1653,25 @@ public sealed class EmployeeBoundarySqlServerTests
       await ScalarGuidAsync("Employees", "CompanyId", "EmployeeId", employeeId);
 
     public async Task<int> EmployeeCountAsync() => await CountAsync("Employees");
+
+    // ---- A ROW BELONGING TO A DIFFERENT TENANT, WRITTEN THE ONLY WAY IT CAN BE.
+    //
+    // No application path can produce one: every write stamps the routed tenant and the boundary refuses a
+    // spoofed value. Raw SQL is therefore the only way to create the negative control that proves the tenant
+    // predicate is doing work — a row in the same table, the same company and the same branch as the
+    // caller's own data, differing ONLY in TenantId.
+    public Task InsertForeignTenantEmployeeAsync(string number, Guid companyId, Guid branchId) => ExecuteAsync(
+      tenantCatalog,
+      $"""
+      INSERT INTO [tenant].[Employees]
+        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [EmployeeNumber], [NormalizedEmployeeNumber],
+         [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode], [StatusChangedUtc],
+         [StatusChangedBy], [CreatedUtc], [ModifiedUtc])
+      VALUES
+        ('{Guid.NewGuid():D}', '{Guid.NewGuid():D}', '{companyId:D}', '{branchId:D}', N'{number}', N'{number}',
+         N'Other Tenant Person', SYSDATETIMEOFFSET(), N'Active', N'Created', SYSDATETIMEOFFSET(),
+         N'test', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET())
+      """);
 
     public async Task<int> HistoryRowCountAsync() => await CountAsync("EmployeeBranchAssignments");
 
@@ -1374,6 +2090,22 @@ public sealed class EmployeeBoundarySqlServerTests
 
     public async Task<TenantDbContext> ContextAsync() => await provider.GetRequiredAsync();
 
+
+    // ---- THE READ SIDE, COMPOSED AS THE HOST COMPOSES IT (FP-006C4).
+    //
+    // Real company resolver, real branch resolver, real current-branch resolution, real read service, over
+    // the SAME scoped context the write side uses. Nothing about the scope is stubbed, because the scope is
+    // the thing under test.
+    public EmployeeScopeResolver Scope(IReadOnlyCollection<string>? permissions = null) => new(
+      fixture.CompanyResolver(),
+      BranchAccess,
+      new CurrentBranchResolverShim(branchAuthorizer, fixture.Tenant),
+      new TestCurrentCompany(Company),
+      new EmployeeFixture.TestTenant(fixture.Tenant),
+      new TestCurrentTenantUser(tenantUserId),
+      new HrUser(permissions ?? [HrPermissionNames.ViewEmployees]));
+
+    public EmployeeReadService Reads() => new(accessor);
     public CreateEmployeeCommandHandler Create() => new(
       new EmployeeRepository(accessor), unitOfWork,
       new CurrentBranchResolverShim(branchAuthorizer, fixture.Tenant),
@@ -1440,6 +2172,35 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     public Task<Result<Guid>> ResolveCurrentBranchAsync(CancellationToken cancellationToken = default) =>
       authorizer.AuthorizeCurrentBranchAsync(tenantId, cancellationToken);
+  }
+
+  // The acting user's FUNCTIONAL permissions, which are a separate question from either scope dimension. A
+  // test can hand this an empty set to prove that scope alone reads nothing.
+  private sealed class HrUser(IReadOnlyCollection<string> permissions) : ICurrentUser
+  {
+    public string? UserId => "employee-c4-tests";
+
+    public string? UserName => "employee-c4-tests";
+
+    public string? Email => null;
+
+    public Guid? CompanyId => null;
+
+    public string? SessionId => null;
+
+    public string? TokenId => null;
+
+    public IReadOnlyCollection<string> Roles => [];
+
+    public IReadOnlyCollection<string> Permissions => permissions;
+  }
+
+  // Hands the read service one already-open context, for the proof that inspects the SQL it sends.
+  private sealed class StaticAccessor(DbContext context)
+    : SSAS.BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor
+  {
+    public Task<DbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult(context);
   }
 
   private sealed class TestCurrentCompany(Guid companyId) : ICurrentCompany

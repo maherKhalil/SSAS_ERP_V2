@@ -1,7 +1,12 @@
 using SSAS.BuildingBlocks.Domain;
 
-namespace SSAS.Platform.Application.Companies;
+namespace SSAS.BuildingBlocks.Tenancy.Companies;
 
+// IT LIVES IN THE MODULE-FACING TENANT CONTRACT SET, not in Platform.Application, for the same reason the
+// branch resolver does (ADR-012 v1.1, FP-006C3): a MODULE must call it and PLATFORM must implement it, and
+// SSAS.Platform.* is itself a module, so a module referencing it there would be a module-to-module
+// reference. It was moved here in FP-006C4, when HR employee reads became the first module caller.
+//
 // WHICH COMPANIES A USER MAY ACT WITHIN, AND THE ONLY PLACE THAT DECIDES IT (FP-006C1, ADR-025 decision 6).
 //
 // TWO SOURCES OF SCOPE, ONE ANSWER. A tenant administrator's scope is every ACTIVE company in the tenant,

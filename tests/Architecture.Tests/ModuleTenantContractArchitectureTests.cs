@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.BuildingBlocks.Tenancy.Branches;
+using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 
@@ -31,7 +32,8 @@ public sealed class ModuleTenantContractArchitectureTests
       // Immutable value carriers and error catalogues are part of a contract's vocabulary, not behaviour.
       .Where(type => type != typeof(BranchTransferDeclaration) &&
         type != typeof(BranchTransferErrors) &&
-        type != typeof(BranchAccessSummary))
+        type != typeof(BranchAccessSummary) &&
+        type != typeof(CompanyAccessSummary))
       .Where(type => !type.IsCompilerGenerated())
       .Select(type => type.FullName)
       .ToArray();
@@ -167,6 +169,9 @@ public sealed class ModuleTenantContractArchitectureTests
         nameof(BranchTransferDeclaration),
         nameof(BranchTransferErrors),
         nameof(BranchTransferMode),
+        // The company scope of the acting user, needed so a module can constrain a company-owned read or
+        // write to the companies that user may reach (FP-006C4). Platform owns the answer; HR must ask it.
+        nameof(CompanyAccessSummary),
         nameof(IBranchTransferAuthorizer),
         nameof(IBranchTransferScope),
         // The trusted execution branch, needed so a module can record which branch an operation happened in
@@ -176,6 +181,7 @@ public sealed class ModuleTenantContractArchitectureTests
         // no roles, permissions, session or claims: what they may DO stays with the permission pipeline.
         nameof(ICurrentTenantUser),
         nameof(ITenantBranchAccessResolver),
+        nameof(ITenantCompanyAccessResolver),
         nameof(ITenantUnitOfWork)
       ],
       exported);

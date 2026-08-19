@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Domain.Companies;

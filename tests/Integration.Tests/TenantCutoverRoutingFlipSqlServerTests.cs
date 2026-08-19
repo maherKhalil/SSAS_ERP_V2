@@ -614,7 +614,7 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
       var platform = PlatformContext();
       return new TenantCutoverCopyService(
         new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout),
-        ConnectionFactory(), platform, Options.Create(copy));
+        ConnectionFactory(), platform, Options.Create(copy), CutoverTenantModel.Source);
     }
 
     public TenantCutoverRoutingFlipService FlipService(ITenantRoutingCacheInvalidator? invalidator = null)

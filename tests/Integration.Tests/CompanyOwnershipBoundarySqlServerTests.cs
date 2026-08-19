@@ -48,7 +48,7 @@ namespace SSAS.Integration.Tests;
 // So the probe is a REAL ICompanyOwnedEntity saved through the REAL TenantDbContext, added to the model by
 // a test-only IModelCustomizer. Nothing about it reaches production: the entity, the customizer and the
 // table all live in this test project and in the throwaway test catalog, and the production tenant model is
-// untouched — which is why the declared tenant-owned copy inventory stays exactly ["Branch", "Company"].
+// untouched — which is why it never enters the cutover copy inventory derived from that model (FP-006C6).
 [Trait("Category", "SqlServer")]
 public sealed class CompanyOwnershipBoundarySqlServerTests
 {

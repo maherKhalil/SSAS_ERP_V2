@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Domain.Companies;
 using SSAS.Platform.Domain.TenantStorage;
+using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 using SSAS.Platform.Infrastructure.TenantStorage;
 
@@ -26,13 +27,23 @@ public sealed class TenantCutoverCopyPlanTests
   // Shared -> Dedicated cutover MUST carry them. Had the manifest not picked Branch up, a promoted tenant
   // would have arrived at its new database with its operating locations missing and every branch-scoped
   // row orphaned.
-  private static readonly string[] DeclaredTenantOwnedEntities = ["Branch", "Company"];
+  private static readonly string[] DeclaredPlatformTenantOwnedEntities = ["Branch", "Company"];
+
+  // ---- THE MODEL, NOW BUILT FROM AN EXPLICIT CONTRIBUTOR SET (FP-006C6).
+  //
+  // Platform.Tests cannot reference HR — that is the module rule working — so these tests exercise the
+  // PLATFORM-ONLY composition and the generic contributor mechanism. The real HR-composed inventory is
+  // proven in Integration.Tests, where both assemblies are reachable.
+  private static IModel PlatformOnlyModel => new ComposedTenantModelSource([]).Model;
+
+  private static IModel ModelWith(params ITenantModelContributor[] contributors) =>
+    new ComposedTenantModelSource(contributors).Model;
 
   [Fact]
   [Trait("Decision", "ADR-020")]
   public void The_manifest_covers_every_tenant_owned_entity_in_the_tenant_model()
   {
-    var modelEntities = TenantDbContextBuilder.TenantModel.GetEntityTypes()
+    var modelEntities = PlatformOnlyModel.GetEntityTypes()
       .Where(entity => !entity.IsOwned())
       .Where(entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))
       .Where(entity => entity.GetTableName() is not null)
@@ -41,11 +52,11 @@ public sealed class TenantCutoverCopyPlanTests
       .ToArray();
 
     // The model and the declared inventory agree...
-    Assert.Equal(DeclaredTenantOwnedEntities.OrderBy(name => name, StringComparer.Ordinal), modelEntities);
+    Assert.Equal(DeclaredPlatformTenantOwnedEntities.OrderBy(name => name, StringComparer.Ordinal), modelEntities);
 
     // ...and the derived plan covers exactly that set, so nothing the application persists for a tenant is
     // left behind by a cutover.
-    var plan = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
+    var plan = TenantCutoverCopyPlan.Build(PlatformOnlyModel);
     Assert.True(plan.IsSuccess);
     Assert.Equal(
       modelEntities,
@@ -58,13 +69,13 @@ public sealed class TenantCutoverCopyPlanTests
   [Trait("Decision", "ADR-020")]
   public void Rowversion_columns_are_excluded_from_the_copy_mapping()
   {
-    var plan = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
+    var plan = TenantCutoverCopyPlan.Build(PlatformOnlyModel);
     Assert.True(plan.IsSuccess);
 
     var companies = Assert.Single(plan.Value, table => table.EntityName == nameof(Company));
 
     // The Company model does carry a rowversion, so this is a live exclusion rather than a vacuous one.
-    var model = TenantDbContextBuilder.TenantModel.FindEntityType(typeof(Company));
+    var model = PlatformOnlyModel.FindEntityType(typeof(Company));
     Assert.NotNull(model);
     Assert.Contains(
       model!.GetProperties(),
@@ -79,7 +90,7 @@ public sealed class TenantCutoverCopyPlanTests
   [Trait("Decision", "ADR-020")]
   public void The_copy_mapping_preserves_keys_tenancy_audit_and_business_columns()
   {
-    var plan = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
+    var plan = TenantCutoverCopyPlan.Build(PlatformOnlyModel);
     var companies = Assert.Single(plan.Value, table => table.EntityName == nameof(Company));
 
     Assert.Equal("tenant", companies.Schema);
@@ -104,7 +115,7 @@ public sealed class TenantCutoverCopyPlanTests
   [Trait("Decision", "ADR-020")]
   public void The_source_projection_is_tenant_filtered_and_primary_key_ordered()
   {
-    var plan = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
+    var plan = TenantCutoverCopyPlan.Build(PlatformOnlyModel);
     var companies = Assert.Single(plan.Value, table => table.EntityName == nameof(Company));
 
     Assert.Equal("[CompanyId]", companies.OrderByPrimaryKey);
@@ -118,7 +129,7 @@ public sealed class TenantCutoverCopyPlanTests
   [Trait("Decision", "ADR-020")]
   public void No_current_tenant_entity_requires_identity_preservation()
   {
-    var plan = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
+    var plan = TenantCutoverCopyPlan.Build(PlatformOnlyModel);
 
     Assert.All(plan.Value, table => Assert.False(table.HasIdentityColumn));
   }
@@ -129,8 +140,8 @@ public sealed class TenantCutoverCopyPlanTests
   [Trait("Decision", "ADR-020")]
   public void The_plan_is_deterministic()
   {
-    var first = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
-    var second = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
+    var first = TenantCutoverCopyPlan.Build(PlatformOnlyModel);
+    var second = TenantCutoverCopyPlan.Build(PlatformOnlyModel);
 
     Assert.True(first.IsSuccess);
     Assert.True(second.IsSuccess);
@@ -157,6 +168,112 @@ public sealed class TenantCutoverCopyPlanTests
       : Assert.Throws<InvalidOperationException>(() => context.SaveChanges());
 
     Assert.Contains("Synchronous SaveChanges is not supported", refused.Message, StringComparison.Ordinal);
+  }
+
+  // ================================================================================================
+  // C6-13 / C6-14 — THE NEXT MODULE CANNOT SLIP THROUGH.
+  // ================================================================================================
+  //
+  // ---- THE DEFECT THIS PAIR REPLACES.
+  //
+  // Until FP-006C6 the copy plan was derived from a model built with NO contributors. HR's entities existed
+  // in the runtime tenant model and could never appear in the cutover manifest, so a Shared to Dedicated
+  // promotion copied Platform's tables, validated cleanly against the tables it knew about, reported
+  // success, and left every employee behind.
+  //
+  // Fixing that for HR alone would have left the CONDITION in place for the next module. These two tests are
+  // the condition itself, expressed as a synthetic contributor — no HR reference, so they keep working for
+  // whichever module comes next.
+
+  // A contributed tenant-owned entity IS discovered, with no special case anywhere in the engine.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void A_contributed_tenant_owned_entity_appears_in_the_derived_copy_plan()
+  {
+    var plan = TenantCutoverCopyPlan.Build(ModelWith(new ProbeContributor()));
+
+    Assert.True(plan.IsSuccess);
+    Assert.Contains(plan.Value, table => table.EntityName == nameof(ContributedProbe));
+
+    // Derived generically: it arrives with the same tenancy, key and column treatment Platform's own
+    // entities get, because nothing about it was named anywhere.
+    var probe = Assert.Single(plan.Value, table => table.EntityName == nameof(ContributedProbe));
+    Assert.Equal(nameof(ITenantOwnedEntity.TenantId), probe.TenantIdColumn);
+    Assert.Equal(["ContributedProbeId"], probe.PrimaryKeyColumns);
+  }
+
+  // ---- AND THE CONTRIBUTOR-FREE MODEL DEMONSTRABLY DOES NOT CONTAIN IT.
+  //
+  // This is the regression detector. It proves the two models are genuinely different — that a plan built
+  // without the contributor set silently omits the contributed table rather than failing — which is exactly
+  // the silence the production fix removed. If these two ever returned the same set, the composition would
+  // have collapsed back and every other test here would still pass.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void A_plan_built_without_the_contributor_set_omits_the_contributed_entity()
+  {
+    var withContributor = TenantCutoverCopyPlan.Build(ModelWith(new ProbeContributor()));
+    var withoutContributor = TenantCutoverCopyPlan.Build(PlatformOnlyModel);
+
+    Assert.True(withContributor.IsSuccess);
+    Assert.True(withoutContributor.IsSuccess);
+
+    Assert.DoesNotContain(withoutContributor.Value, table => table.EntityName == nameof(ContributedProbe));
+
+    // The difference is exactly the contributed entity — the contributor adds, and never disturbs what
+    // Platform already owned.
+    Assert.Equal(
+      withoutContributor.Value.Select(table => table.EntityName).Append(nameof(ContributedProbe))
+        .OrderBy(name => name, StringComparer.Ordinal),
+      withContributor.Value.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
+  }
+
+  // ---- THE INVENTORY GUARD CATCHES IT TOO.
+  //
+  // Deriving the table is only half the protection. The declared inventory is what forces a HUMAN to look at
+  // a new tenant-owned entity and decide its copy order, identity and column treatment — "it compiled"
+  // settles none of that. This proves the guard fails for an entity nobody declared, which is the whole
+  // reason the exact-equality assertion exists.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void The_inventory_guard_fails_for_a_contributed_entity_nobody_declared()
+  {
+    var derived = TenantCutoverCopyPlan.Build(ModelWith(new ProbeContributor()));
+    Assert.True(derived.IsSuccess);
+
+    var declared = DeclaredPlatformTenantOwnedEntities.OrderBy(name => name, StringComparer.Ordinal);
+    var actual = derived.Value.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal);
+
+    // The same comparison the real inventory test makes — and it does NOT hold, which is the point.
+    Assert.NotEqual(declared, actual);
+  }
+
+  // A tenant-owned entity contributed the way a module contributes one. Test-only: it is never registered
+  // with the Host, so it reaches no production model.
+  private sealed class ProbeContributor : ITenantModelContributor
+  {
+    public void Configure(ModelBuilder modelBuilder)
+    {
+      ArgumentNullException.ThrowIfNull(modelBuilder);
+
+      modelBuilder.Entity<ContributedProbe>(builder =>
+      {
+        builder.ToTable("ContributedProbes", "tenant");
+        builder.HasKey(probe => probe.Id);
+        builder.Property(probe => probe.Id).HasColumnName("ContributedProbeId").ValueGeneratedNever();
+        builder.Property(probe => probe.TenantId).IsRequired();
+        builder.Property(probe => probe.Label).HasMaxLength(64).IsRequired();
+      });
+    }
+  }
+
+  internal sealed class ContributedProbe : ITenantOwnedEntity
+  {
+    public Guid Id { get; set; }
+
+    public Guid TenantId { get; set; }
+
+    public string Label { get; set; } = string.Empty;
   }
 
   private static readonly Guid TenantId = Guid.Parse("44444444-4444-4444-4444-444444444444");

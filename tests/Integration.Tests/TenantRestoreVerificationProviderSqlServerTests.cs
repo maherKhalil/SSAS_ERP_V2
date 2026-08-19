@@ -475,8 +475,20 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
       await context.Database.MigrateAsync();
     }
 
+    // ---- BREAKS THE SCHEMA WHILE LEAVING THE MIGRATION HISTORY CLAIMING IT IS FINE.
+    //
+    // Dependents first. Company acquired dependents when FP-006C3 added Employee with a restricted foreign
+    // key to it, so dropping Companies alone now fails on the constraint rather than producing the broken
+    // schema this test needs — the arrange step would fail before the assertion could run.
+    //
+    // Dropping the HR tables here is arrange, not scope creep: the test's premise is "the tables the
+    // application needs are gone", and Employee is now one of them.
     public Task BreakApplicationSchemaAsync() =>
-      ExecuteAsync(SourceDatabase, "DROP TABLE [tenant].[Companies]");
+      ExecuteAsync(SourceDatabase, """
+        DROP TABLE [tenant].[EmployeeBranchAssignments];
+        DROP TABLE [tenant].[Employees];
+        DROP TABLE [tenant].[Companies];
+        """);
 
     // ---- Platform-managed backups. Each records a chain candidate exactly as the Phase B provider would:
     // the trusted destination key plus a safe artifact FILE NAME, never a resolved path.

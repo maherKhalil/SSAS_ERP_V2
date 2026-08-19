@@ -22,6 +22,13 @@ namespace SSAS.Integration.Tests;
 // created catalogs.
 public sealed class TenantSchemaHealthSqlServerTests
 {
+  // THE DEPLOYED TENANT MIGRATION CATALOG, read from EF rather than counted by hand. A literal here goes
+  // stale the moment a migration ships, and this suite proved it: it asserted 2 from before FP-006C3 added
+  // AddHrEmployee, and was not run again until FP-006C6.
+  // The same catalog the production schema-health service compares against, so the test and the system
+  // under test cannot disagree about what "up to date" means.
+  private static readonly int ExpectedTenantMigrationCount = TenantDbContextBuilder.KnownMigrations.Count;
+
   [Fact]
   [Trait("Decision", "ADR-018")]
   public async Task A_fully_migrated_database_is_reported_up_to_date()
@@ -188,7 +195,10 @@ public sealed class TenantSchemaHealthSqlServerTests
     // The tenant schema really exists now, and the tenant history advanced.
     Assert.Equal(1, await HealthFixture.ScalarAsync(fixture.CatalogB,
       "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(N'[tenant].[Companies]')"));
-    Assert.Equal(2, await HealthFixture.ScalarAsync(fixture.CatalogB,
+    // THE WHOLE DEPLOYED CATALOG, not a hard-coded number. This asserted 2 until FP-006C3 added a third
+    // tenant migration, and nobody noticed because this suite was not run again until FP-006C6 — so it now
+    // compares against the catalog itself and cannot go stale when the next migration ships.
+    Assert.Equal(ExpectedTenantMigrationCount, await HealthFixture.ScalarAsync(fixture.CatalogB,
       "SELECT COUNT(*) FROM [tenant].[__EFMigrationsHistory]"));
 
     // Status is persisted, and success is recorded only after post-verification re-read the history.
@@ -251,7 +261,8 @@ public sealed class TenantSchemaHealthSqlServerTests
         or TenantDatabaseMigrationOutcomeKind.SkippedOwnershipHeld);
     Assert.DoesNotContain(TenantDatabaseMigrationOutcomeKind.Failed, kinds);
 
-    Assert.Equal(2, await HealthFixture.ScalarAsync(fixture.CatalogB,
+    // Exactly one migration run happened, so the history holds the deployed catalog once — not twice.
+    Assert.Equal(ExpectedTenantMigrationCount, await HealthFixture.ScalarAsync(fixture.CatalogB,
       "SELECT COUNT(*) FROM [tenant].[__EFMigrationsHistory]"));
   }
 

@@ -145,7 +145,10 @@ public sealed class PlatformIdentityAccessPersistenceTests
             // Which branches a tenant user may enter (Branch foundation B0). Platform-plane because
             // authentication reads it before a tenant database is reached; the branch rows themselves live
             // in the tenant ERP database and are deliberately referenced by identifier only.
-            "UserBranchAccess"
+            "UserBranchAccess",
+            // FP-006C1 added the user-to-company assignment table. This list asserted the platform schema
+            // without it until FP-006C6, when this suite was run again.
+            "UserCompanyAccess"
           ],
           tables.Where(name => !name.StartsWith("__", StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal));
         Assert.Contains("__EFMigrationsHistory", tables);

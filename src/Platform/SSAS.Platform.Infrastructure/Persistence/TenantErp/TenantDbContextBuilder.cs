@@ -22,11 +22,16 @@ internal static class TenantDbContextBuilder
   // The deployed Tenant migration catalog — EF's own list, so it cannot drift from what is shipped.
   public static IReadOnlyList<string> KnownMigrations { get; } = ReadKnownMigrations();
 
-  // The tenant model itself, for components that must reason about what a tenant's data IS rather than
-  // query it — the cutover copy engine derives its table manifest, column lists and foreign-key ordering
-  // from exactly this (ADR-020, TS-Storage Phase E3). Built once from the same context type the application
-  // uses, so a manifest can never describe a different model from the one that is mapped.
-  public static Microsoft.EntityFrameworkCore.Metadata.IModel TenantModel { get; } = ReadTenantModel();
+  // ---- THERE IS DELIBERATELY NO TenantModel HERE ANY MORE (FP-006C6).
+  //
+  // A static contributor-free model used to live on this type, and the cutover copy engine derived its table
+  // manifest from it. That manifest could not contain a module-contributed entity, so a Shared to Dedicated
+  // promotion copied Platform's tenant tables, validated cleanly against the tables it knew about, and left
+  // HR's behind without a single error.
+  //
+  // The model now comes from ITenantModelSource, which is built from the REGISTERED contributor set. Removing
+  // the static rather than fixing it is the point: a contributor-free tenant model is no longer something a
+  // future caller can reach for by accident.
 
   public static TenantDbContext ForConnection(SqlConnection connection)
   {
@@ -39,7 +44,7 @@ internal static class TenantDbContextBuilder
       .Options;
 
     return new TenantDbContext(
-      options, MaintenanceUser.Instance, MaintenanceTenant.Instance, MaintenanceClock.Instance);
+      options, MaintenanceIdentity.User, MaintenanceIdentity.Tenant, MaintenanceIdentity.Clock);
   }
 
   // A schema-only application-model probe needs the real tenant query filters to compile, but it must not
@@ -56,19 +61,7 @@ internal static class TenantDbContextBuilder
       .Options;
 
     return new TenantDbContext(
-      options, MaintenanceUser.Instance, SchemaProbeTenant.Instance, MaintenanceClock.Instance);
-  }
-
-  private static Microsoft.EntityFrameworkCore.Metadata.IModel ReadTenantModel()
-  {
-    // Model metadata only. EF builds the model without opening the connection, so the placeholder string is
-    // never dialled.
-    var options = new DbContextOptionsBuilder<TenantDbContext>()
-      .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
-      .Options;
-    using var context = new TenantDbContext(
-      options, MaintenanceUser.Instance, MaintenanceTenant.Instance, MaintenanceClock.Instance);
-    return context.Model;
+      options, MaintenanceIdentity.User, MaintenanceIdentity.SchemaProbeTenant, MaintenanceIdentity.Clock);
   }
 
   private static IReadOnlyList<string> ReadKnownMigrations()
@@ -79,50 +72,7 @@ internal static class TenantDbContextBuilder
       .UseSqlServer("Server=catalog-only;Database=catalog-only;Integrated Security=True")
       .Options;
     using var context = new TenantDbContext(
-      options, MaintenanceUser.Instance, MaintenanceTenant.Instance, MaintenanceClock.Instance);
+      options, MaintenanceIdentity.User, MaintenanceIdentity.Tenant, MaintenanceIdentity.Clock);
     return [.. context.Database.GetMigrations()];
-  }
-
-  private sealed class MaintenanceUser : ICurrentUser
-  {
-    public static readonly MaintenanceUser Instance = new();
-
-    public string? UserId => "tenant-storage-maintenance";
-
-    public string? UserName => null;
-
-    public string? Email => null;
-
-    public Guid? CompanyId => null;
-
-    public string? SessionId => null;
-
-    public string? TokenId => null;
-
-    public IReadOnlyCollection<string> Roles => [];
-
-    public IReadOnlyCollection<string> Permissions => [];
-  }
-
-  private sealed class MaintenanceTenant : ICurrentTenant
-  {
-    public static readonly MaintenanceTenant Instance = new();
-
-    // Null on purpose — see the type comment.
-    public Guid? TenantId => null;
-  }
-
-  private sealed class SchemaProbeTenant : ICurrentTenant
-  {
-    public static readonly SchemaProbeTenant Instance = new();
-
-    public Guid? TenantId => Guid.Empty;
-  }
-
-  private sealed class MaintenanceClock : IDateTimeProvider
-  {
-    public static readonly MaintenanceClock Instance = new();
-
-    public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
   }
 }

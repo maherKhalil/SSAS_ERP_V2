@@ -784,7 +784,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       var platform = PlatformContext();
       return new TenantCutoverCopyService(
         new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout),
-        ConnectionFactory(), platform, Options.Create(copy));
+        ConnectionFactory(), platform, Options.Create(copy), CutoverTenantModel.Source);
     }
 
     public TenantCutoverRoutingFlipService FlipService(ITenantRoutingCacheInvalidator? invalidator = null)
@@ -803,7 +803,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       var platform = PlatformContext();
       var store = new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout);
       var copyService = new TenantCutoverCopyService(
-        store, ConnectionFactory(), platform, Options.Create(copy));
+        store, ConnectionFactory(), platform, Options.Create(copy), CutoverTenantModel.Source);
 
       return new TenantCutoverOrchestrator(
         platform,

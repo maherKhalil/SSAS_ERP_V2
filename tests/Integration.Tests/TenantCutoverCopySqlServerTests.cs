@@ -2,8 +2,11 @@ using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Domain;
+using SSAS.HR.Domain.Employees;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Application.Abstractions.Persistence;
@@ -48,13 +51,15 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.True(copied.IsSuccess);
     Assert.Equal(3, copied.Value.TotalRows);
 
-    // TWO TENANT-OWNED TABLES since Branch foundation B0: Branch joined Company in the model-derived copy
-    // manifest, which is exactly what a Shared -> Dedicated cutover must carry. Branch is empty in this
-    // fixture, so TotalRows is unchanged while the table count is not.
-    Assert.Equal(2, copied.Value.TablesCopied);
+    // FOUR TENANT-OWNED TABLES as of FP-006C6. Branch joined Company in Branch foundation B0; Employee and
+    // EmployeeBranchAssignment joined them once the copy plan was derived from the CONTRIBUTOR-COMPOSED
+    // model rather than a contributor-free one. Only Company holds rows in this fixture, so TotalRows is
+    // unchanged while the table count is not — and this count is precisely what would have stayed at two
+    // while a promotion silently left every employee behind.
+    Assert.Equal(4, copied.Value.TablesCopied);
     Assert.Equal(0, copied.Value.TablesAlreadyComplete);
     Assert.Equal(
-      [nameof(Branch), nameof(Company)],
+      [nameof(Branch), nameof(Company), "Employee", "EmployeeBranchAssignment"],
       copied.Value.Tables.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
 
     // TENANT A IS ON THE TARGET, AND ONLY TENANT A.
@@ -134,19 +139,20 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     var first = await fixture.CopyService().CopyAsync(operationId);
     Assert.True(first.IsSuccess);
-    // Branch and Company — the whole tenant-owned manifest (Branch foundation B0).
-    Assert.Equal(2, first.Value.TablesCopied);
+    // The whole tenant-owned manifest: Branch and Company, plus the two HR tables the contributor-composed
+    // model added in FP-006C6.
+    Assert.Equal(4, first.Value.TablesCopied);
 
     // The retry a dead process's replacement would perform.
     var second = await fixture.CopyService().CopyAsync(operationId);
 
     Assert.True(second.IsSuccess);
 
-    // COMPANY IS RECOGNISED AS ALREADY COMPLETE. Branch is not, and that is correct rather than a gap: it
-    // holds no rows in this fixture, and an empty table is indistinguishable from one that was never
-    // copied — so the engine copies it again, moving nothing. The retry's safety claim is about not
-    // DUPLICATING rows, which the counts below still prove exactly.
-    Assert.Equal(1, second.Value.TablesCopied);
+    // COMPANY IS RECOGNISED AS ALREADY COMPLETE. The three empty tables are not, and that is correct rather
+    // than a gap: an empty table is indistinguishable from one that was never copied, so the engine copies
+    // each again, moving nothing. The retry's safety claim is about not DUPLICATING rows, which the counts
+    // below still prove exactly.
+    Assert.Equal(3, second.Value.TablesCopied);
     Assert.Equal(1, second.Value.TablesAlreadyComplete);
     Assert.Equal(5, second.Value.TotalRows);
 
@@ -602,6 +608,344 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     }
   }
 
+  // ================================================================================================
+  // C6 — SHARED → DEDICATED CARRIES THE MODULE-CONTRIBUTED ENTITIES (FP-006C6, ADR-020, ADR-017).
+  // ================================================================================================
+  //
+  // ---- WHAT WAS ACTUALLY BROKEN, AND WHY NOTHING CAUGHT IT.
+  //
+  // The copy manifest is derived from the tenant model, which is the right design — a hand-written table
+  // list is wrong the moment someone adds an entity, and wrong silently. But the model it derived from was
+  // built with NO contributors, so it could not contain Employee no matter what HR registered.
+  //
+  // A promotion therefore copied Companies and Branches, validated every row it copied, reported success,
+  // and left every employee and every branch-assignment record behind. There was no error to notice: the
+  // copy was faithful to the model it was given, and the model was the wrong one.
+  //
+  // These proofs run the REAL copy service against real SQL Server with the contributor set the Host
+  // registers.
+
+  // ---- C6-1 / C6-2. THE MODEL THE CUTOVER PLANS FROM IS THE ONE THE APPLICATION PERSISTS THROUGH.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity()
+  {
+    var composed = CutoverTenantModel.Source.Model;
+
+    // The runtime model contains all four...
+    var derived = composed.GetEntityTypes()
+      .Where(entity => !entity.IsOwned())
+      .Where(entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))
+      .Where(entity => entity.GetTableName() is not null)
+      .Select(entity => entity.ClrType.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Equal(["Branch", "Company", "Employee", "EmployeeBranchAssignment"], derived);
+
+    // ...and the plan derived for the copy covers exactly that set, with nothing declared by hand.
+    var plan = TenantCutoverCopyPlan.Build(composed);
+    Assert.True(plan.IsSuccess);
+    Assert.Equal(
+      derived,
+      plan.Value.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
+  }
+
+  // ---- C6-14. AND THE OLD, CONTRIBUTOR-FREE MODEL DEMONSTRABLY DOES NOT.
+  //
+  // The regression detector. It proves the fix is load-bearing rather than incidental: without the
+  // contributor set the manifest silently loses both HR tables, which is exactly what shipped before this
+  // slice. If these two ever agreed, the composition would have collapsed back and every proof below would
+  // still pass while production quietly lost data again.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void C6_14_A_contributor_free_plan_silently_omits_both_hr_tables()
+  {
+    var composed = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+    var contributorFree = TenantCutoverCopyPlan.Build(CutoverTenantModel.ContributorFreeSource.Model);
+
+    Assert.True(composed.IsSuccess);
+
+    // It SUCCEEDS. That is the danger: an incomplete manifest is not an error, it is a shorter list.
+    Assert.True(contributorFree.IsSuccess);
+
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Employee));
+    Assert.DoesNotContain(
+      contributorFree.Value, table => table.EntityName == nameof(EmployeeBranchAssignment));
+
+    Assert.Equal(
+      composed.Value.Count - 2,
+      contributorFree.Value.Count);
+  }
+
+  // ---- C6-6 / C6-11. DEPENDENCY ORDER, DERIVED FROM FOREIGN KEYS.
+  //
+  // Employee references Company and Branch; the assignment references Employee. Inserting a dependent
+  // before its principal would violate referential integrity with constraints ON, which the engine keeps on
+  // throughout — so the order is a correctness requirement, not a preference.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void C6_6_Employee_is_ordered_after_company_and_branch_and_history_after_employee()
+  {
+    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+    Assert.True(plan.IsSuccess);
+
+    var order = plan.Value.Select(table => table.EntityName).ToArray();
+
+    var company = Array.IndexOf(order, nameof(Company));
+    var branch = Array.IndexOf(order, nameof(Branch));
+    var employee = Array.IndexOf(order, nameof(Employee));
+    var history = Array.IndexOf(order, nameof(EmployeeBranchAssignment));
+
+    Assert.True(employee > company, $"Employee must follow Company. Order: {string.Join(", ", order)}");
+    Assert.True(employee > branch, $"Employee must follow Branch. Order: {string.Join(", ", order)}");
+    Assert.True(history > employee, $"History must follow Employee. Order: {string.Join(", ", order)}");
+
+    // ---- AND THE ORDER IS PRODUCED BY THE FK GRAPH, NOT BY THE NAMES.
+    //
+    // "EmployeeBranchAssignments" sorts BEFORE "Employees" alphabetically, so an alphabetical ordering would
+    // place the dependent first. That it does not is the proof the topological sort is doing the work.
+    Assert.True(
+      string.CompareOrdinal("EmployeeBranchAssignments", "Employees") < 0,
+      "The premise of this assertion no longer holds.");
+  }
+
+  // ---- C6-12. THE HISTORY STILL CARRIES NO BRANCH FOREIGN KEY.
+  //
+  // ADR-024 classifies the assignment as company-owned but NOT branch-owned: it names a source and a
+  // destination and belongs to neither. Adding a branch FK would have made the copy ordering marginally
+  // easier to reason about and would have broken that classification, so it was not done — and this records
+  // that the convenience was declined.
+  [Fact]
+  [Trait("Decision", "ADR-024")]
+  public void C6_12_The_assignment_has_no_branch_foreign_key()
+  {
+    var assignment = CutoverTenantModel.Source.Model.FindEntityType(typeof(EmployeeBranchAssignment));
+    Assert.NotNull(assignment);
+
+    var principals = assignment!.GetForeignKeys()
+      .Select(foreignKey => foreignKey.PrincipalEntityType.ClrType.Name)
+      .ToArray();
+
+    Assert.DoesNotContain(nameof(Branch), principals);
+    Assert.Contains(nameof(Employee), principals);
+  }
+
+  // ---- C6-7. ROWVERSION IS NOT CARRIED ACROSS.
+  //
+  // It is the TARGET's concurrency state, generated by the target on insert. Copying the source's bytes
+  // would hand the new database a token describing a different database's history.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void C6_7_The_employee_rowversion_is_excluded_from_the_copy_projection()
+  {
+    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+    var employees = Assert.Single(plan.Value, table => table.EntityName == nameof(Employee));
+
+    // A live exclusion: Employee genuinely carries a rowversion, so this is not vacuous.
+    var model = CutoverTenantModel.Source.Model.FindEntityType(typeof(Employee));
+    Assert.Contains(
+      model!.GetProperties(),
+      property => property.IsConcurrencyToken && property.ValueGenerated == ValueGenerated.OnAddOrUpdate);
+
+    Assert.DoesNotContain(nameof(Employee.RowVersion), employees.Columns);
+
+    // The assignment carries none at all — it is append-only and never updated — so there is nothing to
+    // exclude and nothing to transport.
+    var assignments = Assert.Single(
+      plan.Value, table => table.EntityName == nameof(EmployeeBranchAssignment));
+
+    Assert.DoesNotContain("RowVersion", assignments.Columns);
+  }
+
+  // ================================================================================================
+  // C6-3 / C6-4 / C6-5 / C6-8 / C6-9 / C6-10 — THE REAL CUTOVER.
+  // ================================================================================================
+  //
+  // One tenant with a full transfer story is promoted while a second tenant sharing the same physical
+  // database is not. Everything below is read back from the destination database with raw SQL.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task C6_3_To_C6_10_A_real_cutover_carries_the_employee_and_its_whole_history()
+  {
+    await using var fixture = await CopyFixture.CreateAsync();
+
+    var moving = await fixture.SeedEmployeeStoryAsync(fixture.TenantA, "MOV");
+
+    // ---- THE LEAKAGE CONTROL, SEEDED FIRST AND IN THE SAME TABLES.
+    //
+    // A co-tenant with its own company, branches, employee and history, sharing the physical source
+    // database. Without it, "the destination contains the right rows" would also be true of a copy that
+    // took everything.
+    var staying = await fixture.SeedEmployeeStoryAsync(fixture.TenantB, "STAY");
+
+    var operationId = await fixture.BeginAndFreezeAsync();
+
+    // Push the TARGET's rowversion counter past anything the source could hold, so the rowversion assertion
+    // below is deterministic rather than a coincidence of two fresh databases.
+    await fixture.AdvanceTargetRowVersionCounterAsync();
+    var watermark = await fixture.TargetRowVersionWatermarkAsync();
+
+    Assert.True(
+      Counter((await fixture.SourceEmployeesAsync(fixture.TenantA)).Single().RowVersion) < watermark,
+      "the source counter is not below the target watermark, so this test would prove nothing");
+
+    var copied = await fixture.CopyService().CopyAsync(operationId);
+
+    Assert.True(copied.IsSuccess, copied.IsFailure ? copied.Error.Code : null);
+
+    // FOUR TABLES, not two. This count is the headline regression: before FP-006C6 it was two, and the
+    // difference was every employee in the tenant.
+    Assert.Equal(4, copied.Value.TablesCopied);
+    Assert.Equal(
+      [nameof(Branch), nameof(Company), nameof(Employee), nameof(EmployeeBranchAssignment)],
+      copied.Value.Tables.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
+
+    // ---- C6-3. THE EMPLOYEE ARRIVED.
+    var targetEmployees = await fixture.TargetEmployeesAsync(fixture.TenantA);
+    var employee = Assert.Single(targetEmployees);
+
+    // ---- C6-8. IDENTIFIERS PRESERVED, never regenerated: every reference to this employee elsewhere in
+    // the estate would otherwise point at nothing.
+    Assert.Equal(moving.EmployeeId, employee.EmployeeId);
+    Assert.Equal(moving.EmployeeNumber, employee.EmployeeNumber);
+
+    // ---- C6-9 / C6-11. CURRENT OWNERSHIP PRESERVED, and pointing at rows that were themselves copied.
+    Assert.Equal(moving.CompanyId, employee.CompanyId);
+    Assert.Equal(moving.DestinationBranchId, employee.BranchId);
+    Assert.Equal(fixture.TenantA, employee.TenantId);
+
+    // ---- C6-7, ON REAL DATA. The destination generated its own token.
+    //
+    // "source bytes != target bytes" is NOT a proof — rowversion is a per-database counter, and two freshly
+    // created databases can legitimately issue identical values. The deterministic proof is the watermark
+    // pushed past anything the source could hold before the copy ran: a token carried over from the source
+    // would necessarily fall below it.
+    Assert.Equal(8, employee.RowVersion.Length);
+    Assert.True(
+      Counter(employee.RowVersion) > watermark,
+      "the employee's rowversion is at or below the pre-copy target watermark, so it was carried over.");
+
+    // ---- C6-4. THE WHOLE HISTORY ARRIVED, in order, with its data intact.
+    var history = await fixture.TargetAssignmentsAsync(fixture.TenantA);
+
+    Assert.Equal(2, history.Count);
+    Assert.Equal([moving.InitialAssignmentId, moving.TransferAssignmentId],
+      history.Select(row => row.AssignmentId));
+
+    // The initial record names where employment STARTED and has no source.
+    Assert.Null(history[0].SourceBranchId);
+    Assert.Equal(moving.SourceBranchId, history[0].DestinationBranchId);
+    Assert.Equal("InitialAssignment", history[0].ReasonCode);
+
+    Assert.Equal(moving.SourceBranchId, history[1].SourceBranchId);
+    Assert.Equal(moving.DestinationBranchId, history[1].DestinationBranchId);
+    Assert.Equal("Reorganisation", history[1].ReasonCode);
+
+    // ---- C6-10. POINT-IN-TIME ATTRIBUTION SURVIVES THE MOVE.
+    //
+    // The greatest EffectiveFromUtc at or before T, computed identically on both sides. This is the proof
+    // that matters most for reporting: an employee's branch on a past date must not change because the
+    // tenant was promoted.
+    var sourceHistory = await fixture.SourceAssignmentsAsync(fixture.TenantA);
+
+    foreach (var instant in new[]
+    {
+      moving.InitialEffectiveUtc,
+      moving.TransferEffectiveUtc.AddTicks(-1),
+      moving.TransferEffectiveUtc,
+      moving.TransferEffectiveUtc.AddDays(1)
+    })
+    {
+      Assert.Equal(BranchAt(sourceHistory, instant), BranchAt(history, instant));
+    }
+
+    // And it is a real comparison: the answer genuinely differs across the transfer instant, so identical
+    // results are not identical because everything answers the same.
+    Assert.NotEqual(
+      BranchAt(history, moving.TransferEffectiveUtc.AddTicks(-1)),
+      BranchAt(history, moving.TransferEffectiveUtc));
+
+    // ---- C6-5. THE CO-TENANT DID NOT TRAVEL.
+    Assert.Empty(await fixture.TargetEmployeesAsync(fixture.TenantB));
+    Assert.Empty(await fixture.TargetAssignmentsAsync(fixture.TenantB));
+
+    // Nothing else arrived either — the destination holds this tenant's rows and no others.
+    Assert.Single(await fixture.TargetEmployeesAsync(null));
+    Assert.Equal(2, (await fixture.TargetAssignmentsAsync(null)).Count);
+
+    // ---- AND THE SOURCE IS UNCHANGED. A copy is not a move.
+    Assert.Single(await fixture.SourceEmployeesAsync(fixture.TenantA));
+    Assert.Single(await fixture.SourceEmployeesAsync(fixture.TenantB));
+    Assert.Equal(staying.EmployeeId, (await fixture.SourceEmployeesAsync(fixture.TenantB)).Single().EmployeeId);
+  }
+
+  // ---- RESUME. THE HR TABLES PARTICIPATE IN IDEMPOTENT RE-RUN.
+  //
+  // Cutover copy is resumable: a second run must prove each table already complete rather than duplicate it.
+  // Adding two tables to the manifest must not create two tables that re-copy on retry.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task C6_Retrying_a_completed_copy_verifies_the_hr_tables_instead_of_duplicating_them()
+  {
+    await using var fixture = await CopyFixture.CreateAsync();
+    await fixture.SeedEmployeeStoryAsync(fixture.TenantA, "RTY");
+    var operationId = await fixture.BeginAndFreezeAsync();
+
+    Assert.True((await fixture.CopyService().CopyAsync(operationId)).IsSuccess);
+
+    var retried = await fixture.CopyService().CopyAsync(operationId);
+
+    Assert.True(retried.IsSuccess, retried.IsFailure ? retried.Error.Code : null);
+
+    // EVERY table already complete, including both HR tables — nothing copied twice.
+    Assert.Equal(4, retried.Value.TablesAlreadyComplete);
+    Assert.Equal(0, retried.Value.TablesCopied);
+
+    // And the destination still holds exactly one of each, so "already complete" was a verification rather
+    // than a shrug.
+    Assert.Single(await fixture.TargetEmployeesAsync(fixture.TenantA));
+    Assert.Equal(2, (await fixture.TargetAssignmentsAsync(fixture.TenantA)).Count);
+  }
+
+  // ---- COUNTS ARE COMPARED, NOT ASSUMED.
+  //
+  // A successful SQL command is not a copy. Source and destination row counts must agree for both HR tables
+  // as well as Platform's.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task C6_Source_and_destination_counts_agree_for_both_hr_tables()
+  {
+    await using var fixture = await CopyFixture.CreateAsync();
+    await fixture.SeedEmployeeStoryAsync(fixture.TenantA, "CNT");
+    await fixture.SeedEmployeeStoryAsync(fixture.TenantB, "OTH");
+    var operationId = await fixture.BeginAndFreezeAsync();
+
+    Assert.True((await fixture.CopyService().CopyAsync(operationId)).IsSuccess);
+
+    Assert.Equal(
+      (await fixture.SourceEmployeesAsync(fixture.TenantA)).Count,
+      (await fixture.TargetEmployeesAsync(fixture.TenantA)).Count);
+
+    Assert.Equal(
+      (await fixture.SourceAssignmentsAsync(fixture.TenantA)).Count,
+      (await fixture.TargetAssignmentsAsync(fixture.TenantA)).Count);
+
+    // The co-tenant's rows are counted on the source and absent from the destination, which is what makes
+    // the equality above a scoped equality rather than a total one.
+    Assert.NotEmpty(await fixture.SourceEmployeesAsync(fixture.TenantB));
+    Assert.Empty(await fixture.TargetEmployeesAsync(fixture.TenantB));
+  }
+
+  // The point-in-time primitive, computed the same way on both databases.
+  private static Guid BranchAt(IReadOnlyList<AssignmentRow> history, DateTimeOffset at) =>
+    history
+      .Where(row => row.EffectiveFromUtc <= at)
+      .OrderBy(row => row.EffectiveFromUtc)
+      .ThenBy(row => row.AssignmentId)
+      .Last()
+      .DestinationBranchId;
+
   // Three real catalogs: the Platform registry, a SHARED source holding two tenants, and a DEDICATED
   // target. The separation is what makes "only tenant A moved" checkable by querying each catalog directly.
   private sealed class CopyFixture : IAsyncDisposable
@@ -744,7 +1088,11 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout),
         ConnectionFactory(),
         platform,
-        Options.Create(copy));
+        Options.Create(copy),
+        // THE HR-COMPOSED TENANT MODEL, exactly as the Host registers it (FP-006C6). Passing the
+        // contributor-free model here would test a cutover that cannot see Employee — which is precisely
+        // the defect this slice closes.
+        CutoverTenantModel.Source);
     }
 
     private TenantDatabaseConnectionFactory ConnectionFactory() => new(Options.Create(storage));
@@ -790,6 +1138,184 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         tenantId, CompanyCode.Create(code).Value, CompanyName.Create($"Company {code}").Value,
         BaseCurrencyCode.Create("USD").Value, Actor, Guid.NewGuid(), Now).Value;
 
+    // ================================================================================================
+    // HR SEEDING, FOR THE FP-006C6 CUTOVER PROOFS.
+    // ================================================================================================
+    //
+    // Raw SQL for the same reason the Company seed uses it: this is arranging a SOURCE database, and going
+    // through the write path would make every arrange step depend on the freeze and the authorizers under
+    // test. The rows are shaped exactly as the C3 write path produces them.
+    //
+    // The transfer story is seeded in full — a company, two branches, an employee currently in the second,
+    // an initial assignment naming the first, and a transfer assignment between them — because the
+    // point-in-time attribution proof needs a history with more than one row in it to mean anything.
+    public async Task<EmployeeStory> SeedEmployeeStoryAsync(Guid tenantId, string prefix)
+    {
+      var story = new EmployeeStory(
+        Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+        $"{prefix}-EMP-1", Now.AddDays(-30), Now.AddDays(-10));
+
+      await using var connection = new SqlConnection(ConnectionFor(SourceCatalog));
+      await connection.OpenAsync();
+      await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+
+      await ExecuteAsync(connection, transaction, """
+        INSERT INTO [tenant].[Companies]
+          ([CompanyId], [TenantId], [CompanyCode], [NormalizedCompanyCode], [CompanyName],
+           [BaseCurrencyCode], [Status], [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy],
+           [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
+        VALUES
+          (@CompanyId, @TenantId, @Code, @Code, @Name, 'USD', N'Active', N'Created', @Stamp, @Actor,
+           @Stamp, @Actor, @Stamp, @Actor);
+        """,
+        ("@CompanyId", story.CompanyId), ("@TenantId", tenantId), ("@Code", $"{prefix}CO"),
+        ("@Name", $"Company {prefix}"), ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
+
+      foreach (var (branchId, code, isMain) in new[]
+      {
+        (story.SourceBranchId, $"{prefix}B1", true),
+        (story.DestinationBranchId, $"{prefix}B2", false)
+      })
+      {
+        await ExecuteAsync(connection, transaction, """
+          INSERT INTO [tenant].[Branches]
+            ([BranchId], [TenantId], [BranchCode], [NormalizedBranchCode], [BranchName], [IsMainBranch],
+             [IsActive], [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
+          VALUES
+            (@BranchId, @TenantId, @Code, @Code, @Name, @IsMain, 1, @Stamp, @Actor, @Stamp, @Actor);
+          """,
+          ("@BranchId", branchId), ("@TenantId", tenantId), ("@Code", code), ("@Name", $"Branch {code}"),
+          ("@IsMain", isMain), ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
+      }
+
+      // The employee's CURRENT branch is the destination: they have already been transferred, which is what
+      // makes "current branch preserved" and "historical attribution preserved" two different assertions.
+      await ExecuteAsync(connection, transaction, """
+        INSERT INTO [tenant].[Employees]
+          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [EmployeeNumber], [NormalizedEmployeeNumber],
+           [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode], [StatusChangedUtc],
+           [StatusChangedBy], [CreatedUtc], [ModifiedUtc], [CreatedBy], [ModifiedBy])
+        VALUES
+          (@EmployeeId, @TenantId, @CompanyId, @BranchId, @Number, @Number, @Name, @Employment,
+           N'Active', N'Created', @Stamp, @Actor, @Stamp, @Stamp, @Actor, @Actor);
+        """,
+        ("@EmployeeId", story.EmployeeId), ("@TenantId", tenantId), ("@CompanyId", story.CompanyId),
+        ("@BranchId", story.DestinationBranchId), ("@Number", story.EmployeeNumber),
+        ("@Name", $"Person {prefix}"), ("@Employment", story.InitialEffectiveUtc.UtcDateTime),
+        ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
+
+      await ExecuteAsync(connection, transaction, """
+        INSERT INTO [tenant].[EmployeeBranchAssignments]
+          ([EmployeeBranchAssignmentId], [TenantId], [CompanyId], [EmployeeId], [SourceBranchId],
+           [DestinationBranchId], [EffectiveFromUtc], [TransferredBy], [ReasonCode], [ReasonText],
+           [CreatedUtc], [CreatedBy])
+        VALUES
+          (@Id, @TenantId, @CompanyId, @EmployeeId, NULL, @Destination, @Effective, @Actor,
+           N'InitialAssignment', NULL, @Stamp, @Actor);
+        """,
+        ("@Id", story.InitialAssignmentId), ("@TenantId", tenantId), ("@CompanyId", story.CompanyId),
+        ("@EmployeeId", story.EmployeeId), ("@Destination", story.SourceBranchId),
+        ("@Effective", story.InitialEffectiveUtc.UtcDateTime), ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
+
+      await ExecuteAsync(connection, transaction, """
+        INSERT INTO [tenant].[EmployeeBranchAssignments]
+          ([EmployeeBranchAssignmentId], [TenantId], [CompanyId], [EmployeeId], [SourceBranchId],
+           [DestinationBranchId], [EffectiveFromUtc], [TransferredBy], [ReasonCode], [ReasonText],
+           [CreatedUtc], [CreatedBy])
+        VALUES
+          (@Id, @TenantId, @CompanyId, @EmployeeId, @Source, @Destination, @Effective, @Actor,
+           N'Reorganisation', @Reason, @Stamp, @Actor);
+        """,
+        ("@Id", story.TransferAssignmentId), ("@TenantId", tenantId), ("@CompanyId", story.CompanyId),
+        ("@EmployeeId", story.EmployeeId), ("@Source", story.SourceBranchId),
+        ("@Destination", story.DestinationBranchId), ("@Effective", story.TransferEffectiveUtc.UtcDateTime),
+        ("@Reason", "consolidating"), ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
+
+      await transaction.CommitAsync();
+
+      return story;
+    }
+
+    private static async Task ExecuteAsync(
+      SqlConnection connection, SqlTransaction transaction, string sql,
+      params (string Name, object Value)[] parameters)
+    {
+      await using var command = connection.CreateCommand();
+      command.Transaction = transaction;
+      command.CommandText = sql;
+
+      foreach (var (name, value) in parameters)
+      {
+        command.Parameters.AddWithValue(name, value);
+      }
+
+      await command.ExecuteNonQueryAsync();
+    }
+
+    public Task<IReadOnlyList<EmployeeRow>> SourceEmployeesAsync(Guid? tenantId) =>
+      ReadEmployeesAsync(SourceCatalog, tenantId);
+
+    public Task<IReadOnlyList<EmployeeRow>> TargetEmployeesAsync(Guid? tenantId) =>
+      ReadEmployeesAsync(TargetCatalog, tenantId);
+
+    public Task<IReadOnlyList<AssignmentRow>> SourceAssignmentsAsync(Guid? tenantId) =>
+      ReadAssignmentsAsync(SourceCatalog, tenantId);
+
+    public Task<IReadOnlyList<AssignmentRow>> TargetAssignmentsAsync(Guid? tenantId) =>
+      ReadAssignmentsAsync(TargetCatalog, tenantId);
+
+    private static async Task<IReadOnlyList<EmployeeRow>> ReadEmployeesAsync(string catalog, Guid? tenantId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = tenantId is null
+        ? "SELECT [EmployeeId], [TenantId], [CompanyId], [BranchId], [EmployeeNumber], [RowVersion] FROM [tenant].[Employees] ORDER BY [EmployeeId];"
+        : "SELECT [EmployeeId], [TenantId], [CompanyId], [BranchId], [EmployeeNumber], [RowVersion] FROM [tenant].[Employees] WHERE [TenantId] = @TenantId ORDER BY [EmployeeId];";
+
+      if (tenantId is { } value)
+      {
+        command.Parameters.AddWithValue("@TenantId", value);
+      }
+
+      var rows = new List<EmployeeRow>();
+      await using var reader = await command.ExecuteReaderAsync();
+      while (await reader.ReadAsync())
+      {
+        rows.Add(new EmployeeRow(
+          reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.GetGuid(3),
+          reader.GetString(4), (byte[])reader[5]));
+      }
+
+      return rows;
+    }
+
+    private static async Task<IReadOnlyList<AssignmentRow>> ReadAssignmentsAsync(string catalog, Guid? tenantId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = tenantId is null
+        ? "SELECT [EmployeeBranchAssignmentId], [TenantId], [EmployeeId], [SourceBranchId], [DestinationBranchId], [EffectiveFromUtc], [ReasonCode] FROM [tenant].[EmployeeBranchAssignments] ORDER BY [EffectiveFromUtc], [EmployeeBranchAssignmentId];"
+        : "SELECT [EmployeeBranchAssignmentId], [TenantId], [EmployeeId], [SourceBranchId], [DestinationBranchId], [EffectiveFromUtc], [ReasonCode] FROM [tenant].[EmployeeBranchAssignments] WHERE [TenantId] = @TenantId ORDER BY [EffectiveFromUtc], [EmployeeBranchAssignmentId];";
+
+      if (tenantId is { } value)
+      {
+        command.Parameters.AddWithValue("@TenantId", value);
+      }
+
+      var rows = new List<AssignmentRow>();
+      await using var reader = await command.ExecuteReaderAsync();
+      while (await reader.ReadAsync())
+      {
+        rows.Add(new AssignmentRow(
+          reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2),
+          await reader.IsDBNullAsync(3) ? null : reader.GetGuid(3),
+          reader.GetGuid(4), reader.GetDateTimeOffset(5), reader.GetString(6)));
+      }
+
+      return rows;
+    }
     // Seeded through raw SQL rather than the fenced context: this is arranging a source database, and going
     // through the write path would make every arrange step depend on the freeze under test.
     public Task SeedCompaniesAsync(Guid tenantId, int count, string prefix) =>
@@ -1100,7 +1626,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // captured plans describe production queries rather than reconstructions of them.
     public async Task ReissueMeasuredQueriesAsync()
     {
-      var plan = TenantCutoverCopyPlan.Build(TenantDbContextBuilder.TenantModel);
+      var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
 
       // NAMED EXPLICITLY, not taken positionally. The manifest holds more than one table since Branch
       // foundation B0, and the shapes measured below are COMPANY's — the seeded, non-trivial table whose
@@ -1300,3 +1826,26 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   }
 }
 
+// The seeded transfer story, so a test can name the rows it expects rather than rediscovering them.
+internal sealed record EmployeeStory(
+  Guid CompanyId,
+  Guid SourceBranchId,
+  Guid DestinationBranchId,
+  Guid EmployeeId,
+  Guid InitialAssignmentId,
+  Guid TransferAssignmentId,
+  string EmployeeNumber,
+  DateTimeOffset InitialEffectiveUtc,
+  DateTimeOffset TransferEffectiveUtc);
+
+internal sealed record EmployeeRow(
+  Guid EmployeeId, Guid TenantId, Guid CompanyId, Guid BranchId, string EmployeeNumber, byte[] RowVersion);
+
+internal sealed record AssignmentRow(
+  Guid AssignmentId,
+  Guid TenantId,
+  Guid EmployeeId,
+  Guid? SourceBranchId,
+  Guid DestinationBranchId,
+  DateTimeOffset EffectiveFromUtc,
+  string ReasonCode);

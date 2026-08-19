@@ -250,6 +250,14 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // The concrete types are registered as well as their interfaces so the orchestrator can enter their
     // UNDER-OWNERSHIP paths — which take a non-forgeable ownership token and therefore cannot sit on the
     // Application-layer interfaces. Both registrations resolve the SAME scoped instance.
+    // ---- THE TENANT MODEL THE CUTOVER COPIES FROM (FP-006C6, ADR-020).
+    //
+    // SINGLETON, because the contributor set is a composition fact fixed for the process, and building an EF
+    // model is expensive. It resolves the SAME IEnumerable<ITenantModelContributor> the runtime context
+    // factory resolves, which is what makes it impossible for the copy manifest and the application's own
+    // persistence to describe different sets of tables.
+    services.AddSingleton<ITenantModelSource, ComposedTenantModelSource>();
+
     services.AddScoped<TenantCutoverCopyService>();
     services.AddScoped<ITenantCutoverCopyService>(provider =>
       provider.GetRequiredService<TenantCutoverCopyService>());

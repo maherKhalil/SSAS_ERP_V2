@@ -4,7 +4,10 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
+using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.Host.API.Authentication;
@@ -15,9 +18,11 @@ using SSAS.HR.API.Employees;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Infrastructure;
+using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.API;
 using SSAS.Platform.Infrastructure;
+using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 using SSAS.Platform.Infrastructure.RequestContext;
 
 namespace SSAS.API.Tests.Employees;
@@ -185,6 +190,61 @@ public sealed class EmployeeHostCompositionTests
     Assert.NotSame(firstScope, secondScope);
     Assert.Null(firstScope.Current);
     Assert.Null(secondScope.Current);
+  }
+
+  // ================================================================================================
+  // H9 — THE PRODUCTION CUTOVER SEES THE MODULE-CONTRIBUTED TENANT ENTITIES (FP-006C6).
+  // ================================================================================================
+  //
+  // ---- THE HALF THAT IS EASY TO GET WRONG.
+  //
+  // Fixing the cutover model in the tests and leaving production contributor-free would look identical from
+  // every cutover test, because those tests construct the copy service themselves. This resolves the model
+  // source from the REAL Host composition — the same registration chain Program.cs builds — and asserts the
+  // HR entities are in it.
+  //
+  // If AddHrInfrastructure ever stopped registering the contributor, or the model source stopped resolving
+  // the registered set, this fails here rather than during somebody's tenant promotion.
+  [Fact]
+  public void H9_The_host_composed_tenant_model_contains_the_contributed_hr_entities()
+  {
+    using var provider = BuildProductionProvider();
+
+    var model = provider.GetRequiredService<ITenantModelSource>().Model;
+
+    var tenantOwned = model.GetEntityTypes()
+      .Where(entity => !entity.IsOwned())
+      .Where(entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))
+      .Where(entity => entity.GetTableName() is not null)
+      .Select(entity => entity.ClrType.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Equal(["Branch", "Company", "Employee", "EmployeeBranchAssignment"], tenantOwned);
+  }
+
+  // ---- H10. ONE CONTRIBUTOR SET, NOT THREE.
+  //
+  // Runtime persistence, the migration tool and the cutover must all compose the same tenant model. They
+  // reach it by different routes — DI for the first and third, an explicit list for the tool, which has no
+  // container — so this asserts the routes agree rather than assuming they do.
+  [Fact]
+  public void H10_The_registered_contributor_set_is_the_one_the_cutover_and_runtime_share()
+  {
+    using var provider = BuildProductionProvider();
+
+    var registered = provider.GetServices<ITenantModelContributor>()
+      .Select(contributor => contributor.GetType().FullName)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // Exactly HR today. A second contributing module must be added here deliberately, which is the prompt
+    // to check the migration tool's list at the same time.
+    Assert.Equal([typeof(HrTenantModelContributor).FullName], registered);
+
+    // The model source resolves that same set rather than a list of its own.
+    var model = provider.GetRequiredService<ITenantModelSource>().Model;
+    Assert.NotNull(model.FindEntityType(typeof(SSAS.HR.Domain.Employees.Employee)));
   }
 
   // The Host's own composition, minus the HTTP pipeline. Connection strings point at a server that is never

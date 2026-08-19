@@ -148,4 +148,8 @@ These are carried commitments that inspection of the codebase will not reveal, b
 4. **`ADR-025` decision 10 guard.** An executable architecture guard proving no company-owned Employee read path can omit its `CompanyId` predicate, shipped with the first Employee read.
 5. **Shared→Dedicated copy inventory.** The declared tenant-owned inventory asserted in the architecture tests must be extended from `["Branch", "Company"]` to include `Employee` and `EmployeeBranchAssignment`, with dependency order `Company` → `Branch` → `Employee` → `EmployeeBranchAssignment`. That assertion is designed to fail on a new tenant-owned entity precisely so ordering, identity and column decisions are made deliberately. See [`data-model.md`](data-model.md) and `AC-EMP-0037` … `AC-EMP-0039`.
 
+> **All five obligations are discharged as of `FP-006C6`.** 1 and 2 by the `B1` and revocation proofs in `FP-006C3`; 3 and 4 by the executable guards in `FP-006C4`; 5 by `FP-006C6`.
+>
+> Obligation 5 turned out to require more than extending the declared list. The copy plan derived its manifest from a tenant model built with **no module contributors**, so `Employee` could not appear in it however the inventory was written — a promotion would have copied Platform's tables, validated every row it copied, reported success, and left every employee behind. The manifest is now derived from the contributor-composed model resolved from the same registration the runtime uses, and the contributor-free static it previously read was removed rather than corrected, so no future caller can reach for one by accident.
+
 No migration is created by this documentation package.

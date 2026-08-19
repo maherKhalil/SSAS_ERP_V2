@@ -208,12 +208,12 @@ public sealed class ModuleTenantContractArchitectureTests
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
         !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .ToDictionary(
-        path => Path.GetFileNameWithoutExtension(path)!,
+        path => RepositoryPaths.ProjectNameFromFile(path),
         path => (IReadOnlyCollection<string>)XDocument.Load(path)
           .Descendants("ProjectReference")
           .Select(reference => reference.Attribute("Include")?.Value)
           .Where(reference => !string.IsNullOrWhiteSpace(reference))
-          .Select(reference => Path.GetFileNameWithoutExtension(reference!))
+          .Select(reference => RepositoryPaths.ProjectName(reference!))
           .ToArray(),
         StringComparer.Ordinal);
   }

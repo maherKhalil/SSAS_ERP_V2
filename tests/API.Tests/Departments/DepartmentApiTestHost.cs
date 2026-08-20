@@ -92,6 +92,25 @@ public sealed class DepartmentApiTestHost : IAsyncLifetime
 
   public HttpClient Client => client ?? throw new InvalidOperationException("The test host has not started.");
 
+  // ---- THE ROUTES THIS HOST ACTUALLY MAPPED.
+  //
+  // Read back from the built application rather than from the source, so the inventory guard sees what
+  // routing registered. Because this harness calls the PRODUCTION mapping extensions, a route added to the
+  // module and not mapped here goes missing from the inventory and the guard fails — which is exactly the
+  // gap that let Phase 4 ship a route no test could reach.
+  public IReadOnlyList<(string Method, string Pattern, string Policy)> MappedRoutes() =>
+  [
+    .. ((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)(application ??
+        throw new InvalidOperationException("The test host has not started."))).DataSources
+      .SelectMany(source => source.Endpoints)
+      .OfType<Microsoft.AspNetCore.Routing.RouteEndpoint>()
+      .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/hr", StringComparison.Ordinal) ?? false)
+      .Select(endpoint => (
+        endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods.FirstOrDefault() ?? "?",
+        endpoint.RoutePattern.RawText!,
+        endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAuthorizeData>()?.Policy ?? string.Empty))
+  ];
+
   public async Task InitializeAsync()
   {
     var builder = WebApplication.CreateBuilder(new WebApplicationOptions

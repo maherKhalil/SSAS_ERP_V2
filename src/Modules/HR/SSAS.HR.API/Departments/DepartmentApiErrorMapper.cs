@@ -144,6 +144,13 @@ public static class DepartmentApiErrorMapper
   // must not (ADR-012) — the compiler refuses it, which is the boundary doing its job. HR's own
   // `Department.ConcurrencyConflict` says the same thing to a caller: both arms above map it to
   // `concurrency.conflict`, so the wire answer is identical and the module stays isolated.
+  //
+  // ---- THE WIRE EQUIVALENCE IS THE CONTRACT, NOT THE ERROR IDENTITY.
+  //
+  // What must hold is that a caller cannot tell WHICH check refused them — the rowversion one or the
+  // primary key. That is satisfied by both codes mapping to the same problem code, not by them being the
+  // same error. If either error is ever renamed or remapped, the two `concurrency.conflict` arms above must
+  // move together, or this translation silently starts disclosing the difference it exists to hide.
   public static Error TranslateManagerConflict(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);

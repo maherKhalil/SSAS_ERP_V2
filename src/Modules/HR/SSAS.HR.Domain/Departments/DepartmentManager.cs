@@ -114,6 +114,35 @@ public sealed class DepartmentManager : Entity<Guid>, IAuditableEntity, ITenantO
       departmentId, tenantId, companyId, employeeId, occurredUtc, actor.Trim()));
   }
 
+  // ---- REPLACEMENT MUTATES THE EXISTING ROW RATHER THAN DELETING AND REINSERTING IT (FP-007 Phase 2).
+  //
+  // The primary key is the department, so a delete-then-insert pair would depend on EF ordering the two
+  // operations correctly against one key — and would leave a window where the department has no manager at
+  // all. Mutating the row keeps the association continuous and makes `RowVersion` do the work it exists for:
+  // two callers replacing the same department's manager from the same read cannot both succeed, because the
+  // second's concurrency token no longer matches.
+  //
+  // That is why replacement is atomic without any additional mechanism, and why "last write wins" is not
+  // reachable here.
+  public Result ReassignTo(Guid employeeId, string actor, DateTimeOffset occurredUtc)
+  {
+    if (employeeId == Guid.Empty)
+    {
+      return Result.Failure(DepartmentErrors.InvalidManagerAssignment);
+    }
+
+    if (!IsValidActor(actor))
+    {
+      return Result.Failure(DepartmentErrors.InvalidActor);
+    }
+
+    EmployeeId = employeeId;
+    AssignedUtc = occurredUtc.ToUniversalTime();
+    AssignedBy = actor.Trim();
+
+    return Result.Success();
+  }
+
   private static bool IsValidActor(string actor) =>
     !string.IsNullOrWhiteSpace(actor) && actor.Trim().Length <= ActorMaximumLength;
 

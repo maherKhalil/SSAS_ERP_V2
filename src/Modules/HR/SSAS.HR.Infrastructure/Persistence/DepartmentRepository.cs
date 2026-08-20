@@ -49,6 +49,24 @@ internal sealed class DepartmentRepository(ITenantDbContextAccessor contextAcces
         cancellationToken);
   }
 
+  public async Task<bool> CodeExistsForAnotherAsync(
+    Guid companyId,
+    string normalizedCode,
+    Guid excludedDepartmentId,
+    CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // Excluding the department itself, so renaming `SALES` to `SALES` is not a conflict with its own row.
+    return await context.Set<Department>()
+      .AsNoTracking()
+      .AnyAsync(
+        department => department.CompanyId == companyId &&
+          department.NormalizedCode == normalizedCode &&
+          department.Id != excludedDepartmentId,
+        cancellationToken);
+  }
+
   public async Task AddAsync(Department department, CancellationToken cancellationToken = default)
   {
     ArgumentNullException.ThrowIfNull(department);
@@ -56,6 +74,59 @@ internal sealed class DepartmentRepository(ITenantDbContextAccessor contextAcces
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
 
     await context.Set<Department>().AddAsync(department, cancellationToken);
+  }
+
+  // ---- THE ANCESTRY WALK, ITERATIVE AND BOUNDED BY THE DATA (ADR-026 decision 4).
+  //
+  // One query per level rather than a recursive CTE. At department depth — single digits in practice — the
+  // round trips are cheap, and the loop reads exactly the rows it needs from the change tracker or the
+  // database in the caller's transaction. A recursive CTE would be faster on a deep tree and would return
+  // detached projections the caller could not then mutate.
+  //
+  // ---- IT IS CYCLE-SAFE EVEN THOUGH WRITES PREVENT CYCLES.
+  //
+  // A `seen` set terminates the walk if the stored hierarchy ever DOES contain a cycle — from a direct SQL
+  // write, a restore of corrupted data, or a defect in this very code. Without it such a row would hang the
+  // request in an infinite loop, which is a far worse failure than the cycle itself. It is deliberately not
+  // a depth cap: an arbitrary limit would refuse legitimate deep hierarchies, while `seen` only stops on an
+  // actual repetition.
+  public async Task<IReadOnlyList<Department>> GetAncestryAsync(
+    Guid departmentId, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    var chain = new List<Department>();
+    var seen = new HashSet<Guid>();
+    Guid? currentId = departmentId;
+
+    while (currentId is { } id && seen.Add(id))
+    {
+      var current = await context.Set<Department>()
+        .SingleOrDefaultAsync(department => department.Id == id, cancellationToken);
+
+      if (current is null)
+      {
+        break;
+      }
+
+      chain.Add(current);
+      currentId = current.ParentDepartmentId;
+    }
+
+    return chain;
+  }
+
+  public async Task<bool> HasActiveChildrenAsync(
+    Guid departmentId, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await context.Set<Department>()
+      .AsNoTracking()
+      .AnyAsync(
+        department => department.ParentDepartmentId == departmentId &&
+          department.Status == DepartmentStatus.Active,
+        cancellationToken);
   }
 
   public async Task<DepartmentManager?> GetManagerAsync(

@@ -218,7 +218,20 @@ public sealed class EmployeeReadScopeArchitectureTests
       .ToArray();
 
     Assert.Equal(hrPermissions.Length, hrPermissions.Distinct(StringComparer.Ordinal).Count());
-    Assert.All(hrPermissions, permission => Assert.StartsWith("HR.Employees.", permission, StringComparison.Ordinal));
+
+    // EVERY HR permission is in HR's own namespace — never an alias of a Platform one, which is what would
+    // let tenant administration substitute for a functional permission. FP-007 added a second resource
+    // beneath it, so the assertion is on the module prefix rather than on one resource.
+    Assert.All(
+      hrPermissions,
+      permission => Assert.StartsWith("HR.", permission, StringComparison.Ordinal));
+
+    Assert.All(
+      hrPermissions,
+      permission => Assert.True(
+        permission.StartsWith("HR.Employees.", StringComparison.Ordinal) ||
+        permission.StartsWith("HR.Departments.", StringComparison.Ordinal),
+        $"Unexpected HR permission resource: {permission}"));
   }
 
   // ==================================================================================================

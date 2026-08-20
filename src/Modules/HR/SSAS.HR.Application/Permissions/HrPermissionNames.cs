@@ -34,4 +34,22 @@ public static class HrPermissionNames
 
   // Separated because termination is terminal and is a sensitive operation under BR-PLT-0103.
   public const string TerminateEmployees = "HR.Employees.Terminate";
+
+  // ---- DEPARTMENT (FP-007 Phase 2, REQ-HR-0100/0101/0102).
+  //
+  // FOUR, AND DELIBERATELY NOT MORE. There is no `HR.Departments.Delete` because deletion does not exist —
+  // a permission authorizing nothing is worse than none — and no `HR.Departments.Manage` catch-all, because
+  // a permission whose description cannot say what it lets someone DO is one nobody can grant responsibly.
+  public const string ViewDepartments = "HR.Departments.View";
+
+  public const string CreateDepartments = "HR.Departments.Create";
+
+  // Covers the ordinary edit, the hierarchy move, and manager assignment. Grouping the hierarchy move here
+  // is a decision rather than an omission: a role able to rename a department but not move it is a
+  // distinction no requirement asks for.
+  public const string UpdateDepartments = "HR.Departments.Update";
+
+  // Separated from Update because it changes whether a department can receive employees — materially
+  // different authority from editing its label.
+  public const string DeactivateDepartments = "HR.Departments.Deactivate";
 }

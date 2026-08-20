@@ -29,7 +29,31 @@ public interface IDepartmentRepository
   Task<bool> CodeExistsAsync(
     Guid companyId, string normalizedCode, CancellationToken cancellationToken = default);
 
+  // The same question, excluding one department — needed when RENAMING, where the department's own existing
+  // code must not count as a conflict with itself.
+  Task<bool> CodeExistsForAnotherAsync(
+    Guid companyId,
+    string normalizedCode,
+    Guid excludedDepartmentId,
+    CancellationToken cancellationToken = default);
+
   Task AddAsync(Department department, CancellationToken cancellationToken = default);
+
+  // ---- THE ANCESTRY WALK (ADR-026 decision 4, BR-HR-0008).
+  //
+  // Returns the chain from the given department UP to its root, the department itself first. The direction
+  // matters: walking up from the PROPOSED PARENT is O(depth), while walking down over descendants of the
+  // department being moved is O(subtree).
+  //
+  // Read INSIDE the caller's transaction, under the hierarchy lock, so the chain it returns is the chain the
+  // write commits against. A cached or no-tracking-outside-transaction answer would reintroduce the gap the
+  // lock closes.
+  Task<IReadOnlyList<Department>> GetAncestryAsync(
+    Guid departmentId, CancellationToken cancellationToken = default);
+
+  // Whether any ACTIVE child references this department. Inactive children do not block deactivation.
+  Task<bool> HasActiveChildrenAsync(
+    Guid departmentId, CancellationToken cancellationToken = default);
 
   // ---- THE MANAGER ASSOCIATION AND THE HISTORY LIVE HERE, NOT IN REPOSITORIES OF THEIR OWN.
   //

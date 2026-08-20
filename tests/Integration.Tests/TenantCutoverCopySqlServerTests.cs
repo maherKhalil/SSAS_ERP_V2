@@ -51,15 +51,24 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.True(copied.IsSuccess);
     Assert.Equal(3, copied.Value.TotalRows);
 
-    // FOUR TENANT-OWNED TABLES as of FP-006C6. Branch joined Company in Branch foundation B0; Employee and
-    // EmployeeBranchAssignment joined them once the copy plan was derived from the CONTRIBUTOR-COMPOSED
-    // model rather than a contributor-free one. Only Company holds rows in this fixture, so TotalRows is
+    // SEVEN TENANT-OWNED TABLES as of FP-007 Phase 1. Branch joined Company in Branch foundation B0;
+    // Employee and EmployeeBranchAssignment joined them once the copy plan was derived from the
+    // CONTRIBUTOR-COMPOSED model rather than a contributor-free one; Department, DepartmentManager and
+    // EmployeeDepartmentAssignment joined in turn. Only Company holds rows in this fixture, so TotalRows is
     // unchanged while the table count is not — and this count is precisely what would have stayed at two
     // while a promotion silently left every employee behind.
-    Assert.Equal(4, copied.Value.TablesCopied);
+    Assert.Equal(7, copied.Value.TablesCopied);
     Assert.Equal(0, copied.Value.TablesAlreadyComplete);
     Assert.Equal(
-      [nameof(Branch), nameof(Company), "Employee", "EmployeeBranchAssignment"],
+      [
+        nameof(Branch),
+        nameof(Company),
+        "Department",
+        "DepartmentManager",
+        "Employee",
+        "EmployeeBranchAssignment",
+        "EmployeeDepartmentAssignment"
+      ],
       copied.Value.Tables.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
 
     // TENANT A IS ON THE TARGET, AND ONLY TENANT A.
@@ -140,19 +149,19 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     var first = await fixture.CopyService().CopyAsync(operationId);
     Assert.True(first.IsSuccess);
     // The whole tenant-owned manifest: Branch and Company, plus the two HR tables the contributor-composed
-    // model added in FP-006C6.
-    Assert.Equal(4, first.Value.TablesCopied);
+    // model added in FP-006C6 and the three FP-007 Phase 1 added.
+    Assert.Equal(7, first.Value.TablesCopied);
 
     // The retry a dead process's replacement would perform.
     var second = await fixture.CopyService().CopyAsync(operationId);
 
     Assert.True(second.IsSuccess);
 
-    // COMPANY IS RECOGNISED AS ALREADY COMPLETE. The three empty tables are not, and that is correct rather
+    // COMPANY IS RECOGNISED AS ALREADY COMPLETE. The six empty tables are not, and that is correct rather
     // than a gap: an empty table is indistinguishable from one that was never copied, so the engine copies
     // each again, moving nothing. The retry's safety claim is about not DUPLICATING rows, which the counts
     // below still prove exactly.
-    Assert.Equal(3, second.Value.TablesCopied);
+    Assert.Equal(6, second.Value.TablesCopied);
     Assert.Equal(1, second.Value.TablesAlreadyComplete);
     Assert.Equal(5, second.Value.TotalRows);
 
@@ -818,11 +827,22 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     Assert.True(copied.IsSuccess, copied.IsFailure ? copied.Error.Code : null);
 
-    // FOUR TABLES, not two. This count is the headline regression: before FP-006C6 it was two, and the
-    // difference was every employee in the tenant.
-    Assert.Equal(4, copied.Value.TablesCopied);
+    // SEVEN TABLES, not two. This count is the headline regression: before FP-006C6 it was two, and the
+    // difference was every employee in the tenant. FP-007 Phase 1 took it to seven, and the three added
+    // names below are the live proof that a Shared→Dedicated cutover carries Departments — the property
+    // ADR-026 decision 7 exists to guarantee, and the reason DepartmentManager is its own table rather than
+    // a column that would have made the copy order undecidable.
+    Assert.Equal(7, copied.Value.TablesCopied);
     Assert.Equal(
-      [nameof(Branch), nameof(Company), nameof(Employee), nameof(EmployeeBranchAssignment)],
+      [
+        nameof(Branch),
+        nameof(Company),
+        "Department",
+        "DepartmentManager",
+        nameof(Employee),
+        nameof(EmployeeBranchAssignment),
+        "EmployeeDepartmentAssignment"
+      ],
       copied.Value.Tables.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
 
     // ---- C6-3. THE EMPLOYEE ARRIVED.
@@ -922,9 +942,15 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     Assert.True(retried.IsSuccess, retried.IsFailure ? retried.Error.Code : null);
 
-    // EVERY table already complete, including both HR tables — nothing copied twice.
+    // EVERY ROW-BEARING table already complete, including both HR tables — nothing copied twice.
+    //
+    // FOUR complete and THREE recopied, not seven complete. The three FP-007 Phase 1 tables are empty in
+    // this fixture, and an empty table is indistinguishable from one that was never copied, so the engine
+    // copies each again and moves nothing — the same rule the retry test above states. The claim this test
+    // makes is that rows are never DUPLICATED, and the destination counts below are what prove it; a table
+    // count of seven here would assert something the engine has never promised.
     Assert.Equal(4, retried.Value.TablesAlreadyComplete);
-    Assert.Equal(0, retried.Value.TablesCopied);
+    Assert.Equal(3, retried.Value.TablesCopied);
 
     // And the destination still holds exactly one of each, so "already complete" was a verification rather
     // than a shrug.

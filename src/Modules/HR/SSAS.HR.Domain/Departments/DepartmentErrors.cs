@@ -8,12 +8,12 @@ namespace SSAS.HR.Domain.Departments;
 // own generic errors and are never restated here, so the HR surface cannot be used to probe for the
 // existence of identifiers it is not allowed to see. This mirrors `EmployeeErrors` exactly.
 //
-// ---- WHAT IS DELIBERATELY ABSENT IN PHASE 1.
+// ---- THE FILE IS IN TWO HALVES, AND THE SPLIT IS MEANINGFUL.
 //
-// There is no `ParentInDifferentCompany`, no `ParentInactive`, no `ParentIsDescendant` and no manager
-// validation error. Each of those needs a repository lookup or application orchestration, and Phase 1
-// implements only invariants the aggregate can decide alone. Adding the error constants early would
-// advertise enforcement that does not exist yet.
+// Above the Phase 2 banner are the refusals the AGGREGATE can decide alone — invalid code, invalid name,
+// self-parent, a lifecycle transition that does not exist. Below it are the ones that need a repository
+// lookup or application orchestration to reach, which is why Phase 1 deliberately carried none of them:
+// an error constant for enforcement that does not exist yet advertises a guarantee nothing provides.
 public static class DepartmentErrors
 {
   public static readonly Error InvalidCode =
@@ -59,4 +59,63 @@ public static class DepartmentErrors
 
   public static readonly Error InvalidDepartmentAssignment =
     new("Department.InvalidDepartmentAssignment", "The employee department assignment is invalid.");
+
+  // ================================================================================================
+  // FP-007 PHASE 2 — THE REFUSALS THAT NEED A REPOSITORY TO REACH
+  // ================================================================================================
+  //
+  // Phase 1 deliberately carried none of these, because the aggregate cannot decide any of them alone.
+  // They arrive now with the application orchestration that can.
+
+  public static readonly Error ParentNotFound =
+    new("Department.ParentNotFound", "The parent department was not found.");
+
+  // NOT "in a different company", stated generically on purpose. Naming the company would confirm that a
+  // department exists somewhere the caller cannot see, which is the disclosure BR-PLT-0002 forbids.
+  public static readonly Error ParentInDifferentCompany =
+    new("Department.ParentInDifferentCompany", "The parent department belongs to a different company.");
+
+  public static readonly Error ParentInactive =
+    new("Department.ParentInactive", "The parent department is not active.");
+
+  // BR-HR-0008. The general case: the proposed parent is somewhere beneath the department being moved.
+  public static readonly Error HierarchyCycle =
+    new("Department.HierarchyCycle", "The move would place a department beneath one of its own descendants.");
+
+  // The hierarchy serialization lock could not be taken. A DISTINCT error rather than a generic failure,
+  // because it is the one refusal here that is transient and worth retrying.
+  public static readonly Error HierarchyMutationBusy =
+    new("Department.HierarchyMutationBusy",
+      "Another department hierarchy change is in progress for this company. Try again.");
+
+  public static readonly Error HasActiveChildren =
+    new("Department.HasActiveChildren",
+      "The department cannot be deactivated while it has active child departments.");
+
+  public static readonly Error ManagerEmployeeNotFound =
+    new("Department.ManagerEmployeeNotFound", "The employee was not found.");
+
+  public static readonly Error ManagerInDifferentCompany =
+    new("Department.ManagerInDifferentCompany", "The employee belongs to a different company.");
+
+  public static readonly Error ManagerTerminated =
+    new("Department.ManagerTerminated", "A terminated employee cannot manage a department.");
+
+  public static readonly Error ManagerNotAssigned =
+    new("Department.ManagerNotAssigned", "The department has no manager to clear.");
+
+  // The caller holds no company scope, or none covering this department. Deliberately the same shape as the
+  // employee surface's refusal, so HR cannot be used to probe for companies.
+  public static readonly Error CompanyScopeDenied =
+    new("Department.CompanyScopeDenied", "The company is outside the caller's authorized scope.");
+
+  public static readonly Error InvalidPagination =
+    new("Department.InvalidPagination", "The requested page number or page size is out of range.");
+
+  public static readonly Error PermissionDenied =
+    new("Department.PermissionDenied", "The caller lacks the required department permission.");
+
+  // Optimistic concurrency. The row moved under the caller between read and write.
+  public static readonly Error ConcurrencyConflict =
+    new("Department.ConcurrencyConflict", "The department was modified by another operation.");
 }

@@ -483,8 +483,17 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     //
     // Dropping the HR tables here is arrange, not scope creep: the test's premise is "the tables the
     // application needs are gone", and Employee is now one of them.
+    //
+    // FP-007 extended the same chain again. Departments references Companies; DepartmentManagers and
+    // EmployeeDepartmentAssignments reference both Departments and Employees. So the list grows by three,
+    // ordered deepest-dependent-first. It stays an EXACT list rather than becoming a pattern sweep: the
+    // next table added to the tenant model should fail here loudly, the way this one did, instead of being
+    // silently left standing and quietly narrowing what this test still breaks.
     public Task BreakApplicationSchemaAsync() =>
       ExecuteAsync(SourceDatabase, """
+        DROP TABLE [tenant].[EmployeeDepartmentAssignments];
+        DROP TABLE [tenant].[DepartmentManagers];
+        DROP TABLE [tenant].[Departments];
         DROP TABLE [tenant].[EmployeeBranchAssignments];
         DROP TABLE [tenant].[Employees];
         DROP TABLE [tenant].[Companies];

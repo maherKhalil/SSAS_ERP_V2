@@ -296,6 +296,36 @@ public sealed class EmployeeHostCompositionTests
       // would be refused by Role.AssignPermission and the permission would still be ungrantable.
       Assert.Equal(PermissionScope.Tenant, definition.Scope);
     }
+
+    // ---- AND THE CONTRIBUTOR ACTUALLY OFFERS WHAT IT IS SUPPOSED TO.
+    //
+    // The loop above iterates the contributor, so it would pass just as happily against an EMPTY one — it
+    // proves "everything offered is grantable", not "the right things are offered". Naming the permissions
+    // closes that: FP-006P's failure was constants defined nowhere the role path could see, and a
+    // contributor that silently stopped offering a name would reproduce it exactly.
+    string[] expected =
+    [
+      HrPermissionNames.ViewEmployees,
+      HrPermissionNames.CreateEmployees,
+      HrPermissionNames.UpdateEmployees,
+      HrPermissionNames.TransferEmployees,
+      HrPermissionNames.TerminateEmployees,
+      HrPermissionNames.ViewDepartments,
+      HrPermissionNames.CreateDepartments,
+      HrPermissionNames.UpdateDepartments,
+      HrPermissionNames.DeactivateDepartments
+    ];
+
+    Assert.Equal(
+      expected.OrderBy(name => name, StringComparer.Ordinal),
+      new HrPermissionCatalogContributor().Permissions
+        .Select(permission => permission.Name)
+        .OrderBy(name => name, StringComparer.Ordinal));
+
+    // NO Delete AND NO Manage. Deletion does not exist, so a permission for it would authorize nothing, and
+    // a catch-all whose description cannot say what it permits is one nobody can grant responsibly.
+    Assert.False(catalog.TryGet("HR.Departments.Delete", out _));
+    Assert.False(catalog.TryGet("HR.Departments.Manage", out _));
   }
 
   // ---- H12. AND PLATFORM'S OWN CATALOG IS UNCHANGED BY THE COMPOSITION.

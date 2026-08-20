@@ -36,7 +36,7 @@ namespace SSAS.Integration.Tests;
 // So the scope resolver is PERMISSIVE in this file, deliberately and visibly. It is not the thing under
 // test; the hierarchy is.
 [Trait("Category", "SqlServer")]
-public sealed class DepartmentApplicationSqlServerTests
+public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITestOutputHelper output)
 {
   // ================================================================================================
   // THE CONCURRENT CYCLE — THE PROOF THIS PHASE EXISTS FOR
@@ -85,11 +85,28 @@ public sealed class DepartmentApplicationSqlServerTests
     var loser = results.Single(result => result.IsFailure);
 
     // The loser's refusal is a NAMED business refusal, not a raw SQL error surfacing through the boundary.
-    Assert.True(
-      loser.Error == DepartmentErrors.HierarchyCycle ||
-      loser.Error == DepartmentErrors.HierarchyMutationBusy ||
-      loser.Error == DepartmentErrors.ConcurrencyConflict,
-      $"Unexpected refusal: {loser.Error.Code}");
+    //
+    // FOUR sanctioned routes, because the loser can be stopped at four different depths and the test cannot
+    // control which one wins the race:
+    //
+    //   * HierarchyCycle           — the ancestry walk saw the move would close a loop;
+    //   * HierarchyMutationBusy    — the per-company app lock was already held;
+    //   * Department.ConcurrencyConflict — the HANDLER's own rowversion pre-check refused a stale token;
+    //   * Persistence.ConcurrencyConflict — the pre-check passed and the DATABASE refused at SaveChanges,
+    //     which is the unit of work translating DbUpdateConcurrencyException exactly as TenantUnitOfWork
+    //     does in production.
+    //
+    // The last one is listed with production's code rather than the department-local one because that is
+    // what a handler actually receives from TenantUnitOfWork; the fixture double mirrors it deliberately.
+    string[] sanctioned =
+    [
+      DepartmentErrors.HierarchyCycle.Code,
+      DepartmentErrors.HierarchyMutationBusy.Code,
+      DepartmentErrors.ConcurrencyConflict.Code,
+      SSAS.Platform.Domain.IdentityAccessErrors.ConcurrencyConflict.Code
+    ];
+
+    Assert.Contains(loser.Error.Code, sanctioned);
 
     // ---- AND THE PERSISTED HIERARCHY IS ACYCLIC, verified by walking it rather than by inference.
     await fixture.AssertAcyclicAsync();
@@ -527,6 +544,114 @@ public sealed class DepartmentApplicationSqlServerTests
     // At most one row, whatever happened above.
     Assert.Equal(1, await fixture.ManagerRowCountAsync(department));
     Assert.Contains(results, result => result.IsSuccess);
+
+    // ================================================================================================
+    // TWO LEGITIMATE OUTCOMES, AND INVARIANTS RATHER THAN A SCRIPTED PATH.
+    // ================================================================================================
+    //
+    // (i)  BOTH SUCCEED. Assignment is an upsert: the handler reads first and REASSIGNS when a row
+    //      already exists. Assigning a manager does not touch the Departments row, so the second
+    //      caller's rowversion token is still fresh — it sees the committed association and replaces
+    //      it. One row, two successes, and nothing wrong.
+    //
+    // (ii) ONE SUCCEEDS AND THE LOSER FAILS GRACEFULLY, when both read "no manager" before either
+    //      committed and both attempted the INSERT. The loser is then stopped either by the department's
+    //      rowversion check or by PK_DepartmentManagers — whichever fires first, which is itself a race.
+    //
+    // Asserting "exactly one loser" would be wrong: it would fail on outcome (i), which is correct
+    // behaviour. THE REAL INVARIANT IS THAT NO EXCEPTION ESCAPES AND NO SECOND ROW APPEARS — before
+    // FP-007 Phase 3 the PK route threw DbUpdateException out of Task.WhenAll, not because production
+    // lacked the translation but because this fixture's unit-of-work double did.
+    string[] sanctioned =
+    [
+      SSAS.Platform.Domain.IdentityAccessErrors.ConcurrencyConflict.Code,
+      SSAS.Platform.Domain.IdentityAccessErrors.UniqueConstraintViolation.Code
+    ];
+
+    foreach (var result in results)
+    {
+      if (result.IsFailure)
+      {
+        Assert.Contains(result.Error.Code, sanctioned);
+      }
+    }
+
+    // The surviving manager is one of the two candidates — not a third value, and not null.
+    var manager = await fixture.ManagerOfAsync(department);
+
+    Assert.True(
+      manager == first || manager == second,
+      $"The surviving manager {manager} is neither candidate.");
+
+    // ---- WHICH OUTCOME OCCURRED, RECORDED RATHER THAN ASSERTED.
+    //
+    // The test passes either way, so without this the two branches are indistinguishable from outside and
+    // the graceful-loser path could stop being exercised for a long time before anyone noticed. Repeating
+    // this test and reading the line below is how the race is confirmed to still be a race.
+    var losers = results.Where(result => result.IsFailure).ToArray();
+
+    output.WriteLine(losers.Length == 0
+      ? "OUTCOME: both-success (the second call saw the committed row and reassigned)"
+      : $"OUTCOME: graceful-loser ({string.Join(", ", losers.Select(result => result.Error.Code))})");
+  }
+
+  // ================================================================================================
+  // FIXTURE ↔ PRODUCTION TRANSLATION PARITY. THIS TEST EXISTS BECAUSE THE DOUBLE DRIFTED ONCE.
+  // ================================================================================================
+  //
+  // `DepartmentGraph.SingleContextUnitOfWork` stands in for `TenantUnitOfWork`, and its whole
+  // justification is behaving like it. It caught `DbUpdateConcurrencyException` alone while production
+  // ALSO translates SQL 2601/2627 (TenantUnitOfWork.cs:36-47), so a losing INSERT surfaced here as an
+  // escaping `DbUpdateException` and in the Host as an ordinary `Result` failure. Tests above it were
+  // asserting against behaviour the application does not have.
+  //
+  // ---- WHY THIS GOES THROUGH THE UNIT OF WORK RATHER THAN THROUGH AssignManager.
+  //
+  // The handler READS BEFORE IT WRITES and reassigns when a row already exists, so no arrangement of
+  // handler calls can be made to attempt a duplicate insert on demand — pre-inserting the row simply
+  // sends the handler down the reassign branch and it succeeds. The primary-key branch is reachable
+  // only through a genuine interleave, which a deterministic test cannot schedule.
+  //
+  // So this proves the translation for what it actually is: a property of the unit of work. The
+  // end-to-end race is covered by the concurrent test above; this covers the branch that was broken.
+  //
+  // KEEP IN LOCKSTEP WITH PRODUCTION'S CATCH SET. If TenantUnitOfWork gains or changes a translation,
+  // the double and this test change with it.
+  [Fact]
+  [Trait("Decision", "ADR-026")]
+  public async Task The_fixture_unit_of_work_translates_unique_key_violations_like_production()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+
+    var department = await fixture.CreateDepartmentAsync("A", "Alpha");
+    var sitting = await fixture.InsertEmployeeAsync("E-0001");
+    var contender = await fixture.InsertEmployeeAsync("E-0002");
+
+    // TWO GRAPHS, because a single context would refuse the duplicate in its own change tracker and
+    // never reach SQL Server — and it is SQL Server's refusal that has to be translated.
+    await using var first = fixture.Graph();
+    await using var second = fixture.Graph();
+
+    var seated = DepartmentManager.Assign(
+      department, fixture.Tenant, fixture.CompanyA, sitting, "parity-test", DateTimeOffset.UtcNow);
+    Assert.True(seated.IsSuccess);
+    Assert.True((await first.SaveManagerDirectlyAsync(seated.Value)).IsSuccess);
+
+    // The same PRIMARY KEY — DepartmentId identifies the association — with a different employee.
+    var duplicate = DepartmentManager.Assign(
+      department, fixture.Tenant, fixture.CompanyA, contender, "parity-test", DateTimeOffset.UtcNow);
+    Assert.True(duplicate.IsSuccess);
+
+    var refused = await second.SaveManagerDirectlyAsync(duplicate.Value);
+
+    // A RESULT, NOT AN EXCEPTION — and production's own error, not a department-local equivalent.
+    Assert.True(refused.IsFailure);
+    Assert.Equal(
+      SSAS.Platform.Domain.IdentityAccessErrors.UniqueConstraintViolation.Code, refused.Error.Code);
+
+    // And the invariant the primary key exists to hold: one row, still the first manager.
+    Assert.Equal(1, await fixture.ManagerRowCountAsync(department));
+    Assert.Equal(sitting, await fixture.ManagerOfAsync(department));
   }
 
   [Fact]

@@ -532,6 +532,26 @@ internal sealed class DepartmentGraph : IAsyncDisposable
   // The employee half of the read is REAL too: the real employee scope resolver over the same stubbed
   // Platform authorities, and the real employee read service. That is what makes the manager-disclosure
   // tests mean something — an undisclosed manager is undisclosed because the employee scope said so.
+  // ---- A DIRECT SEAM ONTO THIS GRAPH'S OWN CONTEXT AND UNIT OF WORK.
+  //
+  // Deliberately narrow, and deliberately NOT routed through a handler. It exists so the fixture's
+  // translation parity with `TenantUnitOfWork` can be proven for what it is — a property of the unit of
+  // work — rather than inferred from a handler that may or may not reach the failing branch.
+  //
+  // `AssignDepartmentManagerCommandHandler` reads before it writes and REASSIGNS when a row already
+  // exists, so no sequence of handler calls can be made to attempt a duplicate insert on demand: the
+  // primary-key branch is reachable only through a genuine interleave. This performs the same save the
+  // handler would have performed, without needing to win a race to do it.
+  public async Task<Result<int>> SaveManagerDirectlyAsync(
+    DepartmentManager manager, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(manager);
+
+    context.Set<DepartmentManager>().Add(manager);
+
+    return await unitOfWork.SaveChangesAsync(cancellationToken);
+  }
+
   public GetDepartmentQueryHandler Get() => new(
     scope,
     new DepartmentReadService(accessor),
@@ -561,6 +581,28 @@ internal sealed class DepartmentGraph : IAsyncDisposable
   // A minimal unit of work over that same context. Not the production `TenantUnitOfWork` — which needs a
   // provider and a dispatcher — but it opens a REAL EF transaction on the REAL connection, which is what
   // the hierarchy lock enlists in and what the concurrency proof depends on.
+  //
+  // ================================================================================================
+  // IT MIRRORS `TenantUnitOfWork`'S FAILURE TRANSLATION EXACTLY, AND MUST BE KEPT IN SYNC WITH IT.
+  // ================================================================================================
+  //
+  // Same three catches, same order, same error instances. That is not tidiness — it is the double's ONLY
+  // justification. A substitute that translates fewer failures than the type it stands in for turns a
+  // production `Result` into a test-only exception, and every test above it then asserts against behaviour
+  // the Host does not have.
+  //
+  // That is exactly what happened: this class caught `DbUpdateConcurrencyException` alone, so when two
+  // concurrent manager assignments raced to INSERT and the loser hit `PK_DepartmentManagers` instead of the
+  // rowversion check, the `DbUpdateException` escaped here — while production, which already translates
+  // 2601/2627, would have returned a `Result`. The gap was in the double, never in the product.
+  //
+  // ---- WHY THE PRODUCTION ERROR INSTANCES RATHER THAN DEPARTMENT-LOCAL EQUIVALENTS.
+  //
+  // `IdentityAccessErrors.*` is what a handler actually receives from `TenantUnitOfWork`, so returning
+  // anything else here — however similar in meaning — would make these tests agree with a contract nothing
+  // in production implements. The two codes are DELIBERATELY DISTINGUISHABLE at the Result layer:
+  // production distinguishes them, and FP-007 shipped against that. They converge only at the HTTP
+  // boundary, where both map to 409.
   private sealed class SingleContextUnitOfWork(TenantDbContext context) : ITenantUnitOfWork
   {
     public async Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -573,7 +615,19 @@ internal sealed class DepartmentGraph : IAsyncDisposable
       {
         // The database refused a stale token. Surfaced as the named business refusal rather than as an
         // exception crossing the application boundary.
-        return Result.Failure<int>(DepartmentErrors.ConcurrencyConflict);
+        return Result.Failure<int>(SSAS.Platform.Domain.IdentityAccessErrors.ConcurrencyConflict);
+      }
+      catch (DbUpdateException exception)
+        when (exception.InnerException is SqlException { Number: 2601 or 2627 })
+      {
+        // 2627 primary key, 2601 unique index. The constraint had the last word — which for the department
+        // manager association is the DESIGN: the primary key on DepartmentId is what makes a second row
+        // unrepresentable, so a losing INSERT arriving here is the invariant holding, not failing.
+        return Result.Failure<int>(SSAS.Platform.Domain.IdentityAccessErrors.UniqueConstraintViolation);
+      }
+      catch (DbUpdateException)
+      {
+        return Result.Failure<int>(SSAS.Platform.Domain.IdentityAccessErrors.WriteFailure);
       }
     }
 

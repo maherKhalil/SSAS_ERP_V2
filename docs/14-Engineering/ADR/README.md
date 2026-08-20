@@ -33,3 +33,4 @@ Every significant architectural decision must be documented before implementatio
 | ADR-023 | Tenant Branch Model, Authorization and Execution Context | Accepted |
 | ADR-024 | Employee Branch Assignment and Transfer Model | Proposed |
 | ADR-025 | Company Execution Context and Authorization | Proposed |
+| ADR-026 | HR Organizational Structure and Department Hierarchy | Proposed |

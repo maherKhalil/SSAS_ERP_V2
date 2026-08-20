@@ -77,12 +77,24 @@ authentication unless `SSAS_TEST_SQLSERVER` overrides it:
 $env:SSAS_TEST_SQLSERVER = "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False"
 ```
 
-**Real-SQL integration tests are not automated.** `tests/Integration.Tests` is
-roughly 489 tests and about 79 minutes locally, most of it serialized cutover and
-backup suites that create and drop databases one at a time. Running it on every
-pull request would produce a gate people wait out rather than trust, so it is
-`.github/workflows/integration-tests.yml`, triggered manually. Run it before a
-release, or when a change reaches cutover, storage or routing behaviour:
+**Real-SQL integration tests run nightly, not per pull request.**
+`tests/Integration.Tests` is 495 tests and about 79 minutes locally, most of it
+serialized cutover and backup suites that create and drop databases one at a
+time. Running it on every pull request would produce a gate people wait out
+rather than trust, so `.github/workflows/integration-tests.yml` is triggered by:
+
+| Trigger | When |
+|---|---|
+| `schedule` | 03:00 UTC daily |
+| `workflow_dispatch` | on demand, still available |
+
+Hosted runs have taken **roughly 14 to 18 minutes** end to end across the runs
+observed so far — a measurement, not a guarantee, and one that will grow as the
+suite does. Two runs never execute at once, and a run in progress is never
+cancelled by a later one.
+
+Run it yourself before a release, or when a change reaches cutover, storage or
+routing behaviour:
 
 ```powershell
 dotnet test tests/Integration.Tests/SSAS.Integration.Tests.csproj

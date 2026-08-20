@@ -485,17 +485,31 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     // application needs are gone", and Employee is now one of them.
     //
     // FP-007 extended the same chain again. Departments references Companies; DepartmentManagers and
-    // EmployeeDepartmentAssignments reference both Departments and Employees. So the list grows by three,
-    // ordered deepest-dependent-first. It stays an EXACT list rather than becoming a pattern sweep: the
-    // next table added to the tenant model should fail here loudly, the way this one did, instead of being
-    // silently left standing and quietly narrowing what this test still breaks.
+    // EmployeeDepartmentAssignments reference both Departments and Employees. It stays an EXACT list rather
+    // than becoming a pattern sweep: the next table added to the tenant model should fail here loudly, the
+    // way this one did, instead of being silently left standing and quietly narrowing what this test breaks.
+    //
+    // ================================================================================================
+    // THE ORDER IS THE REVERSE OF THE CUTOVER COPY TOPOLOGICAL ORDER. THAT IS THE RULE; THE LIST BELOW
+    // IS ONLY ITS CURRENT ANSWER.
+    // ================================================================================================
+    //
+    // A copy inserts principals before dependents; a drop must remove dependents before principals. So
+    // whatever TenantCutoverCopyPlan.Order emits, this list is that sequence read backwards — and
+    // C6_15_The_copy_order_places_every_principal_before_its_dependents is where the forward order is
+    // asserted.
+    //
+    // FP-007 Phase 3 proved why the rule matters more than the list: Employee.DepartmentId INVERTED the
+    // Departments/Employees pair. Departments used to be droppable early because nothing dropped later
+    // referenced it; once Employees gained a required foreign key to it, Employees had to go first. A list
+    // maintained by intuition rather than by that rule silently became wrong the moment the FK landed.
     public Task BreakApplicationSchemaAsync() =>
       ExecuteAsync(SourceDatabase, """
         DROP TABLE [tenant].[EmployeeDepartmentAssignments];
         DROP TABLE [tenant].[DepartmentManagers];
-        DROP TABLE [tenant].[Departments];
         DROP TABLE [tenant].[EmployeeBranchAssignments];
         DROP TABLE [tenant].[Employees];
+        DROP TABLE [tenant].[Departments];
         DROP TABLE [tenant].[Companies];
         """);
 

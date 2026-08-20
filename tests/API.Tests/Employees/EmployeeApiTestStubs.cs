@@ -258,7 +258,9 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
     }
 
     return Task.FromResult<DepartmentAssignmentTarget?>(
-      departmentId == EmployeeApiTestHost.DepartmentA ? new(departmentId, IsActive: true) : null);
+      departmentId == EmployeeApiTestHost.DepartmentA || departmentId == EmployeeApiTestHost.DepartmentB
+        ? new(departmentId, IsActive: true)
+        : null);
   }
 }
 

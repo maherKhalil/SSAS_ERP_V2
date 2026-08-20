@@ -10,11 +10,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
+using SSAS.API.Tests.Employees;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
-using SSAS.BuildingBlocks.Application.Pagination;
-using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.BuildingBlocks.Tenancy.Companies;
@@ -24,65 +23,51 @@ using SSAS.Host.API.Authorization;
 using SSAS.Host.API.Configuration;
 using SSAS.HR.API;
 using SSAS.HR.API.Departments;
-using SSAS.HR.API.Employees;
+using SSAS.HR.Application.Departments;
+using SSAS.HR.Application.Departments.Reads;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
-using SSAS.HR.Application.Permissions;
-using SSAS.HR.Domain.Employees;
 using SSAS.Platform.Application.Abstractions.Queries;
 using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Application.Tenants;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
 
-namespace SSAS.API.Tests.Employees;
+namespace SSAS.API.Tests.Departments;
 
-// Employee endpoint tests share one non-parallel collection for the same reason the Company ones do: their
-// in-memory hosts each start a JWT signing-key and DataProtection stack, which flakes under contention.
+// Department endpoint tests share one non-parallel collection for the same reason the Employee ones do:
+// their in-memory hosts each start a JWT signing-key and DataProtection stack, which flakes under
+// contention.
 [CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class EmployeeApiEndpointGroup
+public sealed class DepartmentApiEndpointGroup
 {
-  public const string Name = "HR Employee API endpoints";
+  public const string Name = "HR Department API endpoints";
 }
 
 // ==================================================================================================
-// THE HTTP HARNESS FOR THE EMPLOYEE SURFACE (FP-006C5).
+// THE HTTP HARNESS FOR THE DEPARTMENT SURFACE (FP-007 Phase 4).
 // ==================================================================================================
 //
 // ---- WHAT IS REAL HERE, AND WHY THAT MATTERS.
 //
-// The authentication pipeline, the permission policy provider, the endpoint mapping, the strict JSON
-// reader, the rowversion codec, the ProblemDetails projection, the error mapper, the query handlers and
-// THE SCOPE RESOLVER are all production types. The scope resolver especially: it is what proves that a
-// tenant administrator without HR.Employees.View is refused, and stubbing it would have made that test
-// assert the stub.
+// The routes, the permission filter, the company-context filter, the REAL DepartmentScopeResolver, the
+// real command and query handlers, and the real error mapper. Only the collaborators that would need SQL
+// Server are replaced — and those are precisely what Integration.Tests already proves.
 //
-// ---- WHAT IS STUBBED, AND WHY THAT IS NOT A HOLE.
-//
-// The two access resolvers, the branch resolver, the company establisher, the repository, the unit of work
-// and the read service — everything whose real implementation needs a database. Their BEHAVIOUR is proven
-// against real SQL Server in Integration.Tests; what these tests answer is the different question of
-// whether the HTTP layer carries the right status code, body and concealment for each answer they can give.
-//
-// Host composition itself is never stubbed — that is proven separately in EmployeeHostCompositionTests.
-public sealed class EmployeeApiTestHost : IAsyncLifetime
+// The scope resolver being real is what makes the permission tests mean something: a route's
+// RequirePermission and the resolver's own permission check are two independent gates, and a test that
+// stubbed the resolver would prove only the first. The permission-bleed tests below depend on the second.
+public sealed class DepartmentApiTestHost : IAsyncLifetime
 {
-  public const string Issuer = "https://ssas.tests/employees";
+  public const string Issuer = "https://ssas.tests/departments";
   public const string Audience = "ssas-erp-api";
 
   public static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
   public static readonly Guid CompanyA = Guid.Parse("22222222-2222-2222-2222-222222222222");
   public static readonly Guid CompanyB = Guid.Parse("33333333-3333-3333-3333-333333333333");
   public static readonly Guid BranchA = Guid.Parse("44444444-4444-4444-4444-444444444444");
-  public static readonly Guid BranchB = Guid.Parse("55555555-5555-5555-5555-555555555555");
-  public static readonly Guid BranchC = Guid.Parse("66666666-6666-6666-6666-666666666666");
-  public static readonly Guid EmployeeId = Guid.Parse("77777777-7777-7777-7777-777777777777");
-
-  // FP-007 Phase 3. DepartmentA is Active and in CompanyA; DepartmentInactive and DepartmentOtherCompany
-  // exist so the create contract's refusals can be exercised at the HTTP layer.
-  public static readonly Guid DepartmentA = Guid.Parse("88888888-8888-8888-8888-888888888888");
-  public static readonly Guid DepartmentB = Guid.Parse("bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb");
-  public static readonly Guid DepartmentInactive = Guid.Parse("99999999-9999-9999-9999-999999999999");
-  public static readonly Guid DepartmentOtherCompany = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+  public static readonly Guid DepartmentId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+  public static readonly Guid ParentDepartmentId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+  public static readonly Guid ManagerEmployeeId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
 
   private WebApplication? application;
   private HttpClient? client;
@@ -95,9 +80,13 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
 
   public StubCompanyEstablisher CompanyContext { get; } = new();
 
-  public StubEmployeeReads Reads { get; } = new();
+  public StubDepartmentReads Reads { get; } = new();
 
-  public StubEmployeeRepository Repository { get; } = new();
+  public StubDepartmentRepository Repository { get; } = new();
+
+  public StubEmployeeReads EmployeeReads { get; } = new();
+
+  public StubEmployeeRepository EmployeeRepository { get; } = new();
 
   public StubUnitOfWork UnitOfWork { get; } = new();
 
@@ -128,47 +117,49 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     builder.Services.AddSingleton<IDateTimeProvider>(new FixedClock());
     builder.Services.AddScoped<IRequestTenantEligibility, RequestTenantEligibility>();
 
-    // The sanctioned transfer channel, stood in for. The real one is internal to Platform.Infrastructure
-    // and its SEMANTICS are proven against real SQL in the C2 and C3 boundary suites. What matters here is
-    // that the command opens a scope at all rather than mutating BranchId directly, which this records.
-    builder.Services.AddScoped<IBranchTransferScope, RecordingTransferScope>();
-
     // The database-backed collaborators, replaced. Everything else below is production.
     builder.Services.AddSingleton<ITenantCompanyAccessResolver>(CompanyAccess);
     builder.Services.AddSingleton<ITenantBranchAccessResolver>(BranchAccess);
     builder.Services.AddSingleton<ICurrentBranchResolver>(CurrentBranch);
     builder.Services.AddSingleton<ICompanyContextEstablisher>(CompanyContext);
     builder.Services.AddSingleton<ICurrentCompany>(CompanyContext);
-    builder.Services.AddSingleton<IEmployeeReadService>(Reads);
-    builder.Services.AddSingleton<IEmployeeRepository>(Repository);
+    builder.Services.AddSingleton<IDepartmentReadService>(Reads);
+    builder.Services.AddSingleton<IDepartmentRepository>(Repository);
+    builder.Services.AddSingleton<IEmployeeReadService>(EmployeeReads);
+    // AssignDepartmentManagerCommandHandler validates the nominated employee through the employee
+    // repository — same tenant, same company, not terminated — so the department host needs it too.
+    builder.Services.AddSingleton<IEmployeeRepository>(EmployeeRepository);
     builder.Services.AddSingleton<ITenantUnitOfWork>(UnitOfWork);
     builder.Services.AddSingleton<ICurrentTenant>(new FixedTenant());
     builder.Services.AddSingleton<ICurrentTenantUser>(new FixedTenantUser());
 
+    // ---- THE HIERARCHY LOCK, STOOD IN FOR.
+    //
+    // The real one takes sp_getapplock on a live transaction; its semantics are proven against real SQL in
+    // the Phase 2 concurrency suite. Here it must simply grant, so the hierarchy routes reach their
+    // handlers and the HTTP contract is what gets tested.
+    builder.Services.AddSingleton<IDepartmentHierarchyLock>(new GrantingHierarchyLock());
+
     // Production application wiring for everything that does not touch a database.
+    builder.Services.AddScoped<IDepartmentScopeResolver, DepartmentScopeResolver>();
     builder.Services.AddScoped<IEmployeeScopeResolver, EmployeeScopeResolver>();
-    builder.Services.AddScoped<CreateEmployeeCommandHandler>();
-    builder.Services.AddScoped<UpdateEmployeeProfileCommandHandler>();
-    builder.Services.AddScoped<TerminateEmployeeCommandHandler>();
-    builder.Services.AddScoped<TransferEmployeeCommandHandler>();
-    // FP-007 Phase 4: the change-department route resolves this per request, so the harness registers it
-    // exactly as AddHrInfrastructure does in the Host.
-    builder.Services.AddScoped<ChangeEmployeeDepartmentCommandHandler>();
-    builder.Services.AddScoped<ActivateEmployeeCommandHandler>();
-    builder.Services.AddScoped<DeactivateEmployeeCommandHandler>();
-    builder.Services.AddScoped<GetEmployeeQueryHandler>();
-    builder.Services.AddScoped<SearchEmployeesQueryHandler>();
-    builder.Services.AddScoped<GetEmployeeBranchHistoryQueryHandler>();
+    builder.Services.AddScoped<CreateDepartmentCommandHandler>();
+    builder.Services.AddScoped<UpdateDepartmentCommandHandler>();
+    builder.Services.AddScoped<ChangeDepartmentParentCommandHandler>();
+    builder.Services.AddScoped<MoveDepartmentToRootCommandHandler>();
+    builder.Services.AddScoped<DeactivateDepartmentCommandHandler>();
+    builder.Services.AddScoped<ReactivateDepartmentCommandHandler>();
+    builder.Services.AddScoped<AssignDepartmentManagerCommandHandler>();
+    builder.Services.AddScoped<ClearDepartmentManagerCommandHandler>();
+    builder.Services.AddScoped<GetDepartmentQueryHandler>();
+    builder.Services.AddScoped<SearchDepartmentsQueryHandler>();
+    builder.Services.AddScoped<GetDepartmentChildrenQueryHandler>();
     builder.Services.AddHrModule();
 
     application = builder.Build();
     application.UseAuthentication();
     application.UseAuthorization();
-    application.MapHrEmployeeEndpoints();
-    // FP-007 Phase 4: the change-department route lives on the employee prefix and is mapped by the
-    // department module, so the harness must map it too — otherwise a test asserting its behaviour would
-    // be describing the harness rather than the Host.
-    application.MapHrEmployeeDepartmentEndpoints();
+    application.MapHrDepartmentEndpoints();
 
     await application.StartAsync();
     client = application.GetTestClient();
@@ -187,13 +178,15 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   public void ResetToAuthorizedState()
   {
     CompanyAccess.Permitted = [CompanyA, CompanyB];
-    BranchAccess.Permitted = [BranchA, BranchB];
+    BranchAccess.Permitted = [BranchA];
     CurrentBranch.BranchId = BranchA;
     CurrentBranch.Error = null;
     CompanyContext.Established = CompanyA;
     CompanyContext.Error = null;
     Reads.Reset();
     Repository.Reset();
+    EmployeeReads.Reset();
+    EmployeeRepository.Reset();
     UnitOfWork.Failure = null;
   }
 
@@ -270,6 +263,15 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     return new JwtSecurityTokenHandler().WriteToken(token);
   }
 
+  // Grants unconditionally. What it must NOT do is decide anything: the lock's real job is serialising
+  // concurrent hierarchy mutations, which has no meaning in a single-request HTTP test.
+  private sealed class GrantingHierarchyLock : IDepartmentHierarchyLock
+  {
+    public Task<SSAS.BuildingBlocks.Domain.Result> AcquireAsync(
+      Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success());
+  }
+
   private sealed class ActiveTenant : ITenantAuthenticationEligibilityReadService
   {
     public Task<TenantAuthenticationEligibilityResult> GetEligibilityAsync(
@@ -289,7 +291,7 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
 
   private sealed class FixedTenant : ICurrentTenant
   {
-    public Guid? TenantId => EmployeeApiTestHost.TenantId;
+    public Guid? TenantId => DepartmentApiTestHost.TenantId;
   }
 
   private sealed class FixedTenantUser : ICurrentTenantUser

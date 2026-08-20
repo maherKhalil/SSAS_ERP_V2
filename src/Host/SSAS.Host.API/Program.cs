@@ -1,3 +1,4 @@
+using SSAS.HR.API.Departments;
 using SSAS.HR.API.Employees;
 using System.Globalization;
 using Serilog;
@@ -88,6 +89,8 @@ try
   app.MapPlatformCompanyEndpoints();
   // HR module transport (ADR-012: the Host maps each module's own endpoints; modules never map each other's).
   app.MapHrEmployeeEndpoints();
+  app.MapHrDepartmentEndpoints();
+  app.MapHrEmployeeDepartmentEndpoints();
 
   app.Run();
 }

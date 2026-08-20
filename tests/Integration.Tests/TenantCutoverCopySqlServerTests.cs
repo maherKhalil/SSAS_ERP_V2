@@ -632,7 +632,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   {
     var composed = CutoverTenantModel.Source.Model;
 
-    // The runtime model contains all four...
+    // The runtime model contains all seven — two from Platform, two from FP-006, three from FP-007 Phase 1...
     var derived = composed.GetEntityTypes()
       .Where(entity => !entity.IsOwned())
       .Where(entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))
@@ -641,7 +641,21 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       .OrderBy(name => name, StringComparer.Ordinal)
       .ToArray();
 
-    Assert.Equal(["Branch", "Company", "Employee", "EmployeeBranchAssignment"], derived);
+    // AN EXACT LIST, DELIBERATELY. The derivation guarantees the engine cannot MISS a table; this
+    // guarantees a human SEES a new one, because a new tenant-owned entity may need ordering, identity or
+    // column decisions that "it compiles" does not settle. FP-007 Phase 1 added three, and this is one of
+    // the three places that said so.
+    Assert.Equal(
+      [
+        "Branch",
+        "Company",
+        "Department",
+        "DepartmentManager",
+        "Employee",
+        "EmployeeBranchAssignment",
+        "EmployeeDepartmentAssignment"
+      ],
+      derived);
 
     // ...and the plan derived for the copy covers exactly that set, with nothing declared by hand.
     var plan = TenantCutoverCopyPlan.Build(composed);
@@ -654,9 +668,13 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   // ---- C6-14. AND THE OLD, CONTRIBUTOR-FREE MODEL DEMONSTRABLY DOES NOT.
   //
   // The regression detector. It proves the fix is load-bearing rather than incidental: without the
-  // contributor set the manifest silently loses both HR tables, which is exactly what shipped before this
+  // contributor set the manifest silently loses every HR table, which is exactly what shipped before this
   // slice. If these two ever agreed, the composition would have collapsed back and every proof below would
   // still pass while production quietly lost data again.
+  //
+  // FP-007 Phase 1 made the gap wider rather than different — five HR tables now, not two — which is the
+  // point: each new contributed entity increases what a contributor-free manifest would silently leave
+  // behind.
   [Fact]
   [Trait("Decision", "ADR-020")]
   public void C6_14_A_contributor_free_plan_silently_omits_both_hr_tables()
@@ -672,10 +690,16 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Employee));
     Assert.DoesNotContain(
       contributorFree.Value, table => table.EntityName == nameof(EmployeeBranchAssignment));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "Department");
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "DepartmentManager");
+    Assert.DoesNotContain(
+      contributorFree.Value, table => table.EntityName == "EmployeeDepartmentAssignment");
 
+    // Five HR tables missing, and only Platform's Company and Branch left.
     Assert.Equal(
-      composed.Value.Count - 2,
+      composed.Value.Count - 5,
       contributorFree.Value.Count);
+    Assert.Equal(2, contributorFree.Value.Count);
   }
 
   // ---- C6-6 / C6-11. DEPENDENCY ORDER, DERIVED FROM FOREIGN KEYS.

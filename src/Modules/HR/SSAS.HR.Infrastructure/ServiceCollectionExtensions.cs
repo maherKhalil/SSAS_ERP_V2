@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.HR.Application.Departments;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Infrastructure.Persistence;
@@ -25,6 +26,9 @@ public static class ServiceCollectionExtensions
     services.AddSingleton<ITenantModelContributor, HrTenantModelContributor>();
 
     services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+
+    // FP-007 Phase 1. Registered now because the entities are mapped now; no handler resolves it yet.
+    services.AddScoped<IDepartmentRepository, DepartmentRepository>();
 
     // ---- THE READ SIDE (FP-006C4).
     //

@@ -224,7 +224,23 @@ public sealed class EmployeeHostCompositionTests
       .OrderBy(name => name, StringComparer.Ordinal)
       .ToArray();
 
-    Assert.Equal(["Branch", "Company", "Employee", "EmployeeBranchAssignment"], tenantOwned);
+    // ---- AN EXACT INVENTORY, NOT A CONTAINS-CHECK, AND THAT IS THE POINT.
+    //
+    // The cutover engine DERIVES its manifest from this model, so it can never miss a table. This list is
+    // the other half: it guarantees a human SEES a new one, because a new tenant-owned entity may need
+    // ordering, identity or column decisions that "it compiles" does not settle. FP-007 Phase 1 added three,
+    // and this assertion is where they were noticed.
+    Assert.Equal(
+      [
+        "Branch",
+        "Company",
+        "Department",
+        "DepartmentManager",
+        "Employee",
+        "EmployeeBranchAssignment",
+        "EmployeeDepartmentAssignment"
+      ],
+      tenantOwned);
   }
 
   // ---- H10. ONE CONTRIBUTOR SET, NOT THREE.

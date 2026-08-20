@@ -437,7 +437,10 @@ public sealed class EmployeeDomainTests
       .Where(type => type.Namespace == "SSAS.HR.Domain.Events")
       .ToArray();
 
-    Assert.Equal(6, eventTypes.Length);
+    // EVERY HR domain event, not only Employee's: 6 from FP-006 plus 5 from FP-007 Phase 1. The count is
+    // asserted so a new event type cannot be added without someone confirming it carries nothing personal —
+    // which is exactly what happened when the Department events arrived.
+    Assert.Equal(11, eventTypes.Length);
 
     var leaked = eventTypes
       .SelectMany(type => type.GetProperties().Select(property => $"{type.Name}.{property.Name}"))

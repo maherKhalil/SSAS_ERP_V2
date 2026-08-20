@@ -94,6 +94,16 @@ public sealed class EmployeeArchitectureTests
   // BR-HR-0005, BR-HR-0006 and BR-HR-0007 are retained as binding and deferred (DEC-EMP-0017/0018/0031).
   // No placeholder column stands in for them, because a placeholder is how a deferral quietly becomes a
   // design.
+  //
+  // ---- UPDATED BY FP-007 PHASE 1, AND ONLY WHERE THE APPROVED SCOPE CHANGED IT.
+  //
+  // The Employee half is untouched and still binding: Phase 1 introduces the Department AGGREGATE and adds
+  // nothing whatsoever to Employee. `Employee.DepartmentId` arrives in a later phase, and until it does its
+  // absence is exactly as load-bearing as it was.
+  //
+  // The second half used to assert that no Department type existed anywhere in HR. That was correct while
+  // Department was deferred and is now superseded — the aggregate exists. Position is NOT superseded, so
+  // that clause is kept in full: `BR-HR-0006` is still deferred, and no placeholder may stand in for it.
   [Fact]
   public void Employee_has_no_department_position_or_manager()
   {
@@ -107,10 +117,16 @@ public sealed class EmployeeArchitectureTests
       name.Contains("Position", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("Manager", StringComparison.OrdinalIgnoreCase));
 
-    // And no such type exists anywhere in HR.
+    // POSITION IS STILL DEFERRED WHOLE. No type, anywhere in HR.
     Assert.DoesNotContain(HrDomainAssembly.GetTypes(), type =>
-      type.Name.Contains("Department", StringComparison.OrdinalIgnoreCase) ||
       type.Name.Contains("Position", StringComparison.OrdinalIgnoreCase));
+
+    // AND NO EMPLOYEE REPORTING LINE. `BR-HR-0007` presumes an employee-to-manager relationship that no
+    // authority defines; a department has a manager, an employee does not. `DepartmentManager` is the
+    // department's, which is why it is excluded by name rather than by the loose pattern above.
+    Assert.DoesNotContain(HrDomainAssembly.GetTypes(), type =>
+      type.Name.Contains("Manager", StringComparison.OrdinalIgnoreCase) &&
+      type.Name != nameof(SSAS.HR.Domain.Departments.DepartmentManager));
   }
 
   // Automatic per-company numbering is deferred (DEC-EMP-0011): the number is a required INPUT, so a future

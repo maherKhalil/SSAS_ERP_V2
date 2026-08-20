@@ -40,9 +40,18 @@
     </ProjectReference>
   </ItemGroup>
 
+  <!-- The apphost the harness starts is named by the PLATFORM, not by this repository: `.exe` on Windows and
+       extensionless everywhere else. Hard-coding `.exe` made the path unresolvable on Linux, and the harness
+       asserts the file exists — so both process-loss tests failed on a hosted runner for a reason that had
+       nothing to do with the behaviour they prove. -->
+  <PropertyGroup>
+    <VerificationHostFileName>SSAS.TestSupport.VerificationHost</VerificationHostFileName>
+    <VerificationHostFileName Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(VerificationHostFileName).exe</VerificationHostFileName>
+  </PropertyGroup>
+
   <ItemGroup>
     <AssemblyMetadata Include="VerificationProcessHostPath"
-      Value="$(MSBuildThisFileDirectory)..\TestSupport\SSAS.TestSupport.VerificationHost\bin\$(Configuration)\net8.0\SSAS.TestSupport.VerificationHost.exe" />
+      Value="$(MSBuildThisFileDirectory)..\TestSupport\SSAS.TestSupport.VerificationHost\bin\$(Configuration)\net8.0\$(VerificationHostFileName)" />
   </ItemGroup>
 
 </Project>

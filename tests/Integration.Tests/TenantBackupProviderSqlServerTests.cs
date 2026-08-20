@@ -237,11 +237,15 @@ public sealed class TenantBackupProviderSqlServerTests
   [Trait("Decision", "ADR-022")]
   public async Task An_unreachable_destination_directory_fails_safely()
   {
-    // Renamed after the focused review: this configures a NON-EXISTENT directory, so it proves a trusted but
+    // Renamed after the focused review: this configures an UNCREATABLE directory, so it proves a trusted but
     // unreachable destination fails cleanly. It does NOT exercise an ACL denial — the service-account
     // asymmetry it used to claim — and manufacturing one would mean editing machine ACLs to satisfy a test
     // name. The positive path below is what actually proves the SQL Server service identity can write to a
     // directory this process created.
+    //
+    // The destination sits BENEATH A REGULAR FILE (see BackupFixture.CreateAsync). Merely naming a directory
+    // that does not exist was enough on Windows but not on Linux, where SQL Server creates a missing backup
+    // directory and the backup then succeeded.
     await using var fixture = await BackupFixture.CreateAsync();
     var id = await fixture.RegisterAsync();
     await fixture.AddPolicyAsync(id, destinationKey: BackupFixture.UnwritableDestinationKey);
@@ -583,6 +587,9 @@ public sealed class TenantBackupProviderSqlServerTests
     // deliberately so the "service account access" failure has a controlled test.
     public const string UnwritableDestinationKey = "UnwritableVault";
 
+    // A regular file, so nothing can be created beneath it on any platform.
+    public const string UnreachableParentFileName = "occupied-destination";
+
     private readonly List<string> targetCatalogs = [];
 
     private BackupFixture(string platformCatalog, string backupRoot)
@@ -616,6 +623,19 @@ public sealed class TenantBackupProviderSqlServerTests
         // This is a TEST-FIXTURE concern. Production code hard-codes no path: it resolves destinations from
         // trusted configuration, and provisioning the directory with correct ACLs is a deployment concern.
         Directory.CreateDirectory(fixture.BackupRoot);
+
+        // ---- AN UNREACHABLE DESTINATION THAT IS UNREACHABLE ON EVERY PLATFORM (CI-004).
+        //
+        // The unwritable destination used to be a directory that simply did not exist. On Windows that is
+        // enough: SQL Server does not create directories for a backup path, so BACKUP fails. On Linux it
+        // creates the missing directory when the parent allows it, so the backup SUCCEEDED and the test
+        // failed expecting Failed.
+        //
+        // Occupying the parent with a FILE makes the destination impossible to create anywhere: no operating
+        // system will make a directory inside a regular file. That keeps the test proving what it always
+        // claimed — a trusted but unreachable destination fails cleanly — without editing machine ACLs to
+        // manufacture a denial, which the test deliberately refuses to do.
+        File.WriteAllText(Path.Combine(fixture.BackupRoot, UnreachableParentFileName), string.Empty);
 
         await using var platform = fixture.PlatformContext();
         await platform.Database.MigrateAsync();
@@ -662,11 +682,11 @@ public sealed class TenantBackupProviderSqlServerTests
 
       options.Value.BackupDestinations[DestinationKey] =
         new TenantStorageBackupDestinationOptions { DirectoryPath = BackupRoot };
-      // A path SQL Server's service account cannot create files in.
+      // A destination beneath a regular file: uncreatable, and therefore unreachable, on every platform.
       options.Value.BackupDestinations[UnwritableDestinationKey] =
         new TenantStorageBackupDestinationOptions
         {
-          DirectoryPath = Path.Combine(BackupRoot, "no-such-subdirectory")
+          DirectoryPath = Path.Combine(BackupRoot, UnreachableParentFileName, "no-such-subdirectory")
         };
 
       return options;
@@ -822,7 +842,11 @@ public sealed class TenantBackupProviderSqlServerTests
       };
       start.ArgumentList.Add("-S");
       start.ArgumentList.Add(server);
-      start.ArgumentList.Add("-E");
+      // Integrated Security on a developer machine; SQL authentication where the environment supplies it
+
+      // (CI-004). Derived from the same connection string the suite itself uses.
+
+      start.ArgumentList.AddAuthentication(TenantBackupProviderSqlServerTests.BackupFixture.Configured());
       start.ArgumentList.Add("-C");
       start.ArgumentList.Add("-d");
       start.ArgumentList.Add(TargetCatalog);

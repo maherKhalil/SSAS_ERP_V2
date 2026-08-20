@@ -93,6 +93,41 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
     return created.Value;
   }
 
+  // ---- ONE HOLDING DEPARTMENT PER COMPANY, CREATED ON FIRST USE.
+  //
+  // Written with raw SQL and a reserved code that no test names, so it is invisible to the assertions here
+  // while still satisfying the foreign key. It is INSERTED ONLY IF ABSENT, which is what stops repeated
+  // calls from producing one department per seeded employee.
+  private async Task<Guid> HoldingDepartmentAsync(Guid companyId)
+  {
+    const string code = "ZZ-EMPLOYEE-HOME";
+
+    var existing = await ScalarGuidAsync($"""
+      SELECT TOP 1 [DepartmentId] FROM [tenant].[Departments]
+      WHERE [TenantId] = '{Tenant}' AND [CompanyId] = '{companyId}' AND [NormalizedCode] = N'{code}'
+      """);
+
+    if (existing is { } found)
+    {
+      return found;
+    }
+
+    var departmentId = Guid.NewGuid();
+
+    await ExecuteAsync($"""
+      INSERT INTO [tenant].[Departments]
+        ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [ParentDepartmentId],
+         [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc],
+         [ModifiedBy])
+      VALUES
+        ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code}', N'Employee Home', NULL,
+         N'Active', SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}',
+         SYSDATETIMEOFFSET(), N'{Actor}');
+      """);
+
+    return departmentId;
+  }
+
   public async Task<byte[]> RowVersionAsync(Guid departmentId)
   {
     await using var context = NewContext();
@@ -172,13 +207,24 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
     var reason = terminated ? "Resignation" : "Created";
     var terminationDate = terminated ? "SYSDATETIMEOFFSET()" : "NULL";
 
+    // ---- EVERY EMPLOYEE NEEDS A DEPARTMENT FROM FP-007 PHASE 3.
+    //
+    // These employees exist to be MANAGERS of the departments under test, so which department they belong
+    // to is incidental to every assertion in this file — but the column is NOT NULL and the foreign key is
+    // real, so one has to exist. A per-company holding department keeps that incidental fact out of the
+    // tests, and reusing one rather than creating a department per employee keeps it from polluting the
+    // department counts those tests DO assert on.
+    var homeDepartment = await HoldingDepartmentAsync(company ?? CompanyA);
+
     await ExecuteAsync($"""
       INSERT INTO [tenant].[Employees]
-        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [EmployeeNumber], [NormalizedEmployeeNumber],
-         [FullName], [EmploymentDate], [TerminationDate], [Status], [StatusChangeReasonCode],
-         [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
+        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+         [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [TerminationDate], [Status],
+         [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy],
+         [ModifiedUtc], [ModifiedBy])
       VALUES
-        ('{employeeId}', '{Tenant}', '{company ?? CompanyA}', '{branch ?? BranchA}', N'{employeeNumber}',
+        ('{employeeId}', '{Tenant}', '{company ?? CompanyA}', '{branch ?? BranchA}', '{homeDepartment}',
+         N'{employeeNumber}',
          N'{employeeNumber.ToUpperInvariant()}', N'Person {employeeNumber}', SYSDATETIMEOFFSET(),
          {terminationDate}, N'{status}', N'{reason}', SYSDATETIMEOFFSET(), N'{Actor}',
          SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
@@ -302,6 +348,20 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
     command.CommandText = sql;
     return Convert.ToInt32(
       await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+  }
+
+  // Null when the row does not exist, which is what makes the holding-department lookup a create-if-absent
+  // rather than a create-every-time.
+  private async Task<Guid?> ScalarGuidAsync(string sql)
+  {
+    await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
+    await connection.OpenAsync();
+    await using var command = connection.CreateCommand();
+    command.CommandText = sql;
+
+    var value = await command.ExecuteScalarAsync();
+
+    return value is Guid id ? id : null;
   }
 
   private async Task ExecuteAsync(string sql)

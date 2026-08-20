@@ -75,7 +75,7 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
 
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-V"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-V"));
 
     Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
 
@@ -190,7 +190,7 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
 
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-CA"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-CA"));
 
     Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
     Assert.True(graph.CompanyAuthorizerCalls > 0);
@@ -262,11 +262,11 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA, asUserId: fixture.NormalUserId);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R1"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R1"))).IsSuccess);
 
     await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchA);
 
-    var after = await graph.Create().HandleAsync(NewEmployee("EMP-R2"));
+    var after = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R2"));
 
     Assert.True(after.IsFailure);
     Assert.Equal(1, await fixture.EmployeeCountAsync());
@@ -281,11 +281,11 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(0, await fixture.BranchAccessRowCountAsync(fixture.AdministratorUserId));
 
     var graph = fixture.Graph(fixture.BranchA, asUserId: fixture.AdministratorUserId);
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R3"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R3"))).IsSuccess);
 
     await fixture.RevokeAdministratorAuthorityAsync();
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R4"))).IsFailure);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R4"))).IsFailure);
     Assert.Equal(1, await fixture.EmployeeCountAsync());
   }
 
@@ -295,11 +295,11 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA, asUserId: fixture.NormalUserId);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R5"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R5"))).IsSuccess);
 
     await fixture.RevokeCompanyAssignmentAsync(fixture.NormalUserId, fixture.CompanyA);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R6"))).IsFailure);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R6"))).IsFailure);
     Assert.Equal(1, await fixture.EmployeeCountAsync());
   }
 
@@ -327,11 +327,11 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA, asUserId: fixture.NormalUserId);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R7"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R7"))).IsSuccess);
 
     await fixture.DeactivateCompanyAsync(fixture.CompanyA);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R8"))).IsFailure);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R8"))).IsFailure);
     Assert.Equal(1, await fixture.EmployeeCountAsync());
   }
 
@@ -341,11 +341,11 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA, asUserId: fixture.NormalUserId);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R9"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R9"))).IsSuccess);
 
     await fixture.RevokeSessionAsync(graph.SessionId);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-R10"))).IsFailure);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-R10"))).IsFailure);
     Assert.Equal(1, await fixture.EmployeeCountAsync());
   }
 
@@ -359,9 +359,9 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-100"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-100"))).IsSuccess);
 
-    var duplicate = await graph.Create().HandleAsync(NewEmployee("EMP-100"));
+    var duplicate = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-100"));
 
     Assert.True(duplicate.IsFailure);
     Assert.Equal(EmployeeErrors.NumberConflict.Code, duplicate.Error.Code);
@@ -374,9 +374,9 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
 
-    Assert.True((await fixture.Graph(fixture.BranchA).Create().HandleAsync(NewEmployee("EMP-200"))).IsSuccess);
+    Assert.True((await fixture.Graph(fixture.BranchA).Create().HandleAsync(fixture.NewEmployee("EMP-200"))).IsSuccess);
 
-    var otherBranch = await fixture.Graph(fixture.BranchB).Create().HandleAsync(NewEmployee("EMP-200"));
+    var otherBranch = await fixture.Graph(fixture.BranchB).Create().HandleAsync(fixture.NewEmployee("EMP-200"));
 
     Assert.True(otherBranch.IsFailure);
     Assert.Equal(EmployeeErrors.NumberConflict.Code, otherBranch.Error.Code);
@@ -388,10 +388,12 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
 
     Assert.True((await fixture.Graph(fixture.BranchA).Create()
-      .HandleAsync(NewEmployee("EMP-300"))).IsSuccess);
+      .HandleAsync(fixture.NewEmployee("EMP-300"))).IsSuccess);
 
+    // The DEPARTMENT follows the company, because a department belongs to exactly one. Naming CompanyA's
+    // here would fail as not-found and the test would look like a uniqueness failure it is not.
     var otherCompany = await fixture.Graph(fixture.BranchA, company: fixture.CompanyB).Create()
-      .HandleAsync(NewEmployee("EMP-300"));
+      .HandleAsync(fixture.NewEmployee("EMP-300", department: fixture.DepartmentB));
 
     Assert.True(otherCompany.IsSuccess, otherCompany.IsFailure ? otherCompany.Error.Code : null);
   }
@@ -404,9 +406,9 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee(" emp-400 "))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee(" emp-400 "))).IsSuccess);
 
-    var equivalent = await graph.Create().HandleAsync(NewEmployee("EMP-400"));
+    var equivalent = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-400"));
 
     Assert.True(equivalent.IsFailure);
     Assert.Equal(EmployeeErrors.NumberConflict.Code, equivalent.Error.Code);
@@ -419,15 +421,15 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-500", nationalId: "NID-1"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-500", nationalId: "NID-1"))).IsSuccess);
 
-    var duplicate = await graph.Create().HandleAsync(NewEmployee("EMP-501", nationalId: "nid-1"));
+    var duplicate = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-501", nationalId: "nid-1"));
     Assert.True(duplicate.IsFailure);
     Assert.Equal(EmployeeErrors.NationalIdConflict.Code, duplicate.Error.Code);
 
     // Two employees with no national identifier at all are fine: the unique index is filtered.
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-502"))).IsSuccess);
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-503"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-502"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-503"))).IsSuccess);
   }
 
   // ================================================================================================
@@ -439,7 +441,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
 
-    var created = await fixture.Graph(fixture.BranchA).Create().HandleAsync(NewEmployee("EMP-600"));
+    var created = await fixture.Graph(fixture.BranchA).Create().HandleAsync(fixture.NewEmployee("EMP-600"));
     Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
 
     var history = await fixture.HistoryAsync(created.Value);
@@ -457,8 +459,8 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
 
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-700"))).IsSuccess);
-    Assert.True((await graph.Create().HandleAsync(NewEmployee("EMP-700"))).IsFailure);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-700"))).IsSuccess);
+    Assert.True((await graph.Create().HandleAsync(fixture.NewEmployee("EMP-700"))).IsFailure);
 
     Assert.Equal(1, await fixture.EmployeeCountAsync());
     Assert.Equal(1, await fixture.HistoryRowCountAsync());
@@ -468,7 +470,7 @@ public sealed class EmployeeBoundarySqlServerTests
   public async Task A_history_row_cannot_be_updated_or_deleted()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
-    var created = await fixture.Graph(fixture.BranchA).Create().HandleAsync(NewEmployee("EMP-800"));
+    var created = await fixture.Graph(fixture.BranchA).Create().HandleAsync(fixture.NewEmployee("EMP-800"));
     Assert.True(created.IsSuccess);
 
     // ONE context for both attempts, and deliberately not disposed between them: the provider is scoped, so
@@ -527,7 +529,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-1000"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-1000"));
     Assert.True(created.IsSuccess);
 
     var terminated = await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
@@ -541,7 +543,7 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(1, await fixture.HistoryRowCountAsync());
 
     // The number stays reserved: a terminated employee still occupies it.
-    var reuse = await graph.Create().HandleAsync(NewEmployee("EMP-1000"));
+    var reuse = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-1000"));
     Assert.True(reuse.IsFailure);
   }
 
@@ -554,7 +556,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-T1"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T1"));
     Assert.True(created.IsSuccess);
 
     var before = await fixture.RowVersionAsync(created.Value);
@@ -585,7 +587,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-T2"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T2"));
     Assert.True(created.IsSuccess);
 
     var stale = await fixture.RowVersionAsync(created.Value);
@@ -608,7 +610,7 @@ public sealed class EmployeeBoundarySqlServerTests
 
     // The normal user reaches A and B, never C.
     var graph = fixture.Graph(fixture.BranchA, asUserId: fixture.NormalUserId);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-T3"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T3"));
     Assert.True(created.IsSuccess);
 
     var moved = await graph.Transfer().HandleAsync(new TransferEmployeeCommand(
@@ -625,7 +627,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-T4"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T4"));
     Assert.True(created.IsSuccess);
 
     await fixture.DeactivateBranchAsync(fixture.BranchB);
@@ -643,7 +645,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-T5"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T5"));
     Assert.True(created.IsSuccess);
 
     Assert.True((await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
@@ -665,7 +667,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA, asUserId: fixture.NormalUserId);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-T6"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T6"));
     Assert.True(created.IsSuccess);
 
     await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchA);
@@ -683,7 +685,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA, asUserId: fixture.NormalUserId);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-T7"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T7"));
     Assert.True(created.IsSuccess);
 
     await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchB);
@@ -703,7 +705,7 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
 
     var seeded = await fixture.Graph(fixture.BranchC, asUserId: fixture.AdministratorUserId)
-      .Create().HandleAsync(NewEmployee("EMP-T8"));
+      .Create().HandleAsync(fixture.NewEmployee("EMP-T8"));
     Assert.True(seeded.IsSuccess, seeded.IsFailure ? seeded.Error.Code : null);
 
     await fixture.DeactivateBranchAsync(fixture.BranchC);
@@ -724,7 +726,7 @@ public sealed class EmployeeBoundarySqlServerTests
     await using var fixture = await EmployeeFixture.CreateAsync();
 
     var seeded = await fixture.Graph(fixture.BranchC, asUserId: fixture.AdministratorUserId)
-      .Create().HandleAsync(NewEmployee("EMP-T9"));
+      .Create().HandleAsync(fixture.NewEmployee("EMP-T9"));
     Assert.True(seeded.IsSuccess);
 
     await fixture.DeactivateBranchAsync(fixture.BranchC);
@@ -745,7 +747,7 @@ public sealed class EmployeeBoundarySqlServerTests
   public async Task Two_transfers_from_the_same_rowversion_produce_one_winner()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
-    var created = await fixture.Graph(fixture.BranchA).Create().HandleAsync(NewEmployee("EMP-T10"));
+    var created = await fixture.Graph(fixture.BranchA).Create().HandleAsync(fixture.NewEmployee("EMP-T10"));
     Assert.True(created.IsSuccess);
 
     var shared = await fixture.RowVersionAsync(created.Value);
@@ -771,7 +773,7 @@ public sealed class EmployeeBoundarySqlServerTests
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     var graph = fixture.Graph(fixture.BranchA);
-    var created = await graph.Create().HandleAsync(NewEmployee("EMP-T11"));
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T11"));
     Assert.True(created.IsSuccess);
 
     var beforeTransfer = DateTimeOffset.UtcNow;
@@ -1438,8 +1440,387 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
 
-  private static CreateEmployeeCommand NewEmployee(string number, string? nationalId = null) =>
-    new(number, "Layla Haddad", new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), nationalId);
+  // MOVED ONTO THE FIXTURE in FP-007 Phase 3. Employee creation now names a department, and a department is
+  // a real row in a real company — so the command cannot be built without asking the fixture which one it
+  // seeded. Defaulting it here rather than at 41 call sites keeps every existing test asserting what it
+  // always asserted; the tests that care about a SPECIFIC department pass one.
+
+  // ================================================================================================
+  // D — EMPLOYEE DEPARTMENT, AGAINST REAL SQL (FP-007 Phase 3 §13, §14, §15, §29, §30, §31)
+  // ================================================================================================
+
+  // ---- CREATION WRITES THE COLUMN AND THE FIRST HISTORY ROW IN ONE TRANSACTION.
+  [Fact]
+  public async Task D1_Creating_an_employee_persists_the_department_and_one_initial_record()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D1"));
+
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+    Assert.Equal(fixture.DepartmentA, await fixture.EmployeeDepartmentAsync(created.Value));
+
+    var history = Assert.Single(await fixture.DepartmentHistoryAsync(created.Value));
+
+    Assert.Null(history.Source);
+    Assert.Equal(fixture.DepartmentA, history.Destination);
+  }
+
+  [Fact]
+  public async Task D2_Creating_an_employee_into_an_inactive_department_is_refused()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-D2", department: fixture.DepartmentAInactive));
+
+    Assert.True(created.IsFailure);
+    Assert.Equal(EmployeeErrors.DepartmentInactive.Code, created.Error.Code);
+
+    // ---- AND NOTHING WAS WRITTEN. A refusal that left an employee behind would be worse than one that
+    // wrote a bad department, because nothing would point at the inconsistency.
+    Assert.Equal(0, await fixture.DepartmentHistoryRowCountAsync());
+  }
+
+  // A department in ANOTHER company. Reported absent rather than refused, so employee creation cannot be
+  // used to probe which departments exist outside the caller's company.
+  [Fact]
+  public async Task D3_Creating_an_employee_into_another_companys_department_is_not_found()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-D3", department: fixture.DepartmentB));
+
+    Assert.True(created.IsFailure);
+    Assert.Equal(EmployeeErrors.DepartmentNotFound.Code, created.Error.Code);
+    Assert.Equal(0, await fixture.DepartmentHistoryRowCountAsync());
+  }
+
+  // ---- A VALID CHANGE MOVES THE COLUMN AND APPENDS EXACTLY ONE ROW.
+  [Fact]
+  public async Task D4_A_department_change_appends_one_record_and_leaves_the_first_untouched()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D4"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var second = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPC", active: true);
+
+    var changed = await graph.ChangeDepartment().HandleAsync(new ChangeEmployeeDepartmentCommand(
+      created.Value, second, await fixture.RowVersionAsync(created.Value), "Reorg", "Northern division"));
+
+    Assert.True(changed.IsSuccess, changed.IsFailure ? changed.Error.Code : null);
+    Assert.Equal(second, await fixture.EmployeeDepartmentAsync(created.Value));
+
+    var history = await fixture.DepartmentHistoryAsync(created.Value);
+
+    Assert.Equal(2, history.Count);
+
+    // The INITIAL row still says what it said. Append-only means the earlier record is never rewritten.
+    Assert.Null(history[0].Source);
+    Assert.Equal(fixture.DepartmentA, history[0].Destination);
+
+    Assert.Equal(fixture.DepartmentA, history[1].Source);
+    Assert.Equal(second, history[1].Destination);
+  }
+
+  [Fact]
+  public async Task D5_A_change_to_the_same_department_is_refused_and_appends_nothing()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D5"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var changed = await graph.ChangeDepartment().HandleAsync(new ChangeEmployeeDepartmentCommand(
+      created.Value, fixture.DepartmentA, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(changed.IsFailure);
+    Assert.Equal(EmployeeErrors.DepartmentUnchanged.Code, changed.Error.Code);
+    Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  [Fact]
+  public async Task D6_A_change_into_an_inactive_department_is_refused_and_appends_nothing()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D6"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var changed = await graph.ChangeDepartment().HandleAsync(new ChangeEmployeeDepartmentCommand(
+      created.Value, fixture.DepartmentAInactive, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(changed.IsFailure);
+    Assert.Equal(EmployeeErrors.DepartmentInactive.Code, changed.Error.Code);
+    Assert.Equal(fixture.DepartmentA, await fixture.EmployeeDepartmentAsync(created.Value));
+    Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  [Fact]
+  public async Task D7_A_change_into_another_companys_department_is_not_found()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D7"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var changed = await graph.ChangeDepartment().HandleAsync(new ChangeEmployeeDepartmentCommand(
+      created.Value, fixture.DepartmentB, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(changed.IsFailure);
+    Assert.Equal(EmployeeErrors.DepartmentNotFound.Code, changed.Error.Code);
+    Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  [Fact]
+  public async Task D8_A_stale_row_version_is_refused_and_appends_nothing()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D8"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var stale = await fixture.RowVersionAsync(created.Value);
+    var second = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPC", active: true);
+    var third = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPD", active: true);
+
+    // One successful change advances the version, which makes the captured token stale.
+    Assert.True((await graph.ChangeDepartment().HandleAsync(new ChangeEmployeeDepartmentCommand(
+      created.Value, second, stale))).IsSuccess);
+
+    var refused = await graph.ChangeDepartment().HandleAsync(
+      new ChangeEmployeeDepartmentCommand(created.Value, third, stale));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.ConcurrencyConflict.Code, refused.Error.Code);
+    Assert.Equal(second, await fixture.EmployeeDepartmentAsync(created.Value));
+    Assert.Equal(2, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  // ---- THE PERMISSION IS ENFORCED IN THE APPLICATION BOUNDARY, not only at the endpoint.
+  [Fact]
+  public async Task D9_A_caller_without_the_update_permission_is_refused()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D9"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var second = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPC", active: true);
+
+    var refused = await graph.ChangeDepartment(canUpdate: false).HandleAsync(
+      new ChangeEmployeeDepartmentCommand(
+        created.Value, second, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.WritePermissionDenied.Code, refused.Error.Code);
+    Assert.Equal(fixture.DepartmentA, await fixture.EmployeeDepartmentAsync(created.Value));
+    Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  // ================================================================================================
+  // D10 — THE CONCURRENCY PROOF (§13)
+  // ================================================================================================
+  //
+  // Finance → HR and Finance → Operations, both holding the SAME expected version, both against real SQL.
+  // Exactly one wins. The loser gets the existing concurrency failure and writes NOTHING — no history row,
+  // no department move — because its SaveChanges finds no row matching the version it declared.
+  //
+  // Without this, two concurrent changes would produce two history rows claiming the same source and
+  // different destinations, and the employee's log would fork.
+  [Fact]
+  public async Task D10_Two_concurrent_department_changes_leave_exactly_one_winner()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var seedGraph = fixture.Graph(fixture.BranchA);
+    var created = await seedGraph.Create().HandleAsync(fixture.NewEmployee("EMP-D10"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var humanResources = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPHR", active: true);
+    var operations = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPOP", active: true);
+
+    var version = await fixture.RowVersionAsync(created.Value);
+
+    // TWO INDEPENDENT GRAPHS — separate contexts, separate connections — so they genuinely contend inside
+    // SQL Server rather than being serialised by a shared change tracker.
+    using var first = fixture.Graph(fixture.BranchA);
+    using var second = fixture.Graph(fixture.BranchA);
+
+    var firstChange = first.ChangeDepartment().HandleAsync(
+      new ChangeEmployeeDepartmentCommand(created.Value, humanResources, version));
+    var secondChange = second.ChangeDepartment().HandleAsync(
+      new ChangeEmployeeDepartmentCommand(created.Value, operations, version));
+
+    var results = await Task.WhenAll(firstChange, secondChange);
+
+    Assert.Equal(1, results.Count(result => result.IsSuccess));
+    Assert.Equal(1, results.Count(result => result.IsFailure));
+
+    // ONE final department, and it is one of the two that were attempted.
+    var finalDepartment = await fixture.EmployeeDepartmentAsync(created.Value);
+
+    Assert.True(finalDepartment == humanResources || finalDepartment == operations);
+
+    // ---- AND EXACTLY ONE NEW HISTORY ROW. Two would mean the log forked; the initial record plus one
+    // change is the only correct outcome.
+    var history = await fixture.DepartmentHistoryAsync(created.Value);
+
+    Assert.Equal(2, history.Count);
+    Assert.Equal(fixture.DepartmentA, history[1].Source);
+    Assert.Equal(finalDepartment, history[1].Destination);
+  }
+
+  // ================================================================================================
+  // D11, D12 — THE INDEPENDENCE REGRESSIONS (§14, §15)
+  // ================================================================================================
+
+  // A BRANCH TRANSFER PRESERVES THE DEPARTMENT. +1 branch record, +0 department records.
+  [Fact]
+  public async Task D11_A_branch_transfer_preserves_the_department_and_writes_no_department_history()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D11"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var branchHistoryBefore = await fixture.HistoryRowCountAsync();
+
+    var transferred = await graph.Transfer().HandleAsync(new TransferEmployeeCommand(
+      created.Value, fixture.BranchB, EmployeeBranchTransferReason.OperationalNeed, null,
+      await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(transferred.IsSuccess, transferred.IsFailure ? transferred.Error.Code : null);
+
+    Assert.Equal(fixture.BranchB, await fixture.EmployeeBranchAsync(created.Value));
+    Assert.Equal(branchHistoryBefore + 1, await fixture.HistoryRowCountAsync());
+
+    // The department did not move, and nothing was appended to its log.
+    Assert.Equal(fixture.DepartmentA, await fixture.EmployeeDepartmentAsync(created.Value));
+    Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  // AND THE CONVERSE. A department change does not move the branch or append branch history.
+  [Fact]
+  public async Task D12_A_department_change_preserves_the_branch_and_writes_no_branch_history()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D12"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var branchHistoryBefore = await fixture.HistoryRowCountAsync();
+    var second = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPC", active: true);
+
+    Assert.True((await graph.ChangeDepartment().HandleAsync(new ChangeEmployeeDepartmentCommand(
+      created.Value, second, await fixture.RowVersionAsync(created.Value)))).IsSuccess);
+
+    Assert.Equal(fixture.BranchA, await fixture.EmployeeBranchAsync(created.Value));
+    Assert.Equal(branchHistoryBefore, await fixture.HistoryRowCountAsync());
+  }
+
+  // TERMINATION KEEPS THE DEPARTMENT. Not cleared, not moved to UNASSIGNED, no history appended.
+  [Fact]
+  public async Task D13_Termination_preserves_the_department_and_writes_no_department_history()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D13"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    var terminated = await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+      created.Value, DateTimeOffset.UtcNow, EmployeeStatusChangeReason.Resignation,
+      await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(terminated.IsSuccess, terminated.IsFailure ? terminated.Error.Code : null);
+
+    Assert.Equal(fixture.DepartmentA, await fixture.EmployeeDepartmentAsync(created.Value));
+    Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  // ---- AN EMPLOYEE MAY REMAIN IN A DEPARTMENT THAT IS LATER DEACTIVATED (§16).
+  //
+  // Deactivating a department stops it accepting NEW members; it does not evict the ones it has. Moving
+  // them automatically would rewrite where people work as a side effect of an org-structure change.
+  [Fact]
+  public async Task D14_An_employee_stays_in_a_department_that_is_deactivated_afterwards()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var department = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPC", active: true);
+
+    var created = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-D14", department: department));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    await fixture.DeactivateDepartmentAsync(department);
+
+    Assert.Equal(department, await fixture.EmployeeDepartmentAsync(created.Value));
+    Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  // ================================================================================================
+  // D15 — THE DEPARTMENT FILTER NEVER WIDENS BRANCH VISIBILITY (§25)
+  // ================================================================================================
+  //
+  // Finance spans both branches. The caller is authorized for Riyadh only. Filtering by Finance must return
+  // the Riyadh member and NOT the Jeddah one — the department filter narrows, and the branch scope still
+  // decides who is visible.
+  //
+  // This is the leak the filter could plausibly have introduced: a department is company-wide, so a filter
+  // written as "employees of this department" instead of "employees of this department WITHIN my scope"
+  // would have quietly returned everyone.
+  [Fact]
+  public async Task D15_A_department_filter_still_obeys_branch_scope()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var finance = await fixture.SeedDepartmentAsync(fixture.CompanyA, "FIN", active: true);
+
+    var inA = await fixture.Graph(fixture.BranchA).Create().HandleAsync(
+      fixture.NewEmployee("EMP-RUH", department: finance));
+    Assert.True(inA.IsSuccess, inA.IsFailure ? inA.Error.Code : null);
+
+    var inB = await fixture.Graph(fixture.BranchB).Create().HandleAsync(
+      fixture.NewEmployee("EMP-JED", department: finance));
+    Assert.True(inB.IsSuccess, inB.IsFailure ? inB.Error.Code : null);
+
+    // A caller who may see BranchA only.
+    using var narrow = fixture.Graph(fixture.BranchA);
+
+    var page = await narrow.Search().HandleAsync(new SearchEmployeesQuery(
+      new EmployeeScopeRequest(
+        EmployeeCompanyScopeMode.CurrentCompany,
+        EmployeeBranchScopeMode.SelectedAuthorizedBranches,
+        [fixture.BranchA]),
+      DepartmentId: finance));
+
+    Assert.True(page.IsSuccess, page.IsFailure ? page.Error.Code : null);
+
+    var found = Assert.Single(page.Value.Items);
+
+    Assert.Equal(inA.Value, found.EmployeeId);
+    Assert.Equal(finance, found.DepartmentId);
+
+    // And the Jeddah member exists — so the single result above is scope working, not an empty department.
+    Assert.Equal(finance, await fixture.EmployeeDepartmentAsync(inB.Value));
+  }
 
   // ================================================================================================
   // FIXTURE
@@ -1635,6 +2016,14 @@ public sealed class EmployeeBoundarySqlServerTests
 
     public Guid BranchC { get; private set; }
 
+    // FP-007 Phase 3. One Active department per company, plus an inactive one in CompanyA, so employee
+    // creation has something valid to name and the refusals have something real to be refused by.
+    public Guid DepartmentA { get; private set; }
+
+    public Guid DepartmentAInactive { get; private set; }
+
+    public Guid DepartmentB { get; private set; }
+
     public long AdministratorUserId { get; private set; }
 
     public long NormalUserId { get; private set; }
@@ -1688,6 +2077,10 @@ public sealed class EmployeeBoundarySqlServerTests
       BranchA = await SeedBranchAsync("BRA", main: true);
       BranchB = await SeedBranchAsync("BRB", main: false);
       BranchC = await SeedBranchAsync("BRC", main: false);
+
+      DepartmentA = await SeedDepartmentAsync(CompanyA, "DEPA", active: true);
+      DepartmentAInactive = await SeedDepartmentAsync(CompanyA, "DEPX", active: false);
+      DepartmentB = await SeedDepartmentAsync(CompanyB, "DEPB", active: true);
 
       // The normal user reaches A and B, never C, so "authorized" and "exists" stay distinguishable.
       await GrantBranchAsync(NormalUserId, BranchA);
@@ -1912,7 +2305,8 @@ public sealed class EmployeeBoundarySqlServerTests
     {
       var created = await Graph(branchId, company: company).Create().HandleAsync(
         new CreateEmployeeCommand(number, name,
-          new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), null));
+          new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), null,
+          company == CompanyB ? DepartmentB : DepartmentA));
       Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
       return created.Value;
     }
@@ -1931,20 +2325,82 @@ public sealed class EmployeeBoundarySqlServerTests
     // spoofed value. Raw SQL is therefore the only way to create the negative control that proves the tenant
     // predicate is doing work — a row in the same table, the same company and the same branch as the
     // caller's own data, differing ONLY in TenantId.
+    //
+    // DepartmentId is supplied from FP-007 Phase 3 because the column is NOT NULL and the foreign key is
+    // real. The foreign tenant's row therefore points at THIS tenant's department, which is harmless and
+    // deliberate: the row exists solely to be excluded by the tenant predicate, and what makes it a valid
+    // negative control is that it differs from the caller's data in TenantId ALONE.
     public Task InsertForeignTenantEmployeeAsync(string number, Guid companyId, Guid branchId) => ExecuteAsync(
       tenantCatalog,
       $"""
       INSERT INTO [tenant].[Employees]
-        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [EmployeeNumber], [NormalizedEmployeeNumber],
-         [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode], [StatusChangedUtc],
-         [StatusChangedBy], [CreatedUtc], [ModifiedUtc])
+        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+         [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode],
+         [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [ModifiedUtc])
       VALUES
-        ('{Guid.NewGuid():D}', '{Guid.NewGuid():D}', '{companyId:D}', '{branchId:D}', N'{number}', N'{number}',
+        ('{Guid.NewGuid():D}', '{Guid.NewGuid():D}', '{companyId:D}', '{branchId:D}', '{DepartmentFor(companyId):D}',
+         N'{number}', N'{number}',
          N'Other Tenant Person', SYSDATETIMEOFFSET(), N'Active', N'Created', SYSDATETIMEOFFSET(),
          N'test', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET())
       """);
 
+    // The seeded department belonging to a given company. The foreign-tenant control above and the
+    // per-company create helpers both need it, and picking the wrong company's would fail the foreign key
+    // rather than silently mis-seed.
+    public Guid DepartmentFor(Guid companyId) => companyId == CompanyB ? DepartmentB : DepartmentA;
+
     public async Task<int> HistoryRowCountAsync() => await CountAsync("EmployeeBranchAssignments");
+
+    // ---- FP-007 PHASE 3 READ HELPERS.
+    //
+    // Deliberately raw SQL against the tables rather than the read service: these assertions are about what
+    // was PERSISTED, and routing them through a scoped read would let a scoping bug hide a persistence bug.
+    public async Task<Guid?> EmployeeDepartmentAsync(Guid employeeId) =>
+      await ScalarGuidAsync("Employees", "DepartmentId", "EmployeeId", employeeId);
+
+    public async Task<int> DepartmentHistoryRowCountAsync() =>
+      await CountAsync("EmployeeDepartmentAssignments");
+
+    public async Task<int> DepartmentHistoryCountForAsync(Guid employeeId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText =
+        $"SELECT COUNT(*) FROM [tenant].[EmployeeDepartmentAssignments] WHERE [EmployeeId] = '{employeeId}'";
+
+      return (int)(await command.ExecuteScalarAsync())!;
+    }
+
+    // The department log for one employee, in the deterministic order §12 requires: EffectiveFromUtc first,
+    // then the identifier, so two changes inside one clock tick still read back the same way every time.
+    public async Task<IReadOnlyList<(Guid? Source, Guid Destination, string ChangedBy)>>
+      DepartmentHistoryAsync(Guid employeeId)
+    {
+      var rows = new List<(Guid?, Guid, string)>();
+
+      await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = $"""
+        SELECT [SourceDepartmentId], [DestinationDepartmentId], [ChangedBy]
+        FROM [tenant].[EmployeeDepartmentAssignments]
+        WHERE [EmployeeId] = '{employeeId}'
+        ORDER BY [EffectiveFromUtc], [EmployeeDepartmentAssignmentId]
+        """;
+
+      await using var reader = await command.ExecuteReaderAsync();
+
+      while (await reader.ReadAsync())
+      {
+        rows.Add((
+          reader.IsDBNull(0) ? null : reader.GetGuid(0),
+          reader.GetGuid(1),
+          reader.GetString(2)));
+      }
+
+      return rows;
+    }
 
     public async Task<byte[]> RowVersionAsync(Guid employeeId)
     {
@@ -2108,6 +2564,65 @@ public sealed class EmployeeBoundarySqlServerTests
       return session.Id;
     }
 
+    // The create command, with a department that actually exists in the company the graph will act in.
+    public CreateEmployeeCommand NewEmployee(
+      string number, string? nationalId = null, Guid? department = null) =>
+      new(
+        number,
+        "Layla Haddad",
+        new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+        nationalId,
+        department ?? DepartmentA);
+
+    // Seeded through the REAL Department aggregate and the real context, so these rows are exactly what the
+    // department application writes — including the company stamping the write boundary applies.
+    // ---- DEPARTMENTS ARE SEEDED WITH RAW SQL, LIKE THE COMPANIES AND BRANCHES ABOVE.
+    //
+    // Not through the aggregate: Department is `ICompanyOwnedEntity`, so the tenant context refuses every
+    // save unless an `ICompanyWriteAuthorizer` is present, and this fixture's seeding context deliberately
+    // has none. That refusal is the production company write boundary doing its job — the fix is to seed
+    // the way the other Platform rows are seeded, not to hand the fixture an authority it should not hold.
+    //
+    // The departments under test are still exercised through the real handlers; only the ARRANGE step is
+    // direct.
+    public async Task DeactivateDepartmentAsync(Guid departmentId)
+    {
+      await ExecuteAsync($"""
+        UPDATE [tenant].[Departments]
+        SET [Status] = N'Inactive', [StatusChangedUtc] = SYSDATETIMEOFFSET(), [StatusChangedBy] = N'{Actor}',
+            [ModifiedUtc] = SYSDATETIMEOFFSET(), [ModifiedBy] = N'{Actor}'
+        WHERE [DepartmentId] = '{departmentId}'
+        """);
+    }
+
+    public async Task<Guid> SeedDepartmentAsync(Guid companyId, string code, bool active)
+    {
+      var departmentId = Guid.NewGuid();
+      var status = active ? "Active" : "Inactive";
+
+      await ExecuteAsync($"""
+        INSERT INTO [tenant].[Departments]
+          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name],
+           [ParentDepartmentId], [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc],
+           [CreatedBy], [ModifiedUtc], [ModifiedBy])
+        VALUES
+          ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code.ToUpperInvariant()}',
+           N'Department {code}', NULL, N'{status}', SYSDATETIMEOFFSET(), N'{Actor}',
+           SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+        """);
+
+      return departmentId;
+    }
+
+    private async Task ExecuteAsync(string sql)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = sql;
+      await command.ExecuteNonQueryAsync();
+    }
+
     private async Task<Guid> SeedBranchAsync(string code, bool main)
     {
       await using var context = TenantOnlyContext();
@@ -2263,7 +2778,13 @@ public sealed class EmployeeBoundarySqlServerTests
       }
     }
 
-    internal sealed class TestUser : ICurrentUser
+    // ---- THE PERMISSION SET IS A PARAMETER FROM FP-007 PHASE 3.
+    //
+    // It was empty, and could stay empty while every write path enforced its permission at the HTTP
+    // endpoint. `ChangeEmployeeDepartmentCommandHandler` enforces `HR.Employees.Update` in the APPLICATION
+    // boundary as well, so a caller here has to actually hold it — and a test proving the refusal needs a
+    // caller who does not. Defaulting to granted keeps every existing test asserting what it always did.
+    internal sealed class TestUser(bool canUpdate = true) : ICurrentUser
     {
       public string? UserId => Actor;
 
@@ -2279,7 +2800,8 @@ public sealed class EmployeeBoundarySqlServerTests
 
       public IReadOnlyCollection<string> Roles => [];
 
-      public IReadOnlyCollection<string> Permissions => [];
+      public IReadOnlyCollection<string> Permissions =>
+        canUpdate ? [SSAS.HR.Application.Permissions.HrPermissionNames.UpdateEmployees] : [];
     }
 
     internal sealed class TestTenant(Guid? tenantId) : ICurrentTenant
@@ -2382,6 +2904,11 @@ public sealed class EmployeeBoundarySqlServerTests
       new HrUser(permissions ?? [HrPermissionNames.ViewEmployees]));
 
     public EmployeeReadService Reads() => new(accessor);
+
+    // The real search handler over the real scope resolver, so a department filter is proven against the
+    // production composition rather than against a read service called directly.
+    public SearchEmployeesQueryHandler Search() => new(Scope(), Reads());
+
     public CreateEmployeeCommandHandler Create() => new(
       new EmployeeRepository(accessor), unitOfWork,
       new CurrentBranchResolverShim(branchAuthorizer, fixture.Tenant),
@@ -2400,6 +2927,15 @@ public sealed class EmployeeBoundarySqlServerTests
 
     // The scoped context is owned by this graph, exactly as a request scope owns it in production.
     public void Dispose() => provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+    // FP-007 Phase 3. `canUpdate: false` builds a caller without HR.Employees.Update, which is the only way
+    // to prove the application-boundary permission check actually runs.
+    public ChangeEmployeeDepartmentCommandHandler ChangeDepartment(bool canUpdate = true) => new(
+      new EmployeeRepository(accessor), unitOfWork,
+      new EmployeeFixture.TestTenant(fixture.Tenant),
+      new TestCurrentCompany(Company),
+      new EmployeeFixture.TestUser(canUpdate),
+      new EmployeeFixture.TestClock());
 
     public TransferEmployeeCommandHandler Transfer() => new(
       new EmployeeRepository(accessor), BranchAccess, transferScope, unitOfWork,

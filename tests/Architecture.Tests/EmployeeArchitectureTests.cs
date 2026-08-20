@@ -95,17 +95,20 @@ public sealed class EmployeeArchitectureTests
   // No placeholder column stands in for them, because a placeholder is how a deferral quietly becomes a
   // design.
   //
-  // ---- UPDATED BY FP-007 PHASE 1, AND ONLY WHERE THE APPROVED SCOPE CHANGED IT.
+  // ---- UPDATED BY FP-007 PHASE 1, THEN BY PHASE 3, AND ONLY WHERE THE APPROVED SCOPE CHANGED IT.
   //
-  // The Employee half is untouched and still binding: Phase 1 introduces the Department AGGREGATE and adds
-  // nothing whatsoever to Employee. `Employee.DepartmentId` arrives in a later phase, and until it does its
-  // absence is exactly as load-bearing as it was.
+  // Phase 1 superseded the clause asserting that no Department TYPE existed anywhere in HR: the aggregate
+  // exists. Phase 3 supersedes the clause asserting that Employee has no DEPARTMENT PROPERTY: BR-HR-0005 is
+  // no longer deferred, and `Employee.DepartmentId` is its implementation rather than a placeholder.
   //
-  // The second half used to assert that no Department type existed anywhere in HR. That was correct while
-  // Department was deferred and is now superseded — the aggregate exists. Position is NOT superseded, so
-  // that clause is kept in full: `BR-HR-0006` is still deferred, and no placeholder may stand in for it.
+  // POSITION AND MANAGER ARE NOT SUPERSEDED, and their clauses are kept in full and unweakened. BR-HR-0006
+  // and BR-HR-0007 are still deferred, and a placeholder is still how a deferral quietly becomes a design.
+  //
+  // The department clause is REPLACED rather than deleted — the property is now asserted to exist with the
+  // exact shape Phase 3 approved, so this test still fails if Employee grows a department surface nobody
+  // agreed to.
   [Fact]
-  public void Employee_has_no_department_position_or_manager()
+  public void Employee_has_no_position_or_manager_and_exactly_one_department_property()
   {
     var properties = typeof(Employee)
       .GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
@@ -113,9 +116,28 @@ public sealed class EmployeeArchitectureTests
       .ToArray();
 
     Assert.DoesNotContain(properties, name =>
-      name.Contains("Department", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("Position", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("Manager", StringComparison.OrdinalIgnoreCase));
+
+    // ---- EXACTLY TWO DEPARTMENT MEMBERS, NAMED. The current department and the append-only log, and
+    // nothing else — no DepartmentCode, no DepartmentName, no Department navigation. An Employee that could
+    // walk to its Department would be a read that bypasses the department's own scope.
+    Assert.Equal(
+      ["DepartmentAssignments", "DepartmentId"],
+      properties
+        .Where(name => name.Contains("Department", StringComparison.OrdinalIgnoreCase))
+        .OrderBy(name => name, StringComparer.Ordinal));
+
+    // ---- AND ITS SETTER IS PRIVATE, unlike BranchId's.
+    //
+    // BranchId is public-set because IBranchOwnedEntity requires it for stamping. DepartmentId has no such
+    // interface, so a public setter would be an ordinary-assignment path around ChangeDepartment — which is
+    // precisely what §27's protected-mutation rule forbids.
+    var departmentId = typeof(Employee).GetProperty(nameof(Employee.DepartmentId));
+
+    Assert.NotNull(departmentId);
+    Assert.Equal(typeof(Guid), departmentId!.PropertyType);
+    Assert.False(departmentId.SetMethod!.IsPublic);
 
     // POSITION IS STILL DEFERRED WHOLE. No type, anywhere in HR.
     Assert.DoesNotContain(HrDomainAssembly.GetTypes(), type =>

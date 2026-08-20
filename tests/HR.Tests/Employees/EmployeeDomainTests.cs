@@ -15,6 +15,8 @@ public sealed class EmployeeDomainTests
   private static readonly Guid Company = Guid.Parse("22222222-2222-2222-2222-222222222222");
   private static readonly Guid BranchA = Guid.Parse("33333333-3333-3333-3333-333333333333");
   private static readonly Guid BranchB = Guid.Parse("44444444-4444-4444-4444-444444444444");
+  private static readonly Guid DepartmentA = Guid.Parse("55555555-5555-5555-5555-555555555555");
+  private static readonly Guid DepartmentB = Guid.Parse("66666666-6666-6666-6666-666666666666");
   private static readonly DateTimeOffset Hired = new(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
   private static readonly DateTimeOffset Now = new(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
 
@@ -262,7 +264,7 @@ public sealed class EmployeeDomainTests
   {
     var employee = Stamped();
 
-    var second = employee.StampInitialAssignment(Tenant, Company, BranchB, "a", Guid.NewGuid(), Now);
+    var second = employee.StampInitialAssignment(Tenant, Company, BranchB, DepartmentB, "a", Guid.NewGuid(), Now);
 
     Assert.True(second.IsFailure);
     Assert.Equal(EmployeeErrors.BranchHistoryImmutable.Code, second.Error.Code);
@@ -437,10 +439,15 @@ public sealed class EmployeeDomainTests
       .Where(type => type.Namespace == "SSAS.HR.Domain.Events")
       .ToArray();
 
-    // EVERY HR domain event, not only Employee's: 6 from FP-006 plus 5 from FP-007 Phase 1. The count is
-    // asserted so a new event type cannot be added without someone confirming it carries nothing personal —
-    // which is exactly what happened when the Department events arrived.
-    Assert.Equal(11, eventTypes.Length);
+    // EVERY HR domain event, not only Employee's: 6 from FP-006, 5 from FP-007 Phase 1, and
+    // EmployeeDepartmentChanged from Phase 3. The count is asserted so a new event type cannot be added
+    // without someone confirming it carries nothing personal — which is exactly what happened when the
+    // Department events arrived, and again here.
+    //
+    // Phase 3's event carries the two department identifiers and NOT the reason text: that field is
+    // free-form operator input persisted for the audit record alone, and putting it on an event would push
+    // unbounded text into every consumer and whatever they log.
+    Assert.Equal(12, eventTypes.Length);
 
     var leaked = eventTypes
       .SelectMany(type => type.GetProperties().Select(property => $"{type.Name}.{property.Name}"))
@@ -479,7 +486,7 @@ public sealed class EmployeeDomainTests
     employee.TenantId = Tenant;
     employee.CompanyId = Company;
     employee.BranchId = BranchA;
-    Assert.True(employee.StampInitialAssignment(Tenant, Company, BranchA, "actor", Guid.NewGuid(), Now).IsSuccess);
+    Assert.True(employee.StampInitialAssignment(Tenant, Company, BranchA, DepartmentA, "actor", Guid.NewGuid(), Now).IsSuccess);
     return employee;
   }
 

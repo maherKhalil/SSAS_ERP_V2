@@ -429,9 +429,23 @@ public sealed class EmployeeReadScopeArchitectureTests
         "AddAsync",
         // Appends one history row. Append-only: there is no update and no remove.
         "AppendBranchAssignmentAsync",
+        // FP-007 Phase 3. The same, for the department log, with the same absence of any counterpart.
+        "AppendDepartmentAssignmentAsync",
         // Uniqueness probes. They return a BOOLEAN, never a row, so they disclose nothing beyond the answer
         // the unique index would give anyway — and they are company-scoped by argument.
         "EmployeeNumberExistsAsync",
+        // ---- FP-007 PHASE 3. THE ONE METHOD HERE THAT READS A DIFFERENT TABLE, and the justification this
+        // test exists to force.
+        //
+        // Employee creation and department change must both prove a destination department exists in the
+        // caller's company and is Active. That fact lives on Departments, so something has to read it.
+        //
+        // It is NOT a read back door, and the shape is what makes that true: it takes the company as an
+        // argument and filters on it, it returns a two-field record rather than a Department, and it returns
+        // NULL for anything outside the company instead of a refusal. No employee row is reachable through
+        // it, and no department outside the caller's company is distinguishable from one that does not
+        // exist.
+        "FindAssignableDepartmentAsync",
         // Single aggregate by identifier, tracked, for a command about to mutate it.
         "GetByIdAsync",
         "NationalIdExistsAsync"

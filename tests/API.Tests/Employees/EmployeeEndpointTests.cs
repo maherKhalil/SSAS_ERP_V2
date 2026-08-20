@@ -114,13 +114,75 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   public async Task A6_Create_rejects_a_spoofed_ownership_field(string field)
   {
     var body = $$"""
-      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","{{field}}":"22222222-2222-2222-2222-222222222222"}
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"88888888-8888-8888-8888-888888888888","{{field}}":"22222222-2222-2222-2222-222222222222"}
       """;
 
     var response = await Send(HttpMethod.Post, Route, CreateToken, body);
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ================================================================================================
+  // A6b — THE DEPARTMENT IS PART OF THE CREATE CONTRACT (FP-007 Phase 3).
+  // ================================================================================================
+  //
+  // CONTRACT GUARDS, NOT A NEW ENDPOINT. Phase 3 adds no department route — Phase 4 owns HTTP wiring. What
+  // is asserted here is that the EXISTING create route now requires a department and refuses the three ways
+  // a department can be unusable, because those refusals reach the wire today whether or not anyone
+  // intended to test them.
+  [Fact]
+  public async Task A6b_Create_without_a_department_is_refused()
+  {
+    const string body = """
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00"}
+      """;
+
+    var response = await Send(HttpMethod.Post, Route, CreateToken, body);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  [Fact]
+  public async Task A6c_Create_into_an_inactive_department_is_refused()
+  {
+    var body = $$"""
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"{{EmployeeApiTestHost.DepartmentInactive}}"}
+      """;
+
+    var response = await Send(HttpMethod.Post, Route, CreateToken, body);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // A department in a company the caller has not established. Refused with the SAME answer an absent
+  // department gets, which is what stops this being a probe for other companies' departments.
+  [Fact]
+  public async Task A6d_Create_into_another_companys_department_is_refused()
+  {
+    var body = $$"""
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"{{EmployeeApiTestHost.DepartmentOtherCompany}}"}
+      """;
+
+    var response = await Send(HttpMethod.Post, Route, CreateToken, body);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ---- AND PHASE 3 ADDS NO DEPARTMENT ROUTE. Phase 4 owns that; until then the verb does not exist.
+  [Fact]
+  public async Task A6e_No_employee_department_route_exists_yet()
+  {
+    var response = await Send(
+      HttpMethod.Post,
+      $"{Route}/{EmployeeApiTestHost.EmployeeId}/department",
+      UpdateToken,
+      """{"departmentId":"88888888-8888-8888-8888-888888888888","expectedRowVersion":"AAAAAAAAB9E="}""");
+
+    Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
   }
 
   [Fact]
@@ -737,7 +799,7 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   }
 
   private const string ValidCreateBody = """
-    {"employeeNumber":"EMP-00147","fullName":"Layla Haddad","employmentDate":"2026-03-01T00:00:00+00:00","nationalId":"2990112345678"}
+    {"employeeNumber":"EMP-00147","fullName":"Layla Haddad","employmentDate":"2026-03-01T00:00:00+00:00","nationalId":"2990112345678","departmentId":"88888888-8888-8888-8888-888888888888"}
     """;
 
   private const string ValidUpdateBody = """

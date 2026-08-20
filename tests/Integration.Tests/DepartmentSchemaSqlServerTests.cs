@@ -440,17 +440,42 @@ public sealed class DepartmentSchemaSqlServerTests
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
         """);
 
+    // Created on first use with a reserved code no test names, so it satisfies the foreign key without
+    // appearing in any assertion about the departments under test.
+    private Guid? holdingDepartment;
+
+    private async Task<Guid> HoldingDepartmentAsync()
+    {
+      if (holdingDepartment is { } existing)
+      {
+        return existing;
+      }
+
+      var departmentId = Guid.NewGuid();
+
+      await InsertDepartmentAsync(departmentId, CompanyA, "ZZ-EMPLOYEE-HOME", "Employee Home");
+
+      holdingDepartment = departmentId;
+
+      return departmentId;
+    }
+
     public async Task<Guid> InsertEmployeeAsync(string employeeNumber)
     {
       var employeeId = Guid.NewGuid();
 
+      // FP-007 Phase 3 made DepartmentId NOT NULL with a real foreign key, so a seeded employee needs a
+      // department. A holding department created once per fixture keeps that incidental fact out of the
+      // schema assertions, which count and inspect the departments the tests themselves create.
+      var homeDepartment = await HoldingDepartmentAsync();
+
       await ExecuteAsync($"""
         INSERT INTO [tenant].[Employees]
-          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [EmployeeNumber], [NormalizedEmployeeNumber],
-           [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode], [StatusChangedUtc],
-           [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
+          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+           [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode],
+           [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
-          ('{employeeId}', '{Tenant}', '{CompanyA}', '{BranchA}', N'{employeeNumber}',
+          ('{employeeId}', '{Tenant}', '{CompanyA}', '{BranchA}', '{homeDepartment}', N'{employeeNumber}',
            N'{employeeNumber.ToUpperInvariant()}', N'Person {employeeNumber}', SYSDATETIMEOFFSET(),
            N'Active', N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');

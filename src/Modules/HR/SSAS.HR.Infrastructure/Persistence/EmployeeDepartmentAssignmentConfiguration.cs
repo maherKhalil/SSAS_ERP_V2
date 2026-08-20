@@ -92,8 +92,12 @@ public sealed class EmployeeDepartmentAssignmentConfiguration
     // difference is intentional: branch identifiers were left opaque so no modelling path could reinterpret
     // one as the record's ownership branch, a risk that does not exist for a department. Departments are
     // never deleted either, so RESTRICT costs nothing and buys real integrity.
+    // FP-007 Phase 3 gave Employee the collection navigation, so the relationship names it. That is what
+    // lets the aggregate append a row and EF persist it in the employee's own unit of work — the same
+    // arrangement the branch history has, and the reason a department change cannot commit without its
+    // record.
     builder.HasOne<Employee>()
-      .WithMany()
+      .WithMany(employee => employee.DepartmentAssignments)
       .HasForeignKey(assignment => assignment.EmployeeId)
       .OnDelete(DeleteBehavior.Restrict);
 

@@ -76,6 +76,12 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   public static readonly Guid BranchC = Guid.Parse("66666666-6666-6666-6666-666666666666");
   public static readonly Guid EmployeeId = Guid.Parse("77777777-7777-7777-7777-777777777777");
 
+  // FP-007 Phase 3. DepartmentA is Active and in CompanyA; DepartmentInactive and DepartmentOtherCompany
+  // exist so the create contract's refusals can be exercised at the HTTP layer.
+  public static readonly Guid DepartmentA = Guid.Parse("88888888-8888-8888-8888-888888888888");
+  public static readonly Guid DepartmentInactive = Guid.Parse("99999999-9999-9999-9999-999999999999");
+  public static readonly Guid DepartmentOtherCompany = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
   private WebApplication? application;
   private HttpClient? client;
 

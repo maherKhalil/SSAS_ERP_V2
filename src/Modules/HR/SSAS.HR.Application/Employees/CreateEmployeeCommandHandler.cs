@@ -13,11 +13,18 @@ namespace SSAS.HR.Application.Employees;
 // THE COMMAND CARRIES NO OWNERSHIP. There is no TenantId, no CompanyId and no BranchId: all three come from
 // the trusted execution context, and a caller-supplied one would be confirmed rather than trusted anyway.
 // Leaving them off the command means the question never reaches the boundary.
+// ---- THE DEPARTMENT *IS* ON THE COMMAND, UNLIKE THE THREE OWNERSHIP DIMENSIONS.
+//
+// It is not ownership and there is no trusted context to read it from: which department a new hire joins is
+// a business choice the caller makes, so it is an input that gets VALIDATED rather than a value that gets
+// stamped. It is mandatory from FP-007 Phase 3 onward — there is no nullable grace period and no automatic
+// fallback to the migration UNASSIGNED department, which exists for legacy remediation alone.
 public sealed record CreateEmployeeCommand(
   string EmployeeNumber,
   string FullName,
   DateTimeOffset EmploymentDate,
-  string? NationalId);
+  string? NationalId,
+  Guid DepartmentId);
 
 public sealed class CreateEmployeeCommandHandler(
   IEmployeeRepository employees,
@@ -51,6 +58,21 @@ public sealed class CreateEmployeeCommandHandler(
     if (branch.IsFailure)
     {
       return Result.Failure<Guid>(branch.Error);
+    }
+
+    // ---- THE DEPARTMENT, RESOLVED INSIDE THE TRUSTED COMPANY AND NOWHERE ELSE.
+    //
+    // The company comes from the execution context above, never from the command, so this cannot be pointed
+    // at another company's department by a caller. Absent and belonging-to-another-company are the same
+    // answer deliberately: distinguishing them would make employee creation a probe for the existence of
+    // departments the caller has no company scope for.
+    //
+    // Checked BEFORE the uniqueness probes below, so a request naming an unusable department does not first
+    // reveal whether an employee number is taken.
+    var department = await ResolveDepartmentAsync(companyId, command.DepartmentId, cancellationToken);
+    if (department.IsFailure)
+    {
+      return Result.Failure<Guid>(department.Error);
     }
 
     var employeeNumber = EmployeeNumber.Create(command.EmployeeNumber);
@@ -108,8 +130,11 @@ public sealed class CreateEmployeeCommandHandler(
     // An Employee with no branch history is a defect, so the aggregate is what creates the record and this
     // handler cannot forget to. Both land in the SAME unit of work below: they commit together or neither
     // does (AC-EMP-0005).
+    // The initial DEPARTMENT assignment rides the same call and the same guarantee: three rows — the
+    // employee, its first branch record and its first department record — commit together or none does.
     var stamped = employee.Value.StampInitialAssignment(
-      tenantId, companyId, branch.Value, currentUser.UserId!, Guid.NewGuid(), occurredUtc);
+      tenantId, companyId, branch.Value, command.DepartmentId,
+      currentUser.UserId!, Guid.NewGuid(), occurredUtc);
     if (stamped.IsFailure)
     {
       return Result.Failure<Guid>(stamped.Error);
@@ -123,4 +148,42 @@ public sealed class CreateEmployeeCommandHandler(
       ? Result.Failure<Guid>(saved.Error)
       : Result.Success(employee.Value.Id);
   }
+
+  // ---- THE RULES OF §5 AND §8, IN ONE PLACE SO BOTH OPERATIONS ANSWER IDENTICALLY.
+  //
+  // Creation and department change ask exactly the same question of a destination department, and a
+  // divergence between them would be a security-relevant inconsistency rather than a cosmetic one. It is
+  // internal so the change handler shares it rather than restating it.
+  //
+  // NOTHING HERE ASKS ABOUT BRANCHES. A department spans the branches of its company (ADR-026 decision 1),
+  // so requiring one to match the employee's branch would invent a rule the approved model does not have.
+  internal static async Task<Result> ValidateDepartmentAsync(
+    IEmployeeRepository employees,
+    Guid companyId,
+    Guid departmentId,
+    CancellationToken cancellationToken)
+  {
+    if (departmentId == Guid.Empty)
+    {
+      return Result.Failure(EmployeeErrors.DepartmentRequired);
+    }
+
+    var department = await employees.FindAssignableDepartmentAsync(
+      companyId, departmentId, cancellationToken);
+
+    if (department is null)
+    {
+      return Result.Failure(EmployeeErrors.DepartmentNotFound);
+    }
+
+    // An INACTIVE department keeps the employees it already has — FP-007 Phase 3 §16 — but accepts no new
+    // ones. Deactivating a department must not silently keep absorbing hires.
+    return department.IsActive
+      ? Result.Success()
+      : Result.Failure(EmployeeErrors.DepartmentInactive);
+  }
+
+  private Task<Result> ResolveDepartmentAsync(
+    Guid companyId, Guid departmentId, CancellationToken cancellationToken) =>
+    ValidateDepartmentAsync(employees, companyId, departmentId, cancellationToken);
 }

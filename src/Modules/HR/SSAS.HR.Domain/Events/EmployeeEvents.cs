@@ -73,3 +73,22 @@ public sealed record EmployeeTransferred(
   Guid SourceBranchId,
   Guid DestinationBranchId,
   EmployeeBranchTransferReason TransferReason) : DomainEvent(EventId, OccurredUtc);
+
+// ---- FP-007 PHASE 3 (REQ-HR-0102).
+//
+// The department identifiers are carried for the same reason the branch ones are: a consumer reacting to a
+// reorganization needs to know where from and where to, and neither identifier says anything about the
+// person.
+//
+// THE REASON TEXT IS NOT CARRIED, and that is deliberate. It is free-form operator input persisted for the
+// audit record alone; putting it on an event would push unbounded text into every downstream consumer and
+// into whatever they log. The reason CODE is omitted with it, because unlike a branch transfer's enum this
+// one is nullable free text under the approved Phase 1 model and would carry the same problem.
+public sealed record EmployeeDepartmentChanged(
+  Guid EventId,
+  DateTimeOffset OccurredUtc,
+  Guid EmployeeId,
+  Guid TenantId,
+  Guid CompanyId,
+  Guid SourceDepartmentId,
+  Guid DestinationDepartmentId) : DomainEvent(EventId, OccurredUtc);

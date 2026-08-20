@@ -104,11 +104,14 @@ public sealed class EmployeeDepartmentAssignment
 
   // THE INITIAL ASSIGNMENT, written in the same transaction as the department it records.
   //
-  // `internal` in FP-006's equivalent, because the Employee aggregate produced it. Here it is `public`
-  // because Phase 1 introduces no Employee change at all — the aggregate that will call this does not yet
-  // reference departments — and an `internal` factory with no caller inside the assembly would be
-  // unreachable and untestable. Phase 3 tightens it when Employee gains the operation.
-  public static Result<EmployeeDepartmentAssignment> CreateInitial(
+  // `internal`, exactly as FP-006's equivalent is, and for the same reason: the Employee aggregate is the
+  // only thing that may produce a history row, so nothing outside this assembly can fabricate one.
+  //
+  // Phase 1 left it `public` because Employee did not yet reference departments and an internal factory
+  // with no caller would have been unreachable and untestable. Phase 3 gave it that caller, so the promise
+  // Phase 1 recorded here is now kept. The guards below are still proven — through
+  // Employee.ChangeDepartment, which is the only way they can be reached in production.
+  internal static Result<EmployeeDepartmentAssignment> CreateInitial(
     Guid tenantId,
     Guid companyId,
     Guid employeeId,
@@ -136,7 +139,7 @@ public sealed class EmployeeDepartmentAssignment
       reasonText: null));
   }
 
-  public static Result<EmployeeDepartmentAssignment> CreateChange(
+  internal static Result<EmployeeDepartmentAssignment> CreateChange(
     Guid tenantId,
     Guid companyId,
     Guid employeeId,

@@ -16,11 +16,17 @@ namespace SSAS.HR.API.Employees;
 // The single exception is the transfer destination, which is a BUSINESS ARGUMENT authorized server-side
 // against live state — never an assertion of the caller's own scope, and never their execution branch
 // (SEC-EMP-0203, SEC-EMP-0212).
+//
+// departmentId is the SECOND such business argument (FP-007 Phase 3). Like the transfer destination it is
+// authorized server-side against live state — it must exist in the caller's trusted company and be Active —
+// and it asserts nothing about the caller's own scope. It is required, because an employee without a
+// department cannot be created from Phase 3 onward.
 public sealed record CreateEmployeeRequest(
   [property: JsonPropertyName("employeeNumber")] string? EmployeeNumber,
   [property: JsonPropertyName("fullName")] string? FullName,
   [property: JsonPropertyName("employmentDate")] DateTimeOffset? EmploymentDate,
-  [property: JsonPropertyName("nationalId")] string? NationalId);
+  [property: JsonPropertyName("nationalId")] string? NationalId,
+  [property: JsonPropertyName("departmentId")] Guid? DepartmentId);
 
 // Only the mutable profile. EmployeeNumber is absent because it is an identifier, and BranchId is absent by
 // construction so an ordinary update can never express a transfer (BRULE-EMP-0015).

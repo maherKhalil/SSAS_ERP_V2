@@ -674,6 +674,64 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       plan.Value.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
   }
 
+  // ================================================================================================
+  // C6-15. THE COPY ORDER PUTS DEPARTMENTS BEFORE EMPLOYEES (FP-007 Phase 3).
+  // ================================================================================================
+  //
+  // Employee gained a REQUIRED foreign key to Department, so a copy that inserted employees first would
+  // fail on that constraint against a target where the departments did not exist yet. The plan is a
+  // topological sort over the model's foreign keys, so the ordering is derived rather than declared — and
+  // derived means nobody wrote it down, which is exactly why it is worth asserting.
+  //
+  // ---- AND WHY THIS IS NOT MERELY THE SQL TESTS RESTATED.
+  //
+  // The real-SQL copies below would fail if the order were wrong, but only for the tables the fixture
+  // happens to populate, and only after twenty minutes. This reads the order directly out of the plan, in
+  // milliseconds, for every pair that matters — including DepartmentManagers and
+  // EmployeeDepartmentAssignments, which point at BOTH principals.
+  //
+  // It is also the guard for the ADR-026 decision 7 split. If DepartmentManager were ever folded back onto
+  // Department as a ManagerEmployeeId column, Department would depend on Employee while Employee depends on
+  // Department, the sort would find a cycle, and Build would fail with CutoverCopyOrderUndecidable rather
+  // than producing a wrong order.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void C6_15_The_copy_order_places_every_principal_before_its_dependents()
+  {
+    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+
+    Assert.True(plan.IsSuccess, plan.IsFailure ? plan.Error.Code : null);
+
+    var order = plan.Value.Select(table => table.EntityName).ToArray();
+
+    int PositionOf(string entity)
+    {
+      var index = Array.IndexOf(order, entity);
+
+      Assert.True(index >= 0, $"{entity} is absent from the copy manifest entirely.");
+
+      return index;
+    }
+
+    // Company and Branch are Platform's, and everything HR-owned depends on one or both.
+    Assert.True(PositionOf(nameof(Company)) < PositionOf("Department"));
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(Employee)));
+    Assert.True(PositionOf(nameof(Branch)) < PositionOf(nameof(Employee)));
+
+    // ---- THE FP-007 PHASE 3 EDGE. This is the one the new foreign key created.
+    Assert.True(
+      PositionOf("Department") < PositionOf(nameof(Employee)),
+      "Departments must be copied before Employees: Employee.DepartmentId is a required foreign key.");
+
+    // The two tables that depend on BOTH must come after both.
+    Assert.True(PositionOf("Department") < PositionOf("DepartmentManager"));
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf("DepartmentManager"));
+    Assert.True(PositionOf("Department") < PositionOf("EmployeeDepartmentAssignment"));
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf("EmployeeDepartmentAssignment"));
+
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(EmployeeBranchAssignment)));
+  }
+
   // ---- C6-14. AND THE OLD, CONTRIBUTOR-FREE MODEL DEMONSTRABLY DOES NOT.
   //
   // The regression detector. It proves the fix is load-bearing rather than incidental: without the
@@ -942,15 +1000,19 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     Assert.True(retried.IsSuccess, retried.IsFailure ? retried.Error.Code : null);
 
-    // EVERY ROW-BEARING table already complete, including both HR tables — nothing copied twice.
+    // EVERY ROW-BEARING table already complete, including the HR tables — nothing copied twice.
     //
-    // FOUR complete and THREE recopied, not seven complete. The three FP-007 Phase 1 tables are empty in
-    // this fixture, and an empty table is indistinguishable from one that was never copied, so the engine
-    // copies each again and moves nothing — the same rule the retry test above states. The claim this test
-    // makes is that rows are never DUPLICATED, and the destination counts below are what prove it; a table
-    // count of seven here would assert something the engine has never promised.
-    Assert.Equal(4, retried.Value.TablesAlreadyComplete);
-    Assert.Equal(3, retried.Value.TablesCopied);
+    // FIVE complete and TWO recopied, not seven complete. Company, Branch, Employee,
+    // EmployeeBranchAssignment and Department all hold rows in this fixture; DepartmentManagers and
+    // EmployeeDepartmentAssignments are empty, and an empty table is indistinguishable from one that was
+    // never copied, so the engine copies each again and moves nothing — the same rule the retry test above
+    // states. The claim this test makes is that rows are never DUPLICATED, and the destination counts below
+    // are what prove it; a table count of seven here would assert something the engine has never promised.
+    //
+    // Department joined the row-bearing set when FP-007 Phase 3 made Employee.DepartmentId a required
+    // foreign key: the fixture must seed a real department before it can seed an employee at all.
+    Assert.Equal(5, retried.Value.TablesAlreadyComplete);
+    Assert.Equal(2, retried.Value.TablesCopied);
 
     // And the destination still holds exactly one of each, so "already complete" was a verification rather
     // than a shrug.
@@ -1203,6 +1265,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     {
       var story = new EmployeeStory(
         Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+        Guid.NewGuid(),
         $"{prefix}-EMP-1", Now.AddDays(-30), Now.AddDays(-10));
 
       await using var connection = new SqlConnection(ConnectionFor(SourceCatalog));
@@ -1238,19 +1301,40 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
           ("@IsMain", isMain), ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
       }
 
+      // ---- THE DEPARTMENT THE EMPLOYEE BELONGS TO (FP-007 Phase 3).
+      //
+      // Seeded BEFORE the employee, because DepartmentId is NOT NULL with a restricted foreign key — which
+      // is also why the copy engine must now order Departments ahead of Employees. That ordering is derived
+      // from the model rather than declared, so this row is what makes the derivation observable: if the
+      // plan ever emitted Employees first, the copy would fail on this constraint rather than silently
+      // producing a wrong result.
+      await ExecuteAsync(connection, transaction, """
+        INSERT INTO [tenant].[Departments]
+          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [ParentDepartmentId],
+           [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc],
+           [ModifiedBy])
+        VALUES
+          (@DepartmentId, @TenantId, @CompanyId, @Code, @Code, @Name, NULL,
+           N'Active', @Stamp, @Actor, @Stamp, @Actor, @Stamp, @Actor);
+        """,
+        ("@DepartmentId", story.DepartmentId), ("@TenantId", tenantId), ("@CompanyId", story.CompanyId),
+        ("@Code", $"{prefix}DEP"), ("@Name", $"Department {prefix}"),
+        ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
+
       // The employee's CURRENT branch is the destination: they have already been transferred, which is what
       // makes "current branch preserved" and "historical attribution preserved" two different assertions.
       await ExecuteAsync(connection, transaction, """
         INSERT INTO [tenant].[Employees]
-          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [EmployeeNumber], [NormalizedEmployeeNumber],
-           [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode], [StatusChangedUtc],
-           [StatusChangedBy], [CreatedUtc], [ModifiedUtc], [CreatedBy], [ModifiedBy])
+          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+           [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode],
+           [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [ModifiedUtc], [CreatedBy], [ModifiedBy])
         VALUES
-          (@EmployeeId, @TenantId, @CompanyId, @BranchId, @Number, @Number, @Name, @Employment,
-           N'Active', N'Created', @Stamp, @Actor, @Stamp, @Stamp, @Actor, @Actor);
+          (@EmployeeId, @TenantId, @CompanyId, @BranchId, @DepartmentId, @Number, @Number, @Name,
+           @Employment, N'Active', N'Created', @Stamp, @Actor, @Stamp, @Stamp, @Actor, @Actor);
         """,
         ("@EmployeeId", story.EmployeeId), ("@TenantId", tenantId), ("@CompanyId", story.CompanyId),
-        ("@BranchId", story.DestinationBranchId), ("@Number", story.EmployeeNumber),
+        ("@BranchId", story.DestinationBranchId), ("@DepartmentId", story.DepartmentId),
+        ("@Number", story.EmployeeNumber),
         ("@Name", $"Person {prefix}"), ("@Employment", story.InitialEffectiveUtc.UtcDateTime),
         ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
 
@@ -1881,6 +1965,8 @@ internal sealed record EmployeeStory(
   Guid CompanyId,
   Guid SourceBranchId,
   Guid DestinationBranchId,
+  // FP-007 Phase 3: an employee has a department, and the cutover must carry it with everything else.
+  Guid DepartmentId,
   Guid EmployeeId,
   Guid InitialAssignmentId,
   Guid TransferAssignmentId,

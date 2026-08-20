@@ -1,34 +1,55 @@
 # =====================================================================================================
-# THE REAL-SQL INTEGRATION SUITE — MANUAL ONLY (CI-001).
+# THE REAL-SQL INTEGRATION SUITE — NIGHTLY AND ON DEMAND (CI-006).
 # =====================================================================================================
 #
 # ---- WHY THIS IS NOT PART OF THE PULL-REQUEST GATE.
 #
-# It is 489 tests and roughly 79 minutes locally, most of it serialized real-SQL cutover and backup suites
-# that create and drop databases one at a time. On a hosted runner it will be slower still. Putting that in
-# front of every pull request would make the gate something people learn to wait out or work around, and a
-# gate that is routinely bypassed protects nothing.
+# It is 495 tests, most of it serialized real-SQL cutover and backup suites that create and drop databases
+# one at a time. Hosted, that is around a quarter of an hour against a fast gate of roughly two minutes.
+# Putting it in front of every pull request would make the gate something people learn to wait out or work
+# around, and a gate that is routinely bypassed protects nothing.
 #
-# The fast gate in ci.yml is the mandatory one. This is here so the suite CAN be run against a clean
-# checkout on demand — before a release, or when a change reaches cutover, storage or routing behaviour.
+# The fast gate in ci.yml stays the mandatory one.
 #
 # ---- IT USES EXACTLY THE MECHANISM THE FAST GATE PROVES.
 #
 # Same image, same SSAS_TEST_SQLSERVER override, same SQL authentication. Nothing here is a second way of
 # reaching a database.
 #
-# ---- HONEST STATUS.
+# ---- WHY NIGHTLY RATHER THAN PER-MERGE, FOR NOW.
 #
-# This workflow has not yet been observed to complete a full run in GitHub Actions. The connection
-# mechanism is shared with the fast gate, but the RUNTIME and stability of the long serialized suites on a
-# hosted runner are unmeasured. Treat a first run as an experiment, not as a gate.
-name: Integration tests (manual)
+# Three consecutive hosted runs on the same tree passed 495/495 with no infrastructure failure, so the
+# suite is affordable to automate. Nightly is the trigger that earns the thing three runs cannot give:
+# a continuous record. It also catches what no commit-triggered run would — this job pins neither
+# `ubuntu-latest` nor `mssql/server:2022-latest`, and it installs sqlcmd from an external feed at runtime,
+# so its environment drifts underneath it on days when nobody pushes anything.
+#
+# Adding a push-to-main trigger is the obvious next step once that record exists; it is deliberately not
+# taken here, on three observations.
+name: Integration tests (nightly and manual)
 
 on:
   workflow_dispatch:
+  schedule:
+    # 03:00 UTC daily. Cron here is ALWAYS UTC — GitHub does not apply a repository timezone — so this is
+    # written as the absolute time it fires rather than as anyone's local night.
+    - cron: "0 3 * * *"
 
 permissions:
   contents: read
+
+# ---- ONE FULL SQL SUITE AT A TIME.
+#
+# Not for correctness: every run gets its own ephemeral runner and its own SQL container, so two runs share
+# nothing and cannot corrupt each other. It is so a nightly firing on top of a manual investigation does not
+# quietly burn a second quarter-hour of runner time and leave two results to reconcile.
+#
+# cancel-in-progress is FALSE on purpose. Cancelling a suite fourteen minutes into its backup and restore
+# work destroys exactly the evidence the run exists to produce, and a cancelled run is not a datum — it is
+# an ambiguity. The later run waits instead.
+concurrency:
+  group: integration-tests
+  cancel-in-progress: false
 
 jobs:
   integration:

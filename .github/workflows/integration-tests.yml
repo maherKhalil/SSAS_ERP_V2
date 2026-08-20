@@ -182,10 +182,63 @@ jobs:
         run: |
           set -euo pipefail
 
+          # ---- EVERY NETWORK OPERATION HERE IS RETRIED; NOTHING ELSE IS (CI-008).
+          #
+          # This step is the one part of the job that reaches outside GitHub and the container registry, so
+          # it is the one part that can fail for reasons the repository does not control. A nightly that goes
+          # red because a CDN dropped one connection is noise, and noise is how a scheduled job stops being
+          # read.
+          #
+          # Three attempts with 5s then 15s backoff. Bounded deliberately: the point is to survive a blip,
+          # not to sit through an outage — the ten-minute step timeout above is the outer bound either way.
+          #
+          # THE FINAL FAILURE IS STILL FATAL. `set -e` plus a non-zero return here fails the step, which
+          # fails the job. There is no `continue-on-error` and no fallback that would let the suite run
+          # without sqlcmd: the three competing-process tests would then fail one by one for a reason that
+          # looks like a backup defect. A clearly-labelled provisioning failure is worth far more.
+          #
+          # Nothing downstream is retried. Not the build, not `dotnet test`, not a SQL assertion — a flaky
+          # retry around a test is how a real defect gets buried.
+          retry() {
+            local label="$1"
+            shift
+
+            local attempt=1 delay=5
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+
+              if [ "${attempt}" -ge 3 ]; then
+                echo "::error::${label} failed after ${attempt} attempts."
+                return 1
+              fi
+
+              echo "${label} failed on attempt ${attempt}; retrying in ${delay}s."
+              sleep "${delay}"
+              attempt=$((attempt + 1))
+              delay=$((delay * 3))
+            done
+          }
+
+          # Fetch and dearmor are separate operations now. Piped together, `curl` failing left `gpg` to
+          # dearmor an empty stream, so the error surfaced as a confusing keyring problem rather than as the
+          # download failure it was.
+          #
+          # curl does its own bounded retry as well — closest to the socket, so it recovers from a reset
+          # without discarding the whole attempt. `--retry-all-errors` is needed because a bare `--retry`
+          # ignores connection failures, which is exactly the case worth retrying.
+          fetch_microsoft_key() {
+            curl -fsSL --connect-timeout 15 --max-time 120 \
+              --retry 3 --retry-delay 5 --retry-all-errors \
+              https://packages.microsoft.com/keys/microsoft.asc --output /tmp/microsoft.asc
+          }
+
+          retry "Microsoft signing key download" fetch_microsoft_key
+
           # gpg runs as the RUNNER, not under sudo. Under sudo it tries to open /dev/tty, which does not
           # exist in a workflow step, and fails before writing anything.
-          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-            | gpg --batch --yes --dearmor --output /tmp/microsoft-prod.gpg
+          gpg --batch --yes --dearmor --output /tmp/microsoft-prod.gpg /tmp/microsoft.asc
           sudo install -o root -g root -m 644 /tmp/microsoft-prod.gpg /usr/share/keyrings/microsoft-prod.gpg
 
           # The feed is chosen from the runner's OWN release rather than a hard-coded one, so a future
@@ -204,8 +257,18 @@ jobs:
           # The runner image ships current Ubuntu package lists; the `acl` install above resolves from them
           # with no update at all, which is the evidence that dependencies still resolve. List-Cleanup is off
           # so refreshing one list does not discard the others.
-          sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/mssql-release.list" \
-            -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+          #
+          # Acquire::Retries is apt's OWN download retry, and apt's timeouts are set explicitly rather than
+          # left at whatever the image defaults to. Both are preferable to wrapping apt in `timeout`: killing
+          # apt mid-transaction can leave dpkg locked or half-configured, and the retry would then fail on
+          # the lock rather than on the thing that actually went wrong.
+          apt_update_microsoft_feed() {
+            sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/mssql-release.list" \
+              -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" \
+              -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+          }
+
+          retry "Microsoft feed metadata refresh" apt_update_microsoft_feed
 
           # ---- THE EULA IS ANSWERED BEFORE apt IS ASKED.
           #
@@ -217,13 +280,38 @@ jobs:
           # Preseeding the answer removes the question entirely, and DEBIAN_FRONTEND=noninteractive is
           # carried through `sudo env` rather than assumed.
           echo 'mssql-tools18 mssql-tools/accept_eula boolean true' | sudo debconf-set-selections
-          sudo env DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y \
-            apt-get install -y --no-install-recommends mssql-tools18
+
+          # ---- NOT PINNED TO A VERSION, ON PURPOSE.
+          #
+          # Pinning `mssql-tools18=18.6.2.1-1` would buy determinism and sell a worse failure: when Microsoft
+          # eventually drops that build from the pool, the nightly breaks PERMANENTLY and for a reason nobody
+          # is watching for, which is strictly worse than the transient this step is hardening against. The
+          # tool is used only to run BACKUP DATABASE from a process the suite does not own, so any 18.x does
+          # the job.
+          #
+          # The installed version is printed instead, so if a future release ever does change behaviour, the
+          # log says which build ran rather than leaving it to be guessed.
+          apt_install_sqlcmd() {
+            sudo env DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y \
+              apt-get install -y --no-install-recommends \
+              -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+              mssql-tools18
+          }
+
+          retry "mssql-tools18 installation" apt_install_sqlcmd
 
           echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
 
+      # Failing here rather than inside the suite. Without this, a provisioning problem surfaces as three
+      # backup tests failing on a process that would not start, which reads like a defect in the guard they
+      # exercise.
       - name: Verify sqlcmd is on PATH
-        run: sqlcmd -? > /dev/null && echo "sqlcmd available"
+        run: |
+          set -euo pipefail
+          echo "mssql-tools18: $(dpkg-query -W -f='${Version}' mssql-tools18)"
+          echo "msodbcsql18:  $(dpkg-query -W -f='${Version}' msodbcsql18)"
+          sqlcmd -? > /dev/null
+          echo "sqlcmd available"
 
       - name: Integration.Tests
         run: >

@@ -147,6 +147,18 @@ public sealed class StubEmployeeReads : IEmployeeReadService
     return Task.FromResult(History);
   }
 
+  // The position history the FP-008 Phase 4 route reads. `History` stands in for the branch one; this
+  // returns whatever the test seeded, so the route's projection and its 404-on-absence can both be driven.
+  public IReadOnlyList<EmployeePositionHistoryEntry>? PositionHistory { get; set; } = [];
+
+  public Task<IReadOnlyList<EmployeePositionHistoryEntry>?> GetEmployeePositionHistoryAsync(
+    EmployeeReadScope scope, Guid employeeId, CancellationToken cancellationToken = default)
+  {
+    LastScope = scope;
+
+    return Task.FromResult(PositionHistory);
+  }
+
   // Records the scope like every other read here. The count itself is not what these API tests are about;
   // that it cannot be asked without a scope is.
   public Task<int> CountEmployeesByPositionAsync(

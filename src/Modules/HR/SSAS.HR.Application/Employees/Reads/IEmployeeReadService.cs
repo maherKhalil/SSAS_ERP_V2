@@ -40,6 +40,13 @@ public interface IEmployeeReadService
   Task<IReadOnlyList<EmployeeBranchHistoryEntry>?> GetEmployeeBranchHistoryAsync(
     EmployeeReadScope scope, Guid employeeId, CancellationToken cancellationToken = default);
 
+  // The POSITION history, on identical terms and for the identical reason (FP-008 Phase 4, FR-POS-0212).
+  // `EmployeePositionAssignment` is company-owned but NOT branch-owned — it names two positions and belongs
+  // to neither — so its scope is inherited from the employee it describes: prove the employee is inside the
+  // scope first, return null if not.
+  Task<IReadOnlyList<EmployeePositionHistoryEntry>?> GetEmployeePositionHistoryAsync(
+    EmployeeReadScope scope, Guid employeeId, CancellationToken cancellationToken = default);
+
   // ---- HOW MANY EMPLOYEES HOLD A POSITION (FP-008 Phase 3, `api-contracts.md`).
   //
   // ================================================================================================

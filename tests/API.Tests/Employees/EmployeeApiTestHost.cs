@@ -192,6 +192,7 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<GetEmployeeQueryHandler>();
     builder.Services.AddScoped<SearchEmployeesQueryHandler>();
     builder.Services.AddScoped<GetEmployeeBranchHistoryQueryHandler>();
+    builder.Services.AddScoped<ITenantCompanyCurrencyLookup, StubTenantCompanyCurrencyLookup>();
     builder.Services.AddHrModule();
 
     application = builder.Build();
@@ -329,4 +330,20 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   {
     public long? TenantUserId => 2;
   }
+}
+
+// ---- THE CURRENCY SEAM, STUBBED (FP-008 Phase 4, DEC-POS-0035).
+//
+// `PositionCompositionServices` is registered by `AddHrModule`, and it depends on the module-facing lookup
+// Platform implements. These hosts compose a MINIMAL container — no Platform persistence — so the seam has
+// to be supplied here. The stub answers a fixed code, which is all these tests need: whether the echo is
+// correct against a real Company is an integration question, and whether HR can reach Platform's model at
+// all is answered by the compiler.
+internal sealed class StubTenantCompanyCurrencyLookup : ITenantCompanyCurrencyLookup
+{
+  public const string Code = "SAR";
+
+  public Task<string?> FindBaseCurrencyCodeAsync(
+    Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<string?>(Code);
 }

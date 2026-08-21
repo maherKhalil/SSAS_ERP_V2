@@ -348,6 +348,13 @@ public static class PlatformInfrastructureServiceCollectionExtensions
       BranchReadContextFactory(provider),
       provider.GetRequiredService<ITenantAdministratorAuthority>()));
 
+    // ---- THE CURRENCY SEAM (FP-008 Phase 4, DEC-POS-0015).
+    //
+    // Same factory, same reason: it only ever READS companies, so it takes the authorizer-free read context
+    // factory rather than the full one. A module asks for three characters; Platform answers.
+    services.AddScoped<ITenantCompanyCurrencyLookup>(provider => new TenantCompanyCurrencyLookup(
+      BranchReadContextFactory(provider)));
+
     // The five-step validation, in one place, used by BOTH the request path and the write boundary. Two
     // copies of "is this company usable" is how a read path and a write path come to disagree.
     services.AddScoped<ICompanyContextResolver, CompanyContextResolver>();

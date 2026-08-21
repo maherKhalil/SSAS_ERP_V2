@@ -190,6 +190,56 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
   // the composed predicate is auditable in a single method. AsNoTracking because a read must never hand a
   // caller an entity whose navigations would load rows outside the scope on access. The deferred query type
   // stays inside this class and never crosses the application boundary.
+  // ---- THE POSITION HISTORY (FP-008 Phase 4, FR-POS-0212).
+  //
+  // The branch history's method, step for step, because the control is the same one: the assignment rows are
+  // company-owned but NOT branch-owned, so no branch predicate can be written over them and their scope has
+  // to be inherited from the employee they describe.
+  public async Task<IReadOnlyList<EmployeePositionHistoryEntry>?> GetEmployeePositionHistoryAsync(
+    EmployeeReadScope scope, Guid employeeId, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // ---- STEP 1: PROVE THE EMPLOYEE IS INSIDE THE SCOPE.
+    //
+    // This is the only thing standing between a caller confined to one branch and the full promotion history
+    // of an arbitrary employee. Absent, not forbidden — the same answer `GetEmployeeAsync` gives, so the two
+    // cannot be compared to learn that the employee exists somewhere else.
+    var employeeInScope = await Scoped(context, scope)
+      .AnyAsync(employee => employee.Id == employeeId, cancellationToken);
+
+    if (!employeeInScope)
+    {
+      return null;
+    }
+
+    // ---- STEP 2: ONLY NOW LOAD THE HISTORY.
+    //
+    // Still tenant- and company-scoped in its own right. The employee predicate above already implies the
+    // company, and stating it again means a future change to either query cannot silently widen this one.
+    return await context.Set<SSAS.HR.Domain.Positions.EmployeePositionAssignment>()
+      .AsNoTracking()
+      .Where(assignment => assignment.TenantId == scope.TenantId)
+      .Where(assignment => scope.Companies.CompanyIds.Contains(assignment.CompanyId))
+      .Where(assignment => assignment.EmployeeId == employeeId)
+      // The same point-in-time primitive: ordered by EffectiveFromUtc then identifier, so "which position did
+      // this employee hold at time T" is the LAST row at or before T — a total order rather than one that
+      // happens to hold. The tiebreaker matters because two changes can share an instant.
+      .OrderBy(assignment => assignment.EffectiveFromUtc)
+      .ThenBy(assignment => assignment.Id)
+      .Select(assignment => new EmployeePositionHistoryEntry(
+        assignment.Id,
+        assignment.SourcePositionId,
+        assignment.DestinationPositionId,
+        assignment.EffectiveFromUtc,
+        assignment.ReasonCode,
+        assignment.ReasonText,
+        assignment.ChangedBy))
+      .ToArrayAsync(cancellationToken);
+  }
+
   // Counted THROUGH `Scoped`, so the caller's company and branch predicates apply to the count exactly as
   // they apply to a list. That is what makes the number scope-dependent by construction rather than by a
   // filter someone remembered to add.

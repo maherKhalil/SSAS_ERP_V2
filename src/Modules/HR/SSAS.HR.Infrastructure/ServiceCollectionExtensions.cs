@@ -118,6 +118,7 @@ public static class ServiceCollectionExtensions
     services.AddScoped<GetEmployeeQueryHandler>();
     services.AddScoped<SearchEmployeesQueryHandler>();
     services.AddScoped<GetEmployeeBranchHistoryQueryHandler>();
+    services.AddScoped<GetEmployeePositionHistoryQueryHandler>();
 
     services.AddScoped<ActivateEmployeeCommandHandler>();
     services.AddScoped<DeactivateEmployeeCommandHandler>();

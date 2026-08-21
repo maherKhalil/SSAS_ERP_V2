@@ -55,3 +55,21 @@ public sealed record EmployeeBranchHistoryEntry(
   EmployeeBranchTransferReason ReasonCode,
   string? ReasonText,
   string TransferredBy);
+
+// ---- THE POSITION HISTORY ENTRY (FP-008 Phase 4, FR-POS-0212).
+//
+// The branch entry's shape, with two deliberate differences that come from the model rather than from taste:
+//
+//   * `ReasonCode` is a nullable STRING, not an enum. A branch transfer's reason is a closed set
+//     (`EmployeeBranchTransferReason`); a position change's is free text under the approved Phase 1 model,
+//     which is also why neither it nor `ReasonText` rides on the domain event.
+//   * `SourcePositionId` is nullable and null marks the INITIAL assignment — the same convention the
+//     department history uses, and the reason the stored column is nullable while the event's is not.
+public sealed record EmployeePositionHistoryEntry(
+  Guid AssignmentId,
+  Guid? SourcePositionId,
+  Guid DestinationPositionId,
+  DateTimeOffset EffectiveFromUtc,
+  string? ReasonCode,
+  string? ReasonText,
+  string ChangedBy);

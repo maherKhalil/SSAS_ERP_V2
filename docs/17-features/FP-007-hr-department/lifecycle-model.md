@@ -1,8 +1,8 @@
 ---
 document_id: FP-007-LIFE
 title: HR Department — Lifecycle Model
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-007 — Lifecycle Model

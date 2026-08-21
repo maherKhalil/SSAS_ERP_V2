@@ -1,8 +1,8 @@
 ---
 document_id: FP-007-TS
 title: HR Department — Test Scenarios
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-007 — Test Scenarios
@@ -118,3 +118,74 @@ unit test over a fake proves the handler and not the rule.
 | TS-DEP-0055 | A | `Department` implements `ITenantOwnedEntity` and `ICompanyOwnedEntity` and **not** `IBranchOwnedEntity` | AC-DEP-0051 |
 | TS-DEP-0056 | A | No `BranchId` property or column exists on `Department`, asserted **from the composed EF model** rather than by reading a migration file — the lesson from TEST-001, where enumerating files gave a guard that was green and blind | AC-DEP-0052 |
 | TS-DEP-0057 | A | `DepartmentReadScope` carries no branch dimension | AC-DEP-0051 |
+
+---
+
+## As-built test inventory (2026-08-21)
+
+The scenarios above were written as design intent. What follows names the tests that shipped, so a reader
+can go from a rule to the assertion that defends it.
+
+### Domain (`HR.Tests`, 126)
+
+| Area | Tests |
+|---|---|
+| Department aggregate | `DepartmentDomainTests` — code and name validation, parent refusals, lifecycle transitions |
+| Associations | `DepartmentAssociationDomainTests` — manager identity keyed by department; history initial-record and change shapes, reached through the aggregate |
+| Employee ↔ Department | `EmployeeDepartmentDomainTests` — creation writes column and first history row together; change appends exactly one; **branch transfer preserves department**; **termination preserves department**; deterministic ordering under colliding timestamps |
+| Scope resolution | `DepartmentScopeResolverTests` — permission before scope; no branch dependency at all |
+
+### Application, real SQL (`Integration.Tests`)
+
+| Area | Tests |
+|---|---|
+| Department operations | `DepartmentApplicationSqlServerTests` (32) — including the concurrent-cycle proof, manager privacy, and the fixture/production translation-parity guard |
+| Employee ↔ Department | `EmployeeBoundarySqlServerTests` `D1`–`D15` — create/change validation, stale rowversion, permission, **concurrency (one winner, one new history row)**, branch and termination regressions, and the branch-scope filter proof |
+| Migration and backfill | `EmployeeDepartmentMigrationSqlServerTests` (12) — one `UNASSIGNED` per affected company, none for unaffected ones, per-employee history, NOT NULL and FK and index after migration, and the **collision case**: migration fails, customer department untouched, no second department, no partial history |
+| Cutover | `TenantCutoverCopySqlServerTests` — exact seven-entity manifest, contributor-loss detector, and `C6_15` topological order (Departments before Employees) |
+
+### HTTP (`API.Tests`, 466)
+
+`DepartmentEndpointTests` (33) covers every route for success, missing token, missing permission, and
+permission bleed. Four are worth naming:
+
+- **`D6`** — a unique-constraint violation on **create** answers `409 department.code_conflict`.
+- **`D23`** — the same persistence error on **assign-manager** answers `409 concurrency.conflict`.
+- **`D24`** — a rowversion conflict on assign-manager answers **identically** to `D23`. The pair is the
+  proof of `DEC-DEP-0027`: a caller cannot tell which check refused them.
+- **`D32`** — an undisclosed manager reaches the wire as *assigned, without an identity*, and does not
+  collapse into *no manager*.
+
+`HrRouteInventoryTests` enumerates the routes from the harnesses, which call the production mapping
+extensions: every route carries a permission, the twenty-one-route inventory matches method, pattern and
+permission exactly, and no `DELETE` verb exists.
+
+### A finding worth keeping: what a test cannot prove
+
+`A_large_tenant_copies_by_streaming_and_every_query_seeks` asserted that a copy allocated under 256 MB, on
+the premise that materialising the tenant would allocate "row payload times row count". The first Release
+run failed it at 287 MB under parallel load while it passed in isolation, and measurement showed the
+assertion had never been able to discriminate:
+
+| Quantity | Value |
+|---|---|
+| Streaming baseline, isolated | **74 MB** (3889 bytes/row) |
+| Materialisation, 20 000 rows | **≈12 MB** entities, ≈36 MB with change tracking |
+
+**The materialisation cost is smaller than the streaming baseline.** `GC.GetTotalAllocatedBytes` counts
+cumulative allocation, and the transient reader buffers a streaming copy already churns dwarf the cost of
+retaining the entities. A materialising implementation would have landed near 110 MB and passed. The ratio
+is row-count-invariant, so raising the volume does not restore the margin.
+
+Two replacements were considered and refuted. A retention probe measures at the wrong *time*: the
+materialised graph is unreachable by the time the operation returns. A server statement-shape probe measures
+the wrong *thing*: the copier issues one unbounded `SELECT` and `BatchSize` is a write-side `SqlBulkCopy`
+option, so the statement shape is identical for both designs.
+
+The assertion was removed and the figure kept as diagnostic output. The property it named — that the live
+reader reaches `WriteToServerAsync` and nothing drains it into a collection — is a property of the *source*,
+and is now guarded structurally by `The_table_copier_streams_the_reader_it_opens` (`2ef7ca3`). The two tests
+reference each other by name.
+
+The general lesson is recorded here because it generalises: **a budget assertion whose noise band overlaps
+its signal is worse than no assertion**, because it reads as a passing guard.

@@ -1,8 +1,8 @@
 ---
 document_id: FP-007-DOM
 title: HR Department — Domain Model
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-007 — Domain Model

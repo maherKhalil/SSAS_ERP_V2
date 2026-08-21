@@ -1,8 +1,8 @@
 ---
 document_id: FP-007-RTM
 title: HR Department — Traceability Matrix
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-007 — Traceability Matrix
@@ -90,3 +90,28 @@ prose.**
 `BR-HR-0005` and `BR-HR-0007` are recorded as **OPEN**, not as covered. FP-007 cannot claim to satisfy either
 until `OD-DEP-001` and `OD-DEP-003` are answered, and stating otherwise would be the exact failure this
 matrix exists to prevent.
+
+---
+
+## As-built traceability (2026-08-21)
+
+Requirement and rule to shipped code to the test that defends it. Every row was verified against the source
+rather than inferred from the design.
+
+| Requirement / rule | Decision | Shipped code | Proven by |
+|---|---|---|---|
+| `REQ-HR-0100` create and edit a department | `DEC-DEP-0007`, `DEC-DEP-0023` | `Department.Create`, `CreateDepartmentCommandHandler`, `UpdateDepartmentCommandHandler`, `POST`/`PUT /api/hr/departments` | `DepartmentDomainTests`, `DepartmentApplicationSqlServerTests`, `D1`–`D7`, `D15`–`D18` |
+| `REQ-HR-0101` department hierarchy | `DEC-DEP-0005`, `DEC-DEP-0006`, `DEC-DEP-0008`, `DEC-DEP-0023` | `Department.ChangeParent`, `ChangeDepartmentParentCommandHandler`, `MoveDepartmentToRootCommandHandler`, `SqlServerDepartmentHierarchyLock`, `/move`, `/move-to-root`, `/children` | concurrent-cycle proof in `DepartmentApplicationSqlServerTests`; `D19`–`D21`; `D13`–`D14` |
+| `REQ-HR-0102` manager and employee assignment | `DEC-DEP-0013`, `DEC-DEP-0018`, `DEC-DEP-0022`, `DEC-DEP-0028` | `DepartmentManager`, `AssignDepartmentManagerCommandHandler`, `ClearDepartmentManagerCommandHandler`, `Employee.ChangeDepartment`, `/manager`, `/manager/remove`, `/change-department` | `D22`–`D25`; `A6e`–`A6i`; `D4`–`D10` in `EmployeeBoundarySqlServerTests` |
+| `BR-HR-0005` every employee has a department | `DEC-DEP-0009`, `DEC-DEP-0010` | `Employee.DepartmentId` NOT NULL, required on creation; `20260820140653_AddEmployeeDepartment` | `EmployeeDepartmentMigrationSqlServerTests` (12); `D1`–`D3` |
+| `BR-HR-0007` manager scope | `DEC-DEP-0014` | `DepartmentManager` only; **no** `Employee.ManagerId` | `EmployeeDepartmentArchitectureTests.Neither_aggregate_gained_a_manager_reference` |
+| `BR-HR-0008` hierarchy acyclicity | `DEC-DEP-0006` | ancestry walk under a per-company app lock | concurrent-cycle proof; `AssertAcyclicAsync` |
+| `BR-PLT-0003` no physical deletion | `DEC-DEP-0011` | no delete on any department path | `DepartmentApplicationSqlServerTests` |
+| `BR-PLT-0016` reporting scope | `DEC-DEP-0019` | company-scoped department reads; branch filters membership | `D15_A_department_filter_still_obeys_branch_scope` |
+| `BRULE-DEP-0016` manager association | `DEC-DEP-0022` | `tenant.DepartmentManagers`, primary key on `DepartmentId` | `A_department_can_have_at_most_one_manager`; `C6_15` |
+| `ADR-012` module isolation | `DEC-DEP-0026` | `HR.API` references no Platform assembly | `DepartmentApiArchitectureTests.The_hr_api_references_no_platform_assembly` |
+| `ADR-020` / `ADR-023` d.21 cutover manifest | `DEC-DEP-0029` | manifest derived by reflection over `ITenantOwnedEntity` | `C6_1`/`C6_2`, `C6_14`, `C6_15` |
+| `ADR-024` boundary — department is not a partition | `DEC-DEP-0002`, `DEC-DEP-0018` | branch transfer and department change are independent operations | `D11`, `D12`, `D13`; `EmployeeDepartmentDomainTests` |
+| `ADR-025` d.10 scoped reads | `DEC-DEP-0019` | `DepartmentReadScope`, resolver-only construction | `DepartmentApiArchitectureTests` (four transport-boundary guards) |
+| `ADR-026` d.1 department spans branches | `DEC-DEP-0001` | `Department` is not `IBranchOwnedEntity` | `Department_and_its_history_are_never_branch_owned` |
+| `ADR-026` d.7 manager table split | `DEC-DEP-0022`, `DEC-DEP-0029` | separate `DepartmentManagers` table keeps the copy graph acyclic | `C6_15_The_copy_order_places_every_principal_before_its_dependents` |

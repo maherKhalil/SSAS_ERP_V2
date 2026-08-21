@@ -1,8 +1,8 @@
 ---
 document_id: FP-007
 title: HR Department
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 module: HR
 milestone: Milestone 1
 depends_on:
@@ -18,10 +18,34 @@ depends_on:
 
 # Feature Package 007 — HR Department
 
-> **Draft — Owner Decision Required.** This package is analysis and design only. Five decisions
-> ([`OD-DEP-001` … `OD-DEP-005`](#owner-decisions-required-before-approval)) turn on business semantics that no
-> repository authority settles, and they are presented for approval rather than guessed. **This package is not
-> approved for implementation and no code may be written against it until those decisions are recorded.**
+> **Approved for Implementation — built and verified.** This package began as analysis with five open owner
+> decisions ([`OD-DEP-001` … `OD-DEP-005`](#owner-decisions-required-before-approval)). All five were closed
+> between 2026-08-20 and 2026-08-21, and FP-007 shipped in four phases. The decisions in
+> [`decisions-approved.md`](decisions-approved.md) are binding.
+>
+> The original analysis text is preserved throughout; where a ruling changed an answer, an amendment is
+> appended beneath it rather than written over it.
+
+## As built
+
+| Phase | Delivered | Commit |
+|---|---|---|
+| 1 | `Department`, `DepartmentManager`, `EmployeeDepartmentAssignment`; tenant persistence and migration | `66d2499` |
+| 2 | Department application operations: create, update, hierarchy move, lifecycle, manager, reads | `245f64b` |
+| 3 | `Employee.DepartmentId`, mandatory on creation; `ChangeEmployeeDepartment`; history; legacy `UNASSIGNED` backfill | `99aea17` |
+| 4 | The HTTP surface: thirteen routes, transport contracts, `DepartmentApiErrorMapper`, route and boundary guards | `c75d4ab`, `7124970` |
+
+Verification at the Phase 4 exit gates: Architecture 370, Platform 963, HR 126, API 466, and the full
+Integration suite **571/571 in Debug**. The Release gate ran **570/571**; its single failure was a
+pre-existing allocation-budget assertion in the cutover suite that measurement showed could never have
+detected what it claimed — see [`test-scenarios.md`](test-scenarios.md). The clause was replaced by a
+structural guard and the class re-verified at **25/25** in Release.
+
+### The one decision whose answer reversed
+
+`DEC-DEP-0016` deferred department-change history and stated plainly that the deferral was not free: for its
+duration, *who moved between departments, when, and why* would be unrecoverable. The owner reversed it, and
+Phase 1 shipped `EmployeeDepartmentAssignment` as append-only history from the outset. The gap never opened.
 
 ## Purpose
 

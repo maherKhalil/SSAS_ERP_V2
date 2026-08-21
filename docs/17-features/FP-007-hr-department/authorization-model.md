@@ -1,8 +1,8 @@
 ---
 document_id: FP-007-AUTH
 title: HR Department — Authorization Model
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-007 — Authorization Model

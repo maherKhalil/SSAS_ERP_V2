@@ -122,14 +122,30 @@ internal sealed class DepartmentReadService(ITenantDbContextAccessor contextAcce
 
     if (!string.IsNullOrWhiteSpace(query.SearchText))
     {
-      // Matched against the NORMALIZED code and the display name. The normalized column is binary-collated,
-      // so the code half is an ordinal prefix match — which is why the caller's text is normalized the same
-      // way the stored value was rather than compared raw.
-      var text = query.SearchText.Trim();
-      var normalized = text.ToUpperInvariant();
+      // ================================================================================================
+      // THIS FILTER THREW FROM FP-007 UNTIL FP-008 PHASE 2, AND NOTHING CAUGHT IT (DEC-POS-0030)
+      // ================================================================================================
+      //
+      // It read `item.NormalizedCode.StartsWith(normalized) || item.Name.Value.Contains(text)`. `Name` is
+      // mapped through a value converter, and EF Core cannot translate a member access through a converter
+      // inside a PREDICATE — so the whole `Where` failed to translate and every search carrying a
+      // `searchText` threw `InvalidOperationException` instead of returning rows.
+      //
+      // ---- WHY IT WAS INVISIBLE FOR A WHOLE FEATURE.
+      //
+      // A converted member in a PROJECTION translates perfectly, and this file is full of them — `GetAsync`
+      // and the list projection below both select `item.Name.Value`. The failure is specific to predicates,
+      // and no test ever passed a `searchText`. FP-008 found it by writing the same code for positions and
+      // running it.
+      //
+      // The fix is the ruled pattern: search a plain normalized column, escape the caller's wildcards, and
+      // let SQL Server do a `LIKE` with an explicit `ESCAPE`.
+      var codePattern = SearchPattern.StartsWith(query.SearchText);
+      var namePattern = SearchPattern.Contains(query.SearchText);
 
       filtered = filtered.Where(item =>
-        item.NormalizedCode.StartsWith(normalized) || item.Name.Value.Contains(text));
+        EF.Functions.Like(item.NormalizedCode, codePattern, "\\") ||
+        EF.Functions.Like(item.NormalizedName, namePattern, "\\"));
     }
 
     var total = await filtered.CountAsync(cancellationToken);

@@ -936,4 +936,132 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     // B only. C is a grandchild, and this is an adjacency read rather than a tree walk.
     Assert.Equal([b], children.Value.Select(child => child.DepartmentId));
   }
+
+  // ================================================================================================
+  // SEARCH BY TEXT — THE PATH THAT THREW FROM FP-007 UNTIL FP-008 PHASE 2 (DEC-POS-0030)
+  // ================================================================================================
+  //
+  // These tests exist because their absence is what let the defect ship. `SearchAsync` filtered on
+  // `Name.Value.Contains(text)`, EF Core cannot translate a member access through a value converter inside a
+  // predicate, and every search carrying a `searchText` threw `InvalidOperationException` rather than
+  // returning rows. Every other department test passed throughout, because none of them passed a search
+  // text — the pagination test builds a `SearchDepartmentsQuery` with no filter at all.
+  //
+  // The fix is the ruled pattern: a domain-maintained `NormalizedName` column, searched with `LIKE` and an
+  // explicit `ESCAPE`.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0030")]
+  public async Task A_search_matches_the_department_name_and_the_code()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    await fixture.CreateDepartmentAsync("FIN", "Finance");
+    await fixture.CreateDepartmentAsync("OPS", "Operations");
+    await fixture.CreateDepartmentAsync("HR", "People and Culture");
+
+    // BY NAME. This is the query shape that used to throw.
+    var byName = await graph.Search().HandleAsync(new SearchDepartmentsQuery(SearchText: "Finance"));
+    Assert.True(byName.IsSuccess, byName.IsFailure ? byName.Error.Code : null);
+    Assert.Equal("FIN", byName.Value.Items.Single().Code);
+
+    // BY CODE, which is a PREFIX match rather than a contains — the two halves have different shapes
+    // because a code is typed from the start and a name is remembered in part.
+    var byCode = await graph.Search().HandleAsync(new SearchDepartmentsQuery(SearchText: "OPS"));
+    Assert.True(byCode.IsSuccess, byCode.IsFailure ? byCode.Error.Code : null);
+    Assert.Equal("OPS", byCode.Value.Items.Single().Code);
+
+    // A MID-WORD FRAGMENT of a name matches; the same fragment matches no code prefix.
+    var fragment = await graph.Search().HandleAsync(new SearchDepartmentsQuery(SearchText: "ultur"));
+    Assert.True(fragment.IsSuccess, fragment.IsFailure ? fragment.Error.Code : null);
+    Assert.Equal("HR", fragment.Value.Items.Single().Code);
+  }
+
+  // ---- NOT FOUND IS AN EMPTY PAGE, NOT A FAILURE.
+  //
+  // Worth asserting alongside the found case: a search that threw would also "not return the row", and only
+  // checking `IsSuccess` on the negative case distinguishes the two.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0030")]
+  public async Task A_search_matching_nothing_succeeds_with_an_empty_page()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    await fixture.CreateDepartmentAsync("FIN", "Finance");
+
+    var found = await graph.Search().HandleAsync(new SearchDepartmentsQuery(SearchText: "Marketing"));
+
+    Assert.True(found.IsSuccess, found.IsFailure ? found.Error.Code : null);
+    Assert.Empty(found.Value.Items);
+    Assert.Equal(0, found.Value.TotalCount);
+  }
+
+  // ---- CASE-INSENSITIVE, OVER A BINARY-COLLATED COLUMN.
+  //
+  // Both sides are upper-invariant — the stored value by the domain, the pattern by the query — which is
+  // what makes an ordinal column searchable without a case-insensitive collation.
+  [Theory]
+  [InlineData("finance")]
+  [InlineData("FINANCE")]
+  [InlineData("FiNaNcE")]
+  [InlineData("  finance  ")]
+  [Trait("Decision", "DEC-POS-0030")]
+  public async Task A_search_is_case_insensitive_and_trimmed(string searchText)
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    await fixture.CreateDepartmentAsync("FIN", "Finance");
+
+    var found = await graph.Search().HandleAsync(new SearchDepartmentsQuery(SearchText: searchText));
+
+    Assert.True(found.IsSuccess, found.IsFailure ? found.Error.Code : null);
+    Assert.Equal("FIN", found.Value.Items.Single().Code);
+  }
+
+  // ---- A WILDCARD IN THE SEARCH TEXT IS A LITERAL CHARACTER.
+  //
+  // Unescaped, `%` would make the predicate match every department in scope — a search that silently returns
+  // everything rather than failing, which is the harder failure to notice.
+  [Theory]
+  [InlineData("%")]
+  [InlineData("_")]
+  [InlineData("[")]
+  [Trait("Decision", "DEC-POS-0030")]
+  public async Task A_wildcard_in_the_department_search_text_matches_only_itself(string wildcard)
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    await fixture.CreateDepartmentAsync("ODD", $"Fifty {wildcard} Owned");
+    await fixture.CreateDepartmentAsync("FIN", "Finance");
+    await fixture.CreateDepartmentAsync("OPS", "Operations");
+
+    var found = await graph.Search().HandleAsync(new SearchDepartmentsQuery(SearchText: wildcard));
+
+    Assert.True(found.IsSuccess, found.IsFailure ? found.Error.Code : null);
+    Assert.Equal("ODD", found.Value.Items.Single().Code);
+  }
+
+  // ---- AND THE SEARCH STAYS INSIDE THE COMPANY SCOPE.
+  //
+  // A text filter narrows what the scope already allows; it never widens it. Asserted because a filter
+  // rewritten onto a different column is exactly the change that could be applied to an unscoped query by
+  // mistake.
+  [Fact]
+  [Trait("Decision", "ADR-025")]
+  public async Task A_text_search_never_reaches_outside_the_company_scope()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph(fixture.CompanyA);
+
+    await fixture.CreateDepartmentAsync("FIN", "Finance", company: fixture.CompanyA);
+    await fixture.CreateDepartmentAsync("FIN", "Finance", company: fixture.CompanyB);
+
+    var found = await graph.Search().HandleAsync(new SearchDepartmentsQuery(SearchText: "Finance"));
+
+    Assert.True(found.IsSuccess, found.IsFailure ? found.Error.Code : null);
+    Assert.Equal(fixture.CompanyA, found.Value.Items.Single().CompanyId);
+  }
 }

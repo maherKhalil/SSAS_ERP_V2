@@ -1,8 +1,8 @@
 ---
 document_id: FP-008-BR
 title: HR Position — Business Rules
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — Business Rules
@@ -11,9 +11,9 @@ version: 0.1
 
 | Source rule | Statement | Disposition in FP-008 |
 |---|---|---|
-| `BR-HR-0006` | Every employee must have one active position | **Realized subject to `OD-POS-001` and `OD-POS-005`.** `BRULE-POS-0016` for new employees; existing rows depend on the owner decision, and the meaning of *active* depends on the other |
-| `BR-HR-0007` | An employee cannot directly manage themselves | **Transferred unchanged** unless `OD-POS-006` brings a position hierarchy into scope. `DEC-DEP-0014` reading (iii) remains in force: the departmental half is enforced in FP-007, the personal reporting line has no field |
-| `BR-HR-0005` | Every employee belongs to exactly one department | **Untouched.** FP-008 neither weakens nor re-enforces it — subject to `OD-POS-003`, which is the one option under which it could move |
+| `BR-HR-0006` | Every employee must have one active position | **Realized.** `BRULE-POS-0016` binds every Employee — `OD-POS-001` ruled `PositionId` `NOT NULL` from day one and `OD-POS-005` ruled *active* to qualify the assignment, so there is no unbound cohort and no ambiguity left |
+| `BR-HR-0007` | An employee cannot directly manage themselves | **Transferred unchanged.** `OD-POS-006` deferred the position hierarchy, so `DEC-DEP-0014` reading (iii) remains in force: the departmental half is enforced in FP-007, and the personal reporting line still has no field anywhere in the product |
+| `BR-HR-0005` | Every employee belongs to exactly one department | **Untouched.** `OD-POS-003` ruled Position independent of Department, so `Employee.DepartmentId` remains the single authority and nothing in FP-008 moves it |
 | `BR-PLT-0002` | Company isolation | **Realized.** `BRULE-POS-0002`, `BRULE-POS-0011`, `BRULE-POS-0017` |
 | `BR-PLT-0003` | Soft delete | **Realized.** `BRULE-POS-0012` — no physical delete |
 | `BR-PLT-0004` | Audit trail | **Realized.** Every Position and grade carries the `IAuditableEntity` stamps |
@@ -26,10 +26,11 @@ version: 0.1
 
 **BRULE-POS-0001** — A Position's `TenantId` and `CompanyId` are stamped by the persistence boundary from
 trusted server context on insert. Neither is accepted from a caller, and neither may change after creation.
-The same holds for every grade entity `OD-POS-002` retains.
+The same holds for `JobGrade` and `SalaryGrade`.
 
 **BRULE-POS-0002** — A Position belongs to exactly one Company. Every relationship it participates in — its
-grade, its holders, and its department if `OD-POS-003` gives it one — must resolve within that same Company.
+grade and its holders — must resolve within that same Company. It has no department relationship at all
+(`OD-POS-003`).
 
 **BRULE-POS-0003** — A Position has no `BranchId`. It is a company-wide job definition and may be held by
 employees in any branch of its company (`DEC-POS-0001`).
@@ -38,7 +39,7 @@ employees in any branch of its company (`DEC-POS-0001`).
 
 **BRULE-POS-0004** — `Code` is unique within a Company, compared on a normalized, binary-collated value so
 the uniqueness index is authoritative under concurrent creation rather than advisory. Codes that normalize
-alike collide. **The uniqueness scope is per company under the recommended reading of `OD-POS-003`, and per
+alike collide. **The scope is per company** (`OD-POS-003` ruled Position independent of Department, so there is
 department if positions become department-owned.**
 
 **BRULE-POS-0005** — `Title` is required and must not be blank after trimming. It is **not** unique: two
@@ -50,19 +51,20 @@ regenerated and is not derived from the title.
 
 ### Grades
 
-> Every rule in this section is conditional on `OD-POS-002`. Under option (iv) none of them exists.
+> `OD-POS-002` ruled three aggregates, so every rule in this section applies to both `JobGrade` and
+> `SalaryGrade` unless it names one.
 
 **BRULE-POS-0007** — A grade's `RankOrder` is a positive integer, unique within its ladder and within its
 Company. It is authoritative data, not derived from the code (`DEC-POS-0006`).
 
-**BRULE-POS-0008** — *(conditional on `OD-POS-004`)* A Salary Grade's amounts, where present, are
+**BRULE-POS-0008** — A Salary Grade's amounts, where present, are
 non-negative and satisfy `Minimum ≤ Midpoint ≤ Maximum`, enforced by a check constraint. They are denominated
 in the owning Company's base currency and carry no currency of their own (`DEC-POS-0015`).
 
 **BRULE-POS-0009** — A Position references at most one grade of each retained kind, in the same Tenant and
 the same Company, with status `Active` at the moment of assignment.
 
-**BRULE-POS-0010** — *(conditional on `OD-POS-002` option (i))* A Job Grade references at most one Salary
+**BRULE-POS-0010** — A Job Grade references at most one Salary
 Grade, in the same Tenant and the same Company. **The reference points from Job Grade to Salary Grade and
 never the reverse**, so the foreign-key graph stays a tree and the cutover order stays decidable
 (`DEC-POS-0002`, `NFR-POS-0305`).
@@ -79,11 +81,14 @@ readable and referenceable so historical assignment records keep their meaning (
 **BRULE-POS-0013** — An `Inactive` Position may not receive a new Employee. This refuses both Employee
 creation into it and an Employee position change into it.
 
-**BRULE-POS-0014** — **`OD-POS-005`.** Whether an `Active` Position with incumbents may be deactivated is not
-settled by this package. Under the assignment reading of `BR-HR-0006` it is allowed and the incumbents remain,
-mirroring `BRULE-DEP-0015`. Under the lifecycle-status reading it must be **refused**, because deactivation
-would otherwise break `BR-HR-0006` for every incumbent at that instant — using one rule to break another,
-which FP-007 declined to do.
+**BRULE-POS-0014** — *(`OD-POS-005`, assignment reading)* Deactivating a Position does **not** remove,
+reassign, or invalidate the Employees already holding it. Those Employees remain incumbents, and `BR-HR-0006`
+remains satisfied for them — "one active position" qualifies the *assignment*, not the position's lifecycle
+status. This mirrors `BRULE-DEP-0015` exactly.
+
+The alternative reading was considered and rejected by the owner: had *active* qualified the position's
+status, deactivation would have broken `BR-HR-0006` for every incumbent at that instant, and would have had to
+be refused — using one rule to break another, which FP-007 declined to do.
 
 **BRULE-POS-0015** — A grade with `Active` dependents may not be deactivated until those dependents are
 deactivated or re-pointed. Deactivation does not cascade (`DEC-POS-0013`).
@@ -111,8 +116,14 @@ historical employment record without a job is unreadable — the same reasoning 
 which they hold two. This is enforced by the shape of `Employee.PositionId` rather than by a check
 (`DEC-POS-0021`).
 
-**BRULE-POS-0022** — Employees that existed before FP-008 are governed by `OD-POS-001`. **Until that decision
-is recorded, this package states no rule for them, and it does not claim `BR-HR-0006` is satisfied.**
+**BRULE-POS-0022** — *(`OD-POS-001`)* **There are no Employees that existed before FP-008.** The migration
+asserts it: it counts `tenant.Employees` before any DDL and fails loudly and transactionally if the count is
+not zero (`DEC-POS-0026`). `BRULE-POS-0016` therefore binds **every** Employee in the product without
+exception, and no cohort is governed by a different rule.
+
+This is the one place FP-008 diverges materially from FP-007. `BRULE-DEP-0021` had to carve out a
+pre-existing cohort and `DEC-DEP-0009` seeded a permanent `UNASSIGNED` Department for them. Nothing here does,
+because the operational fact was established before the migration was authored rather than assumed after.
 
 ### Rules this package deliberately does not state
 

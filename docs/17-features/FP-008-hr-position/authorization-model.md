@@ -1,8 +1,8 @@
 ---
 document_id: FP-008-AUTH
 title: HR Position — Authorization Model
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — Authorization Model
@@ -44,16 +44,18 @@ once in this codebase (FP-006P) and `TS-POS-0046` exists so it cannot happen sil
 | `HR.Positions.Update` | Update a position's title, code, and grade assignment |
 | `HR.Positions.Deactivate` | Deactivate and reactivate positions |
 
-### Grades **(OD-POS-002)**
+### Grades
 
-The families that exist follow from the entity set, and so does the count:
+`OD-POS-002` ruled three aggregates, so there are three families and **twelve** new HR permissions:
 
-| `OD-POS-002` | Families | Total new HR permissions |
-|---|---|---|
-| (i) three entities | `HR.Positions.*`, `HR.JobGrades.*`, `HR.SalaryGrades.*` | **12** |
-| (ii) one ladder | `HR.Positions.*`, `HR.Grades.*` | **8** |
-| (iii) money deferred | `HR.Positions.*`, `HR.JobGrades.*` | **8** |
-| (iv) position only | `HR.Positions.*` | **4** |
+| Family | Permissions |
+|---|---|
+| `HR.Positions.*` | `View`, `Create`, `Update`, `Deactivate` |
+| `HR.JobGrades.*` | `View`, `Create`, `Update`, `Deactivate` |
+| `HR.SalaryGrades.*` | `View`, `Create`, `Update`, `Deactivate` |
+
+Added to FP-006's five employee permissions and FP-007's four department permissions, the HR plane holds
+**twenty-one** permissions after FP-008.
 
 ### What each permission covers, explicitly
 
@@ -74,8 +76,8 @@ nobody can grant responsibly. Both carried unchanged from `DEC-DEP-0017`.
 
 ## One deliberate departure from the minimal set, flagged rather than slipped in
 
-If `OD-POS-004` puts money on Salary Grade, **`HR.SalaryGrades.View` is not merged into
-`HR.Positions.View`.**
+`OD-POS-004` put money on Salary Grade, so **`HR.SalaryGrades.View` is not merged into `HR.Positions.View`.**
+The architect ratified the separation explicitly.
 
 Pay bands are more sensitive than job titles. A single org-structure `View` would mean that everyone who may
 read the organization chart may also read the pay structure — a disclosure decision taken by accident rather
@@ -84,10 +86,11 @@ separate permission: `DEC-EMP-0030` separated `HR.Employees.Terminate` and `HR.E
 `Update` on exactly that basis.
 
 **It is recorded as a departure** because the FP-007 discipline is "four, and deliberately not more", and a
-package that quietly grew the set while citing that discipline would be citing it dishonestly. Under
-`OD-POS-004` option (i) the departure disappears with the money.
+package that quietly grew the set while citing that discipline would be citing it dishonestly. The departure
+is one permission wide: `HR.SalaryGrades.View` exists because pay bands are sensitive, not because
+`SalaryGrade` is a separate resource.
 
-## The question `DEC-POS-0019` names rather than answers
+## The question `DEC-POS-0019` raised, and how it was answered
 
 Changing an Employee's position uses `HR.Employees.Update`, on the employee route prefix, and **not**
 `HR.Positions.Update` and **not** `HR.Employees.Transfer`.
@@ -105,6 +108,16 @@ a reason to split a permission, the precedent covers the *classification* questi
 permission — `HR.Employees.ChangePosition` — and **it should be decided before roles are granted**, because
 splitting a permission after the fact requires re-granting every role that held the broader one.
 
+> **RULING 2026-08-21 — the default, and the question declined for V1.** `HR.Employees.Update`, on the
+> employee prefix. **No fifth employee permission.** FP-008 ships **five** employee permissions, not six.
+>
+> The owner saw the question this decision raised, weighed a separate `HR.Employees.ChangePosition`, and chose
+> not to introduce one for V1. That is recorded so the absence reads as a decision rather than an oversight —
+> which is the same reason `DEC-DEP-0017` flagged hierarchy moves as a deliberate grouping.
+>
+> **The cost named above is now a known accepted cost**, not a warning: if promotion approval later becomes a
+> requirement, splitting `HR.Employees.Update` will require re-granting every role that holds it.
+
 ## Read scope
 
 Position reads resolve **tenant + company + functional permission**, and nothing else.
@@ -117,11 +130,14 @@ notice, because it must not be something a caller can express.*
 It carries **no branch scope**, and an architecture guard asserts that absence, so the next reader knows it
 was decided rather than forgotten.
 
-**This is SETTLED-BY-PRECEDENT given `DEC-POS-0001`, and the dependency is real.** `DEC-DEP-0019` settled the
+**This is SETTLED-BY-PRECEDENT given `DEC-POS-0001`, and the dependency was real.** `DEC-DEP-0019` settled the
 visibility question for a company-owned org-structure record: branch scope filters *employee membership*, not
 record existence, because making a record's existence a function of who is asking breaks the Employee read
 DTO (it names something the caller cannot then fetch) and makes lists incoherent. All of that transfers.
-**If `DEC-POS-0001` were rejected and Position given different ownership, this decision reopens with it.**
+
+**The dependency is now discharged:** `DEC-POS-0001` was ratified as drafted on 2026-08-21, so the condition
+holds and this decision is binding without qualification. `PositionReadScope`, `JobGradeReadScope` and
+`SalaryGradeReadScope` all follow the pattern, and the three authorization dimensions remain three.
 
 ## Cross-company refusals
 

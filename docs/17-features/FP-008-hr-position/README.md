@@ -1,8 +1,8 @@
 ---
 document_id: FP-008
 title: HR Position
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 module: HR
 milestone: Milestone 1
 depends_on:
@@ -21,16 +21,46 @@ depends_on:
 
 # Feature Package 008 — HR Position
 
-> **Draft. Not approved, and not implementable as it stands.** Six decisions turn on business semantics that
-> no ADR, Feature Package, or Master Product Specification document settles. They are stated below as
-> `OD-POS-001` … `OD-POS-006` with options and consequences. **`OD-POS-001` and `OD-POS-002` are the blocking
-> two:** the first governs a one-way door in the data, the second governs how many aggregates this package
-> even has.
+> **Approved for Implementation.** This package began as analysis with six open owner decisions
+> ([`OD-POS-001` … `OD-POS-006`](#owner-decisions-required-before-approval)) and eleven engineering proposals.
+> **All six were closed and all eleven ratified on 2026-08-21.** The decisions in
+> [`decisions-approved.md`](decisions-approved.md) are binding.
 >
-> This package **settles what precedent settles** and **raises what precedent does not**. Every topic is
+> The original analysis text is preserved throughout; each owner decision below carries the ruling that closed
+> it, appended rather than written over.
+>
+> This package **settles what precedent settles** and **raised what precedent did not**. Every topic is
 > classified in [`decisions-approved.md`](decisions-approved.md) as SETTLED-BY-PRECEDENT (with the citation),
-> PROPOSED (an engineering recommendation offered for ratification), or OWNER-DECISION-REQUIRED. Nothing is
-> settled by resemblance to FP-007.
+> PROPOSED, or OWNER-DECISION-REQUIRED. Nothing was settled by resemblance to FP-007.
+
+## The rulings
+
+| Owner decision | Ruling (2026-08-21) |
+|---|---|
+| `OD-POS-001` | **No production employees exist.** `BR-HR-0006` enforced from day one; `Employee.PositionId` ships `NOT NULL`; **no synthetic backfill row or chain.** The fact is **asserted by the migration**, never assumed — `DEC-POS-0026` |
+| `OD-POS-002` | **Three aggregates** — `Position`, `JobGrade`, `SalaryGrade`. Twelve permissions, four new tables, twenty new routes, E3 manifest 7 → 11 |
+| `OD-POS-003` | **Independent of Department.** Recommendation adopted |
+| `OD-POS-004` | **Money as informational bands.** `DEC-POS-0015` and `DEC-POS-0016` activate, and `ADR-027` with them |
+| `OD-POS-005` | **The assignment reading of "active".** Deactivating a Position with incumbents is allowed; an `Inactive` position refuses **new** assignments |
+| `OD-POS-006` | **`ReportsToPositionId` deferred.** The `BR-HR-0007` remainder transfers onward unchanged |
+
+**The one to read first is `OD-POS-001`**, because it is the only decision this package refused to offer a
+recommendation for. The answer was not chosen from the tabled options: it was produced by **establishing the
+operational fact** the package said had never been established. That fact made the free option available, and
+`DEC-POS-0026` exists so the fact is verified at every upgrade rather than trusted once.
+
+**One consequence worth naming.** FP-007 shipped a permanent `UNASSIGNED` Department in every company holding
+legacy employees, and `DEC-DEP-0009` accepted that residue knowingly. FP-008 creates none. The two aggregates
+differ because the operational fact was established this time — not because the judgement about what is
+desirable changed.
+
+### One residual question, flagged rather than absorbed
+
+`DEC-POS-0016`'s salary amount columns are **nullable**, and the reason originally recorded for that — that
+`OD-POS-001`'s seeded grade would otherwise have to invent money — **is discharged**, because the ruling
+creates no seeded grade. Nullability now rests on a weaker ground: a ladder may be defined before it is
+priced. That is a real case but a smaller one, and the architect may wish to make the amounts mandatory now
+that nothing forces them to be optional. It is recorded as open in `DEC-POS-0016` rather than decided here.
 
 ## Purpose
 
@@ -57,19 +87,24 @@ Platform
   └── Tenant                                   (FP-003, implemented)
         ├── Company                            (FP-005, implemented)
         │     ├── Department                   (FP-007, implemented — hierarchical)
-        │     └── Position                     (FP-008, this package — NOT hierarchical; see OD-POS-006)
-        │           ├── JobGrade               (FP-008, subject to OD-POS-002)
-        │           └── SalaryGrade            (FP-008, subject to OD-POS-002 and OD-POS-004)
+        │     ├── SalaryGrade                  (FP-008, this package)
+        │     ├── JobGrade                     (FP-008 — references one SalaryGrade, never the reverse)
+        │     └── Position                     (FP-008 — flat; references one JobGrade)
         ├── Branch                             (Branch foundation B0/B1, implemented)
         └── Employee                           (FP-006, implemented)
               ├── EmployeeBranchAssignment     (FP-006, append-only branch history)
               ├── DepartmentId                 (FP-007)
               ├── EmployeeDepartmentAssignment (FP-007, append-only department history)
-              └── PositionId                   (FP-008, this package — subject to OD-POS-001)
+              ├── PositionId                   (FP-008 — NOT NULL from day one)
+              └── EmployeePositionAssignment   (FP-008, append-only position history)
 ```
 
-Position sits **beneath Company**, beside Department rather than beneath it — **subject to `OD-POS-003`**,
-which is the decision that determines whether that line is drawn where this diagram draws it.
+Position sits **beneath Company, beside Department rather than beneath it** — `OD-POS-003` ruled it
+independent, so no `Position.DepartmentId` exists and an employee's department has exactly one authority,
+`Employee.DepartmentId`, unchanged from FP-007.
+
+Position is **flat**: `OD-POS-006` deferred `ReportsToPositionId`, so FP-008 introduces no second hierarchical
+aggregate and none of the acyclicity apparatus FP-007 built.
 
 ## The authority base is thin, and that is the point
 
@@ -94,23 +129,27 @@ FP-008 is the slice where three patterns established once get tested as patterns
 
 - **The second application of the retroactive-rule process.** `ADR-026` decision 9 established that a rule
   binding pre-existing rows needs an enforcement strategy recorded *before* the migration is authored, and it
-  named Position as the next case. `BR-HR-0006` is that case, and it arrives with a complication FP-007 did
-  not have: the synthetic row this backfill needs may be a **chain** of synthetic rows, and one link in that
-  chain may have to invent money. See `OD-POS-001` and `OD-POS-004`.
-- **The first entity that would carry money.** Nothing in the product stores a monetary amount. The only
-  `decimal` columns are `decimal(25,0)` log-sequence numbers in the backup tables. Currency lives in exactly
-  one place — `Company.BaseCurrencyCode`, a `char(3)` column backed by a Platform value object that **HR
-  cannot reference** (`ADR-012`, compiler-enforced). If `OD-POS-004` puts money in FP-008, this package sets
-  the product's money representation and General Ledger inherits it. That is an ADR-level consequence, and it
-  is why `ADR-027` is drafted.
+  named Position as the next case. `BR-HR-0006` is that case, and it arrived with a complication FP-007 did
+  not have: the synthetic row this backfill would need could be a **chain** of synthetic rows, and one link
+  in that chain would have had to invent money. **The `OD-POS-001` ruling dissolved the complication rather
+  than solving it** — no rows exist, so there is no chain and nothing to invent. What the process produced
+  here was not a backfill strategy but the discovery that none was needed, plus `DEC-POS-0026` to keep that
+  true.
+- **The first entity that carries money.** Nothing else in the product stores a monetary amount. The only
+  other `decimal` columns are `decimal(25,0)` log-sequence numbers in the backup tables. Currency lives in
+  exactly one place — `Company.BaseCurrencyCode`, a `char(3)` column backed by a Platform value object that
+  **HR cannot reference** (`ADR-012`, compiler-enforced). `OD-POS-004` put money in FP-008, so this package
+  sets the product's money representation and General Ledger inherits it. That is an ADR-level consequence,
+  and it is why **`ADR-027` is active**.
 - **The second change to a shipped aggregate.** Employee gains `PositionId`, one day after gaining
   `DepartmentId`. The FP-007 migration, its collision guard and its twelve real-SQL proofs are a working
   template — which makes the *mechanics* cheap and puts all of the weight on the business decision the
   mechanics serve.
 
-The failure mode to avoid is precisely the one `ADR-026` decision 9 was written against: shipping a nullable
-`PositionId` "for now" with no committed remediation, so that `BR-HR-0006` quietly joins `BR-HR-0007` in the
-set of rules that are binding on paper and enforced nowhere.
+The failure mode `ADR-026` decision 9 was written against — shipping a nullable `PositionId` "for now" with no
+committed remediation, so that `BR-HR-0006` quietly joins `BR-HR-0007` in the set of rules that are binding on
+paper and enforced nowhere — **is not taken.** The column is `NOT NULL` from the first migration, and
+`DEC-POS-0026` makes the condition that licenses it a checked precondition rather than an assumption.
 
 ## Authoritative inputs
 
@@ -127,7 +166,7 @@ set of rules that are binding on paper and enforced nowhere.
 | `ADR-023`, `ADR-025` | Branch and company execution context; decision 8's independent dimensions |
 | `ADR-024` | Employee branch transfer — **constrains `DEC-POS-0001`** exactly as it constrained `DEC-DEP-0001` |
 | `ADR-026` | Org-structure ownership, the retroactive-rule process (d.9), the unenforceable-rule process (d.10), the association-table shape (d.7), and the two obligations it hands this package |
-| `ADR-027` (drafted here) | Money representation and cross-module value-object reuse — **conditional on `OD-POS-004`** |
+| `ADR-027` (drafted here) | Money representation and cross-module value-object reuse — **activated** by the `OD-POS-004` ruling |
 | FP-006 | The Employee aggregate this package modifies |
 | FP-007 | The closest structural precedent. Every pattern proposed here is cited to a `DEC-DEP` decision or declined explicitly |
 
@@ -152,8 +191,8 @@ FP-008 defers the following. Each names where the obligation goes; none is disca
 | Excluded from FP-008 | Source | Deferred obligation |
 |---|---|---|
 | **An individual employee's salary or compensation** | Roadmap V1 Payroll | A Salary *Grade* is a band attached to a job. An employee's actual pay is a Payroll concept. **No salary, wage or compensation column is added to `Employee`** (`DEC-POS-0023`). This is what makes the "validation" reading of `OD-POS-004` unavailable: there is nothing in FP-008 for a range to validate |
-| **Employee reporting line (`ManagerId`)** | `BR-HR-0007` | Unchanged from `DEC-DEP-0014` reading (iii) and `ADR-026` decision 10, unless `OD-POS-006` brings position hierarchy into scope |
-| **Position hierarchy (`ReportsToPositionId`)** | — | No authority defines one. See `OD-POS-006` before accepting the deferral |
+| **Employee reporting line (`ManagerId`)** | `BR-HR-0007` | Unchanged from `DEC-DEP-0014` reading (iii) and `ADR-026` decision 10. `OD-POS-006` deferred the position hierarchy, so the remainder transfers onward untouched |
+| **Position hierarchy (`ReportsToPositionId`)** | — | No authority defines one. **Deferred by the `OD-POS-006` ruling**, with the cost stated in `DEC-POS-0017`: reporting *history* for the deferral period is unrecoverable, though the current structure will not be |
 | **Headcount, establishment control, vacancy management** | — | "How many people may hold this position" is an establishment-control concept no requirement asks for. A Position here is a job definition, not a budgeted seat (`DEC-POS-0025`) |
 | **Cost centres, GL mapping, budgets** | Roadmap V1 General Ledger | Carried forward unchanged from `DEC-DEP-0021` |
 | **Position codes generated automatically** | `BR-PLT-0006` | `Code` is user-entered, exactly as `EmployeeNumber` and `DepartmentCode` are (`DEC-POS-0024`) |
@@ -212,6 +251,24 @@ document and must be taken as such.
 system-origin discriminator to make the synthetic row distinguishable. The last was already declined once
 (`DEC-DEP-0009` amendment), and reversing it for Position would leave the two aggregates inconsistent.
 
+> **RULING 2026-08-21 — the operational fact was established: no production tenant holds Employee rows.**
+>
+> `BR-HR-0006` is enforced from day one. `Employee.PositionId` ships **`NOT NULL`**. **No synthetic backfill
+> row or chain is created** — no `UNASSIGNED` Position, JobGrade, or SalaryGrade exists.
+>
+> **This did not select one of the five options; it answered the question the options were a fallback for.**
+> This decision said the deciding fact had never been established and should be before choosing. It was
+> established, and it made the free path available. All three complications the decision raised are therefore
+> **discharged rather than solved**: no chain, nothing to invent, no discriminator question.
+>
+> **Mandatory safeguard, ruled alongside it: `DEC-POS-0026`.** The migration counts `tenant.Employees` before
+> any DDL and **fails loudly and transactionally if the count is not zero**, naming the database, the count,
+> and this decision. A migration that is correct only because of an operational claim must verify the claim —
+> tenants provisioned after the ruling, restored databases, and `ADR-021` customer-managed catalogs are each a
+> way for it to be false in one database while true in another. Same fail-loud family as `DEC-DEP-0009`.
+>
+> See `DEC-POS-0009` and `DEC-POS-0026`.
+
 ---
 
 ### OD-POS-002 — Are Job Grade and Salary Grade one ladder or two?
@@ -243,6 +300,22 @@ bands belong to HR or to Payroll is a business-architecture question, and it is 
 **This decision gates almost everything else.** The permission count, the table count, the E3 manifest, the
 backfill chain length, `OD-POS-004`, and whether `ADR-027` is needed at all all follow from it.
 
+> **RULING 2026-08-21 — option (i): three aggregates.** `Position`, `JobGrade` and `SalaryGrade`, one per
+> requirement line. Job evaluation and pay banding are maintained separately, and the reference runs
+> `Position → JobGrade → SalaryGrade` — **one-directional, and it must stay so**, or the cycle `DEC-POS-0002`
+> prevents returns where nobody would look for it.
+>
+> Every count this package expressed as a table of options is now a single number:
+>
+> | | |
+> |---|---|
+> | New tenant-owned tables | **4** — `Positions`, `JobGrades`, `SalaryGrades`, `EmployeePositionAssignments` |
+> | New HR permissions | **12** |
+> | New HTTP routes | **20** |
+> | E3 cutover manifest | **7 → 11** entities; restore drop list **6 → 10** tables |
+>
+> See `DEC-POS-0005`.
+
 ---
 
 ### OD-POS-003 — Is a Position owned by a Department, linked to one, or independent?
@@ -272,6 +345,19 @@ no requirement asks for, and it can be added later as a read model without chang
 centrally (a company-wide job catalog) or departmentally (each department owns its own job titles)? If the
 answer is departmental, option (a) is wrong for the business however clean it is, and the owner should say
 so — in which case (d) is the honest form and its cost must be accepted knowingly.
+
+> **RULING 2026-08-21 — option (a): independent.** Jobs are defined centrally, as a company-wide catalog.
+> `tenant.Positions` carries **no `DepartmentId`**, and no invariant relates an employee's position to their
+> department.
+>
+> The two-sources-of-truth problem never arises: `Employee.DepartmentId` remains the single authority on an
+> employee's department, exactly as FP-007 shipped it, and `BR-HR-0005` is untouched.
+>
+> **The cost is accepted knowingly:** the org chart cannot list a department's jobs directly — only through
+> the employees holding both — so a department with no employees has no visible job structure. If that view is
+> wanted later it is a **read model derived from employees**, never a `Position.DepartmentId` column.
+>
+> `DEC-POS-0007`'s uniqueness scope, which this decision gated, resolves to **per company**.
 
 ---
 
@@ -307,6 +393,21 @@ write in the product can violate it.
   `DEC-POS-0018` therefore proposes a **separate** `HR.SalaryGrades.View`, which is a departure from the
   "deliberately minimal" permission discipline and is flagged as one.
 
+> **RULING 2026-08-21 — option (ii): money as informational bands.** `MinimumAmount`, `MidpointAmount` and
+> `MaximumAmount` are stored and internally ordered. They constrain nothing outside their own row, because
+> FP-008 stores no value for them to constrain.
+>
+> **The "validation" reading stays recorded as *unavailable*, not as rejected** — the distinction is the
+> `ADR-026` decision 10 discipline. Salary-range enforcement transfers to Payroll as a named obligation in
+> [`traceability-matrix.md`](traceability-matrix.md); it is not discarded, and FP-008 does not claim it.
+>
+> Both consequences this decision named are accepted as drafted: **no currency column** (`DEC-POS-0015` —
+> amounts are in the owning Company's immutable base currency, projected on read and rejected on write), and
+> **a separate `HR.SalaryGrades.View`** (`DEC-POS-0018`, ratified including the separation).
+>
+> **`ADR-027` activates.** Its conditional-withdrawal clause is moot, and `decimal(19,4)` is now the product's
+> money representation rather than a proposal — General Ledger inherits it.
+
 ---
 
 ### OD-POS-005 — What does "active" mean in `BR-HR-0006`, and what happens when a position with incumbents is deactivated?
@@ -332,6 +433,19 @@ Department lifecycle precedent are simultaneously satisfiable without inventing 
 is the reading that makes the rule about the *employee's* record rather than about someone else's edit to a
 shared row. **But this is a business reading of a business rule**, the sentence genuinely supports (ii), and
 if the owner means (ii) then `BRULE-POS-0014` must refuse deactivation and the acceptance criteria change.
+
+> **RULING 2026-08-21 — reading (i): the assignment.** "One active position" means the employee has one
+> *current* assignment. It does not require the position itself to be `Active`.
+>
+> - **Deactivating a Position with incumbents is ALLOWED.** They keep it, `BR-HR-0006` stays satisfied for
+>   each of them, and no bulk-reassignment operation is needed. This is `BRULE-DEP-0015`'s shape exactly. A
+>   retired job may still have holders — an oddity accepted knowingly, in exchange for never using one rule to
+>   break another.
+> - **An `Inactive` Position refuses a NEW assignment**, on employee creation and on position change alike.
+>   The owner named the shape: the parallel of `BR-HR-0009` as realized by `BRULE-DEP-0014`.
+>
+> `BRULE-POS-0014`'s conditional clause is discharged, and **`position.has_incumbents` is not an error this
+> package defines** — no operation raises it.
 
 ---
 
@@ -364,12 +478,34 @@ unrecoverable for that period, in the way `DEC-DEP-0016` described before it was
 loss than the department case, because the reporting structure's *current* state is recoverable the moment
 the hierarchy exists and only its history is lost. It is stated rather than assumed.
 
+> **RULING 2026-08-21 — defer.** `ReportsToPositionId` is not introduced. **Position is flat**: no
+> self-reference, no acyclicity invariant, no per-company serialization lock, no ancestry evidence type.
+> FP-008 introduces no hierarchical aggregate, and none of the machinery FP-007 built for one.
+>
+> `BR-HR-0007`'s remainder **transfers onward unchanged** from `DEC-DEP-0014` reading (iii), to a package no
+> current requirement asks for and which may therefore never arrive. It is recorded as **OPEN**, not covered.
+>
+> **The cost is accepted as stated:** position-assignment history written between FP-008 and any future
+> hierarchy package carries no reporting context, so *who reported to whom, when* is unrecoverable for that
+> period — the smaller loss this decision described, since the current structure will be recoverable and only
+> its history will not.
+
 ---
 
 ## What this package does not claim
 
-It does not claim to be approved. It does not claim `BR-HR-0006` is satisfied — that depends on `OD-POS-001`
-and, for the meaning of the word "active", on `OD-POS-005`. It does not claim `REQ-HR-0201` or `REQ-HR-0202`
-are covered — that depends on `OD-POS-002`. It does not claim `BR-HR-0007` is discharged; under every option
-but `OD-POS-006`'s second, its remainder transfers onward unchanged. Those are recorded in
-[`traceability-matrix.md`](traceability-matrix.md) as **OPEN**, not as covered.
+It is approved. Three things it still does not claim are worth stating, because an approved package is read as
+settled in every respect unless it says otherwise.
+
+**It does not claim `BR-HR-0006` is satisfied yet.** The design satisfies it; nothing is built. The rule
+becomes true when the migration runs against a real database and `Employee.PositionId` is `NOT NULL` there —
+not before, and not because this document was approved.
+
+**It does not claim `BR-HR-0007` is discharged.** `OD-POS-006` deferred the position hierarchy, so its
+remainder transfers onward unchanged, to a package no current requirement asks for and which may never arrive.
+It is recorded in [`traceability-matrix.md`](traceability-matrix.md) as **OPEN**, not as covered — the
+`ADR-026` decision 10 discipline: *where a rule cannot be enforced, the honest record is that it is open.*
+
+**It does not claim salary-range enforcement.** `OD-POS-004` chose informational bands, and FP-008 stores no
+value for them to constrain. The obligation transfers to Payroll and is recorded as transferred, not as
+realized.

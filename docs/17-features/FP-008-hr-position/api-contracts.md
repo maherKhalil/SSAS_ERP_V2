@@ -1,8 +1,8 @@
 ---
 document_id: FP-008-API
 title: HR Position — API Contracts
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — API Contracts
@@ -25,10 +25,10 @@ server-stamped, and accepting them would create a spoofing surface the platform 
 | `POST` | `/api/hr/positions/{positionId}/deactivate` | `HR.Positions.Deactivate` | `FR-POS-0205` |
 | `POST` | `/api/hr/positions/{positionId}/activate` | `HR.Positions.Deactivate` | `FR-POS-0205`; the same permission guards both directions (`DEC-DEP-0025`) |
 
-**Six routes for Position**, plus four per retained grade entity on the same shape, plus the two employee
-routes below.
+**Six routes for Position**, six for each of the two grade entities on the same shape, and two on the employee
+prefix — **twenty new routes**, fixed by the `OD-POS-002` ruling.
 
-## Grades **(OD-POS-002)**
+## Grades
 
 | Method | Route | Permission |
 |---|---|---|
@@ -39,14 +39,14 @@ routes below.
 | `POST` | `/api/hr/job-grades/{jobGradeId}/deactivate` | `HR.JobGrades.Deactivate` |
 | `POST` | `/api/hr/job-grades/{jobGradeId}/activate` | `HR.JobGrades.Deactivate` |
 
-`/api/hr/salary-grades` mirrors this exactly under `HR.SalaryGrades.*`, and exists only under `OD-POS-002`
-option (i). Under option (ii) the single family is `/api/hr/grades`.
+`/api/hr/salary-grades` mirrors this exactly under `HR.SalaryGrades.*`. Both families exist: `OD-POS-002`
+ruled three aggregates.
 
 ## Employee — changes to existing contracts
 
 | Contract | Change |
 |---|---|
-| `POST /api/hr/employees` | Request gains **required** `positionId` (subject to `OD-POS-001`) |
+| `POST /api/hr/employees` | Request gains **required** `positionId`. Required from day one — `OD-POS-001` ruled the column `NOT NULL`, so there is no transitional phase in which it is optional |
 | `PUT /api/hr/employees/{id}` | **Unchanged.** `positionId` is *not* added here (`BRULE-POS-0017`) |
 | `POST /api/hr/employees/{employeeId}/change-position` | **New.** `HR.Employees.Update`. `FR-POS-0211`. Body: `positionId`, `reasonCode?`, `reasonText?`, `rowVersion` |
 | `GET /api/hr/employees/{employeeId}/position-history` | **New.** `HR.Employees.View`. `FR-POS-0212` |
@@ -55,8 +55,11 @@ option (i). Under option (ii) the single family is `/api/hr/grades`.
 | `GET /api/hr/employees/{id}/branch-history`, `.../department-history` | **Unchanged** |
 
 **The change route lives on the EMPLOYEE prefix**, under `HR.Employees.Update`, matching
-`POST /api/hr/employees/{employeeId}/change-department` exactly. `DEC-POS-0019` records why, and records the
-one question that precedent does not answer: whether a promotion deserves its own permission.
+`POST /api/hr/employees/{employeeId}/change-department` exactly. `DEC-POS-0019` records why.
+
+**The promotion-sensitivity question that decision raised was considered and declined for V1.** There is no
+fifth employee permission: FP-008 ships five, not six. The consequence is a known accepted cost — splitting
+`HR.Employees.Update` later would require re-granting every role that holds it.
 
 ## No `DELETE` verb anywhere
 
@@ -74,7 +77,7 @@ assumed.
   "positionId": "…",
   "code": "ACC-SR",
   "title": "Senior Accountant",
-  "jobGrade": {                      // null when unassigned; absent entirely under OD-POS-002 (iv)
+  "jobGrade": {                      // null when the position is not yet graded
     "jobGradeId": "…",
     "code": "G7",
     "name": "Grade 7",
@@ -87,13 +90,13 @@ assumed.
 ```
 
 ```jsonc
-// SalaryGrade — only under OD-POS-002 (i) and OD-POS-004 (ii)/(iii)
+// SalaryGrade
 {
   "salaryGradeId": "…",
   "code": "S7",
   "name": "Band 7",
   "rankOrder": 70,
-  "minimumAmount": 12000.0000,       // null permitted; see data-model.md
+  "minimumAmount": 12000.0000,       // null permitted — a ladder may be defined before it is priced
   "midpointAmount": 15000.0000,
   "maximumAmount": 18000.0000,
   "currencyCode": "SAR",             // ECHOED FROM THE COMPANY, NOT STORED — see below
@@ -133,7 +136,7 @@ and it will enforce it here.
 | `CodeAlreadyExists` | `409` | `position.code_conflict` |
 | `GradeInDifferentCompany`, `GradeInactive` | `422` | `position.grade_invalid` |
 | `PositionInactive` (receiving an employee) | `422` | `position.inactive` |
-| `PositionHasIncumbents` (deactivating, **`OD-POS-005`** reading (ii) only) | `422` | `position.has_incumbents` |
+| `GradeHasActiveDependents` (deactivating a grade) | `422` | `job_grade.has_dependents` |
 | `RankOrderAlreadyExists` | `409` | `job_grade.rank_conflict` |
 | `AmountsOutOfOrder` | `422` | `salary_grade.amounts_invalid` |
 | `PositionUnchanged` (change to the current position) | `422` | `position.unchanged` |
@@ -143,6 +146,11 @@ and it will enforce it here.
 
 `404` for out-of-scope is deliberate and matches the Employee and Department surfaces: a `403` would confirm
 the position exists in a company the caller may not see.
+
+**There is no `position.has_incumbents`.** The draft listed one, conditional on `OD-POS-005` selecting the
+lifecycle-status reading. The ruling selected the assignment reading, so deactivating a position with
+incumbents succeeds and **no operation raises that error** — it is removed rather than left defined and
+unreachable, which is the shape of a permission that authorizes nothing.
 
 ### `Persistence.UniqueConstraint` is context-dependent
 
@@ -164,16 +172,19 @@ difference it exists to hide.
 
 ## Route inventory
 
-The exact route count follows from `OD-POS-002`:
+Fixed by the `OD-POS-002` ruling:
 
-| `OD-POS-002` | Position routes | Grade routes | Employee routes | Total new |
-|---|---|---|---|---|
-| (i) three entities | 6 | 12 | 2 | **20** |
-| (ii) one ladder | 6 | 6 | 2 | **14** |
-| (iii) money deferred | 6 | 6 | 2 | **14** |
-| (iv) position only | 6 | 0 | 2 | **8** |
+| Group | Routes |
+|---|---|
+| Position | 6 |
+| Job Grade | 6 |
+| Salary Grade | 6 |
+| Employee (change-position, position-history) | 2 |
+| **Total new** | **20** |
 
 `HrRouteInventoryTests` pins the HR surface as an **exact** inventory read from **both** the module harness
-and the Host composition. FP-007 shipped an unreachable thirteenth route because the harness did not mirror
-the Host and the route-absence test that should have caught it was passing vacuously. That inventory must be
-extended by exactly the number above, in both harnesses, or FP-008 will repeat it.
+and the Host composition, and today it names **21** routes. FP-008 takes it to **41**.
+
+FP-007 shipped an unreachable thirteenth route because the harness did not mirror the Host, and the
+route-absence test that should have caught it was passing **vacuously**. That inventory must be extended by
+exactly twenty, **in both harnesses**, or FP-008 repeats it.

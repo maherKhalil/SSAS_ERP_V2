@@ -34,17 +34,28 @@ used_by:
 
 **Proposed**
 
-**And conditional.** This ADR exists because FP-008 may become the first package in the product to persist a
-monetary amount. Whether it does is `OD-POS-004`, an owner decision recorded in the FP-008 package.
+`Proposed` is this repository's ADR status for records whose feature has not yet shipped — `ADR-024`,
+`ADR-025` and `ADR-026` all stand at `Proposed` alongside delivered work — so the status says nothing about
+whether these decisions are settled. They are.
 
-- If `OD-POS-004` selects a **money-bearing** Salary Grade, this ADR should be reviewed and accepted before
-  the FP-008 schema is authored.
-- If `OD-POS-004` selects **no money**, or `OD-POS-002` removes Salary Grade from FP-008 entirely, **this ADR
-  should be withdrawn**, not left standing as a decision about something the product does not do.
+**The conditional clause is resolved: this ADR is ACTIVATED.** It was drafted conditionally, because whether
+FP-008 would persist a monetary amount was `OD-POS-004`, an owner decision in the FP-008 package. That
+decision closed on **2026-08-21** in favour of a **money-bearing Salary Grade carrying informational bands**.
 
-Decision 4 is the exception: it concerns cross-module value-object reuse, it is already live under `ADR-012`,
-and it stands regardless of `OD-POS-004`. If this ADR is withdrawn, decision 4 should be re-homed as an
-`ADR-012` revision rather than discarded.
+- The withdrawal branch — "if `OD-POS-004` selects no money, this ADR should be withdrawn" — **did not
+  occur**, and is now moot. The clause is retained above only so a reader can see the decision was
+  conditional rather than assume it was always settled.
+- `OD-POS-002` retained `SalaryGrade` as a first-class aggregate, so the second withdrawal condition did not
+  occur either.
+- `DEC-POS-0015` and `DEC-POS-0016` in FP-008 are ratified as drafted and are **the first application** of
+  decisions 1, 2 and 4 below — not their author. `decimal(19,4)` is now the product's money representation,
+  and General Ledger inherits it.
+
+Decision 4 never depended on `OD-POS-004`: it concerns cross-module value-object reuse, it is already live
+under `ADR-012`, and it stands on its own. The re-homing instruction for it is moot with the rest of the
+withdrawal branch.
+
+**This ADR should be reviewed and accepted before the FP-008 schema is authored.**
 
 ---
 
@@ -97,7 +108,7 @@ that surprise, and it carries no advantage over `decimal(19,4)` on modern SQL Se
 excluded because binary floating point cannot represent most decimal fractions exactly, and money that does
 not add up is not money.
 
-**Implementation status: not implemented.** Depends on `OD-POS-004`.
+**Implementation status: not implemented.** Activated by the `OD-POS-004` ruling of 2026-08-21; first applied by FP-008.
 
 ## Decision 2 — Where a single owning currency is unambiguous, an amount carries no currency column
 
@@ -114,7 +125,7 @@ manifest).
 a currency is unreadable, so read models echo the owning Company's code; a request that supplies one is
 rejected as an unknown property.
 
-**Implementation status: not implemented.** Depends on `OD-POS-004`.
+**Implementation status: not implemented.** Activated by the `OD-POS-004` ruling of 2026-08-21; first applied by FP-008.
 
 ## Decision 3 — The condition under which decision 2 no longer holds
 
@@ -170,7 +181,7 @@ that decision 4 says must be taken deliberately, in order to solve a problem the
 
 Decision 3's conditions are the trigger for `Money` as well as for the currency column: they arrive together.
 
-**Implementation status: not implemented.** Depends on `OD-POS-004`.
+**Implementation status: not implemented.** Activated by the `OD-POS-004` ruling of 2026-08-21; first applied by FP-008.
 
 ---
 
@@ -202,7 +213,7 @@ Decision 3's conditions are the trigger for `Money` as well as for the currency 
 | A module stores an amount at a different precision | An architecture guard asserting that every mapped `decimal` property in a tenant model is either `decimal(19,4)` or on a named exception list — the LSN columns being the current exceptions |
 | A currency column is added quietly when multi-currency arrives | Decision 3 names the trigger conditions explicitly, and decision 4 names where the type must come from |
 | `BaseCurrencyCode` is duplicated into a module under deadline pressure | Decision 4 prohibits it; an architecture guard asserting that no module defines a second ISO-4217 code set makes the prohibition executable |
-| This ADR is accepted and then `OD-POS-004` defers money | The Status section directs withdrawal, with decision 4 re-homed to an `ADR-012` revision |
+| The precision proves wrong for a later module | Decision 1 is the place to amend, and decision 3 already establishes the habit of naming revisiting conditions rather than leaving them to be rediscovered |
 
 ---
 
@@ -236,4 +247,4 @@ recorded decision, is the outcome this ADR exists to prevent.
 
 | Version | Date | Author | Change |
 |---|---|---|---|
-| 1.0 | 2026-08-21 | Solution Architecture Team | Proposes the product's monetary representation — `decimal(19,4)`, no currency column while a Company's immutable base currency is unambiguous, and named conditions for revisiting — together with the promotion rule for cross-module value objects. Five decisions, four of them conditional on `OD-POS-004` in FP-008. |
+| 1.0 | 2026-08-21 | Solution Architecture Team | Proposes the product's monetary representation — `decimal(19,4)`, no currency column while a Company's immutable base currency is unambiguous, and named conditions for revisiting — together with the promotion rule for cross-module value objects. Five decisions. Drafted conditional on `OD-POS-004`; **activated** the same day when that decision chose a money-bearing Salary Grade, so the conditional-withdrawal clause is moot. |

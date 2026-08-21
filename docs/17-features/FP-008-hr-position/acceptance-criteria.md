@@ -1,14 +1,14 @@
 ---
 document_id: FP-008-AC
 title: HR Position — Acceptance Criteria
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — Acceptance Criteria
 
-Criteria marked **(OD)** are provisional and depend on an unresolved owner decision. Criteria marked
-**(OD-POS-002)** exist only if the owner retains the grade entities.
+All six owner decisions were closed on 2026-08-21, so no criterion below is provisional. Where a criterion
+exists *because* of a ruling, the ruling is cited.
 
 ## Create and identity
 
@@ -35,7 +35,7 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 - **AC-POS-0010** — Deactivating the company mid-session refuses the next position write.
 - **AC-POS-0011** — A position may not reference a grade belonging to another company.
 
-## Grades **(OD-POS-002)**
+## Grades
 
 - **AC-POS-0012** — A grade is created with a code, a name and a `RankOrder`, and reads back with all three.
 - **AC-POS-0013** — Two grades in the same company and ladder may not share a `RankOrder`; the refusal comes
@@ -44,19 +44,20 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
   sort of the codes does not, proven with `G9` and `G10`.
 - **AC-POS-0015** — A position may reference a grade in the same company, and reads back with it.
 - **AC-POS-0016** — A position may not reference an `Inactive` grade.
-- **AC-POS-0017 (OD-POS-002 (i))** — A Job Grade may reference a Salary Grade. **No Salary Grade may
+- **AC-POS-0017** — A Job Grade may reference a Salary Grade. **No Salary Grade may
   reference a Job Grade**, and the composed model contains no such foreign key.
 
-## Salary amounts **(OD-POS-004)**
+## Salary amounts
 
-- **AC-POS-0018 (OD)** — Amounts are stored at `decimal(19,4)` and round-trip a three-decimal currency value
+- **AC-POS-0018** — Amounts are stored at `decimal(19,4)` and round-trip a three-decimal currency value
   without loss.
-- **AC-POS-0019 (OD)** — Amounts out of order (`Minimum > Midpoint`, or `Midpoint > Maximum`) are refused,
+- **AC-POS-0019** — Amounts out of order (`Minimum > Midpoint`, or `Midpoint > Maximum`) are refused,
   and the database check constraint refuses them as well when written directly in SQL.
-- **AC-POS-0020 (OD)** — A negative amount is refused.
-- **AC-POS-0021 (OD)** — A salary grade may be created with no amounts at all, and reads back with nulls.
-  **This is what makes `OD-POS-001` Option A possible without inventing money.**
-- **AC-POS-0022 (OD)** — `tenant.SalaryGrades` has **no currency column**. The representation's
+- **AC-POS-0020** — A negative amount is refused.
+- **AC-POS-0021** — A salary grade may be created with no amounts at all, and reads back with nulls.
+  Nullability is a residual choice flagged in `DEC-POS-0016`, not a backfill accommodation — the `OD-POS-001`
+  ruling creates no seeded grade.
+- **AC-POS-0022** — `tenant.SalaryGrades` has **no currency column**. The representation's
   `currencyCode` is the owning Company's `BaseCurrencyCode`, and sending it on a write is rejected as an
   unknown property.
 
@@ -69,16 +70,15 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 - **AC-POS-0026** — An `Inactive` position remains readable and appears in lists, marked inactive.
 - **AC-POS-0027** — No route, handler, or repository method deletes a position or a grade; the composed HTTP
   surface exposes no `DELETE` verb.
-- **AC-POS-0028 (OD-POS-005)** — **Under reading (i):** deactivating a position with incumbents succeeds, and
-  every incumbent retains it. **Under reading (ii)/(iii):** the deactivation is refused with
-  `position.has_incumbents`, and succeeds once the last incumbent has moved. *One of these two criteria is
-  correct and the other is wrong; which, is the owner decision.*
-- **AC-POS-0029 (OD-POS-002)** — A grade with `Active` positions referencing it may not be deactivated, and
+- **AC-POS-0028** — *(`OD-POS-005`, assignment reading)* Deactivating a position with incumbents **succeeds**,
+  and every incumbent retains it. `BR-HR-0006` remains satisfied for each of them, and the API exposes no
+  `position.has_incumbents` refusal because no operation raises one.
+- **AC-POS-0029** — A grade with `Active` positions referencing it may not be deactivated, and
   deactivation does not cascade to them.
 
 ## Employee assignment
 
-- **AC-POS-0030 (OD)** — An employee created after FP-008 requires a `positionId` in the same tenant, the
+- **AC-POS-0030** — An employee created after FP-008 requires a `positionId` in the same tenant, the
   same company, and `Active` status.
 - **AC-POS-0031** — `positionId` is not accepted on the ordinary employee profile update; sending it is
   rejected as an unknown property.
@@ -93,16 +93,20 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
   intact.
 - **AC-POS-0037** — No update or delete path exists for `EmployeePositionAssignment`; the entity implements
   `IAppendOnlyEntity` and the guard that asserts append-only entities carries no `RowVersion` covers it.
-- **AC-POS-0038 (OD-POS-001)** — Employees that existed before FP-008 are handled exactly as `OD-POS-001`
-  directs. **Until that decision is recorded, this criterion has no testable content and the package does not
-  claim `BR-HR-0006` is satisfied.**
-- **AC-POS-0039 (OD-POS-001, Options A/B/D)** — The migration's follow-up obligation exists and is named: for
-  A, the collision pass; for B and D, the later `NOT NULL` migration. A nullable column with no named
-  follow-up fails this criterion.
-- **AC-POS-0040 (OD-POS-001, Option A)** — If a company already holds a position or grade whose normalized
-  code collides with the seeded one, the migration fails loudly and transactionally, names the offending
-  companies and codes, and **writes nothing** — the collision pass runs over every affected company before any
-  write.
+- **AC-POS-0038** — *(`OD-POS-001`)* `Employees.PositionId` is **`NOT NULL` in the first migration that
+  creates it.** There is no transitional nullable phase, no later `ALTER COLUMN`, and no backfill `UPDATE`.
+- **AC-POS-0039** — *(`DEC-POS-0026`)* Against a database that **already holds Employee rows**, the migration
+  **fails and writes nothing**: no table is created, no column added. The failure names the database, the row
+  count, and the decision (`FP-008 DEC-POS-0009 / OD-POS-001`), and states the one remedy. A migration that
+  reaches a constraint violation instead of this diagnosis fails this criterion, and so does one that supplies
+  a default, deletes rows, skips the column, or degrades to nullable.
+- **AC-POS-0040** — The precondition check runs **before any DDL**, so the failing case never writes at all
+  rather than relying on rollback, and it runs **per tenant database, every time the migration runs** — not
+  once at design time. A check placed after the first `CREATE TABLE` fails this criterion even though it
+  refuses the same inputs.
+- **AC-POS-0065** — **No `UNASSIGNED` row of any kind exists** after the migration: no synthetic Position, Job
+  Grade, or Salary Grade, and no migration-authored `EmployeePositionAssignment`. Every history record in the
+  product describes an assignment made through the application.
 
 ## Authorization
 
@@ -113,7 +117,7 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 - **AC-POS-0043** — Every permission this package names is **defined in the composed catalog** and can be
   granted to a role. A name present in `HrPermissionNames` but absent from the catalog fails this criterion.
 - **AC-POS-0044** — `Platform.Tenant.Administer` widens company scope and grants none of these permissions.
-- **AC-POS-0045 (OD-POS-004)** — `HR.SalaryGrades.View` is a distinct permission; holding
+- **AC-POS-0045** — `HR.SalaryGrades.View` is a distinct permission; holding
   `HR.Positions.View` alone does not read salary amounts.
 - **AC-POS-0046** — `PositionReadScope` cannot be constructed outside its resolver, carries no branch scope,
   and no read method omits it.
@@ -151,14 +155,14 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 - **AC-POS-0059** — Position errors answer in the `position.*` / `job_grade.*` / `salary_grade.*` namespaces
   and never in `employee.*` or `department.*`.
 - **AC-POS-0060** — `HR.API` references no Platform assembly.
-- **AC-POS-0061 (OD-POS-002)** — A grade unique-constraint violation is distinguished correctly between the
+- **AC-POS-0061** — A grade unique-constraint violation is distinguished correctly between the
   code index and the rank-order index; a rank collision does not answer `job_grade.code_conflict`.
 
 ## Scope boundaries
 
 - **AC-POS-0062** — `tenant.Employees` gains no salary, wage, rate, or compensation column, and no such value
   is stored anywhere in this package.
-- **AC-POS-0063** — No `Employee.ManagerId` is introduced, and — unless `OD-POS-006` says otherwise — no
+- **AC-POS-0063** — No `Employee.ManagerId` is introduced, and no
   `Position.ReportsToPositionId`.
 - **AC-POS-0064** — No headcount, establishment, or vacancy column exists, and any number of employees may
   hold one position.

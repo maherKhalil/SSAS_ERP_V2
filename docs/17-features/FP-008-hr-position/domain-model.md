@@ -1,15 +1,15 @@
 ---
 document_id: FP-008-DOM
 title: HR Position — Domain Model
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — Domain Model
 
-> Draft. The **number** of aggregates below is `OD-POS-002` and is not settled. The model is written for the
-> three-entity reading; under the other options the grade aggregates collapse or disappear, and every
-> statement about them collapses with them.
+> Approved. `OD-POS-002` ruled three aggregates, `OD-POS-003` ruled Position independent of Department, and
+> `OD-POS-006` deferred the position hierarchy. The model below is written to those rulings, and the shapes
+> the analysis left open are now determinate.
 
 ## The aggregate
 
@@ -28,9 +28,9 @@ Position
   CompanyId              stamped by the persistence boundary
   Code                   value object, normalized, unique within company
   Title                  value object, required, not unique
-  JobGradeId             Guid?, grade in the same company            (OD-POS-002)
-  DepartmentId           ABSENT under the recommended reading        (OD-POS-003)
-  ReportsToPositionId    ABSENT under the recommended reading        (OD-POS-006)
+  JobGradeId             Guid?, JobGrade in the same company
+  DepartmentId           ABSENT — ruled independent of Department (OD-POS-003)
+  ReportsToPositionId    ABSENT — deferred (OD-POS-006); Position is flat
   Status                 Active | Inactive
   StatusChangedUtc/By    who moved it and when
   Created/Modified Utc/By  IAuditableEntity, stamped by infrastructure
@@ -58,7 +58,7 @@ every tenant. `RISK-DEP-001` verified this in source for the analogous Departmen
 `ADR-026` decision 7's revisiting condition applies unchanged: if the cutover engine ever gains cycle-aware
 two-pass copying, a direct reference becomes available and is the better model.
 
-## Grade aggregates **(OD-POS-002)**
+## Grade aggregates
 
 ```
 JobGrade                                  SalaryGrade
@@ -66,9 +66,9 @@ JobGrade                                  SalaryGrade
   Code (normalized, unique per company)     Code (normalized, unique per company)
   Name                                      Name
   RankOrder      int, unique in ladder      RankOrder      int, unique in ladder
-  SalaryGradeId  Guid?  ───────────────▶    MinimumAmount  decimal(19,4)?   (OD-POS-004)
-  Status, audit stamps, RowVersion          MidpointAmount decimal(19,4)?   (OD-POS-004)
-                                            MaximumAmount  decimal(19,4)?   (OD-POS-004)
+  SalaryGradeId  Guid?  ───────────────▶    MinimumAmount  decimal(19,4)?
+  Status, audit stamps, RowVersion          MidpointAmount decimal(19,4)?
+                                            MaximumAmount  decimal(19,4)?
                                             Status, audit stamps, RowVersion
 ```
 
@@ -100,7 +100,7 @@ additionally exposes `NormalizedValue` for the binary-collated uniqueness index.
 **No money value object is proposed, and no currency value object is proposed.** See `DEC-POS-0015`: the
 product's currency type lives in `SSAS.Platform.Domain`, which `SSAS.HR.Domain` cannot reference, and the
 recommended answer is to carry no currency at all rather than to duplicate the type or to reach across the
-module boundary. Amounts, if `OD-POS-004` retains them, are plain `decimal?` properties validated by the
+module boundary. Amounts are plain `decimal?` properties validated by the
 aggregate.
 
 ## Employee changes
@@ -108,7 +108,7 @@ aggregate.
 `Employee` gains:
 
 ```
-  PositionId             Guid, required for employees created after FP-008 (OD-POS-001)
+  PositionId             Guid, NOT NULL — required for every employee (OD-POS-001)
 ```
 
 and one operation, `ChangePosition(destinationPositionId, reasonCode, reasonText, actor, eventId, occurredUtc)`,
@@ -175,15 +175,24 @@ row unrepresentable, and that is the design rather than a backstop". Here it is 
 ## Domain events
 
 `PositionCreated`, `PositionUpdated`, `PositionDeactivated`, `PositionReactivated`,
-`EmployeePositionChanged`, and the grade equivalents that `OD-POS-002` retains.
+`EmployeePositionChanged`, and the equivalents for both grade aggregates.
 
 These follow `ADR-009` and the existing `SSAS.HR.Domain.Events` pattern. They are raised; no handler is
 introduced by this package.
 
-## What the domain model cannot settle
+## The four shapes this model refused to settle for itself
 
-Four of its own shapes are owner decisions, and they are marked in the diagrams above rather than resolved:
-whether `DepartmentId` appears on Position (`OD-POS-003`), whether `ReportsToPositionId` appears
-(`OD-POS-006`), whether the grade aggregates exist and how many (`OD-POS-002`), and whether the amounts exist
-(`OD-POS-004`). A domain model that quietly picked one of each would read as settled, which is exactly the
-impression this package must not create.
+Four of its own shapes were owner decisions rather than modelling choices. They were marked ABSENT or
+conditional in the diagrams above rather than picked, because a domain model that quietly chose each would
+have read as settled — the impression this package existed to avoid. All four were ruled on 2026-08-21:
+
+| Shape | Ruled | Result in the model above |
+|---|---|---|
+| `Position.DepartmentId` | `OD-POS-003` | **Absent.** Position is independent of Department |
+| `Position.ReportsToPositionId` | `OD-POS-006` | **Absent.** Position is flat; no acyclicity apparatus |
+| Grade aggregates, and how many | `OD-POS-002` | **Two** — `JobGrade` and `SalaryGrade` |
+| Salary amounts | `OD-POS-004` | **Present**, as informational bands |
+
+Two of the four are absences, and that is the point of listing them: an absent column looks identical to a
+forgotten one. `AC-POS-0006` and `AC-POS-0063` assert both absences against the **composed model**, so each
+reads as a decision rather than an oversight.

@@ -1,8 +1,8 @@
 ---
 document_id: FP-008-TS
 title: HR Position — Test Scenarios
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — Test Scenarios
@@ -35,7 +35,7 @@ at **S**, because a unit test over a fake proves the handler and not the rule.
 | TS-POS-0012 | S | Deactivating the company mid-session refuses the next position write | AC-POS-0010 |
 | TS-POS-0013 | S | **Negative control.** A position may not reference a grade from company B | AC-POS-0011 |
 
-## Grades **(OD-POS-002)**
+## Grades
 
 | ID | Layer | Scenario | AC |
 |---|---|---|---|
@@ -46,7 +46,7 @@ at **S**, because a unit test over a fake proves the handler and not the rule.
 | TS-POS-0018 | S | A position may not reference an inactive grade | AC-POS-0016 |
 | TS-POS-0019 | A | **The composed model contains no `SalaryGrade → JobGrade` foreign key.** The reference is one-directional, and a mutual one would restore the cycle `DEC-POS-0002` prevents | AC-POS-0017 |
 
-## Salary amounts **(OD-POS-004)**
+## Salary amounts
 
 | ID | Layer | Scenario | AC |
 |---|---|---|---|
@@ -54,7 +54,7 @@ at **S**, because a unit test over a fake proves the handler and not the rule.
 | TS-POS-0021 | S | Amounts out of order are refused **by the check constraint**, written directly in SQL, bypassing the application entirely | AC-POS-0019 |
 | TS-POS-0022 | U | Amounts out of order are refused by the aggregate before any I/O | AC-POS-0019 |
 | TS-POS-0023 | S | A negative amount is refused | AC-POS-0020 |
-| TS-POS-0024 | S | **A salary grade with no amounts is created and read back with nulls.** This is the scenario that makes `OD-POS-001` Option A viable without inventing money | AC-POS-0021 |
+| TS-POS-0024 | S | **A salary grade with no amounts is created and read back with nulls.** Nullability is the residual choice `DEC-POS-0016` flags as open, not a backfill accommodation — the `OD-POS-001` ruling seeds nothing | AC-POS-0021 |
 | TS-POS-0025 | A | `tenant.SalaryGrades` has no currency column in the composed model | AC-POS-0022 |
 | TS-POS-0026 | P | Sending `currencyCode` on a salary-grade write is rejected as an unknown property; reading one echoes the Company's `BaseCurrencyCode` | AC-POS-0022 |
 
@@ -67,7 +67,7 @@ at **S**, because a unit test over a fake proves the handler and not the rule.
 | TS-POS-0029 | S | An inactive position refuses an employee position change into it | AC-POS-0025 |
 | TS-POS-0030 | S | An inactive position remains readable and appears in lists, marked inactive | AC-POS-0026 |
 | TS-POS-0031 | A | **Token guard.** No `MapDelete` appears anywhere in the HR surface, and no repository method deletes a position or grade | AC-POS-0027 |
-| TS-POS-0032 | S | **`OD-POS-005`, and only one of these two is written.** *(i)* deactivating a position with incumbents succeeds and every incumbent retains it; **or** *(ii)* it is refused with `position.has_incumbents` and succeeds after the last incumbent moves | AC-POS-0028 |
+| TS-POS-0032 | S | *(`OD-POS-005`, assignment reading)* Deactivating a position with incumbents **succeeds**, and every incumbent still holds it afterwards | AC-POS-0028 |
 | TS-POS-0033 | S | A grade with active positions may not be deactivated, and no cascade occurs | AC-POS-0029 |
 
 ## Employee assignment
@@ -82,8 +82,9 @@ at **S**, because a unit test over a fake proves the handler and not the rule.
 | TS-POS-0039 | S | **The three-dimension independence proof.** Branch transfer, department change and position change each leave the other two untouched — all three directions | AC-POS-0035 |
 | TS-POS-0040 | S | Terminating an employee leaves position and history intact | AC-POS-0036 |
 | TS-POS-0041 | A | `EmployeePositionAssignment` implements `IAppendOnlyEntity`, has no `RowVersion`, and no update or delete path reaches it | AC-POS-0037 |
-| TS-POS-0042 | S | **`OD-POS-001`.** The migration behaves exactly as the chosen option specifies, against a database seeded with pre-FP-008 employees — **including its named follow-up obligation**: for Option A the collision pass, for B and D the later `NOT NULL` migration. A nullable column with no named follow-up fails here | AC-POS-0038, AC-POS-0039 |
-| TS-POS-0043 | S | **`OD-POS-001` Option A: the collision case.** A company already holding a position or grade whose normalized code collides causes the migration to fail transactionally, naming the offending companies and codes, **with nothing written** | AC-POS-0040 |
+| TS-POS-0042 | S | **The happy path, on an empty database.** The migration creates all four tables and adds `Employees.PositionId` **`NOT NULL` in one step** — no nullable phase, no later `ALTER COLUMN`, no backfill `UPDATE` | AC-POS-0038 |
+| TS-POS-0043 | S | **`DEC-POS-0026`: the precondition fires.** Against a database holding one Employee row, the migration **fails and writes nothing** — asserted by checking that none of the four tables exists and `Employees` has no `PositionId` afterwards. The message names the database, the count, and the decision | AC-POS-0039, AC-POS-0040 |
+| TS-POS-0067 | S | **No synthetic residue.** After a successful migration, no Position, JobGrade or SalaryGrade row exists at all, and `EmployeePositionAssignments` is empty. The FP-007 `UNASSIGNED` cohort has no counterpart here | AC-POS-0065 |
 
 ## Cutover and ownership classification
 
@@ -135,8 +136,14 @@ at **S**, because a unit test over a fake proves the handler and not the rule.
 
 ## A note on what these scenarios are worth
 
-Three of them exist because of specific defects this codebase has already produced, and they are the ones to
-write first:
+**`TS-POS-0043` is the one to write first**, and it is the only test here that defends a *ruling* rather than a
+design. `OD-POS-001` licensed `NOT NULL`-from-day-one on an operational fact — that no production tenant holds
+Employee rows. If that fact is ever false in some database, the migration must say so rather than fail on a
+constraint or, worse, succeed against a database it should never have touched. A green suite without
+`TS-POS-0043` proves the design works where the premise holds, which is exactly the case that was never in
+doubt.
+
+Three more exist because of specific defects this codebase has already produced, and they come next:
 
 - **TS-POS-0044** — the cutover cycle. FP-007 found the equivalent in design review, and the executable
   assertion (`TS-DEP-0044`) is what keeps it found. One convenience column reintroduces it.

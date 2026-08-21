@@ -1,15 +1,17 @@
 ---
 document_id: FP-008-DATA
 title: HR Position — Data Model
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — Data Model
 
-> Draft. This document describes the **target schema** and the migration to be authored during
-> implementation. **No migration is created by this documentation package.** Its shape depends on
-> `OD-POS-001` and `OD-POS-002` and cannot be finalized before both are answered.
+> Approved. This document describes the **target schema** and the migration to be authored during
+> implementation. **No migration is created by this documentation package.** `OD-POS-001` … `OD-POS-004` were
+> answered on 2026-08-21 and this document is written to those rulings: three grade-bearing aggregates, money
+> as informational bands, no `DepartmentId` on Position, and `Employee.PositionId` `NOT NULL` from day one
+> with the fail-loud precondition in `DEC-POS-0026`.
 
 All persisted application strings are `nvarchar`. No foreign key crosses a database boundary (`ADR-017`).
 Every principal referenced here — `tenant.Companies`, `tenant.Employees`, `tenant.Departments` — lives in the
@@ -25,7 +27,7 @@ tenant catalog, so every constraint below is intra-catalog.
 | `Code` | `nvarchar(32)` | NO | User-entered, as displayed |
 | `NormalizedCode` | `nvarchar(32)` | NO | Binary collation, backs the uniqueness index |
 | `Title` | `nvarchar(128)` | NO | Not unique |
-| `JobGradeId` | `uniqueidentifier` | YES | FK → `tenant.JobGrades`; exists only under `OD-POS-002` (i)–(iii) |
+| `JobGradeId` | `uniqueidentifier` | YES | FK → `tenant.JobGrades`, `RESTRICT`. Null until the position is graded |
 | `Status` | `nvarchar(32)` | NO | Binary collation; `Active` \| `Inactive` |
 | `StatusChangedUtc` | `datetimeoffset` | NO | |
 | `StatusChangedBy` | `nvarchar(256)` | NO | Matches `Employee.ActorMaximumLength` |
@@ -38,8 +40,9 @@ tenant catalog, so every constraint below is intra-catalog.
 **There is no employee column of any kind** — no `CurrentHolderEmployeeId`, no `IncumbentEmployeeId`. See
 `DEC-POS-0002` and the cutover section below; this absence is load-bearing.
 
-`DepartmentId` appears here **only** if `OD-POS-003` selects option (c) or (d), and its presence changes that
-decision's whole consequence set.
+**There is no `DepartmentId` either.** `OD-POS-003` ruled Position independent of Department, so an employee's
+department has exactly one authority — `Employee.DepartmentId`, unchanged from FP-007 — and no invariant has
+to keep two copies of that fact in step.
 
 ### Indexes
 
@@ -68,7 +71,7 @@ decision's whole consequence set.
 are deactivated, never deleted, so a cascade would silently erase organizational structure. This matches
 `HrTenantModelContributor`'s existing treatment of Employee's and Department's foreign keys.
 
-## `tenant.JobGrades` and `tenant.SalaryGrades` **(OD-POS-002)**
+## `tenant.JobGrades` and `tenant.SalaryGrades`
 
 Both follow the `Positions` shape exactly — identifier, stamped ownership, normalized code, name, status,
 audit stamps, rowversion — plus:
@@ -77,7 +80,7 @@ audit stamps, rowversion — plus:
 |---|---|---|---|
 | `RankOrder` | `int` | NO | Authoritative order; unique within `(TenantId, CompanyId)` per ladder (`DEC-POS-0006`) |
 | `SalaryGradeId` | `uniqueidentifier` | YES | **On `JobGrades` only.** FK → `tenant.SalaryGrades`, `RESTRICT`. The reference is one-directional and must stay so (`BRULE-POS-0010`) |
-| `MinimumAmount` | `decimal(19,4)` | YES | **On `SalaryGrades` only, and only under `OD-POS-004`** (ii)/(iii) |
+| `MinimumAmount` | `decimal(19,4)` | YES | **On `SalaryGrades` only.** Informational band (`OD-POS-004`) |
 | `MidpointAmount` | `decimal(19,4)` | YES | as above |
 | `MaximumAmount` | `decimal(19,4)` | YES | as above |
 
@@ -87,12 +90,20 @@ audit stamps, rowversion — plus:
 | `CK_SalaryGrades_Amounts_NonNegative` | all three `>= 0` when present |
 | `CK_SalaryGrades_Amounts_Ordered` | `Minimum <= Midpoint AND Midpoint <= Maximum` when all present |
 
-**The amount columns are nullable, and that is not laziness.** `OD-POS-001` Option A must seed a synthetic
-grade for the backfill, and there is no honest minimum or maximum for a grade nobody designed. A mandatory
-range and a seeded-default backfill are incompatible unless either the range is nullable or the seeded row is
+**The amount columns are nullable, and the reason originally given for that is discharged.** The draft argued
+that `OD-POS-001` Option A would have to seed a synthetic grade with no honest minimum or maximum, so a
+mandatory range and a seeded backfill were incompatible unless the range was nullable or the seeded row was
 exempt — and an exemption means a system-origin discriminator column, which `DEC-DEP-0009`'s amendment
-explicitly declined to add. **Nullable amounts are the only combination of `OD-POS-001` Option A and
-`OD-POS-004` option (ii) that does not require reversing an FP-007 decision.**
+explicitly declined to add.
+
+**The `OD-POS-001` ruling creates no seeded grade, so that argument no longer applies.** Nullability now rests
+on a different and weaker ground: a job ladder may legitimately be defined before it is priced, and a grade
+awaiting benchmarking has no honest amounts. That is a real case but a smaller one, and **`DEC-POS-0016`
+records it as an open question** for `ADR-026`/`ADR-027` review — the amounts could reasonably be made
+mandatory now that nothing forces them to be optional.
+
+`CK_SalaryGrades_Amounts_Ordered` is written as "when all three are present" under either answer, so
+tightening later is a nullability change rather than a constraint rewrite.
 
 ### No currency column
 
@@ -141,7 +152,7 @@ absence for the reason recorded on `EmployeeDepartmentAssignment`, restated in
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
-| `PositionId` | `uniqueidentifier` | **depends on `OD-POS-001`** | FK → `tenant.Positions`, `RESTRICT` |
+| `PositionId` | `uniqueidentifier` | **NO** | FK → `tenant.Positions`, `RESTRICT`. `NOT NULL` from the first migration (`OD-POS-001`) |
 
 | Index | Columns |
 |---|---|
@@ -152,30 +163,48 @@ The existing `IX_Employees_TenantId_CompanyId_BranchId_Status` is **not** altere
 (`DEC-POS-0020`), so it does not belong in the scoped-search index; adding it there would suggest it were
 part of the mandatory predicate.
 
-## Migration shape by owner decision
+## Migration shape
 
-The migration cannot be written until `OD-POS-001` is answered, because its steps differ materially:
+`OD-POS-001` established that no production tenant holds Employee rows, so the migration is the short one and
+there is exactly one:
 
-| `OD-POS-001` | Migration steps |
+| Step | Action |
 |---|---|
-| **A — seeded default + backfill** | 1. Create the grade tables, `Positions`, `EmployeePositionAssignments`. 2. Add `Employees.PositionId` **nullable**. 3. **Collision pass over every affected company before any write.** 4. Insert the synthetic chain per company. 5. `UPDATE Employees SET PositionId = …`. 6. Insert one initial history row per employee. 7. `ALTER COLUMN … NOT NULL`. 8. Add FK and index. Steps 3–6 are data migration inside a schema migration — `20260820140653_AddEmployeeDepartment` is the working template, including its `THROW`-with-remedy failure |
-| **B — nullable now, required later** | Create tables; add nullable `PositionId` + FK + index. The `NOT NULL` alteration is a **named later migration** that must not be forgotten |
-| **C — nullable indefinitely** | As B, with no committed follow-up. Recommended against by `OD-DEP-001` in every case |
-| **D — block until assigned** | Create tables; add nullable `PositionId` + FK + index; a **separate later** migration alters to `NOT NULL` and fails loudly if any null remains. **If no production tenant holds Employee rows, steps collapse and the column is `NOT NULL` immediately** |
-| **E — amend `BR-HR-0006`** | As B, but with no follow-up owed, and with a corresponding edit to `Business-Rules.md` |
+| **1** | **Assert the precondition.** `SELECT COUNT(*) FROM [tenant].[Employees]`. **If it is not zero, `THROW` and write nothing** — see `DEC-POS-0026` |
+| 2 | Create `tenant.SalaryGrades` |
+| 3 | Create `tenant.JobGrades`, with its FK to `SalaryGrades` |
+| 4 | Create `tenant.Positions`, with its FK to `JobGrades` |
+| 5 | Create `tenant.EmployeePositionAssignments`, with its FKs to `Employees` and `Positions` |
+| 6 | `ALTER TABLE [tenant].[Employees] ADD [PositionId] uniqueidentifier NOT NULL` |
+| 7 | Add the FK and `IX_Employees_TenantId_CompanyId_PositionId` |
 
-**Under every option the column is added nullable first.** `ALTER TABLE ADD` of a non-nullable column without
-a default fails on a non-empty table; the ordering is a constraint of the engine, not a preference.
+**Step 6 is legal only because step 1 passed.** `ALTER TABLE ADD` of a non-nullable column without a default
+fails on a non-empty table — so on any database holding employees, step 6 would fail anyway, just with an
+engine message instead of an explanation. Step 1 turns that into a diagnosis: it names the database, the row
+count, and the decision, before any DDL has run.
 
-### The collision case, if Option A is chosen
+**No `UNASSIGNED` row of any kind is created.** No synthetic Position, no synthetic JobGrade, no synthetic
+SalaryGrade, no backfill `UPDATE`, and no migration-authored history row. Every
+`EmployeePositionAssignment` in the product will describe a real assignment made through the application.
 
-FP-007's migration fails loudly and transactionally when a company already holds a Department whose
-`NormalizedCode` is `UNASSIGNED` — it does not reuse, rename, modify, delete, or suffix it. **The identical
-rule applies here, multiplied by the chain length:** a company may already hold a Position, a Job Grade, or a
-Salary Grade whose normalized code collides, and each is a separate way for the same migration to fail. The
-collision check must be one pass over all affected companies and all three codes **before any write**, so the
-common failure never writes at all rather than relying on rollback, and the error must name the offending
-companies, the offending codes, and the one remedy.
+### Why step 1 is a separate pass rather than a constraint
+
+`DEC-POS-0026` requires the check **before any write**, not as a consequence of one. The reasoning is
+`DEC-DEP-0009`'s: the common failure must never write at all, rather than writing and relying on rollback.
+
+The check is per **tenant database**, every time the migration runs — not once at design time. The operational
+fact is about a moment, and the moment differs per database: a tenant provisioned after the ruling, a restored
+database, a development or demo catalog, or an `ADR-021` customer-managed database can each hold rows the
+ruling did not contemplate.
+
+**What the migration must never do in that case:** supply a default, delete rows, skip the column, or degrade
+to nullable. Each would silently attach real employees to a position nobody chose, or quietly abandon
+`BR-HR-0006` — and no later migration could know what was meant. The one remedy is to reconsider the backfill
+strategy `OD-POS-001` declined, for that tenant, as a decision. **The migration is not to be edited to force
+it through.**
+
+FP-007's collision pass in `20260820140653_AddEmployeeDepartment` is the working template for the shape,
+including its `THROW`-with-remedy message.
 
 ## Shared→Dedicated cutover
 
@@ -185,7 +214,9 @@ name — and orders it by the foreign-key graph, principals before dependents. E
 implements `ITenantOwnedEntity` and is contributed by `HrTenantModelContributor`, so **all of them are covered
 by construction**; no list needs editing for the copy to find them.
 
-The derived order, under the recommended readings:
+The derived order, with `OD-POS-003` ruling Position independent of Department — so the two are unordered
+siblings with respect to each other, and the sequence below is one valid topological answer rather than the
+only one:
 
 ```
 Company → Branch → Department → SalaryGrade → JobGrade → Position → Employee → { EmployeeBranchAssignment,
@@ -203,9 +234,9 @@ one, and all three must be updated in one deliberate act (`DEC-POS-0022`, `NFR-P
 
 | Site | Today | After FP-008 |
 |---|---|---|
-| `C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity` | exact list of **7** entities | **11** under `OD-POS-002` (i); 10 under (ii)/(iii); 9 under (iv) |
+| `C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity` | exact list of **7** entities | **11** — adds `EmployeePositionAssignment`, `JobGrade`, `Position`, `SalaryGrade` |
 | `C6_15_The_copy_order_places_every_principal_before_its_dependents` | Departments before Employees | plus Positions before Employees, and grades before Positions |
-| `TenantRestoreVerificationProviderSqlServerTests` `DROP TABLE` list | **6** tables | the new copy order read backwards |
+| `TenantRestoreVerificationProviderSqlServerTests` `DROP TABLE` list | **6** tables | **10** — the new copy order read backwards |
 
 The third is the one that has broken twice already in this codebase's history, both times because a new
 foreign key changed the required order rather than merely lengthening the list. The rule recorded there — *the

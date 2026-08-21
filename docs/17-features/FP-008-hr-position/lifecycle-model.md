@@ -1,8 +1,8 @@
 ---
 document_id: FP-008-LIFE
 title: HR Position — Lifecycle Model
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — Lifecycle Model
@@ -53,18 +53,27 @@ deactivation must be refused instead.
 | **(ii) The position's status is `Active`** | **Refused** until every incumbent is moved | `BR-HR-0006` is true at every instant. Diverges from Department, and retiring a job becomes a multi-step operation with no bulk-move tool in scope |
 | **(iii) Both** | **Refused**, as (ii) | as (ii) |
 
-**This document does not choose.** [`README.md`](README.md) records the engineering recommendation —
-reading (i) — and the reason it is a recommendation rather than a decision: the sentence genuinely supports
-both, and which one the business means is not an engineering fact.
+> **RULING 2026-08-21 — reading (i), the assignment.** "One active position" means the employee has one
+> *current* assignment; it does not require the position itself to be `Active`.
+>
+> **Deactivating a Position with incumbents is ALLOWED.** The Department answer is available after all, and
+> the collision this section named does not occur. A retired job may still have holders — the oddity reading
+> (i) was said to carry — and that is accepted in exchange for never using one rule to break another.
+>
+> **An `Inactive` Position still refuses a NEW assignment**, which is the half of `BR-HR-0009`'s shape that
+> does apply. `position.has_incumbents` is **not** an error this package defines: no operation raises it.
+
+The paragraphs above are preserved as the analysis that produced the question. The rest of this document is
+written to the ruling.
 
 ## Deactivation rules
 
 | Situation | Behaviour | Rule |
 |---|---|---|
-| Position has incumbents | **`OD-POS-005`.** Allowed under reading (i); refused under (ii)/(iii) | `BRULE-POS-0014` |
+| Position has incumbents | **Allowed.** They stay, and `BR-HR-0006` remains satisfied for each of them | `BRULE-POS-0014` |
 | New Employee created into an inactive Position | **Refused** | `BRULE-POS-0013` |
 | Employee changed into an inactive Position | **Refused** | `BRULE-POS-0013` |
-| Employee changed *out of* an inactive Position | **Allowed** — this is how a position is emptied, and under reading (ii) it is the only way to become deactivatable | `BRULE-POS-0014` |
+| Employee changed *out of* an inactive Position | **Allowed** — this is how a position is emptied | `BRULE-POS-0014` |
 | Position referencing an `Active` grade | Unaffected | — |
 | Grade with `Active` positions referencing it | **Refused** until those positions are deactivated or re-pointed. No cascade | `BRULE-POS-0015`, `DEC-POS-0013` |
 | Grade with `Inactive` dependents only | Allowed | `BRULE-POS-0015` |
@@ -81,18 +90,32 @@ dependents are handled is more work for the operator and is the only version tha
 |---|---|
 | Employee is **terminated** | **Nothing.** The position is retained, because a historical employment record without a job is unreadable (`BRULE-POS-0020`) |
 | Employee **transfers branch** | Nothing. Position is a company-level relationship; branch is orthogonal (`BRULE-POS-0019`) |
-| Employee **changes department** | Nothing, under the recommended reading of `OD-POS-003`. Under option (c) or (d) the two become coupled and this row changes |
+| Employee **changes department** | **Nothing.** `OD-POS-003` ruled Position independent of Department, so the two are unrelated (`BRULE-POS-0019`) |
 | Employee **changes position** | `PositionId` is updated and one immutable history record is appended, atomically (`BRULE-POS-0018`) |
-| Position is **deactivated** | Nothing to the employee under reading (i); under (ii) the deactivation itself is refused while they are there |
+| Position is **deactivated** | **Nothing.** The employee keeps it (`OD-POS-005`, reading (i)) |
 
 **Why termination does not clear the position.** The same reasoning `BRULE-DEP-0020` records for department:
 an automatic clear destroys information — the record would show no job and nothing would say there had been
 one — and it makes a write to org structure a side effect of an unrelated HR operation. A terminated
 employee's last position is part of what makes their record readable.
 
-## What the lifecycle model cannot settle
+## The one asymmetry a reader will notice
 
-The central question of this document — what happens when a position with incumbents is deactivated — is
-`OD-POS-005`, and it is left open. A lifecycle model that quietly picked one reading would settle a business
-rule's meaning by implementation, which is precisely what `ADR-026` decision 9 and decision 10 were written
-to prevent.
+A Position with incumbents **may** be deactivated. A grade with active dependents **may not**. That looks
+inconsistent until the difference is named, so it is named here rather than left to be rediscovered.
+
+An employee's assignment is a **fact about a person** that survives the position's retirement — the employee
+still holds that job title today, whether or not the organization is still hiring for it. A grade reference is
+a **structural pointer**, and deactivating its target would leave an `Active` position pointing at an
+`Inactive` grade: an incoherent tree, refused for the same reason `DEC-DEP-0006` step 3 refuses an active
+child under an inactive parent.
+
+`DEC-POS-0012` and `DEC-POS-0013` record both halves.
+
+## What this document settled by ruling rather than by design
+
+The central question here — what happens when a position with incumbents is deactivated — was `OD-POS-005`,
+and it was **not** answered by this document. It was raised as an owner decision precisely because a lifecycle
+model that quietly picked one reading would settle a business rule's meaning by implementation, which is what
+`ADR-026` decisions 9 and 10 were written to prevent. The owner ruled reading (i) on 2026-08-21, and the
+tables above are written to that ruling.

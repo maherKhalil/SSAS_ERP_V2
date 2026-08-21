@@ -1,13 +1,14 @@
 ---
 document_id: FP-008-REQ
 title: HR Position — Requirements
-status: Draft — Owner Decision Required
-version: 0.1
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-008 — Requirements
 
-> Draft. Requirements marked **(OD)** depend on an unresolved owner decision and are provisional.
+> Approved. All six owner decisions were closed on 2026-08-21; requirements that were provisional are now
+> determinate, and the ruling that determined each is cited inline.
 >
 > **The source requirements have no body text.** `REQ-HR-0200`, `REQ-HR-0201` and `REQ-HR-0202` appear in the
 > requirement catalog as titles only. Everything below is therefore *derived* — from `BR-HR-0006`, from the
@@ -18,18 +19,18 @@ version: 0.1
 
 | Source | Name | Body text exists? | Coverage in FP-008 |
 |---|---|---|---|
-| `REQ-HR-0200` | Position Management | **No** | `FR-POS-0201`–`FR-POS-0205`, `FR-POS-0210` |
-| `REQ-HR-0201` | Job Grades | **No** | `FR-POS-0206`–`FR-POS-0208` **(OD)** — existence depends on `OD-POS-002` |
-| `REQ-HR-0202` | Salary Grade | **No** | `FR-POS-0206`–`FR-POS-0209` **(OD)** — existence depends on `OD-POS-002`; money content depends on `OD-POS-004` |
+| `REQ-HR-0200` | Position Management | **No** | `FR-POS-0201`–`FR-POS-0205`, `FR-POS-0210`–`FR-POS-0213` |
+| `REQ-HR-0201` | Job Grades | **No** | `FR-POS-0206`–`FR-POS-0208` — realized as a first-class aggregate (`OD-POS-002`) |
+| `REQ-HR-0202` | Salary Grade | **No** | `FR-POS-0206`–`FR-POS-0209` — realized as a first-class aggregate carrying informational bands (`OD-POS-002`, `OD-POS-004`). Range **enforcement** transfers to Payroll |
 | `REQ-HR-0006` | Employee History | — | **Extended.** Position-change history is realized (`DEC-POS-0008`), on the terms `DEC-DEP-0016` was reversed to |
-| `REQ-HR-0100`–`REQ-HR-0102` | Department | — | **Unchanged.** FP-008 adds no department behaviour and removes none, subject to `OD-POS-003` |
+| `REQ-HR-0100`–`REQ-HR-0102` | Department | — | **Unchanged.** `OD-POS-003` ruled Position independent of Department, so FP-008 adds no department behaviour and removes none |
 
 ## Functional requirements
 
 ### FR-POS-0201 — Create a Position
 
 A user holding `HR.Positions.Create`, acting within an authorized and active company, creates a Position with
-a `Code`, a `Title`, and — subject to `OD-POS-002` — a grade reference. The position is created `Active`.
+a `Code`, a `Title`, and an optional `JobGradeId`. The position is created `Active`.
 `TenantId` and `CompanyId` are stamped from trusted server context and are never accepted from the caller.
 
 ### FR-POS-0202 — Read a Position
@@ -50,45 +51,44 @@ operation; status has its own (`FR-POS-0205`).
 
 ### FR-POS-0205 — Deactivate and reactivate a Position
 
-A user holding `HR.Positions.Deactivate` moves a Position between `Active` and `Inactive`. **Whether
-deactivation is permitted while incumbents exist is `OD-POS-005`** and is not settled by this document.
+A user holding `HR.Positions.Deactivate` moves a Position between `Active` and `Inactive`. **Deactivation is
+permitted while incumbents exist** — they keep the position (`OD-POS-005`, assignment reading).
 Deactivation refuses new arrivals (`BRULE-POS-0013`).
 
-### FR-POS-0206 — Create and read a Grade **(OD)**
+### FR-POS-0206 — Create and read a Grade
 
 A user holding the grade `Create` or `View` permission creates and reads grades within their authorized
-company scope, with a `Code`, a `Name`, and a `RankOrder` (`DEC-POS-0006`). **Which grade entities exist is
-`OD-POS-002`.**
+company scope, with a `Code`, a `Name`, and a `RankOrder` (`DEC-POS-0006`). **Two ladders exist** — Job Grade
+and Salary Grade (`OD-POS-002`), and a Job Grade may reference one Salary Grade.
 
-### FR-POS-0207 — Update a Grade **(OD)**
+### FR-POS-0207 — Update a Grade
 
 A user holding the grade `Update` permission changes a grade's `Name`, its `Code` subject to
 `BRULE-POS-0004`, and its `RankOrder` subject to `BRULE-POS-0007`.
 
-### FR-POS-0208 — Deactivate and reactivate a Grade **(OD)**
+### FR-POS-0208 — Deactivate and reactivate a Grade
 
 A user holding the grade `Deactivate` permission moves a grade between `Active` and `Inactive`. Deactivation
 is refused while `Active` dependents reference it and does **not** cascade (`BRULE-POS-0015`,
 `DEC-POS-0013`).
 
-### FR-POS-0209 — Maintain a Salary Grade's amounts **(OD)**
+### FR-POS-0209 — Maintain a Salary Grade's amounts
 
-**Exists only if `OD-POS-004` selects a money-bearing Salary Grade.** A user holding
-`HR.SalaryGrades.Update` sets a minimum, midpoint and maximum amount, ordered and non-negative
+A user holding `HR.SalaryGrades.Update` sets a minimum, midpoint and maximum amount, ordered and non-negative
 (`BRULE-POS-0008`), denominated in the owning Company's base currency (`DEC-POS-0015`). The amounts are
 **informational**: FP-008 contains no value they constrain (`DEC-POS-0023`).
 
-### FR-POS-0210 — Assign an Employee to a Position **(OD)**
+### FR-POS-0210 — Assign an Employee to a Position
 
-Employee creation requires a `PositionId` in the same tenant, the same company, and `Active` status. **The
-treatment of Employees that already exist is `OD-POS-001` and is not settled by this document.**
+Employee creation requires a `PositionId` in the same tenant, the same company, and `Active` status.
+**No Employee exists without one:** `OD-POS-001` ruled the column `NOT NULL` from day one, with the fail-loud precondition in `DEC-POS-0026`.
 
-### FR-POS-0211 — Change an Employee's Position **(OD)**
+### FR-POS-0211 — Change an Employee's Position
 
 An Employee's Position changes only through an explicit `ChangePosition` operation holding
 `HR.Employees.Update` — never as a field on the ordinary profile update (`DEC-POS-0010`). Each change appends
 one immutable `EmployeePositionAssignment` record atomically with the column change (`DEC-POS-0008`).
-**Whether a separate promotion permission is required is named in `DEC-POS-0019`.**
+**No separate promotion permission exists** — the question was considered and declined for V1 (`DEC-POS-0019`).
 
 ### FR-POS-0212 — Read an Employee's position history
 
@@ -139,6 +139,6 @@ but because a single column cannot express it (`DEC-POS-0021`).
 ## Explicitly not required
 
 FP-008 introduces no employee salary, wage, or compensation column; no `Employee.ManagerId`; no
-`Position.ReportsToPositionId` unless `OD-POS-006` says otherwise; no headcount, establishment or vacancy
+`Position.ReportsToPositionId` (deferred by `OD-POS-006`); no headcount, establishment or vacancy
 concept; no position-scoped read of any aggregate; no cost-centre or GL mapping; no automatic code
 generation; and no placeholder column for any of them.

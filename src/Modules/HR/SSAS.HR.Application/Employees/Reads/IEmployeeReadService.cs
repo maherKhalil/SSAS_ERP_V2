@@ -39,6 +39,27 @@ public interface IEmployeeReadService
   // read of branch identifiers, which is exactly what a caller confined to one branch must not obtain.
   Task<IReadOnlyList<EmployeeBranchHistoryEntry>?> GetEmployeeBranchHistoryAsync(
     EmployeeReadScope scope, Guid employeeId, CancellationToken cancellationToken = default);
+
+  // ---- HOW MANY EMPLOYEES HOLD A POSITION (FP-008 Phase 3, `api-contracts.md`).
+  //
+  // ================================================================================================
+  // IT LIVES HERE, AND THAT PLACEMENT IS THE WHOLE DESIGN.
+  // ================================================================================================
+  //
+  // `employeeCount` appears on the POSITION representation, so the obvious home would be the position read
+  // side. It is here instead because counting employees is an EMPLOYEE read, and employees are
+  // branch-scoped while positions are only company-scoped. A count taken on the position side would either
+  // need a second branch authorization model or would disclose the size of branches the caller cannot read
+  // — the same trap `DepartmentReadService` refuses when it declines to join its manager.
+  //
+  // Requiring an `EmployeeReadScope` is what makes that structural: the count is filtered by the caller's
+  // own company and branch predicate, so two users legitimately see different numbers for one position, and
+  // the architecture guard asserting that no position read service reaches the employee set stays true.
+  //
+  // Phase 4 composes this into the position representation at the API layer, where both scopes are
+  // obtainable — alongside `currencyCode`, which is the same shape of problem across a module boundary.
+  Task<int> CountEmployeesByPositionAsync(
+    EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default);
 }
 
 // WHAT A SEARCH FILTERS ON, beyond the scope. None of these can widen a scope; they only narrow it.

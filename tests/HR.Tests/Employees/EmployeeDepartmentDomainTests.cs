@@ -68,7 +68,7 @@ public sealed class EmployeeDepartmentDomainTests
     var employee = NewEmployee();
 
     var result = employee.StampInitialAssignment(
-      Tenant, Company, BranchA, Guid.Empty, Actor, Guid.NewGuid(), Now);
+      Tenant, Company, BranchA, Guid.Empty, Guid.NewGuid(), Actor, Guid.NewGuid(), Now);
 
     Assert.True(result.IsFailure);
     Assert.Equal(EmployeeErrors.DepartmentRequired.Code, result.Error.Code);
@@ -83,7 +83,7 @@ public sealed class EmployeeDepartmentDomainTests
     var employee = Stamped();
 
     var second = employee.StampInitialAssignment(
-      Tenant, Company, BranchA, Operations, Actor, Guid.NewGuid(), Now);
+      Tenant, Company, BranchA, Operations, Guid.NewGuid(), Actor, Guid.NewGuid(), Now);
 
     Assert.True(second.IsFailure);
     Assert.Single(employee.DepartmentAssignments);
@@ -291,7 +291,7 @@ public sealed class EmployeeDepartmentDomainTests
     employee.BranchId = BranchA;
 
     Assert.True(employee.StampInitialAssignment(
-      Tenant, Company, BranchA, Finance, Actor, Guid.NewGuid(), Now).IsSuccess);
+      Tenant, Company, BranchA, Finance, Guid.NewGuid(), Actor, Guid.NewGuid(), Now).IsSuccess);
 
     return employee;
   }

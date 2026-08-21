@@ -264,10 +264,14 @@ in one place. The three headline movements are:
 | The derived copy order | Departments before Employees | plus `SalaryGrade → JobGrade → Position`, and the history after both `Position` and `Employee` |
 | The `DROP TABLE` list | **6** tables | **10** — the new copy order read backwards |
 
-**Position is not ordered against Employee in Phase 1**, and the order assertion must not claim it is: nothing
-links the two until Phase 3 gives `Employee` a required `PositionId`, and a topological sort cannot order two
-entities with no path between them. The drop list nonetheless already places `Positions` after `Employees`, so
-the Phase 3 foreign key lengthens that list without inverting a pair inside it.
+**Position IS ordered before Employee as of Phase 3** (`C6_15`). Phase 1 could not claim it and deliberately
+did not: nothing linked the two until `Employee.PositionId` became a required foreign key, and a topological
+sort cannot order two entities with no path between them, so an assertion written early would have passed on
+the sort's tie-breaking rather than on a constraint. The claim and the assertion became true in the same
+commit, which is how the forward obligation Phase 1 recorded was discharged.
+
+The drop list needed no reordering for it: it already placed `Positions` after `Employees`, so the Phase 3
+foreign key lengthened that list without inverting a pair inside it.
 
 The drop list is the one that has broken twice already in this codebase's history, both times because a new
 foreign key changed the required order rather than merely lengthening the list. The rule recorded there — *the

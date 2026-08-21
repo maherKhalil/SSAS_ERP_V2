@@ -80,10 +80,12 @@ said was unestablished, which is the outcome it asked for rather than a choice a
 | `DEC-POS-0029` | **The unused `eventId` parameter is left as it is** | — | **NEW**, ruled 2026-08-21 during Phase 2 — a *declined cleanup* |
 | `DEC-POS-0030` | **Free-text search runs against a normalized column** | — | **NEW**, ruled 2026-08-21 during Phase 2 |
 | `DEC-POS-0031` | **The FP-007 department search defect is fixed here** | — | **NEW**, ruled 2026-08-21 during Phase 2 — a *product fix outside this feature* |
+| `DEC-POS-0032` | **The holder count lives on the employee read side** | — | **NEW**, ruled 2026-08-21 during Phase 3 |
+| `DEC-POS-0033` | **The API test project is inside no phase exit gate** | — | **NEW**, 2026-08-21 during Phase 3 — a *process finding* |
 
-**Thirty-one decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
-eight binding by precedent, and six new decisions — one created by the `OD-POS-001` ruling, one ruled during
-Phase 1 implementation, and four during Phase 2.
+**Thirty-three decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
+eight binding by precedent, and eight new decisions — one created by the `OD-POS-001` ruling, one ruled during
+Phase 1 implementation, four during Phase 2, and two during Phase 3.
 
 **The last five all came from implementation rather than from analysis**, and that is the loop working rather
 than the package having been thin: `DEC-POS-0027` from writing the band, `DEC-POS-0028` from a gap Phase 1
@@ -520,6 +522,17 @@ codebase. **PROPOSED.**
 > sensitivity, not resource identity. Holding `HR.Positions.View` does not read pay bands (`AC-POS-0045`,
 > `TS-POS-0054`).
 
+> **Amendment 2026-08-21 (FP-008 Phase 2 implementation) — THE SCOPE TYPE IS THE PERMISSION.**
+> The separation is enforced by the compiler, not by convention. `PositionReadScope`, `JobGradeReadScope` and
+> `SalaryGradeReadScope` are three distinct types with private constructors and internal factories, and each
+> is produced by exactly one resolver method — the one that checked its own `View` permission. A salary grade
+> read accepts only a `SalaryGradeReadScope`, so a caller holding every position and job grade permission
+> cannot reach a pay band even by mistake.
+>
+> This matters because the alternative was one shared scope type plus a rule that everyone remembers. A
+> permission whose enforcement depends on nobody making a copy-paste error is a permission that will
+> eventually authorize nothing it was meant to.
+
 **DEC-POS-0019** — Changing an Employee's position requires **`HR.Employees.Update`**, on the employee route
 prefix, and **not** `HR.Positions.Update` and **not** `HR.Employees.Transfer`.
 
@@ -814,3 +827,46 @@ wildcard-escape, and a proof that a text filter never reaches outside the compan
 was audited at the same time and is **clear** — it filters `NormalizedEmployeeNumber` with `==` on a plain
 column and has no free-text name search at all — and its uncovered filter branch gained tests rather than a
 discarded probe.
+
+**DEC-POS-0032** — **`employeeCount` is computed on the EMPLOYEE read side, and requires an employee read
+scope.** `IEmployeeReadService.CountEmployeesByPositionAsync(EmployeeReadScope, Guid)`. The position read
+services gain nothing, and the Phase 4 API composes the two. **NEW**, ruled 2026-08-21 during Phase 3.
+
+*What produced it.* `api-contracts.md` puts `employeeCount` on the POSITION representation, which makes the
+position read side the obvious home. FP-008 Phase 2 reported it as unimplementable there and deferred it;
+Phase 3, which finally has `Employee.PositionId`, had to decide where it goes.
+
+*Why the employee side.* Counting employees is an employee read, and the two resources are scoped
+differently: a position is company-scoped, an employee is company- AND branch-scoped. A count taken on the
+position side would either need a second branch authorization model or would disclose the size of branches
+the caller cannot read — the same trap `DepartmentReadService` refuses when it declines to join its manager,
+and the reason `api-contracts.md` already documents the field as scope-dependent.
+
+*What it preserves.* The architecture guard asserting that no position read service reaches the employee set
+stays true and unweakened. Two users legitimately see different counts for one position, which the API
+documentation states rather than hides.
+
+*The first draft put it on `IEmployeeRepository`* — which compiled, read naturally, and silently counted every
+employee in the tenant. It was moved to the read side before anything depended on it, and
+`EmployeeReadScopeArchitectureTests` now records the move beside the enumerated repository surface so the
+reasoning survives the commit that made it.
+
+**DEC-POS-0033** — **The API test project is inside no phase exit gate, and two exact-inventory guards were
+red for two phases because of it.** Recorded as a process finding rather than a design decision. **NEW**,
+2026-08-21 during Phase 3.
+
+*What happened.* `EmployeeHostCompositionTests.H9` pins the composed tenant model's entity list exactly, and
+`H11` pins the contributed HR permission set exactly. FP-008 Phase 1 added four entities and Phase 2 added
+twelve permissions. Both guards failed from the moment those changes landed, and **no gate reported it**: the
+phase exit gate is the full Debug *Integration* suite, and `API.Tests` is a different project that nothing in
+the phase workflow ran.
+
+*Why it matters more than the fix.* Both guards did exactly what they were built to do — an exact inventory
+refused to accept a silent addition. `DEC-POS-0022`'s nine-site manifest map was written, audited and
+corrected during Phase 2, and `H9` is a tenth site that sat outside all of it. An inventory guard is only as
+good as the suite that runs it.
+
+*The narrow lesson:* when a change adds an entity or a permission, the guards that pin those sets by name
+live in `API.Tests` as well as in `Integration.Tests` and `Architecture.Tests`.
+
+*The general one:* a phase gate scoped to one test project cannot be described as proving a phase.

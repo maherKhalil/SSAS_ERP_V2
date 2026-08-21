@@ -45,9 +45,31 @@ public interface IEmployeeRepository
   // a department in another company is reported ABSENT rather than as a refusal.
   Task<DepartmentAssignmentTarget?> FindAssignableDepartmentAsync(
     Guid companyId, Guid departmentId, CancellationToken cancellationToken = default);
+
+  // ---- THE POSITION HISTORY AND THE DESTINATION POSITION (FP-008 Phase 3).
+  //
+  // Both mirror their department counterparts above exactly, for the reasons stated there: append-only with
+  // no update or remove counterpart, and a destination reduced to the two facts the rules turn on rather
+  // than handed back as a second aggregate root.
+  //
+  // They live on the EMPLOYEE repository, not on `IPositionRepository`, because both are used inside an
+  // employee operation and the rows they touch hang off an employee. `IPositionRepository` answers
+  // questions about positions; this answers what an employee write needs to know.
+  Task AppendPositionAssignmentAsync(
+    Domain.Positions.EmployeePositionAssignment assignment,
+    CancellationToken cancellationToken = default);
+
+  Task<PositionAssignmentTarget?> FindAssignablePositionAsync(
+    Guid companyId, Guid positionId, CancellationToken cancellationToken = default);
+
 }
 
 // A department, as an employee operation is allowed to see it. `IsActive` is separate from existence
 // because the two produce different answers: an inactive department is named plainly, a department outside
 // the company is not acknowledged at all.
 public sealed record DepartmentAssignmentTarget(Guid DepartmentId, bool IsActive);
+
+// A position, as an employee operation is allowed to see it. The same two facts and the same separation:
+// an inactive position is named plainly (`BRULE-POS-0013`), a position outside the company is not
+// acknowledged at all (`BRULE-POS-0016`, `BR-PLT-0002`).
+public sealed record PositionAssignmentTarget(Guid PositionId, bool IsActive);

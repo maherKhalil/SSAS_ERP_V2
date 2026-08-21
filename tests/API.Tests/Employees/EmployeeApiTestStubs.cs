@@ -146,6 +146,16 @@ public sealed class StubEmployeeReads : IEmployeeReadService
 
     return Task.FromResult(History);
   }
+
+  // Records the scope like every other read here. The count itself is not what these API tests are about;
+  // that it cannot be asked without a scope is.
+  public Task<int> CountEmployeesByPositionAsync(
+    EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default)
+  {
+    LastScope = scope;
+
+    return Task.FromResult(0);
+  }
 }
 
 // Returns a real Employee aggregate so the command handlers exercise their genuine domain transitions and
@@ -187,6 +197,7 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
       EmployeeApiTestHost.CompanyA,
       EmployeeApiTestHost.BranchA,
       EmployeeApiTestHost.DepartmentA,
+      EmployeeApiTestHost.PositionA,
       "seed",
       Guid.NewGuid(),
       new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero));
@@ -260,6 +271,27 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
     return Task.FromResult<DepartmentAssignmentTarget?>(
       departmentId == EmployeeApiTestHost.DepartmentA || departmentId == EmployeeApiTestHost.DepartmentB
         ? new(departmentId, IsActive: true)
+        : null);
+  }
+
+  public Task AppendPositionAssignmentAsync(
+    SSAS.HR.Domain.Positions.EmployeePositionAssignment assignment,
+    CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+  // The position lookup, answered on exactly the terms the department one is: three distinguishable
+  // outcomes, because employee creation has three distinguishable refusals — inactive is named, unknown or
+  // out-of-company is absent, and everything else is assignable.
+  public Task<PositionAssignmentTarget?> FindAssignablePositionAsync(
+    Guid companyId, Guid positionId, CancellationToken cancellationToken = default)
+  {
+    if (positionId == EmployeeApiTestHost.PositionInactive)
+    {
+      return Task.FromResult<PositionAssignmentTarget?>(new(positionId, IsActive: false));
+    }
+
+    return Task.FromResult<PositionAssignmentTarget?>(
+      positionId == EmployeeApiTestHost.PositionA
+        ? new(positionId, IsActive: true)
         : null);
   }
 }

@@ -80,6 +80,11 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   // FP-007 Phase 3. DepartmentA is Active and in CompanyA; DepartmentInactive and DepartmentOtherCompany
   // exist so the create contract's refusals can be exercised at the HTTP layer.
   public static readonly Guid DepartmentA = Guid.Parse("88888888-8888-8888-8888-888888888888");
+
+  public static readonly Guid PositionA = Guid.Parse("99999999-9999-9999-9999-999999999999");
+
+  // A position that exists and is Inactive — the `BRULE-POS-0013` refusal, distinct from absence.
+  public static readonly Guid PositionInactive = Guid.Parse("99999999-9999-9999-9999-99999999aaaa");
   public static readonly Guid DepartmentB = Guid.Parse("bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb");
   public static readonly Guid DepartmentInactive = Guid.Parse("99999999-9999-9999-9999-999999999999");
   public static readonly Guid DepartmentOtherCompany = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");

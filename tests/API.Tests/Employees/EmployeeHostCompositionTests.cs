@@ -229,7 +229,17 @@ public sealed class EmployeeHostCompositionTests
     // The cutover engine DERIVES its manifest from this model, so it can never miss a table. This list is
     // the other half: it guarantees a human SEES a new one, because a new tenant-owned entity may need
     // ordering, identity or column decisions that "it compiles" does not settle. FP-007 Phase 1 added three,
-    // and this assertion is where they were noticed.
+    // and this assertion is where they were noticed. FP-008 Phase 1 added four more.
+    //
+    // ---- THIS ASSERTION WAS RED FROM FP-008 PHASE 1 UNTIL PHASE 3, AND NOTHING REPORTED IT.
+    //
+    // The phase exit gate is the full Debug INTEGRATION suite, and `API.Tests` is a different project that
+    // no gate ran. So the four position entities were added, the manifest inventory in
+    // `TenantCutoverCopySqlServerTests` was updated as one deliberate act, `DEC-POS-0022`'s nine-site map
+    // was written — and this tenth site sat outside all of it, failing quietly for two phases.
+    //
+    // It is fixed here and recorded rather than tidied, because the interesting fact is not the list: it is
+    // that an exact-inventory guard is only as good as the suite that runs it.
     Assert.Equal(
       [
         "Branch",
@@ -238,7 +248,11 @@ public sealed class EmployeeHostCompositionTests
         "DepartmentManager",
         "Employee",
         "EmployeeBranchAssignment",
-        "EmployeeDepartmentAssignment"
+        "EmployeeDepartmentAssignment",
+        "EmployeePositionAssignment",
+        "JobGrade",
+        "Position",
+        "SalaryGrade"
       ],
       tenantOwned);
   }
@@ -313,7 +327,21 @@ public sealed class EmployeeHostCompositionTests
       HrPermissionNames.ViewDepartments,
       HrPermissionNames.CreateDepartments,
       HrPermissionNames.UpdateDepartments,
-      HrPermissionNames.DeactivateDepartments
+      HrPermissionNames.DeactivateDepartments,
+      // FP-008 Phase 2. Twelve more, taking the HR plane to twenty-one — and red here from the moment they
+      // were added until FP-008 Phase 3, for the reason H9 above records: no gate runs this project.
+      HrPermissionNames.ViewPositions,
+      HrPermissionNames.CreatePositions,
+      HrPermissionNames.UpdatePositions,
+      HrPermissionNames.DeactivatePositions,
+      HrPermissionNames.ViewJobGrades,
+      HrPermissionNames.CreateJobGrades,
+      HrPermissionNames.UpdateJobGrades,
+      HrPermissionNames.DeactivateJobGrades,
+      HrPermissionNames.ViewSalaryGrades,
+      HrPermissionNames.CreateSalaryGrades,
+      HrPermissionNames.UpdateSalaryGrades,
+      HrPermissionNames.DeactivateSalaryGrades
     ];
 
     Assert.Equal(

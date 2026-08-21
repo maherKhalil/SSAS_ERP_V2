@@ -130,4 +130,41 @@ public static class EmployeeErrors
     new(
       "Employee.DepartmentHistoryImmutable",
       "Employee department history is append-only and cannot be modified.");
+
+  // ================================================================================================
+  // POSITION (FP-008 Phase 3, BR-HR-0006)
+  // ================================================================================================
+  //
+  // THE THIRD SET OF THE SAME FOUR, and that repetition is the point rather than a smell. Branch,
+  // department and position are three independent classifications of one employee, each with its own
+  // not-found, its own inactive, its own required and its own unchanged — because a caller told only
+  // "invalid destination" cannot tell which of three dimensions they got wrong.
+  //
+  // These live on `EmployeeErrors` rather than on `PositionErrors` for the same reason
+  // `DepartmentNotFound` does: they are refusals of an operation on an EMPLOYEE. `PositionErrors` refuses
+  // operations on a position.
+  public static readonly Error PositionNotFound =
+    new("Employee.PositionNotFound", "The position was not found.");
+
+  // `OD-POS-005`, the assignment reading: an `Inactive` position keeps the employees who already hold it
+  // and refuses NEW arrivals. This is that refusal, and it is raised by employee creation and by
+  // `ChangePosition` — never by deactivating the position, which does not consult incumbents at all.
+  public static readonly Error PositionInactive =
+    new("Employee.PositionInactive", "The position is not active.");
+
+  public static readonly Error PositionInDifferentCompany =
+    new("Employee.PositionInDifferentCompany", "The position belongs to a different company.");
+
+  // `OD-POS-001` ruled the column `NOT NULL` from day one, so this is not a "some employees have one"
+  // refusal — an employee without a position cannot be constructed at all.
+  public static readonly Error PositionRequired =
+    new("Employee.PositionRequired", "A position is required.");
+
+  public static readonly Error PositionUnchanged =
+    new("Employee.PositionUnchanged", "The destination is the employee's current position.");
+
+  public static readonly Error PositionHistoryImmutable =
+    new(
+      "Employee.PositionHistoryImmutable",
+      "Employee position history is append-only and cannot be modified.");
 }

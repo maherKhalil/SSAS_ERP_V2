@@ -128,4 +128,39 @@ internal sealed class EmployeeRepository(ITenantDbContextAccessor contextAccesso
         department.Status == Domain.Departments.DepartmentStatus.Active))
       .SingleOrDefaultAsync(cancellationToken);
   }
+
+  public async Task AppendPositionAssignmentAsync(
+    Domain.Positions.EmployeePositionAssignment assignment,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(assignment);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // Append only. There is no update and no remove counterpart, here or anywhere: a correction is another
+    // position change, never a rewrite (`BRULE-POS-0018`).
+    await context.Set<Domain.Positions.EmployeePositionAssignment>()
+      .AddAsync(assignment, cancellationToken);
+  }
+
+  public async Task<PositionAssignmentTarget?> FindAssignablePositionAsync(
+    Guid companyId, Guid positionId, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // The company predicate is the whole point, exactly as it is for the department above: a position in
+    // another company does not match, comes back null, and is reported ABSENT rather than refused — which
+    // is what stops an employee write being used to probe for positions in companies the caller cannot see.
+    //
+    // It reads through the caller's context and therefore inside the caller's transaction, which is what
+    // `DEC-POS-0021` requires: the destination's status is validated in the same transaction that writes
+    // the assignment, so a position deactivated concurrently cannot be assigned by a check that ran earlier.
+    return await context.Set<Domain.Positions.Position>()
+      .AsNoTracking()
+      .Where(position => position.CompanyId == companyId && position.Id == positionId)
+      .Select(position => new PositionAssignmentTarget(
+        position.Id,
+        position.Status == Domain.Positions.PositionStatus.Active))
+      .SingleOrDefaultAsync(cancellationToken);
+  }
 }

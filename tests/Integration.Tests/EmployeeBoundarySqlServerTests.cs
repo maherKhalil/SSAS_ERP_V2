@@ -1822,6 +1822,257 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(finance, await fixture.EmployeeDepartmentAsync(inB.Value));
   }
 
+  // ==================================================================================================
+  // P — THE POSITION BOUNDARY (FP-008 Phase 3, BR-HR-0006)
+  // ==================================================================================================
+  //
+  // Every employee has a position, it is validated exactly as the department is, and it moves only through
+  // `ChangePosition`. These are the department proofs re-asked of the third dimension — not because the code
+  // is shared, but because it deliberately is not: three independent classifications, three sets of rules
+  // that have to hold independently.
+
+  // ---- P1. AN INACTIVE POSITION ACCEPTS NO NEW ARRIVAL (OD-POS-005, BRULE-POS-0013).
+  //
+  // The assignment reading gives Position the same asymmetry Department has: deactivating one keeps its
+  // incumbents and refuses the next hire. This is the refusal half; P8 proves the incumbent half.
+  [Fact]
+  [Trait("Decision", "OD-POS-005")]
+  public async Task P1_Creating_an_employee_into_an_inactive_position_is_refused()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var refused = await fixture.Graph(fixture.BranchA).Create().HandleAsync(
+      fixture.NewEmployee("EMP-P1", position: fixture.PositionAInactive));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.PositionInactive.Code, refused.Error.Code);
+    Assert.Equal(0, await fixture.EmployeeCountAsync());
+  }
+
+  // ---- P2. A POSITION IN ANOTHER COMPANY IS ABSENT, NOT FORBIDDEN (BRULE-POS-0016, BR-PLT-0002).
+  //
+  // The position genuinely exists, so this proves the COMPANY predicate rather than a lookup miss — and the
+  // answer is PositionNotFound rather than a distinct refusal, because naming it would make employee
+  // creation a probe for positions in companies the caller cannot see.
+  [Fact]
+  [Trait("Rule", "BRULE-POS-0016")]
+  public async Task P2_Creating_an_employee_into_another_companys_position_is_refused_as_absent()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var refused = await fixture.Graph(fixture.BranchA).Create().HandleAsync(
+      fixture.NewEmployee("EMP-P2", position: fixture.PositionB));
+
+    var nonexistent = await fixture.Graph(fixture.BranchA).Create().HandleAsync(
+      fixture.NewEmployee("EMP-P2B", position: Guid.NewGuid()));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.PositionNotFound.Code, refused.Error.Code);
+
+    // Indistinguishable from a position that does not exist at all. That equality IS the property.
+    Assert.Equal(nonexistent.Error.Code, refused.Error.Code);
+  }
+
+  // ---- P3. THE ORDINARY UPDATE CANNOT REACH PositionId (DEC-POS-0010, BRULE-POS-0017).
+  //
+  // The X-test analog: not "does not", but CANNOT. There is no field on the command, so the change is not
+  // expressible — and a profile update leaves the position and its history exactly where they were.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0010")]
+  public async Task P3_An_ordinary_profile_update_cannot_express_a_position_change()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P3"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    // STRUCTURAL, not behavioural: the command type has no position member to set.
+    Assert.DoesNotContain(
+      typeof(UpdateEmployeeProfileCommand).GetProperties(),
+      property => property.Name.Contains("Position", StringComparison.OrdinalIgnoreCase));
+
+    Assert.True((await graph.Update().HandleAsync(new UpdateEmployeeProfileCommand(
+      created.Value, "Renamed Person", null,
+      await fixture.RowVersionAsync(created.Value)))).IsSuccess);
+
+    Assert.Equal(fixture.PositionA, await fixture.EmployeePositionAsync(created.Value));
+    Assert.Equal(1, await fixture.PositionHistoryCountForAsync(created.Value));
+  }
+
+  // ---- P4. A CHANGE MOVES THE COLUMN AND APPENDS EXACTLY ONE ROW (BRULE-POS-0018).
+  [Fact]
+  [Trait("Requirement", "FR-POS-0211")]
+  public async Task P4_A_position_change_appends_exactly_one_history_row()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P4"));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    // The initial record, written by creation.
+    Assert.Equal(1, await fixture.PositionHistoryCountForAsync(created.Value));
+
+    var destination = await fixture.SeedPositionAsync(fixture.CompanyA, "POSC", active: true);
+
+    var changed = await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value),
+      "Promotion", "annual review"));
+
+    Assert.True(changed.IsSuccess, changed.IsFailure ? changed.Error.Code : null);
+    Assert.Equal(destination, await fixture.EmployeePositionAsync(created.Value));
+    Assert.Equal(2, await fixture.PositionHistoryCountForAsync(created.Value));
+
+    // ---- AND NEITHER OF THE OTHER TWO DIMENSIONS MOVED (BRULE-POS-0019).
+    Assert.Equal(fixture.BranchA, await fixture.EmployeeBranchAsync(created.Value));
+    Assert.Equal(fixture.DepartmentA, await fixture.EmployeeDepartmentAsync(created.Value));
+    Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  // ---- P5. A CHANGE TO THE CURRENT POSITION IS REFUSED, not silently succeeded.
+  //
+  // A no-op that returned success would append a history row describing no movement at all.
+  [Fact]
+  public async Task P5_A_change_to_the_current_position_is_refused()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P5"));
+
+    var refused = await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, fixture.PositionA, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.PositionUnchanged.Code, refused.Error.Code);
+    Assert.Equal(1, await fixture.PositionHistoryCountForAsync(created.Value));
+  }
+
+  // ---- P6. A TERMINATED EMPLOYEE KEEPS THEIR POSITION AND CANNOT BE MOVED (BRULE-POS-0020).
+  //
+  // Both halves in one test, because they are one rule: termination does NOT clear the position — a
+  // historical employment record without a job is unreadable — and a closed record's history stops moving.
+  [Fact]
+  [Trait("Rule", "BRULE-POS-0020")]
+  public async Task P6_A_terminated_employee_retains_their_position_and_refuses_a_change()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P6"));
+    var destination = await fixture.SeedPositionAsync(fixture.CompanyA, "POSD", active: true);
+
+    Assert.True((await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+      created.Value, new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero),
+      EmployeeStatusChangeReason.Resignation,
+      await fixture.RowVersionAsync(created.Value)))).IsSuccess);
+
+    // RETAINED. Termination cleared nothing.
+    Assert.Equal(fixture.PositionA, await fixture.EmployeePositionAsync(created.Value));
+    Assert.Equal(1, await fixture.PositionHistoryCountForAsync(created.Value));
+
+    var refused = await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.InvalidTransition.Code, refused.Error.Code);
+    Assert.Equal(1, await fixture.PositionHistoryCountForAsync(created.Value));
+  }
+
+  // ---- P7. TWO CONCURRENT CHANGES LEAVE ONE WINNER (DEC-POS-0021).
+  //
+  // The assignment record carries no RowVersion of its own precisely because it is never updated;
+  // concurrent changes serialize on the EMPLOYEE's. Both callers hold the same token, so the loser's save
+  // finds no row to update and appends nothing — which is what stops two history rows describing one move.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0021")]
+  public async Task P7_Two_concurrent_position_changes_leave_one_winner_and_one_history_row()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P7"));
+    var first = await fixture.SeedPositionAsync(fixture.CompanyA, "POSE", active: true);
+    var second = await fixture.SeedPositionAsync(fixture.CompanyA, "POSF", active: true);
+
+    var token = await fixture.RowVersionAsync(created.Value);
+
+    var won = await fixture.Graph(fixture.BranchA).ChangePosition().HandleAsync(
+      new ChangeEmployeePositionCommand(created.Value, first, token));
+
+    // The SAME token, current when both callers read it and not current now.
+    var lost = await fixture.Graph(fixture.BranchA).ChangePosition().HandleAsync(
+      new ChangeEmployeePositionCommand(created.Value, second, token));
+
+    Assert.True(won.IsSuccess, won.IsFailure ? won.Error.Code : null);
+    Assert.True(lost.IsFailure);
+    Assert.Equal(EmployeeErrors.ConcurrencyConflict.Code, lost.Error.Code);
+
+    Assert.Equal(first, await fixture.EmployeePositionAsync(created.Value));
+    Assert.Equal(2, await fixture.PositionHistoryCountForAsync(created.Value));
+  }
+
+  // ---- P8. THE DESTINATION'S STATUS IS VALIDATED INSIDE THE WRITING TRANSACTION (DEC-POS-0021).
+  //
+  // Both orders of the race that matters: a position deactivated BEFORE the change is refused, and a
+  // position deactivated AFTER it stays held by the employee who already has it. There is no interleave in
+  // which a deactivated position quietly acquires a new holder.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0021")]
+  public async Task P8_A_position_deactivated_before_the_change_is_refused_and_after_it_is_retained()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P8"));
+    var destination = await fixture.SeedPositionAsync(fixture.CompanyA, "POSG", active: true);
+
+    // ---- ORDER ONE: deactivate, then change. The handler reads the destination inside its own
+    // transaction, so it sees Inactive and refuses.
+    await fixture.DeactivatePositionDirectlyAsync(destination);
+
+    var refused = await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.PositionInactive.Code, refused.Error.Code);
+    Assert.Equal(fixture.PositionA, await fixture.EmployeePositionAsync(created.Value));
+
+    // ---- ORDER TWO: change, then deactivate. The employee keeps the position they moved into, because
+    // OD-POS-005 qualifies the ASSIGNMENT and not the position's lifecycle status — the incumbent half of
+    // the same ruling P1 proves the refusal half of.
+    var other = await fixture.SeedPositionAsync(fixture.CompanyA, "POSH", active: true);
+
+    Assert.True((await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, other, await fixture.RowVersionAsync(created.Value)))).IsSuccess);
+
+    await fixture.DeactivatePositionDirectlyAsync(other);
+
+    Assert.Equal(other, await fixture.EmployeePositionAsync(created.Value));
+    Assert.Equal(2, await fixture.PositionHistoryCountForAsync(created.Value));
+  }
+
+  // ---- P9. THE PERMISSION IS ENFORCED IN THE APPLICATION BOUNDARY, not only at the endpoint.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0019")]
+  public async Task P9_A_caller_without_the_update_permission_cannot_change_a_position()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P9"));
+    var destination = await fixture.SeedPositionAsync(fixture.CompanyA, "POSI", active: true);
+
+    var refused = await graph.ChangePosition(canUpdate: false).HandleAsync(
+      new ChangeEmployeePositionCommand(
+        created.Value, destination, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.WritePermissionDenied.Code, refused.Error.Code);
+    Assert.Equal(1, await fixture.PositionHistoryCountForAsync(created.Value));
+  }
+
   // ================================================================================================
   // D16 — THE EMPLOYEE NUMBER FILTER, WHICH HAD NO COVERAGE UNTIL FP-008 PHASE 2
   // ================================================================================================
@@ -2083,6 +2334,16 @@ public sealed class EmployeeBoundarySqlServerTests
 
     public Guid DepartmentB { get; private set; }
 
+    // ---- FP-008 PHASE 3. EVERY EMPLOYEE NEEDS ONE, so the fixture seeds them beside the departments.
+    //
+    // `PositionAInactive` exists so "refused because inactive" and "refused because absent" stay
+    // distinguishable, exactly as `DepartmentAInactive` does for the department half.
+    public Guid PositionA { get; private set; }
+
+    public Guid PositionAInactive { get; private set; }
+
+    public Guid PositionB { get; private set; }
+
     public long AdministratorUserId { get; private set; }
 
     public long NormalUserId { get; private set; }
@@ -2140,6 +2401,10 @@ public sealed class EmployeeBoundarySqlServerTests
       DepartmentA = await SeedDepartmentAsync(CompanyA, "DEPA", active: true);
       DepartmentAInactive = await SeedDepartmentAsync(CompanyA, "DEPX", active: false);
       DepartmentB = await SeedDepartmentAsync(CompanyB, "DEPB", active: true);
+
+      PositionA = await SeedPositionAsync(CompanyA, "POSA", active: true);
+      PositionAInactive = await SeedPositionAsync(CompanyA, "POSX", active: false);
+      PositionB = await SeedPositionAsync(CompanyB, "POSB", active: true);
 
       // The normal user reaches A and B, never C, so "authorized" and "exists" stay distinguishable.
       await GrantBranchAsync(NormalUserId, BranchA);
@@ -2365,7 +2630,8 @@ public sealed class EmployeeBoundarySqlServerTests
       var created = await Graph(branchId, company: company).Create().HandleAsync(
         new CreateEmployeeCommand(number, name,
           new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), null,
-          company == CompanyB ? DepartmentB : DepartmentA));
+          company == CompanyB ? DepartmentB : DepartmentA,
+          company == CompanyB ? PositionB : PositionA));
       Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
       return created.Value;
     }
@@ -2393,11 +2659,13 @@ public sealed class EmployeeBoundarySqlServerTests
       tenantCatalog,
       $"""
       INSERT INTO [tenant].[Employees]
-        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [PositionId],
+         [EmployeeNumber],
          [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode],
          [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [ModifiedUtc])
       VALUES
         ('{Guid.NewGuid():D}', '{Guid.NewGuid():D}', '{companyId:D}', '{branchId:D}', '{DepartmentFor(companyId):D}',
+         '{PositionFor(companyId):D}',
          N'{number}', N'{number}',
          N'Other Tenant Person', SYSDATETIMEOFFSET(), N'Active', N'Created', SYSDATETIMEOFFSET(),
          N'test', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET())
@@ -2407,6 +2675,11 @@ public sealed class EmployeeBoundarySqlServerTests
     // per-company create helpers both need it, and picking the wrong company's would fail the foreign key
     // rather than silently mis-seed.
     public Guid DepartmentFor(Guid companyId) => companyId == CompanyB ? DepartmentB : DepartmentA;
+
+    // The position twin. Note what this row does NOT need: the foreign key is on `PositionId` alone, so an
+    // other-tenant employee may point at this tenant's position — which is exactly what makes the seeded
+    // row a usable stand-in for "a row this caller must never see" without inventing a second position.
+    public Guid PositionFor(Guid companyId) => companyId == CompanyB ? PositionB : PositionA;
 
     public async Task<int> HistoryRowCountAsync() => await CountAsync("EmployeeBranchAssignments");
 
@@ -2419,6 +2692,35 @@ public sealed class EmployeeBoundarySqlServerTests
 
     public async Task<int> DepartmentHistoryRowCountAsync() =>
       await CountAsync("EmployeeDepartmentAssignments");
+
+    public async Task<int> PositionHistoryCountForAsync(Guid employeeId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText =
+        $"SELECT COUNT(*) FROM [tenant].[EmployeePositionAssignments] WHERE [EmployeeId] = '{employeeId}'";
+
+      return (int)(await command.ExecuteScalarAsync())!;
+    }
+
+    public async Task<Guid> EmployeePositionAsync(Guid employeeId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText =
+        $"SELECT [PositionId] FROM [tenant].[Employees] WHERE [EmployeeId] = '{employeeId}'";
+
+      return (Guid)(await command.ExecuteScalarAsync())!;
+    }
+
+    public Task DeactivatePositionDirectlyAsync(Guid positionId) =>
+      ExecuteAsync($"""
+        UPDATE [tenant].[Positions]
+        SET [Status] = N'Inactive', [StatusChangedUtc] = SYSDATETIMEOFFSET()
+        WHERE [PositionId] = '{positionId}';
+        """);
 
     public async Task<int> DepartmentHistoryCountForAsync(Guid employeeId)
     {
@@ -2625,13 +2927,14 @@ public sealed class EmployeeBoundarySqlServerTests
 
     // The create command, with a department that actually exists in the company the graph will act in.
     public CreateEmployeeCommand NewEmployee(
-      string number, string? nationalId = null, Guid? department = null) =>
+      string number, string? nationalId = null, Guid? department = null, Guid? position = null) =>
       new(
         number,
         "Layla Haddad",
         new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
         nationalId,
-        department ?? DepartmentA);
+        department ?? DepartmentA,
+        position ?? PositionA);
 
     // Seeded through the REAL Department aggregate and the real context, so these rows are exactly what the
     // department application writes — including the company stamping the write boundary applies.
@@ -2671,6 +2974,29 @@ public sealed class EmployeeBoundarySqlServerTests
         """);
 
       return departmentId;
+    }
+
+    // Raw SQL for the same reason the department seeder uses it: these are PRECONDITIONS of the employee
+    // tests rather than behaviour under test, and driving the position application surface here would make
+    // every employee test depend on the position handlers passing too.
+    public async Task<Guid> SeedPositionAsync(Guid companyId, string code, bool active)
+    {
+      var positionId = Guid.NewGuid();
+      var status = active ? "Active" : "Inactive";
+
+      await ExecuteAsync($"""
+        INSERT INTO [tenant].[Positions]
+          ([PositionId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Title], [NormalizedTitle],
+           [JobGradeId], [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc],
+           [CreatedBy], [ModifiedUtc], [ModifiedBy])
+        VALUES
+          ('{positionId}', '{Tenant}', '{companyId}', N'{code}', N'{code.ToUpperInvariant()}',
+           N'Position {code}', N'POSITION {code.ToUpperInvariant()}', NULL, N'{status}',
+           SYSDATETIMEOFFSET(), N'{Actor}',
+           SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+        """);
+
+      return positionId;
     }
 
     private async Task ExecuteAsync(string sql)
@@ -2990,6 +3316,15 @@ public sealed class EmployeeBoundarySqlServerTests
     // FP-007 Phase 3. `canUpdate: false` builds a caller without HR.Employees.Update, which is the only way
     // to prove the application-boundary permission check actually runs.
     public ChangeEmployeeDepartmentCommandHandler ChangeDepartment(bool canUpdate = true) => new(
+      new EmployeeRepository(accessor), unitOfWork,
+      new EmployeeFixture.TestTenant(fixture.Tenant),
+      new TestCurrentCompany(Company),
+      new EmployeeFixture.TestUser(canUpdate),
+      new EmployeeFixture.TestClock());
+
+    // FP-008 Phase 3. Same shape and same `canUpdate` seam as the department change, because
+    // `DEC-POS-0019` gave it the same permission on the same prefix.
+    public ChangeEmployeePositionCommandHandler ChangePosition(bool canUpdate = true) => new(
       new EmployeeRepository(accessor), unitOfWork,
       new EmployeeFixture.TestTenant(fixture.Tenant),
       new TestCurrentCompany(Company),

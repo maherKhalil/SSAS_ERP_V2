@@ -17,6 +17,10 @@ public sealed class EmployeeDomainTests
   private static readonly Guid BranchB = Guid.Parse("44444444-4444-4444-4444-444444444444");
   private static readonly Guid DepartmentA = Guid.Parse("55555555-5555-5555-5555-555555555555");
   private static readonly Guid DepartmentB = Guid.Parse("66666666-6666-6666-6666-666666666666");
+
+  private static readonly Guid PositionA = Guid.Parse("77777777-7777-7777-7777-777777777777");
+
+  private static readonly Guid PositionB = Guid.Parse("88888888-8888-8888-8888-888888888888");
   private static readonly DateTimeOffset Hired = new(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
   private static readonly DateTimeOffset Now = new(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
 
@@ -264,7 +268,8 @@ public sealed class EmployeeDomainTests
   {
     var employee = Stamped();
 
-    var second = employee.StampInitialAssignment(Tenant, Company, BranchB, DepartmentB, "a", Guid.NewGuid(), Now);
+    var second = employee.StampInitialAssignment(
+      Tenant, Company, BranchB, DepartmentB, PositionB, "a", Guid.NewGuid(), Now);
 
     Assert.True(second.IsFailure);
     Assert.Equal(EmployeeErrors.BranchHistoryImmutable.Code, second.Error.Code);
@@ -440,15 +445,17 @@ public sealed class EmployeeDomainTests
       .ToArray();
 
     // EVERY HR domain event, not only Employee's: 6 from FP-006, 5 from FP-007 Phase 1,
-    // EmployeeDepartmentChanged from FP-007 Phase 3, and 12 from FP-008 Phase 1 — four each for Position,
-    // JobGrade and SalaryGrade. The count is asserted so a new event type cannot be added without someone
-    // confirming it carries nothing sensitive, which is exactly what it forced when the Department events
-    // arrived, again in Phase 3, and again here.
+    // EmployeeDepartmentChanged from FP-007 Phase 3, 12 from FP-008 Phase 1 — four each for Position,
+    // JobGrade and SalaryGrade — and EmployeePositionChanged from FP-008 Phase 3. The count is asserted so
+    // a new event type cannot be added without someone confirming it carries nothing sensitive, which is
+    // exactly what it forced when the Department events arrived, again in FP-007 Phase 3, again at FP-008
+    // Phase 1, and again here.
     //
     // FP-007 Phase 3's event carries the two department identifiers and NOT the reason text: that field is
     // free-form operator input persisted for the audit record alone, and putting it on an event would push
-    // unbounded text into every consumer and whatever they log.
-    Assert.Equal(24, eventTypes.Length);
+    // unbounded text into every consumer and whatever they log. `EmployeePositionChanged` carries the two
+    // position identifiers on identical terms, and neither the reason code nor the reason text.
+    Assert.Equal(25, eventTypes.Length);
 
     var leaked = eventTypes
       .SelectMany(type => type.GetProperties().Select(property => $"{type.Name}.{property.Name}"))
@@ -523,7 +530,8 @@ public sealed class EmployeeDomainTests
     employee.TenantId = Tenant;
     employee.CompanyId = Company;
     employee.BranchId = BranchA;
-    Assert.True(employee.StampInitialAssignment(Tenant, Company, BranchA, DepartmentA, "actor", Guid.NewGuid(), Now).IsSuccess);
+    Assert.True(employee.StampInitialAssignment(
+      Tenant, Company, BranchA, DepartmentA, PositionA, "actor", Guid.NewGuid(), Now).IsSuccess);
     return employee;
   }
 

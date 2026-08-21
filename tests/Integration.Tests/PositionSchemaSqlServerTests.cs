@@ -767,6 +767,13 @@ public sealed class PositionSchemaSqlServerTests
     // Employee.DepartmentId without appearing in any assertion about the positions under test.
     private Guid? holdingDepartment;
 
+    // ---- ONE HOLDING POSITION, FOR THE SAME REASON AS THE HOLDING DEPARTMENT (FP-008 Phase 3).
+    //
+    // `Employee.PositionId` is NOT NULL with a RESTRICT foreign key from Phase 3 onward, so every seeded
+    // employee needs a real position to point at. Created on first use with a reserved code no test names,
+    // so it is invisible to the assertions here while still satisfying the constraint.
+    private Guid? holdingPosition;
+
     private async Task<Guid> HoldingDepartmentAsync()
     {
       if (holdingDepartment is { } existing)
@@ -792,21 +799,36 @@ public sealed class PositionSchemaSqlServerTests
       return departmentId;
     }
 
+    private async Task<Guid> HoldingPositionAsync()
+    {
+      if (holdingPosition is { } existing)
+      {
+        return existing;
+      }
+
+      holdingPosition = await InsertPositionAsync("ZZ-EMPLOYEE-HOME", "Employee Home", CompanyA);
+
+      return holdingPosition.Value;
+    }
+
     public async Task<Guid> InsertEmployeeAsync(string employeeNumber)
     {
       var employeeId = Guid.NewGuid();
       var homeDepartment = await HoldingDepartmentAsync();
+      var homePosition = await HoldingPositionAsync();
 
       // NOTE FOR PHASE 3. This insert has no PositionId because the column does not exist yet. When Phase 3
       // makes it NOT NULL, every raw Employees insert in the Integration suite — this one included — needs a
       // position, exactly as every one of them needed a department when FP-007 Phase 3 landed.
       await ExecuteAsync($"""
         INSERT INTO [tenant].[Employees]
-          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [PositionId],
+           [EmployeeNumber],
            [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode],
            [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
-          ('{employeeId}', '{Tenant}', '{CompanyA}', '{BranchA}', '{homeDepartment}', N'{employeeNumber}',
+          ('{employeeId}', '{Tenant}', '{CompanyA}', '{BranchA}', '{homeDepartment}', '{homePosition}',
+           N'{employeeNumber}',
            N'{employeeNumber.ToUpperInvariant()}', N'Person {employeeNumber}', SYSDATETIMEOFFSET(),
            N'Active', N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');

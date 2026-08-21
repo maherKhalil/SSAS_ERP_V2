@@ -107,9 +107,17 @@ public sealed class EmployeeArchitectureTests
   // exist. It is REPLACED, not deleted — `Position` is now asserted to exist, and no position type may hold
   // an Employee reference (`DEC-POS-0002`), which is the property that clause was really protecting.
   //
-  // EMPLOYEE'S OWN POSITION SURFACE IS STILL ASSERTED ABSENT, unweakened: `BR-HR-0006` is realized in
-  // design but `Employee.PositionId` arrives in Phase 3, and until then a placeholder is still how a
-  // deferral quietly becomes a design.
+  // ---- AND BY FP-008 PHASE 3, THE LAST OF THE THREE SUPERSESSIONS.
+  //
+  // The clause asserting that Employee has NO POSITION SURFACE is superseded: `BR-HR-0006` is no longer
+  // deferred, and `Employee.PositionId` is its implementation rather than a placeholder. Phase 1 kept that
+  // clause deliberately and said exactly when it would end — "arrives in Phase 3" — so this is the
+  // scheduled retirement of a guard rather than the removal of an inconvenient one.
+  //
+  // It is REPLACED, not deleted, on the identical terms the department clause was: the position members are
+  // now asserted to exist with the exact shape Phase 3 approved, so this test still fails if Employee grows
+  // a position surface nobody agreed to — a `PositionCode`, a `PositionTitle`, or a navigation that would
+  // let an employee read walk into a position and around its scope.
   //
   // MANAGER IS NOT SUPERSEDED AT ALL. `OD-POS-006` deferred `ReportsToPositionId`, so `BR-HR-0007`'s
   // remainder transfers onward unchanged and its clause is kept in full.
@@ -125,9 +133,28 @@ public sealed class EmployeeArchitectureTests
       .Select(property => property.Name)
       .ToArray();
 
+    // MANAGER IS NOT SUPERSEDED AT ALL — `OD-POS-006` deferred `ReportsToPositionId`, so `BR-HR-0007`'s
+    // remainder transfers onward unchanged and its clause is kept in full and alone.
     Assert.DoesNotContain(properties, name =>
-      name.Contains("Position", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("Manager", StringComparison.OrdinalIgnoreCase));
+
+    // ---- EXACTLY TWO POSITION MEMBERS, NAMED, exactly as for the department: the current position and the
+    // append-only log, and nothing else.
+    Assert.Equal(
+      ["PositionAssignments", "PositionId"],
+      properties
+        .Where(name => name.Contains("Position", StringComparison.OrdinalIgnoreCase))
+        .OrderBy(name => name, StringComparer.Ordinal));
+
+    // ---- AND ITS SETTER IS PRIVATE, on the same terms as DepartmentId's (ADR-026 d.6, DEC-POS-0010).
+    //
+    // A public setter would be an ordinary-assignment path around `ChangePosition`, which is precisely what
+    // `BRULE-POS-0017` forbids: a position changes only through the sanctioned channel that appends history.
+    var positionId = typeof(Employee).GetProperty(nameof(Employee.PositionId));
+
+    Assert.NotNull(positionId);
+    Assert.Equal(typeof(Guid), positionId!.PropertyType);
+    Assert.False(positionId.SetMethod!.IsPublic);
 
     // ---- EXACTLY TWO DEPARTMENT MEMBERS, NAMED. The current department and the append-only log, and
     // nothing else — no DepartmentCode, no DepartmentName, no Department navigation. An Employee that could

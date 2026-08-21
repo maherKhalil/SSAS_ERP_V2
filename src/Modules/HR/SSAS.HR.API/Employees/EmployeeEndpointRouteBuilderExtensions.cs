@@ -124,21 +124,25 @@ public static class EmployeeEndpointRouteBuilderExtensions
         ["fullName"] = [JsonValueKind.String],
         ["employmentDate"] = [JsonValueKind.String],
         ["nationalId"] = [JsonValueKind.String, JsonValueKind.Null],
-        ["departmentId"] = [JsonValueKind.String]
+        ["departmentId"] = [JsonValueKind.String],
+        ["positionId"] = [JsonValueKind.String]
       },
       cancellationToken,
-      requiredFields: ["employeeNumber", "fullName", "employmentDate", "departmentId"]);
+      requiredFields:
+        ["employeeNumber", "fullName", "employmentDate", "departmentId", "positionId"]);
 
     if (request is null ||
       request.EmploymentDate is not { } employmentDate ||
-      request.DepartmentId is not { } departmentId)
+      request.DepartmentId is not { } departmentId ||
+      request.PositionId is not { } positionId)
     {
       return Problem(context, ApiErrors.RequestInvalid);
     }
 
     var created = await handler.HandleAsync(
       new CreateEmployeeCommand(
-        request.EmployeeNumber!, request.FullName!, employmentDate, request.NationalId, departmentId),
+        request.EmployeeNumber!, request.FullName!, employmentDate, request.NationalId,
+        departmentId, positionId),
       cancellationToken);
 
     if (created.IsFailure)

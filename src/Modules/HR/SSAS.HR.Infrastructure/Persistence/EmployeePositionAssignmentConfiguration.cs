@@ -97,12 +97,13 @@ public sealed class EmployeePositionAssignmentConfiguration
     //
     // Positions are deactivated, never deleted, so RESTRICT costs nothing and buys real integrity.
     //
-    // THE EMPLOYEE RELATIONSHIP HAS NO NAVIGATION IN THIS PHASE, and that is sequencing rather than an
-    // omission: `Employee` does not reference positions until Phase 3, which is when it gains the collection
-    // that lets the aggregate append a row and EF persist it in the employee's own unit of work. Until then
-    // the constraint exists and the navigation does not.
+    // FP-008 Phase 3 gave `Employee` the collection navigation, so the relationship now names it — closing
+    // the forward obligation Phase 1 recorded here when the constraint existed and the navigation did not.
+    // That is what lets the aggregate append a row and EF persist it in the employee's own unit of work,
+    // the same arrangement the branch and department histories have, and the reason a position change
+    // cannot commit without its record (`BRULE-POS-0018`).
     builder.HasOne<Employee>()
-      .WithMany()
+      .WithMany(employee => employee.PositionAssignments)
       .HasForeignKey(assignment => assignment.EmployeeId)
       .OnDelete(DeleteBehavior.Restrict);
 

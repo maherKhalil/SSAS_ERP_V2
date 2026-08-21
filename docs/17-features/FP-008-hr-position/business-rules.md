@@ -39,8 +39,15 @@ employees in any branch of its company (`DEC-POS-0001`).
 
 **BRULE-POS-0004** — `Code` is unique within a Company, compared on a normalized, binary-collated value so
 the uniqueness index is authoritative under concurrent creation rather than advisory. Codes that normalize
-alike collide. **The scope is per company** (`OD-POS-003` ruled Position independent of Department, so there is
-department if positions become department-owned.**
+alike collide. **The scope is per company**: `OD-POS-003` ruled Position independent of Department, so there
+is no department in the uniqueness key and none would be added unless positions ever became department-owned.
+
+> **Editorial repair 2026-08-21 (FP-008 Phase 3, by ruling).** The sentence above previously ended
+> *"…so there is department if positions become department-owned.\*\*"* — a truncated clause left by an
+> earlier edit. **No rule changed**: per-company uniqueness is what FP-008 Phase 1 implemented and what
+> `UX_Positions_TenantId_CompanyId_NormalizedCode` enforces. Phase 1 reported the broken sentence as a STOP
+> item and did not touch it, because amending approved package prose without a ruling is exactly the
+> gap-filling the process forbids; the architect ruled the repair, so it is made here and dated.
 
 **BRULE-POS-0005** — `Title` is required and must not be blank after trimming. It is **not** unique: two
 positions in different parts of the organization may legitimately share a title, and forcing uniqueness would

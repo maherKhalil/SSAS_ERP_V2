@@ -190,6 +190,20 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
   // the composed predicate is auditable in a single method. AsNoTracking because a read must never hand a
   // caller an entity whose navigations would load rows outside the scope on access. The deferred query type
   // stays inside this class and never crosses the application boundary.
+  // Counted THROUGH `Scoped`, so the caller's company and branch predicates apply to the count exactly as
+  // they apply to a list. That is what makes the number scope-dependent by construction rather than by a
+  // filter someone remembered to add.
+  public async Task<int> CountEmployeesByPositionAsync(
+    EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await Scoped(context, scope)
+      .CountAsync(employee => employee.PositionId == positionId, cancellationToken);
+  }
+
   private static IQueryable<Employee> Scoped(DbContext context, EmployeeReadScope scope) =>
     context.Set<Employee>()
       .AsNoTracking()

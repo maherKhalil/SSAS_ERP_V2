@@ -438,6 +438,8 @@ public sealed class EmployeeReadScopeArchitectureTests
         "AppendBranchAssignmentAsync",
         // FP-007 Phase 3. The same, for the department log, with the same absence of any counterpart.
         "AppendDepartmentAssignmentAsync",
+        // FP-008 Phase 3. The third history log, identical in shape and in its lack of a counterpart.
+        "AppendPositionAssignmentAsync",
         // Uniqueness probes. They return a BOOLEAN, never a row, so they disclose nothing beyond the answer
         // the unique index would give anyway — and they are company-scoped by argument.
         "EmployeeNumberExistsAsync",
@@ -453,6 +455,18 @@ public sealed class EmployeeReadScopeArchitectureTests
         // it, and no department outside the caller's company is distinguishable from one that does not
         // exist.
         "FindAssignableDepartmentAsync",
+        // ---- FP-008 PHASE 3. THE SECOND METHOD READING A DIFFERENT TABLE, on identical terms.
+        //
+        // Employee creation and `ChangePosition` must both prove a destination position exists in the
+        // caller's company and is Active (`BRULE-POS-0016`, `BRULE-POS-0013`), and that fact lives on
+        // Positions. Same shape, same justification: company as an argument, a two-field record rather than
+        // a Position, and NULL rather than a refusal for anything outside the company.
+        //
+        // NOTE WHAT IS NOT HERE: no count of employees by position. That capability exists, but it belongs
+        // to `IEmployeeReadService` where an `EmployeeReadScope` is required — a count taken on this
+        // interface would be unscoped by branch, which is the disclosure `api-contracts.md` documents the
+        // field as avoiding. It was written here first and moved; the move is the point.
+        "FindAssignablePositionAsync",
         // Single aggregate by identifier, tracked, for a command about to mutate it.
         "GetByIdAsync",
         "NationalIdExistsAsync"

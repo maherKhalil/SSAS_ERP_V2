@@ -97,7 +97,8 @@ public sealed class DepartmentAssociationDomainTests
     var employee = NewEmployee();
 
     var result = employee.StampInitialAssignment(
-      Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.Empty, Actor, Guid.NewGuid(), Now);
+      Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), Actor,
+      Guid.NewGuid(), Now);
 
     Assert.True(result.IsFailure);
     Assert.Equal(EmployeeErrors.DepartmentRequired.Code, result.Error.Code);
@@ -185,7 +186,8 @@ public sealed class DepartmentAssociationDomainTests
     employee.BranchId = Guid.NewGuid();
 
     Assert.True(employee.StampInitialAssignment(
-      tenantId, companyId, employee.BranchId, departmentId, Actor, Guid.NewGuid(), Now).IsSuccess);
+      tenantId, companyId, employee.BranchId, departmentId, Guid.NewGuid(), Actor,
+      Guid.NewGuid(), Now).IsSuccess);
 
     return employee;
   }

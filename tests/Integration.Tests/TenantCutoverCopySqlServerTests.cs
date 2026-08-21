@@ -805,16 +805,18 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.True(PositionOf(nameof(Company)) < PositionOf("JobGrade"));
     Assert.True(PositionOf(nameof(Company)) < PositionOf("SalaryGrade"));
 
-    // ---- POSITION AND EMPLOYEE ARE UNORDERED WITH RESPECT TO EACH OTHER **IN THIS PHASE ONLY**.
+    // ---- THE FP-008 PHASE 3 EDGE. This is the one the new foreign key created.
     //
-    // Phase 3 gives Employee a required `PositionId`, which creates the edge Position -> Employee and makes
-    // that pair ordered exactly as Department -> Employee already is. Asserting it now would assert an edge
-    // the model does not yet have, and would pass or fail on the sort's tie-breaking rather than on a
-    // constraint — a test green for the wrong reason. It arrives with the foreign key that justifies it.
+    // Phase 1 recorded this assertion as a FORWARD OBLIGATION and refused to write it early: at that point
+    // nothing linked the two, so the assertion would have passed or failed on the sort's tie-breaking
+    // rather than on a constraint — green for the wrong reason. `Employee.PositionId` is now a required
+    // foreign key, so the edge exists and the claim is finally provable.
     //
-    // FORWARD OBLIGATION FOR PHASE 3: add `PositionOf("Position") < PositionOf(Employee)` here in the same
-    // change as the foreign key, and drop the "not ordered against Employee" caveat from FP-008's
-    // `data-model.md` — the claim and the assertion become true together and must move together.
+    // The obligation's other half moved in the same commit: `data-model.md`'s "not ordered against
+    // Employee" caveat is gone, because the assertion and the claim became true together.
+    Assert.True(
+      PositionOf("Position") < PositionOf(nameof(Employee)),
+      "Positions must be copied before Employees: Employee.PositionId is a required foreign key.");
 
     // ---- AND POSITION IS UNORDERED WITH RESPECT TO DEPARTMENT, PERMANENTLY (OD-POS-003).
     //
@@ -1107,20 +1109,22 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     // EVERY ROW-BEARING table already complete, including the HR tables — nothing copied twice.
     //
-    // FIVE complete and SIX recopied, not eleven complete. Company, Branch, Employee,
-    // EmployeeBranchAssignment and Department all hold rows in this fixture; DepartmentManagers,
-    // EmployeeDepartmentAssignments and the four FP-008 position tables are empty, and an empty table is
+    // SIX complete and FIVE recopied, not eleven complete. Company, Branch, Employee,
+    // EmployeeBranchAssignment, Department and Position all hold rows in this fixture; DepartmentManagers,
+    // EmployeeDepartmentAssignments and the three remaining FP-008 tables are empty, and an empty table is
     // indistinguishable from one that was never copied, so the engine copies each again and moves nothing —
     // the same rule the retry test above states. The claim this test makes is that rows are never
     // DUPLICATED, and the destination counts below are what prove it; a table count of eleven here would
     // assert something the engine has never promised.
     //
-    // Department joined the row-bearing set when FP-007 Phase 3 made Employee.DepartmentId a required
-    // foreign key: the fixture must seed a real department before it can seed an employee at all. Position
-    // does NOT join it in FP-008 Phase 1 — Employee gains no position column until Phase 3 — which is why
-    // the already-complete count is unchanged while the recopied count moved.
-    Assert.Equal(5, retried.Value.TablesAlreadyComplete);
-    Assert.Equal(6, retried.Value.TablesCopied);
+    // ---- THIS PAIR HAS MOVED TWICE, AND EACH MOVE WAS PREDICTED BEFORE IT HAPPENED.
+    //
+    // Department joined the row-bearing set when FP-007 Phase 3 made `Employee.DepartmentId` required: the
+    // fixture must seed a real department before it can seed an employee at all. FP-008 Phase 1 left the
+    // pair at 5/6 and recorded WHY Position would not join yet — Employee gained no position column until
+    // Phase 3 — and Phase 3 is now here, so Position joins for exactly the same reason Department did.
+    Assert.Equal(6, retried.Value.TablesAlreadyComplete);
+    Assert.Equal(5, retried.Value.TablesCopied);
 
     // And the destination still holds exactly one of each, so "already complete" was a verification rather
     // than a shrug.
@@ -1373,7 +1377,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     {
       var story = new EmployeeStory(
         Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-        Guid.NewGuid(),
+        Guid.NewGuid(), Guid.NewGuid(),
         $"{prefix}-EMP-1", Now.AddDays(-30), Now.AddDays(-10));
 
       await using var connection = new SqlConnection(ConnectionFor(SourceCatalog));
@@ -1429,19 +1433,42 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         ("@Code", $"{prefix}DEP"), ("@Name", $"Department {prefix}"),
         ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
 
+      // ---- THE POSITION THE EMPLOYEE HOLDS (FP-008 Phase 3).
+      //
+      // Seeded BEFORE the employee for the same reason the department is: `PositionId` is NOT NULL with a
+      // restricted foreign key, which is exactly what makes the copy engine order Positions ahead of
+      // Employees. That ordering is DERIVED from the model rather than declared, so this row is what makes
+      // the derivation observable — if the plan ever emitted Employees first, the copy would fail on this
+      // constraint rather than silently producing a wrong result.
+      await ExecuteAsync(connection, transaction, """
+        INSERT INTO [tenant].[Positions]
+          ([PositionId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Title], [NormalizedTitle],
+           [JobGradeId], [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy],
+           [ModifiedUtc], [ModifiedBy])
+        VALUES
+          (@PositionId, @TenantId, @CompanyId, @Code, @Code, @Title, UPPER(@Title), NULL,
+           N'Active', @Stamp, @Actor, @Stamp, @Actor, @Stamp, @Actor);
+        """,
+        ("@PositionId", story.PositionId), ("@TenantId", tenantId), ("@CompanyId", story.CompanyId),
+        ("@Code", $"{prefix}POS"), ("@Title", $"Position {prefix}"),
+        ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
+
       // The employee's CURRENT branch is the destination: they have already been transferred, which is what
       // makes "current branch preserved" and "historical attribution preserved" two different assertions.
       await ExecuteAsync(connection, transaction, """
         INSERT INTO [tenant].[Employees]
-          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [PositionId],
+           [EmployeeNumber],
            [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode],
            [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [ModifiedUtc], [CreatedBy], [ModifiedBy])
         VALUES
-          (@EmployeeId, @TenantId, @CompanyId, @BranchId, @DepartmentId, @Number, @Number, @Name,
+          (@EmployeeId, @TenantId, @CompanyId, @BranchId, @DepartmentId, @PositionId,
+           @Number, @Number, @Name,
            @Employment, N'Active', N'Created', @Stamp, @Actor, @Stamp, @Stamp, @Actor, @Actor);
         """,
         ("@EmployeeId", story.EmployeeId), ("@TenantId", tenantId), ("@CompanyId", story.CompanyId),
         ("@BranchId", story.DestinationBranchId), ("@DepartmentId", story.DepartmentId),
+        ("@PositionId", story.PositionId),
         ("@Number", story.EmployeeNumber),
         ("@Name", $"Person {prefix}"), ("@Employment", story.InitialEffectiveUtc.UtcDateTime),
         ("@Stamp", Now.UtcDateTime), ("@Actor", Actor));
@@ -2075,6 +2102,9 @@ internal sealed record EmployeeStory(
   Guid DestinationBranchId,
   // FP-007 Phase 3: an employee has a department, and the cutover must carry it with everything else.
   Guid DepartmentId,
+  // FP-008 Phase 3: and a position, on identical terms — which is also what finally orders Positions ahead
+  // of Employees in the derived copy plan.
+  Guid PositionId,
   Guid EmployeeId,
   Guid InitialAssignmentId,
   Guid TransferAssignmentId,

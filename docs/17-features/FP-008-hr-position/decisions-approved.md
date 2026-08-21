@@ -675,6 +675,12 @@ test at a time.
 > constant, and because **four of the pinned numbers are not the manifest size** — two count what a retry
 > recopies, one counts a difference between two manifests. Anyone reasoning "the manifest went from 7 to 11,
 > so I update the places that say 7" finds three of the nine.
+>
+> **AMENDED 2026-08-21 (Phase 3): the inventory was derived over ONE test project.** It was grep-derived —
+> but grepped across `Integration.Tests`, the suite the exit gate ran. `EmployeeHostCompositionTests.H9` in
+> `API.Tests` pins the same entity set exactly and is a TENTH site, invisible to that sweep and to the gate
+> alike. See `DEC-POS-0033`. **Derive this map by grepping every test project**, not the one that would have
+> reported the failure.
 
 ## Exclusions
 
@@ -870,3 +876,17 @@ good as the suite that runs it.
 live in `API.Tests` as well as in `Integration.Tests` and `Architecture.Tests`.
 
 *The general one:* a phase gate scoped to one test project cannot be described as proving a phase.
+
+> **RULING 2026-08-21 — THE PHASE EXIT GATE IS AMENDED, and this incident is why.**
+>
+> The gate was defined as the full Debug **Integration** suite. It is now the full Integration suite **plus
+> every other test project in full** — `Architecture.Tests`, `Platform.Tests`, `HR.Tests`, `API.Tests`.
+>
+> The architect recorded the defect as belonging to the GATE rather than to the coder: the guards worked
+> exactly as designed and reported nothing only because nothing ran them. There was never an economy
+> argument for the narrower definition — the non-Integration suites take **minutes** where Integration takes
+> **hours** — so the exclusion bought nothing and cost two phases of silent failure.
+>
+> The amendment is retroactive in the sense that matters: it explains this incident rather than merely
+> preventing the next one. `DEC-POS-0022`'s map carries the same correction, because a site inventory
+> derived over one project has the same hole as a gate scoped to one project.

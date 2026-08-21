@@ -392,8 +392,14 @@ public sealed class EmployeeBoundarySqlServerTests
 
     // The DEPARTMENT follows the company, because a department belongs to exactly one. Naming CompanyA's
     // here would fail as not-found and the test would look like a uniqueness failure it is not.
+    //
+    // THE POSITION FOLLOWS IT FOR THE IDENTICAL REASON (FP-008 Phase 3). `NewEmployee` defaults to
+    // CompanyA's position, so this call must name CompanyB's — and when Phase 3 first made the column
+    // required, this test failed with `PositionNotFound` and looked exactly like the uniqueness failure the
+    // comment above already warned about. The warning was right and applied to one field too few.
     var otherCompany = await fixture.Graph(fixture.BranchA, company: fixture.CompanyB).Create()
-      .HandleAsync(fixture.NewEmployee("EMP-300", department: fixture.DepartmentB));
+      .HandleAsync(fixture.NewEmployee(
+        "EMP-300", department: fixture.DepartmentB, position: fixture.PositionB));
 
     Assert.True(otherCompany.IsSuccess, otherCompany.IsFailure ? otherCompany.Error.Code : null);
   }

@@ -98,7 +98,7 @@ public static class EmployeeErrors
   //
   // The functional authority to CHANGE an employee. A department change is an ordinary update rather than a
   // transfer: it moves nobody across a security partition, so it reuses `HR.Employees.Update` rather than
-  // inventing a permission of its own (DEC-DEP-0031).
+  // inventing a permission of its own (DEC-DEP-0018).
   public static readonly Error WritePermissionDenied =
     new("Employee.WritePermissionDenied", "The HR employee update permission is required.");
 

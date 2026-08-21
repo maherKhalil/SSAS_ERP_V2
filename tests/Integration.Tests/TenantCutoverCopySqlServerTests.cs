@@ -540,11 +540,46 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       $"= {perSecond:F0} rows/sec, batch size {new TenantCutoverCopyOptions().BatchSize}, " +
       $"allocated {allocated / 1024 / 1024}MB ({(double)allocated / rows:F0} bytes/row).");
 
-    // STREAMING, NOT MATERIALISED. Copy and validation each walk both sides once; a design that loaded the
-    // tenant into memory would allocate on the order of the row payload times the row count.
-    Assert.True(
-      allocated < 256L * 1024 * 1024,
-      $"copy allocated {allocated / 1024 / 1024}MB for {rows} rows, which is not streaming behaviour");
+    // ================================================================================================
+    // THE ALLOCATION BUDGET WAS REMOVED ON 2026-08-21. IT COULD NOT DETECT WHAT IT CLAIMED TO.
+    // ================================================================================================
+    //
+    // It asserted `allocated < 256MB`, on the premise that materialising the tenant would allocate "row
+    // payload times row count". The first Release run of this suite failed it at 287MB under full-suite
+    // parallel load while it passed in isolation, and measuring the actual numbers showed the assertion
+    // had never been able to discriminate:
+    //
+    //   B — streaming baseline, isolated, Release ....... 74MB  (3889 bytes/row)
+    //   M — materialisation cost, 20000 Company rows .... 12MB entities, ~36MB with change tracking
+    //
+    // M IS SMALLER THAN B. `GC.GetTotalAllocatedBytes` counts CUMULATIVE allocation, and the transient
+    // reader buffers a streaming copy already churns dwarf the cost of retaining the entities. A
+    // materialising implementation would land near 110MB and pass any budget that also cleared the noise.
+    // The ratio is row-count-INVARIANT — both terms scale linearly, ~3889 against ~592 bytes per row — so
+    // raising the volume does not restore the margin. Do not try it.
+    //
+    // ---- AND THE TWO OBVIOUS REPLACEMENTS DO NOT WORK EITHER.
+    //
+    // A RETENTION probe (GC.GetTotalMemory) measures at the wrong TIME: the materialised graph is rooted in
+    // locals inside CopyAsync and is unreachable by the time the await returns, so both designs read
+    // near-baseline afterwards.
+    //
+    // A SERVER STATEMENT-SHAPE probe measures the wrong THING: TenantCutoverTableCopier issues exactly ONE
+    // unbounded SELECT and hands the live reader to SqlBulkCopy. `BatchSize` is a WRITE-side SqlBulkCopy
+    // option, not a read pager, so ExecutionCount is 1 for a streaming and a materialising copier alike.
+    //
+    // ---- WHAT THIS TEST STILL DEFENDS, WHICH IS MOST OF THE CLAIM.
+    //
+    // The plan assertions below — no Table Scan and no explicit Sort on either measured statement — prove
+    // the copy walks the clustered index in key order and never needs a sort, which is what stops a large
+    // tenant spilling to tempdb. The row counts and the co-tenant isolation above prove correctness at
+    // volume. The allocation figure is still REPORTED above, as a diagnostic; it is simply never asserted.
+    //
+    // ---- AND WHAT DEFENDS THE REST.
+    //
+    // The buffering half — that the live reader reaches WriteToServerAsync and nothing drains it into a
+    // collection first — is a property of the SOURCE, not of any runtime counter, and is guarded by
+    // TenantCutoverCopyArchitectureTests.The_table_copier_streams_the_reader_it_opens.
 
     // Issue both shapes through the real components, which records the exact statements production sends.
     // The plans are then taken from the server by replaying those statements, so nothing here depends on

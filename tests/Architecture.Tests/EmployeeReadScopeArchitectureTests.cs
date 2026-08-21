@@ -226,11 +226,18 @@ public sealed class EmployeeReadScopeArchitectureTests
       hrPermissions,
       permission => Assert.StartsWith("HR.", permission, StringComparison.Ordinal));
 
+    // The resource list is EXACT rather than a prefix wildcard, so a new HR resource has to be added here
+    // deliberately. FP-007 added Departments beneath Employees; FP-008 added three more, and the whole
+    // point of the enumeration is that each arrival is a decision someone made rather than a name that
+    // slipped in (`DEC-POS-0018`).
     Assert.All(
       hrPermissions,
       permission => Assert.True(
         permission.StartsWith("HR.Employees.", StringComparison.Ordinal) ||
-        permission.StartsWith("HR.Departments.", StringComparison.Ordinal),
+        permission.StartsWith("HR.Departments.", StringComparison.Ordinal) ||
+        permission.StartsWith("HR.Positions.", StringComparison.Ordinal) ||
+        permission.StartsWith("HR.JobGrades.", StringComparison.Ordinal) ||
+        permission.StartsWith("HR.SalaryGrades.", StringComparison.Ordinal),
         $"Unexpected HR permission resource: {permission}"));
   }
 

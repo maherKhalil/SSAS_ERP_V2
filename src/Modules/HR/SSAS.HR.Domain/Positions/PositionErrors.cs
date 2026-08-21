@@ -98,4 +98,90 @@ public static class PositionErrors
   public static readonly Error GradeHasActiveDependents =
     new("Position.GradeHasActiveDependents",
       "The grade cannot be deactivated while active positions or grades reference it.");
+
+  // ================================================================================================
+  // PHASE 2 — THE REFUSALS THAT NEED A REPOSITORY, A SCOPE, OR AN ORCHESTRATION TO REACH
+  // ================================================================================================
+  //
+  // Everything below arrives with the operations in FP-008 Phase 2 and is raised by a handler, never by an
+  // aggregate. Each has a live raise site; the discipline the top half of this file states applies to the
+  // bottom half unchanged.
+  //
+  // ---- WHY "NOT FOUND" IS THREE CONSTANTS RATHER THAN ONE.
+  //
+  // `api-contracts.md` gives the three families their own problem-code namespaces — `position.*`,
+  // `job_grade.*`, `salary_grade.*` — and a mapper keyed on the error cannot emit `job_grade.not_found` from
+  // a shared `NotFound`. The same reasoning already produced separate identity constants per ladder above.
+  public static readonly Error PositionNotFound =
+    new("Position.PositionNotFound", "The position was not found.");
+
+  public static readonly Error JobGradeNotFound =
+    new("Position.JobGradeNotFound", "The job grade was not found.");
+
+  public static readonly Error SalaryGradeNotFound =
+    new("Position.SalaryGradeNotFound", "The salary grade was not found.");
+
+  // ---- UNIQUENESS, PER FAMILY, FOR THE SAME REASON.
+  //
+  // `BRULE-POS-0004` (code) and `BRULE-POS-0007` (rank). Each is TESTED by the handler and ENFORCED by a
+  // unique index; the pre-check turns the common case into a named conflict rather than a raw persistence
+  // failure, and is an optimisation of the message rather than the rule.
+  public static readonly Error PositionCodeConflict =
+    new("Position.PositionCodeConflict", "The position code already exists within the company.");
+
+  public static readonly Error JobGradeCodeConflict =
+    new("Position.JobGradeCodeConflict", "The job grade code already exists within the company.");
+
+  public static readonly Error SalaryGradeCodeConflict =
+    new("Position.SalaryGradeCodeConflict", "The salary grade code already exists within the company.");
+
+  // Rank uniqueness is per company AND per ladder, so the two ladders cannot share one constant without
+  // answering a job-grade collision with a salary-grade problem code.
+  public static readonly Error JobGradeRankConflict =
+    new("Position.JobGradeRankConflict", "The job grade rank order already exists within the company.");
+
+  public static readonly Error SalaryGradeRankConflict =
+    new("Position.SalaryGradeRankConflict",
+      "The salary grade rank order already exists within the company.");
+
+  // ================================================================================================
+  // THE THREE WAYS A GRADE REFERENCE CAN BE INVALID (BRULE-POS-0009, BRULE-POS-0010, BRULE-POS-0011)
+  // ================================================================================================
+  //
+  // The trio mirrors `DepartmentErrors.ParentNotFound` / `ParentInDifferentCompany` / `ParentInactive`
+  // exactly, and it is shared by both referencing directions — Position -> JobGrade and JobGrade ->
+  // SalaryGrade — because the three failures are the same three failures.
+  //
+  // ---- NAMING THE CROSS-COMPANY CASE IS NOT A DISCLOSURE, BECAUSE THE WIRE CANNOT TELL.
+  //
+  // All three map to one problem code, `<owner>.grade_invalid` — so a caller cannot distinguish "no such
+  // grade" from "a grade you may not see". `api-contracts.md` names the second and third; the first is the
+  // arm that table does not list, and it must exist or a reference to a nonexistent grade would answer
+  // `job_grade.not_found` — a 404 about the grade, when the operation that failed was a write to a position.
+  public static readonly Error GradeReferenceNotFound =
+    new("Position.GradeReferenceNotFound", "The referenced grade was not found.");
+
+  public static readonly Error GradeInDifferentCompany =
+    new("Position.GradeInDifferentCompany", "The referenced grade belongs to a different company.");
+
+  public static readonly Error GradeInactive =
+    new("Position.GradeInactive", "The referenced grade is not active.");
+
+  // ---- SCOPE, CONCURRENCY AND PAGINATION.
+  //
+  // Company scope and functional permission are separate questions with separate refusals (`ADR-025`
+  // decision 8), and neither names the company or the identifier it refused.
+  public static readonly Error CompanyScopeDenied =
+    new("Position.CompanyScopeDenied", "The company is outside the caller's authorized scope.");
+
+  public static readonly Error PermissionDenied =
+    new("Position.PermissionDenied", "The caller lacks the required position permission.");
+
+  public static readonly Error InvalidPagination =
+    new("Position.InvalidPagination", "The requested page number or page size is out of range.");
+
+  // The friendly refusal for a stale token, compared by the handler before the aggregate is mutated. The
+  // database's own rowversion check is the rule; this is the message (`DEC-POS-0021`, `NFR-POS-0302`).
+  public static readonly Error ConcurrencyConflict =
+    new("Position.ConcurrencyConflict", "The record was modified by another operation.");
 }

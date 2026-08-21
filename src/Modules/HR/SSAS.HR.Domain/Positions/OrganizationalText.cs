@@ -34,6 +34,25 @@ internal static class OrganizationalText
     return trimmed;
   }
 
+  // ================================================================================================
+  // A DISPLAY LABEL WITH A SEARCH FORM (DEC-POS-0030)
+  // ================================================================================================
+  //
+  // The same pair as a code — trimmed display form plus upper-invariant ordinal form — but the two exist for
+  // DIFFERENT reasons, and the distinction is worth keeping visible.
+  //
+  //   * a CODE's normalized form decides IDENTITY: it backs a unique index, so two codes that normalize
+  //     alike are the same code and the second one is refused;
+  //   * a LABEL's normalized form decides nothing. It exists only so a search can be case-insensitive over a
+  //     binary-collated column, and two positions may share a title forever (`BRULE-POS-0005`).
+  //
+  // Mechanically identical, semantically unrelated. They delegate to one implementation so the normalization
+  // RULE has one definition, and are named apart so a reader cannot mistake the label form for a uniqueness
+  // key and add an index to it.
+  internal static bool TryNormalizeLabel(
+    string? value, int maximumLength, out string trimmed, out string normalized) =>
+    TryNormalizeCode(value, maximumLength, out trimmed, out normalized);
+
   // A business identifier: the trimmed display form plus the ordinal-comparison form. Returns false when
   // invalid, so a caller cannot accidentally use a half-built pair.
   internal static bool TryNormalizeCode(
@@ -61,9 +80,9 @@ internal static class OrganizationalText
     // width, the cost is one comparison, and a future runtime or a change to the normalization rule could
     // make it reachable. It is documented as unreachable rather than left to imply a case that occurs.
     //
-    // `DepartmentCode` carries the same guard and used to carry the same incorrect claim; it was corrected
-    // to this wording by ruling in FP-008 Phase 2. `EmployeeNumber` still carries it, and is reported rather
-    // than edited — the ruling named the department code.
+    // `DepartmentCode` and `EmployeeNumber` carry the same guard and used to carry the same incorrect claim.
+    // All three were corrected in FP-008 Phase 2: the first by ruling, the other two by the sweep that ruling
+    // widened into once the same copied falsehood turned up a third time.
     if (candidateNormalized.Length > maximumLength)
     {
       return false;

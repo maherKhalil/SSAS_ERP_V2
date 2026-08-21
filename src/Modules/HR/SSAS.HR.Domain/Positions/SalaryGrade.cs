@@ -36,6 +36,10 @@ public sealed class SalaryGrade
 
   private string normalizedCode = string.Empty;
 
+  // The search form of the label, maintained beside the code's (`DEC-POS-0030`). Set in exactly the two
+  // places `normalizedCode` is set, so the two can never disagree about which write produced them.
+  private string normalizedName = string.Empty;
+
   private SalaryGrade(
     Guid salaryGradeId,
     SalaryGradeCode code,
@@ -47,6 +51,7 @@ public sealed class SalaryGrade
   {
     Code = code;
     normalizedCode = code.NormalizedValue;
+    normalizedName = name.NormalizedValue;
     Name = name;
     RankOrder = rankOrder;
     Band = band;
@@ -72,6 +77,8 @@ public sealed class SalaryGrade
   public SalaryGradeCode Code { get; private set; }
 
   public string NormalizedCode => normalizedCode;
+
+  public string NormalizedName => normalizedName;
 
   public SalaryGradeName Name { get; private set; }
 
@@ -178,6 +185,7 @@ public sealed class SalaryGrade
 
     Code = code;
     normalizedCode = code.NormalizedValue;
+    normalizedName = name.NormalizedValue;
     Name = name;
     RankOrder = rankOrder;
 

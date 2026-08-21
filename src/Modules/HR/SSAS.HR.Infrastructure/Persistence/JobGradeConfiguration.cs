@@ -61,6 +61,15 @@ public sealed class JobGradeConfiguration : IEntityTypeConfiguration<JobGrade>
       .HasMaxLength(JobGradeName.MaximumLength)
       .IsRequired();
 
+    // The search column. See `PositionConfiguration` for why a value-converted property cannot carry a
+    // search predicate, and why this one carries no index.
+    builder.Property(grade => grade.NormalizedName)
+      .HasField("normalizedName")
+      .UsePropertyAccessMode(PropertyAccessMode.Field)
+      .HasMaxLength(JobGradeName.MaximumLength)
+      .UseCollation(EmployeeConfiguration.OrdinalCollation)
+      .IsRequired();
+
     // ---- THE LADDER'S ORDER IS DATA (DEC-POS-0006), AND IT IS `int` RATHER THAN A VALUE OBJECT.
     //
     // The package specifies an integer, and positivity is enforced in the aggregate. **No check constraint

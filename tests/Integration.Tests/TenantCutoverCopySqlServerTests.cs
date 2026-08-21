@@ -1418,11 +1418,11 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       // producing a wrong result.
       await ExecuteAsync(connection, transaction, """
         INSERT INTO [tenant].[Departments]
-          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [ParentDepartmentId],
+          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName], [ParentDepartmentId],
            [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc],
            [ModifiedBy])
         VALUES
-          (@DepartmentId, @TenantId, @CompanyId, @Code, @Code, @Name, NULL,
+          (@DepartmentId, @TenantId, @CompanyId, @Code, @Code, @Name, UPPER(@Name), NULL,
            N'Active', @Stamp, @Actor, @Stamp, @Actor, @Stamp, @Actor);
         """,
         ("@DepartmentId", story.DepartmentId), ("@TenantId", tenantId), ("@CompanyId", story.CompanyId),

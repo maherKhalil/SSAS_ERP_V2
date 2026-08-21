@@ -112,35 +112,23 @@ internal sealed class PositionReadService(ITenantDbContextAccessor contextAccess
     if (!string.IsNullOrWhiteSpace(query.SearchText))
     {
       // ================================================================================================
-      // THE CODE HALF ONLY. THE TITLE HALF OF `FR-POS-0203` IS **NOT IMPLEMENTED**, AND MUST NOT BE
-      // SILENTLY DROPPED FROM THE REQUIREMENT — IT IS AWAITING AN ARCHITECT RULING.
+      // BOTH HALVES, OVER NORMALIZED COLUMNS (FR-POS-0203, DEC-POS-0030)
       // ================================================================================================
       //
-      // `Title` is mapped with a VALUE CONVERTER (`HasConversion(title => title.Value, ...)`). EF Core 8
-      // translates `item.Title.Value` in a PROJECTION — the detail read above does exactly that — but it
-      // cannot translate it inside a PREDICATE. Three formulations were tried against real SQL Server and
-      // all three fail:
+      // The CODE half is a prefix match and the TITLE half is a contains — the code is an identifier a user
+      // types from the beginning, while a title is a phrase they remember part of.
       //
-      //   * `item.Title.Value.Contains(text)`                          -> the whole Where fails to translate
-      //   * `EF.Functions.Like(item.Title.Value, "%text%")`            -> the same
-      //   * `EF.Functions.Like(EF.Property<string>(item, "Title"), …)` -> InvalidCastException, because the
-      //                                                                  converter is applied to the PATTERN
-      //
-      // Every remaining option is a DESIGN DECISION rather than a spelling: a normalized title column, a
-      // different mapping for the value object, `FromSql`, or client evaluation of a paged search. The
-      // package does not choose one, so nothing is chosen here.
-      //
-      // ---- THE SAME DEFECT IS LIVE IN `DepartmentReadService.SearchAsync` (FP-007), UNCOVERED BY ANY TEST.
-      //
-      // `item.Name.Value.Contains(text)`, identical shape, identical mapping. A department search carrying
-      // any `searchText` throws `InvalidOperationException` rather than returning results, and no test
-      // exercises that path. Reported rather than fixed: it is a product defect in shipped code.
-      //
-      // The normalized column is binary-collated, so the code half below is an ordinal prefix match — which
-      // is why the caller's text is normalized the same way the stored value was rather than compared raw.
-      var normalized = query.SearchText.Trim().ToUpperInvariant();
+      // Both run against plain normalized columns rather than against `Code` and `Title`, which are mapped
+      // through value converters. EF Core translates a converted member in a PROJECTION but not in a
+      // PREDICATE, and the title half of this filter did not exist at all until `DEC-POS-0030` added the
+      // column. Both patterns escape the caller's wildcards, so a literal `%` in the search text finds
+      // records containing a percent sign rather than every record in scope.
+      var codePattern = SearchPattern.StartsWith(query.SearchText);
+      var titlePattern = SearchPattern.Contains(query.SearchText);
 
-      filtered = filtered.Where(item => item.NormalizedCode.StartsWith(normalized));
+      filtered = filtered.Where(item =>
+        EF.Functions.Like(item.NormalizedCode, codePattern, "\\") ||
+        EF.Functions.Like(item.NormalizedTitle, titlePattern, "\\"));
     }
 
     var total = await filtered.CountAsync(cancellationToken);

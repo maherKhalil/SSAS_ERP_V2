@@ -430,11 +430,11 @@ public sealed class DepartmentSchemaSqlServerTests
       Guid departmentId, Guid companyId, string code, string name, Guid? parentDepartmentId = null) =>
       ExecuteAsync($"""
         INSERT INTO [tenant].[Departments]
-          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name],
+          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName],
            [ParentDepartmentId], [Status], [StatusChangedUtc], [StatusChangedBy],
            [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
-          ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code.ToUpperInvariant()}', N'{name}',
+          ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code.ToUpperInvariant()}', N'{name}', N'{name.ToUpperInvariant()}',
            {(parentDepartmentId is null ? "NULL" : $"'{parentDepartmentId}'")},
            N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');

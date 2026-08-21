@@ -12,20 +12,25 @@ public sealed class PositionTitle : ValueObject
 {
   public const int MaximumLength = 128;
 
-  private PositionTitle(string value)
+  private PositionTitle(string value, string normalizedValue)
   {
     Value = value;
+    NormalizedValue = normalizedValue;
   }
 
   // Trimmed, with display casing preserved exactly as entered.
   public string Value { get; }
 
+  // Upper-invariant and trimmed, for SEARCH and nothing else (`DEC-POS-0030`). It backs no index and no
+  // uniqueness rule: two records may share a label forever. It exists because the stored column is
+  // binary-collated, so a case-insensitive match needs a normalized column rather than a normalized query.
+  public string NormalizedValue { get; }
+
   public static Result<PositionTitle> Create(string? value)
   {
-    var trimmed = OrganizationalText.NormalizeLabel(value, MaximumLength);
-    return trimmed is null
-      ? Result.Failure<PositionTitle>(PositionErrors.InvalidTitle)
-      : Result.Success(new PositionTitle(trimmed));
+    return OrganizationalText.TryNormalizeLabel(value, MaximumLength, out var trimmed, out var normalized)
+      ? Result.Success(new PositionTitle(trimmed, normalized))
+      : Result.Failure<PositionTitle>(PositionErrors.InvalidTitle);
   }
 
   public override string ToString() => Value;

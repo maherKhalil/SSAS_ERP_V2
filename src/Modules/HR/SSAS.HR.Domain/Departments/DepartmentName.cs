@@ -14,13 +14,26 @@ public sealed class DepartmentName : ValueObject
 {
   public const int MaximumLength = 200;
 
-  private DepartmentName(string value)
+  private DepartmentName(string value, string normalizedValue)
   {
     Value = value;
+    NormalizedValue = normalizedValue;
   }
 
   // Trimmed, with display casing preserved exactly as entered.
   public string Value { get; }
+
+  // Upper-invariant and trimmed, for SEARCH and nothing else (`DEC-POS-0030`). It backs no index and no
+  // uniqueness rule — two departments in one company may share a name — and it exists because the search
+  // predicate must run against a plain string column.
+  //
+  // ---- IT ARRIVED LATE, AND THE REASON IS WORTH KNOWING.
+  //
+  // FP-007's department search filtered on `Name.Value.Contains(text)`. `Name` is mapped with a value
+  // converter, and EF Core cannot translate a member access through a converter inside a PREDICATE — so
+  // every search carrying a `searchText` threw `InvalidOperationException` instead of returning rows, from
+  // FP-007 until FP-008 Phase 2. No test covered that path. This column is the fix.
+  public string NormalizedValue { get; }
 
   public static Result<DepartmentName> Create(string? value)
   {
@@ -30,7 +43,16 @@ public sealed class DepartmentName : ValueObject
       return Result.Failure<DepartmentName>(DepartmentErrors.InvalidName);
     }
 
-    return Result.Success(new DepartmentName(trimmed));
+    var normalized = trimmed.ToUpperInvariant();
+
+    // The stored normalized value has its own column of the same width. Defensive and unreachable on .NET
+    // for the reason `DepartmentCode` now records: invariant casing never changes a string's length.
+    if (normalized.Length > MaximumLength)
+    {
+      return Result.Failure<DepartmentName>(DepartmentErrors.InvalidName);
+    }
+
+    return Result.Success(new DepartmentName(trimmed, normalized));
   }
 
   public override string ToString() => Value;

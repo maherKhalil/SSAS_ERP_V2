@@ -58,12 +58,14 @@ internal sealed class JobGradeReadService(ITenantDbContextAccessor contextAccess
 
     if (!string.IsNullOrWhiteSpace(query.SearchText))
     {
-      // THE CODE HALF ONLY — see `PositionReadService.SearchAsync` for why the name half cannot be
-      // translated over a value-converted property, and for the identical unfixed defect in
-      // `DepartmentReadService`. Not implemented here either, and awaiting the same ruling.
-      var normalized = query.SearchText.Trim().ToUpperInvariant();
+      // Both halves, over the normalized columns. See `PositionReadService.SearchAsync` for why a
+      // value-converted property cannot carry a search predicate, and `SearchPattern` for the escaping.
+      var codePattern = SearchPattern.StartsWith(query.SearchText);
+      var namePattern = SearchPattern.Contains(query.SearchText);
 
-      filtered = filtered.Where(item => item.NormalizedCode.StartsWith(normalized));
+      filtered = filtered.Where(item =>
+        EF.Functions.Like(item.NormalizedCode, codePattern, "\\") ||
+        EF.Functions.Like(item.NormalizedName, namePattern, "\\"));
     }
 
     var total = await filtered.CountAsync(cancellationToken);
@@ -161,12 +163,14 @@ internal sealed class SalaryGradeReadService(ITenantDbContextAccessor contextAcc
 
     if (!string.IsNullOrWhiteSpace(query.SearchText))
     {
-      // THE CODE HALF ONLY — see `PositionReadService.SearchAsync` for why the name half cannot be
-      // translated over a value-converted property, and for the identical unfixed defect in
-      // `DepartmentReadService`. Not implemented here either, and awaiting the same ruling.
-      var normalized = query.SearchText.Trim().ToUpperInvariant();
+      // Both halves, over the normalized columns. See `PositionReadService.SearchAsync` for why a
+      // value-converted property cannot carry a search predicate, and `SearchPattern` for the escaping.
+      var codePattern = SearchPattern.StartsWith(query.SearchText);
+      var namePattern = SearchPattern.Contains(query.SearchText);
 
-      filtered = filtered.Where(item => item.NormalizedCode.StartsWith(normalized));
+      filtered = filtered.Where(item =>
+        EF.Functions.Like(item.NormalizedCode, codePattern, "\\") ||
+        EF.Functions.Like(item.NormalizedName, namePattern, "\\"));
     }
 
     var total = await filtered.CountAsync(cancellationToken);

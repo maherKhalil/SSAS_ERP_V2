@@ -1823,6 +1823,65 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   // ================================================================================================
+  // D16 — THE EMPLOYEE NUMBER FILTER, WHICH HAD NO COVERAGE UNTIL FP-008 PHASE 2
+  // ================================================================================================
+  //
+  // Added while auditing every HR search after `DEC-POS-0030`. The department search was broken from FP-007
+  // because it filtered on a VALUE-CONVERTED property inside a predicate, which EF Core cannot translate;
+  // this filter was checked at the same time and is a different shape — it compares
+  // `NormalizedEmployeeNumber`, a plain string column, with `==`.
+  //
+  // That difference is the rule of thumb worth keeping: a converted member translates in a PROJECTION and
+  // not in a PREDICATE, so a search must filter a plain column. This filter always did, which is why it
+  // never broke. It had no test, though — so "it was fine" rested on reading it rather than running it, and
+  // an uncovered search branch is precisely what let the department defect ship unnoticed.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0030")]
+  public async Task D16_The_employee_number_filter_matches_exactly_and_ignores_case()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var wanted = await fixture.Graph(fixture.BranchA).Create().HandleAsync(
+      fixture.NewEmployee("EMP-0001"));
+    Assert.True(wanted.IsSuccess, wanted.IsFailure ? wanted.Error.Code : null);
+
+    var other = await fixture.Graph(fixture.BranchA).Create().HandleAsync(
+      fixture.NewEmployee("EMP-0002"));
+    Assert.True(other.IsSuccess, other.IsFailure ? other.Error.Code : null);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    async Task<int> CountForAsync(string employeeNumber)
+    {
+      var page = await graph.Search().HandleAsync(new SearchEmployeesQuery(
+        new EmployeeScopeRequest(
+          EmployeeCompanyScopeMode.CurrentCompany,
+          EmployeeBranchScopeMode.AllAuthorizedBranches),
+        EmployeeNumber: employeeNumber));
+
+      Assert.True(page.IsSuccess, page.IsFailure ? page.Error.Code : null);
+
+      return page.Value.Items.Count;
+    }
+
+    // FOUND, and exactly one — the filter is an equality on the normalized column, not a prefix.
+    Assert.Equal(1, await CountForAsync("EMP-0001"));
+
+    // CASE-INSENSITIVE, because both sides are upper-invariant: the stored column by the domain, the
+    // criterion by the read service. The column's binary collation makes that normalization the only thing
+    // standing between "emp-0001" and no results.
+    Assert.Equal(1, await CountForAsync("emp-0001"));
+    Assert.Equal(1, await CountForAsync("  EmP-0001  "));
+
+    // NOT FOUND is an empty page rather than a failure — the same distinction the department search tests
+    // draw, and the one that separates "no match" from "the query threw".
+    Assert.Equal(0, await CountForAsync("EMP-9999"));
+
+    // AND IT IS NOT A PREFIX MATCH. `EMP-000` would return both employees if it were.
+    Assert.Equal(0, await CountForAsync("EMP-000"));
+  }
+
+  // ================================================================================================
   // FIXTURE
   // ================================================================================================
 
@@ -2602,12 +2661,12 @@ public sealed class EmployeeBoundarySqlServerTests
 
       await ExecuteAsync($"""
         INSERT INTO [tenant].[Departments]
-          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name],
+          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName],
            [ParentDepartmentId], [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc],
            [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
           ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code.ToUpperInvariant()}',
-           N'Department {code}', NULL, N'{status}', SYSDATETIMEOFFSET(), N'{Actor}',
+           N'Department {code}', N'DEPARTMENT {code.ToUpperInvariant()}', NULL, N'{status}', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
         """);
 

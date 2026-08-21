@@ -64,6 +64,32 @@ public sealed class PositionConfiguration : IEntityTypeConfiguration<Position>
       .HasMaxLength(PositionTitle.MaximumLength)
       .IsRequired();
 
+    // ================================================================================================
+    // THE SEARCH COLUMN (DEC-POS-0030)
+    // ================================================================================================
+    //
+    // `Title` above is mapped through a VALUE CONVERTER, and EF Core cannot translate a member access
+    // through a converter inside a PREDICATE — `item.Title.Value.Contains(text)` fails to translate, and so
+    // does every `EF.Functions.Like` form over it. A projection translates fine, which is why this is easy
+    // to miss until a search is actually executed.
+    //
+    // So the search runs against a plain string column, maintained by the domain exactly where
+    // `NormalizedCode` is. The product already stores exactly this kind of normalized shadow for its
+    // identifiers; a title is the same mechanism for a different reason.
+    //
+    // ---- AND THERE IS NO INDEX ON IT, DELIBERATELY.
+    //
+    // The search is a CONTAINS, so the pattern begins with a wildcard and no B-tree index can seek on it —
+    // SQL Server would scan the index instead of the table and save nothing. An index here would be dead
+    // weight that reads as due diligence. If prefix search or full-text is ever required, that is a
+    // different index and a different decision.
+    builder.Property(position => position.NormalizedTitle)
+      .HasField("normalizedTitle")
+      .UsePropertyAccessMode(PropertyAccessMode.Field)
+      .HasMaxLength(PositionTitle.MaximumLength)
+      .UseCollation(EmployeeConfiguration.OrdinalCollation)
+      .IsRequired();
+
     // NULL MEANS UNGRADED. A position may exist before it is placed on the ladder.
     builder.Property(position => position.JobGradeId);
 

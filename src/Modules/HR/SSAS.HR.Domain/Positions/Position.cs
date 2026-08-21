@@ -53,6 +53,10 @@ public sealed class Position
 
   private string normalizedCode = string.Empty;
 
+  // The search form of the label, maintained beside the code's (`DEC-POS-0030`). Set in exactly the two
+  // places `normalizedCode` is set, so the two can never disagree about which write produced them.
+  private string normalizedTitle = string.Empty;
+
   private Position(
     Guid positionId,
     PositionCode code,
@@ -63,6 +67,7 @@ public sealed class Position
   {
     Code = code;
     normalizedCode = code.NormalizedValue;
+    normalizedTitle = title.NormalizedValue;
     Title = title;
     JobGradeId = jobGradeId;
     Status = PositionStatus.Active;
@@ -91,6 +96,8 @@ public sealed class Position
   public PositionCode Code { get; private set; }
 
   public string NormalizedCode => normalizedCode;
+
+  public string NormalizedTitle => normalizedTitle;
 
   public PositionTitle Title { get; private set; }
 
@@ -191,6 +198,7 @@ public sealed class Position
 
     Code = code;
     normalizedCode = code.NormalizedValue;
+    normalizedTitle = title.NormalizedValue;
     Title = title;
     JobGradeId = jobGradeId;
 

@@ -503,11 +503,11 @@ public sealed class PositionSchemaSqlServerTests
       fixture.ExecuteAsync($"""
         UPDATE [tenant].[Positions] SET [Status] = N'Archived' WHERE 1 = 0;
         INSERT INTO [tenant].[Positions]
-          ([PositionId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Title], [JobGradeId],
+          ([PositionId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Title], [NormalizedTitle], [JobGradeId],
            [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc],
            [ModifiedBy])
         VALUES
-          ('{Guid.NewGuid()}', '{fixture.Tenant}', '{fixture.CompanyA}', N'ARCH', N'ARCH', N'Archived',
+          ('{Guid.NewGuid()}', '{fixture.Tenant}', '{fixture.CompanyA}', N'ARCH', N'ARCH', N'Archived', N'ARCHIVED',
            NULL, N'Archived', SYSDATETIMEOFFSET(), N'tester',
            SYSDATETIMEOFFSET(), N'tester', SYSDATETIMEOFFSET(), N'tester');
         """));
@@ -699,11 +699,11 @@ public sealed class PositionSchemaSqlServerTests
 
       await ExecuteAsync($"""
         INSERT INTO [tenant].[SalaryGrades]
-          ([SalaryGradeId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [RankOrder],
+          ([SalaryGradeId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName], [RankOrder],
            [MinimumAmount], [MidpointAmount], [MaximumAmount], [Status], [StatusChangedUtc],
            [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
-          ('{salaryGradeId}', '{Tenant}', '{CompanyA}', N'{code}', N'{code.ToUpperInvariant()}', N'{name}',
+          ('{salaryGradeId}', '{Tenant}', '{CompanyA}', N'{code}', N'{code.ToUpperInvariant()}', N'{name}', N'{name.ToUpperInvariant()}',
            {rankOrder}, {minimum}, {midpoint}, {maximum}, N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
         """);
@@ -718,11 +718,11 @@ public sealed class PositionSchemaSqlServerTests
 
       await ExecuteAsync($"""
         INSERT INTO [tenant].[JobGrades]
-          ([JobGradeId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [RankOrder],
+          ([JobGradeId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName], [RankOrder],
            [SalaryGradeId], [Status], [StatusChangedUtc], [StatusChangedBy],
            [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
-          ('{jobGradeId}', '{Tenant}', '{CompanyA}', N'{code}', N'{code.ToUpperInvariant()}', N'{name}',
+          ('{jobGradeId}', '{Tenant}', '{CompanyA}', N'{code}', N'{code.ToUpperInvariant()}', N'{name}', N'{name.ToUpperInvariant()}',
            {rankOrder}, {(salaryGradeId is null ? "NULL" : $"'{salaryGradeId}'")},
            N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
@@ -738,12 +738,12 @@ public sealed class PositionSchemaSqlServerTests
 
       await ExecuteAsync($"""
         INSERT INTO [tenant].[Positions]
-          ([PositionId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Title], [JobGradeId],
+          ([PositionId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Title], [NormalizedTitle], [JobGradeId],
            [Status], [StatusChangedUtc], [StatusChangedBy],
            [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
           ('{positionId}', '{Tenant}', '{companyId}', N'{code}', N'{code.Trim().ToUpperInvariant()}',
-           N'{title}', {(jobGradeId is null ? "NULL" : $"'{jobGradeId}'")},
+           N'{title}', N'{title.ToUpperInvariant()}', {(jobGradeId is null ? "NULL" : $"'{jobGradeId}'")},
            N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
         """);
@@ -778,12 +778,12 @@ public sealed class PositionSchemaSqlServerTests
 
       await ExecuteAsync($"""
         INSERT INTO [tenant].[Departments]
-          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name],
+          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName],
            [ParentDepartmentId], [Status], [StatusChangedUtc], [StatusChangedBy],
            [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
           ('{departmentId}', '{Tenant}', '{CompanyA}', N'ZZ-POSITION-HOME', N'ZZ-POSITION-HOME',
-           N'Position Home', NULL, N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
+           N'Position Home', N'POSITION HOME', NULL, N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
         """);
 

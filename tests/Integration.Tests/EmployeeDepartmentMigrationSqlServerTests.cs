@@ -470,6 +470,20 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
     {
       var departmentId = Guid.NewGuid();
 
+      // ================================================================================================
+      // THIS INSERT DELIBERATELY DOES **NOT** CARRY `NormalizedName`, UNLIKE EVERY OTHER DEPARTMENT SEEDER.
+      // ================================================================================================
+      //
+      // This suite pins the database at `DepartmentMigration` — `20260820140653_AddEmployeeDepartment` —
+      // through `IMigrator` with an explicit target, so that "legacy employee" can mean something. FP-008
+      // Phase 2's `AddHrSearchNormalizedLabels` comes LATER in the chain, so at the moment this row is
+      // written the column does not exist and naming it is an `Invalid column name` error.
+      //
+      // The FP-008 sweep that added the column to the other five department seeders added it here too, and
+      // these four tests caught it. Left out on purpose: a seeder that writes at a PINNED migration level
+      // must match the schema AT THAT LEVEL, not the head schema. The backfill in
+      // `AddHrSearchNormalizedLabels` fills this row when the chain later reaches it, exactly as it fills
+      // the `UNASSIGNED` department that `AddEmployeeDepartment` itself inserts.
       await ExecuteAsync($"""
         INSERT INTO [tenant].[Departments]
           ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name],

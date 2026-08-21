@@ -584,20 +584,104 @@ public sealed class PositionApplicationSqlServerTests
     Assert.True(byText.IsSuccess);
     Assert.Equal(2, byText.Value.TotalCount);
 
-    // ---- THE TITLE HALF OF `FR-POS-0203` IS NOT IMPLEMENTED, AND THIS ASSERTS THE GAP RATHER THAN HIDING
-    // ---- IT.
+    // ---- AND THE TITLE HALF, WHICH IS THE ONE THAT USED TO RETURN NOTHING (DEC-POS-0030).
     //
-    // "Developer" is the TITLE of DEV-SR and matches no code prefix, so a complete implementation would
-    // return one row and this returns none. EF Core cannot translate a predicate over a value-converted
-    // property — see `PositionReadService.SearchAsync` for the three formulations that were tried and for
-    // the identical unfixed defect in `DepartmentReadService`.
-    //
-    // WHEN THE ARCHITECT RULES, this assertion changes to `Assert.Equal(1, ...)` in the same change as the
-    // fix. Leaving the path untested is what let the department defect ship.
+    // "Developer" is the TITLE of DEV-SR and matches no code prefix, so only the title predicate can find
+    // it. This assertion was `Assert.Equal(0, ...)` in the commit that first shipped this test, documenting
+    // an unimplemented half rather than hiding it; the ruled search column is what makes it a 1.
     var byTitle = await graph.SearchPositions().HandleAsync(
       new SearchPositionsQuery(SearchText: "Developer"));
     Assert.True(byTitle.IsSuccess);
-    Assert.Equal(0, byTitle.Value.TotalCount);
+    Assert.Equal(1, byTitle.Value.TotalCount);
+    Assert.Equal("DEV-SR", byTitle.Value.Items.Single().Code);
+
+    // CASE-INSENSITIVE, over a BINARY-collated column. Both sides are upper-invariant — the stored value by
+    // the domain, the pattern by the query — which is what makes an ordinal column searchable without a
+    // case-insensitive collation.
+    var lowerCase = await graph.SearchPositions().HandleAsync(
+      new SearchPositionsQuery(SearchText: "senior developer"));
+    Assert.True(lowerCase.IsSuccess);
+    Assert.Equal(1, lowerCase.Value.TotalCount);
+
+    // A MID-WORD FRAGMENT matches the title but not the code, because the title half is a CONTAINS and the
+    // code half is a PREFIX. Asserting both halves' shapes in one query.
+    var fragment = await graph.SearchPositions().HandleAsync(new SearchPositionsQuery(SearchText: "ccount"));
+    Assert.True(fragment.IsSuccess);
+    Assert.Equal(2, fragment.Value.TotalCount);
+  }
+
+  // ================================================================================================
+  // A WILDCARD IN THE SEARCH TEXT IS A LITERAL CHARACTER, NOT AN OPERATOR (DEC-POS-0030)
+  // ================================================================================================
+  //
+  // The failure this prevents is quiet rather than loud: an unescaped `%` reaching the LIKE pattern makes
+  // the predicate match everything, and the caller sees a full page of results instead of an error. A
+  // search that returns too much looks like a search that works.
+  [Theory]
+  [InlineData("%", 1)]
+  [InlineData("_", 1)]
+  [InlineData("[", 1)]
+  [Trait("Decision", "DEC-POS-0030")]
+  public async Task A_wildcard_character_in_the_search_text_matches_only_itself(
+    string wildcard, int expected)
+  {
+    await using var fixture = await PositionAppFixture.CreateAsync();
+
+    // One position whose title contains the character, and two that do not. An unescaped pattern would
+    // return all three.
+    await fixture.CreatePositionAsync("ACC-JR", $"Junior {wildcard} Accountant");
+    await fixture.CreatePositionAsync("ACC-SR", "Senior Accountant");
+    await fixture.CreatePositionAsync("DEV-SR", "Senior Developer");
+
+    var found = await fixture.Graph().SearchPositions().HandleAsync(
+      new SearchPositionsQuery(SearchText: wildcard));
+
+    Assert.True(found.IsSuccess);
+    Assert.Equal(expected, found.Value.TotalCount);
+    Assert.Equal("ACC-JR", found.Value.Items.Single().Code);
+  }
+
+  // ---- AND THE ESCAPE CHARACTER ITSELF IS ESCAPED FIRST.
+  //
+  // A typed backslash must not turn the character after it into an escape sequence. Ordering the
+  // replacements wrongly — `%` before `\` — produces a pattern that matches nothing, which is the failure
+  // mode a single-wildcard test would miss entirely.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0030")]
+  public async Task A_backslash_in_the_search_text_matches_only_itself()
+  {
+    await using var fixture = await PositionAppFixture.CreateAsync();
+
+    await fixture.CreatePositionAsync("ACC-JR", @"Junior \ Accountant");
+    await fixture.CreatePositionAsync("ACC-SR", "Senior Accountant");
+
+    var found = await fixture.Graph().SearchPositions().HandleAsync(
+      new SearchPositionsQuery(SearchText: @"\"));
+
+    Assert.True(found.IsSuccess);
+    Assert.Equal(1, found.Value.TotalCount);
+    Assert.Equal("ACC-JR", found.Value.Items.Single().Code);
+  }
+
+  // ---- THE GRADE LADDERS SEARCH THEIR NAMES TOO, ON THE SAME MECHANISM.
+  [Fact]
+  [Trait("Requirement", "FR-POS-0206")]
+  public async Task A_grade_search_matches_the_name_as_well_as_the_code()
+  {
+    await using var fixture = await PositionAppFixture.CreateAsync();
+    await fixture.CreateJobGradeAsync("G7", "Professional Band", 70);
+    await fixture.CreateJobGradeAsync("G8", "Leadership Band", 80);
+
+    var graph = fixture.Graph();
+
+    var byName = await graph.SearchJobGrades().HandleAsync(
+      new SearchJobGradesQuery(SearchText: "leadership"));
+    Assert.True(byName.IsSuccess);
+    Assert.Equal("G8", byName.Value.Items.Single().Code);
+
+    var byCode = await graph.SearchJobGrades().HandleAsync(new SearchJobGradesQuery(SearchText: "G7"));
+    Assert.True(byCode.IsSuccess);
+    Assert.Equal("G7", byCode.Value.Items.Single().Code);
   }
 
   // ---- A GRADE LADDER LISTS BY RANK, NOT ALPHABETICALLY.

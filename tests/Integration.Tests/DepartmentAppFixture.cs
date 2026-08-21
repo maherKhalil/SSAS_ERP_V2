@@ -116,11 +116,11 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
 
     await ExecuteAsync($"""
       INSERT INTO [tenant].[Departments]
-        ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [ParentDepartmentId],
+        ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName], [ParentDepartmentId],
          [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc],
          [ModifiedBy])
       VALUES
-        ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code}', N'Employee Home', NULL,
+        ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code}', N'Employee Home', N'EMPLOYEE HOME', NULL,
          N'Active', SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}',
          SYSDATETIMEOFFSET(), N'{Actor}');
       """);

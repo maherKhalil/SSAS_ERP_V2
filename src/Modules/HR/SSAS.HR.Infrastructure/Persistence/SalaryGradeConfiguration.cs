@@ -92,6 +92,15 @@ public sealed class SalaryGradeConfiguration : IEntityTypeConfiguration<SalaryGr
       .HasMaxLength(SalaryGradeName.MaximumLength)
       .IsRequired();
 
+    // The search column. See `PositionConfiguration` for why a value-converted property cannot carry a
+    // search predicate, and why this one carries no index.
+    builder.Property(grade => grade.NormalizedName)
+      .HasField("normalizedName")
+      .UsePropertyAccessMode(PropertyAccessMode.Field)
+      .HasMaxLength(SalaryGradeName.MaximumLength)
+      .UseCollation(EmployeeConfiguration.OrdinalCollation)
+      .IsRequired();
+
     builder.Property(grade => grade.RankOrder).IsRequired();
 
     // ---- THE BAND. Explicit column names, so the three read as the fields the package names rather than

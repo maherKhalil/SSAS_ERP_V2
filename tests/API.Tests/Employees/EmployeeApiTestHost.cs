@@ -109,6 +109,15 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   // routing registered. Because this harness calls the PRODUCTION mapping extensions, a route added to the
   // module and not mapped here goes missing from the inventory and the guard fails — which is exactly the
   // gap that let Phase 4 ship a route no test could reach.
+  // HttpMethods is an indexable IReadOnlyList, so it is indexed rather than enumerated (CA1826) — a
+  // Release-only analyzer finding, which is precisely what the Release gate exists to surface.
+  private static string FirstMethodOf(Microsoft.AspNetCore.Routing.RouteEndpoint endpoint)
+  {
+    var methods = endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods;
+
+    return methods is { Count: > 0 } ? methods[0] : "?";
+  }
+
   public IReadOnlyList<(string Method, string Pattern, string Policy)> MappedRoutes() =>
   [
     .. ((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)(application ??
@@ -117,7 +126,7 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
       .OfType<Microsoft.AspNetCore.Routing.RouteEndpoint>()
       .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/hr", StringComparison.Ordinal) ?? false)
       .Select(endpoint => (
-        endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods.FirstOrDefault() ?? "?",
+        FirstMethodOf(endpoint),
         endpoint.RoutePattern.RawText!,
         endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAuthorizeData>()?.Policy ?? string.Empty))
   ];

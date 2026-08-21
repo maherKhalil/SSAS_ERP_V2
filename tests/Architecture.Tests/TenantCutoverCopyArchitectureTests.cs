@@ -133,6 +133,62 @@ public sealed class TenantCutoverCopyArchitectureTests
     }
   }
 
+  // ================================================================================================
+  // THE COPIER STREAMS THE READER IT OPENS. THIS IS THE BUFFERING HALF OF THE STREAMING CLAIM.
+  // ================================================================================================
+  //
+  // Its counterpart is Integration.Tests'
+  // A_large_tenant_copies_by_streaming_and_every_query_seeks, which defends the OTHER half: that the copy
+  // walks the clustered index in key order and never sorts, so a large tenant does not spill to tempdb.
+  //
+  // That test used to assert an allocation budget as well. It was removed on 2026-08-21 because it could
+  // not discriminate: `GC.GetTotalAllocatedBytes` is cumulative, the transient reader buffers of a
+  // STREAMING copy (74MB for 20000 rows) already exceed the cost of RETAINING the entities (~12-36MB), and
+  // the ratio is row-count-invariant. Server statement metrics cannot see it either — the copier issues one
+  // unbounded SELECT and `BatchSize` is a write-side SqlBulkCopy option, so the statement shape is
+  // identical for both designs.
+  //
+  // So the property is guarded where it actually lives: in the SOURCE. Streaming here means the live reader
+  // reaches WriteToServerAsync and nothing drains it into a collection on the way.
+  //
+  // ---- TOKEN GUARDS ARE CRUDE, DELIBERATELY, AND THIS ONE HAS A SPECIFIC FAILURE INSTRUCTION.
+  //
+  // If it fails, the fix is to RE-ESTABLISH the streaming structure and then update this guard and its
+  // comment together. It is NOT to delete the offending token: a `ToList` between the reader and the bulk
+  // copy would load a whole tenant into this process's memory, which is the defect the copier's own header
+  // comment says it exists to avoid.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void The_table_copier_streams_the_reader_it_opens()
+  {
+    var source = SourceOf("TenantCutoverTableCopier.cs");
+
+    // PRESENT: the reader is opened, and handed to the bulk copy alive, with buffering switched off.
+    foreach (var required in new[]
+    {
+      "EnableStreaming = true",
+      "await command.ExecuteReaderAsync(cancellationToken)",
+      "WriteToServerAsync(reader"
+    })
+    {
+      Assert.Contains(required, source, StringComparison.Ordinal);
+    }
+
+    // ABSENT: every shape that would put the rows in memory first. `DataTable` and the LINQ materialisers
+    // are the obvious ones; the manual read loop is the subtle one, because draining a reader by hand into
+    // anything is exactly the design this forbids while looking like ordinary ADO.NET.
+    foreach (var buffering in new[]
+    {
+      "DataTable",
+      "ToList",
+      "ToArray",
+      "while (await reader.ReadAsync"
+    })
+    {
+      Assert.DoesNotContain(buffering, source, StringComparison.Ordinal);
+    }
+  }
+
   // ---- A PRIMITIVE, NOT A SERVICE SURFACE. No HTTP, no scheduler: orchestration is the next slice, and a
   // copy that could start itself would start during an incident.
   [Fact]

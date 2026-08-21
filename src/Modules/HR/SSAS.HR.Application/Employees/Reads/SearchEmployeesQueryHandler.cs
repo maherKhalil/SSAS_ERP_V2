@@ -12,7 +12,9 @@ public sealed record SearchEmployeesQuery(
   int PageNumber = EmployeeSearchCriteria.DefaultPageNumber,
   int PageSize = EmployeeSearchCriteria.DefaultPageSize,
   string? EmployeeNumber = null,
-  IReadOnlyCollection<EmployeeStatus>? Statuses = null);
+  IReadOnlyCollection<EmployeeStatus>? Statuses = null,
+  // Optional, and narrowing only — see the note on EmployeeSearchCriteria.DepartmentId.
+  Guid? DepartmentId = null);
 
 public sealed class SearchEmployeesQueryHandler(
   IEmployeeScopeResolver scopeResolver,
@@ -44,7 +46,8 @@ public sealed class SearchEmployeesQueryHandler(
       query.PageNumber,
       query.PageSize,
       query.EmployeeNumber,
-      query.Statuses);
+      query.Statuses,
+      query.DepartmentId);
 
     var page = await employees.SearchEmployeesAsync(scope.Value, criteria, cancellationToken);
 

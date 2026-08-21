@@ -110,6 +110,7 @@ public sealed class StubEmployeeReads : IEmployeeReadService
     EmployeeApiTestHost.EmployeeId,
     EmployeeApiTestHost.CompanyA,
     EmployeeApiTestHost.BranchA,
+    EmployeeApiTestHost.DepartmentA,
     "EMP-00147",
     "Layla Haddad",
     "2990112345678",
@@ -181,6 +182,15 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
     employee.CompanyId = EmployeeApiTestHost.CompanyA;
     employee.BranchId = EmployeeApiTestHost.BranchA;
 
+    employee.StampInitialAssignment(
+      EmployeeApiTestHost.TenantId,
+      EmployeeApiTestHost.CompanyA,
+      EmployeeApiTestHost.BranchA,
+      EmployeeApiTestHost.DepartmentA,
+      "seed",
+      Guid.NewGuid(),
+      new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero));
+
     if (status == EmployeeStatus.Inactive)
     {
       employee.Deactivate(
@@ -220,6 +230,38 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
 
   public Task AppendBranchAssignmentAsync(
     EmployeeBranchAssignment assignment, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+  public Task AppendDepartmentAssignmentAsync(
+    SSAS.HR.Domain.Departments.EmployeeDepartmentAssignment assignment,
+    CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+  // ---- THE DEPARTMENT LOOKUP, ANSWERED BY ROLE RATHER THAN BY A FIXED COMPANY.
+  //
+  // Three distinguishable outcomes, because the create contract has three distinguishable refusals and a
+  // single boolean could not tell them apart:
+  //
+  //   DepartmentA             → Active in WHICHEVER company the caller has established
+  //   DepartmentInactive      → present in that company, but inactive
+  //   DepartmentOtherCompany  → null, exactly as the real query's company predicate would leave it
+  //
+  // DepartmentA deliberately follows the established company instead of being pinned to CompanyA. These
+  // HTTP tests switch companies to prove things about EMPLOYEE NUMBERS and scope, and pinning it would make
+  // every one of them fail for an unrelated reason — a department that does not exist — while appearing to
+  // test what it says. The cross-company refusal keeps its own proof in DepartmentOtherCompany, which is
+  // never resolvable whatever company is established.
+  public Task<DepartmentAssignmentTarget?> FindAssignableDepartmentAsync(
+    Guid companyId, Guid departmentId, CancellationToken cancellationToken = default)
+  {
+    if (departmentId == EmployeeApiTestHost.DepartmentInactive)
+    {
+      return Task.FromResult<DepartmentAssignmentTarget?>(new(departmentId, IsActive: false));
+    }
+
+    return Task.FromResult<DepartmentAssignmentTarget?>(
+      departmentId == EmployeeApiTestHost.DepartmentA || departmentId == EmployeeApiTestHost.DepartmentB
+        ? new(departmentId, IsActive: true)
+        : null);
+  }
 }
 
 // Failure carries whatever the write boundary would have produced, which is how the authorization-versus-

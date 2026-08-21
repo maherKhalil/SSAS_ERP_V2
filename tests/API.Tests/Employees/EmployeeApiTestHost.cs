@@ -23,6 +23,7 @@ using SSAS.Host.API.Authentication;
 using SSAS.Host.API.Authorization;
 using SSAS.Host.API.Configuration;
 using SSAS.HR.API;
+using SSAS.HR.API.Departments;
 using SSAS.HR.API.Employees;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
@@ -76,6 +77,13 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   public static readonly Guid BranchC = Guid.Parse("66666666-6666-6666-6666-666666666666");
   public static readonly Guid EmployeeId = Guid.Parse("77777777-7777-7777-7777-777777777777");
 
+  // FP-007 Phase 3. DepartmentA is Active and in CompanyA; DepartmentInactive and DepartmentOtherCompany
+  // exist so the create contract's refusals can be exercised at the HTTP layer.
+  public static readonly Guid DepartmentA = Guid.Parse("88888888-8888-8888-8888-888888888888");
+  public static readonly Guid DepartmentB = Guid.Parse("bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb");
+  public static readonly Guid DepartmentInactive = Guid.Parse("99999999-9999-9999-9999-999999999999");
+  public static readonly Guid DepartmentOtherCompany = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
   private WebApplication? application;
   private HttpClient? client;
 
@@ -94,6 +102,34 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   public StubUnitOfWork UnitOfWork { get; } = new();
 
   public HttpClient Client => client ?? throw new InvalidOperationException("The test host has not started.");
+
+  // ---- THE ROUTES THIS HOST ACTUALLY MAPPED.
+  //
+  // Read back from the built application rather than from the source, so the inventory guard sees what
+  // routing registered. Because this harness calls the PRODUCTION mapping extensions, a route added to the
+  // module and not mapped here goes missing from the inventory and the guard fails — which is exactly the
+  // gap that let Phase 4 ship a route no test could reach.
+  // HttpMethods is an indexable IReadOnlyList, so it is indexed rather than enumerated (CA1826) — a
+  // Release-only analyzer finding, which is precisely what the Release gate exists to surface.
+  private static string FirstMethodOf(Microsoft.AspNetCore.Routing.RouteEndpoint endpoint)
+  {
+    var methods = endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods;
+
+    return methods is { Count: > 0 } ? methods[0] : "?";
+  }
+
+  public IReadOnlyList<(string Method, string Pattern, string Policy)> MappedRoutes() =>
+  [
+    .. ((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)(application ??
+        throw new InvalidOperationException("The test host has not started."))).DataSources
+      .SelectMany(source => source.Endpoints)
+      .OfType<Microsoft.AspNetCore.Routing.RouteEndpoint>()
+      .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/hr", StringComparison.Ordinal) ?? false)
+      .Select(endpoint => (
+        FirstMethodOf(endpoint),
+        endpoint.RoutePattern.RawText!,
+        endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAuthorizeData>()?.Policy ?? string.Empty))
+  ];
 
   public async Task InitializeAsync()
   {
@@ -143,6 +179,9 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<UpdateEmployeeProfileCommandHandler>();
     builder.Services.AddScoped<TerminateEmployeeCommandHandler>();
     builder.Services.AddScoped<TransferEmployeeCommandHandler>();
+    // FP-007 Phase 4: the change-department route resolves this per request, so the harness registers it
+    // exactly as AddHrInfrastructure does in the Host.
+    builder.Services.AddScoped<ChangeEmployeeDepartmentCommandHandler>();
     builder.Services.AddScoped<ActivateEmployeeCommandHandler>();
     builder.Services.AddScoped<DeactivateEmployeeCommandHandler>();
     builder.Services.AddScoped<GetEmployeeQueryHandler>();
@@ -154,6 +193,10 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     application.UseAuthentication();
     application.UseAuthorization();
     application.MapHrEmployeeEndpoints();
+    // FP-007 Phase 4: the change-department route lives on the employee prefix and is mapped by the
+    // department module, so the harness must map it too — otherwise a test asserting its behaviour would
+    // be describing the harness rather than the Host.
+    application.MapHrEmployeeDepartmentEndpoints();
 
     await application.StartAsync();
     client = application.GetTestClient();

@@ -22,6 +22,211 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("SSAS.HR.Domain.Departments.Department", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("DepartmentId");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NormalizedCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid?>("ParentDepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("StatusChangedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("StatusChangedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("ParentDepartmentId");
+
+                    b.HasIndex("TenantId", "CompanyId", "NormalizedCode")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Departments_TenantId_CompanyId_NormalizedCode");
+
+                    b.HasIndex("TenantId", "CompanyId", "ParentDepartmentId")
+                        .HasDatabaseName("IX_Departments_TenantId_CompanyId_ParentDepartmentId");
+
+                    b.ToTable("Departments", "tenant", t =>
+                        {
+                            t.HasCheckConstraint("CK_Departments_Code_NotBlank", "LEN(LTRIM(RTRIM([Code]))) > 0");
+
+                            t.HasCheckConstraint("CK_Departments_Name_NotBlank", "LEN(LTRIM(RTRIM([Name]))) > 0");
+
+                            t.HasCheckConstraint("CK_Departments_ParentIsNotSelf", "[ParentDepartmentId] IS NULL OR [ParentDepartmentId] <> [DepartmentId]");
+
+                            t.HasCheckConstraint("CK_Departments_Status", "[Status] IN (N'Active', N'Inactive')");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.Departments.DepartmentManager", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("DepartmentId");
+
+                    b.Property<string>("AssignedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("AssignedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId", "CompanyId", "EmployeeId")
+                        .HasDatabaseName("IX_DepartmentManagers_TenantId_CompanyId_EmployeeId");
+
+                    b.ToTable("DepartmentManagers", "tenant");
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.Departments.EmployeeDepartmentAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("EmployeeDepartmentAssignmentId");
+
+                    b.Property<string>("ChangedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("DestinationDepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("EffectiveFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ReasonText")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid?>("SourceDepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationDepartmentId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("SourceDepartmentId");
+
+                    b.HasIndex("TenantId", "CompanyId", "EmployeeId", "EffectiveFromUtc", "Id")
+                        .HasDatabaseName("IX_EmployeeDepartmentAssignments_TenantId_CompanyId_EmployeeId_EffectiveFromUtc_Id");
+
+                    b.ToTable("EmployeeDepartmentAssignments", "tenant", t =>
+                        {
+                            t.HasCheckConstraint("CK_EmployeeDepartmentAssignments_SourceDiffersFromDestination", "[SourceDepartmentId] IS NULL OR [SourceDepartmentId] <> [DestinationDepartmentId]");
+                        });
+                });
+
             modelBuilder.Entity("SSAS.HR.Domain.Employees.Employee", b =>
                 {
                     b.Property<Guid>("Id")
@@ -40,6 +245,9 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
 
                     b.Property<DateTimeOffset>("CreatedUtc")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("EmployeeNumber")
                         .IsRequired()
@@ -113,6 +321,11 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.HasIndex("BranchId");
 
                     b.HasIndex("CompanyId");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("TenantId", "CompanyId", "DepartmentId")
+                        .HasDatabaseName("IX_Employees_TenantId_CompanyId_DepartmentId");
 
                     b.HasIndex("TenantId", "CompanyId", "NormalizedEmployeeNumber")
                         .IsUnique()
@@ -376,6 +589,55 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SSAS.HR.Domain.Departments.Department", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.HR.Domain.Departments.Department", null)
+                        .WithMany()
+                        .HasForeignKey("ParentDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.Departments.DepartmentManager", b =>
+                {
+                    b.HasOne("SSAS.HR.Domain.Employees.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.HR.Domain.Departments.Department", null)
+                        .WithOne()
+                        .HasForeignKey("SSAS.HR.Domain.Departments.DepartmentManager", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.Departments.EmployeeDepartmentAssignment", b =>
+                {
+                    b.HasOne("SSAS.HR.Domain.Departments.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DestinationDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.HR.Domain.Employees.Employee", null)
+                        .WithMany("DepartmentAssignments")
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.HR.Domain.Departments.Department", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("SSAS.HR.Domain.Employees.Employee", b =>
                 {
                     b.HasOne("SSAS.Platform.Domain.Branches.Branch", null)
@@ -387,6 +649,12 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
                         .WithMany()
                         .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.HR.Domain.Departments.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -403,6 +671,8 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.HR.Domain.Employees.Employee", b =>
                 {
                     b.Navigation("BranchAssignments");
+
+                    b.Navigation("DepartmentAssignments");
                 });
 #pragma warning restore 612, 618
         }

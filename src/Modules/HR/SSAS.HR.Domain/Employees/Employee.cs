@@ -22,15 +22,27 @@ namespace SSAS.HR.Domain.Employees;
 // Those are enforced twice: unavailable here by construction, and refused by the shared write boundaries as
 // defence in depth. Getting past one of them is a bug; getting past both is not reachable.
 //
-// There is no DepartmentId, PositionId or ManagerId. BR-HR-0005, BR-HR-0006 and BR-HR-0007 are retained as
-// binding rules whose enforcement is deferred until those aggregates exist (DEC-EMP-0017, DEC-EMP-0018,
-// DEC-EMP-0031) — deferred, not discarded, and no placeholder column stands in for them.
+// There is no PositionId or ManagerId. BR-HR-0006 and BR-HR-0007 are retained as binding rules whose
+// enforcement is deferred until those aggregates exist (DEC-EMP-0018, DEC-EMP-0031) — deferred, not
+// discarded, and no placeholder column stands in for them.
+//
+// ---- DEPARTMENT IS NOW REAL (FP-007 Phase 3, BR-HR-0005).
+//
+// DepartmentId is a FOURTH classification and NOT a fourth ownership dimension. Ownership is tenant,
+// company and branch; a department is org structure within a company. The distinction is load-bearing:
+// a department spans the branches of its company, so it can neither narrow nor widen branch scope, and
+// nothing about a department is consulted when deciding who may see this record.
+//
+// The consequence is that the two move INDEPENDENTLY. A branch transfer leaves DepartmentId untouched; a
+// department change leaves BranchId untouched. Neither operation is expressible as the other.
 public sealed class Employee
   : AggregateRoot<Guid>, IAuditableEntity, ITenantOwnedEntity, ICompanyOwnedEntity, IBranchOwnedEntity
 {
   public const int ActorMaximumLength = 256;
 
   private readonly List<EmployeeBranchAssignment> branchAssignments = [];
+
+  private readonly List<Departments.EmployeeDepartmentAssignment> departmentAssignments = [];
 
   private string normalizedEmployeeNumber = string.Empty;
 
@@ -79,6 +91,17 @@ public sealed class Employee
   // transfer channel; the history in BranchAssignments records how it got here.
   public Guid BranchId { get; set; }
 
+  // ---- THE CURRENT DEPARTMENT, AND WHY ITS SETTER IS PRIVATE WHILE BranchId'S IS NOT.
+  //
+  // BranchId is public-set because `IBranchOwnedEntity` requires it: the branch write boundary stamps it
+  // from trusted server context, and the interface is how it reaches in. DepartmentId has no such boundary
+  // and no such interface — it is supplied by the caller and validated by the application — so there is no
+  // reason for anything outside this aggregate to assign it, and it is private-set accordingly.
+  //
+  // It therefore changes through exactly two paths, both of which append history in the same unit of work:
+  // StampInitialAssignment at creation, and ChangeDepartment thereafter. There is no third.
+  public Guid DepartmentId { get; private set; }
+
   public EmployeeNumber EmployeeNumber { get; private set; }
 
   public string NormalizedEmployeeNumber => normalizedEmployeeNumber;
@@ -118,6 +141,10 @@ public sealed class Employee
 
   // Exposed read-only: history is appended by the aggregate's own operations, never by a caller reaching in.
   public IReadOnlyCollection<EmployeeBranchAssignment> BranchAssignments => branchAssignments;
+
+  // The same guarantee for the department log. Append-only, and appended only from inside this type.
+  public IReadOnlyCollection<Departments.EmployeeDepartmentAssignment> DepartmentAssignments =>
+    departmentAssignments;
 
   // ---- CREATE.
   //
@@ -162,10 +189,22 @@ public sealed class Employee
   //
   // Producing the initial assignment here keeps it in the SAME unit of work as the Employee: both commit or
   // neither does, so an Employee can never be persisted without its history (AC-EMP-0005).
+  //
+  // ---- FP-007 PHASE 3: THE DEPARTMENT ARRIVES THROUGH THE SAME DOOR.
+  //
+  // The initial DEPARTMENT assignment is produced here too, for the identical reason and with the identical
+  // guarantee. The department is validated by the application before this is called — it must exist, be in
+  // this tenant and company, and be Active — and what this method guarantees is narrower and different:
+  // that the column and its first history row are written together or not at all.
+  //
+  // Unlike the branch, DepartmentId is ASSIGNED here rather than stamped by a boundary. Nothing else
+  // stamps it, so if this method did not set it an Employee would commit with an empty department and a
+  // history row claiming otherwise.
   public Result StampInitialAssignment(
     Guid tenantId,
     Guid companyId,
     Guid branchId,
+    Guid departmentId,
     string actor,
     Guid eventId,
     DateTimeOffset occurredUtc)
@@ -175,6 +214,16 @@ public sealed class Employee
       return Result.Failure(EmployeeErrors.BranchHistoryImmutable);
     }
 
+    if (departmentAssignments.Count > 0)
+    {
+      return Result.Failure(EmployeeErrors.DepartmentHistoryImmutable);
+    }
+
+    if (departmentId == Guid.Empty)
+    {
+      return Result.Failure(EmployeeErrors.DepartmentRequired);
+    }
+
     var assignment = EmployeeBranchAssignment.CreateInitial(
       tenantId, companyId, Id, branchId, occurredUtc, actor);
     if (assignment.IsFailure)
@@ -182,7 +231,18 @@ public sealed class Employee
       return Result.Failure(assignment.Error);
     }
 
+    var departmentAssignment = Departments.EmployeeDepartmentAssignment.CreateInitial(
+      tenantId, companyId, Id, departmentId, occurredUtc, actor);
+    if (departmentAssignment.IsFailure)
+    {
+      return Result.Failure(departmentAssignment.Error);
+    }
+
+    // Nothing above this line mutated the aggregate. Both records are built and validated FIRST, so a
+    // failure in the second cannot leave the first appended to a half-stamped employee.
+    DepartmentId = departmentId;
     branchAssignments.Add(assignment.Value);
+    departmentAssignments.Add(departmentAssignment.Value);
 
     RaiseDomainEvent(new EmployeeCreated(
       eventId, occurredUtc, Id, tenantId, companyId, branchId,
@@ -351,6 +411,77 @@ public sealed class Employee
 
     RaiseDomainEvent(new EmployeeTransferred(
       eventId, occurredUtc, Id, TenantId, CompanyId, sourceBranchId, destinationBranchId, reason));
+
+    return Result.Success(assignment.Value);
+  }
+
+  // ---- CHANGE DEPARTMENT (REQ-HR-0102, ADR-026).
+  //
+  // The department counterpart of Transfer, and deliberately its twin: a dedicated operation, never a
+  // property assignment, that moves the current value and appends the record of the move in one step.
+  //
+  // ---- WHAT IT POINTEDLY DOES NOT TOUCH.
+  //
+  // BranchId. An employee who moves from Finance to Operations works at the same location the next morning.
+  // The two dimensions are independent, and the absence of any BranchId reference in this method is the
+  // enforcement of that — there is no rule to check because there is no assignment to guard.
+  //
+  // ---- WHY IT IS PERMITTED WHILE INACTIVE AND REFUSED ONCE TERMINATED.
+  //
+  // Same rule as Transfer, for the same reason: an employee on leave is still employed and may still be
+  // reorganized, while a terminated record is closed and its history must stop moving.
+  //
+  // The DESTINATION's existence, tenant, company and Active status are the APPLICATION's to prove — they
+  // require reading another aggregate, which this type cannot do. What is checked here is what is knowable
+  // from local state alone.
+  public Result<Departments.EmployeeDepartmentAssignment> ChangeDepartment(
+    Guid destinationDepartmentId,
+    string? reasonCode,
+    string? reasonText,
+    string actor,
+    Guid eventId,
+    DateTimeOffset occurredUtc)
+  {
+    if (Status == EmployeeStatus.Terminated)
+    {
+      return Result.Failure<Departments.EmployeeDepartmentAssignment>(EmployeeErrors.InvalidTransition);
+    }
+
+    if (!IsValidActor(actor))
+    {
+      return Result.Failure<Departments.EmployeeDepartmentAssignment>(EmployeeErrors.InvalidActor);
+    }
+
+    if (destinationDepartmentId == Guid.Empty)
+    {
+      return Result.Failure<Departments.EmployeeDepartmentAssignment>(EmployeeErrors.DepartmentRequired);
+    }
+
+    // A move to where the employee already is. Refused rather than silently succeeding, which is the same
+    // answer Transfer gives an unchanged branch — and it is what keeps a no-op from appending a history row
+    // that would describe no movement at all.
+    if (destinationDepartmentId == DepartmentId)
+    {
+      return Result.Failure<Departments.EmployeeDepartmentAssignment>(EmployeeErrors.DepartmentUnchanged);
+    }
+
+    var sourceDepartmentId = DepartmentId;
+
+    var assignment = Departments.EmployeeDepartmentAssignment.CreateChange(
+      TenantId, CompanyId, Id, sourceDepartmentId, destinationDepartmentId, occurredUtc, actor.Trim(),
+      reasonCode, reasonText);
+    if (assignment.IsFailure)
+    {
+      return Result.Failure<Departments.EmployeeDepartmentAssignment>(assignment.Error);
+    }
+
+    // The current department moves and the history records that it moved, together. Neither is observable
+    // without the other, because both land in the same save.
+    DepartmentId = destinationDepartmentId;
+    departmentAssignments.Add(assignment.Value);
+
+    RaiseDomainEvent(new Events.EmployeeDepartmentChanged(
+      eventId, occurredUtc, Id, TenantId, CompanyId, sourceDepartmentId, destinationDepartmentId));
 
     return Result.Success(assignment.Value);
   }

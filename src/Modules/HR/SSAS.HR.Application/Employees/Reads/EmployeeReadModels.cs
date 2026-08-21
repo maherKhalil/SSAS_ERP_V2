@@ -11,10 +11,16 @@ namespace SSAS.HR.Application.Employees.Reads;
 // CompanyId AND BranchId ARE ON EVERY ROW, deliberately. A caller reading across companies or branches needs
 // to know which one each row came from, and surfacing it makes a mis-scoped read visible in its own output
 // rather than only in the query plan.
+//
+// DepartmentId JOINS THEM FROM FP-007 PHASE 3, AND IS NOT A FOURTH SCOPE. It is surfaced for the same
+// practical reason CompanyId and BranchId are — a caller needs to know which department each row is in —
+// but nothing filters visibility by it. The department's own CODE and NAME are deliberately NOT joined in
+// here: that would make an employee read a department read as well, and departments have their own scope.
 public sealed record EmployeeDetail(
   Guid EmployeeId,
   Guid CompanyId,
   Guid BranchId,
+  Guid DepartmentId,
   string EmployeeNumber,
   string FullName,
   string? NationalId,
@@ -33,6 +39,7 @@ public sealed record EmployeeSummary(
   Guid EmployeeId,
   Guid CompanyId,
   Guid BranchId,
+  Guid DepartmentId,
   string EmployeeNumber,
   string FullName,
   DateTimeOffset EmploymentDate,

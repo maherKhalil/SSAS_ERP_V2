@@ -30,7 +30,20 @@ public sealed class HrPermissionCatalogContributor : IPermissionCatalogContribut
     new(HrPermissionNames.CreateEmployees, "Create employees"),
     new(HrPermissionNames.UpdateEmployees, "Update employee profiles, and activate or deactivate employees"),
     new(HrPermissionNames.TransferEmployees, "Transfer employees between branches"),
-    new(HrPermissionNames.TerminateEmployees, "Terminate employees")
+    new(HrPermissionNames.TerminateEmployees, "Terminate employees"),
+
+    // ---- DEPARTMENT (FP-007 Phase 2).
+    //
+    // `Update` names the hierarchy move and manager assignment explicitly, because grouping them under it
+    // was a decision rather than an oversight — the same reason `Update` names activate and deactivate for
+    // employees. An administrator granting this should know it moves org structure, not just labels.
+    new(HrPermissionNames.ViewDepartments,
+      "View departments and the department hierarchy within the caller's authorized company scope"),
+    new(HrPermissionNames.CreateDepartments, "Create departments"),
+    new(HrPermissionNames.UpdateDepartments,
+      "Update department code and name, move departments within the hierarchy, and assign or clear " +
+      "department managers"),
+    new(HrPermissionNames.DeactivateDepartments, "Deactivate and reactivate departments")
   ];
 
   public IReadOnlyCollection<ModulePermissionDefinition> Permissions => Definitions;

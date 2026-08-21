@@ -31,10 +31,13 @@ internal sealed class EmployeeRepository(ITenantDbContextAccessor contextAccesso
     // Tracked, not AsNoTracking: the caller is about to mutate it, and the change tracker is what carries
     // the original BranchId the sanctioned transfer channel matches against.
     //
-    // The branch history is loaded with it so an append lands on a fully-known aggregate rather than one
-    // whose collection would silently look empty.
+    // Both histories are loaded with it so an append lands on a fully-known aggregate rather than one whose
+    // collection would silently look empty — which for the department log matters twice over, because
+    // StampInitialAssignment refuses when it sees existing rows and an unloaded collection would read as
+    // none.
     return await context.Set<Employee>()
       .Include(employee => employee.BranchAssignments)
+      .Include(employee => employee.DepartmentAssignments)
       .SingleOrDefaultAsync(employee => employee.Id == employeeId, cancellationToken);
   }
 
@@ -89,5 +92,40 @@ internal sealed class EmployeeRepository(ITenantDbContextAccessor contextAccesso
     // APPEND ONLY. There is no update and no remove counterpart, here or anywhere: a correction is another
     // transfer, never a rewrite.
     await context.Set<EmployeeBranchAssignment>().AddAsync(assignment, cancellationToken);
+  }
+
+  public async Task AppendDepartmentAssignmentAsync(
+    Domain.Departments.EmployeeDepartmentAssignment assignment,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(assignment);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // Same rule, same absence of any counterpart: a correction is another department change.
+    await context.Set<Domain.Departments.EmployeeDepartmentAssignment>()
+      .AddAsync(assignment, cancellationToken);
+  }
+
+  public async Task<DepartmentAssignmentTarget?> FindAssignableDepartmentAsync(
+    Guid companyId, Guid departmentId, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // ---- THE COMPANY PREDICATE IS THE WHOLE POINT OF THIS QUERY.
+    //
+    // A department in another company simply does not match, so it comes back null and the caller reports
+    // it absent. Loading by identifier alone and comparing companies afterwards would produce the same
+    // decision by a route where forgetting the comparison is possible; here it is not expressible.
+    //
+    // AsNoTracking because this is a fact being checked, not an aggregate being mutated. Tracking the
+    // Department inside an Employee operation would put a second aggregate root into the same unit of work.
+    return await context.Set<Domain.Departments.Department>()
+      .AsNoTracking()
+      .Where(department => department.CompanyId == companyId && department.Id == departmentId)
+      .Select(department => new DepartmentAssignmentTarget(
+        department.Id,
+        department.Status == Domain.Departments.DepartmentStatus.Active))
+      .SingleOrDefaultAsync(cancellationToken);
   }
 }

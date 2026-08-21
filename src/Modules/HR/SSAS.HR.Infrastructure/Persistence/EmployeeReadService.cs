@@ -57,6 +57,7 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
         employee.Id,
         employee.CompanyId,
         employee.BranchId,
+        employee.DepartmentId,
         employee.EmployeeNumber.Value,
         employee.FullName.Value,
         employee.NationalId == null ? null : employee.NationalId.Value,
@@ -94,6 +95,17 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
       query = query.Where(employee => employee.NormalizedEmployeeNumber == normalized);
     }
 
+    // ---- THE DEPARTMENT FILTER IS APPLIED **ON TOP OF** THE SCOPE, NEVER INSTEAD OF IT.
+    //
+    // `query` already carries the tenant, company and branch predicates from Scoped() above, and this only
+    // ever adds a conjunct. There is no branch of code where naming a department replaces or relaxes them,
+    // which is what makes the branch-visibility proof in FP-007 Phase 3 §25 hold structurally rather than
+    // by inspection.
+    if (criteria.DepartmentId is { } departmentId && departmentId != Guid.Empty)
+    {
+      query = query.Where(employee => employee.DepartmentId == departmentId);
+    }
+
     // COUNTED THROUGH THE SAME SCOPED QUERY. A total computed from a wider query would leak the size of the
     // data outside the caller's scope even though none of those rows were returned.
     var totalCount = await query.CountAsync(cancellationToken);
@@ -111,6 +123,7 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
         employee.Id,
         employee.CompanyId,
         employee.BranchId,
+        employee.DepartmentId,
         employee.EmployeeNumber.Value,
         employee.FullName.Value,
         employee.EmploymentDate,

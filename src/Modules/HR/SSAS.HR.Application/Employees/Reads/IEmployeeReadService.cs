@@ -51,7 +51,17 @@ public sealed record EmployeeSearchCriteria(
   string? EmployeeNumber = null,
   // Omitted means Active AND Inactive — both are current employment. Terminated is excluded unless asked
   // for by name, so a routine list does not quietly include people who have left.
-  IReadOnlyCollection<EmployeeStatus>? Statuses = null)
+  IReadOnlyCollection<EmployeeStatus>? Statuses = null,
+  // ---- FP-007 PHASE 3. A NARROWING FILTER, LIKE EVERY OTHER ONE HERE.
+  //
+  // A department spans the branches of its company, so naming one asks about employees across several
+  // branches — but the scope's branch predicate is applied REGARDLESS and independently, so a caller
+  // confined to Riyadh who filters by a company-wide department still sees only Riyadh's members. The
+  // filter cannot reach the employees it does not already authorize; it can only remove more of them.
+  //
+  // A department in another company matches nothing rather than being refused, because the company
+  // predicate has already excluded its employees — so this cannot be used to probe for departments either.
+  Guid? DepartmentId = null)
 {
   public const int DefaultPageNumber = 1;
 

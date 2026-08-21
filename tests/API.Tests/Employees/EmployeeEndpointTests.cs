@@ -114,13 +114,146 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   public async Task A6_Create_rejects_a_spoofed_ownership_field(string field)
   {
     var body = $$"""
-      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","{{field}}":"22222222-2222-2222-2222-222222222222"}
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"88888888-8888-8888-8888-888888888888","{{field}}":"22222222-2222-2222-2222-222222222222"}
       """;
 
     var response = await Send(HttpMethod.Post, Route, CreateToken, body);
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ================================================================================================
+  // A6b — THE DEPARTMENT IS PART OF THE CREATE CONTRACT (FP-007 Phase 3).
+  // ================================================================================================
+  //
+  // CONTRACT GUARDS, NOT A NEW ENDPOINT. Phase 3 adds no department route — Phase 4 owns HTTP wiring. What
+  // is asserted here is that the EXISTING create route now requires a department and refuses the three ways
+  // a department can be unusable, because those refusals reach the wire today whether or not anyone
+  // intended to test them.
+  [Fact]
+  public async Task A6b_Create_without_a_department_is_refused()
+  {
+    const string body = """
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00"}
+      """;
+
+    var response = await Send(HttpMethod.Post, Route, CreateToken, body);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  [Fact]
+  public async Task A6c_Create_into_an_inactive_department_is_refused()
+  {
+    var body = $$"""
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"{{EmployeeApiTestHost.DepartmentInactive}}"}
+      """;
+
+    var response = await Send(HttpMethod.Post, Route, CreateToken, body);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // A department in a company the caller has not established. Refused with the SAME answer an absent
+  // department gets, which is what stops this being a probe for other companies' departments.
+  [Fact]
+  public async Task A6d_Create_into_another_companys_department_is_refused()
+  {
+    var body = $$"""
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"{{EmployeeApiTestHost.DepartmentOtherCompany}}"}
+      """;
+
+    var response = await Send(HttpMethod.Post, Route, CreateToken, body);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ================================================================================================
+  // CHANGE DEPARTMENT (FP-007 Phase 4). ON THE EMPLOYEE PREFIX, UNDER EMPLOYEE UPDATE AUTHORITY.
+  // ================================================================================================
+  //
+  // Phase 3 asserted here that no such route existed. It now does, and that guard has been REPLACED rather
+  // than deleted — it was passing only because this harness did not map the route, so it described the
+  // harness rather than the Host. The host now maps it, and these assert what it actually does.
+  //
+  // The permission is HR.Employees.Update, NOT Transfer: DepartmentId is a classification, not a security
+  // partition (ADR-024), so nothing moves across an authorization boundary.
+  [Fact]
+  public async Task A6e_Change_department_succeeds_with_employee_update_authority()
+  {
+    var response = await Send(
+      HttpMethod.Post,
+      $"{Route}/{EmployeeApiTestHost.EmployeeId}/change-department",
+      UpdateToken,
+      ChangeDepartmentBody);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+  }
+
+  [Fact]
+  public async Task A6f_Change_department_without_the_update_permission_is_forbidden()
+  {
+    var response = await Send(
+      HttpMethod.Post,
+      $"{Route}/{EmployeeApiTestHost.EmployeeId}/change-department",
+      ViewToken,
+      ChangeDepartmentBody);
+
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+  }
+
+  // ---- PERMISSION BLEED, IN THE DIRECTION THIS ROUTE INVITES.
+  //
+  // Department permissions are the sharp probe here: a reader might reasonably assume "it changes a
+  // department, so it needs a department permission". It does not — it changes an EMPLOYEE.
+  [Fact]
+  public async Task A6g_Change_department_with_only_department_permissions_is_forbidden()
+  {
+    var token = host.TokenWith(
+      HrPermissionNames.UpdateDepartments,
+      HrPermissionNames.ViewDepartments,
+      HrPermissionNames.CreateDepartments);
+
+    var response = await Send(
+      HttpMethod.Post,
+      $"{Route}/{EmployeeApiTestHost.EmployeeId}/change-department",
+      token,
+      ChangeDepartmentBody);
+
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+  }
+
+  // An unusable destination is the caller's own argument, so it is a 400 rather than a 404 about the
+  // employee they correctly addressed.
+  [Fact]
+  public async Task A6h_Change_department_into_another_companys_department_is_rejected()
+  {
+    var body = $$"""
+      {"departmentId":"{{EmployeeApiTestHost.DepartmentOtherCompany}}","expectedRowVersion":"AAAAAAAAB9E="}
+      """;
+
+    var response = await Send(
+      HttpMethod.Post, $"{Route}/{EmployeeApiTestHost.EmployeeId}/change-department", UpdateToken, body);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  [Fact]
+  public async Task A6i_Change_department_rejects_an_undeclared_field()
+  {
+    var body = $$"""
+      {"departmentId":"{{EmployeeApiTestHost.DepartmentA}}","branchId":"44444444-4444-4444-4444-444444444444","expectedRowVersion":"AAAAAAAAB9E="}
+      """;
+
+    var response = await Send(
+      HttpMethod.Post, $"{Route}/{EmployeeApiTestHost.EmployeeId}/change-department", UpdateToken, body);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
   }
 
   [Fact]
@@ -737,7 +870,13 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   }
 
   private const string ValidCreateBody = """
-    {"employeeNumber":"EMP-00147","fullName":"Layla Haddad","employmentDate":"2026-03-01T00:00:00+00:00","nationalId":"2990112345678"}
+    {"employeeNumber":"EMP-00147","fullName":"Layla Haddad","employmentDate":"2026-03-01T00:00:00+00:00","nationalId":"2990112345678","departmentId":"88888888-8888-8888-8888-888888888888"}
+    """;
+
+  // The literal is EmployeeApiTestHost.DepartmentA, spelled out for the same reason ValidCreateBody spells
+  // out its own: a const body reads as the wire payload it is.
+  private const string ChangeDepartmentBody = """
+    {"departmentId":"bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb","expectedRowVersion":"AAAAAAAAB9E="}
     """;
 
   private const string ValidUpdateBody = """

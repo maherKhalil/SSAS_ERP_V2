@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.HR.Application.Departments;
+using SSAS.HR.Application.Departments.Reads;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Infrastructure.Persistence;
@@ -26,6 +28,33 @@ public static class ServiceCollectionExtensions
 
     services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 
+    services.AddScoped<IDepartmentRepository, DepartmentRepository>();
+
+    // ---- FP-007 PHASE 2. THE DEPARTMENT APPLICATION SURFACE.
+    //
+    // SCOPED, for the same reason the employee resolver is: everything the resolver consults — the acting
+    // user, the selected company — is per-request, and a longer lifetime would be a cache of authorization
+    // state, which ADR-025 decision 7 forbids.
+    services.AddScoped<IDepartmentScopeResolver, DepartmentScopeResolver>();
+    services.AddScoped<IDepartmentReadService, DepartmentReadService>();
+
+    // The hierarchy lock is scoped because it takes the lock on the REQUEST'S tenant connection and enlists
+    // in the transaction open on it. A singleton would have no connection to speak of.
+    services.AddScoped<IDepartmentHierarchyLock, SqlServerDepartmentHierarchyLock>();
+
+    services.AddScoped<CreateDepartmentCommandHandler>();
+    services.AddScoped<UpdateDepartmentCommandHandler>();
+    services.AddScoped<ChangeDepartmentParentCommandHandler>();
+    services.AddScoped<MoveDepartmentToRootCommandHandler>();
+    services.AddScoped<DeactivateDepartmentCommandHandler>();
+    services.AddScoped<ReactivateDepartmentCommandHandler>();
+    services.AddScoped<AssignDepartmentManagerCommandHandler>();
+    services.AddScoped<ClearDepartmentManagerCommandHandler>();
+
+    services.AddScoped<GetDepartmentQueryHandler>();
+    services.AddScoped<SearchDepartmentsQueryHandler>();
+    services.AddScoped<GetDepartmentChildrenQueryHandler>();
+
     // ---- THE READ SIDE (FP-006C4).
     //
     // The resolver is SCOPED because everything it consults — the acting user, the selected company, the
@@ -38,6 +67,7 @@ public static class ServiceCollectionExtensions
     services.AddScoped<UpdateEmployeeProfileCommandHandler>();
     services.AddScoped<TerminateEmployeeCommandHandler>();
     services.AddScoped<TransferEmployeeCommandHandler>();
+    services.AddScoped<ChangeEmployeeDepartmentCommandHandler>();
 
     services.AddScoped<GetEmployeeQueryHandler>();
     services.AddScoped<SearchEmployeesQueryHandler>();

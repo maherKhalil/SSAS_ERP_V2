@@ -95,6 +95,23 @@ public static class EmployeeApiErrorMapper
 
       // ---- FUNCTIONAL PERMISSION. Discloses nothing about companies or branches, so it is safe to name.
       "Employee.ReadPermissionDenied" => ApiErrors.Forbidden,
+      "Employee.WritePermissionDenied" => ApiErrors.Forbidden,
+
+      // ---- DEPARTMENT (FP-007 Phase 3). ALL FOUR DESCRIBE THE REQUEST, so all four are 400.
+      //
+      // They are safe to distinguish from one another because the domain has ALREADY collapsed the
+      // dangerous distinction: nonexistent, another tenant's and another company's department are one code
+      // before they reach here, so none of these answers can be used to probe for a department outside the
+      // caller's company. What remains — required, unusable, inactive, unchanged — is about the caller's
+      // own request, and each one has a different fix.
+      //
+      // Mapped here even though FP-007 Phase 3 adds no department route: the CREATE route already returns
+      // them, and a code with no arm falls through to a 500 that would disclose by its own strangeness.
+      "Employee.DepartmentRequired" => ApiErrors.RequestInvalid,
+      "Employee.DepartmentNotFound" => ApiErrors.RequestInvalid,
+      "Employee.DepartmentInactive" => ApiErrors.RequestInvalid,
+      "Employee.DepartmentUnchanged" => ApiErrors.RequestInvalid,
+      "Employee.DepartmentHistoryImmutable" => ApiErrors.WriteFailure,
       "Employee.InvalidActor" => ApiErrors.Forbidden,
       "Authorization.Unauthorized" => ApiErrors.Forbidden,
 

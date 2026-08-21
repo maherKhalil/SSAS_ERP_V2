@@ -93,4 +93,41 @@ public static class EmployeeErrors
 
   public static readonly Error InvalidPagination =
     new("Employee.InvalidPagination", "The requested page number or page size is out of range.");
+
+  // ---- DEPARTMENT (FP-007 Phase 3, REQ-HR-0102).
+  //
+  // The functional authority to CHANGE an employee. A department change is an ordinary update rather than a
+  // transfer: it moves nobody across a security partition, so it reuses `HR.Employees.Update` rather than
+  // inventing a permission of its own (DEC-DEP-0018).
+  public static readonly Error WritePermissionDenied =
+    new("Employee.WritePermissionDenied", "The HR employee update permission is required.");
+
+  // ---- ONE ANSWER FOR A DEPARTMENT THAT CANNOT BE USED, WHATEVER THE REASON.
+  //
+  // Nonexistent, in another tenant and in another company all answer identically. Distinguishing them would
+  // turn employee creation into a probe for which departments exist outside the caller's company — the same
+  // reasoning the read surface already applies to companies and branches above.
+  //
+  // INACTIVE IS DELIBERATELY SEPARATE. It describes a department the caller can already see and name, so it
+  // reveals nothing new, and the operator needs to know that reactivating it is the fix rather than
+  // hunting for a department that was never reachable.
+  public static readonly Error DepartmentNotFound =
+    new("Employee.DepartmentNotFound", "The department was not found.");
+
+  public static readonly Error DepartmentInactive =
+    new("Employee.DepartmentInactive", "The department is not active.");
+
+  public static readonly Error DepartmentRequired =
+    new("Employee.DepartmentRequired", "A department is required.");
+
+  // The department-change counterpart of TransferDestinationUnchanged, and a failure for the same reason: a
+  // request to move an employee where they already are is a malformed request, and answering it with
+  // success would either append a history row describing no movement or return a success that did nothing.
+  public static readonly Error DepartmentUnchanged =
+    new("Employee.DepartmentUnchanged", "The destination is the employee's current department.");
+
+  public static readonly Error DepartmentHistoryImmutable =
+    new(
+      "Employee.DepartmentHistoryImmutable",
+      "Employee department history is append-only and cannot be modified.");
 }

@@ -122,8 +122,9 @@ login, matching `EmployeeScopeResolver` and `DepartmentScopeResolver`.
 
 Every new tenant-owned table is covered by the Shared→Dedicated copy manifest through the existing
 model-derived mechanism, with dependency order produced by the foreign-key graph. No hand-maintained ordering
-is introduced. The three sites that pin the current set **by name** are updated in one deliberate act
-(`DEC-POS-0022`).
+is introduced. The sites that pin the current set **by name or by count** are updated in one deliberate act;
+`DEC-POS-0022` carries the authoritative inventory of them, which is **nine sites across eight tests** and not
+the three an earlier draft named.
 
 ### NFR-POS-0305 — No foreign-key cycle is introduced
 

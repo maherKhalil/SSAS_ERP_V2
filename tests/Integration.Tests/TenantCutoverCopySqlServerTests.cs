@@ -811,6 +811,10 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // that pair ordered exactly as Department -> Employee already is. Asserting it now would assert an edge
     // the model does not yet have, and would pass or fail on the sort's tie-breaking rather than on a
     // constraint — a test green for the wrong reason. It arrives with the foreign key that justifies it.
+    //
+    // FORWARD OBLIGATION FOR PHASE 3: add `PositionOf("Position") < PositionOf(Employee)` here in the same
+    // change as the foreign key, and drop the "not ordered against Employee" caveat from FP-008's
+    // `data-model.md` — the claim and the assertion become true together and must move together.
 
     // ---- AND POSITION IS UNORDERED WITH RESPECT TO DEPARTMENT, PERMANENTLY (OD-POS-003).
     //

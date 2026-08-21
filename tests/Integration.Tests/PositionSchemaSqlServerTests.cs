@@ -608,12 +608,8 @@ public sealed class PositionSchemaSqlServerTests
         .UseSqlServer(ConnectionFor(tenantCatalog))
         .Options;
 
-      // THE TENANT IS REAL, and it has to be. `PersistenceDbContext` filters every tenant-owned entity on
-      // `CurrentTenantId.HasValue && entity.TenantId == CurrentTenantId.Value`, and EF evaluates BOTH sides
-      // of that `&&` while extracting query parameters — the short circuit is a C# rule, not an expression
-      // tree one. A null tenant therefore throws `Nullable object must have a value` before a single byte
-      // of SQL is sent. The sibling department fixture can hold a null tenant only because it never queries
-      // an entity through EF at all; this fixture does, in the band test below.
+      // The tenant passed here is REAL and must stay so — see `FixtureTenant` below for why. It also scopes
+      // the band test's read to this fixture's own rows, which is the behaviour under test in production.
       return new TenantDbContext(
         options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
         modelContributors: [new HrTenantModelContributor()]);
@@ -887,6 +883,11 @@ public sealed class PositionSchemaSqlServerTests
       public IReadOnlyCollection<string> Permissions => [];
     }
 
+    // CARRIES A REAL TENANT, unlike the department fixture this was copied from — that one may hold a null
+    // tenant only because it never queries an entity through EF, and this one does. A null here throws
+    // `Nullable object must have a value` out of `PersistenceDbContext`'s tenant filter before any SQL is
+    // sent: EF evaluates both operands of `CurrentTenantId.HasValue && ... == CurrentTenantId.Value` while
+    // extracting query parameters, because `&&` short-circuits in C# and not in an expression tree.
     private sealed class FixtureTenant(Guid tenantId) : ICurrentTenant
     {
       public Guid? TenantId => tenantId;

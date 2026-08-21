@@ -227,18 +227,28 @@ Company → Branch → Department → SalaryGrade → JobGrade → Position → 
 The three terminal assignment tables are siblings, and the copy places them in deterministic table-name
 order.
 
-### The three sites that pin the set by name
+### The sites that pin the set by name
 
-Derivation guarantees the engine cannot **miss** a table. Three assertions guarantee a human **sees** a new
-one, and all three must be updated in one deliberate act (`DEC-POS-0022`, `NFR-POS-0304`):
+Derivation guarantees the engine cannot **miss** a table. A set of assertions guarantees a human **sees** a
+new one, and they must be updated in one deliberate act (`DEC-POS-0022`, `NFR-POS-0304`).
 
-| Site | Today | After FP-008 |
+**`DEC-POS-0022` carries the authoritative inventory** — nine sites across eight tests, with test names — and
+this document deliberately does not repeat it. The first draft of that decision named three, an earlier draft
+of this section repeated the same three, and duplicating a list is how a wrong list survives being corrected
+in one place. The three headline movements are:
+
+| What moves | Before FP-008 | After FP-008 |
 |---|---|---|
-| `C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity` | exact list of **7** entities | **11** — adds `EmployeePositionAssignment`, `JobGrade`, `Position`, `SalaryGrade` |
-| `C6_15_The_copy_order_places_every_principal_before_its_dependents` | Departments before Employees | plus Positions before Employees, and grades before Positions |
-| `TenantRestoreVerificationProviderSqlServerTests` `DROP TABLE` list | **6** tables | **10** — the new copy order read backwards |
+| The manifest's exact entity list | **7** entities | **11** — adds `EmployeePositionAssignment`, `JobGrade`, `Position`, `SalaryGrade` |
+| The derived copy order | Departments before Employees | plus `SalaryGrade → JobGrade → Position`, and the history after both `Position` and `Employee` |
+| The `DROP TABLE` list | **6** tables | **10** — the new copy order read backwards |
 
-The third is the one that has broken twice already in this codebase's history, both times because a new
+**Position is not ordered against Employee in Phase 1**, and the order assertion must not claim it is: nothing
+links the two until Phase 3 gives `Employee` a required `PositionId`, and a topological sort cannot order two
+entities with no path between them. The drop list nonetheless already places `Positions` after `Employees`, so
+the Phase 3 foreign key lengthens that list without inverting a pair inside it.
+
+The drop list is the one that has broken twice already in this codebase's history, both times because a new
 foreign key changed the required order rather than merely lengthening the list. The rule recorded there — *the
 drop list is the cutover copy topological order read backwards* — is the thing to apply, not the current
 answer to copy.

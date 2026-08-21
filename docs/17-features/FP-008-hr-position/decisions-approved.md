@@ -591,14 +591,29 @@ registration**: `TenantCutoverCopyPlan.Build` reflects over the composed model a
 `ITenantOwnedEntity` with a table name, ordering them by a topological sort of the foreign-key graph. There is
 no hand-maintained list to forget.
 
-**But three assertion sites pin the current set by name and must be updated deliberately** — they exist
-precisely so a new tenant-owned entity fails loudly rather than being silently absent:
+**But nine assertion sites across eight tests pin the current set by name or by count and must be updated
+deliberately** — they exist precisely so a new tenant-owned entity fails loudly rather than being silently
+absent:
 
-| Site | What it pins | Today |
-|---|---|---|
-| `TenantCutoverCopySqlServerTests.C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity` | The **exact** entity list | 7 entities |
-| `TenantCutoverCopySqlServerTests.C6_15_The_copy_order_places_every_principal_before_its_dependents` | The topological order | Departments before Employees |
-| `TenantRestoreVerificationProviderSqlServerTests` | The `DROP TABLE` list, **the reverse of the copy order** | 6 tables |
+| # | Site | What it pins | Before FP-008 | After FP-008 Phase 1 |
+|---|---|---|---|---|
+| 1 | `TenantCutoverCopySqlServerTests.C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity` | The **exact** entity list | 7 entities | 11 entities |
+| 2 | `TenantCutoverCopySqlServerTests.C6_15_The_copy_order_places_every_principal_before_its_dependents` | The topological order | Departments before Employees | + `SalaryGrade < JobGrade < Position` and the history's two edges |
+| 3 | `TenantCutoverCopySqlServerTests.Copying_one_tenant_moves_only_that_tenant_and_leaves_its_co_tenant_alone` | `TablesCopied` **and its own second exact entity list** | 7 | 11 |
+| 4 | `TenantCutoverCopySqlServerTests.A_retry_revalidates_completed_tables_and_never_duplicates_them` | First-pass `TablesCopied` | 7 | 11 |
+| 5 | `TenantCutoverCopySqlServerTests.A_retry_revalidates_completed_tables_and_never_duplicates_them` | Second-pass `TablesCopied` — the empty tables recopied on retry | 6 | 10 |
+| 6 | `TenantCutoverCopySqlServerTests.C6_3_To_C6_10_A_real_cutover_carries_the_employee_and_its_whole_history` | `TablesCopied` **and its own third exact entity list** | 7 | 11 |
+| 7 | `TenantCutoverCopySqlServerTests.C6_Retrying_a_completed_copy_verifies_the_hr_tables_instead_of_duplicating_them` | The recopy **pair**: `TablesAlreadyComplete` / `TablesCopied` | 5 / 2 | 5 / 6 |
+| 8 | `TenantCutoverCopySqlServerTests.C6_14_A_contributor_free_plan_silently_omits_both_hr_tables` | The **gap** between the composed and contributor-free manifests, plus one `DoesNotContain` per HR entity | `Count - 5`, 5 clauses | `Count - 9`, 9 clauses |
+| 9 | `TenantRestoreVerificationProviderSqlServerTests.CopyFixture.PrepareTenantSchemaAsync` | The `DROP TABLE` list, **the reverse of the copy order** | 6 tables | 10 tables |
+
+Sites 3–8 are the ones this decision's first draft missed. Two properties of the set make it easy to
+under-count, and both are why the list above is grep-derived rather than remembered: **three separate tests
+carry their own exact entity list** (1, 3, 6 — not one shared constant), and **four sites pin a count that is
+not the manifest size** (5, 7 pin what a retry recopies; 8 pins a difference). Only site 7's first number is
+invariant under a new entity, and only because the four FP-008 tables hold no rows in that fixture — see the
+comment there recording that `Position` joins the row-bearing set in **Phase 3**, when `Employee.PositionId`
+becomes required.
 
 Under `OD-POS-002` option (i) the manifest goes from **7 entities to 11** (`Position`, `JobGrade`,
 `SalaryGrade`, `EmployeePositionAssignment`); under (ii) or (iii) to 10; under (iv) to 9. The derived copy
@@ -611,7 +626,7 @@ Company → Branch → Department → SalaryGrade → JobGrade → Position → 
 ```
 
 and the restore drop list is that sequence read backwards. **SETTLED-BY-PRECEDENT** (`DEC-DEP-0029`,
-`ADR-020`); recorded here so the three sites are edited as one deliberate act rather than discovered one red
+`ADR-020`); recorded here so the sites are edited as one deliberate act rather than discovered one red
 test at a time.
 
 > **Amendment 2026-08-21 — counts resolved.** `OD-POS-002` selected three entities, so the manifest goes
@@ -622,6 +637,20 @@ test at a time.
 > `OD-POS-003` selected the independent reading, so **Position has no edge to Department** and the two are
 > unordered siblings with respect to each other. The copy order above stands as the derived answer; the drop
 > list is it read backwards, and grows from **6 tables to 10**.
+
+> **Amendment 2026-08-21 — the site inventory itself was wrong, and the table above is its correction.**
+> This decision was drafted naming **three** assertion sites. The true manifest-sensitive set is **nine
+> across eight tests**, and Phase 1 discovered the other six as six red tests in the exit gate rather than as
+> one deliberate edit — precisely the failure mode the decision exists to prevent. The inventory has been
+> replaced with a grep-derived list carrying the test names, because the value of this decision is entirely
+> in the completeness of that list: a decision that says "update the three sites" when there are nine is
+> worse than no decision at all, since it converts a search into a false sense of having finished one.
+>
+> The recorded diagnosis, so the next entity addition does not rediscover it: the set is easy to under-count
+> because **the exact entity list is duplicated in three independent tests** rather than shared through one
+> constant, and because **four of the pinned numbers are not the manifest size** — two count what a retry
+> recopies, one counts a difference between two manifests. Anyone reasoning "the manifest went from 7 to 11,
+> so I update the places that say 7" finds three of the nine.
 
 ## Exclusions
 

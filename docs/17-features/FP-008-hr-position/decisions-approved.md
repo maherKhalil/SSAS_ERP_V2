@@ -78,14 +78,18 @@ said was unestablished, which is the outcome it asked for rather than a choice a
 | `DEC-POS-0027` | **The salary band is atomic** | — | **NEW**, ruled 2026-08-21 during Phase 1 |
 | `DEC-POS-0028` | **Rank order is constrained positive in the database** | — | **NEW**, ruled 2026-08-21 during Phase 2 |
 | `DEC-POS-0029` | **The unused `eventId` parameter is left as it is** | — | **NEW**, ruled 2026-08-21 during Phase 2 — a *declined cleanup* |
+| `DEC-POS-0030` | **Free-text search runs against a normalized column** | — | **NEW**, ruled 2026-08-21 during Phase 2 |
+| `DEC-POS-0031` | **The FP-007 department search defect is fixed here** | — | **NEW**, ruled 2026-08-21 during Phase 2 — a *product fix outside this feature* |
 
-**Twenty-nine decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
-eight binding by precedent, and four new decisions — one created by the `OD-POS-001` ruling, one ruled during
-Phase 1 implementation, and two during Phase 2.
+**Thirty-one decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
+eight binding by precedent, and six new decisions — one created by the `OD-POS-001` ruling, one ruled during
+Phase 1 implementation, and four during Phase 2.
 
-**The last three all came from implementation rather than from analysis**, and that is the loop working
-rather than the package having been thin: `DEC-POS-0027` from writing the band, `DEC-POS-0028` from a gap
-Phase 1 reported instead of filling, and `DEC-POS-0029` from a cleanup that was declined on purpose. They are
+**The last five all came from implementation rather than from analysis**, and that is the loop working rather
+than the package having been thin: `DEC-POS-0027` from writing the band, `DEC-POS-0028` from a gap Phase 1
+reported instead of filling, `DEC-POS-0029` from a cleanup that was declined on purpose, and `DEC-POS-0030`
+from a requirement that could not be implemented as written. `DEC-POS-0031` is the one that was not about
+FP-008 at all: writing this feature's search is what revealed that FP-007's had never worked. They are
 gathered under [Rulings made during implementation](#rulings-made-during-implementation).
 
 > **`OD-POS-001` is the ruling to read first**, because it is the one this package could not offer a
@@ -731,3 +735,82 @@ housekeeping task with no feature attached to it.
 *What it is not.* It is not a defect: the parameter cannot be misused, because nothing reads it. It is
 recorded here rather than fixed so that the next reader who notices it finds a decision instead of
 rediscovering the question.
+
+**DEC-POS-0030** — **Free-text search runs against a domain-maintained NORMALIZED COLUMN, never against a
+value-converted property.** Every searchable label gains an upper-invariant, trimmed, binary-collated column
+maintained by the aggregate exactly where its normalized code is maintained, and search filters are expressed
+as `EF.Functions.Like(NormalizedX, pattern, ESCAPE)` with the caller's wildcards escaped. **NEW**, ruled
+2026-08-21 during Phase 2.
+
+*What produced it.* `FR-POS-0203` asks for a title-or-code fragment filter. `Position.Title` is mapped through
+a value converter, and three formulations were tried against real SQL Server before concluding that none can
+work:
+
+| Formulation | Result |
+|---|---|
+| `item.Title.Value.Contains(text)` | the whole `Where` fails to translate |
+| `EF.Functions.Like(item.Title.Value, "%…%")` | the same |
+| `EF.Functions.Like(EF.Property<string>(item, "Title"), …)` | `InvalidCastException` — the converter is applied to the *pattern* |
+
+> **THE RULE OF THUMB THIS INCIDENT LEAVES BEHIND.** A value-converted property translates in a **projection**
+> and not in a **predicate**. A read service may freely `Select` one; it may never `Where` on one. That single
+> sentence is what tells the next read service which side of the line it is on — and it explains why the
+> defect below hid for a whole feature, since the same file projects the same property correctly a few lines
+> away.
+
+*What the pattern is, and what precedent it follows.* Nothing new: the product already stores a normalized
+plain-string shadow of every value-converted identifier — `NormalizedCode` (`DEC-DEP-0004`, `DEC-DEP-0007`),
+`NormalizedEmployeeNumber`, `NormalizedCompanyCode` — precisely so SQL Server can be authoritative over a
+value the CLR type owns. Labels join that pattern for a different reason: an identifier's normalized form
+decides **identity** and backs a unique index, while a label's decides **nothing** and backs no index at all.
+
+*Columns added.* `Positions.NormalizedTitle`, `JobGrades.NormalizedName`, `SalaryGrades.NormalizedName`,
+`Departments.NormalizedName` — the additive migration `AddHrSearchNormalizedLabels`, which adds each column
+nullable, backfills it from the display column in SQL, then tightens it to `NOT NULL`.
+
+> **THE HOUSE PATTERN FOR ADDING A REQUIRED DERIVED COLUMN TO A POPULATED TABLE.**
+> **Add nullable → backfill in SQL → tighten to `NOT NULL`**, never `AddColumn(nullable: false,
+> defaultValue: "")`.
+>
+> The scaffolded default form is what `dotnet ef` emits by default and it is a trap: it SUCCEEDS on a
+> populated table, leaves every pre-existing row holding the default, and fails nothing — so a search column
+> added that way silently makes every existing row unfindable, and a migration that "worked" is the evidence
+> nobody looks past. The next required column added to a populated table will meet the same scaffold output;
+> the three-step form is what to write instead, factored into one helper so a fourth table cannot lose the
+> middle step.
+
+*No index, deliberately.* The label half of the filter is a CONTAINS, so the pattern begins with a wildcard
+and no B-tree index can seek on it. An index would be scanned rather than sought and would read as due
+diligence while buying nothing. Prefix or full-text search, if ever required, is a different index and a
+different decision.
+
+*Wildcards in user input are literal characters.* `%`, `_` and `[` are escaped and the pattern carries an
+explicit `ESCAPE`; the escape character is escaped first, since replacing `%` before `\` would double an
+escape and match nothing. `]` is not escaped because it is only special inside a character class, and no class
+can open. Tested with a record whose label contains each character, because the failure mode is quiet — an
+unescaped `%` returns the entire scope, which looks like a search that works.
+
+*Rejected alternatives.* `FromSql` (destroys composability with the scope predicate, the status filter and
+paging), client evaluation (loads the whole scoped set to page it, which is a correctness problem rather than
+a performance one), and remapping the value objects as EF complex types (a cross-cutting mapping change to
+types FP-007 already shipped against).
+
+**DEC-POS-0031** — **The FP-007 department search defect is fixed in this branch rather than deferred.**
+`DepartmentReadService.SearchAsync` filtered on `Name.Value.Contains(text)` and therefore threw
+`InvalidOperationException` on **every** search carrying a `searchText`, from FP-007 until FP-008 Phase 2.
+**NEW**, ruled 2026-08-21 during Phase 2.
+
+*How it was found.* Not by a test — no test passed a `searchText`. FP-008 wrote the same filter for positions,
+ran it, and got the same exception; a temporary probe against the department fixture then confirmed the
+shipped path throws.
+
+*Why it was fixed here rather than in a hotfix cycle.* The fix **is** `DEC-POS-0030`'s pattern, so deferring
+it would have meant writing the mechanism twice and shipping a known-broken search in the meantime. The
+architect authorized the product change explicitly under the class-(b) rule, which otherwise forbids a coder
+touching shipped product code on their own judgement.
+
+*What was added with it.* The coverage whose absence let it ship: found, not-found, case-insensitivity,
+wildcard-escape, and a proof that a text filter never reaches outside the company scope. `EmployeeReadService`
+was audited at the same time and is **clear** — it filters `NormalizedEmployeeNumber` with `==` on a plain
+column and has no free-text name search at all — and its uncovered filter branch gained tests rather than a
+discarded probe.

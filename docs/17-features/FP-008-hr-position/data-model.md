@@ -27,6 +27,7 @@ tenant catalog, so every constraint below is intra-catalog.
 | `Code` | `nvarchar(32)` | NO | User-entered, as displayed |
 | `NormalizedCode` | `nvarchar(32)` | NO | Binary collation, backs the uniqueness index |
 | `Title` | `nvarchar(128)` | NO | Not unique |
+| `NormalizedTitle` | `nvarchar(128)` | NO | Binary collation. **Search only** (`DEC-POS-0030`) — upper-invariant trimmed `Title`, maintained by the domain, backing no index and no uniqueness rule |
 | `JobGradeId` | `uniqueidentifier` | YES | FK → `tenant.JobGrades`, `RESTRICT`. Null until the position is graded |
 | `Status` | `nvarchar(32)` | NO | Binary collation; `Active` \| `Inactive` |
 | `StatusChangedUtc` | `datetimeoffset` | NO | |
@@ -51,6 +52,12 @@ to keep two copies of that fact in step.
 | `UX_Positions_TenantId_CompanyId_NormalizedCode` | `TenantId, CompanyId, NormalizedCode` | UNIQUE — `BRULE-POS-0004` |
 | `IX_Positions_TenantId_CompanyId_Status` | `TenantId, CompanyId, Status` | Scoped list; leading keys match the mandatory predicate order (`NFR-POS-0301`) |
 | `IX_Positions_TenantId_CompanyId_JobGradeId` | `TenantId, CompanyId, JobGradeId` | Grade filter and the `BRULE-POS-0015` dependent check |
+
+**There is deliberately no index on `NormalizedTitle`.** The title half of the search is a CONTAINS, so its
+`LIKE` pattern begins with a wildcard and no B-tree index can seek on it — SQL Server would scan the index
+instead of the table and save nothing. The same holds for the two grade ladders' `NormalizedName`. Recorded as
+a decision rather than left as an omission, because an index here would read as due diligence
+(`DEC-POS-0030`).
 
 ### Check constraints
 
@@ -83,6 +90,7 @@ audit stamps, rowversion — plus:
 | `MinimumAmount` | `decimal(19,4)` | YES | **On `SalaryGrades` only.** Informational band (`OD-POS-004`) |
 | `MidpointAmount` | `decimal(19,4)` | YES | as above |
 | `MaximumAmount` | `decimal(19,4)` | YES | as above |
+| `NormalizedName` | `nvarchar(128)` | NO | Binary collation. **Search only** (`DEC-POS-0030`), on both ladders |
 
 | Constraint | Definition |
 |---|---|

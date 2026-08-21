@@ -159,14 +159,17 @@ public sealed class StubEmployeeReads : IEmployeeReadService
     return Task.FromResult(PositionHistory);
   }
 
-  // Records the scope like every other read here. The count itself is not what these API tests are about;
-  // that it cannot be asked without a scope is.
+  // The holder count the position representation composes. Seeded by a test so the two `employeeCount`
+  // cases — a number when the caller has an employee scope, null when they do not — can be told apart by
+  // the VALUE rather than by whether the stub was reached.
+  public int PositionHolderCount { get; set; }
+
   public Task<int> CountEmployeesByPositionAsync(
     EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default)
   {
     LastScope = scope;
 
-    return Task.FromResult(0);
+    return Task.FromResult(PositionHolderCount);
   }
 }
 

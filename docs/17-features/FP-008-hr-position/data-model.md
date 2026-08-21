@@ -87,8 +87,21 @@ audit stamps, rowversion — plus:
 | Constraint | Definition |
 |---|---|
 | `UX_JobGrades_TenantId_CompanyId_RankOrder` | UNIQUE `(TenantId, CompanyId, RankOrder)` |
+| `CK_JobGrades_RankOrder_Positive` | `[RankOrder] > 0` — **added 2026-08-21, `DEC-POS-0028`** |
+| `CK_SalaryGrades_RankOrder_Positive` | `[RankOrder] > 0` — **added 2026-08-21, `DEC-POS-0028`** |
 | `CK_SalaryGrades_Amounts_NonNegative` | all three `>= 0` when present |
 | `CK_SalaryGrades_Amounts_Ordered` | `Minimum <= Midpoint AND Midpoint <= Maximum` when all present |
+| `CK_SalaryGrades_Band_Atomic` | all three amounts null, or all three present (`DEC-POS-0027`) |
+
+> **Amendment 2026-08-21 — the rank checks were added by ruling, and the sequence is worth keeping.**
+> `BRULE-POS-0007` has always required a positive rank, and Phase 1 enforced it in the aggregate alone
+> because this list named no rank constraint — adding an unlisted one would have been filling a gap the
+> specification did not leave. Phase 1 **reported** the consequence instead, with a test asserting that a
+> direct SQL insert could write a rank of zero. The architect ruled the constraint in, Phase 2 added it as
+> the additive migration `AddHrGradeRankConstraint`, and that test now asserts the opposite.
+>
+> This is the intended loop: the specification is authority, a gap in it is reported rather than filled, and
+> the ruling that closes it is recorded where the next reader will look — here, beside the constraint.
 
 **The amount columns are nullable, and the reason originally given for that is discharged.** The draft argued
 that `OD-POS-001` Option A would have to seed a synthetic grade with no honest minimum or maximum, so a

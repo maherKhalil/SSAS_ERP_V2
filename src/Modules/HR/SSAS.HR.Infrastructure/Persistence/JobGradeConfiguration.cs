@@ -28,6 +28,14 @@ public sealed class JobGradeConfiguration : IEntityTypeConfiguration<JobGrade>
       table.HasCheckConstraint("CK_JobGrades_Status", "[Status] IN (N'Active', N'Inactive')");
       table.HasCheckConstraint("CK_JobGrades_Code_NotBlank", "LEN(LTRIM(RTRIM([Code]))) > 0");
       table.HasCheckConstraint("CK_JobGrades_Name_NotBlank", "LEN(LTRIM(RTRIM([Name]))) > 0");
+
+      // ---- RANK IS POSITIVE, AND THE DATABASE SAYS SO TOO (BRULE-POS-0007, ruled 2026-08-21).
+      //
+      // Phase 1 left this to the domain alone because the package's constraint list for this table did not
+      // name it, and adding an unlisted constraint would have been filling a gap the specification did not
+      // leave. The gap was reported and ruled: a direct SQL insert could write a rank of zero, and a rule
+      // the database does not know is a rule that holds only while every writer goes through the domain.
+      table.HasCheckConstraint("CK_JobGrades_RankOrder_Positive", "[RankOrder] > 0");
     });
 
     builder.HasKey(grade => grade.Id);

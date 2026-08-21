@@ -416,15 +416,24 @@ public sealed class PositionSchemaSqlServerTests
     Assert.Equal(1, await fixture.ScalarAsync("SELECT COUNT(*) FROM [tenant].[SalaryGrades]"));
   }
 
-  // ---- AND THE RANK IS NOT CONSTRAINED TO BE POSITIVE **IN THE DATABASE**, DELIBERATELY.
+  // ---- AND THE RANK IS POSITIVE IN BOTH PLACES (BRULE-POS-0007, ruled 2026-08-21).
   //
-  // `BRULE-POS-0007` requires a positive rank and the aggregate enforces it. The package's constraint list
-  // for these tables does NOT include a rank check, and adding an unlisted constraint would be filling a gap
-  // the specification did not leave. The consequence is asserted rather than left to be discovered: a direct
-  // SQL insert CAN write a zero rank, and only the application path refuses it.
-  [Fact]
+  // ================================================================================================
+  // THIS TEST USED TO ASSERT THE OPPOSITE, AND THE REVERSAL IS THE RECORD OF A RULING.
+  // ================================================================================================
+  //
+  // Phase 1 shipped it as `..._refused_by_the_domain_and_accepted_by_the_database`, asserting that a direct
+  // SQL insert COULD write a zero rank. That was not an oversight: the package's constraint list for these
+  // tables named no rank check, and adding an unlisted constraint would have been filling a gap the
+  // specification did not leave. The gap was reported instead, and the architect ruled the constraint in.
+  //
+  // `AddHrGradeRankConstraint` closes it, so the assertion inverts: the domain refuses it AND the database
+  // refuses it, and the two statements of one rule now cover both the application path and direct SQL.
+  [Theory]
+  [InlineData(0)]
+  [InlineData(-1)]
   [Trait("Decision", "DEC-POS-0006")]
-  public async Task A_non_positive_rank_is_refused_by_the_domain_and_accepted_by_the_database()
+  public async Task A_non_positive_rank_is_refused_by_the_domain_and_by_the_database(int rankOrder)
   {
     await using var fixture = await PositionFixture.CreateAsync();
 
@@ -433,16 +442,39 @@ public sealed class PositionSchemaSqlServerTests
       JobGrade.Create(
         JobGradeCode.Create("G0").Value,
         JobGradeName.Create("Grade 0").Value,
-        rankOrder: 0,
+        rankOrder,
         salaryGradeId: null,
         "tester",
         Guid.NewGuid(),
         DateTimeOffset.UtcNow).Error);
 
-    await fixture.InsertJobGradeAsync("G0", "Grade 0", 0);
+    var jobGradeFailure = await Assert.ThrowsAsync<SqlException>(() =>
+      fixture.InsertJobGradeAsync("G0", "Grade 0", rankOrder));
 
-    Assert.Equal(1, await fixture.ScalarAsync(
-      "SELECT COUNT(*) FROM [tenant].[JobGrades] WHERE [RankOrder] = 0"));
+    Assert.Contains(
+      "CK_JobGrades_RankOrder_Positive", jobGradeFailure.Message, StringComparison.Ordinal);
+
+    // ---- BOTH LADDERS, because the constraint was added to both and one of them regressing silently is
+    // exactly what a single-ladder assertion would allow.
+    Assert.Equal(
+      PositionErrors.InvalidRankOrder,
+      SalaryGrade.Create(
+        SalaryGradeCode.Create("S0").Value,
+        SalaryGradeName.Create("Band 0").Value,
+        rankOrder,
+        band: null,
+        "tester",
+        Guid.NewGuid(),
+        DateTimeOffset.UtcNow).Error);
+
+    var salaryGradeFailure = await Assert.ThrowsAsync<SqlException>(() =>
+      fixture.InsertSalaryGradeAsync("S0", "Band 0", rankOrder, "NULL", "NULL", "NULL"));
+
+    Assert.Contains(
+      "CK_SalaryGrades_RankOrder_Positive", salaryGradeFailure.Message, StringComparison.Ordinal);
+
+    Assert.Equal(0, await fixture.ScalarAsync("SELECT COUNT(*) FROM [tenant].[JobGrades]"));
+    Assert.Equal(0, await fixture.ScalarAsync("SELECT COUNT(*) FROM [tenant].[SalaryGrades]"));
   }
 
   // ================================================================================================

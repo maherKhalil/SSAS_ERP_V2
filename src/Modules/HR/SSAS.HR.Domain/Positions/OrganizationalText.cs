@@ -61,8 +61,9 @@ internal static class OrganizationalText
     // width, the cost is one comparison, and a future runtime or a change to the normalization rule could
     // make it reachable. It is documented as unreachable rather than left to imply a case that occurs.
     //
-    // `DepartmentCode` carries the same guard with a comment stating that uppercasing "can lengthen a string
-    // in some cultures". That is not true of .NET's invariant casing; the guard there is defensive too.
+    // `DepartmentCode` carries the same guard and used to carry the same incorrect claim; it was corrected
+    // to this wording by ruling in FP-008 Phase 2. `EmployeeNumber` still carries it, and is reported rather
+    // than edited — the ruling named the department code.
     if (candidateNormalized.Length > maximumLength)
     {
       return false;

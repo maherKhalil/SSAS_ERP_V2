@@ -76,10 +76,17 @@ said was unestablished, which is the outcome it asked for rather than a choice a
 | `DEC-POS-0025` | No headcount or establishment control | PROPOSED | **APPROVED** 2026-08-21 — ratified as drafted |
 | `DEC-POS-0026` | **The migration asserts the operational fact** | — | **NEW**, ruled 2026-08-21 with `OD-POS-001` |
 | `DEC-POS-0027` | **The salary band is atomic** | — | **NEW**, ruled 2026-08-21 during Phase 1 |
+| `DEC-POS-0028` | **Rank order is constrained positive in the database** | — | **NEW**, ruled 2026-08-21 during Phase 2 |
+| `DEC-POS-0029` | **The unused `eventId` parameter is left as it is** | — | **NEW**, ruled 2026-08-21 during Phase 2 — a *declined cleanup* |
 
-**Twenty-seven decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
-eight binding by precedent, and two new decisions — one created by the `OD-POS-001` ruling, one ruled during
-Phase 1 implementation.
+**Twenty-nine decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
+eight binding by precedent, and four new decisions — one created by the `OD-POS-001` ruling, one ruled during
+Phase 1 implementation, and two during Phase 2.
+
+**The last three all came from implementation rather than from analysis**, and that is the loop working
+rather than the package having been thin: `DEC-POS-0027` from writing the band, `DEC-POS-0028` from a gap
+Phase 1 reported instead of filling, and `DEC-POS-0029` from a cleanup that was declined on purpose. They are
+gathered under [Rulings made during implementation](#rulings-made-during-implementation).
 
 > **`OD-POS-001` is the ruling to read first**, because it is the one this package could not offer a
 > recommendation for. The answer was not chosen from the tabled options — it was produced by **establishing
@@ -681,3 +688,46 @@ rather than left implicit.
 > implicit is confirmed: a Position is a **job definition**, and any number of employees may hold one
 > (`AC-POS-0064`, `TS-POS-0066`). The single-budgeted-seat reading is not the owner's meaning, so the model
 > stands as drafted.
+
+## Rulings made during implementation
+
+Decisions created after approval, by architect ruling, in response to something implementation found. Each
+names what was found, so the next reader can see that the package was corrected rather than departed from.
+
+**DEC-POS-0028** — **A grade's `RankOrder` is constrained to be positive in the DATABASE as well as in the
+domain.** `CK_JobGrades_RankOrder_Positive` and `CK_SalaryGrades_RankOrder_Positive`, both `[RankOrder] > 0`,
+delivered as the additive migration `AddHrGradeRankConstraint`. **NEW**, ruled 2026-08-21 during Phase 2.
+
+*What produced it.* `BRULE-POS-0007` has always required a positive rank, and Phase 1 enforced it in
+`JobGrade.Create` and `SalaryGrade.Create`. It added no check constraint, because
+[`data-model.md`](data-model.md)'s constraint list for those tables named none and adding an unlisted
+constraint would have been filling a gap the specification did not leave. Phase 1 reported the gap and
+asserted its consequence in a test: a direct SQL insert could write a rank of zero, and only the application
+path refused it.
+
+*Why the ruling went the way it did.* A rule the database does not know is a rule that holds only while every
+writer goes through the domain — and the cutover copy engine, the restore path and any support script are
+writers that do not. The constraint costs nothing and needs no backfill, because no row written through the
+application can violate it.
+
+*What it changed.* `A_non_positive_rank_is_refused_by_the_domain_and_accepted_by_the_database` became
+`..._and_by_the_database`, over both ladders and both `0` and `-1`. A test that asserted an absence now
+asserts a presence, which is the honest record of a rule arriving.
+
+**DEC-POS-0029** — **The unused `eventId` parameter on the three `Create` factories is LEFT AS IT IS.**
+`Position.Create`, `JobGrade.Create` and `SalaryGrade.Create` each accept a `Guid eventId` they never use;
+the identifier that reaches the created event is generated in `StampCreated`. **NEW**, ruled 2026-08-21
+during Phase 2 — a **declined cleanup**, recorded so the absence of a change reads as a decision.
+
+*What produced it.* Phase 1 reported the parameter as dead, noting it mirrors `Department.Create`, which
+carries the same unused parameter for the same reason.
+
+*Why it stands.* Consistency over cleanup. The three factories match the established shape of every other
+aggregate factory in HR, and a reader who knows one knows the rest. Removing it here would leave `Department`
+alone in carrying it and would make the position aggregates the odd ones out — trading a harmless parameter
+for a real inconsistency. If it is ever removed it should be removed everywhere, in one change, which is a
+housekeeping task with no feature attached to it.
+
+*What it is not.* It is not a defect: the parameter cannot be misused, because nothing reads it. It is
+recorded here rather than fixed so that the next reader who notices it finds a decision instead of
+rediscovering the question.

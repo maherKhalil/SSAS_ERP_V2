@@ -45,6 +45,10 @@ public sealed class SalaryGradeConfiguration : IEntityTypeConfiguration<SalaryGr
       table.HasCheckConstraint("CK_SalaryGrades_Code_NotBlank", "LEN(LTRIM(RTRIM([Code]))) > 0");
       table.HasCheckConstraint("CK_SalaryGrades_Name_NotBlank", "LEN(LTRIM(RTRIM([Name]))) > 0");
 
+      // ---- RANK IS POSITIVE (BRULE-POS-0007, ruled 2026-08-21). See `JobGradeConfiguration` for why this
+      // arrived in Phase 2 rather than with the table.
+      table.HasCheckConstraint("CK_SalaryGrades_RankOrder_Positive", "[RankOrder] > 0");
+
       // ---- ALL THREE, OR NONE (DEC-POS-0027).
       table.HasCheckConstraint(
         "CK_SalaryGrades_Band_Atomic",

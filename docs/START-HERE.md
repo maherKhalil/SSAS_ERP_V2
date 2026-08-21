@@ -264,6 +264,10 @@ The **Branch foundation** (branch persistence, lifecycle, mandatory user branch 
 
 **FP-006 HR Employee is delivered and merged.** `Employee` is the first production `IBranchOwnedEntity` and the first production `ICompanyOwnedEntity`, so the `ADR-023` decisions that were structurally implemented but not runtime-proven are now proven against real SQL: the `ADR-023` LOW-1 obligations are closed by `tests/Integration.Tests/EmployeeBoundarySqlServerTests.cs`, and `ADR-023` decision 22 and `ADR-025` decision 10 are closed by executable guards in `tests/Architecture.Tests/EmployeeReadScopeArchitectureTests.cs` and `tests/Architecture.Tests/CompanyOwnershipArchitectureTests.cs`.
 
+**FP-007 HR Department is delivered and merged** (PR #45). `Department` is the product's first hierarchical aggregate and the first record that takes one ownership dimension while deliberately refusing another — it is company-owned and **not** branch-owned, and an architecture guard asserts that absence. Its architecture is recorded in `ADR-026`. `Employee` now carries a mandatory `DepartmentId` with append-only history, and the Shared→Dedicated cutover manifest covers seven tenant-owned entities, derived by reflection rather than declared.
+
+**FP-008 HR Position is in analysis and is not approved.** `docs/17-features/FP-008-hr-position/` is a draft package with six open owner decisions (`OD-POS-001` … `OD-POS-006`) and no production code. `BR-HR-0006` ("every employee must have one active position") remains **binding and unrealized** until they are answered. `ADR-027` is drafted alongside it and is conditional on `OD-POS-004`; if that decision defers money, `ADR-027` should be withdrawn rather than left standing.
+
 Do not resume completed work on the basis of an older "current sprint" heading. The repository state and the approved Feature Packages are authoritative for what has been built and what comes next.
 
 ---

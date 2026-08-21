@@ -34,3 +34,4 @@ Every significant architectural decision must be documented before implementatio
 | ADR-024 | Employee Branch Assignment and Transfer Model | Proposed |
 | ADR-025 | Company Execution Context and Authorization | Proposed |
 | ADR-026 | HR Organizational Structure and Department Hierarchy | Proposed |
+| ADR-027 | Monetary Value Representation and Cross-Module Value-Object Reuse | Proposed |

@@ -33,6 +33,26 @@ depends_on:
 > classified in [`decisions-approved.md`](decisions-approved.md) as SETTLED-BY-PRECEDENT (with the citation),
 > PROPOSED, or OWNER-DECISION-REQUIRED. Nothing was settled by resemblance to FP-007.
 
+## As built
+
+> **FP-008 is implemented across four phases on `codex/fp-008-position-phase-1`.** This package keeps
+> `status: Approved for Implementation` by convention — the specification is what was approved, and it is not
+> rewritten after the fact. What changed during implementation is recorded IN CONTENT: as-built notes beside
+> the statements they qualify, and eleven new `DEC-POS` decisions covering every question the analysis did
+> not answer.
+>
+> | Phase | What shipped |
+> |---|---|
+> | 1 | Domain and persistence for `Position`, `JobGrade`, `SalaryGrade` and the append-only assignment; four tables; the E3 manifest 7 → 11 |
+> | 2 | Application operations, twelve permissions, three read scopes; the ruled search mechanism (`DEC-POS-0030`) and the FP-007 search fix (`DEC-POS-0031`) |
+> | 3 | `Employee.PositionId` `NOT NULL` with the fail-loud migration (`DEC-POS-0026`), `ChangePosition`, and the cutover edge that finally orders Positions before Employees |
+> | 4 | Twenty HTTP routes, the two composed wire fields, and `FR-POS-0212`'s read path |
+>
+> **Eleven of the package's thirty-six decisions came from implementation rather than analysis.** That is the
+> honest ratio: the analysis settled the shape, and building it found the questions the shape did not answer.
+> Each was reported and ruled rather than filled in — which is the process this package was written to
+> exercise, and the reason the record of what changed is readable at all.
+
 ## The rulings
 
 | Owner decision | Ruling (2026-08-21) |

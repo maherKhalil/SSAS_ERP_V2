@@ -127,3 +127,26 @@ migration runs and `Employee.PositionId` is `NOT NULL` in a real catalog — and
 the ruling that licenses it is an operational fact, which a migration must verify rather than trust. Until
 `TS-POS-0043` is green against real SQL, this row records a design that satisfies the rule, not a system that
 does.
+
+---
+
+## As built (FP-008 Phase 4)
+
+> **`BR-HR-0006` IS NOW REALIZED IN A DATABASE, and the row above can be read in the past tense.**
+> `TS-POS-0043` is green against real SQL Server: `AddEmployeePosition` refuses a database holding Employee
+> rows with the `DEC-POS-0026` message, writes nothing, and re-evaluates on the next run. The four proofs
+> live in `EmployeePositionMigrationSqlServerTests`.
+
+| Added row | Where it is proven | Criteria |
+|---|---|---|
+| `FR-POS-0212` — read an employee's position history | `GetEmployeePositionHistoryQueryHandler`, route `GET /api/hr/employees/{id}/position-history`, inventory row | AC-POS-0068 |
+| `DEC-POS-0034` — `employeeCount` semantics | `TS-POS-0070` | AC-POS-0066 |
+| `DEC-POS-0035` — the currency seam | `TS-POS-0071` | AC-POS-0067, AC-POS-0022 |
+| `DEC-POS-0030` — search over normalized columns | `TS-POS-0072`-adjacent search tests in `PositionApplicationSqlServerTests` and `DepartmentApplicationSqlServerTests` | — |
+| `DEC-POS-0031` — the FP-007 search fix | `DepartmentApplicationSqlServerTests` search set | — |
+
+**`FR-POS-0212` was missing from the implementation until Phase 4 and this matrix did not show it.** The
+matrix maps requirements to tests, and a requirement with no test row reads as untested rather than as
+unbuilt — the two are different failures and only one of them is visible here. Step 0's route reconciliation
+found it by pairing handlers against routes, which is a check this document cannot perform. Recorded so the
+next package's matrix is not trusted to catch the same shape of gap.

@@ -154,3 +154,23 @@ Three more exist because of specific defects this codebase has already produced,
 
 A green suite that omits these three would prove the same things FP-006's and FP-007's green suites proved
 immediately before each of those defects shipped.
+
+## As built (FP-008 Phase 4)
+
+The scenarios below were added while building the HTTP surface, and each exists because the package did not
+already answer the question it asks.
+
+| ID | Kind | Scenario | Criteria |
+|---|---|---|---|
+| TS-POS-0070 | P | `employeeCount` is a NUMBER for a caller holding `HR.Employees.View`, and **present and `null`** for one who does not. Both halves asserted separately: the property exists, and the value is null rather than `0` | AC-POS-0066 |
+| TS-POS-0071 | P | Reading a salary grade echoes the owning Company's `BaseCurrencyCode`; sending `currencyCode` on a write is rejected as an unknown property | AC-POS-0067, AC-POS-0022 |
+| TS-POS-0072 | P | Every one of the twenty routes refuses an unauthenticated caller (401), a caller with no permission (403), and — the bleed case — a caller holding every OTHER HR permission (403) | AC-POS-0041, AC-POS-0042 |
+| TS-POS-0073 | P | The pay-band separation, **both directions**: `HR.Positions.View` cannot read a salary grade, and `HR.SalaryGrades.View` cannot read a position | AC-POS-0045 |
+| TS-POS-0074 | P | Scoped absence is `*.not_found` on all three families, and each answers in its OWN problem-code namespace | AC-POS-0042 |
+| TS-POS-0075 | P | A rank collision on a grade answers `job_grade.rank_conflict` and not a code conflict — the two unique indexes are not interchangeable | AC-POS-0009 |
+| TS-POS-0076 | A | The route inventory is exactly 41, pinned by pattern and permission, across all three harnesses | AC-POS-0068 |
+
+**`TS-POS-0060`'s warning proved worth heeding.** The inventory guard passed at 21 routes with twenty new
+ones mapped in `Program.cs`, because no harness mapped them — vacuously green, exactly as FP-007's was. It
+was caught by the count moving rather than by the guard failing, which is why the count is now asserted
+beside the list.

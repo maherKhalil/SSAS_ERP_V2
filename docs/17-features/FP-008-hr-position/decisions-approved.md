@@ -82,10 +82,17 @@ said was unestablished, which is the outcome it asked for rather than a choice a
 | `DEC-POS-0031` | **The FP-007 department search defect is fixed here** | — | **NEW**, ruled 2026-08-21 during Phase 2 — a *product fix outside this feature* |
 | `DEC-POS-0032` | **The holder count lives on the employee read side** | — | **NEW**, ruled 2026-08-21 during Phase 3 |
 | `DEC-POS-0033` | **The API test project is inside no phase exit gate** | — | **NEW**, 2026-08-21 during Phase 3 — a *process finding* |
+| `DEC-POS-0034` | **`employeeCount` is NULL when the caller has no employee scope** | — | **NEW**, ruled 2026-08-21 during Phase 4 |
+| `DEC-POS-0035` | **The currency echo crosses a narrow BuildingBlocks seam** | — | **NEW**, ruled 2026-08-21 during Phase 4 |
+| `DEC-POS-0036` | **`FR-POS-0212`'s read path was missing and is built in Phase 4** | — | **NEW**, ruled 2026-08-21 during Phase 4 |
 
-**Thirty-three decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
-eight binding by precedent, and eight new decisions — one created by the `OD-POS-001` ruling, one ruled during
-Phase 1 implementation, four during Phase 2, and two during Phase 3.
+**Thirty-six decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
+eight binding by precedent, and eleven new decisions — one created by the `OD-POS-001` ruling, one ruled
+during Phase 1 implementation, four during Phase 2, two during Phase 3, and three during Phase 4.
+
+**Eleven of the thirty-six came from implementation rather than analysis**, and that ratio is the honest
+record of this package: the analysis settled the shape, and building it found the questions the shape did
+not answer. Every one of them was reported and ruled rather than filled in.
 
 **The last five all came from implementation rather than from analysis**, and that is the loop working rather
 than the package having been thin: `DEC-POS-0027` from writing the band, `DEC-POS-0028` from a gap Phase 1
@@ -890,3 +897,80 @@ live in `API.Tests` as well as in `Integration.Tests` and `Architecture.Tests`.
 > The amendment is retroactive in the sense that matters: it explains this incident rather than merely
 > preventing the next one. `DEC-POS-0022`'s map carries the same correction, because a site inventory
 > derived over one project has the same hole as a gate scoped to one project.
+
+**DEC-POS-0034** — **`employeeCount` is `null` when the caller cannot obtain an employee read scope.**
+Present in the JSON for every caller, and null rather than `0` or absent. **NEW**, ruled 2026-08-21 during
+Phase 4.
+
+*What produced it.* `api-contracts.md` says the count is computed "within the caller's employee read scope"
+and that two callers may legitimately see different numbers. It is silent on the caller holding
+`HR.Positions.View` and not `HR.Employees.View`, who has no employee scope at all — and the three possible
+answers are distinguishable to a client. There is no acceptance criterion and no test scenario for the field
+anywhere in the package.
+
+*Why null.* `0` is a **lie**: the position may have holders this caller simply cannot count, and a client
+rendering "0 employees" would be displaying a falsehood rather than an absence. **Omitting** the field is
+honest but makes the JSON shape vary per caller, which forces clients to branch on field presence and
+poisons any cache keyed on shape — and this surface's strict-reader conventions favour a stable contract
+everywhere else. Null carries the honest meaning at a stable shape.
+
+*Proven by* `EmployeeCount_is_a_number_for_a_caller_who_can_read_employees` and
+`EmployeeCount_is_null_for_a_caller_who_cannot_read_employees`, which assert both halves separately: that
+the property EXISTS, and that its value is null.
+
+> **AND THE SAME FIELD IS AN AS-BUILT DIVERGENCE IN FP-007.** `FP-007`'s `api-contracts.md` specifies
+> `Department.employeeCount` in identical words, and **the field never shipped** — the department
+> representation has no such property. FP-007's as-built pass nonetheless marked that document "matched".
+> The department field is deliberately NOT implemented here: scope stands. A one-line correction marking it
+> NOT SHIPPED, citing this decision as the mechanism when it lands, is registered as a post-FP-008 backlog
+> item.
+
+**DEC-POS-0035** — **`currencyCode` is read through a narrow module-facing seam in BuildingBlocks.**
+`ITenantCompanyCurrencyLookup` — one method, returning the ISO code as an opaque **string** for a company
+within the current tenant. `SSAS.Platform.Infrastructure` implements it; `SSAS.HR.API` consumes the
+interface. **NEW**, ruled 2026-08-21 during Phase 4.
+
+*What produced it.* `DEC-POS-0015` settled that there is no currency column and that the field is echoed from
+the owning Company. It never named WHERE the echo happens — and `SSAS.HR.*` cannot reference
+`SSAS.Platform.Domain` under `ADR-012`, so the endpoint building the representation cannot read a Company.
+No existing seam carried it: `CompanyAccessSummary` is `(CompanyId, CompanyCode, CompanyName)`.
+
+*The three rejected alternatives.*
+
+| | Approach | Why not |
+|---|---|---|
+| (1) | Widen `CompanyAccessSummary` | It is an AUTHORIZATION-shaped DTO consumed by scope resolvers across the product; adding a display field couples two concerns and makes every authorization path carry data it has no use for |
+| (3) | Compose at the Host | `HR.API` owns its response shapes — the pattern FP-007 established. Moving composition out for one field breaks the module's ownership of its own contract |
+| (4) | Promote `BaseCurrencyCode` into BuildingBlocks | Explicitly the option `DEC-POS-0015` deferred to an ADR-level change |
+
+*What it preserves.* The value object does **not** move: the ISO-4217 set, the `char(3)` column, the check
+constraint and `DEC-CMP-0009`'s immutability rule all stay Platform-side, and three characters cross.
+**`DEC-POS-0015`'s revisit condition is intact** — this seam reads one base currency per company and would be
+useless for a multi-currency ladder, so it cannot quietly become the answer that decision reserved for an
+ADR.
+
+*One distinction the contract makes explicit.* A `null` from the lookup means "no such company in this
+tenant". For a caller holding an identifier they could already read, that is a **dangling reference** — a
+server-side inconsistency — and not the scoped absence that produces a 404. Collapsing the two would turn a
+data-integrity problem into a silent 404 that looks like ordinary authorization.
+
+**DEC-POS-0036** — **`FR-POS-0212`'s read path was never built, and Phase 4 builds it.** `GET
+/api/hr/employees/{employeeId}/position-history` under `HR.Employees.View`, with
+`GetEmployeePositionHistoryQueryHandler` and `IEmployeeReadService.GetEmployeePositionHistoryAsync`. **NEW**,
+ruled 2026-08-21 during Phase 4.
+
+*How it was found.* Phase 4's mandatory Step 0 reconciliation — enumerate every unmapped handler and pair it
+1:1 against `api-contracts.md`'s route list — returned **nineteen handlers against twenty routes**. Phase 3
+built the column, the append-only log and `ChangePosition` and did not build the read that exposes them; the
+phase plan did not name it.
+
+*Why it was built rather than deferred.* Shipping 19 of 20 routes with an absence note would have let the
+as-built pass record a requirement the feature quietly dropped — **which is exactly the failure
+`DEC-POS-0034` documents in FP-007**, where `employeeCount` was specified, never shipped, and the as-built
+pass marked the document matched. The same mistake twice in one product, once discovered, is a decision
+rather than an accident.
+
+*What it is.* Precedent-mirroring, not novel: `GetEmployeeBranchHistoryAsync` step for step — the employee
+proven in scope FIRST, null when not, the same point-in-time ordering by `EffectiveFromUtc` then identifier.
+It adds no authorization dimension: reading someone's promotion history is a read of that person's own
+record, which is why it carries an EMPLOYEE permission and not a position one.

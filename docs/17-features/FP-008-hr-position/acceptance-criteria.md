@@ -122,6 +122,17 @@ exists *because* of a ruling, the ruling is cited.
 - **AC-POS-0046** — `PositionReadScope` cannot be constructed outside its resolver, carries no branch scope,
   and no read method omits it.
 
+- **AC-POS-0066** — *(`DEC-POS-0034`, added as-built in Phase 4)* `employeeCount` is **present on every
+  position representation**, and is **`null`** — never `0`, never omitted — for a caller who cannot obtain an
+  employee read scope. A response whose shape varies with the caller's permissions fails this criterion, and
+  so does one that reports `0` for a position whose holders the caller merely cannot see.
+- **AC-POS-0067** — *(`DEC-POS-0035`, added as-built in Phase 4)* `currencyCode` is echoed from the owning
+  Company through a module-facing contract, and `SSAS.HR.*` references no Platform assembly to obtain it. A
+  build in which `HR.API` can see `SSAS.Platform.Domain` fails this criterion regardless of what it reads.
+- **AC-POS-0068** — *(`DEC-POS-0036`, added as-built in Phase 4)* The route inventory names **exactly 41**
+  HR routes, pinned by pattern AND permission, and every FP-008 route is mapped by a harness as well as by
+  the Host. A route reachable only through `Program.cs` fails this criterion even if it works.
+
 ## Persistence and concurrency
 
 - **AC-POS-0047** — Every position and grade mutation refuses a stale `RowVersion` with `409`.

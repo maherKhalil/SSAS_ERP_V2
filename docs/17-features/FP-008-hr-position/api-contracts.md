@@ -105,6 +105,11 @@ assumed.
 }
 ```
 
+> **AS BUILT (FP-008 Phase 4, `DEC-POS-0035`).** The echo crosses `ITenantCompanyCurrencyLookup`, a
+> single-method module-facing contract in `SSAS.BuildingBlocks.Tenancy.Companies` that
+> `SSAS.Platform.Infrastructure` implements. It carries the ISO code as an opaque **string**: the value
+> object stays Platform-side, and `DEC-POS-0015`'s multi-currency revisit condition is untouched.
+
 **`currencyCode` is a read-side projection of the owning Company's `BaseCurrencyCode`, not a stored column**
 (`DEC-POS-0015`). It appears in the representation because an amount without a currency is unreadable, and it
 is **not** accepted on write — sending it is an unknown property and is rejected. If it were writable it would
@@ -115,6 +120,26 @@ documentation.** Two users can legitimately see different counts for the same po
 authorized for different branches. A company-wide count would leak the size of branches the caller cannot
 read. This is the same resolution `FP-007` reached for `Department.employeeCount`, in favour of the tighter
 scope.
+
+> **AS BUILT (FP-008 Phase 4, `DEC-POS-0034`) — AND `null` IS A REAL VALUE OF THIS FIELD.**
+>
+> A caller holding `HR.Positions.View` but not `HR.Employees.View` obtains no employee scope at all, so
+> there is no honest number for them. The field is then **`null`** — **present and null**, never omitted and
+> never `0`:
+>
+> | Value | Meaning |
+> |---|---|
+> | a number | the holders this caller is authorized to see |
+> | `null` | not computable for this caller — they cannot read employees |
+> | `0` | **never sent for that reason.** Zero means the position genuinely has no holders in scope |
+>
+> `0` was rejected as a lie and omission was rejected because a per-caller JSON shape forces clients to
+> branch on field presence. The capability lives on `IEmployeeReadService.CountEmployeesByPositionAsync`,
+> which requires an `EmployeeReadScope` — the position read side cannot produce it, and the architecture
+> guard asserting that no position read service reaches the employee set stays true because of that.
+>
+> **`FP-007`'s `Department.employeeCount` was specified in these same words and never shipped**; see
+> `DEC-POS-0034` for the correction registered against that document.
 
 ## Error mapping
 
@@ -184,6 +209,17 @@ Fixed by the `OD-POS-002` ruling:
 
 `HrRouteInventoryTests` pins the HR surface as an **exact** inventory read from **both** the module harness
 and the Host composition, and today it names **21** routes. FP-008 takes it to **41**.
+
+> **AS BUILT (FP-008 Phase 4) — 41 ROUTES, AND THE HARNESS THAT SEES THEM.**
+>
+> `PositionApiTestHost` maps all four new groups through the PRODUCTION extensions, so the exact inventory
+> covers them and a route mapped only in `Program.cs` fails the guard rather than shipping untested — the
+> repeat of FP-007's vacuous pass that this section warns about. The inventory asserts pattern AND
+> permission, with the count of 41 asserted beside the list rather than instead of it.
+>
+> **`GET /api/hr/employees/{employeeId}/position-history` had no application handler when Phase 4 began.**
+> Step 0's reconciliation found nineteen handlers against these twenty routes; `DEC-POS-0036` records why it
+> was built here rather than deferred.
 
 FP-007 shipped an unreachable thirteenth route because the harness did not mirror the Host, and the
 route-absence test that should have caught it was passing **vacuously**. That inventory must be extended by

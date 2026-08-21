@@ -101,8 +101,18 @@ public sealed class EmployeeArchitectureTests
   // exists. Phase 3 supersedes the clause asserting that Employee has no DEPARTMENT PROPERTY: BR-HR-0005 is
   // no longer deferred, and `Employee.DepartmentId` is its implementation rather than a placeholder.
   //
-  // POSITION AND MANAGER ARE NOT SUPERSEDED, and their clauses are kept in full and unweakened. BR-HR-0006
-  // and BR-HR-0007 are still deferred, and a placeholder is still how a deferral quietly becomes a design.
+  // ---- AND BY FP-008 PHASE 1, ON EXACTLY THE SAME TERMS AS FP-007 PHASE 1.
+  //
+  // The clause asserting that no Position TYPE existed anywhere in HR is superseded: the three aggregates
+  // exist. It is REPLACED, not deleted — `Position` is now asserted to exist, and no position type may hold
+  // an Employee reference (`DEC-POS-0002`), which is the property that clause was really protecting.
+  //
+  // EMPLOYEE'S OWN POSITION SURFACE IS STILL ASSERTED ABSENT, unweakened: `BR-HR-0006` is realized in
+  // design but `Employee.PositionId` arrives in Phase 3, and until then a placeholder is still how a
+  // deferral quietly becomes a design.
+  //
+  // MANAGER IS NOT SUPERSEDED AT ALL. `OD-POS-006` deferred `ReportsToPositionId`, so `BR-HR-0007`'s
+  // remainder transfers onward unchanged and its clause is kept in full.
   //
   // The department clause is REPLACED rather than deleted — the property is now asserted to exist with the
   // exact shape Phase 3 approved, so this test still fails if Employee grows a department surface nobody
@@ -139,9 +149,46 @@ public sealed class EmployeeArchitectureTests
     Assert.Equal(typeof(Guid), departmentId!.PropertyType);
     Assert.False(departmentId.SetMethod!.IsPublic);
 
-    // POSITION IS STILL DEFERRED WHOLE. No type, anywhere in HR.
-    Assert.DoesNotContain(HrDomainAssembly.GetTypes(), type =>
-      type.Name.Contains("Position", StringComparison.OrdinalIgnoreCase));
+    // ================================================================================================
+    // "POSITION IS DEFERRED WHOLE" IS RETIRED. FP-008 PHASE 1 IS THE PACKAGE THAT ENDS IT.
+    // ================================================================================================
+    //
+    // This clause read `Assert.DoesNotContain(HrDomainAssembly.GetTypes(), type => type.Name.Contains
+    // ("Position", ...))` and asserted `DEC-DEP-0020`: FP-007 introduced no Position type, table, column or
+    // foreign key, and `BR-HR-0006` transferred onward untouched. It did its job — it is why nobody slipped
+    // a `PositionId` placeholder into Employee for the convenience of a later phase.
+    //
+    // FP-008 Phase 1 introduces `Position`, `JobGrade`, `SalaryGrade` and `EmployeePositionAssignment`, so
+    // the assembly-wide clause is now false BY DESIGN. It is replaced rather than deleted, because what it
+    // was really protecting is still worth protecting and is still true today: **Employee has no position
+    // surface.**
+    //
+    // The first assertion in this test already states that for Employee's own properties. What follows is
+    // the other half — that the position types exist as their own aggregates and reach Employee through
+    // nothing.
+    //
+    // ---- THIS TEST CHANGES AGAIN IN PHASE 3, AND THAT IS THE SEQUENCE, NOT AN OVERSIGHT.
+    //
+    // Phase 3 gives Employee a `PositionId` and a `PositionAssignments` collection. At that point the
+    // "no property containing Position" assertion above must become the exact-membership assertion the
+    // department half already uses — two named members and nothing else — so an Employee that grew a
+    // position surface nobody agreed to still fails here.
+    Assert.Contains(HrDomainAssembly.GetTypes(), type => type.Name == "Position");
+
+    // NO POSITION TYPE REFERENCES EMPLOYEE (DEC-POS-0002). `Employee.PositionId -> Position` plus any
+    // `Position.* -> Employee` key is a cycle in the foreign-key graph, and `TenantCutoverCopyPlan.Order`
+    // returns `CutoverCopyOrderUndecidable` on a cycle — Shared→Dedicated cutover would stop working for
+    // every tenant. The history record is the one legitimate holder of an `EmployeeId`, and it points
+    // outward from both principals rather than being pointed at.
+    var positionTypesReferencingEmployee = HrDomainAssembly.GetTypes()
+      .Where(type => type.Namespace == "SSAS.HR.Domain.Positions")
+      .Where(type => type.Name != "EmployeePositionAssignment")
+      .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        .Select(property => $"{type.Name}.{property.Name}"))
+      .Where(name => name.Contains("Employee", StringComparison.OrdinalIgnoreCase))
+      .ToArray();
+
+    Assert.Empty(positionTypesReferencingEmployee);
 
     // AND NO EMPLOYEE REPORTING LINE. `BR-HR-0007` presumes an employee-to-manager relationship that no
     // authority defines; a department has a manager, an employee does not. `DepartmentManager` is the

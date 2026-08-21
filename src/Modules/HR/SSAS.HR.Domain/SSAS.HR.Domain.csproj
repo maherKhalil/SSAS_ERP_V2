@@ -5,6 +5,20 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\SSAS.BuildingBlocks.SharedKernel.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      The history factories on EmployeePositionAssignment are `internal` from the outset (DEC-POS-0008), so
+      nothing outside this assembly can fabricate an audit row. Their caller arrives with Employee in Phase 3.
+
+      Without this, a Phase 1 choice would have been forced between shipping them PUBLIC and narrowing later
+      — which is what FP-007 did, leaving a window in which the wider surface existed to be depended on — and
+      shipping them unreachable and unproven. Granting the test assembly access is the third option, and it
+      follows the convention already used by SSAS.Platform.Domain and SSAS.HR.Infrastructure rather than
+      introducing one.
+    -->
+    <InternalsVisibleTo Include="SSAS.HR.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

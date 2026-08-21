@@ -75,9 +75,11 @@ said was unestablished, which is the outcome it asked for rather than a choice a
 | `DEC-POS-0024` | Codes are never generated | SETTLED-BY-PRECEDENT | **BINDING** — `DEC-DEP-0007`, `DEC-EMP-0011` |
 | `DEC-POS-0025` | No headcount or establishment control | PROPOSED | **APPROVED** 2026-08-21 — ratified as drafted |
 | `DEC-POS-0026` | **The migration asserts the operational fact** | — | **NEW**, ruled 2026-08-21 with `OD-POS-001` |
+| `DEC-POS-0027` | **The salary band is atomic** | — | **NEW**, ruled 2026-08-21 during Phase 1 |
 
-**Twenty-six decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted, eight
-binding by precedent, and one new decision created by the `OD-POS-001` ruling.
+**Twenty-seven decisions.** Six owner decisions closed, eleven engineering proposals ratified as drafted,
+eight binding by precedent, and two new decisions — one created by the `OD-POS-001` ruling, one ruled during
+Phase 1 implementation.
 
 > **`OD-POS-001` is the ruling to read first**, because it is the one this package could not offer a
 > recommendation for. The answer was not chosen from the tabled options — it was produced by **establishing
@@ -417,6 +419,38 @@ is **escalated to `ADR-027`** rather than settled here. **PROPOSED**, conditiona
 > replaces, and the architect may wish to make the amounts mandatory now that nothing forces them to be
 > optional. **Recorded as an open question for `ADR-026`/`ADR-027` review, not decided here**;
 > `CK_SalaryGrades_Amounts_Ordered` is written as "when all three are present" either way.
+
+**DEC-POS-0027** — **The salary band is ATOMIC.** `MinimumAmount`, `MidpointAmount` and `MaximumAmount` are
+**all null or all present**. No partially specified band is representable, at any layer.
+
+*Ruled 2026-08-21 during Phase 1 implementation, citing `DEC-POS-0016`.*
+
+A grade with a minimum and no maximum is not a half-answer — it is a row nobody can act on, and it forces
+every reader downstream to invent a meaning for the missing ceiling. Three independently nullable amounts
+are eight possible states, six of which mean nothing; atomicity reduces that to the two that do.
+
+The rule is stated in three places, and each is load-bearing:
+
+| Layer | How |
+|---|---|
+| **Domain** | `SalaryBand` holds three NON-nullable amounts, and the VALUE is what may be absent. `SalaryBand.Create` returns `Result<SalaryBand?>` — all-null is a successful **absence**, not an error — so a caller can tell "unpriced" from "invalid" without guessing |
+| **Model** | `SalaryGrade.Band` is an **optional owned type**: EF materializes it as null when the columns are null and writes all three together when it is not. The mapping cannot express a partial band |
+| **Database** | `CK_SalaryGrades_Band_Atomic`, alongside the ordering and non-negativity constraints, states the same rule to SQL Server for writes that bypass the application entirely |
+
+**Nullability's justification is define-before-price.** A job ladder is commonly laid out before it is
+benchmarked, and a grade awaiting benchmarking has no honest amounts. The original justification recorded in
+`DEC-POS-0016` — that `OD-POS-001`'s seeded grade would otherwise have to invent money — **died with that
+ruling**, which seeds nothing. The weaker reason is recorded as the reason rather than left implied by the
+stronger one it replaced.
+
+Ordering is **non-strict**: a band whose three amounts are equal is a fixed-rate grade, which is a real
+structure, and refusing it would be a rule no requirement asks for. Completeness is checked before
+non-negativity, and non-negativity before ordering, so each refusal names the defect the caller must fix
+first rather than whichever check happened to run earliest — a partial band has no ordering to be wrong
+about.
+
+Proven by `GradeDomainTests`, across **all six** partial combinations rather than a representative one: an
+atomicity rule that held for five of six would be no rule at all.
 
 ## Reporting line
 

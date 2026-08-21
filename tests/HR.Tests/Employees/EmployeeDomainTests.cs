@@ -439,15 +439,16 @@ public sealed class EmployeeDomainTests
       .Where(type => type.Namespace == "SSAS.HR.Domain.Events")
       .ToArray();
 
-    // EVERY HR domain event, not only Employee's: 6 from FP-006, 5 from FP-007 Phase 1, and
-    // EmployeeDepartmentChanged from Phase 3. The count is asserted so a new event type cannot be added
-    // without someone confirming it carries nothing personal — which is exactly what happened when the
-    // Department events arrived, and again here.
+    // EVERY HR domain event, not only Employee's: 6 from FP-006, 5 from FP-007 Phase 1,
+    // EmployeeDepartmentChanged from FP-007 Phase 3, and 12 from FP-008 Phase 1 — four each for Position,
+    // JobGrade and SalaryGrade. The count is asserted so a new event type cannot be added without someone
+    // confirming it carries nothing sensitive, which is exactly what it forced when the Department events
+    // arrived, again in Phase 3, and again here.
     //
-    // Phase 3's event carries the two department identifiers and NOT the reason text: that field is
+    // FP-007 Phase 3's event carries the two department identifiers and NOT the reason text: that field is
     // free-form operator input persisted for the audit record alone, and putting it on an event would push
     // unbounded text into every consumer and whatever they log.
-    Assert.Equal(12, eventTypes.Length);
+    Assert.Equal(24, eventTypes.Length);
 
     var leaked = eventTypes
       .SelectMany(type => type.GetProperties().Select(property => $"{type.Name}.{property.Name}"))
@@ -458,6 +459,42 @@ public sealed class EmployeeDomainTests
       .ToArray();
 
     Assert.Empty(leaked);
+
+    // ---- AND FROM FP-008, MONEY (ADR-027, DEC-POS-0018).
+    //
+    // Pay bands are the one thing in the product sensitive enough to warrant a permission of their own:
+    // `HR.SalaryGrades.View` exists precisely so reading the org chart does not also mean reading the pay
+    // structure. **A permission that guards a table while the event stream publishes its contents guards
+    // nothing** — so `SalaryGradeCreated` and `SalaryGradeUpdated` carry `IsPriced`, a boolean, and never the
+    // amounts.
+    //
+    // Matched on the PROPERTY name alone rather than on "{Type}.{Property}" as the filter above does,
+    // because a type-qualified match on "Salary" would flag `SalaryGradeCreated.SalaryGradeId` — an
+    // identifier, which is exactly what these events are supposed to carry.
+    var money = eventTypes
+      .SelectMany(type => type.GetProperties().Select(property => new { type, property }))
+      .Where(candidate =>
+        candidate.property.Name.Contains("Amount", StringComparison.OrdinalIgnoreCase) ||
+        candidate.property.Name.Contains("Minimum", StringComparison.OrdinalIgnoreCase) ||
+        candidate.property.Name.Contains("Midpoint", StringComparison.OrdinalIgnoreCase) ||
+        candidate.property.Name.Contains("Maximum", StringComparison.OrdinalIgnoreCase) ||
+        candidate.property.PropertyType == typeof(decimal) ||
+        candidate.property.PropertyType == typeof(decimal?))
+      .Select(candidate => $"{candidate.type.Name}.{candidate.property.Name}")
+      .ToArray();
+
+    Assert.Empty(money);
+
+    // Titles and codes are descriptive rather than sensitive, but they are excluded for the reason the whole
+    // file records: an event is the most widely-fanned-out thing an aggregate produces, and anything
+    // descriptive placed on one spreads to every consumer, log and trace that touches it.
+    var descriptive = eventTypes
+      .SelectMany(type => type.GetProperties().Select(property => $"{type.Name}.{property.Name}"))
+      .Where(name => name.Contains("Title", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Code", StringComparison.OrdinalIgnoreCase))
+      .ToArray();
+
+    Assert.Empty(descriptive);
   }
 
   [Fact]

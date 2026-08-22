@@ -2784,11 +2784,279 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.NotEqual(default, stored.CreatedUtc);
   }
 
+  // ================================================================================================
+  // FP-009 PHASE 1 — THE EXPORT PIPELINE, AGAINST REAL SQL SERVER
+  // ================================================================================================
+
+  // ---- X1. IT RUNS UNDER THE CALLER'S OWN SCOPE, AND THE FILE PROVES IT.
+  //
+  // A caller confined to one branch exports that branch's employees and nobody else's. This is the whole
+  // security claim of the feature, and it is asserted against the BYTES rather than against the row list,
+  // because the bytes are what leaves.
+  [Fact]
+  [Trait("Decision", "BRULE-DOC-0605")]
+  public async Task X1_An_export_carries_only_the_employees_the_callers_scope_admits()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("EXP-HERE", fixture.BranchA);
+    await fixture.SeedEmployeeAsync("EXP-THERE", fixture.BranchB);
+
+    using var confined = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+
+    var exported = await confined.Export().HandleAsync(new ExportEmployeesQuery());
+
+    Assert.True(exported.IsSuccess, exported.IsFailure ? exported.Error.Code : null);
+    Assert.Contains("EXP-HERE", exported.Value.Content, StringComparison.Ordinal);
+    Assert.DoesNotContain("EXP-THERE", exported.Value.Content, StringComparison.Ordinal);
+  }
+
+  // ---- X2. `nationalId` IS ABSENT FOR EVERY CALLER SHAPE (OD-DOC-006).
+  //
+  // ================================================================================================
+  // NOT "EXCLUDED BY DEFAULT" — ABSENT FROM THE CONTRACT.
+  // ================================================================================================
+  //
+  // There is no permission, parameter or caller for which the column appears, so this asserts across the
+  // caller shapes that could plausibly differ: the confined user and the administrator, with and without
+  // every HR permission the module defines. The employee genuinely HAS a national identifier, so the
+  // absence is a distinction rather than an empty-database artefact.
+  [Fact]
+  [Trait("Decision", "OD-DOC-006")]
+  public async Task X2_No_caller_shape_can_make_an_export_carry_a_national_identifier()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("EXP-NID", fixture.BranchA, nationalId: "1098765432");
+
+    foreach (var userId in new[] { fixture.AdministratorUserId, fixture.NormalUserId })
+    {
+      using var graph = fixture.Graph(fixture.BranchA, userId);
+
+      var exported = await graph.Export().HandleAsync(new ExportEmployeesQuery());
+
+      Assert.True(exported.IsSuccess, exported.IsFailure ? exported.Error.Code : null);
+
+      // The value, the column name, and any casing of either.
+      Assert.DoesNotContain("1098765432", exported.Value.Content, StringComparison.Ordinal);
+      Assert.DoesNotContain("national", exported.Value.Content, StringComparison.OrdinalIgnoreCase);
+
+      // And the run record's column-set line is what proves it to somebody reading the audit trail later,
+      // which is a stronger guarantee than a rule nobody re-reads.
+      Assert.DoesNotContain(
+        "national", await fixture.ExportColumnSetAsync(exported.Value.ExportRunId),
+        StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The premise: the employee really does carry one, so the absence above is not vacuous.
+    Assert.Equal("1098765432", await fixture.NationalIdAsync("EXP-NID"));
+  }
+
+  // ---- X3. THE `departmentId` FILTER IS INHERITED, NOT COPIED (TS-DOC-0016).
+  //
+  // The HR cleanup added this filter to the employee search's allowlist. The export takes the SAME criteria
+  // type through the SAME shared predicate, so it honours the filter without anybody writing a second
+  // conjunct — and the day a third filter is added, the export gets it for the same reason.
+  [Fact]
+  [Trait("Decision", "TS-DOC-0016")]
+  public async Task X3_The_export_honours_the_department_filter_the_search_declares()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var finance = await fixture.SeedDepartmentAsync(fixture.CompanyA, "XFIN", active: true);
+
+    await fixture.SeedEmployeeAsync("EXP-FIN", fixture.BranchA, departmentId: finance);
+    await fixture.SeedEmployeeAsync("EXP-OTHER", fixture.BranchA);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var all = await graph.Export().HandleAsync(new ExportEmployeesQuery());
+    var filtered = await graph.Export().HandleAsync(new ExportEmployeesQuery(DepartmentId: finance));
+
+    Assert.Contains("EXP-FIN", all.Value.Content, StringComparison.Ordinal);
+    Assert.Contains("EXP-OTHER", all.Value.Content, StringComparison.Ordinal);
+
+    // NARROWS, never widens — the property the shared predicate exists to make structural.
+    Assert.Contains("EXP-FIN", filtered.Value.Content, StringComparison.Ordinal);
+    Assert.DoesNotContain("EXP-OTHER", filtered.Value.Content, StringComparison.Ordinal);
+    Assert.True(filtered.Value.RowCount < all.Value.RowCount);
+  }
+
+  // ---- X4. TERMINATED EMPLOYEES ARE EXCLUDED UNLESS ASKED FOR BY NAME (DEC-DOC-0009).
+  //
+  // The search has always behaved this way, and an export is a search that leaves the building. Asking by
+  // name still works, so audit and payroll extracts remain possible.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0009")]
+  public async Task X4_Terminated_employees_are_excluded_unless_the_caller_asks_for_them()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var employeeId = await fixture.SeedEmployeeAsync("EXP-GONE", fixture.BranchA);
+    await fixture.TerminateAsync(employeeId);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var routine = await graph.Export().HandleAsync(new ExportEmployeesQuery());
+    var asked = await graph.Export().HandleAsync(
+      new ExportEmployeesQuery(Statuses: [EmployeeStatus.Terminated]));
+
+    Assert.DoesNotContain("EXP-GONE", routine.Value.Content, StringComparison.Ordinal);
+    Assert.Contains("EXP-GONE", asked.Value.Content, StringComparison.Ordinal);
+  }
+
+  // ---- X5. THE RUN RECORD SAYS WHAT LEFT, AND UNDER WHICH SCOPE (SEC-DOC-0404).
+  //
+  // "Who exported employee data?" is answerable from the actor alone. "Could that person have exported THIS
+  // employee?" is not, unless the scope in force at the time is recorded — and scope changes over time, so
+  // reconstructing it later from current authorization is unsound.
+  [Fact]
+  [Trait("Decision", "SEC-DOC-0404")]
+  public async Task X5_The_export_run_records_the_column_set_and_the_scope_that_was_in_force()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("EXP-AUDIT", fixture.BranchA);
+
+    using var graph = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+
+    var exported = await graph.Export().HandleAsync(new ExportEmployeesQuery());
+
+    var stored = await fixture.ExportRunAsync(exported.Value.ExportRunId);
+
+    Assert.NotNull(stored);
+    Assert.Equal(
+      "employeeNumber,fullName,employmentDate,departmentCode,positionCode,status", stored!.ColumnSet);
+    Assert.Equal(exported.Value.RowCount, stored.RowCount);
+
+    // The scope the read actually ran under, sorted so two records describing one scope are textually
+    // identical — an investigator comparing them is comparing scopes, not enumeration orders.
+    Assert.Contains(fixture.CompanyA.ToString(), stored.ScopeCompanyIds, StringComparison.Ordinal);
+    Assert.Contains(fixture.BranchA.ToString(), stored.ScopeBranchIds, StringComparison.Ordinal);
+    Assert.DoesNotContain(fixture.BranchB.ToString(), stored.ScopeBranchIds, StringComparison.Ordinal);
+  }
+
+  // ---- X6. THE EXPORT PERMISSION IS CHECKED, AND IT IS NOT THE READ PERMISSION.
+  //
+  // A caller holding `HR.Employees.View` and not `HR.Employees.Export` can list employees and cannot extract
+  // them to a file. That separation is the whole of `OD-DOC-005`: anyone who may view an employee must not
+  // thereby be able to take the whole authorized set out of the system.
+  [Fact]
+  [Trait("Decision", "OD-DOC-005")]
+  public async Task X6_A_caller_with_the_read_permission_but_not_the_export_permission_is_refused()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("EXP-DENIED", fixture.BranchA);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var refused = await graph.Export(canExport: false).HandleAsync(new ExportEmployeesQuery());
+
+    Assert.True(refused.IsFailure);
+
+    // NOTHING WAS RECORDED. A refusal is not an export, and an audit trail of non-events dilutes the one
+    // signal this table exists to carry.
+    Assert.Equal(0, await fixture.ExportRunCountAsync());
+
+    // And the same caller WITH the permission succeeds, so the refusal is the permission and not an
+    // incidental scope failure.
+    Assert.True((await graph.Export().HandleAsync(new ExportEmployeesQuery())).IsSuccess);
+  }
+
+  // ---- X7. OVER THE CEILING IS A REFUSAL, NOT A TRUNCATION.
+  //
+  // Returning the first N of a larger set would hand the operator a file that LOOKS complete, and an
+  // operator who believes they have everybody is worse off than one who was refused. No run record either:
+  // no bytes left.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0005")]
+  public async Task X7_An_export_larger_than_its_ceiling_is_refused_and_records_nothing()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("EXP-C1", fixture.BranchA);
+    await fixture.SeedEmployeeAsync("EXP-C2", fixture.BranchA);
+    await fixture.SeedEmployeeAsync("EXP-C3", fixture.BranchA);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var refused = await graph.Export().HandleAsync(new ExportEmployeesQuery(Ceiling: 2));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeImportErrors.RowLimitExceeded, refused.Error);
+    Assert.Equal(0, await fixture.ExportRunCountAsync());
+
+    // EXACTLY at the ceiling is fine — the read asks for one row past the limit precisely so "at" and
+    // "over" are distinguishable rather than both looking like "full".
+    var accepted = await graph.Export().HandleAsync(new ExportEmployeesQuery(Ceiling: 3));
+
+    Assert.True(accepted.IsSuccess);
+    Assert.Equal(3, accepted.Value.RowCount);
+    Assert.Equal(1, await fixture.ExportRunCountAsync());
+  }
+
+  // ---- X8. THE ROUND TRIP DOES NOT CLOSE, AND THIS IS THE DEMONSTRATION RATHER THAN A COMMENT.
+  //
+  // ================================================================================================
+  // `DEC-DOC-0008` / `AC-DOC-0016` REQUIRE AN EXPORTED FILE TO RE-IMPORT. IT DOES NOT.
+  // ================================================================================================
+  //
+  // `api-contracts.md` gives the export a `status` column; `AC-DOC-0002` says status is NOT an import
+  // column, because creation produces `Active` and an import cannot create a terminated employee; and
+  // `DEC-DOC-0002` refuses UNKNOWN columns. All three are as approved, and the three cannot hold together.
+  //
+  // This test asserts WHAT HAPPENS rather than what was specified, so the gap is visible in the suite
+  // instead of only in a report — and so that whichever way `OD-DOC-010` is ruled, this is the test that
+  // changes and says so. The `nationalId` half of the round trip DOES close, and is asserted here too, so
+  // the failure is narrowed to one column rather than left as "the round trip is broken".
+  [Fact]
+  [Trait("Decision", "OD-DOC-010")]
+  public async Task X8_An_exported_file_is_refused_on_re_import_for_its_status_column()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("EXP-TRIP", fixture.BranchA);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var exported = await graph.Export().HandleAsync(new ExportEmployeesQuery());
+
+    // THE GAP. The header carries `status`, which the import contract does not declare.
+    var reimported = await graph.Import().HandleAsync(new ImportEmployeesCommand(
+      exported.Value.Content, "round-trip", "employees.csv", ByteCount: 256));
+
+    Assert.Equal(EmployeeImportOutcome.Refused, reimported.Value.Outcome);
+    Assert.Equal(
+      EmployeeImportErrors.HeaderColumnUnknown, Assert.Single(reimported.Value.Errors).Error);
+
+    // ---- AND THE OTHER FIVE COLUMNS DO ROUND-TRIP, which is what narrows the gap to exactly one name.
+    //
+    // The same file with `status` removed imports cleanly under a fresh employee number, so the format, the
+    // date rendering, the quoting and the classification codes are all mutually compatible between the two
+    // halves. Only the extra column is not.
+    var withoutStatus = EmployeeFixture.WithoutStatusColumn(exported.Value.Content).Replace(
+      "EXP-TRIP", "EXP-TRIP2", StringComparison.Ordinal);
+
+    var repeat = await graph.Import().HandleAsync(new ImportEmployeesCommand(
+      withoutStatus, "round-trip-2", "employees.csv", ByteCount: 256));
+
+    Assert.Equal(EmployeeImportOutcome.Applied, repeat.Value.Outcome);
+    Assert.Equal(1, await fixture.EmployeeCountAsync("EXP-TRIP2"));
+  }
+
   private const string ImportHeader =
     "employeeNumber,fullName,employmentDate,departmentCode,positionCode";
 
   // The persisted run record as raw SQL sees it. A record rather than a tuple so the assertions read as
   // claims about named columns.
+  public sealed record ExportRunRow(
+    int RowCount,
+    string ColumnSet,
+    string ScopeCompanyIds,
+    string ScopeBranchIds,
+    string ExecutedBy);
+
   public sealed record ImportRunRow(
     string ImportKey,
     string NormalizedImportKey,
@@ -3122,16 +3390,88 @@ public sealed class EmployeeBoundarySqlServerTests
         sql);
     }
 
-    public async Task<Guid> SeedEmployeeAsync(string number, Guid branchId, Guid? company = null, string name = "Seeded Person")
+    // FP-009 added `nationalId` and `departmentId`, both optional and both defaulted to the previous
+    // behaviour: the export tests need an employee that genuinely CARRIES a national identifier — otherwise
+    // "the file does not contain it" would be true of an empty column — and one in a named department, so
+    // the inherited filter has something to narrow to.
+    public async Task<Guid> SeedEmployeeAsync(
+      string number,
+      Guid branchId,
+      Guid? company = null,
+      string name = "Seeded Person",
+      string? nationalId = null,
+      Guid? departmentId = null)
     {
       var created = await Graph(branchId, company: company).Create().HandleAsync(
         new CreateEmployeeCommand(number, name,
-          new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), null,
-          company == CompanyB ? DepartmentB : DepartmentA,
+          new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), nationalId,
+          departmentId ?? (company == CompanyB ? DepartmentB : DepartmentA),
           company == CompanyB ? PositionB : PositionA));
       Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
       return created.Value;
     }
+
+    // ---- FP-009 EXPORT HELPERS.
+    //
+    // Terminating through the real handler rather than an UPDATE, because the status the export filter reads
+    // has to be one the domain actually produced — a hand-written value could be one no transition allows.
+    public async Task TerminateAsync(Guid employeeId)
+    {
+      var terminated = await Graph(BranchA).Terminate().HandleAsync(
+        new TerminateEmployeeCommand(
+          employeeId,
+          new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero),
+          EmployeeStatusChangeReason.Resignation,
+          await RowVersionAsync(employeeId)));
+
+      Assert.True(terminated.IsSuccess, terminated.IsFailure ? terminated.Error.Code : null);
+    }
+
+    public async Task<string?> NationalIdAsync(string employeeNumber)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText =
+        "SELECT [NationalId] FROM [tenant].[Employees] " +
+        $"WHERE [NormalizedEmployeeNumber] = N'{employeeNumber.ToUpperInvariant()}'";
+
+      return (await command.ExecuteScalarAsync())?.ToString();
+    }
+
+    public Task<int> ExportRunCountAsync() => ScalarIntAsync(
+      "SELECT COUNT(*) FROM [tenant].[EmployeeExportRuns]");
+
+    public async Task<string> ExportColumnSetAsync(Guid exportRunId) =>
+      (await ExportRunAsync(exportRunId))?.ColumnSet ?? string.Empty;
+
+    public async Task<ExportRunRow?> ExportRunAsync(Guid exportRunId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText =
+        "SELECT [RowCount], [ColumnSet], [ScopeCompanyIds], [ScopeBranchIds], [ExecutedBy] " +
+        $"FROM [tenant].[EmployeeExportRuns] WHERE [ExportRunId] = '{exportRunId:D}'";
+
+      await using var reader = await command.ExecuteReaderAsync();
+
+      return await reader.ReadAsync()
+        ? new ExportRunRow(
+          reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+          reader.GetString(4))
+        : null;
+    }
+
+    // Removes the LAST column from every line. Deliberately mechanical rather than clever: the point of the
+    // round-trip test is that the file differs from an importable one by exactly one column, and a helper
+    // that reconstructed the file would be asserting its own idea of the format instead of the writer's.
+    public static string WithoutStatusColumn(string content) =>
+      string.Join('\n', content
+        .Split('\n')
+        .Select(line => string.IsNullOrEmpty(line)
+          ? line
+          : line[..line.LastIndexOf(',')]));
 
     public async Task<Guid?> EmployeeBranchAsync(Guid employeeId) =>
       await ScalarGuidAsync("Employees", "BranchId", "EmployeeId", employeeId);
@@ -3883,6 +4223,28 @@ public sealed class EmployeeBoundarySqlServerTests
       new EmployeeFixture.TestTenant(fixture.Tenant),
       new TestCurrentCompany(Company),
       new EmployeeFixture.TestUser(),
+      new EmployeeFixture.TestClock(),
+      limits);
+
+    // ---- FP-009 PHASE 1. THE EXPORT, OVER THE REAL SCOPE RESOLVER AND THE REAL READ SERVICE.
+    //
+    // `canExport: false` builds a caller holding `HR.Employees.View` and NOT `HR.Employees.Export`, which is
+    // the only way to prove the application-boundary permission check actually runs — the same seam
+    // `ChangeDepartment(canUpdate: false)` opened for its own check.
+    //
+    // The scope resolver is built with `HR.Employees.View` alone, deliberately: the two permissions are
+    // resolved by two different mechanisms and a single list would hide which one refused.
+    public ExportEmployeesQueryHandler Export(
+      bool canExport = true, EmployeeImportLimits? limits = null) => new(
+      Scope([HrPermissionNames.ViewEmployees]),
+      Reads(),
+      new EmployeeExportRunRepository(accessor),
+      unitOfWork,
+      new EmployeeFixture.TestTenant(fixture.Tenant),
+      new TestCurrentCompany(Company),
+      new HrUser(canExport
+        ? [HrPermissionNames.ViewEmployees, HrPermissionNames.ExportEmployees]
+        : [HrPermissionNames.ViewEmployees]),
       new EmployeeFixture.TestClock(),
       limits);
 

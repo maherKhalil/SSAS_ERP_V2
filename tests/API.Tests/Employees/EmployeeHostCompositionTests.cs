@@ -345,7 +345,15 @@ public sealed class EmployeeHostCompositionTests
       HrPermissionNames.ViewSalaryGrades,
       HrPermissionNames.CreateSalaryGrades,
       HrPermissionNames.UpdateSalaryGrades,
-      HrPermissionNames.DeactivateSalaryGrades
+      HrPermissionNames.DeactivateSalaryGrades,
+      // FP-009 Phase 1. Two more, taking the HR plane to twenty-three, and the first addition made while
+      // this guard was inside the manifest-and-permission inventory rather than outside it — so it moved in
+      // the same act as the catalog itself instead of failing quietly for two phases.
+      //
+      // They break the "four per family" shape on purpose (`OD-DOC-005`): bulk in and bulk out are not a
+      // CRUD quartet over a new aggregate, they are two operations over an existing one whose risk differs.
+      HrPermissionNames.ImportEmployees,
+      HrPermissionNames.ExportEmployees
     ];
 
     Assert.Equal(

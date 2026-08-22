@@ -132,6 +132,11 @@ public static class ServiceCollectionExtensions
     services.AddScoped<IEmployeeImportRunRepository, EmployeeImportRunRepository>();
     services.AddScoped<ImportEmployeesCommandHandler>();
 
+    // The export takes the SCOPE RESOLVER and the read service, not the repository — an export is a read,
+    // and giving it a write repository would be the first step towards it becoming something else.
+    services.AddScoped<IEmployeeExportRunRepository, EmployeeExportRunRepository>();
+    services.AddScoped<ExportEmployeesQueryHandler>();
+
     return services;
   }
 }

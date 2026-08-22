@@ -1,4 +1,4 @@
-using SSAS.BuildingBlocks.Tenancy.Permissions;
+﻿using SSAS.BuildingBlocks.Tenancy.Permissions;
 
 namespace SSAS.HR.Application.Permissions;
 
@@ -31,6 +31,10 @@ public sealed class HrPermissionCatalogContributor : IPermissionCatalogContribut
     new(HrPermissionNames.UpdateEmployees, "Update employee profiles, and activate or deactivate employees"),
     new(HrPermissionNames.TransferEmployees, "Transfer employees between branches"),
     new(HrPermissionNames.TerminateEmployees, "Terminate employees"),
+    new(HrPermissionNames.ImportEmployees, "Create employees in bulk from a file"),
+    // The description says what leaves rather than what the operation is called, because this is the one
+    // permission whose grant an administrator should think twice about.
+    new(HrPermissionNames.ExportEmployees, "Extract employee records to a file that leaves the system"),
 
     // ---- DEPARTMENT (FP-007 Phase 2).
     //

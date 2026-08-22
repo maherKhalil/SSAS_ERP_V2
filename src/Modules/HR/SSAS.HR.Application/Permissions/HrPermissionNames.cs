@@ -1,4 +1,4 @@
-namespace SSAS.HR.Application.Permissions;
+﻿namespace SSAS.HR.Application.Permissions;
 
 // THE CODE-OWNED HR EMPLOYEE PERMISSION SET (FP-006 authorization-model, DEC-EMP-0030).
 //
@@ -34,6 +34,20 @@ public static class HrPermissionNames
 
   // Separated because termination is terminal and is a sensitive operation under BR-PLT-0103.
   public const string TerminateEmployees = "HR.Employees.Terminate";
+
+  // ---- BULK IN AND BULK OUT (FP-009, OD-DOC-005). SEPARATE FROM Create AND View, AND FROM EACH OTHER.
+  //
+  // The `DEC-EMP-0030` lineage again: this module has operations whose risk differs from the ordinary case,
+  // and the difference is expressed in the authorization model rather than in guidance. Anyone who may add
+  // one employee may not thereby add five thousand; anyone who may view an employee may not thereby extract
+  // the whole authorized set to a file.
+  //
+  // EXPORT IS THE HIGHER-RISK HALF, and it is the only operation in the module that moves data OUTSIDE the
+  // system's control — once a file is downloaded, no later permission change reaches it. That asymmetry is
+  // why the two are separate from each other and not one `HR.Employees.Bulk`.
+  public const string ImportEmployees = "HR.Employees.Import";
+
+  public const string ExportEmployees = "HR.Employees.Export";
 
   // ---- DEPARTMENT (FP-007 Phase 2, REQ-HR-0100/0101/0102).
   //

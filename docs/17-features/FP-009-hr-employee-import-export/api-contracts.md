@@ -157,6 +157,27 @@ export agree.
 for which it appears. It is absent from the contract rather than filtered out of it, which is the distinction
 `FP-006` draws between a field that does not exist and a field that is validated away.
 
+> **AS BUILT, AND ONE COLUMN OF IT CONTRADICTS THE ROUND-TRIP CLAIM — `OD-DOC-010`, OPEN.**
+>
+> These six ship exactly as listed. **`status` is not an import column** (`AC-DOC-0002`), and an import
+> refuses unknown columns (`DEC-DOC-0002`), so a file this route produces is **refused on re-import** —
+> which `DEC-DOC-0008` and `AC-DOC-0016` say it must not be.
+>
+> The gap is exactly one column wide and is demonstrated rather than described: the same file with `status`
+> removed imports cleanly. The three options and the decision they need are in
+> [`decisions-approved.md`](decisions-approved.md).
+
+**Permissions: `HR.Employees.Export` AND `HR.Employees.View`.** `OD-DOC-005` settles that neither implies the
+other; `DEC-DOC-0015` records that an export is a read and therefore takes the read authority as its floor,
+with the export authority granted on top. A caller holding `View` and not `Export` is refused and writes no
+run record.
+
+**Bounded, and refused rather than truncated.** An export is not paged — a file with a page 2 is not a file —
+but it is capped at `DEC-DOC-0005`'s row limit, and a request whose result would exceed it is **refused**
+naming the limit. Returning the first N of a larger set would hand the operator a file that looks complete.
+The bound is also what makes the buffered response honest: everything a caller can ask for fits in memory by
+construction.
+
 ## Documents — transferred to FP-010
 
 The upload, list, content and withdraw contracts, the metadata representation, and the reasoning for

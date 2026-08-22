@@ -1,4 +1,4 @@
-using SSAS.BuildingBlocks.Application.Pagination;
+﻿using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.HR.Domain.Employees;
 
 namespace SSAS.HR.Application.Employees.Reads;
@@ -87,6 +87,24 @@ public interface IEmployeeReadService
   // different numbers. `api-contracts.md` specifies exactly that, and the position counter shipped it.
   Task<int> CountEmployeesByDepartmentAsync(
     EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default);
+
+  // ---- THE EXPORT READ, WHICH INHERITS THE SEARCH'S FILTER CONTRACT RATHER THAN COPYING IT.
+  //
+  // It takes the SAME `EmployeeSearchCriteria` the search takes, which is the whole point: an export is a
+  // search that leaves the building, and it must not grow a second, subtly different filter vocabulary. The
+  // FP-006/FP-007 audit found `FR-DEP-0111` implemented below the transport and unreachable above it; a
+  // filter that existed on search and silently not on export would be the same defect wearing a different
+  // hat.
+  //
+  // `PageNumber` and `PageSize` on the criteria are IGNORED here, and the caller passes the row ceiling
+  // instead. An export is not paged — a file with a page 2 is not a file — but it is still BOUNDED, and the
+  // implementation reads one row PAST the ceiling so an oversized result can be REFUSED rather than
+  // silently truncated. A truncated export is the worst outcome available: it looks complete.
+  Task<IReadOnlyList<EmployeeExportRow>> ExportEmployeesAsync(
+    EmployeeReadScope scope,
+    EmployeeSearchCriteria criteria,
+    int ceiling,
+    CancellationToken cancellationToken = default);
 }
 
 // WHAT A SEARCH FILTERS ON, beyond the scope. None of these can widen a scope; they only narrow it.

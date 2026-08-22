@@ -202,6 +202,21 @@ public sealed class StubEmployeeReads : IEmployeeReadService
 
     return Task.FromResult(DepartmentMemberCount);
   }
+
+  // FP-009. Records the scope like every other read on this stub, and returns whatever a test seeded — so a
+  // route test can prove the CSV a caller receives came from rows the caller's scope admitted.
+  public IReadOnlyList<EmployeeExportRow> ExportRows { get; set; } = [];
+
+  public Task<IReadOnlyList<EmployeeExportRow>> ExportEmployeesAsync(
+    EmployeeReadScope scope,
+    EmployeeSearchCriteria criteria,
+    int ceiling,
+    CancellationToken cancellationToken = default)
+  {
+    LastScope = scope;
+
+    return Task.FromResult(ExportRows);
+  }
 }
 
 // Returns a real Employee aggregate so the command handlers exercise their genuine domain transitions and

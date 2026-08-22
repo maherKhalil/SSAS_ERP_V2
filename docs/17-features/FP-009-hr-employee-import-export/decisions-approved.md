@@ -346,6 +346,62 @@ handler could not have recorded one.
 > unrecognised name answering `400 request.invalid`. **Phase 2 confirms or overrides this**, and until it
 > does, no route exists that could depend on either answer.
 
+**`DEC-DOC-0015` — EXPORT REQUIRES `HR.Employees.Export` **AND** `HR.Employees.View`.**
+*(Ruled 2026-08-22 during Phase 1. An interpretation of `OD-DOC-005`, recorded because it is one.)*
+
+`OD-DOC-005` ruled the two permissions "granted independently of each other and of `Create` and `View`". That
+settles that neither **implies** the other. It does not, on its face, settle whether `Export` is *sufficient
+alone*.
+
+It is not. An export **is** a read of employee data, and it runs under the caller's own materialized employee
+read scope — resolved by the same resolver every other employee read uses, which checks
+`HR.Employees.View` as its first dimension. The read authority is therefore the **floor**, and the export
+authority is the additional, deliberately-granted permission on top of it.
+
+**The alternative was considered and rejected.** Making `Export` sufficient alone would mean a second scope
+resolver keyed on a different permission — and under `DEC-POS-0018` that means a second, unforgeable scope
+TYPE, because "the scope type is the permission" is how this module makes authorization unbypassable rather
+than checkable. That is a real design, and it buys the ability to grant somebody bulk extraction of employee
+data **without** the authority to look at one employee, which is not a capability anybody asked for and is
+hard to argue is safer.
+
+What the ruling **does** deliver either way is intact: anyone who may view an employee cannot thereby extract
+the whole authorized set to a file. `X6` asserts exactly that — a caller holding `View` and not `Export` is
+refused, and writes no run record.
+
+> **Overridable.** If the owner wants `Export` to stand alone, the change is a distinct `EmployeeExportScope`
+> resolved against `HR.Employees.Export`, and it is additive: the handler's own permission check stays, the
+> read predicate is unchanged, and only the resolver call moves.
+
+**`OD-DOC-010` — WHAT DOES THE ROUND-TRIP PROPERTY ACTUALLY CLAIM?** *(Raised 2026-08-22 during Phase 1.
+**Open.** Found by implementing the contract exactly as approved.)*
+
+Three approved statements cannot all be true:
+
+| # | Statement | Where |
+|---|---|---|
+| 1 | The export carries `employeeNumber`, `fullName`, `employmentDate`, `departmentCode`, `positionCode`, **`status`** | `api-contracts.md` |
+| 2 | **`status` is not an import column** — creation produces `Active`, and an import cannot create a terminated employee | `AC-DOC-0002` |
+| 3 | An exported file, edited and re-submitted, **is a legal import** | `DEC-DOC-0008`, `AC-DOC-0016` |
+
+An import refuses **unknown** columns before reading a single row (`DEC-DOC-0002`), so a file the export
+produces is refused for its `status` column — `HeaderColumnUnknown`. The package reasons about the round trip
+**only for `nationalId`**, where the argument works: the one column exports omit is a column imports do not
+require. Nothing was written about the one column exports **add**.
+
+`X8` demonstrates the gap rather than describing it: the exported file is refused, and the same file with
+`status` removed imports cleanly under a fresh employee number — so the format, the date rendering, the
+quoting and the classification codes are all mutually compatible, and the failure is exactly one column wide.
+
+| Option | Consequence |
+|---|---|
+| **Drop `status` from the export** | The round trip closes with no import change. An operator loses the ability to see, in the file, who is Active and who is Inactive — which is information the export is otherwise the only way to get in bulk |
+| **Declare `status` an import column that is ACCEPTED AND IGNORED** | The round trip closes and `AC-DOC-0002` still holds in the sense that matters — creation still produces `Active` and no file can create a terminated employee. It costs the "absent by construction, not merely validated" property for one column |
+| **Narrow the round-trip claim** to "an export re-imports **after the `status` column is removed**" | Honest and cheap, and turns a product property into a manual step the operator must know about. `AC-DOC-0016` would have to say so |
+
+**This is a product decision about what an export is for**, and it was not made here. The contract is
+implemented exactly as written and the gap is visible in the suite.
+
 **`OD-DOC-007`, `OD-DOC-008`, `OD-DOC-009` — DEFERRED to FP-010 (`OD-DOC-001`).**
 
 Binary storage location, retention and erasure against the no-physical-delete convention, and whether V5

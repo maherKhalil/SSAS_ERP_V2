@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using SSAS.HR.Application.Permissions;
 using SSAS.HR.Application.Positions;
 using SSAS.HR.Application.Positions.Reads;
@@ -278,7 +278,20 @@ public sealed class PositionApplicationArchitectureTests
 
     // TWELVE new ones, taking the HR plane to twenty-one. The count is asserted because "four per family"
     // is the discipline, and a thirteenth would mean someone grew the set without a decision.
-    Assert.Equal(21, offered.Length);
+    //
+    // ---- TWENTY-THREE AS OF FP-009, and the two additions are a decision rather than a drift.
+    //
+    // `HR.Employees.Import` and `HR.Employees.Export` were ruled SEPARATE by `OD-DOC-005` — from `Create`,
+    // from `View`, and from each other. They break the "four per family" shape deliberately: bulk in and
+    // bulk out are not a CRUD quartet over a new aggregate, they are two operations over an existing one
+    // whose RISK differs from the ordinary case. Export is the higher-risk half and the only operation in
+    // the module that moves data outside the system's control.
+    //
+    // This count is what would have gone red if they had been added quietly, which is why it is here.
+    Assert.Equal(23, offered.Length);
+
+    Assert.Contains(HrPermissionNames.ImportEmployees, offered);
+    Assert.Contains(HrPermissionNames.ExportEmployees, offered);
 
     Assert.Equal(
       12,

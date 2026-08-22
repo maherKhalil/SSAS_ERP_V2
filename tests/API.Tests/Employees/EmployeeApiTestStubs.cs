@@ -109,12 +109,26 @@ public sealed class StubEmployeeReads : IEmployeeReadService
     DepartmentMemberCount = 0;
   }
 
+  // The list-row counterpart of SampleDetail, carrying the same seeded department so the two wire tests
+  // assert against one fixture rather than two that could drift apart.
+  public static EmployeeSummary SampleSummary() => new(
+    EmployeeApiTestHost.EmployeeId,
+    EmployeeApiTestHost.CompanyA,
+    EmployeeApiTestHost.BranchA,
+    new EmployeeDepartmentSummary(EmployeeApiTestHost.DepartmentA, "FIN", "Finance"),
+    "EMP-00147",
+    "Layla Haddad",
+    new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+    EmployeeStatus.Active);
+
   public static EmployeeDetail SampleDetail(
     EmployeeStatus status = EmployeeStatus.Active, DateTimeOffset? terminationDate = null) => new(
     EmployeeApiTestHost.EmployeeId,
     EmployeeApiTestHost.CompanyA,
     EmployeeApiTestHost.BranchA,
-    EmployeeApiTestHost.DepartmentA,
+    // The seeded department, code and name together: the wire tests assert that all three reach the caller,
+    // so a stub returning only the identifier could not tell a shipped sub-object from a missing one.
+    new EmployeeDepartmentSummary(EmployeeApiTestHost.DepartmentA, "FIN", "Finance"),
     "EMP-00147",
     "Layla Haddad",
     "2990112345678",

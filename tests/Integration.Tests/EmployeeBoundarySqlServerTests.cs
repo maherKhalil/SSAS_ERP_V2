@@ -1822,10 +1822,65 @@ public sealed class EmployeeBoundarySqlServerTests
     var found = Assert.Single(page.Value.Items);
 
     Assert.Equal(inA.Value, found.EmployeeId);
-    Assert.Equal(finance, found.DepartmentId);
+    Assert.Equal(finance, found.Department.DepartmentId);
 
     // And the Jeddah member exists — so the single result above is scope working, not an empty department.
     Assert.Equal(finance, await fixture.EmployeeDepartmentAsync(inB.Value));
+  }
+
+  // ================================================================================================
+  // D16 — THE DEPARTMENT SUB-OBJECT IS JOINED IN SQL, ON BOTH READS
+  // ================================================================================================
+  //
+  // The wire tests assert the sub-object reaches the caller; they cannot assert it holds the RIGHT
+  // department, because a stub returns whatever it was seeded with. This reads two employees in two
+  // different departments through the real query and checks that each row carries its own — which is what
+  // rules out the join being written on a constant, or on the first department the query happened to see.
+  //
+  // Both reads are covered in one test on purpose: the detail and the search share the join but not the
+  // code path, and shipping it on one of the two is the likelier mistake than shipping it on neither.
+  [Fact]
+  public async Task D16_Both_employee_reads_carry_their_own_department_resolved()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var finance = await fixture.SeedDepartmentAsync(fixture.CompanyA, "FIN", active: true);
+    var operations = await fixture.SeedDepartmentAsync(fixture.CompanyA, "OPS", active: true);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var inFinance = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-FIN", department: finance));
+    Assert.True(inFinance.IsSuccess, inFinance.IsFailure ? inFinance.Error.Code : null);
+
+    var inOperations = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-OPS", department: operations));
+    Assert.True(inOperations.IsSuccess, inOperations.IsFailure ? inOperations.Error.Code : null);
+
+    // ---- THE DETAIL READ.
+    var detail = await graph.Get().HandleAsync(new GetEmployeeQuery(inFinance.Value));
+
+    Assert.True(detail.IsSuccess, detail.IsFailure ? detail.Error.Code : null);
+    Assert.Equal(finance, detail.Value.Department.DepartmentId);
+    Assert.Equal("FIN", detail.Value.Department.Code);
+    Assert.Equal("Department FIN", detail.Value.Department.Name);
+
+    // ---- AND THE SEARCH, WHERE THE TWO ROWS MUST DISAGREE WITH EACH OTHER.
+    var page = await graph.Search().HandleAsync(new SearchEmployeesQuery(
+      new EmployeeScopeRequest(
+        EmployeeCompanyScopeMode.CurrentCompany,
+        EmployeeBranchScopeMode.SelectedAuthorizedBranches,
+        [fixture.BranchA])));
+
+    Assert.True(page.IsSuccess, page.IsFailure ? page.Error.Code : null);
+
+    var financeRow = page.Value.Items.Single(item => item.EmployeeId == inFinance.Value);
+    var operationsRow = page.Value.Items.Single(item => item.EmployeeId == inOperations.Value);
+
+    Assert.Equal("FIN", financeRow.Department.Code);
+    Assert.Equal("Department FIN", financeRow.Department.Name);
+    Assert.Equal("OPS", operationsRow.Department.Code);
+    Assert.Equal("Department OPS", operationsRow.Department.Name);
   }
 
   // ==================================================================================================
@@ -3298,6 +3353,8 @@ public sealed class EmployeeBoundarySqlServerTests
 
     // The real search handler over the real scope resolver, so a department filter is proven against the
     // production composition rather than against a read service called directly.
+    public GetEmployeeQueryHandler Get() => new(Scope(), Reads());
+
     public SearchEmployeesQueryHandler Search() => new(Scope(), Reads());
 
     public CreateEmployeeCommandHandler Create() => new(

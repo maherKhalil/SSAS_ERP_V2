@@ -12,15 +12,41 @@ namespace SSAS.HR.Application.Employees.Reads;
 // to know which one each row came from, and surfacing it makes a mis-scoped read visible in its own output
 // rather than only in the query plan.
 //
-// DepartmentId JOINS THEM FROM FP-007 PHASE 3, AND IS NOT A FOURTH SCOPE. It is surfaced for the same
+// THE DEPARTMENT JOINS THEM FROM FP-007 PHASE 3, AND IS NOT A FOURTH SCOPE. It is surfaced for the same
 // practical reason CompanyId and BranchId are — a caller needs to know which department each row is in —
-// but nothing filters visibility by it. The department's own CODE and NAME are deliberately NOT joined in
-// here: that would make an employee read a department read as well, and departments have their own scope.
+// but nothing filters visibility by it.
+//
+// ---- IT NOW CARRIES THE CODE AND NAME, AND THE OLD ARGUMENT AGAINST THAT IS ANSWERED RATHER THAN DROPPED.
+//
+// This comment used to say the code and name were deliberately NOT joined, because "that would make an
+// employee read a department read as well, and departments have their own scope". Ruled 2026-08-22, and the
+// distinction the old reasoning missed is the one that matters:
+//
+//   * The `employeeCount` on a DEPARTMENT reads ACROSS an aggregate the caller may have no authority over —
+//     employees are branch-scoped, the department is not, so counting there can disclose the size of
+//     branches the caller cannot see. That one needs its own scope, and it has one.
+//   * This LABELS a field the employee record already carries. `Employee.DepartmentId` is already returned;
+//     the department it names is in the EMPLOYEE'S OWN COMPANY, which the caller's scope has already
+//     admitted, so resolving it to a code and a name discloses nothing the caller could not obtain by
+//     reading the department directly with the `View` permission they would need anyway.
+//
+// So there is no extra permission gate here, by ruling. What is NOT done is any widening: the join is an
+// INNER join on the employee's own `DepartmentId`, which is NOT NULL with a real foreign key, so it can
+// never add or remove a row — it only decorates the rows the scope already returned.
+// The department an employee belongs to, resolved to something a caller can read (FP-007 `api-contracts.md`,
+// shipped 2026-08-22). One record rather than three loose fields, because the three are meaningless apart:
+// a code without its identifier cannot be followed, and an identifier without a name is what the surface
+// already had.
+//
+// It replaces the bare `DepartmentId` rather than sitting beside it. Two sources for the same identifier is
+// how they drift.
+public sealed record EmployeeDepartmentSummary(Guid DepartmentId, string Code, string Name);
+
 public sealed record EmployeeDetail(
   Guid EmployeeId,
   Guid CompanyId,
   Guid BranchId,
-  Guid DepartmentId,
+  EmployeeDepartmentSummary Department,
   string EmployeeNumber,
   string FullName,
   string? NationalId,
@@ -39,7 +65,7 @@ public sealed record EmployeeSummary(
   Guid EmployeeId,
   Guid CompanyId,
   Guid BranchId,
-  Guid DepartmentId,
+  EmployeeDepartmentSummary Department,
   string EmployeeNumber,
   string FullName,
   DateTimeOffset EmploymentDate,

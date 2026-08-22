@@ -171,11 +171,15 @@ above are the check, not a summary of it.
 
 | Requirement | Status | Where |
 |---|---|---|
-| `FR-DOC-0101` validate a file | **Shipped** (handler) | `I8_A_validate_only_run_writes_a_record_and_no_employees` |
-| `FR-DOC-0102` import employees | **Shipped** (handler) | `I1`, `I2`, `I3`, `I6`, `I7`, `I13`, `I14` |
-| `FR-DOC-0103` import run history | **Not shipped** — a read route, and there are no routes in Phase 1 | — |
-| `FR-DOC-0201` export employees | **Shipped** (handler) | `X1`, `X3`, `X4`, `X7` |
-| `FR-DOC-0202` export run history | **Not shipped** — same reason as `FR-DOC-0103` | — |
+| `FR-DOC-0101` validate a file | **Shipped** — handler (Phase 1) + route `HrEmployeesImportValidate` (Phase 2) | `I8_A_validate_only_run_writes_a_record_and_no_employees` |
+| `FR-DOC-0102` import employees | **Shipped** — handler + route `HrEmployeesImport` | `I1`, `I2`, `I3`, `I6`, `I7`, `I13`, `I14` |
+| `FR-DOC-0103` import run history | **Shipped in Phase 2** — handler + route `HrEmployeesImportRuns` | `H1`, `H2`, `H3`, `H5` |
+| `FR-DOC-0201` export employees | **Shipped** — handler + route `HrEmployeesExport` | `X1`, `X3`, `X4`, `X7` |
+| `FR-DOC-0202` export run history | **Shipped in Phase 2** — handler + route `HrEmployeesExportRuns` | `H2`, `H4`, `H5` |
+
+> **Phase 2 flipped the last three columns.** `FR-DOC-0103` and `FR-DOC-0202` had no application handler at
+> all in Phase 1 — they are read *routes*, and Phase 1 exposed none — so Phase 2 built both the handlers and
+> the routes. The five routes take the HR surface from **41 to 46**.
 
 ### Business rules
 
@@ -244,10 +248,13 @@ in the database, two rejections compared field by field, and the bytes plus the 
 
 ### What Phase 1 does not close
 
-* **Every route.** The five in `api-contracts.md` are Phase 2, and with them the status codes, the problem-code
-  mapping, `Content-Disposition`, the `nosniff` interaction, and the transport floor for the size cap.
-* **Where `importKey` travels.** `DEC-DOC-0014` removed the multipart form that was going to carry it and
-  records an engineering recommendation rather than a ruling.
+* ~~**Every route.**~~ **CLOSED IN PHASE 2** — all five ship, with the problem-code mapping, the
+  `Content-Disposition` and BOM handling, the `nosniff` composition and the per-route transport ceiling.
+* ~~**Where `importKey` travels.**~~ **CLOSED** — a query parameter under the strict allowlist
+  (`DEC-DOC-0014`, adopted).
+* **Where the imported FILE NAME comes from.** Newly open: `DEC-DOC-0014` removed the multipart part that
+  carried it, the same way it removed `importKey`'s field, and that half was not noticed at the time. As
+  built it is an optional `X-File-Name` header defaulting to `import.csv`; see `api-contracts.md`.
 * **`AC-DOC-0016` beyond an all-`Active` export.** `OD-DOC-010` is ruled and implemented. What remains open
   is whether `DEC-DOC-0009`'s DEFAULT status set should narrow from `Active`+`Inactive` to `Active` so that a
   default export round-trips unconditionally. That is a different decision about what a default export is,

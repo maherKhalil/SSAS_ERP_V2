@@ -100,7 +100,25 @@ Content-Type: text/csv; charset=utf-8
 | Input | Type | Required |
 |---|---|---|
 | body | CSV, UTF-8, ≤ 10 MB, ≤ 5,000 data rows | Yes |
-| `importKey` | text, ≤ 128 chars — **where it travels is Phase 2's to settle** (`DEC-DOC-0014`) | Yes (`DEC-DOC-0004`) |
+| `importKey` | **query parameter**, text, ≤ 128 chars, under the strict allowlist (`DEC-DOC-0014`, adopted) | Yes (`DEC-DOC-0004`) |
+| `X-File-Name` | header, recorded on the run for audit — **see the open question below** | No; defaults to `import.csv` |
+
+> **OPEN QUESTION, RAISED 2026-08-22 DURING PHASE 2 — NOT DECIDED HERE.**
+>
+> `DEC-DOC-0006` has the run record store *"the file name"*, and `data-model.md` gives it an `nvarchar(260)`
+> column *"recorded for audit; never used to locate anything"*. Under the superseded multipart shape the file
+> part carried that name for free. **`DEC-DOC-0014` removed multipart and with it the only place a file name
+> could come from** — the same gap `importKey` had, and it was not noticed at the same time.
+>
+> As built: an optional `X-File-Name` request header, defaulted to `import.csv` when absent. That keeps the
+> audit column meaningful — always writing a constant would make it useless — and the value is inert by the
+> column's own definition, since nothing locates anything with it.
+>
+> **What needs ruling:** whether a caller-supplied name should be recorded at all, and if so under what name
+> and length limit. The conservative alternative is the constant, at the cost of the audit value. Note the
+> asymmetry with the export, where `api-contracts.md` explicitly forbids echoing caller input into a
+> response header — this is the opposite direction (caller input into a stored audit field, never reflected
+> back), so that prohibition does not settle it.
 
 **`charset` is checked, not ignored.** `text/csv` and `text/csv; charset=utf-8` are the same contract; a
 request declaring any *other* charset is refused rather than decoded as UTF-8 anyway, and so is a body whose

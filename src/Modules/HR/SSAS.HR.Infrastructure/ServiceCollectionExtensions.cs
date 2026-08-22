@@ -137,6 +137,14 @@ public static class ServiceCollectionExtensions
     services.AddScoped<IEmployeeExportRunRepository, EmployeeExportRunRepository>();
     services.AddScoped<ExportEmployeesQueryHandler>();
 
+    // ---- FP-009 PHASE 2. The run-history reads (FR-DOC-0103, FR-DOC-0202).
+    //
+    // Scoped for the same reason every read here is: the scope they require is resolved per request, and a
+    // longer lifetime would be a cache of authorization state.
+    services.AddScoped<IEmployeeRunHistoryReadService, EmployeeRunHistoryReadService>();
+    services.AddScoped<SearchImportRunsQueryHandler>();
+    services.AddScoped<SearchExportRunsQueryHandler>();
+
     return services;
   }
 }

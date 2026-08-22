@@ -3100,6 +3100,187 @@ public sealed class EmployeeBoundarySqlServerTests
       EmployeeImportErrors.StatusNotCreatable, Assert.Single(refused.Value.Errors).Error);
   }
 
+  // ================================================================================================
+  // FP-009 PHASE 2 SLICE 1 — THE RUN-HISTORY READS (FR-DOC-0103, FR-DOC-0202)
+  // ================================================================================================
+
+  // ---- H1. NEWEST FIRST, PAGED, AND THE COUNTS COME BACK.
+  [Fact]
+  [Trait("Decision", "FR-DOC-0103")]
+  public async Task H1_The_import_run_history_lists_the_companys_runs_newest_first()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    // Three runs, written by the real pipeline so the rows are the ones production writes.
+    foreach (var (key, number) in new[] { ("hist-1", "H1-A"), ("hist-2", "H1-B"), ("hist-3", "H1-C") })
+    {
+      var applied = await graph.Import().HandleAsync(new ImportEmployeesCommand(
+        $"{ImportHeader}\n{number},Person,2026-03-01,DEPA,POSA", key, "people.csv", ByteCount: 96));
+
+      Assert.Equal(EmployeeImportOutcome.Applied, applied.Value.Outcome);
+    }
+
+    var listed = await graph.SearchImportRuns().HandleAsync(new SearchImportRunsQuery());
+
+    Assert.True(listed.IsSuccess, listed.IsFailure ? listed.Error.Code : null);
+    Assert.Equal(3, listed.Value.TotalCount);
+
+    // NEWEST FIRST. Asserted as a non-increasing sequence rather than by naming an order, because two runs
+    // can share a timestamp and the claim is about the ordering rule, not about these three rows.
+    var executed = listed.Value.Items.Select(item => item.ExecutedUtc).ToArray();
+    Assert.Equal(executed.OrderByDescending(value => value), executed);
+
+    // The counts and the caller's own values come back — `DEC-DOC-0016` approves both as caller-supplied.
+    var newest = listed.Value.Items.First();
+    Assert.Equal(1, newest.RowCount);
+    Assert.Equal(1, newest.AcceptedCount);
+    Assert.Equal("people.csv", newest.FileName);
+    Assert.Contains("hist-", newest.ImportKey, StringComparison.Ordinal);
+  }
+
+  // ---- H2. PAGINATION IS REFUSED, NOT CLAMPED.
+  //
+  // Silently reducing an over-large page would return a page the caller did not ask for and let them believe
+  // they had seen the rest — the rule every other list in the module applies.
+  [Theory]
+  [InlineData(0, 50)]
+  [InlineData(1, 0)]
+  [InlineData(1, EmployeeRunHistoryCriteria.MaxPageSize + 1)]
+  [Trait("Decision", "FR-DOC-0103")]
+  public async Task H2_An_out_of_range_page_is_refused_rather_than_clamped(int page, int size)
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var imports = await graph.SearchImportRuns().HandleAsync(new SearchImportRunsQuery(page, size));
+    var exports = await graph.SearchExportRuns().HandleAsync(new SearchExportRunsQuery(page, size));
+
+    Assert.True(imports.IsFailure);
+    Assert.True(exports.IsFailure);
+    Assert.Equal(EmployeeErrors.InvalidPagination.Code, imports.Error.Code);
+    Assert.Equal(EmployeeErrors.InvalidPagination.Code, exports.Error.Code);
+
+    // And the boundary itself is accepted, so the refusal is a ceiling rather than an off-by-one.
+    Assert.True((await graph.SearchImportRuns().HandleAsync(
+      new SearchImportRunsQuery(1, EmployeeRunHistoryCriteria.MaxPageSize))).IsSuccess);
+  }
+
+  // ---- H3. SCOPED TO THE CALLER'S COMPANIES.
+  //
+  // A run belonging to a company the caller is not authorized for is absent — and the TOTAL is computed
+  // through the same scoped query, so the count cannot disclose how many runs exist outside it either.
+  [Fact]
+  [Trait("Decision", "FR-DOC-0103")]
+  public async Task H3_A_run_in_another_company_is_absent_and_uncounted()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    using (var inB = fixture.Graph(fixture.BranchB, company: fixture.CompanyB))
+    {
+      var applied = await inB.Import().HandleAsync(new ImportEmployeesCommand(
+        $"{ImportHeader}\nH3-B,Person,2026-03-01,DEPB,POSB", "other-company", "b.csv", ByteCount: 96));
+
+      Assert.Equal(EmployeeImportOutcome.Applied, applied.Value.Outcome);
+    }
+
+    // A caller whose authorized company set is CompanyA only.
+    await fixture.RevokeCompanyAssignmentAsync(fixture.NormalUserId, fixture.CompanyB);
+
+    using var confined = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+
+    var listed = await confined.SearchImportRuns().HandleAsync(new SearchImportRunsQuery());
+
+    Assert.True(listed.IsSuccess, listed.IsFailure ? listed.Error.Code : null);
+    Assert.Equal(0, listed.Value.TotalCount);
+    Assert.Empty(listed.Value.Items);
+  }
+
+  // ================================================================================================
+  // H4. THE EXPORT LISTING CARRIES `ColumnSet` AND NOT THE SCOPE SNAPSHOT (DEC-DOC-0016)
+  // ================================================================================================
+  //
+  // Asserted from BOTH directions, because either alone is weak:
+  //
+  //   * the TYPE has no property that could hold the snapshot, so no projection could leak it and no flag
+  //     could re-add one — this is the guarantee;
+  //   * and the stored row genuinely HAS a non-empty snapshot, so the absence above is a distinction rather
+  //     than an artefact of an empty column.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0016")]
+  public async Task H4_The_export_history_reports_the_column_set_and_never_the_scope_snapshot()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    await fixture.SeedEmployeeAsync("H4-1", fixture.BranchA);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var exported = await graph.Export().HandleAsync(new ExportEmployeesQuery());
+    Assert.True(exported.IsSuccess, exported.IsFailure ? exported.Error.Code : null);
+
+    // THE PREMISE: the stored row really does carry a scope snapshot naming this company.
+    var stored = await fixture.ExportRunAsync(exported.Value.ExportRunId);
+    Assert.NotNull(stored);
+    Assert.Contains(fixture.CompanyA.ToString(), stored!.ScopeCompanyIds, StringComparison.Ordinal);
+    Assert.NotEmpty(stored.ScopeBranchIds);
+
+    var listed = await graph.SearchExportRuns().HandleAsync(new SearchExportRunsQuery());
+
+    Assert.True(listed.IsSuccess, listed.IsFailure ? listed.Error.Code : null);
+
+    var item = Assert.Single(listed.Value.Items);
+
+    // What DOES ship: the column set, in order, as a list rather than the stored comma-joined string.
+    Assert.Equal(
+      ["employeeNumber", "fullName", "employmentDate", "departmentCode", "positionCode", "status"],
+      item.ColumnSet);
+    Assert.Equal(1, item.RowCount);
+
+    // ---- AND THE TYPE ITSELF CANNOT CARRY THE SNAPSHOT.
+    //
+    // The strong half. A value assertion would only prove this instance omitted it; this proves no instance
+    // can hold it, which is what `DEC-DOC-0016` decided.
+    var properties = typeof(EmployeeExportRunListItem).GetProperties().Select(p => p.Name).ToArray();
+
+    Assert.DoesNotContain("ScopeCompanyIds", properties);
+    Assert.DoesNotContain("ScopeBranchIds", properties);
+    Assert.DoesNotContain(properties, name => name.Contains("Scope", StringComparison.Ordinal));
+
+    // The import listing has no snapshot to omit, and equally must not grow one.
+    Assert.DoesNotContain(
+      typeof(EmployeeImportRunListItem).GetProperties().Select(p => p.Name),
+      name => name.Contains("Scope", StringComparison.Ordinal));
+  }
+
+  // ---- H5. BOTH HISTORIES REQUIRE `HR.Employees.View`, AND NEITHER REQUIRES `Export`.
+  //
+  // Reading the record that an export happened is an employee read; PERFORMING one is the separately granted
+  // capability. Gating the history on `Export` would mean the people who audit extractions must also be able
+  // to perform them, which is the opposite of what separating the permission was for (`OD-DOC-005`).
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0015")]
+  public async Task H5_The_run_histories_are_gated_on_the_employee_read_permission()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    var importsDenied = await graph.SearchImportRuns(canView: false)
+      .HandleAsync(new SearchImportRunsQuery());
+    var exportsDenied = await graph.SearchExportRuns(canView: false)
+      .HandleAsync(new SearchExportRunsQuery());
+
+    Assert.True(importsDenied.IsFailure);
+    Assert.True(exportsDenied.IsFailure);
+    Assert.Equal(EmployeeErrors.ReadPermissionDenied.Code, importsDenied.Error.Code);
+    Assert.Equal(EmployeeErrors.ReadPermissionDenied.Code, exportsDenied.Error.Code);
+
+    // The same caller WITH the read permission — and WITHOUT `HR.Employees.Export` — succeeds on both, which
+    // is the half that proves the export permission is not silently required here.
+    Assert.True((await graph.SearchImportRuns().HandleAsync(new SearchImportRunsQuery())).IsSuccess);
+    Assert.True((await graph.SearchExportRuns().HandleAsync(new SearchExportRunsQuery())).IsSuccess);
+  }
+
   private const string ImportHeader =
     "employeeNumber,fullName,employmentDate,departmentCode,positionCode";
 
@@ -4304,6 +4485,19 @@ public sealed class EmployeeBoundarySqlServerTests
         : [HrPermissionNames.ViewEmployees]),
       new EmployeeFixture.TestClock(),
       limits);
+
+    // ---- FP-009 PHASE 2. THE RUN-HISTORY READS, over the real scope resolver.
+    //
+    // `canView: false` builds a caller WITHOUT `HR.Employees.View`, which is the only way to prove the
+    // permission is genuinely what gates these — the scope resolver checks it as its first dimension, and a
+    // graph that always supplied it would leave that untested.
+    public SearchImportRunsQueryHandler SearchImportRuns(bool canView = true) => new(
+      Scope(canView ? [HrPermissionNames.ViewEmployees] : []),
+      new EmployeeRunHistoryReadService(accessor));
+
+    public SearchExportRunsQueryHandler SearchExportRuns(bool canView = true) => new(
+      Scope(canView ? [HrPermissionNames.ViewEmployees] : []),
+      new EmployeeRunHistoryReadService(accessor));
 
     public UpdateEmployeeProfileCommandHandler Update() => new(
       new EmployeeRepository(accessor), unitOfWork,

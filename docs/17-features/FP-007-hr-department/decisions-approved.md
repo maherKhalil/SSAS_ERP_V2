@@ -179,6 +179,11 @@ deliberate grouping rather than an omission.
 > **Citation defect, recorded rather than silently corrected.** `EmployeeErrors.cs` cites `DEC-DEP-0031` for
 > this rule. No such decision exists; the rule is this one, `DEC-DEP-0018`. The source comment is wrong and
 > needs a one-line correction, which is out of scope for a documentation-only task.
+>
+> **DISCHARGED — verified 2026-08-22 during the HR as-built cleanup.** `EmployeeErrors.WritePermissionDenied`
+> now cites `DEC-DEP-0018`; the correction had already been made and this obligation was left standing. No
+> reference to `DEC-DEP-0031` remains anywhere in the source, and the identifier is still unallocated — a new
+> decision must not claim it, or it would resurrect the confusion this note describes.
 
 **DEC-DEP-0019** — **OWNER-DECISION-REQUIRED (`OD-DEP-005`).** Department is **not** an authorization
 dimension — no read is scoped by department, and department is a filterable attribute only. Recommended
@@ -236,6 +241,23 @@ sensitive permission deliberately made.
 
 Functional permission and company scope remain **independent dimensions** (`ADR-025` decision 8 pattern):
 holding `Platform.Tenant.Administer` widens scope and grants none of these.
+
+**DEC-DEP-0030** — **State-conflict refusals answer `409`, not `422`** — shipped behaviour ratified over
+drafted status. Ruled 2026-08-22 during the HR as-built cleanup, which found `api-contracts.md` specifying
+`422` for four families of refusal that have answered `409` on a merged surface since Phase 4.
+
+The rule the mapper already followed, now stated: a refusal that names a **conflict with current state** —
+the parent would form a cycle, the manager is terminated, the department is inactive, the department still
+has active children — is a `409`. The employee surface answers `409` for the identical shape
+(`employee.transition_invalid`), and one product answering two different statuses for one kind of refusal is
+worse than either choice on its own.
+
+Ratified rather than corrected in code because the routes are live and the problem CODES were always
+distinct: `department.hierarchy_invalid`, `department.manager_invalid` and `department.transition_invalid`
+each say precisely what happened, and `code` is the authoritative field by `DEC-DEP-0026`. A client
+branching on `code` — the documented contract — was never affected. Changing four live status codes to
+match prose nobody had acted on would have been the more disruptive of the two ways to make the document
+true.
 
 **DEC-DEP-0026** — Department errors have their **own mapper and their own problem-code namespace**
 (`department.*`). Routing department results through `EmployeeApiErrorMapper` is not a shortcut but a

@@ -76,7 +76,7 @@ Request:
 }
 ```
 
-The result contains safe Employee data and `Active` status, including `employeeId`, the server-stamped `branchId`, the resolved `companyId`, and the concurrency version.
+The result contains safe Employee data and `Active` status, including `employeeId`, the server-stamped `branchId`, the resolved `companyId`, the `department` sub-object described in [FP-007's contracts](../FP-007-hr-department/api-contracts.md) (`{ departmentId, code, name }`, shipped 2026-08-22 and present on the detail and on every search row), and the concurrency version.
 
 `tenantId`, `companyId`, `branchId`, and `status` are **not** part of the request and are rejected as unknown fields if present (`400 request.invalid`). `nationalId` is optional.
 
@@ -276,17 +276,26 @@ Responses set `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and 
 
 The OpenAPI document for the Employee HTTP surface, delivered with these routes in this milestone, specifies all schemas, the strict unknown-field policy, enums, length limits, rowversion encoding, paging maxima, the company-context header, scope-mode parameters, examples, permission/security requirements, and every success and error response and code. Contract tests compare runtime output to the document.
 
-> **NOT SHIPPED (recorded 2026-08-22, HR as-built cleanup — awaiting an architect ruling).** The Host does
-> generate an OpenAPI document (`AddSwaggerGen`, `/swagger/v1/swagger.json`), and every HR route appears in it
-> through the framework's own metadata — but **nothing in this paragraph beyond that is implemented.** The HR
-> endpoints declare only `WithTags` and `WithName`: no `Produces<T>`, no `ProducesProblem`, no examples and no
-> declared security requirement, so the document describes none of the schemas, error responses or codes this
-> section claims it specifies. The Platform authentication surface does declare them, which is what makes the
-> omission visible as an omission rather than a convention.
+> **WHAT IS ACTUALLY GENERATED TODAY (corrected 2026-08-22, HR as-built cleanup). The paragraph above
+> describes a target, not the current state.** As built:
 >
-> **And no contract test exists for the HR surface.** The only OpenAPI contract test in the repository is
-> `LocalizationOpenApiContractTests`, which covers Platform localization. Nothing compares HR runtime output
-> to the document, so the final sentence above describes a mechanism that was never built.
+> * The Host **does** generate an OpenAPI document — `AddSwaggerGen`, served at `/swagger/v1/swagger.json` —
+>   and every HR route appears in it through the framework's own route metadata, with its path, method and
+>   inferred request shape.
+> * The HR endpoints declare only `WithTags` and `WithName`. There is **no** `Produces<T>`, no
+>   `ProducesProblem`, no examples and no declared security requirement, so the document does **not**
+>   describe the response schemas, the error responses, the problem codes, the enums, the length limits, the
+>   rowversion encoding, the paging maxima or the permission requirements this section claims for it. The
+>   Platform authentication surface does declare them, which is what makes the difference visible as an
+>   omission rather than a convention.
+> * **No contract test compares HR runtime output to the document.** The only OpenAPI contract test in the
+>   repository is `LocalizationOpenApiContractTests`, covering Platform localization.
+>
+> **Enriching the HR surface — the `Produces`/`ProducesProblem`/security metadata and a contract-test suite
+> to hold it true — is registered as its own backlog task and was deliberately NOT started here.** It is
+> feature work rather than as-built reconciliation: the other four gaps this cleanup found were values that
+> existed and failed to reach the wire, while this one is a body of work nobody has written. Ruled
+> 2026-08-22.
 
 ## Exclusions
 

@@ -62,24 +62,44 @@ reasoning is identical.
 | `POST /api/hr/employees` | Request gains **required** `departmentId` (subject to `OD-DEP-001`) |
 | `PUT /api/hr/employees/{id}` | **Unchanged.** `departmentId` is *not* added here (`BRULE-DEP-0018`) |
 | `POST /api/hr/employees/{id}/department` | **New.** `HR.Employees.Update`. `FR-DEP-0110`. Body: `departmentId`, `rowVersion`. *(As built 2026-08-22: shipped as `POST /api/hr/employees/{id}/change-department`, per `DEC-DEP-0024`'s named-POST convention.)* |
-| `GET /api/hr/employees/{id}` | Response gains `department` — `{ departmentId, code, name }`. **NOT SHIPPED** — see the note below |
-| `GET /api/hr/employees` | Response items gain the same; request gains optional `departmentId` filter (`FR-DEP-0111`). **NEITHER SHIPPED** — see the note below |
+| `GET /api/hr/employees/{id}` | Response gains `department` — `{ departmentId, code, name }`. **SHIPPED 2026-08-22** |
+| `GET /api/hr/employees` | Response items gain the same; request gains optional `departmentId` filter (`FR-DEP-0111`). **BOTH SHIPPED 2026-08-22** |
 | `GET /api/hr/employees/{id}/branch-history` | **Unchanged** |
 
-> **NOT SHIPPED (recorded 2026-08-22, HR as-built cleanup — awaiting an architect ruling).** Two of the six
-> employee-contract changes above are absent from the implementation, and no decision records dropping them:
+> **SHIPPED 2026-08-22** (HR as-built cleanup, ruled). Two of the six employee-contract changes above were
+> found absent by the audit on 2026-08-21 and are now built. They had failed in opposite ways, which is worth
+> keeping:
 >
-> 1. **The `department` object on the employee representation.** `EmployeeResponse` and
->    `EmployeeSummaryResponse` carry no department at all — not the nested object, not even a bare
->    `departmentId`. The read models beneath them DO carry `Employee.DepartmentId` (`EmployeeDetail`,
->    `EmployeeSummary`), so the value reaches the application layer and stops at the wire.
-> 2. **The `departmentId` search filter (`FR-DEP-0111`).** The filter is fully implemented BELOW the
->    transport — `EmployeeSearchCriteria.DepartmentId` and its SQL predicate both exist and are exercised
->    — but `departmentId` is absent from the employee search query allowlist, so no caller can reach it. A
->    request naming it is rejected as an undeclared parameter. The capability is shipped and unreachable.
+> 1. **The `department` object on the employee representation** was never built at all. `EmployeeResponse`
+>    and `EmployeeSummaryResponse` carried no department — not the nested object, not even a bare
+>    `departmentId` — while the read models beneath them did carry `Employee.DepartmentId`. The value
+>    reached the application layer and stopped at the wire.
 >
-> Both are recorded here rather than implemented: this cleanup's scope was the `employeeCount` gap, and what
-> to do about these is an architect decision, not a coder's.
+>    **As built:** `EmployeeDepartmentSummary` on `EmployeeDetail` and `EmployeeSummary`, replacing the bare
+>    identifier so there is one source for it rather than two that can drift, surfaced as
+>    `EmployeeDepartmentResponse` on both wire shapes. The code and name are resolved by an **INNER JOIN to
+>    `tenant.Departments` inside the existing employee query** — one join on `Employee.DepartmentId`, which
+>    is NOT NULL behind a real foreign key, so it can neither add nor remove a row. A per-row service call
+>    was rejected: it would be N round trips for a label. The search total is still counted on the unjoined
+>    query, so the count and the page cannot disagree even if the join were ever changed.
+>
+>    **No extra permission gate, and the distinction from `employeeCount` is the reason.** That field reads
+>    ACROSS an aggregate the caller may have no authority over — employees are branch-scoped, departments are
+>    not — so it needs a scope of its own. This one LABELS a field the employee record already carries, in
+>    the employee's own company, which the caller's scope has already admitted; resolving it to a code and a
+>    name discloses nothing a caller holding `HR.Departments.View` could not read directly.
+>
+> 2. **The `departmentId` search filter (`FR-DEP-0111`)** was fully implemented BELOW the transport —
+>    `EmployeeSearchCriteria.DepartmentId`, the SQL conjunct, and `D15` proving it narrows rather than
+>    widens — and unreachable, because the name was missing from the employee search query allowlist. A
+>    request naming it was rejected as an undeclared parameter. **The fix is that one allowlist entry**, plus
+>    parsing that refuses a malformed identifier rather than treating it as "no filter".
+>
+> **Proven by** `A46`–`A51` in `EmployeeEndpointTests` — the sub-object on the detail and on a list row, the
+> filter reaching the criteria, the filter combining with the others rather than replacing them, a malformed
+> identifier refused, and three near-miss parameter names still refused so the allowlist is shown to be
+> still closed — and by `D16` in `EmployeeBoundarySqlServerTests`, which reads two employees in two
+> different departments through the real join and checks each row carries its own.
 
 ## Representations
 
@@ -155,31 +175,27 @@ Department errors map through the module's own `IApiErrorMapper` in `SSAS.HR.API
 | Domain error | HTTP | As built |
 |---|---|---|
 | `DepartmentNotFound`, or found outside company scope | `404` | `404 department.not_found` |
-| `ParentIsSelf`, `ParentIsDescendant`, `ParentInDifferentCompany`, `ParentInactive` | `422` | **`409 department.hierarchy_invalid`** |
+| `ParentIsSelf`, `ParentIsDescendant`, `ParentInDifferentCompany`, `ParentInactive` | `409` | `409 department.hierarchy_invalid` |
 | `CodeAlreadyExists` | `409` | `409 department.code_conflict` |
-| `ManagerInDifferentCompany`, `ManagerTerminated`, `ManagerIsDepartmentMember` | `422` | **`409 department.manager_invalid`** |
-| `DepartmentInactive` (receiving an employee) | `422` | **`409 department.transition_invalid`** |
-| `HasActiveChildren` (deactivating) | `422` | **`409 department.transition_invalid`** |
+| `ManagerInDifferentCompany`, `ManagerTerminated`, `ManagerIsDepartmentMember` | `409` | `409 department.manager_invalid` |
+| `DepartmentInactive` (receiving an employee) | `409` | `409 department.transition_invalid` |
+| `HasActiveChildren` (deactivating) | `409` | `409 department.transition_invalid` |
 | Stale `RowVersion` | `409` | `409 concurrency.conflict` |
 | Permission denied | `403` | `403 authorization.forbidden` |
 | Company scope empty or company inactive | `403` | `403 company.scope_denied` |
 
-> **STATUS-CODE DIVERGENCE (recorded 2026-08-22, HR as-built cleanup — awaiting an architect ruling).** The
-> four rows specifying **`422`** ship as **`409`**. `DepartmentApiErrorMapper` answers
-> `department.hierarchy_invalid`, `department.manager_invalid` and `department.transition_invalid` at 409, and
-> **no decision in this package records the change** — unlike the route naming, which `DEC-DEP-0023`–`0025`
-> ratified.
+> **RULED 2026-08-22 — the four rows above were drafted as `422` and ship as `409`; the SHIPPED BEHAVIOUR
+> IS RATIFIED and the rows are corrected to match it (`DEC-DEP-0030`).** The audit found the divergence and
+> did not resolve it, because re-litigating status codes on live routes to match stale prose is backwards.
 >
-> This is recorded rather than corrected in either direction. It is observable client behaviour on a **merged
-> surface**: rewriting the document would ratify a change nobody ruled, and changing the code would alter a
-> shipped contract on a coder's judgement. The problem CODES are distinct either way, so a client that
-> branches on `code` — the authoritative field by this package's own convention — is unaffected; a client
-> branching on the status class is not.
+> The reasoning the mapper already carried is the reasoning that was ratified: every refusal naming a *state
+> conflict* answers 409, and the employee surface answers 409 for the identical shape
+> (`employee.transition_invalid`). The problem CODES were distinct throughout — the authoritative field by
+> this package's own convention — so no client branching on `code` was ever affected.
 >
-> Worth noting for whoever rules: the mapper's own reasoning is explicit and defensible — it keeps every
-> refusal that names a *state conflict* at 409, and the employee surface uses 409 for the same shape
-> (`employee.transition_invalid`). The divergence may well be the document being stale rather than the code
-> being wrong.
+> The distinction from the route rows above matters: those were superseded by decisions that existed and
+> were simply never carried into this table. This one had no decision at all until now, which is why it gets
+> a numbered one rather than an annotation.
 
 `404` for out-of-scope is deliberate and matches the Employee surface: a `403` would confirm the department
 exists in a company the caller may not see.

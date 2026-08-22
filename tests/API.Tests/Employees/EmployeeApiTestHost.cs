@@ -80,6 +80,11 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   // FP-007 Phase 3. DepartmentA is Active and in CompanyA; DepartmentInactive and DepartmentOtherCompany
   // exist so the create contract's refusals can be exercised at the HTTP layer.
   public static readonly Guid DepartmentA = Guid.Parse("88888888-8888-8888-8888-888888888888");
+
+  public static readonly Guid PositionA = Guid.Parse("99999999-9999-9999-9999-999999999999");
+
+  // A position that exists and is Inactive — the `BRULE-POS-0013` refusal, distinct from absence.
+  public static readonly Guid PositionInactive = Guid.Parse("99999999-9999-9999-9999-99999999aaaa");
   public static readonly Guid DepartmentB = Guid.Parse("bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb");
   public static readonly Guid DepartmentInactive = Guid.Parse("99999999-9999-9999-9999-999999999999");
   public static readonly Guid DepartmentOtherCompany = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
@@ -187,6 +192,7 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<GetEmployeeQueryHandler>();
     builder.Services.AddScoped<SearchEmployeesQueryHandler>();
     builder.Services.AddScoped<GetEmployeeBranchHistoryQueryHandler>();
+    builder.Services.AddScoped<ITenantCompanyCurrencyLookup, StubTenantCompanyCurrencyLookup>();
     builder.Services.AddHrModule();
 
     application = builder.Build();
@@ -324,4 +330,20 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   {
     public long? TenantUserId => 2;
   }
+}
+
+// ---- THE CURRENCY SEAM, STUBBED (FP-008 Phase 4, DEC-POS-0035).
+//
+// `PositionCompositionServices` is registered by `AddHrModule`, and it depends on the module-facing lookup
+// Platform implements. These hosts compose a MINIMAL container — no Platform persistence — so the seam has
+// to be supplied here. The stub answers a fixed code, which is all these tests need: whether the echo is
+// correct against a real Company is an integration question, and whether HR can reach Platform's model at
+// all is answered by the compiler.
+internal sealed class StubTenantCompanyCurrencyLookup : ITenantCompanyCurrencyLookup
+{
+  public const string Code = "SAR";
+
+  public Task<string?> FindBaseCurrencyCodeAsync(
+    Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<string?>(Code);
 }

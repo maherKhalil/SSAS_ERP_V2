@@ -44,6 +44,10 @@ public sealed class Employee
 
   private readonly List<Departments.EmployeeDepartmentAssignment> departmentAssignments = [];
 
+  // The third history, appended by exactly the same two operations as the other two: `StampInitialAssignment`
+  // at creation and `ChangePosition` thereafter (`DEC-POS-0008`, `BRULE-POS-0018`).
+  private readonly List<Positions.EmployeePositionAssignment> positionAssignments = [];
+
   private string normalizedEmployeeNumber = string.Empty;
 
   private string? normalizedNationalId;
@@ -102,6 +106,17 @@ public sealed class Employee
   // StampInitialAssignment at creation, and ChangeDepartment thereafter. There is no third.
   public Guid DepartmentId { get; private set; }
 
+  // ---- THE THIRD OWNERSHIP-ADJACENT FIELD, AND IT HAS NO PUBLIC SETTER (ADR-026 d.6, DEC-POS-0010).
+  //
+  // `BranchId` has one only because `IBranchOwnedEntity` needs it for stamping; `DepartmentId` has none;
+  // this has none. Two operations write it — `StampInitialAssignment` at creation and `ChangePosition`
+  // thereafter — and there is no third, which is what makes "the position changed" and "a history row was
+  // appended" the same event rather than two that could drift.
+  //
+  // It is REQUIRED for every employee (`OD-POS-001`, `BR-HR-0006`). There is no unbound cohort and no
+  // transitional nullable phase: the migration asserted the table was empty before the column existed.
+  public Guid PositionId { get; private set; }
+
   public EmployeeNumber EmployeeNumber { get; private set; }
 
   public string NormalizedEmployeeNumber => normalizedEmployeeNumber;
@@ -145,6 +160,9 @@ public sealed class Employee
   // The same guarantee for the department log. Append-only, and appended only from inside this type.
   public IReadOnlyCollection<Departments.EmployeeDepartmentAssignment> DepartmentAssignments =>
     departmentAssignments;
+
+  public IReadOnlyCollection<Positions.EmployeePositionAssignment> PositionAssignments =>
+    positionAssignments;
 
   // ---- CREATE.
   //
@@ -200,11 +218,17 @@ public sealed class Employee
   // Unlike the branch, DepartmentId is ASSIGNED here rather than stamped by a boundary. Nothing else
   // stamps it, so if this method did not set it an Employee would commit with an empty department and a
   // history row claiming otherwise.
+  //
+  // FP-008 Phase 3 adds the POSITION on identical terms. The method now builds THREE records before it
+  // mutates anything, which is why the construct-then-mutate ordering was worth keeping: a third record
+  // that failed validation after two had been appended would leave an employee whose history claimed more
+  // than its columns.
   public Result StampInitialAssignment(
     Guid tenantId,
     Guid companyId,
     Guid branchId,
     Guid departmentId,
+    Guid positionId,
     string actor,
     Guid eventId,
     DateTimeOffset occurredUtc)
@@ -219,9 +243,20 @@ public sealed class Employee
       return Result.Failure(EmployeeErrors.DepartmentHistoryImmutable);
     }
 
+    if (positionAssignments.Count > 0)
+    {
+      return Result.Failure(EmployeeErrors.PositionHistoryImmutable);
+    }
+
     if (departmentId == Guid.Empty)
     {
       return Result.Failure(EmployeeErrors.DepartmentRequired);
+    }
+
+    // `BR-HR-0006`, enforced by the shape rather than by a nullable column someone might later relax.
+    if (positionId == Guid.Empty)
+    {
+      return Result.Failure(EmployeeErrors.PositionRequired);
     }
 
     var assignment = EmployeeBranchAssignment.CreateInitial(
@@ -238,11 +273,20 @@ public sealed class Employee
       return Result.Failure(departmentAssignment.Error);
     }
 
-    // Nothing above this line mutated the aggregate. Both records are built and validated FIRST, so a
-    // failure in the second cannot leave the first appended to a half-stamped employee.
+    var positionAssignment = Positions.EmployeePositionAssignment.CreateInitial(
+      tenantId, companyId, Id, positionId, occurredUtc, actor);
+    if (positionAssignment.IsFailure)
+    {
+      return Result.Failure(positionAssignment.Error);
+    }
+
+    // Nothing above this line mutated the aggregate. All three records are built and validated FIRST, so a
+    // failure in the third cannot leave the first two appended to a half-stamped employee.
     DepartmentId = departmentId;
+    PositionId = positionId;
     branchAssignments.Add(assignment.Value);
     departmentAssignments.Add(departmentAssignment.Value);
+    positionAssignments.Add(positionAssignment.Value);
 
     RaiseDomainEvent(new EmployeeCreated(
       eventId, occurredUtc, Id, tenantId, companyId, branchId,
@@ -482,6 +526,76 @@ public sealed class Employee
 
     RaiseDomainEvent(new Events.EmployeeDepartmentChanged(
       eventId, occurredUtc, Id, TenantId, CompanyId, sourceDepartmentId, destinationDepartmentId));
+
+    return Result.Success(assignment.Value);
+  }
+
+  // ---- CHANGE THE EMPLOYEE'S POSITION (FR-POS-0211, DEC-POS-0010, BRULE-POS-0017).
+  //
+  // THE ONLY WAY `PositionId` MOVES after creation. It is not a field on the ordinary profile update and
+  // never will be: a promotion is a structural event with a history row, not a profile edit.
+  //
+  // The refusal ORDER is the package's, stated in `domain-model.md`: a terminated employee, an invalid
+  // actor, an empty destination, then a destination equal to the current position. Order matters because
+  // each answer tells the caller something, and a terminated employee should be told that first rather than
+  // being told their destination is unchanged.
+  //
+  // The DESTINATION's existence, tenant, company and Active status are the APPLICATION's to prove — they
+  // require reading another aggregate, which this type cannot do (`BRULE-POS-0016`, `BRULE-POS-0013`). What
+  // is checked here is what is knowable from local state alone.
+  //
+  // ---- IT TOUCHES NEITHER BRANCH NOR DEPARTMENT (BRULE-POS-0019).
+  //
+  // The three dimensions are independent. A promotion does not relocate someone and does not move them
+  // between departments, and the absence of those assignments here is what makes that true structurally.
+  public Result<Positions.EmployeePositionAssignment> ChangePosition(
+    Guid destinationPositionId,
+    string? reasonCode,
+    string? reasonText,
+    string actor,
+    Guid eventId,
+    DateTimeOffset occurredUtc)
+  {
+    if (Status == EmployeeStatus.Terminated)
+    {
+      return Result.Failure<Positions.EmployeePositionAssignment>(EmployeeErrors.InvalidTransition);
+    }
+
+    if (!IsValidActor(actor))
+    {
+      return Result.Failure<Positions.EmployeePositionAssignment>(EmployeeErrors.InvalidActor);
+    }
+
+    if (destinationPositionId == Guid.Empty)
+    {
+      return Result.Failure<Positions.EmployeePositionAssignment>(EmployeeErrors.PositionRequired);
+    }
+
+    // A move to the position the employee already holds. Refused rather than silently succeeding, which is
+    // the same answer `Transfer` and `ChangeDepartment` give — and it is what keeps a no-op from appending
+    // a history row that would describe no movement at all.
+    if (destinationPositionId == PositionId)
+    {
+      return Result.Failure<Positions.EmployeePositionAssignment>(EmployeeErrors.PositionUnchanged);
+    }
+
+    var sourcePositionId = PositionId;
+
+    var assignment = Positions.EmployeePositionAssignment.CreateChange(
+      TenantId, CompanyId, Id, sourcePositionId, destinationPositionId, occurredUtc, actor.Trim(),
+      reasonCode, reasonText);
+    if (assignment.IsFailure)
+    {
+      return Result.Failure<Positions.EmployeePositionAssignment>(assignment.Error);
+    }
+
+    // The current position moves and the history records that it moved, together. Neither is observable
+    // without the other, because both land in the same save (`BRULE-POS-0018`).
+    PositionId = destinationPositionId;
+    positionAssignments.Add(assignment.Value);
+
+    RaiseDomainEvent(new Events.EmployeePositionChanged(
+      eventId, occurredUtc, Id, TenantId, CompanyId, sourcePositionId, destinationPositionId));
 
     return Result.Success(assignment.Value);
   }

@@ -65,6 +65,20 @@ public sealed class DepartmentConfiguration : IEntityTypeConfiguration<Departmen
       .HasMaxLength(DepartmentName.MaximumLength)
       .IsRequired();
 
+    // ---- THE SEARCH COLUMN, ADDED IN FP-008 PHASE 2 TO FIX A BREAK THAT SHIPPED IN FP-007.
+    //
+    // `Name` above is value-converted, and `DepartmentReadService.SearchAsync` filtered on `Name.Value
+    // .Contains(text)` — which EF Core cannot translate inside a predicate. Every department search carrying
+    // a `searchText` threw rather than returning rows, and no test covered it. See `DEC-POS-0030`.
+    //
+    // No index, for the same reason as the position columns: a leading-wildcard LIKE cannot seek.
+    builder.Property(department => department.NormalizedName)
+      .HasField("normalizedName")
+      .UsePropertyAccessMode(PropertyAccessMode.Field)
+      .HasMaxLength(DepartmentName.MaximumLength)
+      .UseCollation(EmployeeConfiguration.OrdinalCollation)
+      .IsRequired();
+
     // NULL MEANS ROOT, and a company may have more than one.
     builder.Property(department => department.ParentDepartmentId);
 

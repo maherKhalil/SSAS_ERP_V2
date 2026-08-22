@@ -19,12 +19,19 @@ namespace SSAS.HR.Application.Employees;
 // a business choice the caller makes, so it is an input that gets VALIDATED rather than a value that gets
 // stamped. It is mandatory from FP-007 Phase 3 onward — there is no nullable grace period and no automatic
 // fallback to the migration UNASSIGNED department, which exists for legacy remediation alone.
+//
+// ---- AND SO IS THE POSITION, FROM FP-008 PHASE 3 (BR-HR-0006, OD-POS-001).
+//
+// Required from day one, with no nullable grace period and no fallback: `OD-POS-001` established that no
+// production employees existed and the migration asserted it, so there is no cohort for a default to serve.
+// It is validated on exactly the same terms as the department and for the same reasons.
 public sealed record CreateEmployeeCommand(
   string EmployeeNumber,
   string FullName,
   DateTimeOffset EmploymentDate,
   string? NationalId,
-  Guid DepartmentId);
+  Guid DepartmentId,
+  Guid PositionId);
 
 public sealed class CreateEmployeeCommandHandler(
   IEmployeeRepository employees,
@@ -73,6 +80,18 @@ public sealed class CreateEmployeeCommandHandler(
     if (department.IsFailure)
     {
       return Result.Failure<Guid>(department.Error);
+    }
+
+    // ---- THE POSITION, ON THE SAME TERMS AND IN THE SAME TRANSACTION (BRULE-POS-0016, DEC-POS-0021).
+    //
+    // Same company as the employee, `Active` at the moment of assignment, and a position in another company
+    // reported ABSENT rather than refused. Read through the caller's context, so the status this validates
+    // is the status the write commits against rather than one observed earlier.
+    var position = await ValidatePositionAsync(
+      employees, companyId, command.PositionId, cancellationToken);
+    if (position.IsFailure)
+    {
+      return Result.Failure<Guid>(position.Error);
     }
 
     var employeeNumber = EmployeeNumber.Create(command.EmployeeNumber);
@@ -132,8 +151,10 @@ public sealed class CreateEmployeeCommandHandler(
     // does (AC-EMP-0005).
     // The initial DEPARTMENT assignment rides the same call and the same guarantee: three rows — the
     // employee, its first branch record and its first department record — commit together or none does.
+    // FP-008 Phase 3 makes it FOUR rows: the employee, its first branch record, its first department record
+    // and its first position record, all in one save.
     var stamped = employee.Value.StampInitialAssignment(
-      tenantId, companyId, branch.Value, command.DepartmentId,
+      tenantId, companyId, branch.Value, command.DepartmentId, command.PositionId,
       currentUser.UserId!, Guid.NewGuid(), occurredUtc);
     if (stamped.IsFailure)
     {
@@ -181,6 +202,41 @@ public sealed class CreateEmployeeCommandHandler(
     return department.IsActive
       ? Result.Success()
       : Result.Failure(EmployeeErrors.DepartmentInactive);
+  }
+
+  // ---- THE SAME RULES FOR THE POSITION, IN ONE PLACE SO BOTH OPERATIONS ANSWER IDENTICALLY.
+  //
+  // Creation and `ChangePosition` ask exactly the same question of a destination position, and a divergence
+  // between them would be a security-relevant inconsistency rather than a cosmetic one. Internal so the
+  // change handler shares it rather than restating it — the shape `ValidateDepartmentAsync` established.
+  //
+  // NOTHING HERE ASKS ABOUT BRANCHES. A position is company-wide and may be held by employees in any branch
+  // of its company (`BRULE-POS-0003`), so requiring one to match the employee's branch would invent a rule
+  // the approved model does not have.
+  internal static async Task<Result> ValidatePositionAsync(
+    IEmployeeRepository employees,
+    Guid companyId,
+    Guid positionId,
+    CancellationToken cancellationToken)
+  {
+    if (positionId == Guid.Empty)
+    {
+      return Result.Failure(EmployeeErrors.PositionRequired);
+    }
+
+    var position = await employees.FindAssignablePositionAsync(
+      companyId, positionId, cancellationToken);
+
+    if (position is null)
+    {
+      return Result.Failure(EmployeeErrors.PositionNotFound);
+    }
+
+    // An INACTIVE position keeps the employees who already hold it — `OD-POS-005`, the assignment reading —
+    // and accepts no new ones. Retiring a job must not silently keep absorbing hires (`BRULE-POS-0013`).
+    return position.IsActive
+      ? Result.Success()
+      : Result.Failure(EmployeeErrors.PositionInactive);
   }
 
   private Task<Result> ResolveDepartmentAsync(

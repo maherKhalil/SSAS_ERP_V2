@@ -92,3 +92,26 @@ public sealed record EmployeeDepartmentChanged(
   Guid CompanyId,
   Guid SourceDepartmentId,
   Guid DestinationDepartmentId) : DomainEvent(EventId, OccurredUtc);
+
+// ---- THE POSITION CHANGE (FP-008 Phase 3, FR-POS-0211).
+//
+// It lives HERE, on the employee's event list, and not in `PositionEvents.cs` — because the thing that
+// changed is an EMPLOYEE. FP-008 Phase 1 deliberately left it out of the position event set for exactly this
+// reason and said so, rather than defining it early beside the aggregate it names.
+//
+// The position identifiers are carried for the same reason the branch and department ones are: a consumer
+// reacting to a promotion needs to know where from and where to, and neither identifier says anything about
+// the person.
+//
+// THE REASON TEXT AND CODE ARE NOT CARRIED, on the identical terms as `EmployeeDepartmentChanged`: both are
+// free-form operator input persisted for the audit record alone, and putting them on an event would push
+// unbounded text into every downstream consumer. `SourcePositionId` is non-nullable here even though the
+// STORED record's is nullable — an initial assignment is part of `EmployeeCreated`, not of a change.
+public sealed record EmployeePositionChanged(
+  Guid EventId,
+  DateTimeOffset OccurredUtc,
+  Guid EmployeeId,
+  Guid TenantId,
+  Guid CompanyId,
+  Guid SourcePositionId,
+  Guid DestinationPositionId) : DomainEvent(EventId, OccurredUtc);

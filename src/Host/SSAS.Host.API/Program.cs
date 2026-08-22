@@ -1,5 +1,6 @@
 using SSAS.HR.API.Departments;
 using SSAS.HR.API.Employees;
+using SSAS.HR.API.Positions;
 using System.Globalization;
 using Serilog;
 using SSAS.GL.API;
@@ -91,6 +92,10 @@ try
   app.MapHrEmployeeEndpoints();
   app.MapHrDepartmentEndpoints();
   app.MapHrEmployeeDepartmentEndpoints();
+  app.MapHrPositionEndpoints();
+  app.MapHrJobGradeEndpoints();
+  app.MapHrSalaryGradeEndpoints();
+  app.MapHrEmployeePositionEndpoints();
 
   app.Run();
 }

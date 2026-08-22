@@ -190,6 +190,19 @@ public sealed class ModuleTenantContractArchitectureTests
         nameof(IPermissionCatalogContributor),
         nameof(ITenantBranchAccessResolver),
         nameof(ITenantCompanyAccessResolver),
+        // ---- ADDED BY FP-008 PHASE 4 (DEC-POS-0035), AND DELIBERATELY THE NARROWEST THING THAT WORKS.
+        //
+        // A module has to render an amount's currency, and the currency lives on a Platform-owned Company
+        // that `SSAS.HR.*` cannot reference under `ADR-012`. One method, one company, an ISO code returned
+        // as an opaque STRING — the value object, its ISO-4217 set and its immutability rule all stay
+        // Platform-side.
+        //
+        // This guard is why the addition is visible: widening the shared set widens every module's blast
+        // radius, so it is enumerated rather than allowed to grow by habit. Three alternatives were refused
+        // for that reason — widening `CompanyAccessSummary` (an authorization DTO), composing at the Host
+        // (breaks module ownership of its own response shapes), and promoting the value object (an
+        // ADR-level change `DEC-POS-0015` reserved for a multi-currency requirement).
+        nameof(ITenantCompanyCurrencyLookup),
         nameof(ITenantUnitOfWork),
         // The data half of the permission contribution: a name and the description a tenant administrator
         // reads. Deliberately carries NO scope -- the composer stamps Tenant, so a module cannot mint

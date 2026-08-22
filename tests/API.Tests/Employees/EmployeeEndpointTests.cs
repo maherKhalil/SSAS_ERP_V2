@@ -114,7 +114,7 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   public async Task A6_Create_rejects_a_spoofed_ownership_field(string field)
   {
     var body = $$"""
-      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"88888888-8888-8888-8888-888888888888","{{field}}":"22222222-2222-2222-2222-222222222222"}
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"88888888-8888-8888-8888-888888888888","positionId":"99999999-9999-9999-9999-999999999999","{{field}}":"22222222-2222-2222-2222-222222222222"}
       """;
 
     var response = await Send(HttpMethod.Post, Route, CreateToken, body);
@@ -148,7 +148,7 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   public async Task A6c_Create_into_an_inactive_department_is_refused()
   {
     var body = $$"""
-      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"{{EmployeeApiTestHost.DepartmentInactive}}"}
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"{{EmployeeApiTestHost.DepartmentInactive}}","positionId":"{{EmployeeApiTestHost.PositionA}}"}
       """;
 
     var response = await Send(HttpMethod.Post, Route, CreateToken, body);
@@ -163,7 +163,7 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   public async Task A6d_Create_into_another_companys_department_is_refused()
   {
     var body = $$"""
-      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"{{EmployeeApiTestHost.DepartmentOtherCompany}}"}
+      {"employeeNumber":"EMP-1","fullName":"A B","employmentDate":"2026-03-01T00:00:00+00:00","departmentId":"{{EmployeeApiTestHost.DepartmentOtherCompany}}","positionId":"{{EmployeeApiTestHost.PositionA}}"}
       """;
 
     var response = await Send(HttpMethod.Post, Route, CreateToken, body);
@@ -870,7 +870,7 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   }
 
   private const string ValidCreateBody = """
-    {"employeeNumber":"EMP-00147","fullName":"Layla Haddad","employmentDate":"2026-03-01T00:00:00+00:00","nationalId":"2990112345678","departmentId":"88888888-8888-8888-8888-888888888888"}
+    {"employeeNumber":"EMP-00147","fullName":"Layla Haddad","employmentDate":"2026-03-01T00:00:00+00:00","nationalId":"2990112345678","departmentId":"88888888-8888-8888-8888-888888888888","positionId":"99999999-9999-9999-9999-999999999999"}
     """;
 
   // The literal is EmployeeApiTestHost.DepartmentA, spelled out for the same reason ValidCreateBody spells

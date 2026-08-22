@@ -39,6 +39,13 @@ public sealed class Department
 
   private string normalizedCode = string.Empty;
 
+  // The search form of the name, maintained beside the code's (`DEC-POS-0030`). Set in exactly the two
+  // places `normalizedCode` is set, so the two can never disagree about which write produced them.
+  //
+  // It arrived in FP-008 Phase 2 rather than with the aggregate, because FP-007's search filtered on the
+  // value-converted `Name` and therefore never ran at all — see `DepartmentName.NormalizedValue`.
+  private string normalizedName = string.Empty;
+
   private Department(
     Guid departmentId,
     DepartmentCode code,
@@ -49,6 +56,7 @@ public sealed class Department
   {
     Code = code;
     normalizedCode = code.NormalizedValue;
+    normalizedName = name.NormalizedValue;
     Name = name;
     ParentDepartmentId = parentDepartmentId;
     Status = DepartmentStatus.Active;
@@ -77,6 +85,8 @@ public sealed class Department
   public DepartmentCode Code { get; private set; }
 
   public string NormalizedCode => normalizedCode;
+
+  public string NormalizedName => normalizedName;
 
   public DepartmentName Name { get; private set; }
 
@@ -168,6 +178,7 @@ public sealed class Department
 
     Code = code;
     normalizedCode = code.NormalizedValue;
+    normalizedName = name.NormalizedValue;
     Name = name;
 
     RaiseDomainEvent(new DepartmentDescriptionUpdated(eventId, occurredUtc, Id, TenantId, CompanyId));

@@ -26,7 +26,14 @@ public sealed record CreateEmployeeRequest(
   [property: JsonPropertyName("fullName")] string? FullName,
   [property: JsonPropertyName("employmentDate")] DateTimeOffset? EmploymentDate,
   [property: JsonPropertyName("nationalId")] string? NationalId,
-  [property: JsonPropertyName("departmentId")] Guid? DepartmentId);
+  [property: JsonPropertyName("departmentId")] Guid? DepartmentId,
+  // ---- REQUIRED FROM DAY ONE (FP-008 Phase 3, OD-POS-001, BR-HR-0006).
+  //
+  // There is no transitional phase in which this is optional: the column ships NOT NULL and the migration
+  // asserted the table was empty before it existed, so no caller and no cohort ever had an employee without
+  // a position. Nullable on the DTO only so a missing field is reported as `RequestInvalid` rather than
+  // deserialized as `Guid.Empty` and refused later with a less useful answer.
+  [property: JsonPropertyName("positionId")] Guid? PositionId);
 
 // Only the mutable profile. EmployeeNumber is absent because it is an identifier, and BranchId is absent by
 // construction so an ordinary update can never express a transfer (BRULE-EMP-0015).

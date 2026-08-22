@@ -66,6 +66,13 @@ public sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
     // — nothing scopes a read by department.
     builder.Property(employee => employee.DepartmentId).IsRequired();
 
+    // ---- THE POSITION (FP-008 Phase 3, BR-HR-0006, OD-POS-001).
+    //
+    // REQUIRED, from day one and with no nullable phase. `DEC-POS-0026`'s migration asserted the table was
+    // empty before this column existed, so there is no cohort a default or a backfill would have served —
+    // the emptiness was checked rather than assumed.
+    builder.Property(employee => employee.PositionId).IsRequired();
+
     builder.Property(employee => employee.EmployeeNumber)
       .HasConversion(number => number.Value, value => EmployeeNumber.Create(value).Value)
       .HasMaxLength(EmployeeNumber.MaximumLength)
@@ -177,6 +184,38 @@ public sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
     builder.HasOne<Domain.Departments.Department>()
       .WithMany()
       .HasForeignKey(employee => employee.DepartmentId)
+      .OnDelete(DeleteBehavior.Restrict);
+
+    // ---- THE POSITION LOOKUP INDEX (FP-008 Phase 3, FR-POS-0213).
+    //
+    // Tenant, then company, then position — the leading keys match the mandatory predicate order, so a
+    // position-filtered employee search cannot be served by a plan that skipped a scope column. It also
+    // serves the holder count, which is the same query shape with a COUNT on the end.
+    //
+    // BranchId is deliberately NOT in this index, for the reason the department index gives: the position
+    // filter and the branch scope are two independent questions, not one composite.
+    builder.HasIndex(employee => new
+      {
+        employee.TenantId, employee.CompanyId, employee.PositionId
+      })
+      .HasDatabaseName("IX_Employees_TenantId_CompanyId_PositionId");
+
+    // ---- THE POSITION FOREIGN KEY.
+    //
+    // Position is HR's OWN type, so the typed API applies exactly as it does for Department, and RESTRICT
+    // for the same reason: a position is deactivated, never deleted (`BRULE-POS-0012`).
+    //
+    // NO NAVIGATION PROPERTY, on the same terms — an Employee that could walk to a Position would invite a
+    // read bypassing the position's own scope.
+    //
+    // ---- THIS EDGE IS WHAT MAKES POSITIONS ORDER BEFORE EMPLOYEES IN THE CUTOVER COPY.
+    //
+    // Until this phase the two were unordered, because no foreign key linked them; FP-008 Phase 1's
+    // `C6_15` said so explicitly and carried a forward obligation to assert the edge when it arrived. It has
+    // arrived here.
+    builder.HasOne<Domain.Positions.Position>()
+      .WithMany()
+      .HasForeignKey(employee => employee.PositionId)
       .OnDelete(DeleteBehavior.Restrict);
 
     // The foreign keys to Company and Branch are declared in HrTenantModelContributor, by PRINCIPAL TYPE

@@ -116,16 +116,51 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
 
     await ExecuteAsync($"""
       INSERT INTO [tenant].[Departments]
-        ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [ParentDepartmentId],
+        ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName], [ParentDepartmentId],
          [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc],
          [ModifiedBy])
       VALUES
-        ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code}', N'Employee Home', NULL,
+        ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code}', N'Employee Home', N'EMPLOYEE HOME', NULL,
          N'Active', SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}',
          SYSDATETIMEOFFSET(), N'{Actor}');
       """);
 
     return departmentId;
+  }
+
+  // ---- ONE HOLDING POSITION PER COMPANY, ON THE SAME TERMS (FP-008 Phase 3).
+  //
+  // `Employee.PositionId` is NOT NULL with a RESTRICT foreign key from Phase 3 onward, so a seeded employee
+  // needs a real position. Reserved code, created if absent, invisible to every assertion in this file —
+  // the department twin of this method explains the pattern.
+  private async Task<Guid> HoldingPositionAsync(Guid companyId)
+  {
+    const string code = "ZZ-EMPLOYEE-HOME";
+
+    var existing = await ScalarGuidAsync($"""
+      SELECT TOP 1 [PositionId] FROM [tenant].[Positions]
+      WHERE [TenantId] = '{Tenant}' AND [CompanyId] = '{companyId}' AND [NormalizedCode] = N'{code}'
+      """);
+
+    if (existing is { } found)
+    {
+      return found;
+    }
+
+    var positionId = Guid.NewGuid();
+
+    await ExecuteAsync($"""
+      INSERT INTO [tenant].[Positions]
+        ([PositionId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Title], [NormalizedTitle],
+         [JobGradeId], [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy],
+         [ModifiedUtc], [ModifiedBy])
+      VALUES
+        ('{positionId}', '{Tenant}', '{companyId}', N'{code}', N'{code}', N'Employee Home',
+         N'EMPLOYEE HOME', NULL, N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
+         SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+      """);
+
+    return positionId;
   }
 
   public async Task<byte[]> RowVersionAsync(Guid departmentId)
@@ -215,15 +250,18 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
     // tests, and reusing one rather than creating a department per employee keeps it from polluting the
     // department counts those tests DO assert on.
     var homeDepartment = await HoldingDepartmentAsync(company ?? CompanyA);
+    var homePosition = await HoldingPositionAsync(company ?? CompanyA);
 
     await ExecuteAsync($"""
       INSERT INTO [tenant].[Employees]
-        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+        ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [PositionId],
+         [EmployeeNumber],
          [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [TerminationDate], [Status],
          [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy],
          [ModifiedUtc], [ModifiedBy])
       VALUES
         ('{employeeId}', '{Tenant}', '{company ?? CompanyA}', '{branch ?? BranchA}', '{homeDepartment}',
+         '{homePosition}',
          N'{employeeNumber}',
          N'{employeeNumber.ToUpperInvariant()}', N'Person {employeeNumber}', SYSDATETIMEOFFSET(),
          {terminationDate}, N'{status}', N'{reason}', SYSDATETIMEOFFSET(), N'{Actor}',

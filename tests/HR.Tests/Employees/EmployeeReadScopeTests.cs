@@ -543,6 +543,27 @@ public sealed class EmployeeReadScopeTests
 
       return Task.FromResult<IReadOnlyList<EmployeeBranchHistoryEntry>?>(null);
     }
+
+    // The position history, recording the scope like every other read here (FP-008 Phase 4).
+    public Task<IReadOnlyList<EmployeePositionHistoryEntry>?> GetEmployeePositionHistoryAsync(
+      EmployeeReadScope scope, Guid employeeId, CancellationToken cancellationToken = default)
+    {
+      Calls++;
+      LastScope = scope;
+
+      return Task.FromResult<IReadOnlyList<EmployeePositionHistoryEntry>?>(null);
+    }
+
+    // Records the scope like every other method here, which is what lets the scope-required tests treat the
+    // holder count as one more read that cannot be issued without one (FP-008 Phase 3).
+    public Task<int> CountEmployeesByPositionAsync(
+      EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default)
+    {
+      Calls++;
+      LastScope = scope;
+
+      return Task.FromResult(0);
+    }
   }
 
   private sealed class StubCurrentBranch(Guid branchId) : ICurrentBranchResolver

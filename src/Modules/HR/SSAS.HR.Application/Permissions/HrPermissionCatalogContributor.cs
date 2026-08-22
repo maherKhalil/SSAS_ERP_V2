@@ -43,7 +43,40 @@ public sealed class HrPermissionCatalogContributor : IPermissionCatalogContribut
     new(HrPermissionNames.UpdateDepartments,
       "Update department code and name, move departments within the hierarchy, and assign or clear " +
       "department managers"),
-    new(HrPermissionNames.DeactivateDepartments, "Deactivate and reactivate departments")
+    new(HrPermissionNames.DeactivateDepartments, "Deactivate and reactivate departments"),
+
+    // ---- POSITION AND THE TWO GRADE LADDERS (FP-008 Phase 2, DEC-POS-0018).
+    //
+    // TWELVE, taking the HR plane to twenty-one. `Update` names the re-grade explicitly for the same reason
+    // the department `Update` names the hierarchy move: the grouping was a decision, and an administrator
+    // granting it should know it moves org structure rather than just labels.
+    new(HrPermissionNames.ViewPositions,
+      "View positions within the caller's authorized company scope"),
+    new(HrPermissionNames.CreatePositions, "Create positions"),
+    new(HrPermissionNames.UpdatePositions,
+      "Update a position's title and code, and change the job grade it is assigned to"),
+    new(HrPermissionNames.DeactivatePositions, "Deactivate and reactivate positions"),
+
+    new(HrPermissionNames.ViewJobGrades,
+      "View job grades within the caller's authorized company scope"),
+    new(HrPermissionNames.CreateJobGrades, "Create job grades"),
+    new(HrPermissionNames.UpdateJobGrades,
+      "Update a job grade's code, name and rank order, and change the salary grade it maps to"),
+    new(HrPermissionNames.DeactivateJobGrades, "Deactivate and reactivate job grades"),
+
+    // ---- THE SENSITIVE ONE, AND ITS DESCRIPTION SAYS SO.
+    //
+    // A tenant administrator deciding whether to grant this is deciding whether the holder may read the pay
+    // structure. Describing it as "view salary grades" would make it read like any other catalog permission
+    // and hide the disclosure the separation exists to make deliberate (`DEC-EMP-0030` precedent).
+    new(HrPermissionNames.ViewSalaryGrades,
+      "View salary grades INCLUDING their pay bands, within the caller's authorized company scope. " +
+      "Granting this discloses the pay structure and is separate from viewing positions for that reason"),
+    new(HrPermissionNames.CreateSalaryGrades, "Create salary grades"),
+    new(HrPermissionNames.UpdateSalaryGrades,
+      "Update a salary grade's code, name and rank order, and set or withdraw its minimum, midpoint and " +
+      "maximum amounts"),
+    new(HrPermissionNames.DeactivateSalaryGrades, "Deactivate and reactivate salary grades")
   ];
 
   public IReadOnlyCollection<ModulePermissionDefinition> Permissions => Definitions;

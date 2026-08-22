@@ -71,6 +71,17 @@ reasoning is identical.
 }
 ```
 
+> **NOT SHIPPED (recorded 2026-08-21 during FP-008 Phase 4).** `Department.employeeCount` is **specified
+> below and absent from the implementation** — the department representation has no such property, and no
+> test asserts one. FP-007's as-built pass nonetheless marked this document matched, which is the divergence
+> being corrected here rather than the field being quietly deleted from the spec.
+>
+> The capability now exists: `IEmployeeReadService.CountEmployeesByPositionAsync` was built for FP-008 and
+> requires an `EmployeeReadScope`, which is the mechanism a department equivalent would use.
+> **`DEC-POS-0034`** records the semantics it must follow when it lands — including that `null`, not `0`,
+> is the answer for a caller who cannot read employees. Registered as a post-FP-008 backlog item; FP-008
+> deliberately did not implement it, because that is a different feature's scope.
+
 **`employeeCount` is computed within the caller's employee read scope, and the field name says so in the API
 documentation.** Two users can legitimately see different counts for the same department, because they are
 authorized for different branches. The alternative — a company-wide count — would leak the size of branches

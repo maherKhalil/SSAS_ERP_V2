@@ -430,11 +430,11 @@ public sealed class DepartmentSchemaSqlServerTests
       Guid departmentId, Guid companyId, string code, string name, Guid? parentDepartmentId = null) =>
       ExecuteAsync($"""
         INSERT INTO [tenant].[Departments]
-          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name],
+          ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName],
            [ParentDepartmentId], [Status], [StatusChangedUtc], [StatusChangedBy],
            [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
-          ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code.ToUpperInvariant()}', N'{name}',
+          ('{departmentId}', '{Tenant}', '{companyId}', N'{code}', N'{code.ToUpperInvariant()}', N'{name}', N'{name.ToUpperInvariant()}',
            {(parentDepartmentId is null ? "NULL" : $"'{parentDepartmentId}'")},
            N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
@@ -443,6 +443,10 @@ public sealed class DepartmentSchemaSqlServerTests
     // Created on first use with a reserved code no test names, so it satisfies the foreign key without
     // appearing in any assertion about the departments under test.
     private Guid? holdingDepartment;
+
+    // The position twin, added by FP-008 Phase 3 for the same reason and on the same terms: `PositionId` is
+    // NOT NULL with a RESTRICT foreign key, so a seeded employee needs a real position to point at.
+    private Guid? holdingPosition;
 
     private async Task<Guid> HoldingDepartmentAsync()
     {
@@ -460,6 +464,31 @@ public sealed class DepartmentSchemaSqlServerTests
       return departmentId;
     }
 
+    private async Task<Guid> HoldingPositionAsync()
+    {
+      if (holdingPosition is { } existing)
+      {
+        return existing;
+      }
+
+      var positionId = Guid.NewGuid();
+
+      await ExecuteAsync($"""
+        INSERT INTO [tenant].[Positions]
+          ([PositionId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Title], [NormalizedTitle],
+           [JobGradeId], [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy],
+           [ModifiedUtc], [ModifiedBy])
+        VALUES
+          ('{positionId}', '{Tenant}', '{CompanyA}', N'ZZ-EMPLOYEE-HOME', N'ZZ-EMPLOYEE-HOME',
+           N'Employee Home', N'EMPLOYEE HOME', NULL, N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
+           SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+        """);
+
+      holdingPosition = positionId;
+
+      return positionId;
+    }
+
     public async Task<Guid> InsertEmployeeAsync(string employeeNumber)
     {
       var employeeId = Guid.NewGuid();
@@ -468,14 +497,17 @@ public sealed class DepartmentSchemaSqlServerTests
       // department. A holding department created once per fixture keeps that incidental fact out of the
       // schema assertions, which count and inspect the departments the tests themselves create.
       var homeDepartment = await HoldingDepartmentAsync();
+      var homePosition = await HoldingPositionAsync();
 
       await ExecuteAsync($"""
         INSERT INTO [tenant].[Employees]
-          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [EmployeeNumber],
+          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [PositionId],
+           [EmployeeNumber],
            [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status], [StatusChangeReasonCode],
            [StatusChangedUtc], [StatusChangedBy], [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
-          ('{employeeId}', '{Tenant}', '{CompanyA}', '{BranchA}', '{homeDepartment}', N'{employeeNumber}',
+          ('{employeeId}', '{Tenant}', '{CompanyA}', '{BranchA}', '{homeDepartment}', '{homePosition}',
+           N'{employeeNumber}',
            N'{employeeNumber.ToUpperInvariant()}', N'Person {employeeNumber}', SYSDATETIMEOFFSET(),
            N'Active', N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');

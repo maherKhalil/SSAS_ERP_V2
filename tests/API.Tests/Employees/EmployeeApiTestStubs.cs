@@ -146,6 +146,31 @@ public sealed class StubEmployeeReads : IEmployeeReadService
 
     return Task.FromResult(History);
   }
+
+  // The position history the FP-008 Phase 4 route reads. `History` stands in for the branch one; this
+  // returns whatever the test seeded, so the route's projection and its 404-on-absence can both be driven.
+  public IReadOnlyList<EmployeePositionHistoryEntry>? PositionHistory { get; set; } = [];
+
+  public Task<IReadOnlyList<EmployeePositionHistoryEntry>?> GetEmployeePositionHistoryAsync(
+    EmployeeReadScope scope, Guid employeeId, CancellationToken cancellationToken = default)
+  {
+    LastScope = scope;
+
+    return Task.FromResult(PositionHistory);
+  }
+
+  // The holder count the position representation composes. Seeded by a test so the two `employeeCount`
+  // cases — a number when the caller has an employee scope, null when they do not — can be told apart by
+  // the VALUE rather than by whether the stub was reached.
+  public int PositionHolderCount { get; set; }
+
+  public Task<int> CountEmployeesByPositionAsync(
+    EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default)
+  {
+    LastScope = scope;
+
+    return Task.FromResult(PositionHolderCount);
+  }
 }
 
 // Returns a real Employee aggregate so the command handlers exercise their genuine domain transitions and
@@ -187,6 +212,7 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
       EmployeeApiTestHost.CompanyA,
       EmployeeApiTestHost.BranchA,
       EmployeeApiTestHost.DepartmentA,
+      EmployeeApiTestHost.PositionA,
       "seed",
       Guid.NewGuid(),
       new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero));
@@ -260,6 +286,27 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
     return Task.FromResult<DepartmentAssignmentTarget?>(
       departmentId == EmployeeApiTestHost.DepartmentA || departmentId == EmployeeApiTestHost.DepartmentB
         ? new(departmentId, IsActive: true)
+        : null);
+  }
+
+  public Task AppendPositionAssignmentAsync(
+    SSAS.HR.Domain.Positions.EmployeePositionAssignment assignment,
+    CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+  // The position lookup, answered on exactly the terms the department one is: three distinguishable
+  // outcomes, because employee creation has three distinguishable refusals — inactive is named, unknown or
+  // out-of-company is absent, and everything else is assignable.
+  public Task<PositionAssignmentTarget?> FindAssignablePositionAsync(
+    Guid companyId, Guid positionId, CancellationToken cancellationToken = default)
+  {
+    if (positionId == EmployeeApiTestHost.PositionInactive)
+    {
+      return Task.FromResult<PositionAssignmentTarget?>(new(positionId, IsActive: false));
+    }
+
+    return Task.FromResult<PositionAssignmentTarget?>(
+      positionId == EmployeeApiTestHost.PositionA
+        ? new(positionId, IsActive: true)
         : null);
   }
 }

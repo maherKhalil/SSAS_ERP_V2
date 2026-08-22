@@ -182,6 +182,7 @@ public sealed class DepartmentApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<GetDepartmentQueryHandler>();
     builder.Services.AddScoped<SearchDepartmentsQueryHandler>();
     builder.Services.AddScoped<GetDepartmentChildrenQueryHandler>();
+    builder.Services.AddScoped<ITenantCompanyCurrencyLookup, Employees.StubTenantCompanyCurrencyLookup>();
     builder.Services.AddHrModule();
 
     application = builder.Build();

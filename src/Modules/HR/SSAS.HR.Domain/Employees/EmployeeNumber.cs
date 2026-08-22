@@ -46,8 +46,20 @@ public sealed class EmployeeNumber : ValueObject
     // composition are different numbers, which is what makes the binary-collated index authoritative.
     var normalized = trimmed.ToUpperInvariant();
 
-    // Uppercasing can lengthen a string in some cultures, and the limit applies to the STORED normalized
-    // value as well as the input — otherwise a value could pass validation and then not fit its column.
+    // ---- THE LIMIT APPLIES TO WHAT IS STORED, NOT ONLY TO WHAT WAS TYPED.
+    //
+    // Both the display value and the normalized value go into `nvarchar(MaximumLength)` columns, so a value
+    // that fitted before normalization and not after would pass validation and then fail to persist.
+    //
+    // **This check is defensive, and no test asserts it fires**, because on .NET it cannot: `ToUpperInvariant`
+    // uses simple 1:1 case mapping and never changes a string's length — U+00DF (ß) and the ligatures are
+    // returned unchanged rather than expanded. The check stays because the property it protects is a column
+    // width, the cost is one comparison, and a future runtime or a change to the normalization rule could
+    // make it reachable. It is documented as unreachable rather than left to imply a case that occurs.
+    //
+    // This is the LAST of three copies of a comment that claimed uppercasing "can lengthen a string in some
+    // cultures". It never did on .NET. `CompanyDomainTests` has stated the correct fact since FP-005, which
+    // is what makes the three copies a copied falsehood rather than a shared misunderstanding.
     if (normalized.Length > MaximumLength)
     {
       return Result.Failure<EmployeeNumber>(EmployeeErrors.InvalidEmployeeNumber);

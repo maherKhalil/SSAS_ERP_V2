@@ -503,12 +503,28 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     // Departments/Employees pair. Departments used to be droppable early because nothing dropped later
     // referenced it; once Employees gained a required foreign key to it, Employees had to go first. A list
     // maintained by intuition rather than by that rule silently became wrong the moment the FK landed.
+    //
+    // ---- FP-008 PHASE 1 ADDS FOUR, AND THE RULE PLACES ALL FOUR WITHOUT GUESSWORK.
+    //
+    // The forward order gained SalaryGrade -> JobGrade -> Position and a history depending on both Position
+    // and Employee, so read backwards: the position history goes first (it depends on the most), then the
+    // existing dependents, then Employees, then Positions, JobGrades and SalaryGrades in that order —
+    // each before the one it references.
+    //
+    // Positions sits AFTER Employees here even though nothing links them yet, and that is not arbitrary:
+    // Phase 3 gives Employee a required PositionId, which will make Employees a dependent of Positions and
+    // force exactly this order. Placing it correctly now costs nothing and means the Phase 3 foreign key
+    // does not silently invert a second pair the way Employee.DepartmentId did.
     public Task BreakApplicationSchemaAsync() =>
       ExecuteAsync(SourceDatabase, """
+        DROP TABLE [tenant].[EmployeePositionAssignments];
         DROP TABLE [tenant].[EmployeeDepartmentAssignments];
         DROP TABLE [tenant].[DepartmentManagers];
         DROP TABLE [tenant].[EmployeeBranchAssignments];
         DROP TABLE [tenant].[Employees];
+        DROP TABLE [tenant].[Positions];
+        DROP TABLE [tenant].[JobGrades];
+        DROP TABLE [tenant].[SalaryGrades];
         DROP TABLE [tenant].[Departments];
         DROP TABLE [tenant].[Companies];
         """);

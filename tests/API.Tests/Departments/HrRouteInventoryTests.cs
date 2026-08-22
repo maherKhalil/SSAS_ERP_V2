@@ -1,6 +1,7 @@
 using SSAS.BuildingBlocks.Api.Authorization;
 using SSAS.HR.Application.Permissions;
 using SSAS.API.Tests.Employees;
+using SSAS.API.Tests.Positions;
 
 namespace SSAS.API.Tests.Departments;
 
@@ -28,15 +29,19 @@ namespace SSAS.API.Tests.Departments;
 // silent authorization hole rather than a visible one, because nothing about the route's code looks wrong.
 [Collection(EmployeeApiEndpointGroup.Name)]
 public sealed class HrRouteInventoryTests
-  : IClassFixture<EmployeeApiTestHost>, IClassFixture<DepartmentApiTestHost>
+  : IClassFixture<EmployeeApiTestHost>, IClassFixture<DepartmentApiTestHost>,
+    IClassFixture<PositionApiTestHost>
 {
   private readonly EmployeeApiTestHost employees;
   private readonly DepartmentApiTestHost departments;
+  private readonly PositionApiTestHost positions;
 
-  public HrRouteInventoryTests(EmployeeApiTestHost employees, DepartmentApiTestHost departments)
+  public HrRouteInventoryTests(
+    EmployeeApiTestHost employees, DepartmentApiTestHost departments, PositionApiTestHost positions)
   {
     this.employees = employees;
     this.departments = departments;
+    this.positions = positions;
   }
 
   // ---- EVERY MAPPED HR ROUTE CARRIES A PERMISSION POLICY.
@@ -78,7 +83,8 @@ public sealed class HrRouteInventoryTests
     static string Policy(string permission) => $"{PermissionPolicyNames.TenantPrefix}{permission}";
 
     Assert.Equal(
-      [
+      new[]
+      {
         $"GET /api/hr/departments/ => {Policy(HrPermissionNames.ViewDepartments)}",
         $"GET /api/hr/departments/{{departmentId:guid}} => {Policy(HrPermissionNames.ViewDepartments)}",
         $"GET /api/hr/departments/{{departmentId:guid}}/children => {Policy(HrPermissionNames.ViewDepartments)}",
@@ -104,9 +110,54 @@ public sealed class HrRouteInventoryTests
         // Transfer moves a record across a security partition and holds a permission of its own.
         $"POST /api/hr/employees/{{employeeId:guid}}/transfer => {Policy(HrPermissionNames.TransferEmployees)}",
         $"PUT /api/hr/departments/{{departmentId:guid}} => {Policy(HrPermissionNames.UpdateDepartments)}",
-        $"PUT /api/hr/employees/{{employeeId:guid}} => {Policy(HrPermissionNames.UpdateEmployees)}"
-      ],
+        $"PUT /api/hr/employees/{{employeeId:guid}} => {Policy(HrPermissionNames.UpdateEmployees)}",
+
+        // ================================================================================================
+        // FP-008. TWENTY MORE, TAKING THE HR SURFACE FROM 21 ROUTES TO 41.
+        // ================================================================================================
+        //
+        // Six per aggregate on one shape, plus two on the employee prefix. Note what the PAIRING says, which
+        // is the half a count could never guard:
+        //
+        //   * activate and deactivate carry the entity's **Deactivate** permission in all three families —
+        //     `DEC-DEP-0025` carried over, because the permission names the capability and not the
+        //     direction;
+        //   * every `salary-grades` route carries an `HR.SalaryGrades.*` permission, which is what makes
+        //     `DEC-POS-0018`'s pay-band separation real at the routing layer;
+        //   * both employee-prefix routes carry EMPLOYEE permissions, never position ones — a change is
+        //     `HR.Employees.Update` (`DEC-POS-0019`) and the history read is `HR.Employees.View`, because
+        //     both are about a person rather than about the job catalog.
+        $"GET /api/hr/employees/{{employeeId:guid}}/position-history => {Policy(HrPermissionNames.ViewEmployees)}",
+        $"POST /api/hr/employees/{{employeeId:guid}}/change-position => {Policy(HrPermissionNames.UpdateEmployees)}",
+
+        $"GET /api/hr/positions/ => {Policy(HrPermissionNames.ViewPositions)}",
+        $"GET /api/hr/positions/{{positionId:guid}} => {Policy(HrPermissionNames.ViewPositions)}",
+        $"POST /api/hr/positions/ => {Policy(HrPermissionNames.CreatePositions)}",
+        $"POST /api/hr/positions/{{positionId:guid}}/activate => {Policy(HrPermissionNames.DeactivatePositions)}",
+        $"POST /api/hr/positions/{{positionId:guid}}/deactivate => {Policy(HrPermissionNames.DeactivatePositions)}",
+        $"PUT /api/hr/positions/{{positionId:guid}} => {Policy(HrPermissionNames.UpdatePositions)}",
+
+        $"GET /api/hr/job-grades/ => {Policy(HrPermissionNames.ViewJobGrades)}",
+        $"GET /api/hr/job-grades/{{jobGradeId:guid}} => {Policy(HrPermissionNames.ViewJobGrades)}",
+        $"POST /api/hr/job-grades/ => {Policy(HrPermissionNames.CreateJobGrades)}",
+        $"POST /api/hr/job-grades/{{jobGradeId:guid}}/activate => {Policy(HrPermissionNames.DeactivateJobGrades)}",
+        $"POST /api/hr/job-grades/{{jobGradeId:guid}}/deactivate => {Policy(HrPermissionNames.DeactivateJobGrades)}",
+        $"PUT /api/hr/job-grades/{{jobGradeId:guid}} => {Policy(HrPermissionNames.UpdateJobGrades)}",
+
+        $"GET /api/hr/salary-grades/ => {Policy(HrPermissionNames.ViewSalaryGrades)}",
+        $"GET /api/hr/salary-grades/{{salaryGradeId:guid}} => {Policy(HrPermissionNames.ViewSalaryGrades)}",
+        $"POST /api/hr/salary-grades/ => {Policy(HrPermissionNames.CreateSalaryGrades)}",
+        $"POST /api/hr/salary-grades/{{salaryGradeId:guid}}/activate => {Policy(HrPermissionNames.DeactivateSalaryGrades)}",
+        $"POST /api/hr/salary-grades/{{salaryGradeId:guid}}/deactivate => {Policy(HrPermissionNames.DeactivateSalaryGrades)}",
+        $"PUT /api/hr/salary-grades/{{salaryGradeId:guid}} => {Policy(HrPermissionNames.UpdateSalaryGrades)}"
+      }
+      .OrderBy(route => route, StringComparer.Ordinal),
       routes);
+
+    // The count is asserted BESIDE the exact list rather than instead of it. The list guards the pairing of
+    // pattern to permission; this one sentence is what makes a reviewer's "twenty new routes" checkable at a
+    // glance, and it is the number `api-contracts.md` fixed.
+    Assert.Equal(41, routes.Length);
   }
 
   // ---- THE HR SURFACE USES NO DELETE VERB, AND THAT IS A CONVENTION RATHER THAN AN ACCIDENT.
@@ -132,6 +183,7 @@ public sealed class HrRouteInventoryTests
   [
     .. employees.MappedRoutes()
       .Concat(departments.MappedRoutes())
+      .Concat(positions.MappedRoutes())
       .DistinctBy(route => $"{route.Method} {route.Pattern}")
   ];
 }

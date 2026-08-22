@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.HR.Domain.Departments;
 using SSAS.HR.Domain.Employees;
+using SSAS.HR.Domain.Positions;
 
 namespace SSAS.HR.Infrastructure.Persistence;
 
@@ -32,6 +33,18 @@ public sealed class HrTenantModelContributor : ITenantModelContributor
     modelBuilder.ApplyConfiguration(new DepartmentConfiguration());
     modelBuilder.ApplyConfiguration(new DepartmentManagerConfiguration());
     modelBuilder.ApplyConfiguration(new EmployeeDepartmentAssignmentConfiguration());
+
+    // ---- FP-008 PHASE 1. Four more, applied EXPLICITLY, for the same reason as the three above.
+    //
+    // ORDER DOES NOT MATTER HERE and is not relied on: EF resolves the relationships after every
+    // configuration is applied, and `TenantCutoverCopyPlan` derives the COPY order from the finished
+    // foreign-key graph rather than from this method. They are listed principals-first only so the
+    // dependency direction is visible to a reader — SalaryGrade before JobGrade before Position, and the
+    // history last because it depends on two of them.
+    modelBuilder.ApplyConfiguration(new SalaryGradeConfiguration());
+    modelBuilder.ApplyConfiguration(new JobGradeConfiguration());
+    modelBuilder.ApplyConfiguration(new PositionConfiguration());
+    modelBuilder.ApplyConfiguration(new EmployeePositionAssignmentConfiguration());
 
     // ---- THE FOREIGN KEYS TO PLATFORM-OWNED PRINCIPALS.
     //
@@ -68,6 +81,33 @@ public sealed class HrTenantModelContributor : ITenantModelContributor
       .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
       .WithMany()
       .HasForeignKey(nameof(Department.CompanyId))
+      .OnDelete(DeleteBehavior.Restrict);
+
+    // ---- FP-008's THREE AGGREGATES BELONG TO A COMPANY AND TO NOTHING ELSE IN PLATFORM.
+    //
+    // No branch foreign key on any of them: a position and a grade span the branches of their company
+    // (`DEC-POS-0001`), for the reason `ADR-026` decision 1 gave for Department.
+    //
+    // `tenant.EmployeePositionAssignments` carries a `CompanyId` and deliberately gets NO company foreign
+    // key here — matching `EmployeeDepartmentAssignments` and `EmployeeBranchAssignments`. The column is a
+    // stamped ownership discriminator for scoping and cutover, and the record's integrity is already
+    // anchored by its foreign keys to the Employee and the Positions it names.
+    modelBuilder.Entity(typeof(SalaryGrade))
+      .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
+      .WithMany()
+      .HasForeignKey(nameof(SalaryGrade.CompanyId))
+      .OnDelete(DeleteBehavior.Restrict);
+
+    modelBuilder.Entity(typeof(JobGrade))
+      .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
+      .WithMany()
+      .HasForeignKey(nameof(JobGrade.CompanyId))
+      .OnDelete(DeleteBehavior.Restrict);
+
+    modelBuilder.Entity(typeof(Position))
+      .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
+      .WithMany()
+      .HasForeignKey(nameof(Position.CompanyId))
       .OnDelete(DeleteBehavior.Restrict);
   }
 }

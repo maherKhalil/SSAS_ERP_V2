@@ -4,6 +4,8 @@ using SSAS.HR.Application.Departments;
 using SSAS.HR.Application.Departments.Reads;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
+using SSAS.HR.Application.Positions;
+using SSAS.HR.Application.Positions.Reads;
 using SSAS.HR.Infrastructure.Persistence;
 
 namespace SSAS.HR.Infrastructure;
@@ -55,6 +57,49 @@ public static class ServiceCollectionExtensions
     services.AddScoped<SearchDepartmentsQueryHandler>();
     services.AddScoped<GetDepartmentChildrenQueryHandler>();
 
+    // ---- FP-008 PHASE 2. THE POSITION APPLICATION SURFACE.
+    //
+    // THREE AGGREGATES, THREE REPOSITORIES (`OD-POS-002`). All SCOPED, like every other repository here:
+    // each resolves the request's tenant context through `ITenantDbContextAccessor`, and a longer lifetime
+    // would outlive the connection it reads through.
+    services.AddScoped<IPositionRepository, PositionRepository>();
+    services.AddScoped<IJobGradeRepository, JobGradeRepository>();
+    services.AddScoped<ISalaryGradeRepository, SalaryGradeRepository>();
+
+    // ONE RESOLVER FOR THE THREE FAMILIES, and it is SCOPED for the same reason the department and employee
+    // resolvers are: everything it consults — the acting user, the selected company — is per-request, and a
+    // longer lifetime would be a cache of authorization state, which ADR-025 decision 7 forbids.
+    services.AddScoped<IPositionScopeResolver, PositionScopeResolver>();
+
+    // THREE READ SERVICES, because there are three scope types and each accepts only its own. Registering
+    // one over all three would be the first step back toward a shared scope, and `HR.SalaryGrades.View`
+    // would stop meaning anything.
+    services.AddScoped<IPositionReadService, PositionReadService>();
+    services.AddScoped<IJobGradeReadService, JobGradeReadService>();
+    services.AddScoped<ISalaryGradeReadService, SalaryGradeReadService>();
+
+    services.AddScoped<CreatePositionCommandHandler>();
+    services.AddScoped<UpdatePositionCommandHandler>();
+    services.AddScoped<DeactivatePositionCommandHandler>();
+    services.AddScoped<ReactivatePositionCommandHandler>();
+
+    services.AddScoped<CreateJobGradeCommandHandler>();
+    services.AddScoped<UpdateJobGradeCommandHandler>();
+    services.AddScoped<DeactivateJobGradeCommandHandler>();
+    services.AddScoped<ReactivateJobGradeCommandHandler>();
+
+    services.AddScoped<CreateSalaryGradeCommandHandler>();
+    services.AddScoped<UpdateSalaryGradeCommandHandler>();
+    services.AddScoped<DeactivateSalaryGradeCommandHandler>();
+    services.AddScoped<ReactivateSalaryGradeCommandHandler>();
+
+    services.AddScoped<GetPositionQueryHandler>();
+    services.AddScoped<SearchPositionsQueryHandler>();
+    services.AddScoped<GetJobGradeQueryHandler>();
+    services.AddScoped<SearchJobGradesQueryHandler>();
+    services.AddScoped<GetSalaryGradeQueryHandler>();
+    services.AddScoped<SearchSalaryGradesQueryHandler>();
+
     // ---- THE READ SIDE (FP-006C4).
     //
     // The resolver is SCOPED because everything it consults — the acting user, the selected company, the
@@ -68,10 +113,12 @@ public static class ServiceCollectionExtensions
     services.AddScoped<TerminateEmployeeCommandHandler>();
     services.AddScoped<TransferEmployeeCommandHandler>();
     services.AddScoped<ChangeEmployeeDepartmentCommandHandler>();
+    services.AddScoped<ChangeEmployeePositionCommandHandler>();
 
     services.AddScoped<GetEmployeeQueryHandler>();
     services.AddScoped<SearchEmployeesQueryHandler>();
     services.AddScoped<GetEmployeeBranchHistoryQueryHandler>();
+    services.AddScoped<GetEmployeePositionHistoryQueryHandler>();
 
     services.AddScoped<ActivateEmployeeCommandHandler>();
     services.AddScoped<DeactivateEmployeeCommandHandler>();

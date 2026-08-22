@@ -17,6 +17,10 @@ public sealed class EmployeeDomainTests
   private static readonly Guid BranchB = Guid.Parse("44444444-4444-4444-4444-444444444444");
   private static readonly Guid DepartmentA = Guid.Parse("55555555-5555-5555-5555-555555555555");
   private static readonly Guid DepartmentB = Guid.Parse("66666666-6666-6666-6666-666666666666");
+
+  private static readonly Guid PositionA = Guid.Parse("77777777-7777-7777-7777-777777777777");
+
+  private static readonly Guid PositionB = Guid.Parse("88888888-8888-8888-8888-888888888888");
   private static readonly DateTimeOffset Hired = new(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
   private static readonly DateTimeOffset Now = new(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
 
@@ -264,7 +268,8 @@ public sealed class EmployeeDomainTests
   {
     var employee = Stamped();
 
-    var second = employee.StampInitialAssignment(Tenant, Company, BranchB, DepartmentB, "a", Guid.NewGuid(), Now);
+    var second = employee.StampInitialAssignment(
+      Tenant, Company, BranchB, DepartmentB, PositionB, "a", Guid.NewGuid(), Now);
 
     Assert.True(second.IsFailure);
     Assert.Equal(EmployeeErrors.BranchHistoryImmutable.Code, second.Error.Code);
@@ -439,15 +444,18 @@ public sealed class EmployeeDomainTests
       .Where(type => type.Namespace == "SSAS.HR.Domain.Events")
       .ToArray();
 
-    // EVERY HR domain event, not only Employee's: 6 from FP-006, 5 from FP-007 Phase 1, and
-    // EmployeeDepartmentChanged from Phase 3. The count is asserted so a new event type cannot be added
-    // without someone confirming it carries nothing personal — which is exactly what happened when the
-    // Department events arrived, and again here.
+    // EVERY HR domain event, not only Employee's: 6 from FP-006, 5 from FP-007 Phase 1,
+    // EmployeeDepartmentChanged from FP-007 Phase 3, 12 from FP-008 Phase 1 — four each for Position,
+    // JobGrade and SalaryGrade — and EmployeePositionChanged from FP-008 Phase 3. The count is asserted so
+    // a new event type cannot be added without someone confirming it carries nothing sensitive, which is
+    // exactly what it forced when the Department events arrived, again in FP-007 Phase 3, again at FP-008
+    // Phase 1, and again here.
     //
-    // Phase 3's event carries the two department identifiers and NOT the reason text: that field is
+    // FP-007 Phase 3's event carries the two department identifiers and NOT the reason text: that field is
     // free-form operator input persisted for the audit record alone, and putting it on an event would push
-    // unbounded text into every consumer and whatever they log.
-    Assert.Equal(12, eventTypes.Length);
+    // unbounded text into every consumer and whatever they log. `EmployeePositionChanged` carries the two
+    // position identifiers on identical terms, and neither the reason code nor the reason text.
+    Assert.Equal(25, eventTypes.Length);
 
     var leaked = eventTypes
       .SelectMany(type => type.GetProperties().Select(property => $"{type.Name}.{property.Name}"))
@@ -458,6 +466,42 @@ public sealed class EmployeeDomainTests
       .ToArray();
 
     Assert.Empty(leaked);
+
+    // ---- AND FROM FP-008, MONEY (ADR-027, DEC-POS-0018).
+    //
+    // Pay bands are the one thing in the product sensitive enough to warrant a permission of their own:
+    // `HR.SalaryGrades.View` exists precisely so reading the org chart does not also mean reading the pay
+    // structure. **A permission that guards a table while the event stream publishes its contents guards
+    // nothing** — so `SalaryGradeCreated` and `SalaryGradeUpdated` carry `IsPriced`, a boolean, and never the
+    // amounts.
+    //
+    // Matched on the PROPERTY name alone rather than on "{Type}.{Property}" as the filter above does,
+    // because a type-qualified match on "Salary" would flag `SalaryGradeCreated.SalaryGradeId` — an
+    // identifier, which is exactly what these events are supposed to carry.
+    var money = eventTypes
+      .SelectMany(type => type.GetProperties().Select(property => new { type, property }))
+      .Where(candidate =>
+        candidate.property.Name.Contains("Amount", StringComparison.OrdinalIgnoreCase) ||
+        candidate.property.Name.Contains("Minimum", StringComparison.OrdinalIgnoreCase) ||
+        candidate.property.Name.Contains("Midpoint", StringComparison.OrdinalIgnoreCase) ||
+        candidate.property.Name.Contains("Maximum", StringComparison.OrdinalIgnoreCase) ||
+        candidate.property.PropertyType == typeof(decimal) ||
+        candidate.property.PropertyType == typeof(decimal?))
+      .Select(candidate => $"{candidate.type.Name}.{candidate.property.Name}")
+      .ToArray();
+
+    Assert.Empty(money);
+
+    // Titles and codes are descriptive rather than sensitive, but they are excluded for the reason the whole
+    // file records: an event is the most widely-fanned-out thing an aggregate produces, and anything
+    // descriptive placed on one spreads to every consumer, log and trace that touches it.
+    var descriptive = eventTypes
+      .SelectMany(type => type.GetProperties().Select(property => $"{type.Name}.{property.Name}"))
+      .Where(name => name.Contains("Title", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Code", StringComparison.OrdinalIgnoreCase))
+      .ToArray();
+
+    Assert.Empty(descriptive);
   }
 
   [Fact]
@@ -486,7 +530,8 @@ public sealed class EmployeeDomainTests
     employee.TenantId = Tenant;
     employee.CompanyId = Company;
     employee.BranchId = BranchA;
-    Assert.True(employee.StampInitialAssignment(Tenant, Company, BranchA, DepartmentA, "actor", Guid.NewGuid(), Now).IsSuccess);
+    Assert.True(employee.StampInitialAssignment(
+      Tenant, Company, BranchA, DepartmentA, PositionA, "actor", Guid.NewGuid(), Now).IsSuccess);
     return employee;
   }
 

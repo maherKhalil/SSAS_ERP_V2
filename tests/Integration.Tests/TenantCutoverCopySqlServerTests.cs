@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.HR.Domain.Employees;
+using SSAS.HR.Domain.ImportExport;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Application.Abstractions.Persistence;
@@ -51,14 +52,15 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.True(copied.IsSuccess);
     Assert.Equal(3, copied.Value.TotalRows);
 
-    // ELEVEN TENANT-OWNED TABLES as of FP-008 Phase 1. Branch joined Company in Branch foundation B0;
+    // THIRTEEN TENANT-OWNED TABLES as of FP-009 Phase 1. Branch joined Company in Branch foundation B0;
     // Employee and EmployeeBranchAssignment joined them once the copy plan was derived from the
     // CONTRIBUTOR-COMPOSED model rather than a contributor-free one; Department, DepartmentManager and
     // EmployeeDepartmentAssignment joined in turn; SalaryGrade, JobGrade, Position and
-    // EmployeePositionAssignment joined in FP-008 Phase 1. Only Company holds rows in this fixture, so
-    // TotalRows is unchanged while the table count is not — and this count is precisely what would have
-    // stayed at two while a promotion silently left every employee behind.
-    Assert.Equal(11, copied.Value.TablesCopied);
+    // EmployeePositionAssignment joined in FP-008 Phase 1; EmployeeImportRun and EmployeeExportRun joined
+    // in FP-009 Phase 1. Only Company holds rows in this fixture, so TotalRows is unchanged while the table
+    // count is not — and this count is precisely what would have stayed at two while a promotion silently
+    // left every employee behind.
+    Assert.Equal(13, copied.Value.TablesCopied);
     Assert.Equal(0, copied.Value.TablesAlreadyComplete);
     Assert.Equal(
       [
@@ -69,6 +71,8 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "Employee",
         "EmployeeBranchAssignment",
         "EmployeeDepartmentAssignment",
+        "EmployeeExportRun",
+        "EmployeeImportRun",
         "EmployeePositionAssignment",
         "JobGrade",
         "Position",
@@ -154,19 +158,20 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     var first = await fixture.CopyService().CopyAsync(operationId);
     Assert.True(first.IsSuccess);
     // The whole tenant-owned manifest: Branch and Company, plus the two HR tables the contributor-composed
-    // model added in FP-006C6, the three FP-007 Phase 1 added and the four FP-008 Phase 1 added.
-    Assert.Equal(11, first.Value.TablesCopied);
+    // model added in FP-006C6, the three FP-007 Phase 1 added, the four FP-008 Phase 1 added and the two
+    // run records FP-009 Phase 1 added.
+    Assert.Equal(13, first.Value.TablesCopied);
 
     // The retry a dead process's replacement would perform.
     var second = await fixture.CopyService().CopyAsync(operationId);
 
     Assert.True(second.IsSuccess);
 
-    // COMPANY IS RECOGNISED AS ALREADY COMPLETE. The ten empty tables are not, and that is correct rather
-    // than a gap: an empty table is indistinguishable from one that was never copied, so the engine copies
-    // each again, moving nothing. The retry's safety claim is about not DUPLICATING rows, which the counts
-    // below still prove exactly.
-    Assert.Equal(10, second.Value.TablesCopied);
+    // COMPANY IS RECOGNISED AS ALREADY COMPLETE. The twelve empty tables are not, and that is correct
+    // rather than a gap: an empty table is indistinguishable from one that was never copied, so the engine
+    // copies each again, moving nothing. The retry's safety claim is about not DUPLICATING rows, which the
+    // counts below still prove exactly.
+    Assert.Equal(12, second.Value.TablesCopied);
     Assert.Equal(1, second.Value.TablesAlreadyComplete);
     Assert.Equal(5, second.Value.TotalRows);
 
@@ -681,8 +686,8 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   {
     var composed = CutoverTenantModel.Source.Model;
 
-    // The runtime model contains all eleven — two from Platform, two from FP-006, three from FP-007
-    // Phase 1, and four from FP-008 Phase 1...
+    // The runtime model contains all thirteen — two from Platform, two from FP-006, three from FP-007
+    // Phase 1, four from FP-008 Phase 1, and the two run records from FP-009 Phase 1...
     var derived = composed.GetEntityTypes()
       .Where(entity => !entity.IsOwned())
       .Where(entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))
@@ -693,8 +698,8 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     // AN EXACT LIST, DELIBERATELY. The derivation guarantees the engine cannot MISS a table; this
     // guarantees a human SEES a new one, because a new tenant-owned entity may need ordering, identity or
-    // column decisions that "it compiles" does not settle. FP-007 Phase 1 added three, FP-008 Phase 1 adds
-    // four, and this is one of the three places that has to say so.
+    // column decisions that "it compiles" does not settle. FP-007 Phase 1 added three, FP-008 Phase 1 added
+    // four, FP-009 Phase 1 adds two, and this is one of the three places that has to say so.
     //
     // ---- SalaryGrade IS HERE AND ITS BAND IS NOT, WHICH IS THE OWNED-TYPE FILTER DOING ITS JOB.
     //
@@ -710,6 +715,8 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "Employee",
         "EmployeeBranchAssignment",
         "EmployeeDepartmentAssignment",
+        "EmployeeExportRun",
+        "EmployeeImportRun",
         "EmployeePositionAssignment",
         "JobGrade",
         "Position",
@@ -818,6 +825,36 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       PositionOf("Position") < PositionOf(nameof(Employee)),
       "Positions must be copied before Employees: Employee.PositionId is a required foreign key.");
 
+    // ================================================================================================
+    // THE FP-009 PHASE 1 EDGES. TWO TABLES THAT DEPEND ON COMPANY AND ON NOTHING ELSE.
+    // ================================================================================================
+    //
+    // A run record names WHO RAN WHAT, never WHICH EMPLOYEES RESULTED, so neither points at Employee and
+    // neither lengthens the dependency chain. Both carry a company foreign key, which is the only edge
+    // they have and the only ordering claim provable about them.
+    Assert.True(
+      PositionOf(nameof(Company)) < PositionOf("EmployeeImportRun"),
+      "Companies must be copied before import runs: EmployeeImportRun.CompanyId is a foreign key.");
+    Assert.True(
+      PositionOf(nameof(Company)) < PositionOf("EmployeeExportRun"),
+      "Companies must be copied before export runs: EmployeeExportRun.CompanyId is a foreign key.");
+
+    // ---- AND NEITHER RUN RECORD IS ORDERED AGAINST Employee, DELIBERATELY AND PERMANENTLY.
+    //
+    // `data-model.md` predicts they "sort ahead of Employees", and they do — but on the SORT'S TIE-BREAK,
+    // not on a constraint, because there is no path between them. Asserting that order would be green for
+    // the wrong reason, exactly as FP-008 Phase 1 refused to assert Position before Employee before the
+    // foreign key existed. What IS assertable is that no such edge exists in either direction.
+    foreach (var runRecord in new[] { typeof(EmployeeImportRun), typeof(EmployeeExportRun) })
+    {
+      var principals = CutoverTenantModel.Source.Model.FindEntityType(runRecord)!
+        .GetForeignKeys()
+        .Select(key => key.PrincipalEntityType.ShortName())
+        .ToArray();
+
+      Assert.Equal([nameof(Company)], principals);
+    }
+
     // ---- AND POSITION IS UNORDERED WITH RESPECT TO DEPARTMENT, PERMANENTLY (OD-POS-003).
     //
     // Position is independent of Department: no `Position.DepartmentId` exists, so neither can precede the
@@ -829,6 +866,60 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         .FirstOrDefault(key => key.PrincipalEntityType.ShortName() == "Department"));
   }
 
+  // ================================================================================================
+  // FP-009. THE FIRST `nvarchar(max)` IN THE TENANT MODEL ACTUALLY CROSSES.
+  // ================================================================================================
+  //
+  // `EmployeeExportRuns.ScopeCompanyIds` and `ScopeBranchIds` are the FIRST unbounded text columns any
+  // tenant-owned table has carried. Every column before them was bounded, so "the row copy moves the row"
+  // had never been tested against a value SQL Server may store OUT OF ROW — which is precisely the case
+  // `ADR-020` singles out when it names "large objects… out-of-row or out-of-database content that a row
+  // copy will not move" and requires the tooling to FAIL FAST rather than copy silently and partially.
+  //
+  // FP-009's `data-model.md` asserts the copy needs no new machinery for these tables. THAT CLAIM IS THE
+  // THING UNDER TEST HERE. It is true — `SqlBulkCopy` streams LOB columns, and out-of-row storage is a
+  // storage detail of the same table rather than content outside the database — but an unverified "it will
+  // be fine" about the cutover path is exactly the shape of claim the FP-006/FP-007 as-built audit was
+  // called for.
+  //
+  // The value is deliberately over 8,000 bytes, which is where `nvarchar(max)` stops being stored in row.
+  // A copy that truncated, dropped or blanked it would leave a promoted tenant with an export audit record
+  // that no longer says which scope the data left under — the one fact `SEC-DOC-0404` exists to preserve.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task An_export_run_scope_snapshot_crosses_the_cutover_intact()
+  {
+    await using var fixture = await CopyFixture.CreateAsync();
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 1, "LOB");
+
+    var companyId = (await CopyFixture.ReadCompaniesAsync(fixture.SourceCatalog, fixture.TenantA))
+      .Keys.Single();
+
+    // 400 identifiers — roughly 14 KB, comfortably past the 8,000-byte in-row limit.
+    var scope = string.Join(',', Enumerable.Range(0, 400).Select(_ => Guid.NewGuid().ToString()));
+
+    await fixture.SeedExportRunAsync(fixture.TenantA, companyId, scope);
+
+    // The premise, read from the server rather than assumed: this value really is stored off-row. Without
+    // it the test would pass on a value that never exercised the case it exists for.
+    Assert.True(
+      await CopyFixture.OffRowExportScopePagesAsync(fixture.SourceCatalog) > 0,
+      "the seeded scope fits in row, so this test proves nothing about out-of-row content");
+
+    var operationId = await fixture.BeginAndFreezeAsync();
+
+    var copied = await fixture.CopyService().CopyAsync(operationId);
+
+    Assert.True(copied.IsSuccess, copied.IsFailure ? copied.Error.Code : null);
+
+    // VERBATIM, not merely present.
+    Assert.Equal(scope, await CopyFixture.ReadExportScopeAsync(fixture.TargetCatalog, fixture.TenantA));
+
+    // And the co-tenant control that every copy assertion here carries: the destination holds one export
+    // run, not two, and none for the tenant that stayed.
+    Assert.Null(await CopyFixture.ReadExportScopeAsync(fixture.TargetCatalog, fixture.TenantB));
+  }
+
   // ---- C6-14. AND THE OLD, CONTRIBUTOR-FREE MODEL DEMONSTRABLY DOES NOT.
   //
   // The regression detector. It proves the fix is load-bearing rather than incidental: without the
@@ -836,8 +927,9 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   // slice. If these two ever agreed, the composition would have collapsed back and every proof below would
   // still pass while production quietly lost data again.
   //
-  // FP-007 Phase 1 made the gap wider rather than different, and FP-008 Phase 1 wider again — nine HR
-  // tables now, not two — which is the point: each new contributed entity increases what a contributor-free
+  // FP-007 Phase 1 made the gap wider rather than different, FP-008 Phase 1 wider again and FP-009 Phase 1
+  // wider once more — eleven HR tables now, not two — which is the point: each new contributed entity
+  // increases what a contributor-free
   // manifest would silently leave behind.
   [Fact]
   [Trait("Decision", "ADR-020")]
@@ -863,10 +955,12 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "Position");
     Assert.DoesNotContain(
       contributorFree.Value, table => table.EntityName == "EmployeePositionAssignment");
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "EmployeeImportRun");
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "EmployeeExportRun");
 
-    // Nine HR tables missing, and only Platform's Company and Branch left.
+    // Eleven HR tables missing, and only Platform's Company and Branch left.
     Assert.Equal(
-      composed.Value.Count - 9,
+      composed.Value.Count - 11,
       contributorFree.Value.Count);
     Assert.Equal(2, contributorFree.Value.Count);
   }
@@ -987,13 +1081,15 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     Assert.True(copied.IsSuccess, copied.IsFailure ? copied.Error.Code : null);
 
-    // ELEVEN TABLES, not two. This count is the headline regression: before FP-006C6 it was two, and the
+    // THIRTEEN TABLES, not two. This count is the headline regression: before FP-006C6 it was two, and the
     // difference was every employee in the tenant. FP-007 Phase 1 took it to seven, and the three names it
     // added are the live proof that a Shared→Dedicated cutover carries Departments — the property ADR-026
     // decision 7 exists to guarantee, and the reason DepartmentManager is its own table rather than a
     // column that would have made the copy order undecidable. FP-008 Phase 1 took it to eleven on the same
-    // terms for Positions and their grades.
-    Assert.Equal(11, copied.Value.TablesCopied);
+    // terms for Positions and their grades, and FP-009 Phase 1 to thirteen for the two run records — which
+    // carry the audit trail of who imported and exported employee data, and would otherwise have been the
+    // one thing a promoted tenant could not prove about itself.
+    Assert.Equal(13, copied.Value.TablesCopied);
     Assert.Equal(
       [
         nameof(Branch),
@@ -1003,6 +1099,8 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         nameof(Employee),
         nameof(EmployeeBranchAssignment),
         "EmployeeDepartmentAssignment",
+        "EmployeeExportRun",
+        "EmployeeImportRun",
         "EmployeePositionAssignment",
         "JobGrade",
         "Position",
@@ -1109,13 +1207,21 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     // EVERY ROW-BEARING table already complete, including the HR tables — nothing copied twice.
     //
-    // SIX complete and FIVE recopied, not eleven complete. Company, Branch, Employee,
+    // SIX complete and SEVEN recopied, not thirteen complete. Company, Branch, Employee,
     // EmployeeBranchAssignment, Department and Position all hold rows in this fixture; DepartmentManagers,
-    // EmployeeDepartmentAssignments and the three remaining FP-008 tables are empty, and an empty table is
-    // indistinguishable from one that was never copied, so the engine copies each again and moves nothing —
-    // the same rule the retry test above states. The claim this test makes is that rows are never
-    // DUPLICATED, and the destination counts below are what prove it; a table count of eleven here would
-    // assert something the engine has never promised.
+    // EmployeeDepartmentAssignments, the three remaining FP-008 tables and BOTH FP-009 run records are
+    // empty, and an empty table is indistinguishable from one that was never copied, so the engine copies
+    // each again, moving nothing — the same rule the retry test above states. The claim this test makes is
+    // that rows are never DUPLICATED, and the destination counts below are what prove it; a table count of
+    // thirteen here would assert something the engine has never promised.
+    //
+    // ---- THE RUN RECORDS ARE ON THE EMPTY SIDE, AND UNLIKE Position THEY WILL STAY THERE.
+    //
+    // Department and Position each joined the row-bearing set when a later phase made an Employee column
+    // required, and the comment below predicted both moves before they happened. Neither run record can
+    // move the same way: no employee column will ever reference one, because a run record names no
+    // employees at all. This pair is 6/7 for as long as the fixture seeds an employee story rather than an
+    // import.
     //
     // ---- THIS PAIR HAS MOVED TWICE, AND EACH MOVE WAS PREDICTED BEFORE IT HAPPENED.
     //
@@ -1124,7 +1230,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // pair at 5/6 and recorded WHY Position would not join yet — Employee gained no position column until
     // Phase 3 — and Phase 3 is now here, so Position joins for exactly the same reason Department did.
     Assert.Equal(6, retried.Value.TablesAlreadyComplete);
-    Assert.Equal(5, retried.Value.TablesCopied);
+    Assert.Equal(7, retried.Value.TablesCopied);
 
     // And the destination still holds exactly one of each, so "already complete" was a verification rather
     // than a shrug.
@@ -1523,6 +1629,53 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     public Task<IReadOnlyList<EmployeeRow>> SourceEmployeesAsync(Guid? tenantId) =>
       ReadEmployeesAsync(SourceCatalog, tenantId);
+
+    // ---- FP-009. ONE EXPORT RUN, WITH A DELIBERATELY LARGE SCOPE SNAPSHOT.
+    //
+    // Raw SQL rather than the domain, for the reason every seed here is raw: Phase 1 has no pipeline to
+    // drive, and half-wiring one would test the write boundary rather than the copy.
+    public Task SeedExportRunAsync(Guid tenantId, Guid companyId, string scopeCompanyIds) =>
+      ExecuteAsync(SourceCatalog, $"""
+        INSERT INTO [tenant].[EmployeeExportRuns]
+          ([ExportRunId], [TenantId], [CompanyId], [RowCount], [ColumnSet], [ScopeCompanyIds],
+           [ScopeBranchIds], [ExecutedUtc], [ExecutedBy], [CreatedUtc], [CreatedBy])
+        VALUES
+          ('{Guid.NewGuid()}', '{tenantId}', '{companyId}', 7, N'employeeNumber,fullName',
+           N'{scopeCompanyIds}', N'', SYSDATETIMEOFFSET(), N'cutover-tests',
+           SYSDATETIMEOFFSET(), N'cutover-tests');
+        """);
+
+    public static async Task<string?> ReadExportScopeAsync(string catalog, Guid tenantId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText =
+        "SELECT [ScopeCompanyIds] FROM [tenant].[EmployeeExportRuns] WHERE [TenantId] = @TenantId";
+      command.Parameters.AddWithValue("@TenantId", tenantId);
+
+      return (await command.ExecuteScalarAsync()) as string;
+    }
+
+    // How many LOB_DATA pages the export-run table is using. Non-zero means at least one scope value is
+    // genuinely stored out of row, which is the premise the copy proof rests on.
+    public static async Task<int> OffRowExportScopePagesAsync(string catalog)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = """
+        SELECT ISNULL(SUM(au.used_pages), 0)
+        FROM sys.allocation_units au
+        JOIN sys.partitions p ON p.partition_id = au.container_id
+        JOIN sys.tables t ON t.object_id = p.object_id
+        JOIN sys.schemas s ON s.schema_id = t.schema_id
+        WHERE s.name = N'tenant' AND t.name = N'EmployeeExportRuns' AND au.type_desc = N'LOB_DATA'
+        """;
+
+      return Convert.ToInt32(
+        await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     public Task<IReadOnlyList<EmployeeRow>> TargetEmployeesAsync(Guid? tenantId) =>
       ReadEmployeesAsync(TargetCatalog, tenantId);

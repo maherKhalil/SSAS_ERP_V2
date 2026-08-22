@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
@@ -515,8 +515,18 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     // Phase 3 gives Employee a required PositionId, which will make Employees a dependent of Positions and
     // force exactly this order. Placing it correctly now costs nothing and means the Phase 3 foreign key
     // does not silently invert a second pair the way Employee.DepartmentId did.
+    //
+    // ---- FP-009 PHASE 1 ADDS TWO, AND THE RULE PLACES BOTH AT THE TOP RATHER THAN THE BOTTOM.
+    //
+    // Both run records depend on Companies and on nothing else, so the forward order puts them EARLY —
+    // right behind Companies — and read backwards they must be dropped LATE, before Companies but after
+    // everything that depends on Employees. They are listed first here, which satisfies that and is the
+    // safest position: nothing in this list references either table, so no later DROP can be blocked by
+    // them still standing.
     public Task BreakApplicationSchemaAsync() =>
       ExecuteAsync(SourceDatabase, """
+        DROP TABLE [tenant].[EmployeeImportRuns];
+        DROP TABLE [tenant].[EmployeeExportRuns];
         DROP TABLE [tenant].[EmployeePositionAssignments];
         DROP TABLE [tenant].[EmployeeDepartmentAssignments];
         DROP TABLE [tenant].[DepartmentManagers];

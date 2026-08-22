@@ -81,9 +81,20 @@ count or the exact set.
 | **After FP-009** | **13** — `EmployeeImportRuns`, `EmployeeExportRuns` |
 | After FP-010, if documents ship | 15 — FP-010's arithmetic, not this package's |
 
-**The nine-site inventory obligation applies unchanged** (`DEC-POS-0022`, as corrected). The sites are
-derived by grep at implementation time, never recalled from this document — the FP-008 correction exists
-because a remembered inventory named three sites where nine existed.
+**The site-inventory obligation applies unchanged** (`DEC-POS-0022`, as corrected). The sites are derived by
+grep at implementation time, never recalled from this document — the FP-008 correction exists because a
+remembered inventory named three sites where nine existed.
+
+> **As built, 2026-08-22.** The grep found **ten** sites, not nine: `DEC-POS-0022`'s table carried nine rows
+> plus a prose note recording `EmployeeHostCompositionTests.H9` as a tenth that had sat outside the inventory
+> and failed silently for two phases. That note is now a row, and the same grep found the table naming the
+> wrong method for site 9 (`PrepareTenantSchemaAsync`, which migrates and asserts nothing, instead of
+> `BreakApplicationSchemaAsync`, which carries the `DROP TABLE` list). Both corrections are recorded in
+> `DEC-POS-0022` itself, so the next package greps against a table that matches the code.
+>
+> All ten moved in one act. Neither run record joins the row-bearing set of the cutover fixtures, and unlike
+> `Department` and `Position` neither ever can: both joined it when a later phase made an `Employee` column
+> required, and no employee column will ever reference a run record.
 
 **Copy order.** Both run tables depend only on `Companies`, so they sort ahead of `Employees` and introduce
 no new constraint on the order — and no cycle, because neither points at `Employee` at all. A run record

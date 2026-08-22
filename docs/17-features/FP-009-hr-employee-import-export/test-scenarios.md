@@ -1,13 +1,17 @@
 ---
 document_id: FP-009-TS
-title: HR Employee Data Exchange — Test Scenarios
-status: Analysis — Owner Decisions Required
-version: 0.1
+title: HR Employee Import and Export — Test Scenarios
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-009 — Test Scenarios
 
-> Twenty-four scenarios. **Layer** says where each one can actually be proven: `D` domain, `A` application,
+> **Approved 2026-08-22. Eighteen scenarios** — `TS-DOC-0019`–`0024` travelled to FP-010 with the documents
+> material — **plus three added by the rulings** (`TS-DOC-0025`–`0027`), because all-or-nothing and the
+> `nationalId` exclusion are properties nothing in the drafted set would have caught failing.
+>
+> **Layer** says where each one can actually be proven: `D` domain, `A` application,
 > `S` SQL Server integration, `H` HTTP. The column exists because FP-008 paid for getting it wrong — a
 > scope-containment property cannot be proven against a stub, and a stub returning its seed will agree with a
 > predicate that filters nothing.
@@ -25,6 +29,8 @@ version: 0.1
 | `TS-DOC-0007` | S | Import one employee, create one through the ordinary route, compare the two rows: same normalization, same stamped branch, one initial assignment each, audit fields populated identically in shape | AC-DOC-0006 |
 | `TS-DOC-0008` | H | A 5,001-row file → `400` naming both the limit and 5,001, proven by the parser never being entered | AC-DOC-0007 |
 | `TS-DOC-0009` | S | Import under key `K`; import a **different** file under `K` → the original run's result, and the second file's employees do not exist | AC-DOC-0008 |
+| `TS-DOC-0025` | **S** | A 1,000-row file with **one** invalid row → zero employees created, company employee count identical before and after, outcome `Refused`, `acceptedCount` 0, and the one error reported | AC-DOC-0021 |
+| `TS-DOC-0026` | S | A `departmentCode` that exists only in a company the caller cannot see → unresolvable, and the message is byte-identical to the one for a code that exists nowhere | AC-DOC-0022 |
 | `TS-DOC-0010` | S | A refused import under key `K`, then a valid file under `K` → the refusal is returned; the valid file did not import | AC-DOC-0009 |
 | `TS-DOC-0011` | S | A file whose `departmentCode` exists **in another company** → the row is rejected as not-found, and no department is created in either company | AC-DOC-0010, BRULE-DOC-0601 |
 | `TS-DOC-0012` | S | Import as a caller in company A while company B holds an identical `employeeNumber` → succeeds; the number is unique per company, not per tenant | AC-DOC-0006 |
@@ -39,17 +45,16 @@ version: 0.1
 | `TS-DOC-0016` | H | Every query parameter employee search accepts is accepted by export with the same meaning; every parameter search rejects is rejected. **Enumerated from the search allowlist, not hand-listed** | AC-DOC-0014 |
 | `TS-DOC-0017` | S | A successful export writes one run record carrying the column set and the resolved company and branch sets; a **failed** export writes none | AC-DOC-0015 |
 | `TS-DOC-0018` | H | Export a company, feed the response bytes back to `import/validate` → zero errors | AC-DOC-0016 |
+| `TS-DOC-0027` | **H** | **`nationalId` never appears.** Enumerate every filter combination and scope mode the export accepts; assert the header row of each response, and assert that no response body contains the seeded national identifier of an employee known to have one | AC-DOC-0023 |
 
-## Documents *(conditional on `OD-DOC-001`)*
+## Documents — transferred to FP-010
 
-| | Layer | Scenario | Criteria |
-|---|---|---|---|
-| `TS-DOC-0019` | H | Upload a PDF renamed `.png` and declared `image/png` → `400 employee_document.content_type_rejected` | AC-DOC-0017 |
-| `TS-DOC-0020` | H | A caller with `View` and without `Download` lists a document, then requests its content → `403`, and the metadata response contains no URL that would serve as an alternative route to the bytes | AC-DOC-0018 |
-| `TS-DOC-0021` | S | A document belonging to an out-of-scope employee → `404`, byte-identical to the answer for a document that never existed | AC-DOC-0019 |
-| `TS-DOC-0022` | A | Withdraw, then withdraw again → `409 employee_document.transition_invalid`; uploader and timestamp still readable afterwards | AC-DOC-0020 |
-| `TS-DOC-0023` | **S** | **Cutover custody.** A tenant holding one document is copied Shared→Dedicated. Under the in-database option: the content table copies and the destination's `ContentHash` matches the source bytes. Under any other option: the copy **fails fast**, naming the tenant and the document count, and writes nothing at the destination | NFR-DOC-0504, AC-DOC-0020 |
-| `TS-DOC-0024` | S | **Manifest arithmetic.** The E3 manifest count and exact set match the new inventory, and the topological order places `Employees` before `EmployeeDocuments` and `EmployeeDocuments` before `EmployeeDocumentContents` | NFR-DOC-0504 |
+`TS-DOC-0019`–`TS-DOC-0024`, including the cutover-custody scenario and the manifest-arithmetic scenario for
+document tables, moved to [FP-010](../FP-010-hr-employee-documents/) keeping their identifiers.
+
+**One of them changed meaning on the way**: `TS-DOC-0024`'s manifest arithmetic is now FP-009's own concern
+for the two run tables (11 → 13) and FP-010's for the document tables. This package asserts its own
+arithmetic; FP-010 asserts the rest.
 
 ## Scenarios deliberately not written
 
@@ -57,7 +62,7 @@ version: 0.1
 |---|---|
 | Concurrent imports of the same key from two connections | The unique index on `(CompanyId, NormalizedImportKey)` decides it, and asserting "exactly one loser" would fail on correct behaviour — the `DEC-DEP` concurrency note makes the same point about the manager primary key |
 | Performance of a 5,000-row import | A latency budget (`NFR-DOC-0502`) is not a correctness property, and a timing assertion in a suite that runs on shared hardware is a flake generator. Measured, not asserted |
-| Export of every column combination `OD-DOC-006` might produce | The ruling produces one column set; enumerating hypotheticals tests the spec, not the code |
+| Export of every column combination `OD-DOC-006` might produce | The ruling produced **one** column set, so there are no combinations left to enumerate — `TS-DOC-0027` asserts the single outcome across every *caller*, which is the axis that can actually vary |
 | Rejected-row persistence | Nothing persists them (`DEC-DOC-0006`), so there is nothing to assert beyond `TS-DOC-0006`'s "nothing written" |
 
 ## What the suite must not do

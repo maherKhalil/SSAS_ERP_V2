@@ -1,16 +1,17 @@
 ---
 document_id: FP-009-AC
-title: HR Employee Data Exchange — Acceptance Criteria
-status: Analysis — Owner Decisions Required
-version: 0.1
+title: HR Employee Import and Export — Acceptance Criteria
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-009 — Acceptance Criteria
 
-> Twenty criteria. Each names a behaviour a test can fail on; none restates a requirement in different words.
-> Criteria that cannot be determinate until an owner decision lands **say which one**, and say what is
-> already fixed regardless of how it is ruled — because a criterion that waits entirely on a ruling teaches
-> nobody anything in the meantime.
+> **Approved 2026-08-22. Sixteen criteria** — `AC-DOC-0017`–`0020` travelled to FP-010 with the documents
+> material. Each names a behaviour a test can fail on; none restates a requirement in different words.
+>
+> The three "waiting on" notes the analysis carried are now **resolved in place**: the ruling is stated where
+> the question was, so a reader sees both what was open and what closed it.
 
 ## Import
 
@@ -51,16 +52,26 @@ prevent exactly that.
 **`AC-DOC-0010` — An import cannot cross a company boundary.** *(`SEC-DOC-0403`)* Employees are created in
 the caller's established company context. There is no file value that changes which company they land in.
 
-> **Waiting on `OD-DOC-002` (create-only vs upsert):** whether a row naming an existing employee number is a
-> rejected row or an update. **Fixed either way:** it never changes tenant, company or branch
+> **RESOLVED — `OD-DOC-002` → create-only.** A row naming an existing employee number is a **rejected row**,
+> never an update. What was fixed either way still holds: it never changes tenant, company or branch
 > (`BRULE-DOC-0602`), and it never performs a transfer.
 >
-> **Waiting on `OD-DOC-003` (atomicity):** whether 998 valid rows land beside 2 invalid ones. **Fixed either
-> way:** a rejected row leaves nothing behind (`BRULE-DOC-0604`), and the report shape does not change.
+> **RESOLVED — `OD-DOC-003` → all-or-nothing.** 998 valid rows do **not** land beside 2 invalid ones; the
+> file is refused whole and every error is reported. A rejected row leaves nothing behind
+> (`BRULE-DOC-0604`), and the report shape is unchanged from the drafted one.
 >
-> **Waiting on `OD-DOC-004` (classification resolution):** whether `departmentCode` or a department
-> identifier is the column. **Fixed either way:** a missing referent is not created by the import unless the
-> owner rules otherwise, and a referent in another company matches nothing.
+> **RESOLVED — `OD-DOC-004` → by code, never creates.** The column is `departmentCode`, resolved against
+> existing records under the importer's own authority. A missing referent is a row error; a referent in
+> another company matches nothing, which is the same answer for the same reason.
+
+**`AC-DOC-0021` — All-or-nothing is observable, not just documented.** A 1,000-row file with one invalid row
+creates **zero** employees, and the count of employees in the company is identical before and after. On an
+applied run, `acceptedCount` equals `rowCount` exactly — there is no reachable response in which they differ.
+
+**`AC-DOC-0022` — Codes resolve under the caller's own authority.** A `departmentCode` that exists only in a
+company the caller cannot see is reported as unresolvable, in a message indistinguishable from one for a code
+that exists nowhere. An import cannot be used to enumerate another company's organizational structure one
+rejection at a time.
 
 ## Export
 
@@ -86,28 +97,17 @@ audit found in `FR-DEP-0111`.
 satisfies the column contract and its rows parse. Where `OD-DOC-006` removes a column from exports, that
 column is optional on import so the property still holds.
 
-> **Waiting on `OD-DOC-006` (PII):** whether `nationalId` is a column at all. **Fixed either way:** whatever
-> the column set is, it is recorded on the run record.
+> **RESOLVED — `OD-DOC-006` → never exported.** `nationalId` is not a column of any export, for any caller,
+> under any parameter. What was fixed either way still holds and now does the enforcing: whatever the column
+> set is, it is recorded on the run record — so the exclusion is auditable rather than merely asserted.
 
-## Documents *(conditional on `OD-DOC-001`)*
+**`AC-DOC-0023` — No export carries `nationalId`.** Asserted over **every** export the surface can produce —
+every filter combination, every scope mode, every permission set — rather than over one representative call.
+A rule with no exceptions is testable as a rule, and this is the one field in the module where "we checked the
+usual path" is not good enough.
 
-**`AC-DOC-0017` — Content type is verified against the bytes.** A PDF renamed `.png` and declared
-`image/png` is refused. *(`SEC-DOC-0406`)*
+## Documents — transferred to FP-010
 
-**`AC-DOC-0018` — Metadata visibility does not grant content.** A caller holding
-`HR.EmployeeDocuments.View` and not `.Download` can list a document and cannot obtain its bytes through any
-route. The refusal is `403`, not `404` — the caller already knows the document exists.
-
-**`AC-DOC-0019` — Document reads inherit the employee's scope.** A document belonging to an employee outside
-the caller's scope answers `404`, and answers it identically whether the document exists, belongs to another
-company, or never existed.
-
-**`AC-DOC-0020` — Withdrawal is one-way and metadata survives it.** Withdrawing an already-withdrawn document
-answers `409 employee_document.transition_invalid`. After withdrawal, who uploaded the document and when
-remains readable regardless of what happened to the bytes.
-
-> **Waiting on `OD-DOC-007` (storage) and `OD-DOC-008` (retention):** whether withdrawal destroys content,
-> and what a cutover does with a document-holding tenant. **Fixed either way:** metadata survives, the route
-> is a named `POST`, and — per `NFR-DOC-0504` — a copy that cannot move content **fails fast** rather than
-> completing silently. Under the in-database option this is proven by copying a tenant holding a document and
-> comparing content hashes; under the others, by asserting the refusal.
+`AC-DOC-0017` (content type verified against bytes), `AC-DOC-0018` (metadata visibility does not grant
+content), `AC-DOC-0019` (document reads inherit the employee's scope) and `AC-DOC-0020` (withdrawal is
+one-way and metadata survives) moved to [FP-010](../FP-010-hr-employee-documents/) keeping their identifiers.

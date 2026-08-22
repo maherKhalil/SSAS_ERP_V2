@@ -1,15 +1,15 @@
 ---
 document_id: FP-009-API
-title: HR Employee Data Exchange — API Contracts
-status: Analysis — Owner Decisions Required
-version: 0.1
+title: HR Employee Import and Export — API Contracts
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-009 — API Contracts
 
+> **Approved 2026-08-22. Five routes**, `OD-DOC-001` having split the four document routes out to FP-010.
 > Routes are justified by scope, not generated from handlers, and the 1:1 route-to-handler property
-> `DEC-DEP-0023` established holds here too. **Nine routes** if all three requirements ship; **five** if
-> `OD-DOC-001` splits documents out.
+> `DEC-DEP-0023` established holds here too.
 >
 > This surface breaks one convention the module has held since FP-006 — it accepts and returns something
 > other than JSON — and that break is argued rather than assumed, below.
@@ -23,25 +23,20 @@ version: 0.1
 | `GET` | `/api/hr/employees/import-runs` | `HR.Employees.View` | `FR-DOC-0103` |
 | `GET` | `/api/hr/employees/export` | `HR.Employees.Export` | `FR-DOC-0201` |
 | `GET` | `/api/hr/employees/export-runs` | `HR.Employees.View` | `FR-DOC-0202` |
-| `POST` | `/api/hr/employees/{employeeId}/documents` | `HR.EmployeeDocuments.Upload` | `FR-DOC-0301` |
-| `GET` | `/api/hr/employees/{employeeId}/documents` | `HR.EmployeeDocuments.View` | `FR-DOC-0302` |
-| `GET` | `/api/hr/employee-documents/{documentId}/content` | `HR.EmployeeDocuments.Download` | `FR-DOC-0303` |
-| `POST` | `/api/hr/employee-documents/{documentId}/withdraw` | `HR.EmployeeDocuments.Withdraw` | `FR-DOC-0304` |
 
-**No `DELETE` verb anywhere** (`DEC-DEP-0024`), and `withdraw` is a named `POST` for the reason
-[`lifecycle-model.md`](lifecycle-model.md) gives: the route name must not assert an answer `OD-DOC-008` has
-not given.
+*(The four document routes `FR-DOC-0301`–`0304` travelled to [FP-010](../FP-010-hr-employee-documents/).)*
 
-**Why documents have two prefixes.** Upload and list hang off the employee, because that is the only way to
-address "this person's documents". Content and withdrawal hang off `/api/hr/employee-documents/{documentId}`,
-because a document identifier is already unique and repeating the employee in the path would create a second
-way to get it wrong — a mismatched pair to validate and a mismatch to answer. The scope proof is identical
-either way: the read resolves the document's employee and proves *that employee* is in scope
-([`authorization-model.md`](authorization-model.md)).
+**No `DELETE` verb anywhere** (`DEC-DEP-0024`), and every state change is a named `POST`.
+
+**Why `import/validate` is a `POST` and not a `GET`.** It writes nothing, which is usually the test for a
+`GET` — but it *carries a file*, and a request body on a `GET` is outside what the platform's transports and
+intermediaries handle predictably. `POST` here means "this is a request with a payload", not "this mutates".
+The run record it writes with outcome `Validated` is the honest exception, and it is audit rather than state.
 
 **Route inventory obligation.** The HR surface is **41 routes** today, asserted exactly by
-`HrRouteInventoryTests` beside the full list. This package takes it to **46** (import/export only) or **50**
-(with documents). The count and the list are both updated, or the guard fails — which is the point of it.
+`HrRouteInventoryTests` beside the full list. This package takes it to **46**. The count and the list are both
+updated, or the guard fails — which is the point of it, and FP-008 paid for learning that a count alone goes
+vacuously green.
 
 ## The convention this surface breaks
 
@@ -51,8 +46,6 @@ Every HR route to date accepts and returns `application/json` with strict bindin
 |---|---|---|
 | `POST .../import`, `.../import/validate` | `multipart/form-data` — one file part plus an `importKey` field | `application/json` |
 | `GET .../export` | — | `text/csv` |
-| `POST .../{employeeId}/documents` | `multipart/form-data` | `application/json` |
-| `GET .../content` | — | The document's stored content type |
 
 **The break is unavoidable and is contained.** A file cannot be a JSON field without base64, which inflates
 it by a third and forces the whole payload into memory before parsing. What is preserved is the part that
@@ -89,7 +82,7 @@ refused before any row is read (`DEC-DOC-0002`).
 | `employmentDate` | Yes | ISO-8601 |
 | `departmentCode` | Yes | Resolved per `OD-DOC-004`; never created (`BRULE-DOC-0601`) |
 | `positionCode` | Yes | Same |
-| `nationalId` | No | Optional in FP-006; `OD-DOC-006` may make it export-absent, and the round-trip property (`DEC-DOC-0008`) needs it optional here |
+| `nationalId` | No | Optional in FP-006, and **kept optional here precisely because `OD-DOC-006` made it export-absent** — an exported file must re-import, and it will never carry this column |
 
 **No `companyId`, `branchId`, `tenantId` or `status` column exists.** They are not validated away — they are
 absent from the contract, so a file carrying one is refused by the unknown-column rule. This is `FP-006`'s
@@ -118,9 +111,11 @@ editor shows them. `code` comes from the module's existing problem-code namespac
 uniqueness fails it for exactly the reason a single create would, and inventing import-specific codes for the
 same conditions would give one failure two names.
 
-**`outcome` under `OD-DOC-003`:** all-or-nothing makes `acceptedCount` either `rowCount` or `0`; partial
-success makes the two counts independent. The shape does not change, which is why it can be specified before
-the ruling.
+**`outcome` under `OD-DOC-003`, now ruled:** all-or-nothing, so `acceptedCount` is either `rowCount` or `0`
+and never anything between. The sample above shows `Applied` with 998 of 1000 — **that response is no longer
+reachable**, and it is kept as written with this note rather than quietly corrected, because the shape it
+illustrates is the one the report still has. A file with two bad rows now answers `Refused`, `acceptedCount`
+`0`, and the same two errors.
 
 ## Export
 
@@ -135,42 +130,19 @@ different filter vocabulary — and the FP-009 audit-of-the-audit lesson applies
 the transport and unreachable above it is a capability nobody can use.
 
 Response: `text/csv`, UTF-8 with BOM (Excel opens UTF-8 without a BOM as mojibake, and this file exists to be
-opened in Excel), columns per `DEC-DOC-0008` minus whatever `OD-DOC-006` removes, ordered by full name then
-identifier — the same total order search uses, so paging and export agree.
+opened in Excel), ordered by full name then identifier — the same total order search uses, so paging and
+export agree.
 
-## Documents
+**Columns: `employeeNumber`, `fullName`, `employmentDate`, `departmentCode`, `positionCode`, `status`.**
+**`nationalId` is not among them and cannot be** (`OD-DOC-006`) — there is no parameter, permission or caller
+for which it appears. It is absent from the contract rather than filtered out of it, which is the distinction
+`FP-006` draws between a field that does not exist and a field that is validated away.
 
-```http
-POST /api/hr/employees/{employeeId}/documents
-Content-Type: multipart/form-data
-```
+## Documents — transferred to FP-010
 
-| Part | Notes |
-|---|---|
-| `file` | ≤ 10 MB; content type on the allowlist **and** matching magic bytes (`SEC-DOC-0406`) |
-| `documentType` | From the closed enum (`DEC-DOC-0012`) |
-
-Response `201` with the metadata representation:
-
-```jsonc
-{
-  "documentId": "…",
-  "employeeId": "…",
-  "documentType": "Contract",
-  "fileName": "contract-2026.pdf",
-  "contentType": "application/pdf",
-  "byteCount": 184213,
-  "contentHash": "sha256:…",
-  "status": "Active",
-  "uploadedUtc": "…",
-  "uploadedBy": "…",
-  "rowVersion": "AAAAAAAAB9E="
-}
-```
-
-**No content URL in the representation.** A field holding a link to the bytes would be a second
-authorization surface — one that outlives the response, travels in logs, and is checked by whatever code
-happens to serve it. Content is fetched from the content route, which resolves the content scope every time.
+The upload, list, content and withdraw contracts, the metadata representation, and the reasoning for
+refusing a content URL in that representation moved to
+[FP-010](../FP-010-hr-employee-documents/carried-analysis.md) under the `OD-DOC-001` split.
 
 ## Problem codes
 
@@ -182,18 +154,20 @@ Own namespaces (`DEC-DEP-0026`), reusing existing codes where the condition is g
 | Unsupported file format | `400` | `employee_import.format_unsupported` |
 | Import key already used | `200` | — the original run's result (`DEC-DOC-0004`) |
 | Row-level uniqueness, transition and reference failures | *(in the report)* | `employee.number_conflict`, `employee.national_id_conflict`, `department.not_found`, `position.not_found` |
-| Document exceeds the size ceiling | `400` | `employee_document.too_large` |
-| Content type not allowlisted, or bytes disagree with it | `400` | `employee_document.content_type_rejected` |
-| Document unknown or out of scope | `404` | `employee_document.not_found` |
-| Withdrawing an already-withdrawn document | `409` | `employee_document.transition_invalid` |
 | Missing functional permission | `403` | `authorization.forbidden` |
 | Company / branch scope refusals | `403` | `company.scope_denied`, `branch.scope_denied` |
 
-**`409` for the state conflict, per `DEC-DEP-0030`** — ratified 2026-08-22, and the first package to inherit
-it rather than rediscover it.
+**No `409` appears on this surface**, and the absence is worth a sentence: `DEC-DEP-0030` fixed `409` as the
+answer for a **state-conflict** refusal, and this package has no state to conflict with. An import creates or
+refuses; an export reads. The one condition that looks like a conflict — a re-used import key — is
+deliberately a `200` carrying the original result, because the caller asking "did my import happen?" is asking
+a question the system can answer rather than making a request it must refuse.
 
 ## Rowversion
 
-`FR-DOC-0304` carries `expectedRowVersion` in its body under the platform convention. Import and export carry
-none: an import creates, and an export changes nothing. The run records are append-only and have no
-concurrency token at all — the `EmployeeBranchAssignment` precedent.
+**No route on this surface carries a rowversion**, and every one of them is entitled not to. An import
+creates — and creation has never carried an expected version, because there is nothing to have changed
+underneath the caller. An export changes nothing. Both run records are append-only and have no concurrency
+token at all, which is the `EmployeeBranchAssignment` precedent.
+
+*(`FR-DOC-0304`, the one operation here that would have carried one, travelled to FP-010.)*

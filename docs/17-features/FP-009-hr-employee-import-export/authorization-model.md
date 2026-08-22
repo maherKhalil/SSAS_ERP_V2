@@ -1,14 +1,15 @@
 ---
 document_id: FP-009-AUTH
-title: HR Employee Data Exchange — Authorization Model
-status: Analysis — Owner Decisions Required
-version: 0.1
+title: HR Employee Import and Export — Authorization Model
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-009 — Authorization Model
 
-> One thing here is settled and must not be reopened; one is an owner decision with a recorded
-> recommendation; the rest follows precedent mechanically.
+> **Approved 2026-08-22.** One thing here was settled from the start and must not be reopened — export runs
+> under the caller's scope. One was an owner decision, and `OD-DOC-005` ruled it as recommended. The rest
+> follows precedent mechanically.
 
 ## Settled — export runs under the caller's employee read scope
 
@@ -35,15 +36,26 @@ because scope changes and `AC-EMP-0024`/`AC-EMP-0026` exist precisely because it
 
 | Permission | Governs | Status |
 |---|---|---|
-| `HR.Employees.Import` | `FR-DOC-0101`, `FR-DOC-0102` | **`OD-DOC-005`** — proposed as separate; alternative is reuse of `HR.Employees.Create` |
-| `HR.Employees.Export` | `FR-DOC-0201` | **`OD-DOC-005`** — proposed as separate; alternative is reuse of `HR.Employees.View` |
+| `HR.Employees.Import` | `FR-DOC-0101`, `FR-DOC-0102` | **RULED** (`OD-DOC-005`) — separate, granted independently |
+| `HR.Employees.Export` | `FR-DOC-0201` | **RULED** (`OD-DOC-005`) — separate, granted independently |
 | `HR.Employees.View` | `FR-DOC-0103`, `FR-DOC-0202` — reading run history | Settled by pattern: history of employee operations is an employee read |
-| `HR.EmployeeDocuments.View` | `FR-DOC-0302` — metadata listing | Proposed (`DEC-DOC-0013`) |
-| `HR.EmployeeDocuments.Download` | `FR-DOC-0303` — content | Proposed (`DEC-DOC-0013`) |
-| `HR.EmployeeDocuments.Upload` | `FR-DOC-0301` | Proposed |
-| `HR.EmployeeDocuments.Withdraw` | `FR-DOC-0304` | Proposed |
 
-**The recommendation for `OD-DOC-005`, restated with its precedent.** `DEC-DEP-0025` separated `Deactivate`
+**Two new permissions, taking the HR set from 21 to 23.** The permission catalog and its inventory guards are
+updated with them, or the guards fail — which is what they are for.
+
+**Holding `Import` does not imply `Create`, and holding `Export` does not imply `View`.** They are independent
+grants, not tiers. A role may hold `Export` alone: such a caller can extract exactly the employees their scope
+admits and cannot open one of them individually, which is odd-looking and correct — the two are different
+capabilities over the same data, and inventing an implication between them would be inventing policy.
+
+**But the import path still needs an employee read scope**, because it reads back what it created and it
+resolves department and position codes under the caller's authority (`OD-DOC-004`). That is a *scope*
+requirement, not a permission one, and the distinction is `ADR-025` decision 8's: scope and functional
+permission are independent dimensions, and neither substitutes for the other.
+
+*(The four `HR.EmployeeDocuments.*` permissions the analysis proposed travelled to FP-010 with `DEC-DOC-0013`.)*
+
+**The recommendation `OD-DOC-005` adopted, restated with its precedent.** `DEC-DEP-0025` separated `Deactivate`
 from `Update` because deactivation changes a materially different thing — whether a department can receive
 employees — and granting it under ordinary edit authority would let someone who may rename a department undo
 a closure. The same test applied here: bulk creation and bulk extraction are materially different from
@@ -51,8 +63,10 @@ single-record work, and export is the only operation in the module that removes 
 control. It passes the same test that separation passed.
 
 **The argument against, honestly stated:** two more permissions to administer, and every role that already
-has `View` will probably be granted `Export` anyway, at which point the separation cost administration
-overhead and bought nothing. That is a real possibility and it is the owner's call.
+has `View` may be granted `Export` anyway, at which point the separation cost administration overhead and
+bought nothing. **Ruled for separation regardless**, on the ground that the cost is paid once by
+administrators while the risk is carried continuously by the data — and that a grant nobody had to make
+deliberately is exactly the grant nobody reviews.
 
 ## Functional permission and scope stay independent dimensions
 
@@ -61,28 +75,11 @@ permission. An administrator with no `HR.Employees.Export` cannot export, and an
 single-branch scope exports a single branch. Neither dimension substitutes for the other, and the export
 route checks both in the established order — permission first, then scope.
 
-## Document content — the scope type is the permission
+## Document content permissions — transferred to FP-010
 
-`DEC-POS-0018` established the mechanism this borrows: three distinct read-scope types with private
-constructors and internal factories, so that a caller who did not pass the salary-grade check has **no code
-path** to salary data — not a check they might bypass, a type they cannot construct.
-
-Applied here:
-
-```
-EmployeeDocumentScope         ← resolver checked HR.EmployeeDocuments.View
-EmployeeDocumentContentScope  ← resolver checked HR.EmployeeDocuments.Download
-```
-
-`IEmployeeDocumentReadService.GetContentAsync` takes an `EmployeeDocumentContentScope` and nothing else.
-A metadata-only caller cannot reach content by any route, including a future one written by someone who
-never read this document — which is the whole point of encoding it as a type rather than as a rule.
-
-**Both scopes are derived from the employee's scope, not from a document scope of their own.** A document is
-company-owned and names no branch ([`domain-model.md`](domain-model.md)), so its visibility is inherited: the
-read proves the **employee** is in scope first and returns not-found if not, exactly as
-`GetEmployeeBranchHistoryAsync` does for branch history. Without that step, a document read keyed by
-`DocumentId` would be an unscoped read of employee data.
+`DEC-DOC-0013`'s split between metadata and content, and the `DEC-POS-0018` scope-type mechanism that makes
+it structural rather than procedural, moved to
+[FP-010](../FP-010-hr-employee-documents/decisions-open.md#ratified-decisions-carried-into-fp-010).
 
 ## Refusal semantics
 
@@ -91,9 +88,7 @@ read proves the **employee** is in scope first and returns not-found if not, exa
 | No functional permission | `403 authorization.forbidden` | `FP-006` |
 | Company unauthorized, inactive, unknown, wrong tenant | `403 company.scope_denied`, indistinguishable | `FP-006`, `ADR-025` |
 | Branch selection missing for a branch-owned operation | `409 branch.selection_required` | `ADR-023` d.8 |
-| Employee outside scope, for a document operation | `404 employee.not_found` | `FP-006` — existence is never disclosed |
-| Document outside scope or unknown | `404 employee_document.not_found` | Same rule, own namespace (`DEC-DEP-0026`) |
-| Content requested without the download permission | `403 authorization.forbidden` | Never `404` — the caller can see the document exists; concealing the refusal would tell them nothing they do not know, which is `DEC-DEP-0026`'s own reasoning for `PermissionDenied` |
+| A department or position code that does not resolve in the caller's scope | A **row error** naming the column, which under `OD-DOC-003` refuses the file | `OD-DOC-004` — and it is a row error rather than a `404` because the caller addressed a file, not a department |
 | Import file malformed, header wrong, cap exceeded | `400 request.invalid` — with the per-row report as the body where rows were reachable | `DEC-DOC-0003` |
 | Import key already used | `200` with the **original** run's result | `DEC-DOC-0004`; a conflict status would push callers into treating a successful idempotent replay as a failure |
 

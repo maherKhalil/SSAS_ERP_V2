@@ -1,15 +1,17 @@
 ---
 document_id: FP-009-REQ
-title: HR Employee Data Exchange — Requirements
-status: Analysis — Owner Decisions Required
-version: 0.1
+title: HR Employee Import and Export — Requirements
+status: Approved for Implementation
+version: 1.0
 ---
 
 # FP-009 — Requirements
 
-> **The source requirements have no body text.** `REQ-HR-0005`, `REQ-HR-0009` and `REQ-HR-0010` appear in the
-> requirement catalog as titles only, and **no business rule anywhere in the specification touches any of
-> them**. Everything below is derived — from platform precedent, from the four written statements listed in
+> **Approved 2026-08-22.** Six owner decisions were ruled and three deferred to FP-010; requirements that
+> were provisional are now determinate, and the ruling that determined each is cited inline.
+>
+> **The source requirements have no body text.** `REQ-HR-0009` and `REQ-HR-0010` appear in the requirement
+> catalog as titles only, and **no business rule anywhere in the specification touches either of them**. Everything below is derived — from platform precedent, from the four written statements listed in
 > [`README.md`](README.md#the-whole-of-the-written-authority), and from the owner decisions this package
 > raises. Where a requirement rests on a reading rather than a written statement, it says so.
 >
@@ -21,7 +23,7 @@ version: 0.1
 
 | Source | Name | Body text | Coverage |
 |---|---|---|---|
-| `REQ-HR-0005` | Employee Documents | **None** | `FR-DOC-0301`–`FR-DOC-0304` — **conditional on `OD-DOC-001`, `OD-DOC-007`, `OD-DOC-009`** |
+| `REQ-HR-0005` | Employee Documents | **None** | **Transferred to FP-010** (`OD-DOC-001` → SPLIT), carrying `FR-DOC-0301`–`FR-DOC-0304` |
 | `REQ-HR-0009` | Employee Import | **None** | `FR-DOC-0101`–`FR-DOC-0103` |
 | `REQ-HR-0010` | Employee Export | **None** | `FR-DOC-0201`–`FR-DOC-0202` |
 | `REQ-HR-0001` | Create Employee | — | **Reused, not re-specified.** Import creates employees through the same domain path a single create uses (`BRULE-DOC-0603`) |
@@ -45,8 +47,15 @@ A caller submits a CSV (`DEC-DOC-0001`) whose header matches the column contract
 becomes an employee created through the ordinary domain path. Every rule that governs a single create governs
 an imported row — no relaxations, no bypass of the write boundary (`BRULE-DOC-0603`).
 
-**Determinate only after:** `OD-DOC-002` (create-only or upsert), `OD-DOC-003` (atomicity), `OD-DOC-004`
-(how classifications resolve), `OD-DOC-005` (which permission).
+**Determinate as of 2026-08-22.** `OD-DOC-002` → **create-only**: a row whose employee number already exists
+in the company is rejected. `OD-DOC-003` → **all-or-nothing**: every row is validated, every error reported,
+and nothing is applied unless every row passes. `OD-DOC-004` → department, position and branch resolve **by
+code against existing records under the importer's authority**, and the import never creates one.
+`OD-DOC-005` → **`HR.Employees.Import`**, granted separately.
+
+**One consequence worth stating where an implementer will read it:** because a single unresolvable code is a
+row error, and a row error fails the file, an import is refused whole for one bad department code. That is
+intended — a file whose classifications are wrong is one the operator wants back.
 
 ### `FR-DOC-0103` — Read import run history
 
@@ -61,7 +70,9 @@ A bounded, deterministic-ordered extract of the employees the caller's **materia
 admits, in the column contract of `DEC-DOC-0008`. The scope requirement is
 [settled](decisions-approved.md#settled-by-precedent--the-two-worth-writing-out), not proposed.
 
-**Determinate only after:** `OD-DOC-005` (permission), `OD-DOC-006` (PII columns).
+**Determinate as of 2026-08-22.** `OD-DOC-005` → **`HR.Employees.Export`**, granted separately.
+`OD-DOC-006` → **`nationalId` is never exported**; the column is absent from the export contract for every
+caller, and import keeps it optional so the round-trip property holds.
 
 ### `FR-DOC-0202` — Read export run history
 
@@ -69,27 +80,11 @@ The same record from the other direction, and the more important one: an export 
 module that moves data outside the system's control, so the record of *what column set left* is the control
 that survives it.
 
-### Documents *(conditional — see `OD-DOC-001`, `OD-DOC-009`)*
+### Documents — transferred to FP-010
 
-### `FR-DOC-0301` — Upload a document against an employee
-
-Content plus metadata: document type (`DEC-DOC-0012`), file name, content type, byte count, content hash.
-Refused unless the employee is inside the caller's scope, the content type is on the allowlist **and** the
-magic bytes agree with it (`SEC-DOC-0406`), and the size is within ceiling (`DEC-DOC-0011`).
-
-### `FR-DOC-0302` — List an employee's documents
-
-Metadata only. Never content, and never a content URL that would function as one.
-
-### `FR-DOC-0303` — Download document content
-
-Separately authorized from the listing (`DEC-DOC-0013`), through a scope type only the content-permission
-resolver can construct.
-
-### `FR-DOC-0304` — Withdraw a document
-
-A named `POST`, never a `DELETE` (`DEC-DEP-0024`). Whether withdrawal destroys the bytes is `OD-DOC-008`;
-the *route* is the same either way, which is why it can be specified before that ruling lands.
+`FR-DOC-0301` (upload), `FR-DOC-0302` (list), `FR-DOC-0303` (download content) and `FR-DOC-0304` (withdraw)
+**moved to [FP-010](../FP-010-hr-employee-documents/) under the `OD-DOC-001` split**, keeping their
+identifiers. Nothing in this package anticipates them.
 
 ## Security requirements
 
@@ -99,8 +94,7 @@ the *route* is the same either way, which is why it can be specified before that
 | `SEC-DOC-0402` | Export obtains a materialized `EmployeeReadScope` and applies it as explicit predicates. There is no export mode that omits a scope predicate (`ADR-023` d.22, `ADR-025` d.10, `BRULE-EMP-0025`) |
 | `SEC-DOC-0403` | An import writes only into the caller's trusted company context. A file row naming another company does not import into it — the value is refused, never adopted |
 | `SEC-DOC-0404` | The column set of every export is recorded on the run (`DEC-DOC-0006`), so what left the system is knowable after the fact whatever `OD-DOC-006` rules |
-| `SEC-DOC-0405` | Document content is unreachable without the content scope type; a metadata-only caller has no code path to bytes (`DEC-POS-0018` mechanism) |
-| `SEC-DOC-0406` | Uploaded content is validated by **magic bytes** as well as declared content type, because the declared type is caller input |
+| `SEC-DOC-0405`, `SEC-DOC-0406` | **Transferred to FP-010** — the content scope type and magic-byte verification are document requirements |
 
 ## Non-functional requirements
 
@@ -109,11 +103,12 @@ the *route* is the same either way, which is why it can be specified before that
 | `NFR-DOC-0501` | Caps are enforced before parsing: 5,000 rows, 10 MB per file, 10 MB per document (`DEC-DOC-0005`, `DEC-DOC-0011`). Exceeding one names the limit and the actual value |
 | `NFR-DOC-0502` | Import and export complete synchronously within the caps (`DEC-DOC-0007`). If that ceases to hold, the async variant is additive rather than a contract change |
 | `NFR-DOC-0503` | Run records are durable and append-only, and survive the operation they describe failing |
-| `NFR-DOC-0504` | **Cutover custody.** Any storage option that leaves binary content outside the tenant database must make the E3 copy **fail fast** for a tenant holding documents, per `ADR-020`. A silent partial copy is the worst available outcome |
-| `NFR-DOC-0505` | **Backup custody.** The package states plainly, per option, whether content is inside the physical database's backup chain (`ADR-022` §1). Where it is not, "recovery readiness" does not cover it and the documentation must not imply it does |
+| `NFR-DOC-0504`, `NFR-DOC-0505` | **Transferred to FP-010** — cutover and backup custody are properties of stored bytes, and this package stores none |
 
 ## What is explicitly out of scope
 
+* **Documents** — FP-010 (`OD-DOC-001`).
+* **Upsert.** `OD-DOC-002` ruled create-only; a future additive mode is recorded, not designed.
 * Import or export of **anything but employees**. Departments, positions and grades have their own packages
   and are not smuggled in through a file format.
 * A general document-management capability — versioning, workflow, sharing, retention policies. The roadmap

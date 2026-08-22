@@ -484,6 +484,31 @@ of who imported which file under which key is the audit trail working as intende
 *(All three fields are covered by this one record deliberately, so a future reader finds one decision rather
 than three conventions.)*
 
+**`DEC-DOC-0017` — THE IMPORTED FILE NAME TRAVELS AS AN OPTIONAL `X-File-Name` HEADER.**
+*(Ruled 2026-08-22 during Phase 2. Raised because `DEC-DOC-0014` created the gap and nobody noticed.)*
+
+`DEC-DOC-0006` has the run record store *"the file name"*, and `data-model.md` gives it an `nvarchar(260)`
+column *"recorded for audit; never used to locate anything"*. Under the superseded multipart shape the file
+part carried that name for free. **`DEC-DOC-0014` removed multipart and with it the only place a file name
+could come from** — the identical gap `importKey` had, and this half was not noticed at the same time.
+
+**Ruled: an optional `X-File-Name` request header, defaulting to `import.csv` when absent.** Recording a
+caller-supplied name is right, because an audit column that always holds a constant is dead weight.
+
+**The direction asymmetry is what makes this safe, and it is worth stating because it superficially resembles
+the case `api-contracts.md` forbids.** That prohibition is about echoing caller input into a **response
+header** — the export's `Content-Disposition` — which is a header-injection surface. This is the opposite
+direction: caller input into a **stored audit field that is never reflected back**. Nothing renders it,
+nothing routes on it, and the column's own definition says nothing locates anything with it.
+
+**Three constraints, all read off that same definition:**
+
+| # | Constraint | Why |
+|---|---|---|
+| 1 | **Path components stripped to the leaf.** A value like `..\..\x.csv` stores as `x.csv` | It is a NAME, not a location. Storing something shaped like a path invites a later reader to treat it as one |
+| 2 | **Control characters REFUSED** as `400 request.invalid`, never stripped | A name containing them is a malformed request, and silently cleaning it would record a value the caller never sent |
+| 3 | **Length capped to the column's own limit** (`EmployeeImportRun.FileNameMaximumLength`) | A value that passes validation must not then fail to persist — the rule `EmployeeNumber` already applies to itself |
+
 **`OD-DOC-007`, `OD-DOC-008`, `OD-DOC-009` — DEFERRED to FP-010 (`OD-DOC-001`).**
 
 Binary storage location, retention and erasure against the no-physical-delete convention, and whether V5

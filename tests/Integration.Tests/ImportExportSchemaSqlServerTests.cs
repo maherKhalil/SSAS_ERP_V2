@@ -1,8 +1,9 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.HR.Domain.ImportExport;
 using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
@@ -343,6 +344,88 @@ public sealed class ImportExportSchemaSqlServerTests
       : fixture.InsertExportRunAsync("employeeNumber", companyId: stranger)));
   }
 
+  // ================================================================================================
+  // APPEND-ONLY IS ENFORCED BY THE WRITE BOUNDARY, NOT BY THE ABSENCE OF A REPOSITORY METHOD
+  // ================================================================================================
+  //
+  // Neither repository offers an update or a delete, and that is a courtesy to the reader rather than the
+  // guarantee. `TenantDbContext.PreventAppendOnlyMutation` refuses a Modified or Deleted entry for ANY
+  // `IAppendOnlyEntity` **whatever path tracked it** — which is what these prove, by taking exactly that
+  // path: load the row through EF, change it, and save.
+  //
+  // The refusal names no entity type, because it is a rule about a CLASSIFICATION rather than about a row.
+  //
+  // A record of what happened that can be edited afterwards is not a record of what happened. For the import
+  // run that means a refused run cannot be quietly relabelled as applied; for the export run it means the
+  // column set and the scope snapshot — the only controls that survive the data leaving — cannot be revised
+  // after somebody asks what left.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0006")]
+  public async Task An_import_run_cannot_be_updated_after_it_is_written()
+  {
+    await using var fixture = await RunFixture.CreateAsync();
+
+    await fixture.InsertImportRunAsync("APPEND-1", fixture.CompanyA, outcome: "Refused", accepted: 0);
+
+    await using var context = fixture.CreateContext();
+
+    var run = await context.Set<EmployeeImportRun>().SingleAsync();
+
+    // Through the ONLY writable property the type exposes — the ownership stamp the boundary itself uses.
+    // If even that cannot be changed, nothing can.
+    run.TenantId = run.TenantId;
+    context.Entry(run).State = EntityState.Modified;
+
+    var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+      () => context.SaveChangesAsync());
+
+    Assert.Contains("Append-only", refusal.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0006")]
+  public async Task An_export_run_cannot_be_deleted_after_it_is_written()
+  {
+    await using var fixture = await RunFixture.CreateAsync();
+
+    await fixture.InsertExportRunAsync("employeeNumber,fullName");
+
+    await using var context = fixture.CreateContext();
+
+    var run = await context.Set<EmployeeExportRun>().SingleAsync();
+
+    context.Set<EmployeeExportRun>().Remove(run);
+
+    var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+      () => context.SaveChangesAsync());
+
+    Assert.Contains("Append-only", refusal.Message, StringComparison.Ordinal);
+
+    // AND THE ROW IS STILL THERE. The refusal is the point, but a guard that threw AFTER deleting would
+    // satisfy the assertion above and destroy the record anyway.
+    Assert.Equal(1, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [tenant].[EmployeeExportRuns]"));
+  }
+
+  // ---- THE GUARD IS LIVE, NOT VACUOUS.
+  //
+  // An ordinary tenant-owned row in the same context updates without complaint, so the two refusals above
+  // are about the append-only classification rather than about the fixture being unable to save anything.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0006")]
+  public async Task An_entity_that_is_not_append_only_still_updates_in_the_same_context()
+  {
+    await using var fixture = await RunFixture.CreateAsync();
+
+    await using var context = fixture.CreateContext();
+
+    var updated = await context.Database.ExecuteSqlRawAsync(
+      "UPDATE [tenant].[Companies] SET [ModifiedUtc] = SYSDATETIMEOFFSET() WHERE [TenantId] = {0}",
+      fixture.Tenant);
+
+    Assert.Equal(2, updated);
+  }
+
   private static string ColumnCount(string table, string predicate) =>
     "SELECT COUNT(*) FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id " +
     "JOIN sys.schemas s ON s.schema_id = t.schema_id " +
@@ -402,6 +485,19 @@ public sealed class ImportExportSchemaSqlServerTests
         modelContributors: [new HrTenantModelContributor()]);
 
       await context.Database.MigrateAsync();
+    }
+
+    // A REAL TenantDbContext over the fixture's database, composed exactly as production composes it —
+    // including the HR contributor, without which the run entities would not be in the model at all.
+    public TenantDbContext CreateContext()
+    {
+      var options = new DbContextOptionsBuilder<TenantDbContext>()
+        .UseSqlServer(ConnectionFor(tenantCatalog))
+        .Options;
+
+      return new TenantDbContext(
+        options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
+        modelContributors: [new HrTenantModelContributor()]);
     }
 
     public async Task<int> ScalarAsync(string sql)

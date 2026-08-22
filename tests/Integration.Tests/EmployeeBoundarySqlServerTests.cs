@@ -3463,15 +3463,16 @@ public sealed class EmployeeBoundarySqlServerTests
         : null;
     }
 
-    // Removes the LAST column from every line. Deliberately mechanical rather than clever: the point of the
-    // round-trip test is that the file differs from an importable one by exactly one column, and a helper
-    // that reconstructed the file would be asserting its own idea of the format instead of the writer's.
+    // Removes the status COLUMN and nothing else — the point of the round-trip test is that the file differs
+    // from an importable one by exactly one column, so a helper that reconstructed the file would be
+    // asserting its own idea of the format instead of the writer's.
+    //
+    // It matches the status VALUE rather than "everything after the last comma", because a quoted full name
+    // may contain a comma or a newline and neither positional rule survives that. Status names are enum
+    // names, are never quoted, and are always last, which is what makes this precise.
     public static string WithoutStatusColumn(string content) =>
-      string.Join('\n', content
-        .Split('\n')
-        .Select(line => string.IsNullOrEmpty(line)
-          ? line
-          : line[..line.LastIndexOf(',')]));
+      System.Text.RegularExpressions.Regex.Replace(
+        content, ",(status|Active|Inactive|Terminated)\n", "\n");
 
     public async Task<Guid?> EmployeeBranchAsync(Guid employeeId) =>
       await ScalarGuidAsync("Employees", "BranchId", "EmployeeId", employeeId);

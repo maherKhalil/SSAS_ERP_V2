@@ -208,7 +208,7 @@ public sealed class ExportEmployeesQueryHandler(
   // The date format is `yyyy-MM-dd`, exactly what the import parses. A culture-dependent format would
   // produce a file that re-imports as a different date or not at all, which is the round-trip property
   // failing quietly.
-  internal static string Write(IReadOnlyList<EmployeeExportRow> rows)
+  public static string Write(IReadOnlyList<EmployeeExportRow> rows)
   {
     var builder = new StringBuilder();
 

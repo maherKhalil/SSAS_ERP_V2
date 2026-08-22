@@ -15,18 +15,34 @@ the platform has already closed elsewhere.
 
 ## Department
 
-| Method | Route | Permission | Notes |
-|---|---|---|---|
-| `POST` | `/api/hr/departments` | `HR.Departments.Create` | `FR-DEP-0101` |
-| `GET` | `/api/hr/departments/{departmentId}` | `HR.Departments.View` | `FR-DEP-0102` |
-| `GET` | `/api/hr/departments` | `HR.Departments.View` | `FR-DEP-0103`; filters `status`, `parentDepartmentId`, `search`; paged |
-| `GET` | `/api/hr/departments/{departmentId}/hierarchy` | `HR.Departments.View` | `FR-DEP-0105`; returns ancestors and descendants |
-| `PUT` | `/api/hr/departments/{departmentId}` | `HR.Departments.Update` | `FR-DEP-0104`; **name and code only** |
-| `POST` | `/api/hr/departments/{departmentId}/parent` | `HR.Departments.Update` | `FR-DEP-0106` |
-| `PUT` | `/api/hr/departments/{departmentId}/manager` | `HR.Departments.Update` | `FR-DEP-0107`; assign |
-| `DELETE` | `/api/hr/departments/{departmentId}/manager` | `HR.Departments.Update` | `FR-DEP-0107`; clear |
-| `POST` | `/api/hr/departments/{departmentId}/deactivate` | `HR.Departments.Deactivate` | `FR-DEP-0108` |
-| `POST` | `/api/hr/departments/{departmentId}/reactivate` | `HR.Departments.Deactivate` | `FR-DEP-0108` |
+| Method | Route | Permission | Notes | As built |
+|---|---|---|---|---|
+| `POST` | `/api/hr/departments` | `HR.Departments.Create` | `FR-DEP-0101` | as specified |
+| `GET` | `/api/hr/departments/{departmentId}` | `HR.Departments.View` | `FR-DEP-0102` | as specified |
+| `GET` | `/api/hr/departments` | `HR.Departments.View` | `FR-DEP-0103`; filters `status`, `parentDepartmentId`, `search`; paged | as specified |
+| `GET` | `/api/hr/departments/{departmentId}/hierarchy` | `HR.Departments.View` | `FR-DEP-0105`; returns ancestors and descendants | **`GET /{departmentId}/children`, direct children only** (`DEC-DEP-0024`) |
+| `PUT` | `/api/hr/departments/{departmentId}` | `HR.Departments.Update` | `FR-DEP-0104`; **name and code only** | as specified |
+| `POST` | `/api/hr/departments/{departmentId}/parent` | `HR.Departments.Update` | `FR-DEP-0106` | **two routes: `/move` and `/move-to-root`** (`DEC-DEP-0023`) |
+| `PUT` | `/api/hr/departments/{departmentId}/manager` | `HR.Departments.Update` | `FR-DEP-0107`; assign | **`POST /{departmentId}/manager`** (`DEC-DEP-0024`) |
+| `DELETE` | `/api/hr/departments/{departmentId}/manager` | `HR.Departments.Update` | `FR-DEP-0107`; clear | **`POST /{departmentId}/manager/remove`** (`DEC-DEP-0024`) |
+| `POST` | `/api/hr/departments/{departmentId}/deactivate` | `HR.Departments.Deactivate` | `FR-DEP-0108` | as specified |
+| `POST` | `/api/hr/departments/{departmentId}/reactivate` | `HR.Departments.Deactivate` | `FR-DEP-0108` | **`POST /{departmentId}/activate`** (`DEC-DEP-0025`) |
+
+> **AS-BUILT CORRECTION (2026-08-22, HR as-built cleanup).** Five of the ten rows above name a route the
+> surface does not expose. Each was superseded by a **ratified** Phase 4 decision — `DEC-DEP-0023` split the
+> parent change into two routes, `DEC-DEP-0024` removed the `DELETE` verb from the module entirely and cut
+> the hierarchy read down to direct children, `DEC-DEP-0025` named the lifecycle pair — and this table was
+> never brought forward. The rows are corrected in place rather than rewritten, so the original contract and
+> the decision that changed it both stay readable.
+>
+> **The shipped surface is twelve routes**, not the thirteen `DEC-DEP-0023` states: eleven on the
+> `/api/hr/departments` prefix plus `POST /api/hr/employees/{employeeId}/change-department`. The arithmetic
+> is independently fixed by the route inventory — FP-006's nine plus these twelve is the twenty-one that
+> FP-008 took to forty-one — and `HrRouteInventoryTests` asserts the exact list.
+>
+> `GET /{departmentId}/children` returning only one level means **`AC-DEP-0016` and `TS-DEP-0027`, which
+> specify an ancestors-and-descendants read, describe a route that does not exist.** `DEC-DEP-0024` ruled
+> that deliberately; the criteria were never annotated, and are annotated now where they appear.
 
 **There is no `DELETE /api/hr/departments/{id}`.** Departments are not deleted (`BRULE-DEP-0016`).
 
@@ -45,10 +61,25 @@ reasoning is identical.
 |---|---|
 | `POST /api/hr/employees` | Request gains **required** `departmentId` (subject to `OD-DEP-001`) |
 | `PUT /api/hr/employees/{id}` | **Unchanged.** `departmentId` is *not* added here (`BRULE-DEP-0018`) |
-| `POST /api/hr/employees/{id}/department` | **New.** `HR.Employees.Update`. `FR-DEP-0110`. Body: `departmentId`, `rowVersion` |
-| `GET /api/hr/employees/{id}` | Response gains `department` — `{ departmentId, code, name }` |
-| `GET /api/hr/employees` | Response items gain the same; request gains optional `departmentId` filter (`FR-DEP-0111`) |
+| `POST /api/hr/employees/{id}/department` | **New.** `HR.Employees.Update`. `FR-DEP-0110`. Body: `departmentId`, `rowVersion`. *(As built 2026-08-22: shipped as `POST /api/hr/employees/{id}/change-department`, per `DEC-DEP-0024`'s named-POST convention.)* |
+| `GET /api/hr/employees/{id}` | Response gains `department` — `{ departmentId, code, name }`. **NOT SHIPPED** — see the note below |
+| `GET /api/hr/employees` | Response items gain the same; request gains optional `departmentId` filter (`FR-DEP-0111`). **NEITHER SHIPPED** — see the note below |
 | `GET /api/hr/employees/{id}/branch-history` | **Unchanged** |
+
+> **NOT SHIPPED (recorded 2026-08-22, HR as-built cleanup — awaiting an architect ruling).** Two of the six
+> employee-contract changes above are absent from the implementation, and no decision records dropping them:
+>
+> 1. **The `department` object on the employee representation.** `EmployeeResponse` and
+>    `EmployeeSummaryResponse` carry no department at all — not the nested object, not even a bare
+>    `departmentId`. The read models beneath them DO carry `Employee.DepartmentId` (`EmployeeDetail`,
+>    `EmployeeSummary`), so the value reaches the application layer and stops at the wire.
+> 2. **The `departmentId` search filter (`FR-DEP-0111`).** The filter is fully implemented BELOW the
+>    transport — `EmployeeSearchCriteria.DepartmentId` and its SQL predicate both exist and are exercised
+>    — but `departmentId` is absent from the employee search query allowlist, so no caller can reach it. A
+>    request naming it is rejected as an undeclared parameter. The capability is shipped and unreachable.
+>
+> Both are recorded here rather than implemented: this cleanup's scope was the `employeeCount` gap, and what
+> to do about these is an architect decision, not a coder's.
 
 ## Representations
 
@@ -59,17 +90,31 @@ reasoning is identical.
   "code": "SALES",
   "name": "Sales",
   "parentDepartmentId": "…",          // null at root
-  "manager": {                        // null when unassigned
-    "employeeId": "…",
+  "manager": {                        // null when there is no manager at all
+    "isAssigned": true,               // AS BUILT — see the correction below
+    "employeeId": "…",                 // null when the caller may not see who
     "employeeNumber": "E-0001",
     "fullName": "…",
-    "isTerminated": false             // DEC-DEP-0013 — surfaced, never auto-cleared
+    "isActive": true                  // AS BUILT: shipped as isActive, NOT isTerminated
   },
+  "companyId": "…",                    // AS BUILT: reported, and absent from the original sample
   "status": "Active",
   "employeeCount": 12,                // within the caller's employee read scope; see below
   "rowVersion": "AAAAAAAAB9E="
 }
 ```
+
+> **AS-BUILT CORRECTION — the manager sub-object (2026-08-22).** The original sample describes two states,
+> present and null. The surface ships **three**, and the third is the one that matters: a department is
+> company-visible while employees are branch-scoped, so a caller may legitimately learn THAT a department has
+> a manager without being allowed to know who. `isAssigned` carries that distinction, and collapsing it into
+> `null` would tell such a caller the department has no manager — which is false. `D32` in
+> `DepartmentEndpointTests` pins it.
+>
+> The terminated flag shipped **inverted and renamed**: `isActive`, not `isTerminated`. `DEC-DEP-0013`'s rule
+> is unchanged — a terminated manager is surfaced and never auto-cleared — but a client written against
+> this document's field name would read the wrong sense of the right fact, which is why the correction is
+> recorded rather than left to the reader.
 
 > **SHIPPED 2026-08-22** (HR as-built cleanup, the task that closed this gap). The field was specified here,
 > **never built**, and FP-007's own as-built pass nonetheless marked this document matched — the divergence
@@ -107,17 +152,34 @@ the caller cannot read. This is the one place where `OD-DEP-005`'s "department i
 Department errors map through the module's own `IApiErrorMapper` in `SSAS.HR.API`, using the
 `SSAS.BuildingBlocks.Api` transport primitives introduced in FP-006C5. No new mapping mechanism is added.
 
-| Domain error | HTTP |
-|---|---|
-| `DepartmentNotFound`, or found outside company scope | `404` |
-| `ParentIsSelf`, `ParentIsDescendant`, `ParentInDifferentCompany`, `ParentInactive` | `422` |
-| `CodeAlreadyExists` | `409` |
-| `ManagerInDifferentCompany`, `ManagerTerminated`, `ManagerIsDepartmentMember` | `422` |
-| `DepartmentInactive` (receiving an employee) | `422` |
-| `HasActiveChildren` (deactivating) | `422` |
-| Stale `RowVersion` | `409` |
-| Permission denied | `403` |
-| Company scope empty or company inactive | `403` |
+| Domain error | HTTP | As built |
+|---|---|---|
+| `DepartmentNotFound`, or found outside company scope | `404` | `404 department.not_found` |
+| `ParentIsSelf`, `ParentIsDescendant`, `ParentInDifferentCompany`, `ParentInactive` | `422` | **`409 department.hierarchy_invalid`** |
+| `CodeAlreadyExists` | `409` | `409 department.code_conflict` |
+| `ManagerInDifferentCompany`, `ManagerTerminated`, `ManagerIsDepartmentMember` | `422` | **`409 department.manager_invalid`** |
+| `DepartmentInactive` (receiving an employee) | `422` | **`409 department.transition_invalid`** |
+| `HasActiveChildren` (deactivating) | `422` | **`409 department.transition_invalid`** |
+| Stale `RowVersion` | `409` | `409 concurrency.conflict` |
+| Permission denied | `403` | `403 authorization.forbidden` |
+| Company scope empty or company inactive | `403` | `403 company.scope_denied` |
+
+> **STATUS-CODE DIVERGENCE (recorded 2026-08-22, HR as-built cleanup — awaiting an architect ruling).** The
+> four rows specifying **`422`** ship as **`409`**. `DepartmentApiErrorMapper` answers
+> `department.hierarchy_invalid`, `department.manager_invalid` and `department.transition_invalid` at 409, and
+> **no decision in this package records the change** — unlike the route naming, which `DEC-DEP-0023`–`0025`
+> ratified.
+>
+> This is recorded rather than corrected in either direction. It is observable client behaviour on a **merged
+> surface**: rewriting the document would ratify a change nobody ruled, and changing the code would alter a
+> shipped contract on a coder's judgement. The problem CODES are distinct either way, so a client that
+> branches on `code` — the authoritative field by this package's own convention — is unaffected; a client
+> branching on the status class is not.
+>
+> Worth noting for whoever rules: the mapper's own reasoning is explicit and defensible — it keeps every
+> refusal that names a *state conflict* at 409, and the employee surface uses 409 for the same shape
+> (`employee.transition_invalid`). The divergence may well be the document being stale rather than the code
+> being wrong.
 
 `404` for out-of-scope is deliberate and matches the Employee surface: a `403` would confirm the department
 exists in a company the caller may not see.

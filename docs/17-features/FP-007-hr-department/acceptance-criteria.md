@@ -43,6 +43,13 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 - **AC-DEP-0015** — Moving a department beneath an `Inactive` parent is refused.
 - **AC-DEP-0016** — The hierarchy read returns ancestors in root-to-parent order and descendants in a
   deterministic order.
+
+  > **SUPERSEDED, NOT MET (annotated 2026-08-22, HR as-built cleanup).** `DEC-DEP-0024` ruled that
+  > `GET /{departmentId}/children` returns **direct children only**: `REQ-HR-0101` specifies the adjacency
+  > model and no full-tree contract, and a caller wanting a whole tree walks it, which puts the cost of the
+  > depth in front of whoever pays it. No ancestors-and-descendants read exists, so this criterion and
+  > `TS-DEP-0027` describe a route the surface does not expose. The ruling stands; the annotation is what
+  > was missing.
 - **AC-DEP-0017** — Two concurrent re-parent operations that would together form a cycle cannot both succeed;
   the second is refused, and the resulting hierarchy is acyclic.
 

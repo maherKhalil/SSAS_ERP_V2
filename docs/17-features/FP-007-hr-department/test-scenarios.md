@@ -40,7 +40,7 @@ unit test over a fake proves the handler and not the rule.
 |---|---|---|---|
 | TS-DEP-0025 | U | Self-parent refused in the aggregate, with no I/O | AC-DEP-0012 |
 | TS-DEP-0026 | S | Self-parent refused by `CK_Departments_ParentIsNotSelf` when written directly in SQL, bypassing the application entirely | AC-DEP-0012 |
-| TS-DEP-0027 | S | Build `A → B → C` by creating each with a parent, then read the hierarchy: ancestors of `C` are `[A, B]` and descendants of `A` are `{B, C}` | AC-DEP-0010, AC-DEP-0016 |
+| TS-DEP-0027 | S | Build `A → B → C` by creating each with a parent, then read the hierarchy: ancestors of `C` are `[A, B]` and descendants of `A` are `{B, C}`. **SUPERSEDED 2026-08-22** — `DEC-DEP-0024` ships `GET /{id}/children` (direct children only) and no ancestors-and-descendants read, so the scenario describes a route that does not exist | AC-DEP-0010, AC-DEP-0016 |
 | TS-DEP-0028 | S | **`A → B → C`, then move `A` beneath `C` — refused.** The named `BR-HR-0008` proof | AC-DEP-0013 |
 | TS-DEP-0029 | S | Move `B` beneath new root `D`; `C` moves with it and `C`'s parent is untouched | AC-DEP-0014 |
 | TS-DEP-0030 | S | Move beneath an `Inactive` parent is refused | AC-DEP-0015 |

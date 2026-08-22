@@ -203,6 +203,14 @@ ruled during Phase 4 and are numbered from the next free identifiers in this pac
 stand in a 1:1 relationship, checked before any code was written; a handler without a route would be dead
 application code, and a route without a handler would be a promise nothing keeps.
 
+> **COUNT CORRECTED (2026-08-22, HR as-built cleanup): it is TWELVE, not thirteen.** Eleven routes on the
+> `/api/hr/departments` prefix plus `POST /api/hr/employees/{employeeId}/change-department`, matching twelve
+> handlers — so the 1:1 property the decision turns on holds exactly, and only the number was wrong. The
+> arithmetic is fixed independently by the route inventory: FP-006's nine plus these twelve is the twenty-one
+> that FP-008 took to forty-one, and `HrRouteInventoryTests` asserts the exact list at both counts. The
+> decision's substance is unaffected; a wrong number in a ratified decision is corrected here rather than
+> reproduced by whoever counts next.
+
 Hierarchy movement is **two routes**, `POST /{id}/move` and `POST /{id}/move-to-root`, because Phase 2
 shipped two commands with different validation — a parent change walks the ancestry, a root move has no
 destination to check. A single route with a nullable `parentDepartmentId` was **rejected**: it would put the

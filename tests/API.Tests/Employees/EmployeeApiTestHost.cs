@@ -280,6 +280,7 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     ExportRuns.Reset();
     RunHistory.Reset();
     UnitOfWork.Failure = null;
+    UnitOfWork.FailOnce = null;
   }
 
   public static HttpRequestMessage Request(

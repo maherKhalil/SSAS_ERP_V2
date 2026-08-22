@@ -392,8 +392,25 @@ public sealed class StubUnitOfWork : ITenantUnitOfWork
 {
   public Error? Failure { get; set; }
 
-  public Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default) =>
-    Task.FromResult(Failure is { } error ? Result.Failure<int>(error) : Result.Success(1));
+  // ---- FAIL EXACTLY ONE SAVE, THEN BEHAVE (FP-009 Phase 2).
+  //
+  // `Failure` fails EVERY save, which cannot express the one path that matters here: an import whose
+  // employee write fails and whose REFUSAL RECORD must then still be written. That sequence — fail, then
+  // succeed — is precisely the race the import handler exists to survive, and a stub that failed both saves
+  // would report the refusal as unrecordable and hide whether the record was attempted at all.
+  public Error? FailOnce { get; set; }
+
+  public Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default)
+  {
+    if (FailOnce is { } once)
+    {
+      FailOnce = null;
+
+      return Task.FromResult(Result.Failure<int>(once));
+    }
+
+    return Task.FromResult(Failure is { } error ? Result.Failure<int>(error) : Result.Success(1));
+  }
 
   public Task<ITransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
     Task.FromResult<ITransaction>(new NoOpTransaction());

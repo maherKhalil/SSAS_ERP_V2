@@ -478,7 +478,61 @@ public sealed class ImportEmployeesCommandHandler(
   // ================================================================================================
   // APPLY — THE EMPLOYEES AND THE RUN RECORD COMMIT TOGETHER, OR NEITHER DOES
   // ================================================================================================
+  // ================================================================================================
+  // APPLY — AND THE REFUSAL IS RECORDED **OUTSIDE** THE TRANSACTION IT DISCARDS
+  // ================================================================================================
+  //
+  // ---- WHY THIS IS TWO METHODS AND NOT ONE.
+  //
+  // The first version wrote the refusal record inside the `await using` scope, immediately after rolling
+  // back. That is wrong, and subtly: `await using var transaction` runs to the END OF THE METHOD, so the
+  // rolled-back transaction was still the context's current transaction when the refusal's
+  // `SaveChangesAsync` executed. A save issued against a transaction that has already been rolled back does
+  // not quietly open a new one.
+  //
+  // So the transaction is owned ENTIRELY by `CommitEmployeesAsync`, whose scope ends before this method
+  // decides what to record. The structure is the guarantee: there is no line in `ApplyAsync` from which the
+  // transaction is reachable, so the mistake cannot be made again here.
   private async Task<Result<EmployeeImportReport>> ApplyAsync(
+    Guid tenantId,
+    Guid companyId,
+    ImportKey importKey,
+    ImportEmployeesCommand command,
+    int rowCount,
+    IReadOnlyList<PreparedRow> prepared,
+    CancellationToken cancellationToken)
+  {
+    var outcome = await CommitEmployeesAsync(
+      tenantId, companyId, importKey, command, rowCount, prepared, cancellationToken);
+
+    // ---- THE RACE. Validation passed and the write still failed.
+    //
+    // The per-company unique indexes are authoritative and the validation probes are an optimisation of the
+    // error message, not the rule — so a concurrent create can take a number between the probe and the
+    // insert. Everything written is already rolled back and the transaction is already gone; the key must
+    // still be consumed, so the refusal is recorded now, in its own transaction.
+    if (outcome.Raced is { } raced)
+    {
+      return await RefuseAsync(
+        tenantId, companyId, importKey, command, rowCount, [raced], cancellationToken);
+    }
+
+    if (outcome.Run is not { } run)
+    {
+      return Result.Failure<EmployeeImportReport>(outcome.Fatal ?? EmployeeErrors.InvalidActor);
+    }
+
+    return Result.Success(new EmployeeImportReport(
+      run.Id, run.Outcome, run.RowCount, run.AcceptedCount, run.RejectedCount, []));
+  }
+
+  // What the committed attempt produced: the run on success, the offending row on a race, or an error the
+  // caller cannot recover from. Exactly one is ever set.
+  private sealed record ApplyOutcome(
+    EmployeeImportRun? Run, EmployeeImportRowError? Raced, Error? Fatal);
+
+  // ---- THE TRANSACTION LIVES AND DIES HERE, and nothing that writes a run record is in scope.
+  private async Task<ApplyOutcome> CommitEmployeesAsync(
     Guid tenantId,
     Guid companyId,
     ImportKey importKey,
@@ -503,17 +557,10 @@ public sealed class ImportEmployeesCommandHandler(
 
       if (created.IsFailure)
       {
-        // ---- VALIDATION PASSED AND THE WRITE STILL FAILED, WHICH MEANS SOMETHING RACED US.
-        //
-        // The per-company unique indexes are authoritative and the validation probes are an optimisation of
-        // the error message, not the rule — so a concurrent create can take a number between the probe and
-        // the insert. Everything written so far is rolled back, and the run record is then written in its
-        // OWN transaction: it cannot ride the one being discarded, and the key must still be consumed.
         await transaction.RollbackAsync(cancellationToken);
 
-        return await RefuseAsync(
-          tenantId, companyId, importKey, command, rowCount,
-          [new EmployeeImportRowError(row.RowNumber, null, created.Error)], cancellationToken);
+        return new ApplyOutcome(
+          null, new EmployeeImportRowError(row.RowNumber, null, created.Error), null);
       }
     }
 
@@ -523,23 +570,24 @@ public sealed class ImportEmployeesCommandHandler(
     if (run.IsFailure)
     {
       await transaction.RollbackAsync(cancellationToken);
-      return Result.Failure<EmployeeImportReport>(run.Error);
+      return new ApplyOutcome(null, null, run.Error);
     }
 
+    // THE RUN RECORD AND THE EMPLOYEES COMMIT TOGETHER. An applied run whose record did not land would be
+    // employees nobody can account for; a record without its employees would describe something that did
+    // not happen.
     await runs.AddAsync(run.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
     if (saved.IsFailure)
     {
       await transaction.RollbackAsync(cancellationToken);
-      return Result.Failure<EmployeeImportReport>(saved.Error);
+      return new ApplyOutcome(null, null, saved.Error);
     }
 
     await transaction.CommitAsync(cancellationToken);
 
-    return Result.Success(new EmployeeImportReport(
-      run.Value.Id, run.Value.Outcome, run.Value.RowCount, run.Value.AcceptedCount,
-      run.Value.RejectedCount, []));
+    return new ApplyOutcome(run.Value, null, null);
   }
 
   private async Task<Result<EmployeeImportReport>> RefuseAsync(

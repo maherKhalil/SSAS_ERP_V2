@@ -496,6 +496,60 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.Empty(host.ImportRuns.Runs);
   }
 
+  // ================================================================================================
+  // T22. THE RACE: VALIDATION PASSED, THE WRITE FAILED, AND THE REFUSAL IS STILL RECORDED
+  // ================================================================================================
+  //
+  // The per-company unique indexes are authoritative; the validation probes are an optimisation of the error
+  // message, not the rule. So a concurrent create can take an employee number between the probe and the
+  // insert, and the import must roll back, record a REFUSED run — consuming its key — and report the row.
+  //
+  // ---- WHAT THIS COVERS, AND — SAID PLAINLY — WHAT IT DOES NOT.
+  //
+  // It covers the CONTRACT: after a failed write the outcome is `Refused`, the offending row is named, and
+  // the run record exists so the key stays consumed.
+  //
+  // It does NOT catch the defect that prompted it. The first implementation wrote the refusal record inside
+  // the `await using` transaction scope, immediately after rolling back — and `await using var` runs to the
+  // end of the METHOD, so that save was issued against an already-rolled-back transaction. **This harness's
+  // transaction is a no-op** (`StubUnitOfWork.NoOpTransaction`), so the old code would pass this test too.
+  //
+  // The fix is therefore STRUCTURAL rather than test-enforced: the transaction now lives entirely inside
+  // `CommitEmployeesAsync`, whose scope ends before anything decides what to record, so there is no line in
+  // the deciding method from which the transaction is reachable. Recorded here because a reader who assumes
+  // this test guards the scoping would be wrong, and might undo the structure believing it is covered.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0004")]
+  public async Task T22_A_write_that_fails_after_validation_still_records_a_refused_run()
+  {
+    // Fail exactly ONE save — the employee's. The refusal record's save must then succeed, which is the
+    // whole behaviour under test.
+    host.UnitOfWork.FailOnce = new SSAS.BuildingBlocks.Domain.Error(
+      "Persistence.UniqueConstraint", "raced");
+
+    using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=t22",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+    var root = document.RootElement;
+
+    Assert.Equal("Refused", root.GetProperty("outcome").GetString());
+    Assert.Equal(0, root.GetProperty("acceptedCount").GetInt32());
+
+    // The row that raced is named, by the line number the operator's editor shows.
+    var error = root.GetProperty("errors").EnumerateArray().Single();
+    Assert.Equal(2, error.GetProperty("rowNumber").GetInt32());
+
+    // ---- AND THE KEY IS CONSUMED. Releasing it would let the very submission the key exists to make
+    // unrepeatable be replayed under it.
+    var recorded = Assert.Single(host.ImportRuns.Runs);
+    Assert.Equal(EmployeeImportOutcome.Refused, recorded.Outcome);
+    Assert.Equal("T22", recorded.NormalizedImportKey);
+  }
+
   // ---- AND THE VALIDATE ROUTE WRITES A `Validated` RUN AND NO EMPLOYEES.
   [Fact]
   [Trait("Decision", "FR-DOC-0101")]

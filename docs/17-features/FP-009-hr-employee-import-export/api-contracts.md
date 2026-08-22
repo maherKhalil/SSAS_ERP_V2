@@ -68,6 +68,24 @@ input.
 server-generated. Reflecting a caller-supplied name into a response header is a header-injection surface for
 no benefit.
 
+> **THE SERVER-GENERATED FORM, RECORDED 2026-08-22 (`R10`): `employees-{yyyyMMdd-HHmmss}.csv`**, stamped from
+> the clock at execution and from nothing else.
+>
+> The contract above states the PROPERTY — server-generated, no caller input — and was silent on the value. A
+> bare constant `employees.csv` was considered and declined, and the reason is that the name and the run
+> record do two different jobs:
+>
+> * **Identification lives in the run record.** Who exported, when, under which scope, and which column set
+>   left are `EmployeeExportRun`'s fields (`DEC-DOC-0006`, `SEC-DOC-0404`). The filename carries none of that
+>   and does not need to — which is the argument for a constant, and it is correct as far as it goes.
+> * **Collision-avoidance lives in the name**, and the run record cannot do it. Two exports in one session
+>   under a constant name silently overwrite in the operator's downloads folder, or become
+>   `employees (1).csv` and lose the order they were taken in. That is a usability failure the audit trail
+>   never sees, because nothing about it reaches the server.
+>
+> The timestamp satisfies the stated property exactly as a constant would: it is derived from the server's
+> clock, and no caller input reaches it.
+
 ## Import
 
 ```http
@@ -152,6 +170,17 @@ and the same refusals. An export is a search that leaves the system, so it must 
 different filter vocabulary — and the FP-009 audit-of-the-audit lesson applies: a parameter implemented below
 the transport and unreachable above it is a capability nobody can use.
 
+> **ONE EXCEPTION, ANNOTATED 2026-08-22 (`R7`): `pageNumber` and `pageSize` are REFUSED** with
+> `400 request.invalid` naming the reason. An export is not paged — a file with a page 2 is not a file — and
+> the row **ceiling** governs its size instead.
+>
+> **Accept-and-ignore was forbidden by `OD-DOC-010`'s own logic**, taken two days earlier: silently
+> discarding a declared parameter is the behaviour this contract refuses, and a caller who sent
+> `pageSize=50` and received five thousand rows would have been told nothing about what happened to their
+> request. The filter vocabulary is genuinely shared — the parsing core is extracted, not copied, so the two
+> surfaces cannot drift — and paging is the one input where "the same allowlist" would have meant accepting
+> something the operation cannot honour.
+
 Response: `text/csv`, UTF-8 with BOM (Excel opens UTF-8 without a BOM as mojibake, and this file exists to be
 opened in Excel), ordered by full name then identifier — the same total order search uses, so paging and
 export agree.
@@ -197,10 +226,23 @@ Own namespaces (`DEC-DEP-0026`), reusing existing codes where the condition is g
 |---|---|---|
 | Malformed file, bad header, unknown column, cap exceeded, unparsable row | `400` | `request.invalid` |
 | Unsupported file format | `400` | `employee_import.format_unsupported` |
+| A row naming a status an import cannot create *(added 2026-08-22, `R9`)* | *(in the report)* | `employee_import.status_not_creatable` |
 | Import key already used | `200` | — the original run's result (`DEC-DOC-0004`) |
 | Row-level uniqueness, transition and reference failures | *(in the report)* | `employee.number_conflict`, `employee.national_id_conflict`, `department.not_found`, `position.not_found` |
 | Missing functional permission | `403` | `authorization.forbidden` |
 | Company / branch scope refusals | `403` | `company.scope_denied`, `branch.scope_denied` |
+
+> **WHY `employee_import.*` AND NOT `employee.*` (annotated 2026-08-22).** Every other row-level code above
+> reuses an EMPLOYEE-domain code, on the stated ground that *"a row failing uniqueness fails it for exactly
+> the reason a single create would"*. `status_not_creatable` is the one row error with **no single-create
+> counterpart**: a `POST` carrying a status is refused by the JSON contract's declared field set, because
+> `status` is not a field there at all. It is a rule of the IMPORT CONTRACT — which columns a file may carry
+> and what values they may hold — rather than a rule of the employee domain, so it takes the namespace the
+> contract already opened for exactly that class of failure (`employee_import.format_unsupported`).
+>
+> It is a **row** error, reported inside the per-row report rather than as a ProblemDetails, because
+> `OD-DOC-010` chose a named row refusal over a header rejection precisely so the message could name the
+> remedy.
 
 **No `409` appears on this surface**, and the absence is worth a sentence: `DEC-DEP-0030` fixed `409` as the
 answer for a **state-conflict** refusal, and this package has no state to conflict with. An import creates or

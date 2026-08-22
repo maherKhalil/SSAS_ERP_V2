@@ -450,6 +450,40 @@ quoting and the classification codes are all mutually compatible, and the failur
 > If the owner wants a default export to round-trip unconditionally, the remaining lever is
 > `DEC-DOC-0009`'s default status set — not this decision.
 
+**`DEC-DOC-0016` — THE RUN-HISTORY WIRE SHAPE. THE SCOPE SNAPSHOT NEVER LEAVES THE TABLE.**
+*(Ruled 2026-08-22 during Phase 2 planning. Raised because the package specifies `FR-DOC-0103` and
+`FR-DOC-0202` in prose only — no response sample, no field list, no query contract.)*
+
+Both run-history routes return: **who, when, the outcome, the counts**, and — for exports — **`ColumnSet`**.
+`EmployeeExportRun.ScopeCompanyIds` and `ScopeBranchIds` are **omitted from the wire**.
+
+**Why the omission, and why it is not fussiness.** Both routes are gated on `HR.Employees.View`, and the
+listing is company-scoped — so caller A can read caller B's export run inside the same company. If the scope
+snapshot shipped, A would read a **sorted list of company and branch identifiers that B's authority admitted
+and A's may not**. That is exactly the disclosure this module collapses everywhere else: `EmployeeApiErrorMapper`
+gives unauthorized, inactive, wrong-tenant and nonexistent companies one identical code, on the stated ground
+that *"the difference is exactly the information they are not allowed to have"*. An audit surface that leaked
+scope identifiers under a general read permission would undo that discipline **in the one place records are
+designed to be read broadly** — which is the worst place to undo it.
+
+**`FR-DOC-0202`'s stated point survives whole.** It asks for *"the record of what column set left"*, and
+`ColumnSet` ships. The scope snapshot's value is **investigation-grade, not list-grade**: it stays durable in
+the table, reachable by whoever investigates with database access or, later, a privileged surface.
+
+**Exposing it on a privileged audit route later is ADDITIVE. Exposing it now and retracting later is not.**
+That asymmetry is the whole argument for choosing omission while the question is still open.
+
+**The half-measure was considered and declined.** Returning a *shape* instead of the values — "3 companies,
+7 branches" — still discloses breadth information about another caller's authority, for no stated
+requirement, and invites precisely the question omission answers.
+
+**`FileName` and `ImportKey` DO ship.** Both are caller-supplied values echoed back to a company-scoped,
+`View`-gated listing: they disclose nothing the listing does not already imply, and intra-company visibility
+of who imported which file under which key is the audit trail working as intended rather than a leak.
+
+*(All three fields are covered by this one record deliberately, so a future reader finds one decision rather
+than three conventions.)*
+
 **`OD-DOC-007`, `OD-DOC-008`, `OD-DOC-009` — DEFERRED to FP-010 (`OD-DOC-001`).**
 
 Binary storage location, retention and erasure against the no-physical-delete convention, and whether V5

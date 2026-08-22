@@ -254,3 +254,90 @@ in the database, two rejections compared field by field, and the bytes plus the 
   and it was not taken here.
 * **The route inventory.** `api-contracts.md` says the HR surface goes 41 → 46. It is still **41**, and
   `HrRouteInventoryTests` is unchanged, because no route was added.
+
+## Phase 1 exit gate — GREEN, with a named and carried certification debt
+
+**Verdict, 2026-08-22:** Phase 1 is **closed green**. Debug is clean at **2,995 / 2,995**. Release is
+**2,994 / 2,995**, and the single failure is `CatalogLeakGuardTests.No_test_catalog_survived_a_previous_run`
+— a hygiene guard that asserts on the *instance's* state, not on product behaviour.
+
+| Suite | Debug | Release |
+|---|---|---|
+| Architecture.Tests | 404 | 404 |
+| Platform.Tests | 963 | 963 |
+| HR.Tests | 326 | 326 |
+| API.Tests | 573 | 573 |
+| Integration.Tests | **729** | 728 (+1 guard) |
+| **Total** | **2,995 clean** | **2,994 + explained guard** |
+
+### The failure, and why it is environmental
+
+Three runs of the same binaries differ in exactly one recorded variable, and it is the precise condition the
+guard asserts on:
+
+| Run | Catalogs present at process start | Integration result |
+|---|---|---|
+| Gate, Debug (1 h 54 m) | **11** | Failed 1 / 729 |
+| Gate, Release (1 h 56 m) | **3** | Failed 1 / 729 |
+| Diagnostic, Debug (1 h 55 m) | **0** | **Passed 729 / 729** |
+
+The guard queries `sys.databases WHERE name LIKE 'SSAS[_]%' AND create_date < @started` and fails on any
+match. **Its own comment predicted this exact scenario** — *"This cannot tell a previous run's orphan from a
+CONCURRENT sibling suite's live catalog… The correct response is to SERIALISE THE RUNS, never to weaken the
+guard."*
+
+The orphans were **self-inflicted**: a killed earlier gate plus filtered test runs during the waiting window
+left catalogs behind, and the gate started on top of them. No product code is implicated.
+
+**Mechanism proof, not inference.** One catalog was created deliberately and the guard run alone against it:
+
+| Catalogs at process start | Guard |
+|---|---|
+| 1 (deliberate) | **FAILED** |
+| 0 | Passed, 3.5 s |
+
+### Classification, and a correction to the standing vocabulary
+
+Class **(c) environmental** — but **not flaky**. The failure is *deterministic given its precondition*, which
+is why it reproduced identically across two configurations two hours apart under different optimisation.
+**"Deterministic-given-precondition" is a distinct shape from "flaky"** and is now named as such: a flake
+would not have reproduced, and treating this as one would have invited a retry-for-green instead of a
+diagnosis.
+
+### The certification debt, carried explicitly
+
+**Release has no clean run.** A ceremonial 2-hour Release pass was declined because Phase 2's exit gate
+re-runs the entire suite in both configurations from a hygienic start within days.
+
+> **THE CONDITION: if Phase 2's Release Integration is anything but clean, Phase 1's green is VOID and this
+> record is where we return.** The debt is named and carried, not waived.
+
+### Two defects in the gate script itself, found by this failure
+
+Both are fixed; the previous script is preserved as `gate-old.sh.bak` (outside the repo, with the gate
+tooling).
+
+1. **The filter destroyed failure identities.** Output was piped through `grep -E "Passed!|Failed!|error"`,
+   and that filter *was* the only record. xUnit names failures as `[xUnit.net …] Class.Method [FAIL]` followed
+   by `Error Message:` — `[FAIL]` matches neither `Passed!` nor `Failed!`, and `Error` is capitalised while
+   the pattern sought lowercase. A four-hour run produced a red result naming nothing. **Fix:** every
+   invocation writes its complete output to a log file unfiltered, `--logger trx` per suite per
+   configuration, and the grep became a view over that file.
+2. **The pipe destroyed the automation verdict, and this is the worse one.** `$?` was *grep's* status, so the
+   gate exited **0** while both configurations had a red Integration suite. **Fix:** `STATUS=$?` captured per
+   suite, a `!!! Suite (Config) EXITED n` line, and an explicit `[GATE RED]` / `[GATE GREEN]` verdict.
+
+**No historical GREEN is contaminated, and this was verified rather than asserted.** Every archived task
+output was re-read: the grep pattern happened to match *both* summary shapes (`Passed!` and `Failed!`), so
+the per-suite table always survived — every gate verdict in this feature line was read from those tables,
+never from an exit code. The defect's total cost was one recoverable identity.
+
+### The structural fix, so the operator cannot forget
+
+`gate.sh` now **reaps catalogs to zero itself**, immediately before each configuration, with preconditions
+verified in-script — no testhost running, the enumeration printed before anything is dropped, protected names
+unmatched, and zero verified afterwards. Any precondition failure **aborts the gate loudly** rather than
+reaping blind, because a blind sweep is exactly what the guard's comment rejects: it could not distinguish a
+previous run's orphan from a sibling's live catalog either.
+
+Hand-reaping before a gate is no longer a step anyone performs or forgets.

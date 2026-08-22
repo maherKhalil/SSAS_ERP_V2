@@ -235,7 +235,14 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
   }
 
   public async Task<Guid> InsertEmployeeAsync(
-    string employeeNumber, Guid? company = null, Guid? branch = null, bool terminated = false)
+    string employeeNumber,
+    Guid? company = null,
+    Guid? branch = null,
+    bool terminated = false,
+    // NAMED ONLY BY THE TESTS THAT COUNT MEMBERS. Every other caller leaves it null and keeps the holding
+    // department described below — which is what stops incidental employees from being counted by the
+    // `employeeCount` tests that DO care which department a person is in.
+    Guid? department = null)
   {
     var employeeId = Guid.NewGuid();
     var status = terminated ? "Terminated" : "Active";
@@ -249,7 +256,7 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
     // real, so one has to exist. A per-company holding department keeps that incidental fact out of the
     // tests, and reusing one rather than creating a department per employee keeps it from polluting the
     // department counts those tests DO assert on.
-    var homeDepartment = await HoldingDepartmentAsync(company ?? CompanyA);
+    var homeDepartment = department ?? await HoldingDepartmentAsync(company ?? CompanyA);
     var homePosition = await HoldingPositionAsync(company ?? CompanyA);
 
     await ExecuteAsync($"""
@@ -593,6 +600,22 @@ internal sealed class DepartmentGraph : IAsyncDisposable
   public GetDepartmentQueryHandler Get() => new(
     scope,
     new DepartmentReadService(accessor),
+    new SSAS.HR.Application.Employees.Reads.EmployeeScopeResolver(
+      new StubCompanyAccess(Company),
+      new StubBranchAccess(branches),
+      new StubCurrentBranchResolver(branches[0]),
+      new StubCurrentCompany(Company),
+      new DepartmentAppFixture.FixtureTenant(TenantId),
+      new StubCurrentTenantUser(),
+      new DepartmentUser(canViewEmployees)),
+    new EmployeeReadService(accessor));
+
+  // ---- THE REAL WIRE COMPOSER, over this graph's own context (FP-007 employeeCount).
+  //
+  // `DepartmentCompositionServices` is the type the HTTP surface resolves, not a re-implementation of it,
+  // so these tests prove the SHIPPED composition — including that an unscoped caller gets null rather than
+  // a number — against a real database rather than against a stub that could agree with a wrong answer.
+  public SSAS.HR.API.Departments.DepartmentCompositionServices EmployeeCounts() => new(
     new SSAS.HR.Application.Employees.Reads.EmployeeScopeResolver(
       new StubCompanyAccess(Company),
       new StubBranchAccess(branches),

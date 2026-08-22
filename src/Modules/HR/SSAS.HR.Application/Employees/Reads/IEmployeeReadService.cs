@@ -67,6 +67,26 @@ public interface IEmployeeReadService
   // obtainable — alongside `currencyCode`, which is the same shape of problem across a module boundary.
   Task<int> CountEmployeesByPositionAsync(
     EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default);
+
+  // ---- HOW MANY EMPLOYEES BELONG TO A DEPARTMENT (FP-007 `api-contracts.md`, shipped 2026-08-22).
+  //
+  // The sibling of the position count, and deliberately a SIBLING rather than one generalized method. The
+  // two differ only in which column they compare, but a single `CountEmployeesAsync(scope, criterion)`
+  // would have to take either a predicate expression or a discriminator, and both hide at the call site
+  // exactly what the reader most needs to see: WHICH classification is being counted. Two named methods
+  // cost one duplicated line of query and make every call site self-describing.
+  //
+  // The placement argument is the position one word for word, and if anything stronger here. Departments
+  // are company-visible while employees are branch-scoped — `OD-DEP-005` — so a count taken on the
+  // department side would disclose the size of branches the caller cannot read. It is the same trap
+  // `DepartmentReadService` already refuses when it declines to join its manager, and requiring an
+  // `EmployeeReadScope` is what keeps the refusal structural rather than remembered.
+  //
+  // The count is therefore SCOPE-VISIBLE, not company-wide: it answers "how many members of this
+  // department may this caller see", and two callers authorized for different branches legitimately get
+  // different numbers. `api-contracts.md` specifies exactly that, and the position counter shipped it.
+  Task<int> CountEmployeesByDepartmentAsync(
+    EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default);
 }
 
 // WHAT A SEARCH FILTERS ON, beyond the scope. None of these can widen a scope; they only narrow it.

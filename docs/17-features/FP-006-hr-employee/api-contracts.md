@@ -76,9 +76,17 @@ Request:
 }
 ```
 
-The result contains safe Employee data and `Active` status, including `employeeId`, the server-stamped `branchId`, the resolved `companyId`, and the concurrency version.
+The result contains safe Employee data and `Active` status, including `employeeId`, the server-stamped `branchId`, the resolved `companyId`, the `department` sub-object described in [FP-007's contracts](../FP-007-hr-department/api-contracts.md) (`{ departmentId, code, name }`, shipped 2026-08-22 and present on the detail and on every search row), and the concurrency version.
 
 `tenantId`, `companyId`, `branchId`, and `status` are **not** part of the request and are rejected as unknown fields if present (`400 request.invalid`). `nationalId` is optional.
+
+> **AS-BUILT CORRECTION (2026-08-22, HR as-built cleanup).** The create contract shown above is **no longer
+> complete**: later packages added two REQUIRED fields to this same request, and a caller sending exactly the
+> four fields sampled here is refused today. `departmentId` became required in FP-007 (`BR-HR-0005`, and
+> FP-007's own `api-contracts.md` records the change), and `positionId` in FP-008 (`BR-HR-0006`,
+> `DEC-POS-0026`). Both are business arguments authorized server-side, not ownership fields, so the rule this
+> section states — no writable `tenantId`, `companyId`, `branchId` or `status` — is unchanged. The sample is
+> annotated rather than rewritten so the FP-006 contract and the two changes to it both stay readable.
 
 A normalized employee number already used within the company returns `409 employee.number_conflict`. A normalized national ID already used within the company returns `409 employee.national_id_conflict`.
 
@@ -170,7 +178,7 @@ Request body for terminate:
 }
 ```
 
-`reasonCode` must be a non-`Created` value from `EmployeeStatusChangeReasonCode` (`Administrative`, `Operational`, `Compliance`, `Resignation`, `Dismissal`, `EndOfContract`).
+`reasonCode` must be a non-`Created` value from `EmployeeStatusChangeReasonCode` (`Administrative`, `Operational`, `Compliance`, `Resignation`, `Dismissal`, `EndOfContract`). *(As built: the type is named `EmployeeStatusChangeReason`, without the `Code` suffix; the member set is exactly as listed.)*
 
 `activate` requires the Employee to be `Inactive`; `deactivate` requires `Active`; `terminate` requires `Active` or `Inactive`. A transition not permitted from the current status returns `409 employee.transition_invalid`.
 
@@ -200,7 +208,7 @@ Transfer has its **own DTO**, distinct from update, and is the only contract in 
 
 The **source** branch is not part of the request. It is the Employee's current `BranchId`, which must equal the caller's trusted branch execution context, except under the inactive-source recovery rule (`BRULE-EMP-0021`).
 
-`reasonCode` must be a non-`InitialAssignment` value from `EmployeeBranchTransferReasonCode` (`Reorganisation`, `OperationalNeed`, `EmployeeRequest`, `BranchClosure`, `Correction`). `reasonText` is optional, limited to 512 characters, persisted for audit only, and never emitted in a domain event.
+`reasonCode` must be a non-`InitialAssignment` value from `EmployeeBranchTransferReasonCode` (`Reorganisation`, `OperationalNeed`, `EmployeeRequest`, `BranchClosure`, `Correction`). *(As built: the type is named `EmployeeBranchTransferReason`, without the `Code` suffix; the member set is exactly as listed.)* `reasonText` is optional, limited to 512 characters, persisted for audit only, and never emitted in a domain event.
 
 Responses:
 
@@ -267,6 +275,27 @@ Responses set `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and 
 ## OpenAPI
 
 The OpenAPI document for the Employee HTTP surface, delivered with these routes in this milestone, specifies all schemas, the strict unknown-field policy, enums, length limits, rowversion encoding, paging maxima, the company-context header, scope-mode parameters, examples, permission/security requirements, and every success and error response and code. Contract tests compare runtime output to the document.
+
+> **WHAT IS ACTUALLY GENERATED TODAY (corrected 2026-08-22, HR as-built cleanup). The paragraph above
+> describes a target, not the current state.** As built:
+>
+> * The Host **does** generate an OpenAPI document — `AddSwaggerGen`, served at `/swagger/v1/swagger.json` —
+>   and every HR route appears in it through the framework's own route metadata, with its path, method and
+>   inferred request shape.
+> * The HR endpoints declare only `WithTags` and `WithName`. There is **no** `Produces<T>`, no
+>   `ProducesProblem`, no examples and no declared security requirement, so the document does **not**
+>   describe the response schemas, the error responses, the problem codes, the enums, the length limits, the
+>   rowversion encoding, the paging maxima or the permission requirements this section claims for it. The
+>   Platform authentication surface does declare them, which is what makes the difference visible as an
+>   omission rather than a convention.
+> * **No contract test compares HR runtime output to the document.** The only OpenAPI contract test in the
+>   repository is `LocalizationOpenApiContractTests`, covering Platform localization.
+>
+> **Enriching the HR surface — the `Produces`/`ProducesProblem`/security metadata and a contract-test suite
+> to hold it true — is registered as its own backlog task and was deliberately NOT started here.** It is
+> feature work rather than as-built reconciliation: the other four gaps this cleanup found were values that
+> existed and failed to reach the wire, while this one is a body of work nobody has written. Ruled
+> 2026-08-22.
 
 ## Exclusions
 

@@ -17,6 +17,11 @@ public static class ServiceCollectionExtensions
     // company fact, so their composer is scoped like everything else it depends on (FP-008 Phase 4).
     services.AddScoped<Positions.PositionCompositionServices>();
 
+    // The department count is the same shape of problem, shipped later: `employeeCount` was
+    // specified by FP-007 and never built, and it needs an employee scope the department read side
+    // deliberately cannot obtain.
+    services.AddScoped<Departments.DepartmentCompositionServices>();
+
     return services;
   }
 }

@@ -1064,4 +1064,91 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.True(found.IsSuccess, found.IsFailure ? found.Error.Code : null);
     Assert.Equal(fixture.CompanyA, found.Value.Items.Single().CompanyId);
   }
+
+  // ================================================================================================
+  // employeeCount — SCOPE CONTAINMENT, WHICH ONLY A REAL DATABASE CAN PROVE
+  // ================================================================================================
+  //
+  // `api-contracts.md` specifies the count "within the caller's employee read scope", and a stub cannot
+  // demonstrate that: it returns whatever it was seeded with regardless of the predicate. These run the
+  // shipped composer over real rows, so the filtering is SQL Server's and the assertion is about the query.
+  //
+  // The scope-visible reading is the shipped POSITION behaviour, mirrored deliberately: the count answers
+  // "how many members may this caller see", not "how many members exist". A company-wide count would leak
+  // the size of branches the caller cannot read, which is the one thing `OD-DEP-005` forbids.
+
+  [Fact]
+  [Trait("Decision", "DEC-POS-0034")]
+  public async Task A_department_member_count_includes_only_employees_inside_the_callers_scope()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+
+    var department = await fixture.CreateDepartmentAsync("FIN", "Finance");
+
+    // Two members in BranchA, one in BranchB, and one in the SAME BRANCH but another company.
+    await fixture.InsertEmployeeAsync("E-0001", branch: fixture.BranchA, department: department);
+    await fixture.InsertEmployeeAsync("E-0002", branch: fixture.BranchA, department: department);
+    await fixture.InsertEmployeeAsync("E-0003", branch: fixture.BranchB, department: department);
+
+    // A caller confined to BranchA sees two of the three.
+    await using var narrow = fixture.Graph(visibleBranches: [fixture.BranchA]);
+
+    Assert.Equal(2, await narrow.EmployeeCounts().CountEmployeesAsync(department, default));
+
+    // The SAME department read by a caller authorized for both branches sees all three — so the number
+    // above is the scope narrowing it, not the department having only two members.
+    await using var wide = fixture.Graph(visibleBranches: [fixture.BranchA, fixture.BranchB]);
+
+    Assert.Equal(3, await wide.EmployeeCounts().CountEmployeesAsync(department, default));
+  }
+
+  // ---- A DEPARTMENT WITH NO VISIBLE MEMBERS IS ZERO, AND ZERO IS NOT NULL.
+  //
+  // The distinction the wire contract turns on, proven at the source rather than only at the transport: a
+  // caller who CAN read employees and sees none gets the number 0, while a caller who cannot read employees
+  // at all gets null from the same call. Asserting both here means the two can never quietly converge.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0034")]
+  public async Task An_empty_department_counts_zero_while_an_unscoped_caller_counts_null()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+
+    var department = await fixture.CreateDepartmentAsync("FIN", "Finance");
+
+    // A member the PERMITTED caller can see, so the null below cannot be mistaken for an empty department.
+    await fixture.InsertEmployeeAsync("E-0001", branch: fixture.BranchA, department: department);
+
+    var empty = await fixture.CreateDepartmentAsync("OPS", "Operations");
+
+    await using var permitted = fixture.Graph(visibleBranches: [fixture.BranchA]);
+
+    Assert.Equal(1, await permitted.EmployeeCounts().CountEmployeesAsync(department, default));
+    Assert.Equal(0, await permitted.EmployeeCounts().CountEmployeesAsync(empty, default));
+
+    await using var unpermitted = fixture.Graph(
+      visibleBranches: [fixture.BranchA], canViewEmployees: false);
+
+    Assert.Null(await unpermitted.EmployeeCounts().CountEmployeesAsync(department, default));
+  }
+
+  // ---- ANOTHER COMPANY'S EMPLOYEES ARE NEVER COUNTED.
+  //
+  // Department identifiers are unique across the tenant, so a count keyed on one cannot pick up another
+  // company's rows by identifier alone — but the company predicate is what makes that true rather than
+  // incidental, and a count written without it would still pass every single-company test above.
+  [Fact]
+  [Trait("Decision", "ADR-025")]
+  public async Task A_member_count_never_reaches_outside_the_company_scope()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+
+    var department = await fixture.CreateDepartmentAsync("FIN", "Finance", company: fixture.CompanyA);
+
+    await fixture.InsertEmployeeAsync(
+      "E-0001", company: fixture.CompanyA, branch: fixture.BranchA, department: department);
+
+    await using var otherCompany = fixture.Graph(fixture.CompanyB, [fixture.BranchA, fixture.BranchB]);
+
+    Assert.Equal(0, await otherCompany.EmployeeCounts().CountEmployeesAsync(department, default));
+  }
 }

@@ -887,6 +887,128 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
     {"terminationDate":"2027-01-31T00:00:00+00:00","reasonCode":"Resignation","expectedRowVersion":"AAAAAAAAB9E="}
     """;
 
+  // ================================================================================================
+  // THE DEPARTMENT SUB-OBJECT AND THE DEPARTMENT FILTER — A46 to A51
+  // ================================================================================================
+  //
+  // Both were specified by FP-007 and never reached the wire, and they failed in opposite ways: the
+  // sub-object was never built at all, while the FILTER was built end to end BELOW transport and left
+  // unreachable because its name was missing from the query allowlist. The second is the one worth a test
+  // that says so — a capability can be fully implemented, fully tested, and still be dead.
+
+  // ---- THE DETAIL CARRIES THE DEPARTMENT, RESOLVED.
+  //
+  // Identifier AND code AND name, all three asserted: the identifier alone was already reachable through
+  // other routes, so a test that checked only that would pass against the shape this fix replaced.
+  [Fact]
+  public async Task A46_The_employee_detail_carries_its_department()
+  {
+    var response = await Send(
+      HttpMethod.Get, $"{Route}/{EmployeeApiTestHost.EmployeeId}", ViewToken);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+
+    var department = document.RootElement.GetProperty("department");
+
+    Assert.Equal(EmployeeApiTestHost.DepartmentA, department.GetProperty("departmentId").GetGuid());
+    Assert.Equal("FIN", department.GetProperty("code").GetString());
+    Assert.Equal("Finance", department.GetProperty("name").GetString());
+  }
+
+  // ---- AND SO DOES EVERY LIST ROW.
+  [Fact]
+  public async Task A47_A_search_result_row_carries_its_department()
+  {
+    host.Reads.Page = [StubEmployeeReads.SampleSummary()];
+
+    var response = await Send(HttpMethod.Get, Route, ViewToken);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+
+    var department = document.RootElement
+      .GetProperty("items")[0]
+      .GetProperty("department");
+
+    Assert.Equal(EmployeeApiTestHost.DepartmentA, department.GetProperty("departmentId").GetGuid());
+    Assert.Equal("FIN", department.GetProperty("code").GetString());
+    Assert.Equal("Finance", department.GetProperty("name").GetString());
+  }
+
+  // ---- THE FILTER REACHES THE CRITERIA (FR-DEP-0111).
+  //
+  // Asserted on the criteria the read service received rather than on the rows returned, because the stub
+  // does not filter: what this proves is that transport now CARRIES the value, which is precisely what was
+  // missing. That the SQL then honours it is proven in `EmployeeBoundarySqlServerTests`.
+  [Fact]
+  public async Task A48_Search_accepts_a_department_filter()
+  {
+    var response = await Send(
+      HttpMethod.Get, $"{Route}?departmentId={EmployeeApiTestHost.DepartmentA}", ViewToken);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    Assert.Equal(EmployeeApiTestHost.DepartmentA, host.Reads.LastCriteria!.DepartmentId);
+  }
+
+  // ---- AND COMBINES WITH THE OTHERS RATHER THAN REPLACING THEM.
+  //
+  // Every filter here narrows; none widens. Sending the department beside a status and a branch scope and
+  // finding all three on the criteria is what rules out a parser that assigns the last one it recognises.
+  [Fact]
+  public async Task A49_A_department_filter_combines_with_the_other_filters()
+  {
+    var response = await Send(
+      HttpMethod.Get,
+      $"{Route}?departmentId={EmployeeApiTestHost.DepartmentA}&status=Terminated" +
+        "&branchScope=AllAuthorizedBranches&pageSize=25",
+      ViewToken);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    var criteria = host.Reads.LastCriteria!;
+
+    Assert.Equal(EmployeeApiTestHost.DepartmentA, criteria.DepartmentId);
+    Assert.Equal([EmployeeStatus.Terminated], criteria.Statuses);
+    Assert.Equal(25, criteria.PageSize);
+    Assert.Equal(
+      [EmployeeApiTestHost.BranchA, EmployeeApiTestHost.BranchB],
+      host.Reads.LastScope!.Branches.BranchIds);
+  }
+
+  // ---- A MALFORMED IDENTIFIER IS REFUSED, NOT TREATED AS "NO FILTER".
+  //
+  // Ignoring it would answer a question the caller did not ask — an unfiltered page — while looking like a
+  // department with no members.
+  [Fact]
+  public async Task A50_A_malformed_department_filter_is_a_validation_failure()
+  {
+    var response = await Send(HttpMethod.Get, $"{Route}?departmentId=not-a-guid", ViewToken);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ---- THE ALLOWLIST IS STILL AN ALLOWLIST.
+  //
+  // The fix for `departmentId` was to add one NAME to the permitted set, so the risk it creates is that the
+  // set stopped being closed. A near-miss name — plausible, adjacent, and not on the list — must still be
+  // refused, or the discipline was traded away rather than extended.
+  [Theory]
+  [InlineData("departmentIds")]
+  [InlineData("departmentName")]
+  [InlineData("department")]
+  public async Task A51_An_undeclared_query_parameter_is_still_refused(string parameter)
+  {
+    var response = await Send(
+      HttpMethod.Get, $"{Route}?{parameter}={EmployeeApiTestHost.DepartmentA}", ViewToken);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
   private static readonly string ValidTransferBody = $$"""
     {"destinationBranchId":"{{EmployeeApiTestHost.BranchB}}","reasonCode":"Reorganisation","reasonText":"consolidating","expectedRowVersion":"AAAAAAAAB9E="}
     """;

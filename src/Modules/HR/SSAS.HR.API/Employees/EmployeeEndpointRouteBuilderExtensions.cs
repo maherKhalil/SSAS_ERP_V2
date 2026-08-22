@@ -458,7 +458,17 @@ public static class EmployeeEndpointRouteBuilderExtensions
     // Exactly the approved contract, and no more. A filter that is not listed here — a name search, say — is
     // rejected rather than ignored, so a caller cannot believe they narrowed a result set that ran wide.
     if (!StrictRequestReader.HasOnly(
-        values, ["pageNumber", "pageSize", "status", "branchScope", "branchIds", "companyScope", "employeeNumber"]) ||
+        values,
+        [
+          "pageNumber", "pageSize", "status", "branchScope", "branchIds", "companyScope", "employeeNumber",
+          // ---- FR-DEP-0111, REACHABLE AT LAST (shipped 2026-08-22).
+          //
+          // Everything beneath this line already existed: `EmployeeSearchCriteria.DepartmentId`, the SQL
+          // conjunct, and the tests proving it narrows rather than widens. Only the allowlist entry was
+          // missing, so the filter was implemented and unreachable — a request naming it was rejected as an
+          // undeclared parameter. Adding the name is the whole unblock.
+          "departmentId"
+        ]) ||
       !StrictRequestReader.TryInt(values, "pageNumber", 1, out var pageNumber) ||
       !StrictRequestReader.TryInt(values, "pageSize", 50, out var pageSize) ||
       !StrictRequestReader.TryOptional(values, "status", out var statusText) ||
@@ -468,9 +478,23 @@ public static class EmployeeEndpointRouteBuilderExtensions
         branchScopeText, ["CurrentBranch", "SelectedAuthorizedBranches", "AllAuthorizedBranches"]) ||
       !StrictRequestReader.TryOptional(values, "companyScope", out var companyScopeText) ||
       !StrictRequestReader.IsOneOf(companyScopeText, ["CurrentCompany", "AllAuthorizedCompanies"]) ||
-      !StrictRequestReader.TryOptional(values, "employeeNumber", out var employeeNumber))
+      !StrictRequestReader.TryOptional(values, "employeeNumber", out var employeeNumber) ||
+      !StrictRequestReader.TryOptional(values, "departmentId", out var departmentIdText))
     {
       return false;
+    }
+
+    // A malformed department identifier is a 400 rather than a filter that quietly matches nothing: the
+    // second would answer "no employees in that department" to a caller who never named a department at all.
+    Guid? departmentId = null;
+    if (!string.IsNullOrWhiteSpace(departmentIdText))
+    {
+      if (!Guid.TryParse(departmentIdText, out var parsedDepartment))
+      {
+        return false;
+      }
+
+      departmentId = parsedDepartment;
     }
 
     var branchScope = branchScopeText is null
@@ -520,7 +544,8 @@ public static class EmployeeEndpointRouteBuilderExtensions
       pageNumber,
       pageSize,
       employeeNumber,
-      statuses);
+      statuses,
+      departmentId);
 
     return true;
   }

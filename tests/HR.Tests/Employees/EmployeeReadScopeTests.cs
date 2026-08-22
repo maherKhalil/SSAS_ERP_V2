@@ -564,6 +564,17 @@ public sealed class EmployeeReadScopeTests
 
       return Task.FromResult(0);
     }
+
+    // The department count is the same kind of read and is recorded the same way (FP-007 employeeCount,
+    // shipped 2026-08-22).
+    public Task<int> CountEmployeesByDepartmentAsync(
+      EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default)
+    {
+      Calls++;
+      LastScope = scope;
+
+      return Task.FromResult(0);
+    }
   }
 
   private sealed class StubCurrentBranch(Guid branchId) : ICurrentBranchResolver

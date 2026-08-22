@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.HR.Application.Employees.Reads;
+using SSAS.HR.Domain.Departments;
 using SSAS.HR.Domain.Employees;
 
 namespace SSAS.HR.Infrastructure.Persistence;
@@ -51,22 +52,34 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
 
     // The identifier is the LAST condition, not the first. An employee outside the scope simply does not
     // match, so it is reported as absent rather than as forbidden.
+    // ---- THE DEPARTMENT IS JOINED IN THE SAME QUERY, NOT FETCHED PER ROW.
+    //
+    // One INNER JOIN on `Employee.DepartmentId`, which is NOT NULL behind a real foreign key, so the join
+    // cannot change which rows come back — it decorates the rows the scope already admitted. A per-row
+    // service call would be N round trips for a label, and a correlated subquery would be the same work in
+    // a worse shape.
     return await Scoped(context, scope)
       .Where(employee => employee.Id == employeeId)
-      .Select(employee => new EmployeeDetail(
-        employee.Id,
-        employee.CompanyId,
-        employee.BranchId,
-        employee.DepartmentId,
-        employee.EmployeeNumber.Value,
-        employee.FullName.Value,
-        employee.NationalId == null ? null : employee.NationalId.Value,
-        employee.EmploymentDate,
-        employee.TerminationDate,
-        employee.Status,
-        employee.StatusChangeReasonCode,
-        employee.StatusChangedUtc,
-        employee.RowVersion))
+      .Join(
+        context.Set<Department>(),
+        employee => employee.DepartmentId,
+        department => department.Id,
+        (employee, department) => new { employee, department })
+      .Select(row => new EmployeeDetail(
+        row.employee.Id,
+        row.employee.CompanyId,
+        row.employee.BranchId,
+        new EmployeeDepartmentSummary(
+          row.department.Id, row.department.Code.Value, row.department.Name.Value),
+        row.employee.EmployeeNumber.Value,
+        row.employee.FullName.Value,
+        row.employee.NationalId == null ? null : row.employee.NationalId.Value,
+        row.employee.EmploymentDate,
+        row.employee.TerminationDate,
+        row.employee.Status,
+        row.employee.StatusChangeReasonCode,
+        row.employee.StatusChangedUtc,
+        row.employee.RowVersion))
       .SingleOrDefaultAsync(cancellationToken);
   }
 
@@ -114,20 +127,30 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
     //
     // FullName alone is not unique, and an unstable sort silently drops and duplicates rows across page
     // boundaries. EmployeeId is the tiebreaker (api-contracts).
+    // The same join as the detail read, and note where it sits: AFTER the count above, which stays on the
+    // unjoined query. An inner join on a NOT NULL foreign key cannot change the cardinality, so the two
+    // agree by construction rather than by coincidence — but computing the total from the joined query
+    // would make that agreement depend on the join staying inner, which is a property nothing asserts.
     var items = await query
-      .OrderBy(employee => employee.FullName)
-      .ThenBy(employee => employee.Id)
+      .Join(
+        context.Set<Department>(),
+        employee => employee.DepartmentId,
+        department => department.Id,
+        (employee, department) => new { employee, department })
+      .OrderBy(row => row.employee.FullName)
+      .ThenBy(row => row.employee.Id)
       .Skip((criteria.PageNumber - 1) * criteria.PageSize)
       .Take(criteria.PageSize)
-      .Select(employee => new EmployeeSummary(
-        employee.Id,
-        employee.CompanyId,
-        employee.BranchId,
-        employee.DepartmentId,
-        employee.EmployeeNumber.Value,
-        employee.FullName.Value,
-        employee.EmploymentDate,
-        employee.Status))
+      .Select(row => new EmployeeSummary(
+        row.employee.Id,
+        row.employee.CompanyId,
+        row.employee.BranchId,
+        new EmployeeDepartmentSummary(
+          row.department.Id, row.department.Code.Value, row.department.Name.Value),
+        row.employee.EmployeeNumber.Value,
+        row.employee.FullName.Value,
+        row.employee.EmploymentDate,
+        row.employee.Status))
       .ToArrayAsync(cancellationToken);
 
     return new PagedResult<EmployeeSummary>(items, criteria.PageNumber, criteria.PageSize, totalCount);
@@ -252,6 +275,24 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
 
     return await Scoped(context, scope)
       .CountAsync(employee => employee.PositionId == positionId, cancellationToken);
+  }
+
+  // The department sibling, counted through the same `Scoped` predicate for the same reason: the number is
+  // scope-dependent BY CONSTRUCTION rather than by a filter someone remembered to add.
+  //
+  // Note what is NOT filtered here, matching the position counter exactly: employment STATUS. A terminated
+  // employee still carries the department they were in, and this counts them. That is the shipped position
+  // behaviour, and the two counts must not disagree about what "an employee" means — if a status-aware
+  // headcount is wanted later it is a different field with a different name, not a quiet change here.
+  public async Task<int> CountEmployeesByDepartmentAsync(
+    EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await Scoped(context, scope)
+      .CountAsync(employee => employee.DepartmentId == departmentId, cancellationToken);
   }
 
   private static IQueryable<Employee> Scoped(DbContext context, EmployeeReadScope scope) =>

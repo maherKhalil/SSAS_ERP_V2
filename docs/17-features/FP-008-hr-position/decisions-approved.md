@@ -924,6 +924,11 @@ the property EXISTS, and that its value is null.
 > The department field is deliberately NOT implemented here: scope stands. A one-line correction marking it
 > NOT SHIPPED, citing this decision as the mechanism when it lands, is registered as a post-FP-008 backlog
 > item.
+>
+> **CLOSED 2026-08-22.** The backlog item was taken up by the HR as-built cleanup:
+> `Department.employeeCount` now ships under exactly these semantics, via
+> `CountEmployeesByDepartmentAsync` and `DepartmentCompositionServices`. `DEC-POS-0034` therefore governs
+> two representations rather than one, and FP-007's `api-contracts.md` records the change at the field.
 
 **DEC-POS-0035** — **`currencyCode` is read through a narrow module-facing seam in BuildingBlocks.**
 `ITenantCompanyCurrencyLookup` — one method, returning the ISO code as an opaque **string** for a company

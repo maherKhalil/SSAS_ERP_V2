@@ -103,14 +103,32 @@ public sealed class StubEmployeeReads : IEmployeeReadService
     History = [];
     LastCriteria = null;
     LastScope = null;
+    // The two composed counts reset with everything else. They are seeded per test and the fixture is
+    // shared, so leaving them would let one test's number decide another's assertion.
+    PositionHolderCount = 0;
+    DepartmentMemberCount = 0;
   }
+
+  // The list-row counterpart of SampleDetail, carrying the same seeded department so the two wire tests
+  // assert against one fixture rather than two that could drift apart.
+  public static EmployeeSummary SampleSummary() => new(
+    EmployeeApiTestHost.EmployeeId,
+    EmployeeApiTestHost.CompanyA,
+    EmployeeApiTestHost.BranchA,
+    new EmployeeDepartmentSummary(EmployeeApiTestHost.DepartmentA, "FIN", "Finance"),
+    "EMP-00147",
+    "Layla Haddad",
+    new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+    EmployeeStatus.Active);
 
   public static EmployeeDetail SampleDetail(
     EmployeeStatus status = EmployeeStatus.Active, DateTimeOffset? terminationDate = null) => new(
     EmployeeApiTestHost.EmployeeId,
     EmployeeApiTestHost.CompanyA,
     EmployeeApiTestHost.BranchA,
-    EmployeeApiTestHost.DepartmentA,
+    // The seeded department, code and name together: the wire tests assert that all three reach the caller,
+    // so a stub returning only the identifier could not tell a shipped sub-object from a missing one.
+    new EmployeeDepartmentSummary(EmployeeApiTestHost.DepartmentA, "FIN", "Finance"),
     "EMP-00147",
     "Layla Haddad",
     "2990112345678",
@@ -170,6 +188,19 @@ public sealed class StubEmployeeReads : IEmployeeReadService
     LastScope = scope;
 
     return Task.FromResult(PositionHolderCount);
+  }
+
+  // The department member count the department representation composes, seeded independently of the holder
+  // count so a test can set one without moving the other — and so `0` and `null` remain distinguishable by
+  // VALUE rather than by whether the stub was reached (FP-007 employeeCount, shipped 2026-08-22).
+  public int DepartmentMemberCount { get; set; }
+
+  public Task<int> CountEmployeesByDepartmentAsync(
+    EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default)
+  {
+    LastScope = scope;
+
+    return Task.FromResult(DepartmentMemberCount);
   }
 }
 

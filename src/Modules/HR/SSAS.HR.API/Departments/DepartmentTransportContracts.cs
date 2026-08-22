@@ -74,9 +74,26 @@ public sealed record DepartmentResponse(
   Guid? ParentDepartmentId,
   string Status,
   DepartmentManagerResponse? Manager,
+  // ---- NULL MEANS "NOT COMPUTABLE FOR THIS CALLER", AND NOTHING ELSE (DEC-POS-0034).
+  //
+  // Specified by FP-007's `api-contracts.md` and shipped 2026-08-22, after the FP-008 as-built audit found
+  // it had never been built. The semantics are `DEC-POS-0034`'s, unchanged: the field is present for every
+  // caller, and its value is
+  //
+  //   * a NUMBER — the members of this department the caller's own employee scope can see, so two callers
+  //     authorized for different branches legitimately read different numbers for one department;
+  //   * ZERO — the department genuinely has no members the caller can see;
+  //   * NULL — the caller holds `HR.Departments.View` without `HR.Employees.View`, has no employee scope at
+  //     all, and there is no honest number to report.
+  //
+  // Zero and null are therefore DIFFERENT ANSWERS and a client must not conflate them. The two rejected
+  // alternatives are recorded on `PositionResponse.EmployeeCount` and apply here identically: `0` for the
+  // unscoped caller would be a lie, and omitting the field would make the JSON shape vary per caller.
+  int? EmployeeCount,
   string RowVersion)
 {
-  public static DepartmentResponse From(DepartmentDetail detail, string rowVersion) => new(
+  public static DepartmentResponse From(
+    DepartmentDetail detail, int? employeeCount, string rowVersion) => new(
     detail.DepartmentId,
     detail.CompanyId,
     detail.Code,
@@ -84,6 +101,7 @@ public sealed record DepartmentResponse(
     detail.ParentDepartmentId,
     detail.Status.ToString(),
     DepartmentManagerResponse.From(detail.Manager),
+    employeeCount,
     rowVersion);
 }
 
@@ -113,6 +131,10 @@ public sealed record DepartmentManagerResponse(
 // The list row. Narrower than the detail on purpose: a search result set is the widest read on this
 // surface, and the manager — whose identity is branch-scoped and would need resolving per row — is not
 // part of it.
+//
+// `employeeCount` is absent for the same reason and one more: `api-contracts.md` specifies it on the DETAIL
+// representation only, and a per-row count would be one extra scoped aggregate per result — a page of
+// twenty rows becoming twenty-one queries. Adding it here would be a new contract, not this fix.
 public sealed record DepartmentSummaryResponse(
   Guid DepartmentId,
   Guid CompanyId,

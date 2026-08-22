@@ -69,6 +69,16 @@ public sealed record EmployeeResponse(
   Guid EmployeeId,
   Guid CompanyId,
   Guid BranchId,
+  // ---- THE DEPARTMENT THE EMPLOYEE BELONGS TO (FP-007 `api-contracts.md`, shipped 2026-08-22).
+  //
+  // Specified by FP-007 and never built: the value reached the application layer and stopped at the wire.
+  // Never null — `Employee.DepartmentId` is NOT NULL behind a real foreign key, so every employee has one.
+  //
+  // NO EXTRA PERMISSION GATE, by ruling, and the distinction from `Department.employeeCount` is the reason:
+  // that field reads ACROSS an aggregate the caller may have no authority over, while this LABELS a field
+  // the employee record already carries, in the employee's own company, which the caller's scope has
+  // already admitted.
+  EmployeeDepartmentResponse Department,
   string EmployeeNumber,
   string FullName,
   string? NationalId,
@@ -83,6 +93,7 @@ public sealed record EmployeeResponse(
     detail.EmployeeId,
     detail.CompanyId,
     detail.BranchId,
+    EmployeeDepartmentResponse.From(detail.Department),
     detail.EmployeeNumber,
     detail.FullName,
     detail.NationalId,
@@ -100,6 +111,9 @@ public sealed record EmployeeSummaryResponse(
   Guid EmployeeId,
   Guid CompanyId,
   Guid BranchId,
+  // On the list row as well as the detail, because `api-contracts.md` specifies both — and unlike a manager
+  // or a member count, this costs one join rather than one query per row.
+  EmployeeDepartmentResponse Department,
   string EmployeeNumber,
   string FullName,
   DateTimeOffset EmploymentDate,
@@ -109,10 +123,20 @@ public sealed record EmployeeSummaryResponse(
     summary.EmployeeId,
     summary.CompanyId,
     summary.BranchId,
+    EmployeeDepartmentResponse.From(summary.Department),
     summary.EmployeeNumber,
     summary.FullName,
     summary.EmploymentDate,
     summary.Status.ToString());
+}
+
+// The department sub-object, identical on the detail and the list row. Three fields and no status: whether
+// the DEPARTMENT is active is a fact about the department, read from the department surface, and repeating
+// it here would give two places to answer the same question and one of them would eventually be stale.
+public sealed record EmployeeDepartmentResponse(Guid DepartmentId, string Code, string Name)
+{
+  public static EmployeeDepartmentResponse From(EmployeeDepartmentSummary department) =>
+    new(department.DepartmentId, department.Code, department.Name);
 }
 
 public sealed record EmployeePageResponse(

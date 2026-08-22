@@ -103,6 +103,10 @@ public sealed class StubEmployeeReads : IEmployeeReadService
     History = [];
     LastCriteria = null;
     LastScope = null;
+    // The two composed counts reset with everything else. They are seeded per test and the fixture is
+    // shared, so leaving them would let one test's number decide another's assertion.
+    PositionHolderCount = 0;
+    DepartmentMemberCount = 0;
   }
 
   public static EmployeeDetail SampleDetail(
@@ -170,6 +174,19 @@ public sealed class StubEmployeeReads : IEmployeeReadService
     LastScope = scope;
 
     return Task.FromResult(PositionHolderCount);
+  }
+
+  // The department member count the department representation composes, seeded independently of the holder
+  // count so a test can set one without moving the other — and so `0` and `null` remain distinguishable by
+  // VALUE rather than by whether the stub was reached (FP-007 employeeCount, shipped 2026-08-22).
+  public int DepartmentMemberCount { get; set; }
+
+  public Task<int> CountEmployeesByDepartmentAsync(
+    EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default)
+  {
+    LastScope = scope;
+
+    return Task.FromResult(DepartmentMemberCount);
   }
 }
 

@@ -8,6 +8,7 @@ using SSAS.BuildingBlocks.Domain;
 using SSAS.HR.API.Employees;
 using SSAS.HR.Application.Departments;
 using SSAS.HR.Application.Departments.Reads;
+using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Application.Permissions;
 using SSAS.HR.Domain.Departments;
 
@@ -155,6 +156,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     HttpContext context,
     CreateDepartmentCommandHandler handler,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     ICurrentCompany currentCompany,
     CancellationToken cancellationToken)
   {
@@ -196,7 +198,9 @@ public static class DepartmentEndpointRouteBuilderExtensions
 
     return read.IsFailure
       ? Problem(context, ApiErrors.WriteFailure)
-      : Results.Created($"{RoutePrefix}/{created.Value}", ToResponse(read.Value));
+      : Results.Created(
+        $"{RoutePrefix}/{created.Value}",
+        await ComposeAsync(read.Value, composition, cancellationToken));
   }
 
   private static async Task<IResult> UpdateAsync(
@@ -204,6 +208,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     Guid departmentId,
     UpdateDepartmentCommandHandler handler,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     CancellationToken cancellationToken)
   {
     // parentDepartmentId and status are absent from the declared set, so an update cannot express a
@@ -233,7 +238,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
       new UpdateDepartmentCommand(departmentId, request.Code!, request.Name!, rowVersion),
       cancellationToken);
 
-    return await ReadBackAsync(context, reader, departmentId, result, cancellationToken);
+    return await ReadBackAsync(context, reader, composition, departmentId, result, cancellationToken);
   }
 
   private static async Task<IResult> MoveAsync(
@@ -241,6 +246,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     Guid departmentId,
     ChangeDepartmentParentCommandHandler handler,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     CancellationToken cancellationToken)
   {
     var request = await StrictRequestReader.ReadStrictJsonAsync<MoveDepartmentRequest>(
@@ -268,7 +274,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     var result = await handler.HandleAsync(
       new ChangeDepartmentParentCommand(departmentId, parentDepartmentId, rowVersion), cancellationToken);
 
-    return await ReadBackAsync(context, reader, departmentId, result, cancellationToken);
+    return await ReadBackAsync(context, reader, composition, departmentId, result, cancellationToken);
   }
 
   private static async Task<IResult> MoveToRootAsync(
@@ -276,6 +282,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     Guid departmentId,
     MoveDepartmentToRootCommandHandler handler,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     CancellationToken cancellationToken)
   {
     var parsed = await ReadRowVersionAsync(context, cancellationToken);
@@ -287,7 +294,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     var result = await handler.HandleAsync(
       new MoveDepartmentToRootCommand(departmentId, parsed.RowVersion), cancellationToken);
 
-    return await ReadBackAsync(context, reader, departmentId, result, cancellationToken);
+    return await ReadBackAsync(context, reader, composition, departmentId, result, cancellationToken);
   }
 
   private static async Task<IResult> AssignManagerAsync(
@@ -295,6 +302,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     Guid departmentId,
     AssignDepartmentManagerCommandHandler handler,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     CancellationToken cancellationToken)
   {
     var request = await StrictRequestReader.ReadStrictJsonAsync<AssignDepartmentManagerRequest>(
@@ -331,7 +339,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
         context, DepartmentApiErrorMapper.Map(DepartmentApiErrorMapper.TranslateManagerConflict(result.Error)));
     }
 
-    return await ReadBackAsync(context, reader, departmentId, result, cancellationToken);
+    return await ReadBackAsync(context, reader, composition, departmentId, result, cancellationToken);
   }
 
   private static async Task<IResult> RemoveManagerAsync(
@@ -339,6 +347,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     Guid departmentId,
     ClearDepartmentManagerCommandHandler handler,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     CancellationToken cancellationToken)
   {
     var parsed = await ReadRowVersionAsync(context, cancellationToken);
@@ -350,7 +359,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     var result = await handler.HandleAsync(
       new ClearDepartmentManagerCommand(departmentId, parsed.RowVersion), cancellationToken);
 
-    return await ReadBackAsync(context, reader, departmentId, result, cancellationToken);
+    return await ReadBackAsync(context, reader, composition, departmentId, result, cancellationToken);
   }
 
   private static async Task<IResult> ActivateAsync(
@@ -358,6 +367,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     Guid departmentId,
     ReactivateDepartmentCommandHandler handler,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     CancellationToken cancellationToken)
   {
     var parsed = await ReadRowVersionAsync(context, cancellationToken);
@@ -369,7 +379,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     var result = await handler.HandleAsync(
       new ReactivateDepartmentCommand(departmentId, parsed.RowVersion), cancellationToken);
 
-    return await ReadBackAsync(context, reader, departmentId, result, cancellationToken);
+    return await ReadBackAsync(context, reader, composition, departmentId, result, cancellationToken);
   }
 
   private static async Task<IResult> DeactivateAsync(
@@ -377,6 +387,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     Guid departmentId,
     DeactivateDepartmentCommandHandler handler,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     CancellationToken cancellationToken)
   {
     var parsed = await ReadRowVersionAsync(context, cancellationToken);
@@ -388,7 +399,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     var result = await handler.HandleAsync(
       new DeactivateDepartmentCommand(departmentId, parsed.RowVersion), cancellationToken);
 
-    return await ReadBackAsync(context, reader, departmentId, result, cancellationToken);
+    return await ReadBackAsync(context, reader, composition, departmentId, result, cancellationToken);
   }
 
   private static async Task<IResult> ChangeEmployeeDepartmentAsync(
@@ -448,6 +459,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     HttpContext context,
     Guid departmentId,
     GetDepartmentQueryHandler handler,
+    DepartmentCompositionServices composition,
     CancellationToken cancellationToken)
   {
     var result = await handler.HandleAsync(new GetDepartmentQuery(departmentId), cancellationToken);
@@ -456,7 +468,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
     // department.not_found — the handler already collapsed them, and this simply does not undo it.
     return result.IsFailure
       ? Problem(context, DepartmentApiErrorMapper.Map(result.Error))
-      : Results.Ok(ToResponse(result.Value));
+      : Results.Ok(await ComposeAsync(result.Value, composition, cancellationToken));
   }
 
   private static async Task<IResult> GetChildrenAsync(
@@ -510,6 +522,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
   private static async Task<IResult> ReadBackAsync(
     HttpContext context,
     GetDepartmentQueryHandler reader,
+    DepartmentCompositionServices composition,
     Guid departmentId,
     Result result,
     CancellationToken cancellationToken)
@@ -523,7 +536,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
 
     return read.IsFailure
       ? Problem(context, ApiErrors.WriteFailure)
-      : Results.Ok(ToResponse(read.Value));
+      : Results.Ok(await ComposeAsync(read.Value, composition, cancellationToken));
   }
 
   private static async Task<(IResult? Failure, byte[] RowVersion)> ReadRowVersionAsync(
@@ -612,9 +625,58 @@ public static class DepartmentEndpointRouteBuilderExtensions
     return true;
   }
 
-  private static DepartmentResponse ToResponse(DepartmentDetail detail) =>
-    DepartmentResponse.From(detail, RowVersionCodec.Encode(detail.RowVersion));
+  // EVERY DEPARTMENT REPRESENTATION IS COMPOSED HERE, reads and write-backs alike, so `employeeCount`
+  // cannot be present on one route and quietly missing from another.
+  private static async Task<DepartmentResponse> ComposeAsync(
+    DepartmentDetail detail,
+    DepartmentCompositionServices composition,
+    CancellationToken cancellationToken) =>
+    DepartmentResponse.From(
+      detail,
+      await composition.CountEmployeesAsync(detail.DepartmentId, cancellationToken),
+      RowVersionCodec.Encode(detail.RowVersion));
 
   private static IResult Problem(HttpContext context, ApiError error) =>
     ApiProblems.Problem(context, error, ResourceKey);
+}
+
+// ==================================================================================================
+// THE ONE DEFERRED WIRE FIELD, COMPOSED IN ONE PLACE (FP-007 api-contracts, DEC-POS-0034)
+// ==================================================================================================
+//
+// `employeeCount` appears on a DEPARTMENT representation and cannot be produced by the department read
+// side: employees are branch-scoped and departments are not, so counting there would need a second branch
+// authorization model or would leak the size of branches the caller cannot read. The architecture guard
+// that no department read service reaches the employee set stays true precisely because this lives here,
+// at the layer where both scopes are obtainable.
+//
+// It is `PositionCompositionServices` in miniature, and deliberately a separate type rather than a shared
+// one: the two surfaces are independent modules' contracts that happen to need the same shape today, and
+// merging them would couple a change in either to the other.
+public sealed class DepartmentCompositionServices(
+  IEmployeeScopeResolver employeeScopes,
+  IEmployeeReadService employees)
+{
+  // ---- NULL MEANS "NOT COMPUTABLE FOR THIS CALLER", AND NOTHING ELSE (DEC-POS-0034).
+  //
+  // A caller holding `HR.Departments.View` but not `HR.Employees.View` cannot obtain an employee scope, so
+  // the resolver refuses and there is no honest number to report. A caller who CAN read employees but sees
+  // none of this department's members gets `0` — a different answer, from the same code path, and the
+  // tests assert the two separately.
+  //
+  // ALL AUTHORIZED BRANCHES, because the question is "how many members may this caller see at all", not
+  // "how many are in the branch they happen to be acting in" — the same reasoning `GetDepartmentQueryHandler`
+  // already uses when it resolves the manager, and the same mode the position count uses.
+  public async Task<int?> CountEmployeesAsync(Guid departmentId, CancellationToken cancellationToken)
+  {
+    var scope = await employeeScopes.ResolveAsync(
+      new EmployeeScopeRequest(
+        EmployeeCompanyScopeMode.AllAuthorizedCompanies,
+        EmployeeBranchScopeMode.AllAuthorizedBranches),
+      cancellationToken);
+
+    return scope.IsFailure
+      ? null
+      : await employees.CountEmployeesByDepartmentAsync(scope.Value, departmentId, cancellationToken);
+  }
 }

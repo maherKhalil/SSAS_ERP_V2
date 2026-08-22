@@ -71,19 +71,33 @@ reasoning is identical.
 }
 ```
 
-> **NOT SHIPPED (recorded 2026-08-21 during FP-008 Phase 4).** `Department.employeeCount` is **specified
-> below and absent from the implementation** — the department representation has no such property, and no
-> test asserts one. FP-007's as-built pass nonetheless marked this document matched, which is the divergence
-> being corrected here rather than the field being quietly deleted from the spec.
+> **SHIPPED 2026-08-22** (HR as-built cleanup, the task that closed this gap). The field was specified here,
+> **never built**, and FP-007's own as-built pass nonetheless marked this document matched — the divergence
+> was found by the FP-008 Phase 4 reconciliation and recorded as NOT SHIPPED on 2026-08-21. It is now
+> implemented rather than deleted from the spec.
 >
-> The capability now exists: `IEmployeeReadService.CountEmployeesByPositionAsync` was built for FP-008 and
-> requires an `EmployeeReadScope`, which is the mechanism a department equivalent would use.
-> **`DEC-POS-0034`** records the semantics it must follow when it lands — including that `null`, not `0`,
-> is the answer for a caller who cannot read employees. Registered as a post-FP-008 backlog item; FP-008
-> deliberately did not implement it, because that is a different feature's scope.
+> **As built:** `IEmployeeReadService.CountEmployeesByDepartmentAsync` — the sibling of the position
+> counter, requiring an `EmployeeReadScope` — composed onto the wire by
+> `DepartmentCompositionServices.CountEmployeesAsync`, which every department representation goes through,
+> reads and write-backs alike.
+>
+> **Semantics are `DEC-POS-0034`'s, unchanged:** a NUMBER within the caller's own employee scope, `0` when
+> the caller can read employees but sees none of this department's members, and **`null`** — present, not
+> absent — when the caller holds `HR.Departments.View` without `HR.Employees.View`. Zero and null are
+> different answers.
+>
+> **Proven by** `D33`–`D37` in `DepartmentEndpointTests` (number, zero-is-not-null, null-when-unscoped,
+> counted under the caller's own scope, and present on a write-back) and three scope-containment tests in
+> `DepartmentApplicationSqlServerTests`, which run the shipped composer against real rows because a stub
+> cannot demonstrate that a predicate filters.
+>
+> **On the detail representation only.** The list row does not carry it: this document specifies it here and
+> nowhere else, and a per-row count would be one extra scoped aggregate per result.
 
 **`employeeCount` is computed within the caller's employee read scope, and the field name says so in the API
-documentation.** Two users can legitimately see different counts for the same department, because they are
+documentation.** *(As built: the count is scope-visible, matching the shipped position counter exactly — and
+like it, the count is not filtered by employment status, so a terminated employee still counts toward the
+department they were in.)* Two users can legitimately see different counts for the same department, because they are
 authorized for different branches. The alternative — a company-wide count — would leak the size of branches
 the caller cannot read. This is the one place where `OD-DEP-005`'s "department is company-visible" and
 "employees are branch-scoped" meet, and it must be resolved in favour of the tighter scope.

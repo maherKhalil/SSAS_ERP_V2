@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using SSAS.HR.Application.Departments.Reads;
 using SSAS.HR.Application.Permissions;
 using SSAS.HR.Domain.Departments;
@@ -442,6 +443,146 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
     Assert.Contains("\"isAssigned\":true", body, StringComparison.Ordinal);
     Assert.Contains("\"employeeId\":null", body, StringComparison.Ordinal);
     Assert.DoesNotContain("\"fullName\":\"", body, StringComparison.Ordinal);
+  }
+
+  // ================================================================================================
+  // employeeCount — THE FP-007 FIELD THAT NEVER SHIPPED (api-contracts, DEC-POS-0034)
+  // ================================================================================================
+  //
+  // Specified by FP-007, absent from the implementation, and marked "matched" by FP-007's own as-built
+  // pass. These four tests are what makes the claim checkable rather than asserted, and they are written
+  // around the one distinction the field is easy to get wrong: ZERO AND NULL ARE DIFFERENT ANSWERS.
+  //
+  //   0    — the caller can read employees and this department has none they can see;
+  //   null — the caller cannot read employees at all, so no number would be honest.
+  //
+  // Both are seeded to the SAME stub value where it matters, so a test passing by accident — because the
+  // stub was never reached and returned its default — is not possible.
+
+  // ---- WITH AN EMPLOYEE SCOPE, THE COUNT IS A NUMBER.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0034")]
+  public async Task D33_EmployeeCount_is_a_number_for_a_caller_who_can_read_employees()
+  {
+    host.EmployeeReads.DepartmentMemberCount = 12;
+
+    var response = await Send(
+      HttpMethod.Get,
+      $"{Route}/{DepartmentApiTestHost.DepartmentId}",
+      host.TokenWith(HrPermissionNames.ViewDepartments, HrPermissionNames.ViewEmployees));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await DepartmentApiTestHost.BodyAsync(response));
+
+    Assert.Equal(12, document.RootElement.GetProperty("employeeCount").GetInt32());
+  }
+
+  // ---- ZERO IS A NUMBER, NOT AN ABSENCE.
+  //
+  // An empty department read by a caller who CAN read employees answers 0 — and the assertion checks the
+  // JSON value KIND as well as the value, because `GetInt32()` on a null would throw rather than report the
+  // difference this test exists to pin down.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0034")]
+  public async Task D34_EmployeeCount_is_zero_for_an_empty_department_and_zero_is_not_null()
+  {
+    host.EmployeeReads.DepartmentMemberCount = 0;
+
+    var response = await Send(
+      HttpMethod.Get,
+      $"{Route}/{DepartmentApiTestHost.DepartmentId}",
+      host.TokenWith(HrPermissionNames.ViewDepartments, HrPermissionNames.ViewEmployees));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await DepartmentApiTestHost.BodyAsync(response));
+
+    var count = document.RootElement.GetProperty("employeeCount");
+
+    Assert.Equal(JsonValueKind.Number, count.ValueKind);
+    Assert.Equal(0, count.GetInt32());
+  }
+
+  // ---- WITHOUT ONE, IT IS NULL — PRESENT AND NULL, NOT ABSENT.
+  //
+  // Both halves are asserted separately: the property must EXIST so the JSON shape is stable across
+  // callers, and its value must be null rather than 0. The stub is seeded to 12 precisely so a `0` here
+  // would prove the count was taken when it should not have been, instead of looking like a correct empty
+  // department.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0034")]
+  public async Task D35_EmployeeCount_is_null_for_a_caller_who_cannot_read_employees()
+  {
+    host.EmployeeReads.DepartmentMemberCount = 12;
+
+    var response = await Send(HttpMethod.Get, $"{Route}/{DepartmentApiTestHost.DepartmentId}", ViewToken);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await DepartmentApiTestHost.BodyAsync(response));
+
+    Assert.True(
+      document.RootElement.TryGetProperty("employeeCount", out var count),
+      "the field must be present for every caller, or the JSON shape varies per caller");
+
+    Assert.Equal(JsonValueKind.Null, count.ValueKind);
+  }
+
+  // ---- THE COUNT IS TAKEN UNDER THE CALLER'S OWN EMPLOYEE SCOPE, NOT A WIDER ONE.
+  //
+  // The count cannot be issued without an `EmployeeReadScope` — the interface makes that a compile error —
+  // so what is left to prove at this layer is that the scope handed to the counter is the CALLER'S: their
+  // authorized companies and their authorized branches, neither widened. Whether the SQL then honours that
+  // scope is proven against a real database in `Integration.Tests`, because a stub cannot filter rows.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0034")]
+  public async Task D36_EmployeeCount_is_counted_under_the_callers_own_employee_scope()
+  {
+    host.EmployeeReads.DepartmentMemberCount = 3;
+
+    var response = await Send(
+      HttpMethod.Get,
+      $"{Route}/{DepartmentApiTestHost.DepartmentId}",
+      host.TokenWith(HrPermissionNames.ViewDepartments, HrPermissionNames.ViewEmployees));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    var scope = host.EmployeeReads.LastScope;
+
+    Assert.NotNull(scope);
+    Assert.Equal(DepartmentApiTestHost.TenantId, scope.TenantId);
+    Assert.Equal(
+      [DepartmentApiTestHost.CompanyA, DepartmentApiTestHost.CompanyB],
+      scope.Companies.CompanyIds.OrderBy(id => id).ToArray());
+    Assert.Equal([DepartmentApiTestHost.BranchA], scope.Branches.BranchIds.ToArray());
+  }
+
+  // ---- AND IT IS ON THE WRITE-BACK REPRESENTATION TOO.
+  //
+  // Every write reads the department back through the scoped path and returns the same shape a GET does.
+  // Composing the count in only the read route would give one contract two shapes, so this asserts the
+  // field survives an update — the cheapest probe that the composer sits on the shared path.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0034")]
+  public async Task D37_A_write_back_carries_the_same_employeeCount_field()
+  {
+    host.EmployeeReads.DepartmentMemberCount = 7;
+
+    var response = await Send(
+      HttpMethod.Put,
+      $"{Route}/{DepartmentApiTestHost.DepartmentId}",
+      host.TokenWith(
+        HrPermissionNames.UpdateDepartments,
+        HrPermissionNames.ViewDepartments,
+        HrPermissionNames.ViewEmployees),
+      ValidUpdateBody);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await DepartmentApiTestHost.BodyAsync(response));
+
+    Assert.Equal(7, document.RootElement.GetProperty("employeeCount").GetInt32());
   }
 
   private const string ValidCreateBody = """

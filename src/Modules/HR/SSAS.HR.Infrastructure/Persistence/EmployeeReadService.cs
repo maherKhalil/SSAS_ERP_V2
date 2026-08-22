@@ -254,6 +254,24 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
       .CountAsync(employee => employee.PositionId == positionId, cancellationToken);
   }
 
+  // The department sibling, counted through the same `Scoped` predicate for the same reason: the number is
+  // scope-dependent BY CONSTRUCTION rather than by a filter someone remembered to add.
+  //
+  // Note what is NOT filtered here, matching the position counter exactly: employment STATUS. A terminated
+  // employee still carries the department they were in, and this counts them. That is the shipped position
+  // behaviour, and the two counts must not disagree about what "an employee" means — if a status-aware
+  // headcount is wanted later it is a different field with a different name, not a quiet change here.
+  public async Task<int> CountEmployeesByDepartmentAsync(
+    EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await Scoped(context, scope)
+      .CountAsync(employee => employee.DepartmentId == departmentId, cancellationToken);
+  }
+
   private static IQueryable<Employee> Scoped(DbContext context, EmployeeReadScope scope) =>
     context.Set<Employee>()
       .AsNoTracking()

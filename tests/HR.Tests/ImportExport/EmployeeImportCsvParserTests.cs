@@ -1,4 +1,4 @@
-using SSAS.HR.Application.ImportExport;
+﻿using SSAS.HR.Application.ImportExport;
 
 namespace SSAS.HR.Tests.ImportExport;
 
@@ -56,15 +56,18 @@ public sealed class EmployeeImportCsvParserTests
   // THE COLUMNS THAT DO NOT EXIST ARE REFUSED BY THE GENERAL RULE, NOT BY A SPECIAL CASE
   // ================================================================================================
   //
-  // `companyId`, `branchId`, `tenantId` and `status` are absent from the contract, so a file carrying one is
-  // refused for being unrecognised — the same refusal a typo gets. That is `FP-006`'s "absent by
-  // construction, not merely validated" applied to a header row: there is no code that names these four, so
-  // there is nothing for a future change to forget to keep.
+  // `companyId`, `branchId` and `tenantId` are absent from the contract, so a file carrying one is refused
+  // for being unrecognised — the same refusal a typo gets. That is `FP-006`'s "absent by construction, not
+  // merely validated" applied to a header row: there is no code that names these three, so there is nothing
+  // for a future change to forget to keep.
+  //
+  // `status` WAS a fourth until `OD-DOC-010` was ruled, and its move out of this list is the ruling: it is
+  // now RECOGNIZED and constrained by value rather than refused by name, so a file can say what it means and
+  // be told when the system cannot honour it. Recognized is not ignored — see the value test below.
   [Theory]
   [InlineData("companyId")]
   [InlineData("branchId")]
   [InlineData("tenantId")]
-  [InlineData("status")]
   [InlineData("salary")]
   [InlineData("employeeNumbr")]
   [Trait("Decision", "DEC-DOC-0002")]
@@ -245,12 +248,36 @@ public sealed class EmployeeImportCsvParserTests
   // Asserted as an exact set rather than a contains-check, for the reason the E3 manifest inventory is: a
   // new column may need a validation rule, an export counterpart and a round-trip proof, and "it compiles"
   // settles none of them.
+  // ---- `status` IS DECLARED AND OPTIONAL (OD-DOC-010).
+  //
+  // The parser's job ends at recognising it; whether the VALUE is one an import can honour is the handler's,
+  // because "an import creates only Active employees" is a rule about creation rather than about a file.
+  [Fact]
+  [Trait("Decision", "OD-DOC-010")]
+  public void The_status_column_is_recognised_and_optional()
+  {
+    var withStatus = EmployeeImportCsvParser.Parse(
+      $"{Header},status\nE-1,Layla,2026-03-01,FIN,DEV,Active");
+
+    Assert.True(withStatus.IsSuccess);
+    Assert.Equal("Active", Assert.Single(withStatus.Value.Rows).Value(EmployeeImportColumns.Status));
+
+    // Still optional: a file without it is exactly as legal as it was before the ruling.
+    Assert.True(EmployeeImportCsvParser.Parse($"{Header}\nE-1,A,2026-03-01,FIN,DEV").IsSuccess);
+
+    // And a value the system cannot honour still PARSES — the refusal is the handler's, with a message that
+    // names the remedy, which a header rejection could never have done.
+    Assert.True(EmployeeImportCsvParser.Parse(
+      $"{Header},status\nE-1,A,2026-03-01,FIN,DEV,Terminated").IsSuccess);
+  }
+
   [Fact]
   [Trait("Decision", "DEC-DOC-0002")]
   public void The_declared_column_set_is_exact()
   {
     Assert.Equal(
-      ["departmentCode", "employeeNumber", "employmentDate", "fullName", "nationalId", "positionCode"],
+      ["departmentCode", "employeeNumber", "employmentDate", "fullName", "nationalId", "positionCode",
+        "status"],
       EmployeeImportColumns.All.OrderBy(column => column, StringComparer.Ordinal));
 
     Assert.Equal(

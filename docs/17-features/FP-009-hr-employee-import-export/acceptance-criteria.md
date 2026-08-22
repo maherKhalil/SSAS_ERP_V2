@@ -19,6 +19,11 @@ version: 1.0
 so is a file carrying an unrecognized column. Both answer `400 request.invalid`, and the response names the
 offending column. Column order does not matter and header casing does not matter.
 
+> **`status` AMENDED 2026-08-22 by `OD-DOC-010`.** It is now a RECOGNIZED optional column rather than an
+> unknown one. The criterion's substance is untouched: an import still creates only `Active` employees and no
+> file can create a terminated one — the refusal is now a named ROW error instead of a header rejection.
+> `companyId`, `branchId` and `tenantId` are unchanged and still absent by construction.
+
 **`AC-DOC-0002` — Ownership columns are absent by construction.** A file carrying `companyId`, `branchId`,
 `tenantId` or `status` is refused by the unknown-column rule — not accepted-and-ignored, and not
 accepted-and-validated. There is no code path that reads such a column.
@@ -92,6 +97,11 @@ audit found in `FR-DEP-0111`.
 
 **`AC-DOC-0015` — Every export writes a run record naming the column set and the scope in force.**
 *(`SEC-DOC-0404`)* A failed export writes none, because nothing left the system.
+
+> **CLOSED for an all-`Active` export by `OD-DOC-010` (2026-08-22), with a stated limit.** A default export
+> is `Active` AND `Inactive`, not all-`Active`, so a default export containing an inactive employee refuses
+> on re-import with a named row error. Narrowing `DEC-DOC-0009`'s default would close it unconditionally and
+> is a different decision.
 
 **`AC-DOC-0016` — Round trip.** A file produced by export, unmodified, is a legal import file: its header
 satisfies the column contract and its rows parse. Where `OD-DOC-006` removes a column from exports, that

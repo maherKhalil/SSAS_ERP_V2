@@ -1,4 +1,4 @@
-using SSAS.HR.Application.Employees.Reads;
+﻿using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Application.ImportExport;
 using SSAS.HR.Domain.Employees;
 
@@ -52,7 +52,7 @@ public sealed class EmployeeExportWriterTests
     Assert.Contains("2026-03-01", content, StringComparison.Ordinal);
 
     // And the import genuinely reads it back, which is what makes the claim more than a string comparison.
-    var parsed = EmployeeImportCsvParser.Parse(WithoutStatus(content));
+    var parsed = EmployeeImportCsvParser.Parse(content);
 
     Assert.True(parsed.IsSuccess);
     Assert.Equal(
@@ -80,7 +80,7 @@ public sealed class EmployeeExportWriterTests
   {
     var content = ExportEmployeesQueryHandler.Write([Row(name: name)]);
 
-    var parsed = EmployeeImportCsvParser.Parse(WithoutStatus(content));
+    var parsed = EmployeeImportCsvParser.Parse(content);
 
     Assert.True(parsed.IsSuccess);
     Assert.Equal(name, Assert.Single(parsed.Value.Rows).Value(EmployeeImportColumns.FullName));
@@ -134,16 +134,25 @@ public sealed class EmployeeExportWriterTests
     Assert.Equal("employees-20260822-140509.csv", name);
   }
 
-  // The one column an export carries that an import does not accept — see `OD-DOC-010`, which is open. Every
-  // round-trip assertion above removes it, so each proves what it says rather than failing for that reason.
+  // ---- THE HEADER AN EXPORT WRITES IS A HEADER AN IMPORT ACCEPTS (OD-DOC-010).
   //
-  // ---- IT STRIPS THE STATUS **VALUE**, NOT "EVERYTHING AFTER THE LAST COMMA".
-  //
-  // The naive version was written first and was wrong for exactly the rows this test exists to cover: a
-  // quoted full name may contain a comma or a newline, so "the last comma on the line" is not the column
-  // separator and "one line per row" is not true. Matching the closed set of status names — which are enum
-  // names, are never quoted, and are always last — is precise where a positional rule is not.
-  private static string WithoutStatus(string content) =>
-    System.Text.RegularExpressions.Regex.Replace(
-      content, ",(status|Active|Inactive|Terminated)\n", "\n");
+  // The round-trip assertions above parse the export's own bytes UNMODIFIED. Before the ruling they had to
+  // strip the `status` column first, and the stripper was itself a source of error — it began as "everything
+  // after the last comma", which is not the column separator when a quoted name contains one. Removing it
+  // removes a test helper that could have been wrong about the thing it was helping to test.
+  [Fact]
+  [Trait("Decision", "OD-DOC-010")]
+  public void The_exported_header_parses_as_an_import_header()
+  {
+    var parsed = EmployeeImportCsvParser.Parse(ExportEmployeesQueryHandler.Write([Row()]));
+
+    Assert.True(parsed.IsSuccess);
+
+    var row = Assert.Single(parsed.Value.Rows);
+
+    Assert.Equal("E-1", row.Value(EmployeeImportColumns.EmployeeNumber));
+    Assert.Equal("FIN", row.Value(EmployeeImportColumns.DepartmentCode));
+    Assert.Equal("DEV", row.Value(EmployeeImportColumns.PositionCode));
+    Assert.Equal("Active", row.Value(EmployeeImportColumns.Status));
+  }
 }

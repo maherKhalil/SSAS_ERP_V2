@@ -340,11 +340,13 @@ handler could not have recorded one.
 > form field to carry `importKey`. Phase 1 does not answer it, because Phase 1 exposes no routes and the
 > handler takes the key as a command parameter.
 >
-> **Engineering recommendation (labeled, not settled):** a **query parameter** under the existing strict
-> allowlist. It is request data rather than ambient context, which is what separates it from `X-Company-Id`;
-> and the allowlist already gives it the exact property multipart was promising — a declared set, with an
-> unrecognised name answering `400 request.invalid`. **Phase 2 confirms or overrides this**, and until it
-> does, no route exists that could depend on either answer.
+> **RULED 2026-08-22 — ADOPTED AS RECOMMENDED.** `importKey` travels as a **query parameter** under the
+> existing strict allowlist. It is request data rather than ambient context, which is what separates it from
+> `X-Company-Id`; and the allowlist already gives it the exact property multipart was promising — a declared
+> set, with an unrecognised name answering `400 request.invalid`.
+>
+> **Implementation lands in Phase 2 with the routes.** Phase 1's handler takes the key as a command
+> parameter, which is where it would come from under any answer, so nothing here depends on the mechanism.
 
 **`DEC-DOC-0015` — EXPORT REQUIRES `HR.Employees.Export` **AND** `HR.Employees.View`.**
 *(Ruled 2026-08-22 during Phase 1. An interpretation of `OD-DOC-005`, recorded because it is one.)*
@@ -369,9 +371,15 @@ What the ruling **does** deliver either way is intact: anyone who may view an em
 the whole authorized set to a file. `X6` asserts exactly that — a caller holding `View` and not `Export` is
 refused, and writes no run record.
 
-> **Overridable.** If the owner wants `Export` to stand alone, the change is a distinct `EmployeeExportScope`
-> resolved against `HR.Employees.Export`, and it is additive: the handler's own permission check stays, the
-> read predicate is unchanged, and only the resolver call moves.
+> **RATIFIED 2026-08-22 — `Export` **AND** `View`, through the existing employee read scope.**
+>
+> **The additive `EmployeeExportScope` is DECLINED for V1.** The read scope already gates the DATA and
+> `Export` gates the OPERATION; a third unforgeable type would add machinery without adding a boundary.
+>
+> **Revisit condition, stated so it is checkable rather than remembered:** only if an export ever reads MORE
+> than a search can. It currently cannot, *by construction* — both run through one shared predicate over one
+> criteria type, which is the same mechanism `AC-DOC-0014` rests on. The day that stops being true is the day
+> this decision is worth reopening, and the shared predicate is what would have to change first.
 
 **`OD-DOC-010` — WHAT DOES THE ROUND-TRIP PROPERTY ACTUALLY CLAIM?** *(Raised 2026-08-22 during Phase 1.
 **Open.** Found by implementing the contract exactly as approved.)*
@@ -399,8 +407,48 @@ quoting and the classification codes are all mutually compatible, and the failur
 | **Declare `status` an import column that is ACCEPTED AND IGNORED** | The round trip closes and `AC-DOC-0002` still holds in the sense that matters — creation still produces `Active` and no file can create a terminated employee. It costs the "absent by construction, not merely validated" property for one column |
 | **Narrow the round-trip claim** to "an export re-imports **after the `status` column is removed**" | Honest and cheap, and turns a product property into a manual step the operator must know about. `AC-DOC-0016` would have to say so |
 
-**This is a product decision about what an export is for**, and it was not made here. The contract is
-implemented exactly as written and the gap is visible in the suite.
+> **RULED 2026-08-22 — `status` BECOMES A RECOGNIZED OPTIONAL IMPORT COLUMN WITH ONE ACCEPTED VALUE.**
+>
+> Empty or `Active` passes. Any other value is a **row error** whose message names the remedy: *"An import
+> creates only Active employees; remove the status value or the row."*
+>
+> **This is a fourth option, not one of the three above**, and the distinction is the whole ruling.
+> Option 2 was *accepted and ignored*; this is **recognized and constrained**. Silently accepting and
+> discarding a value is the behaviour this contract refuses everywhere else — an import that swallowed
+> `status=Terminated` would report success while creating an Active employee, which is a lie the operator has
+> no way to detect. Declaring the column keeps the allowlist strict **and** lets the file say what it means.
+>
+> None of the four owner rulings is reopened:
+>
+> * **Strict allowlist intact** — `status` is known, not silently ignored.
+> * **`AC-DOC-0002` intact where it matters** — creation produces `Active`, and no file can create a
+>   terminated employee. What changed is that the refusal is a named row error instead of a header rejection
+>   that could not say why.
+> * **A `status=Terminated` export honestly refuses.** Create-only cannot recreate a terminated person's
+>   employment history — the dates, the reason, the branch they left from — and resurrecting them as new
+>   Active hires would be worse than the refusal, because it would look like it worked.
+> * **All-or-nothing and create-only unchanged.**
+>
+> ---
+>
+> **ONE CORRECTION TO THE RULING'S PREMISE, made during implementation and recorded rather than absorbed.**
+>
+> The ruling reasoned that "terminated are excluded (`DEC-DOC-0009`), so **every exported row is Active** and
+> the file re-imports legally". The first clause is right; the second does not follow. **The employee
+> search's default has always been `Active` AND `Inactive`** — both are current employment, and
+> `DEC-DOC-0009` narrows only the terminated third of that. The export inherits that default.
+>
+> So a default export containing an **inactive** employee also refuses on re-import, with the same named row
+> error. That is the ruling's own logic applied consistently, and it is the RIGHT answer for the same reason
+> the terminated case is: creation produces `Active`, and an import that accepted `Inactive` and created an
+> Active employee would report success while doing something else.
+>
+> **The accurate statement of what closes:** the round trip closes for an export whose rows are all `Active`
+> — which is every export of active employees, and not every default export. `X9` asserts the inactive case
+> so that fact is a property of the suite rather than a sentence in a report.
+>
+> If the owner wants a default export to round-trip unconditionally, the remaining lever is
+> `DEC-DOC-0009`'s default status set — not this decision.
 
 **`OD-DOC-007`, `OD-DOC-008`, `OD-DOC-009` — DEFERRED to FP-010 (`OD-DOC-001`).**
 

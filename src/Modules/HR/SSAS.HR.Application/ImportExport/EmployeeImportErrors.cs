@@ -1,4 +1,4 @@
-using SSAS.BuildingBlocks.Domain;
+﻿using SSAS.BuildingBlocks.Domain;
 
 namespace SSAS.HR.Application.ImportExport;
 
@@ -47,6 +47,15 @@ public static class EmployeeImportErrors
 
   public static readonly Error EmploymentDateInvalid =
     new("EmployeeImport.EmploymentDateInvalid", "The employment date is not a valid ISO-8601 date.");
+
+  // ---- THE MESSAGE NAMES THE REMEDY, WHICH IS THE POINT OF THE COLUMN BEING RECOGNIZED AT ALL.
+  //
+  // An operator re-importing a `status=Terminated` export needs to know that the file is legal and the VALUE
+  // is not, and what to do about it. A header rejection could not have said that, and silent acceptance
+  // would have created Active employees out of terminated ones without saying anything (`OD-DOC-010`).
+  public static readonly Error StatusNotCreatable = new(
+    "EmployeeImport.StatusNotCreatable",
+    "An import creates only Active employees; remove the status value or the row.");
 
   // ---- THE DUPLICATE *WITHIN THE FILE*, WHICH THE DATABASE CANNOT SEE.
   //

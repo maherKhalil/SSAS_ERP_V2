@@ -2996,23 +2996,24 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(1, await fixture.ExportRunCountAsync());
   }
 
-  // ---- X8. THE ROUND TRIP DOES NOT CLOSE, AND THIS IS THE DEMONSTRATION RATHER THAN A COMMENT.
+  // ---- X8. THE ROUND TRIP CLOSES, AND THE ONE CASE IT REFUSES REFUSES HONESTLY (OD-DOC-010).
   //
   // ================================================================================================
-  // `DEC-DOC-0008` / `AC-DOC-0016` REQUIRE AN EXPORTED FILE TO RE-IMPORT. IT DOES NOT.
+  // RULED 2026-08-22: `status` IS A RECOGNIZED OPTIONAL IMPORT COLUMN WITH ONE ACCEPTED VALUE.
   // ================================================================================================
   //
-  // `api-contracts.md` gives the export a `status` column; `AC-DOC-0002` says status is NOT an import
-  // column, because creation produces `Active` and an import cannot create a terminated employee; and
-  // `DEC-DOC-0002` refuses UNKNOWN columns. All three are as approved, and the three cannot hold together.
+  // Before the ruling this test demonstrated a gap: `api-contracts.md` gave the export a `status` column,
+  // `AC-DOC-0002` said status was not an import column, and `DEC-DOC-0008` required an exported file to
+  // re-import — three approved statements that could not all hold. The ruling closed it without reopening
+  // any of them: the column is RECOGNIZED (so the allowlist stays strict and nothing is silently ignored),
+  // empty or `Active` passes, and any other value is a row error whose message names the remedy.
   //
-  // This test asserts WHAT HAPPENS rather than what was specified, so the gap is visible in the suite
-  // instead of only in a report — and so that whichever way `OD-DOC-010` is ruled, this is the test that
-  // changes and says so. The `nationalId` half of the round trip DOES close, and is asserted here too, so
-  // the failure is narrowed to one column rather than left as "the round trip is broken".
+  // A `status=Terminated` export therefore refuses on re-import, and that refusal is the correct behaviour
+  // rather than a residual gap: create-only cannot recreate a terminated person's employment history, and
+  // resurrecting them as new Active hires would look like it worked.
   [Fact]
   [Trait("Decision", "OD-DOC-010")]
-  public async Task X8_An_exported_file_is_refused_on_re_import_for_its_status_column()
+  public async Task X8_An_exported_file_re_imports_and_a_terminated_export_refuses_by_name()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
 
@@ -3022,27 +3023,81 @@ public sealed class EmployeeBoundarySqlServerTests
 
     var exported = await graph.Export().HandleAsync(new ExportEmployeesQuery());
 
-    // THE GAP. The header carries `status`, which the import contract does not declare.
+    // THE CLOSURE. The export's own bytes, unmodified, under a fresh employee number — create-only means the
+    // numbers must differ, which is the file being "edited and re-submitted" exactly as `DEC-DOC-0008` says.
     var reimported = await graph.Import().HandleAsync(new ImportEmployeesCommand(
-      exported.Value.Content, "round-trip", "employees.csv", ByteCount: 256));
+      exported.Value.Content.Replace("EXP-TRIP", "EXP-TRIP2", StringComparison.Ordinal),
+      "round-trip", "employees.csv", ByteCount: 256));
 
-    Assert.Equal(EmployeeImportOutcome.Refused, reimported.Value.Outcome);
-    Assert.Equal(
-      EmployeeImportErrors.HeaderColumnUnknown, Assert.Single(reimported.Value.Errors).Error);
-
-    // ---- AND THE OTHER FIVE COLUMNS DO ROUND-TRIP, which is what narrows the gap to exactly one name.
-    //
-    // The same file with `status` removed imports cleanly under a fresh employee number, so the format, the
-    // date rendering, the quoting and the classification codes are all mutually compatible between the two
-    // halves. Only the extra column is not.
-    var withoutStatus = EmployeeFixture.WithoutStatusColumn(exported.Value.Content).Replace(
-      "EXP-TRIP", "EXP-TRIP2", StringComparison.Ordinal);
-
-    var repeat = await graph.Import().HandleAsync(new ImportEmployeesCommand(
-      withoutStatus, "round-trip-2", "employees.csv", ByteCount: 256));
-
-    Assert.Equal(EmployeeImportOutcome.Applied, repeat.Value.Outcome);
+    Assert.Equal(EmployeeImportOutcome.Applied, reimported.Value.Outcome);
+    Assert.Empty(reimported.Value.Errors);
     Assert.Equal(1, await fixture.EmployeeCountAsync("EXP-TRIP2"));
+
+    // ---- AND THE TERMINATED HALF REFUSES BY NAME, not by header rejection.
+    var terminatedId = await fixture.SeedEmployeeAsync("EXP-DEAD", fixture.BranchA);
+    await fixture.TerminateAsync(terminatedId);
+
+    var terminatedExport = await graph.Export().HandleAsync(
+      new ExportEmployeesQuery(Statuses: [EmployeeStatus.Terminated]));
+
+    var refused = await graph.Import().HandleAsync(new ImportEmployeesCommand(
+      terminatedExport.Value.Content.Replace("EXP-DEAD", "EXP-DEAD2", StringComparison.Ordinal),
+      "round-trip-terminated", "employees.csv", ByteCount: 256));
+
+    Assert.Equal(EmployeeImportOutcome.Refused, refused.Value.Outcome);
+
+    var error = Assert.Single(refused.Value.Errors);
+
+    // A ROW error naming the STATUS column — which is what the ruling bought over a header rejection, because
+    // the message can now tell the operator what to do about it.
+    Assert.Equal(EmployeeImportColumns.Status, error.Column);
+    Assert.Equal(EmployeeImportErrors.StatusNotCreatable, error.Error);
+    Assert.Equal(0, await fixture.EmployeeCountAsync("EXP-DEAD2"));
+  }
+
+  // ---- X9. THE RULING'S PREMISE ABOUT THE DEFAULT EXPORT IS NARROWER THAN IT WAS STATED, AND THIS IS IT.
+  //
+  // ================================================================================================
+  // A DEFAULT EXPORT IS NOT "ALL ACTIVE". IT IS ACTIVE **AND INACTIVE**.
+  // ================================================================================================
+  //
+  // The ruling's reasoning was that "terminated are excluded (`DEC-DOC-0009`), so every exported row is
+  // Active and the file re-imports legally". The first clause is right and the second does not follow: the
+  // employee search's default has always been **Active AND Inactive** — both are current employment — and
+  // `DEC-DOC-0009` narrows only the terminated third of that.
+  //
+  // So a default export containing an INACTIVE employee also refuses on re-import, with the same named row
+  // error. That is the ruling's own logic applied consistently, and it is the RIGHT answer for the same
+  // reason the terminated case is: creation produces `Active`, and an import that accepted `Inactive` and
+  // created an Active employee would report success while doing something else.
+  //
+  // The round trip therefore closes for an export of ACTIVE employees, not for every default export. This
+  // test exists so that fact is a property of the suite rather than a sentence in a report.
+  [Fact]
+  [Trait("Decision", "OD-DOC-010")]
+  public async Task X9_A_default_export_containing_an_inactive_employee_also_refuses_on_re_import()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    var employeeId = await fixture.SeedEmployeeAsync("EXP-IDLE", fixture.BranchA);
+    await fixture.DeactivateAsync(employeeId);
+
+    using var graph = fixture.Graph(fixture.BranchA);
+
+    // NO STATUS FILTER — this is the ordinary export an operator gets by asking for one.
+    var exported = await graph.Export().HandleAsync(new ExportEmployeesQuery());
+
+    // The premise: the default export really does carry the inactive employee.
+    Assert.Contains("EXP-IDLE", exported.Value.Content, StringComparison.Ordinal);
+    Assert.Contains("Inactive", exported.Value.Content, StringComparison.Ordinal);
+
+    var refused = await graph.Import().HandleAsync(new ImportEmployeesCommand(
+      exported.Value.Content.Replace("EXP-IDLE", "EXP-IDLE2", StringComparison.Ordinal),
+      "round-trip-inactive", "employees.csv", ByteCount: 256));
+
+    Assert.Equal(EmployeeImportOutcome.Refused, refused.Value.Outcome);
+    Assert.Equal(
+      EmployeeImportErrors.StatusNotCreatable, Assert.Single(refused.Value.Errors).Error);
   }
 
   private const string ImportHeader =
@@ -3427,6 +3482,17 @@ public sealed class EmployeeBoundarySqlServerTests
       Assert.True(terminated.IsSuccess, terminated.IsFailure ? terminated.Error.Code : null);
     }
 
+    public async Task DeactivateAsync(Guid employeeId)
+    {
+      var deactivated = await Graph(BranchA).Deactivate().HandleAsync(
+        new DeactivateEmployeeCommand(
+          employeeId,
+          EmployeeStatusChangeReason.Administrative,
+          await RowVersionAsync(employeeId)));
+
+      Assert.True(deactivated.IsSuccess, deactivated.IsFailure ? deactivated.Error.Code : null);
+    }
+
     public async Task<string?> NationalIdAsync(string employeeNumber)
     {
       await using var connection = new SqlConnection(ConnectionFor(tenantCatalog));
@@ -3463,16 +3529,6 @@ public sealed class EmployeeBoundarySqlServerTests
         : null;
     }
 
-    // Removes the status COLUMN and nothing else — the point of the round-trip test is that the file differs
-    // from an importable one by exactly one column, so a helper that reconstructed the file would be
-    // asserting its own idea of the format instead of the writer's.
-    //
-    // It matches the status VALUE rather than "everything after the last comma", because a quoted full name
-    // may contain a comma or a newline and neither positional rule survives that. Status names are enum
-    // names, are never quoted, and are always last, which is what makes this precise.
-    public static string WithoutStatusColumn(string content) =>
-      System.Text.RegularExpressions.Regex.Replace(
-        content, ",(status|Active|Inactive|Terminated)\n", "\n");
 
     public async Task<Guid?> EmployeeBranchAsync(Guid employeeId) =>
       await ScalarGuidAsync("Employees", "BranchId", "EmployeeId", employeeId);
@@ -4254,6 +4310,13 @@ public sealed class EmployeeBoundarySqlServerTests
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
 
     public TerminateEmployeeCommandHandler Terminate() => new(
+      new EmployeeRepository(accessor), unitOfWork,
+      new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
+
+    // FP-009. The export's default status set is Active AND Inactive, so a test about what a DEFAULT export
+    // carries needs a real inactive employee — produced by the real transition, because a hand-written status
+    // could be one no transition allows.
+    public DeactivateEmployeeCommandHandler Deactivate() => new(
       new EmployeeRepository(accessor), unitOfWork,
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
 

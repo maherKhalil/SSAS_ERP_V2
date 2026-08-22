@@ -18,6 +18,27 @@ namespace SSAS.HR.Application.ImportExport;
 // column ABSENT from every export, and `DEC-DOC-0008` requires an exported file to re-import — so the one
 // column exports omit has to be a column imports do not require, or the round-trip property would be
 // aspirational instead of checkable.
+//
+// ================================================================================================
+// `status` IS RECOGNIZED AND SETS NOTHING (OD-DOC-010, RULED 2026-08-22).
+// ================================================================================================
+//
+// It is the mirror image of `nationalId`: the one column EXPORTS ADD, made optional on import so the round
+// trip closes from the other direction too. Empty or `Active` passes; anything else is a ROW ERROR whose
+// message names the remedy.
+//
+// **It is RECOGNIZED, not ignored**, and the difference is the whole of the ruling. Silently accepting and
+// discarding a value is the behaviour this contract refuses everywhere else — an import that swallowed
+// `status=Terminated` would report success while creating an Active employee, which is a lie the operator
+// has no way to detect. Declaring the column keeps the allowlist strict AND lets the file say what it means.
+//
+// `AC-DOC-0002` still holds where it matters: creation produces `Active`, and NO FILE CAN CREATE A
+// TERMINATED EMPLOYEE. What changed is that the refusal is now a named row error instead of a header
+// rejection that could not say why.
+//
+// A `status=Terminated` export therefore refuses on re-import, honestly: create-only cannot recreate a
+// terminated person's employment history, and resurrecting them as new Active hires would be worse than the
+// refusal.
 public static class EmployeeImportColumns
 {
   public const string EmployeeNumber = "employeeNumber";
@@ -32,13 +53,19 @@ public static class EmployeeImportColumns
 
   public const string NationalId = "nationalId";
 
+  public const string Status = "status";
+
+  // The only value an import may carry, because creation produces exactly one status. Compared
+  // case-insensitively for the reason the header is: it is typed by a human in a spreadsheet.
+  public const string CreatableStatus = "Active";
+
   // Matched case-insensitively and order-independently: a header row is written by a human in a spreadsheet,
   // and `EmployeeNumber` versus `employeenumber` is not a difference worth refusing a file over. WHICH
   // columns are present still is.
   public static readonly IReadOnlyList<string> Required =
     [EmployeeNumber, FullName, EmploymentDate, DepartmentCode, PositionCode];
 
-  public static readonly IReadOnlyList<string> Optional = [NationalId];
+  public static readonly IReadOnlyList<string> Optional = [NationalId, Status];
 
   public static readonly IReadOnlyList<string> All = [.. Required, .. Optional];
 }

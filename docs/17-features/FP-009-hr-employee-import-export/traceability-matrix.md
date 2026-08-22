@@ -217,7 +217,7 @@ above are the check, not a summary of it.
 | `AC-DOC-0013` terminated excluded by default, includable by name | ✅ | `X4` |
 | `AC-DOC-0014` export accepts exactly the search vocabulary | ✅ — and structurally: one shared predicate, so the **next** filter is inherited too | `X3` |
 | `AC-DOC-0015` every export writes a run record naming the column set and the scope | ✅ | `X5` |
-| `AC-DOC-0016` round trip | ❌ **FAILS AS SPECIFIED — `OD-DOC-010`, open** | `X8_An_exported_file_is_refused_on_re_import_for_its_status_column` |
+| `AC-DOC-0016` round trip | ✅ **for an all-`Active` export** — `OD-DOC-010` ruled 2026-08-22. A `Terminated` or `Inactive` row refuses with a NAMED row error, which is the correct behaviour rather than a residual gap | `X8_An_exported_file_re_imports_and_a_terminated_export_refuses_by_name`, `X9_A_default_export_containing_an_inactive_employee_also_refuses_on_re_import` |
 | `AC-DOC-0021` all-or-nothing is observable | ✅ | `I2_One_bad_row_in_a_thousand_leaves_no_employees_at_all` |
 | `AC-DOC-0022` codes resolve under the caller's own authority | ✅ | `I5_A_code_in_another_company_is_refused_identically_to_a_code_that_exists_nowhere` |
 | `AC-DOC-0023` no export carries `nationalId` | ✅ | `X2` |
@@ -239,7 +239,8 @@ in the database, two rejections compared field by field, and the bytes plus the 
 | `DEC-DOC-0008` UTF-8 CSV, same column contract | the writer tests; the round trip itself is `OD-DOC-010` |
 | `DEC-DOC-0009` terminated excluded unless requested | `X4` |
 | **`DEC-DOC-0014`** raw `text/csv`, no multipart *(new)* | `StrictCsvReaderTests`, in full |
-| **`DEC-DOC-0015`** export needs `Export` **and** `View` *(new)* | `X6` |
+| **`DEC-DOC-0015`** export needs `Export` **and** `View` *(new, ratified)* | `X6` |
+| **`OD-DOC-010`** `status` recognized, one accepted value *(new, ruled)* | `X8`, `X9`, `The_status_column_is_recognised_and_optional`, `The_exported_header_parses_as_an_import_header` |
 
 ### What Phase 1 does not close
 
@@ -247,6 +248,9 @@ in the database, two rejections compared field by field, and the bytes plus the 
   mapping, `Content-Disposition`, the `nosniff` interaction, and the transport floor for the size cap.
 * **Where `importKey` travels.** `DEC-DOC-0014` removed the multipart form that was going to carry it and
   records an engineering recommendation rather than a ruling.
-* **`AC-DOC-0016`.** Open under `OD-DOC-010`, and demonstrated failing rather than left unmentioned.
+* **`AC-DOC-0016` beyond an all-`Active` export.** `OD-DOC-010` is ruled and implemented. What remains open
+  is whether `DEC-DOC-0009`'s DEFAULT status set should narrow from `Active`+`Inactive` to `Active` so that a
+  default export round-trips unconditionally. That is a different decision about what a default export is,
+  and it was not taken here.
 * **The route inventory.** `api-contracts.md` says the HR surface goes 41 → 46. It is still **41**, and
   `HrRouteInventoryTests` is unchanged, because no route was added.

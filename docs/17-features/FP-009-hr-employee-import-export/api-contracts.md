@@ -102,10 +102,14 @@ refused before any row is read (`DEC-DOC-0002`).
 | `departmentCode` | Yes | Resolved per `OD-DOC-004`; never created (`BRULE-DOC-0601`) |
 | `positionCode` | Yes | Same |
 | `nationalId` | No | Optional in FP-006, and **kept optional here precisely because `OD-DOC-006` made it export-absent** — an exported file must re-import, and it will never carry this column |
+| `status` | No | **`OD-DOC-010`, ruled 2026-08-22.** The mirror image of `nationalId`: the one column exports *add*. Empty or `Active` passes; any other value is a **row error** naming the remedy. Recognized, never ignored — it sets nothing, and creation still produces `Active` |
 
-**No `companyId`, `branchId`, `tenantId` or `status` column exists.** They are not validated away — they are
-absent from the contract, so a file carrying one is refused by the unknown-column rule. This is `FP-006`'s
-"absent by construction, not merely validated" applied to a header row.
+**No `companyId`, `branchId` or `tenantId` column exists.** They are not validated away — they are absent
+from the contract, so a file carrying one is refused by the unknown-column rule. This is `FP-006`'s "absent
+by construction, not merely validated" applied to a header row.
+
+*(`status` was a fourth until `OD-DOC-010`. It is now declared and constrained by VALUE rather than refused
+by name, which is what lets a re-imported export be told **why** its status column cannot be honoured.)*
 
 ### Response — the per-row report
 
@@ -157,15 +161,16 @@ export agree.
 for which it appears. It is absent from the contract rather than filtered out of it, which is the distinction
 `FP-006` draws between a field that does not exist and a field that is validated away.
 
-> **AS BUILT, AND ONE COLUMN OF IT CONTRADICTS THE ROUND-TRIP CLAIM — `OD-DOC-010`, OPEN.**
+> **AS BUILT. `OD-DOC-010` RULED 2026-08-22 and the round trip closes — with one stated limit.**
 >
-> These six ship exactly as listed. **`status` is not an import column** (`AC-DOC-0002`), and an import
-> refuses unknown columns (`DEC-DOC-0002`), so a file this route produces is **refused on re-import** —
-> which `DEC-DOC-0008` and `AC-DOC-0016` say it must not be.
+> These six ship exactly as listed, and `status` is now a **recognized optional import column** whose only
+> accepted value is `Active`. An export of active employees re-imports unmodified; a `status=Terminated`
+> export refuses with a named **row** error rather than a header rejection, which is correct — create-only
+> cannot recreate a terminated person's employment history.
 >
-> The gap is exactly one column wide and is demonstrated rather than described: the same file with `status`
-> removed imports cleanly. The three options and the decision they need are in
-> [`decisions-approved.md`](decisions-approved.md).
+> **The limit, stated because the ruling's premise was narrower than it read:** a default export is `Active`
+> **and `Inactive`**, not all-Active, so a default export containing an inactive employee also refuses. The
+> round trip closes for an export whose rows are all `Active`. See `OD-DOC-010`.
 
 **Permissions: `HR.Employees.Export` AND `HR.Employees.View`.** `OD-DOC-005` settles that neither implies the
 other; `DEC-DOC-0015` records that an export is a read and therefore takes the read authority as its floor,

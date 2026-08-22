@@ -215,6 +215,8 @@ public sealed class ImportEmployeesCommandHandler(
       var nationalId = await ValidateNationalIdAsync(
         companyId, row, nationalIdsInFile, rowErrors, cancellationToken);
 
+      ValidateStatus(row, rowErrors);
+
       var department = await ResolveDepartmentAsync(
         companyId, row, departments, rowErrors, cancellationToken);
 
@@ -338,6 +340,30 @@ public sealed class ImportEmployeesCommandHandler(
       row.RowNumber, EmployeeImportColumns.EmploymentDate, EmployeeImportErrors.EmploymentDateInvalid));
 
     return null;
+  }
+
+  // ---- `status` IS READ AND CHECKED, AND SETS NOTHING (OD-DOC-010).
+  //
+  // Nothing downstream consumes the value: `CreateEmployeeCommand` has no status parameter, and creation
+  // produces `Active`. This exists so the file can SAY what it means and be told when the system cannot
+  // honour it — which is the difference between a recognized column and an ignored one.
+  //
+  // A `status=Terminated` row is refused rather than created-then-terminated. Create-only cannot recreate a
+  // terminated person's employment history — the dates, the reason, the branch they left from — and an
+  // import that resurrected them as new Active hires would be a worse outcome than the refusal, because it
+  // would look like it worked.
+  private static void ValidateStatus(EmployeeImportRow row, List<EmployeeImportRowError> rowErrors)
+  {
+    var raw = row.Value(EmployeeImportColumns.Status);
+
+    if (raw is null ||
+      string.Equals(raw, EmployeeImportColumns.CreatableStatus, StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    rowErrors.Add(new EmployeeImportRowError(
+      row.RowNumber, EmployeeImportColumns.Status, EmployeeImportErrors.StatusNotCreatable));
   }
 
   private static T? Validate<T>(

@@ -204,6 +204,19 @@ public sealed class ProjectDependencyArchitectureTests
         "SSAS.BuildingBlocks.Api.Transport.ApiResponseSecurity",
         // "This endpoint requires permission X" — the mechanism, never the permissions.
         "SSAS.BuildingBlocks.Api.Transport.PermissionEndpointConventions",
+        // ---- FP-009 PHASE 2. THE PER-ENDPOINT BODY CEILING, AND THE CASE FOR IT BEING HERE.
+        //
+        // This guard exists to force the conversation, so: it takes a number of bytes and sets a transport
+        // feature. It names no module, no route, no permission and no business concept — the same test
+        // `RequirePermission` passes, and it lives in that method's own file because the two are the same
+        // kind of thing: a convention a route declares about itself.
+        //
+        // The METADATA record is exported alongside it deliberately. A ceiling that only took effect at
+        // request time could not be asserted under a server that does not enforce body limits, and the
+        // harness runs on `TestServer`, which does not. Publishing what a route DECLARES is what makes the
+        // ceiling checkable without eleven megabytes of request.
+        "SSAS.BuildingBlocks.Api.Transport.RequestSizeEndpointConventions",
+        "SSAS.BuildingBlocks.Api.Transport.RequestSizeEndpointConventions+MaxRequestBodySizeMetadata",
         // One rowversion wire format for the whole estate.
         "SSAS.BuildingBlocks.Api.Transport.RowVersionCodec",
         // ---- FP-009. THE CSV BODY READER, AND THE CASE FOR IT BEING HERE RATHER THAN IN HR.

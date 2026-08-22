@@ -27,6 +27,7 @@ using SSAS.HR.API.Departments;
 using SSAS.HR.API.Employees;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
+using SSAS.HR.Application.ImportExport;
 using SSAS.HR.Application.Permissions;
 using SSAS.HR.Domain.Employees;
 using SSAS.Platform.Application.Abstractions.Queries;
@@ -109,6 +110,14 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
 
   private WebApplication? application;
   private HttpClient? client;
+
+  // FP-009 Phase 2. The three seams the import/export routes need, in the host's established shape:
+  // stubbed persistence beneath REAL command handlers.
+  public StubImportRunRepository ImportRuns { get; } = new();
+
+  public StubExportRunRepository ExportRuns { get; } = new();
+
+  public StubRunHistoryReads RunHistory { get; } = new();
 
   public StubCompanyAccess CompanyAccess { get; } = new();
 
@@ -213,6 +222,27 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<ITenantCompanyCurrencyLookup, StubTenantCompanyCurrencyLookup>();
     builder.Services.AddHrModule();
 
+    // ---- FP-009, REGISTERED **AFTER** `AddHrModule` SO THE DOUBLES WIN.
+    //
+    // Last registration wins in the container, and the module registers the real persistence. Ordering is
+    // the mechanism, so it is stated rather than left to be rediscovered: the real HANDLERS above are what
+    // the tests exercise; only the storage beneath them is doubled.
+    builder.Services.AddSingleton<IEmployeeImportRunRepository>(ImportRuns);
+    builder.Services.AddSingleton<IEmployeeExportRunRepository>(ExportRuns);
+    builder.Services.AddSingleton<IEmployeeRunHistoryReadService>(RunHistory);
+
+    // ---- AND THE FOUR HANDLERS, BECAUSE THIS HOST REGISTERS EVERY HANDLER EXPLICITLY.
+    //
+    // `AddHrModule` does not register command handlers — the list above does, one line each. A handler
+    // missing from it is not merely unresolvable: minimal APIs cannot tell a concrete unregistered type from
+    // a body parameter, so the route fails with "Body was inferred but the method does not allow inferred
+    // body parameters" rather than a DI error naming the type. That is why this list exists and why an
+    // omission from it is worth a comment.
+    builder.Services.AddScoped<ImportEmployeesCommandHandler>();
+    builder.Services.AddScoped<ExportEmployeesQueryHandler>();
+    builder.Services.AddScoped<SearchImportRunsQueryHandler>();
+    builder.Services.AddScoped<SearchExportRunsQueryHandler>();
+
     application = builder.Build();
     application.UseAuthentication();
     application.UseAuthorization();
@@ -246,6 +276,9 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     CompanyContext.Error = null;
     Reads.Reset();
     Repository.Reset();
+    ImportRuns.Reset();
+    ExportRuns.Reset();
+    RunHistory.Reset();
     UnitOfWork.Failure = null;
   }
 
@@ -275,6 +308,113 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
 
     return request;
   }
+
+  // ================================================================================================
+  // FP-009 PHASE 2 — THE CSV AND BYTE-LEVEL HELPERS (R11)
+  // ================================================================================================
+  //
+  // SIBLINGS of `Request`, not a generalization of it. That method hardcodes `application/json` because
+  // every route before FP-009 spoke JSON, and widening it with a content-type parameter would make every
+  // existing call site's contract a variable. These add what a CSV surface needs and leave that one alone.
+
+  // A `text/csv` request. `charset` is a parameter so a test can assert the reader refuses a DIFFERENT one
+  // while accepting `utf-8` and a bare `text/csv` — three cases one hardcoded type could not express.
+  public static HttpRequestMessage CsvRequest(
+    HttpMethod method,
+    string path,
+    string? token,
+    string body,
+    string contentType = "text/csv; charset=utf-8",
+    string? companyHeader = "22222222-2222-2222-2222-222222222222",
+    string? fileNameHeader = null)
+  {
+    var request = new HttpRequestMessage(method, path)
+    {
+      Content = new ByteArrayContent(Encoding.UTF8.GetBytes(body))
+    };
+
+    return Finish(request, token, companyHeader, contentType, fileNameHeader);
+  }
+
+  // ---- RAW BYTES, FOR THE CASES A STRING CANNOT EXPRESS.
+  //
+  // A byte order mark, and a sequence that is NOT valid UTF-8. `StringContent` would encode whatever it was
+  // handed as valid UTF-8, so the reader's decoding refusal is untestable through it — the bytes have to be
+  // supplied as bytes.
+  public static HttpRequestMessage BytesRequest(
+    HttpMethod method,
+    string path,
+    string? token,
+    byte[] body,
+    string? contentType = "text/csv",
+    string? companyHeader = "22222222-2222-2222-2222-222222222222")
+  {
+    var request = new HttpRequestMessage(method, path) { Content = new ByteArrayContent(body) };
+
+    return Finish(request, token, companyHeader, contentType, fileNameHeader: null);
+  }
+
+  private static HttpRequestMessage Finish(
+    HttpRequestMessage request,
+    string? token,
+    string? companyHeader,
+    string? contentType,
+    string? fileNameHeader)
+  {
+    // The content type is set on the CONTENT headers, which is where HttpClient looks — setting it on the
+    // request headers throws. An explicit null means "send no content type at all", which is itself a case
+    // the reader must refuse.
+    if (contentType is not null)
+    {
+      request.Content!.Headers.ContentType =
+        System.Net.Http.Headers.MediaTypeHeaderValue.Parse(contentType);
+    }
+    else
+    {
+      request.Content!.Headers.ContentType = null;
+    }
+
+    if (token is not null)
+    {
+      request.Headers.Authorization = new("Bearer", token);
+    }
+
+    if (companyHeader is not null)
+    {
+      request.Headers.Add("X-Company-Id", companyHeader);
+    }
+
+    if (fileNameHeader is not null)
+    {
+      request.Headers.Add("X-File-Name", fileNameHeader);
+    }
+
+    return request;
+  }
+
+  // ---- READ THE RESPONSE AS BYTES, BECAUSE THE STRING READER STRIPS THE BOM.
+  //
+  // `ReadAsStringAsync` decodes and silently discards a leading byte order mark, so an assertion about the
+  // BOM written through it would pass whether or not the BOM was there. This is the only way to see it.
+  public static async Task<byte[]> BodyBytesAsync(HttpResponseMessage response) =>
+    await response.Content.ReadAsByteArrayAsync();
+
+  // ---- `Content-Disposition` IS A **CONTENT** HEADER, NOT A RESPONSE HEADER.
+  //
+  // `response.Headers.GetValues("Content-Disposition")` throws — the idiom every other test here uses for
+  // `X-Content-Type-Options` does not reach it. The distinction lives in this helper so nobody rediscovers
+  // it the hard way.
+  public static string? ContentDisposition(HttpResponseMessage response) =>
+    response.Content.Headers.ContentDisposition?.ToString();
+
+  public static string? ContentType(HttpResponseMessage response) =>
+    response.Content.Headers.ContentType?.ToString();
+
+  // The mapped endpoints, so a test can assert what a route DECLARES without issuing a request — which is
+  // the only way to check a ceiling the harness's server cannot enforce (R6).
+  public IReadOnlyList<Microsoft.AspNetCore.Http.Endpoint> Endpoints() =>
+    [.. (application ?? throw new InvalidOperationException("The test application is unavailable."))
+      .Services.GetRequiredService<Microsoft.AspNetCore.Routing.EndpointDataSource>().Endpoints];
 
   public string TokenWith(params string[] permissions) => Token(
     permissions.Select(permission => new Claim(JwtClaimTypes.Permission, permission))

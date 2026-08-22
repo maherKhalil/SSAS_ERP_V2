@@ -10,6 +10,7 @@ using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Application.ImportExport;
 using SSAS.HR.Application.Permissions;
 using SSAS.HR.Domain.Employees;
+using SSAS.HR.Domain.ImportExport;
 
 namespace SSAS.HR.API.Employees;
 
@@ -703,12 +704,11 @@ public static class EmployeeEndpointRouteBuilderExtensions
       ? (int)Math.Min(declared, int.MaxValue)
       : System.Text.Encoding.UTF8.GetByteCount(content);
 
-    // A raw body carries no file name. `X-File-Name` is accepted for the audit record and defaulted when
-    // absent — it is recorded and never used to locate anything, so a caller-supplied value is inert here.
-    var fileName = context.Request.Headers.TryGetValue("X-File-Name", out var declaredName) &&
-      !string.IsNullOrWhiteSpace(declaredName.ToString())
-      ? declaredName.ToString()
-      : "import.csv";
+    // A raw body carries no file name (`DEC-DOC-0017`).
+    if (!TryFileName(context.Request, out var fileName))
+    {
+      return ApiProblems.Problem(context, ApiErrors.RequestInvalid, ResourceKey);
+    }
 
     var report = await handler.HandleAsync(
       new ImportEmployeesCommand(content, importKey, fileName, byteCount, validateOnly), cancellationToken);
@@ -804,6 +804,57 @@ public static class EmployeeEndpointRouteBuilderExtensions
     return page.IsFailure
       ? ApiProblems.Problem(context, EmployeeApiErrorMapper.Map(page.Error), ResourceKey)
       : Results.Ok(EmployeeExportRunPageResponse.From(page.Value));
+  }
+
+  // ---- THE IMPORTED FILE'S NAME (`DEC-DOC-0017`).
+  //
+  // `DEC-DOC-0014` removed multipart and with it the only place a file name could come from. It is recorded
+  // rather than defaulted away because an audit column that always holds a constant is dead weight — and
+  // recording it is the SAFE DIRECTION: caller input into a stored field that is never reflected back is not
+  // the case `api-contracts.md` forbids, which is echoing caller input into a RESPONSE header.
+  //
+  // Three constraints, all read off the column's own definition — "recorded for audit; never used to locate
+  // anything":
+  //
+  //   1. PATH COMPONENTS ARE STRIPPED to the leaf, so a value like `..\..\x.csv` stores as `x.csv`. It is a
+  //      NAME, not a location, and storing something shaped like a path invites a later reader to treat it
+  //      as one.
+  //   2. CONTROL CHARACTERS ARE REFUSED rather than stripped. A name containing them is a malformed request,
+  //      and silently cleaning it would record a value the caller never sent.
+  //   3. LENGTH IS CAPPED to the column's own limit, so a value that passes here cannot fail to persist.
+  private static bool TryFileName(HttpRequest request, out string fileName)
+  {
+    fileName = "import.csv";
+
+    if (!request.Headers.TryGetValue("X-File-Name", out var declared))
+    {
+      return true;
+    }
+
+    var candidate = declared.ToString().Trim();
+    if (string.IsNullOrEmpty(candidate))
+    {
+      return true;
+    }
+
+    if (candidate.Any(char.IsControl))
+    {
+      return false;
+    }
+
+    // Both separators, whatever the caller's platform. An all-separator value has an empty leaf, which
+    // falls back to the default rather than storing nothing.
+    var leaf = candidate[(candidate.LastIndexOfAny(['/', '\\']) + 1)..];
+    if (string.IsNullOrWhiteSpace(leaf))
+    {
+      return true;
+    }
+
+    fileName = leaf.Length > EmployeeImportRun.FileNameMaximumLength
+      ? leaf[..EmployeeImportRun.FileNameMaximumLength]
+      : leaf;
+
+    return true;
   }
 
   // Paging and nothing else. Both listings are audit reads over an append-only table, and the package

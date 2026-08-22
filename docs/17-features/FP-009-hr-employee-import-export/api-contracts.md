@@ -114,11 +114,11 @@ Content-Type: text/csv; charset=utf-8
 > audit column meaningful — always writing a constant would make it useless — and the value is inert by the
 > column's own definition, since nothing locates anything with it.
 >
-> **What needs ruling:** whether a caller-supplied name should be recorded at all, and if so under what name
-> and length limit. The conservative alternative is the constant, at the cost of the audit value. Note the
-> asymmetry with the export, where `api-contracts.md` explicitly forbids echoing caller input into a
-> response header — this is the opposite direction (caller input into a stored audit field, never reflected
-> back), so that prohibition does not settle it.
+> **RULED 2026-08-22 as `DEC-DOC-0017` — approved as built, with three constraints:** path components are
+> stripped to the leaf name, control characters are **refused** as `400 request.invalid` rather than
+> stripped, and the length is capped to the column's own limit. The direction asymmetry is why it is safe:
+> the prohibition above is about echoing caller input into a **response header**, and this is caller input
+> into a **stored audit field that is never reflected back**.
 
 **`charset` is checked, not ignored.** `text/csv` and `text/csv; charset=utf-8` are the same contract; a
 request declaring any *other* charset is refused rather than decoded as UTF-8 anyway, and so is a body whose

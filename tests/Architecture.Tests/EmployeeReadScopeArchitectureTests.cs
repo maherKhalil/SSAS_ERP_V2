@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -455,6 +455,19 @@ public sealed class EmployeeReadScopeArchitectureTests
         // it, and no department outside the caller's company is distinguishable from one that does not
         // exist.
         "FindAssignableDepartmentAsync",
+        // ---- FP-009 PHASE 1. THE SAME QUESTION, ASKED BY CODE, AND THE JUSTIFICATION THIS TEST FORCES.
+        //
+        // An import file names a department by CODE, because nobody types a GUID into a spreadsheet
+        // (`OD-DOC-004`). The shape is identical to its by-identifier sibling in every respect that makes
+        // that one safe: the company is an argument and is filtered on, a two-field record comes back rather
+        // than a Department, and anything outside the company is NULL rather than a refusal.
+        //
+        // THAT LAST PROPERTY MATTERS MORE HERE THAN ANYWHERE. A code is human-readable and a file can carry
+        // five thousand guesses; if a code in another company were distinguishable from one that exists
+        // nowhere, an import would be an enumeration oracle for other companies' org structure, one
+        // rejection message at a time. It is a SIBLING rather than a parameter on the existing method
+        // precisely so that predicate is written out and visible rather than selected by a discriminator.
+        "FindAssignableDepartmentByCodeAsync",
         // ---- FP-008 PHASE 3. THE SECOND METHOD READING A DIFFERENT TABLE, on identical terms.
         //
         // Employee creation and `ChangePosition` must both prove a destination position exists in the
@@ -467,6 +480,8 @@ public sealed class EmployeeReadScopeArchitectureTests
         // interface would be unscoped by branch, which is the disclosure `api-contracts.md` documents the
         // field as avoiding. It was written here first and moved; the move is the point.
         "FindAssignablePositionAsync",
+        // FP-009 Phase 1. The position half of the by-code pair, on exactly the terms stated above.
+        "FindAssignablePositionByCodeAsync",
         // Single aggregate by identifier, tracked, for a command about to mutate it.
         "GetByIdAsync",
         "NationalIdExistsAsync"

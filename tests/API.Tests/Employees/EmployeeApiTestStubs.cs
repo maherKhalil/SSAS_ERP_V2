@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Pagination;
@@ -340,6 +340,35 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
         ? new(positionId, IsActive: true)
         : null);
   }
+
+  // ---- THE BY-CODE PAIR (FP-009), ANSWERING ON EXACTLY THE SAME TERMS AS THEIR BY-IDENTIFIER SIBLINGS.
+  //
+  // The codes below map onto the SAME three outcomes — active, present-but-inactive, and absent — so a test
+  // that proves something about an import's classification resolution proves it against the same shape the
+  // single-create path is tested against. A stub that answered more generously here would let an import
+  // succeed on a code the real query would report absent.
+  //
+  // The argument is the NORMALIZED code, so these compare uppercase: the real query runs against a
+  // binary-collated column and matching case-insensitively here would hide a normalization bug.
+  public Task<DepartmentAssignmentTarget?> FindAssignableDepartmentByCodeAsync(
+    Guid companyId, string normalizedCode, CancellationToken cancellationToken = default) =>
+    Task.FromResult<DepartmentAssignmentTarget?>(normalizedCode switch
+    {
+      EmployeeApiTestHost.DepartmentACode => new(EmployeeApiTestHost.DepartmentA, IsActive: true),
+      EmployeeApiTestHost.DepartmentInactiveCode =>
+        new(EmployeeApiTestHost.DepartmentInactive, IsActive: false),
+      _ => null
+    });
+
+  public Task<PositionAssignmentTarget?> FindAssignablePositionByCodeAsync(
+    Guid companyId, string normalizedCode, CancellationToken cancellationToken = default) =>
+    Task.FromResult<PositionAssignmentTarget?>(normalizedCode switch
+    {
+      EmployeeApiTestHost.PositionACode => new(EmployeeApiTestHost.PositionA, IsActive: true),
+      EmployeeApiTestHost.PositionInactiveCode =>
+        new(EmployeeApiTestHost.PositionInactive, IsActive: false),
+      _ => null
+    });
 }
 
 // Failure carries whatever the write boundary would have produced, which is how the authorization-versus-

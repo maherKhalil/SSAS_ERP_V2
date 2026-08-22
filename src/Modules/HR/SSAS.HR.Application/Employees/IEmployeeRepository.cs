@@ -1,4 +1,4 @@
-using SSAS.BuildingBlocks.Domain;
+﻿using SSAS.BuildingBlocks.Domain;
 using SSAS.HR.Domain.Employees;
 
 namespace SSAS.HR.Application.Employees;
@@ -62,6 +62,25 @@ public interface IEmployeeRepository
   Task<PositionAssignmentTarget?> FindAssignablePositionAsync(
     Guid companyId, Guid positionId, CancellationToken cancellationToken = default);
 
+  // ---- THE SAME TWO QUESTIONS, ASKED BY CODE INSTEAD OF BY IDENTIFIER (FP-009, OD-DOC-004).
+  //
+  // SIBLINGS of the two above, not a generalization of them. A single method taking a discriminator or an
+  // "either identifier or code" parameter would hide WHICH of the two a call site resolves by, and the two
+  // have different exposure: an identifier is a GUID nobody types, while a code is a human-readable value a
+  // file can enumerate. Keeping them separate keeps that difference visible where it matters.
+  //
+  // They exist because an import file names classifications BY CODE — nobody types a GUID into a
+  // spreadsheet — and they apply the identical company predicate, which is what makes a code in another
+  // company come back ABSENT rather than refused. Without that, a rejection message would confirm which
+  // department codes exist in companies the caller cannot see, one row at a time.
+  //
+  // The argument is the NORMALIZED code, because that is the column the unique index is over and the only
+  // one EF can put in a predicate (`DEC-POS-0030`).
+  Task<DepartmentAssignmentTarget?> FindAssignableDepartmentByCodeAsync(
+    Guid companyId, string normalizedCode, CancellationToken cancellationToken = default);
+
+  Task<PositionAssignmentTarget?> FindAssignablePositionByCodeAsync(
+    Guid companyId, string normalizedCode, CancellationToken cancellationToken = default);
 }
 
 // A department, as an employee operation is allowed to see it. `IsActive` is separate from existence

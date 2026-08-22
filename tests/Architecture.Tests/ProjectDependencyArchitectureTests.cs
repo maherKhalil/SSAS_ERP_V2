@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace SSAS.Architecture.Tests;
 
@@ -206,6 +206,18 @@ public sealed class ProjectDependencyArchitectureTests
         "SSAS.BuildingBlocks.Api.Transport.PermissionEndpointConventions",
         // One rowversion wire format for the whole estate.
         "SSAS.BuildingBlocks.Api.Transport.RowVersionCodec",
+        // ---- FP-009. THE CSV BODY READER, AND THE CASE FOR IT BEING HERE RATHER THAN IN HR.
+        //
+        // This guard exists to force exactly this conversation, so: it is here because it knows a content
+        // type, an encoding and a byte order mark, and nothing about an employee. Every argument for
+        // `StrictRequestReader` being shared applies to it unchanged — a second module accepting a CSV body
+        // would otherwise write a second decoder, and the two would disagree about the one thing that
+        // matters, which is what to do with bytes that will not decode.
+        //
+        // A SIBLING, NOT A WIDENING. `ReadStrictJsonAsync` opens with `HasJsonContentType()` and that line
+        // is its contract; teaching it a second content type would make its guarantees conditional. Two
+        // types, two gates, neither one branching on the other's.
+        "SSAS.BuildingBlocks.Api.Transport.StrictCsvReader",
         // Strict JSON and query parsing.
         "SSAS.BuildingBlocks.Api.Transport.StrictRequestReader"
       ],

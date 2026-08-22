@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text;
@@ -88,6 +88,24 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
   public static readonly Guid DepartmentB = Guid.Parse("bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb");
   public static readonly Guid DepartmentInactive = Guid.Parse("99999999-9999-9999-9999-999999999999");
   public static readonly Guid DepartmentOtherCompany = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
+  // ---- FP-009. THE CODES THE SAME FOUR CLASSIFICATIONS RESOLVE FROM.
+  //
+  // An import file names a department and a position BY CODE — nobody types a GUID into a spreadsheet — so
+  // the stubs need a code for each identifier the create refusals are already exercised against. They are
+  // NORMALIZED (uppercase) because that is what the repository contract takes and what the binary-collated
+  // column stores; a lowercase constant here would let a normalization bug pass unnoticed.
+  //
+  // There is deliberately no code for `DepartmentOtherCompany`: an unresolvable code and a code belonging to
+  // another company must be indistinguishable to the caller (`OD-DOC-004`), so giving one a name here would
+  // create a distinction the contract refuses to make.
+  public const string DepartmentACode = "ENG";
+
+  public const string DepartmentInactiveCode = "OLD";
+
+  public const string PositionACode = "DEV";
+
+  public const string PositionInactiveCode = "RETIRED";
 
   private WebApplication? application;
   private HttpClient? client;

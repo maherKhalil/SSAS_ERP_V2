@@ -303,6 +303,49 @@ answered, and `DEC-DOC-0006`'s run record captures which column set left the sys
 > if a future change ever added the column, the record would show it, which is a stronger guarantee than a
 > rule nobody re-reads.
 
+## Decisions taken during implementation
+
+**`DEC-DOC-0014` — THE IMPORT ACCEPTS A RAW `text/csv` BODY. `multipart/form-data` IS NOT USED.**
+*(Ruled 2026-08-22 during Phase 1. **Supersedes** `api-contracts.md` v1.0, which specified multipart.)*
+
+A CSV file **is** a body. Multipart is browser-form machinery serving no API-first need, and it drags in
+form-parsing limits and a test-harness apparatus for nothing.
+
+**What the original decision was protecting is preserved.** `api-contracts.md` argued for multipart on the
+ground that "a file cannot be a JSON field without base64", and that argument is correct — it is an argument
+against putting the file in JSON, not an argument for multipart. It also promised that "the metadata half
+stays strict": the form's non-file fields validated against a declared set, an unrecognised field answering
+`400 request.invalid`. That property survives the change of transport, because the module already has
+exactly that mechanism for **query parameters** — the strict allowlist `FR-DEP-0111`'s filter was blocked by
+until the HR cleanup opened it. The strictness was never about the transport; it was about never silently
+ignoring input.
+
+**The mechanism.** `StrictCsvReader` is a **sibling** of `StrictRequestReader`, not a widening of it.
+`ReadStrictJsonAsync` opens with `HasJsonContentType()`, and that line is its contract rather than a
+precondition: everything it promises about strict binding is only true of a body it recognised. Teaching it a
+second content type would make that first line a branch and its guarantees conditional. The sibling opens
+with its own gate on `text/csv`, in the same register — an unrecognised content type is a **refusal**, never
+a guess — and adds the one refusal JSON has no equivalent of: **bytes that are not valid UTF-8 are refused
+rather than substituted**, because the permissive default replaces every undecodable byte with U+FFFD and
+would import employees whose names are mojibake. A success that produced wrong data is worse than a refusal,
+because nobody investigates it. A UTF-8 BOM is stripped rather than refused, so the file an export writes is
+a file an import accepts (`DEC-DOC-0008`).
+
+**What the reader deliberately does NOT do**: it does not know the column contract, count rows, or enforce a
+size cap. Those belong to the handler, because the handler is what writes the run record — a bad header and
+an exceeded cap are **`Refused` runs that consume the import key**, and a refusal that never reached the
+handler could not have recorded one.
+
+> **ONE QUESTION THIS RULING LEAVES OPEN, RECORDED RATHER THAN DECIDED.** With no multipart form there is no
+> form field to carry `importKey`. Phase 1 does not answer it, because Phase 1 exposes no routes and the
+> handler takes the key as a command parameter.
+>
+> **Engineering recommendation (labeled, not settled):** a **query parameter** under the existing strict
+> allowlist. It is request data rather than ambient context, which is what separates it from `X-Company-Id`;
+> and the allowlist already gives it the exact property multipart was promising — a declared set, with an
+> unrecognised name answering `400 request.invalid`. **Phase 2 confirms or overrides this**, and until it
+> does, no route exists that could depend on either answer.
+
 **`OD-DOC-007`, `OD-DOC-008`, `OD-DOC-009` — DEFERRED to FP-010 (`OD-DOC-001`).**
 
 Binary storage location, retention and erasure against the no-physical-delete convention, and whether V5

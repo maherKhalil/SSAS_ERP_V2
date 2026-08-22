@@ -44,14 +44,25 @@ Every HR route to date accepts and returns `application/json` with strict bindin
 
 | Route | Request | Response |
 |---|---|---|
-| `POST .../import`, `.../import/validate` | `multipart/form-data` — one file part plus an `importKey` field | `application/json` |
+| `POST .../import`, `.../import/validate` | **`text/csv`** — the file **is** the body | `application/json` |
 | `GET .../export` | — | `text/csv` |
+
+> **SUPERSEDED 2026-08-22 by `DEC-DOC-0014`, and recorded rather than rewritten.** This table said
+> `multipart/form-data` — one file part plus an `importKey` field — and the row above is the as-built answer.
+> Multipart is browser-form machinery serving no API-first need, and it drags in form-parsing limits and a
+> test-harness apparatus for nothing.
+>
+> The argument the original made is untouched and is quoted below because it is still right: it is an
+> argument against putting a file in JSON, which is not the same as an argument for multipart. The property
+> it was protecting survives — see `DEC-DOC-0014` for the mechanism, and for the one question the change
+> leaves open (where `importKey` now travels, which Phase 2 settles).
 
 **The break is unavoidable and is contained.** A file cannot be a JSON field without base64, which inflates
 it by a third and forces the whole payload into memory before parsing. What is preserved is the part that
-matters: **the metadata half stays strict.** The form's non-file fields are validated against a declared set
-and an unrecognized field is `400 request.invalid`, exactly as an undeclared JSON property is. The strictness
-was never about JSON; it was about never silently ignoring input.
+matters: **the metadata half stays strict.** ~~The form's non-file fields are~~ **The request's declared
+parameters are** validated against a declared set and an unrecognized field is `400 request.invalid`, exactly
+as an undeclared JSON property is. The strictness was never about JSON; it was about never silently ignoring
+input.
 
 **No `Content-Disposition` filename echo from caller input on the export.** The export file name is
 server-generated. Reflecting a caller-supplied name into a response header is a header-injection surface for
@@ -62,13 +73,21 @@ no benefit.
 ```http
 POST /api/hr/employees/import
 X-Company-Id: …
-Content-Type: multipart/form-data; boundary=…
+Content-Type: text/csv; charset=utf-8
 ```
 
-| Part | Type | Required |
+*(Superseded shape, `DEC-DOC-0014`: this read `Content-Type: multipart/form-data` with a `file` part and an
+`importKey` field.)*
+
+| Input | Type | Required |
 |---|---|---|
-| `file` | CSV, UTF-8, ≤ 10 MB, ≤ 5,000 data rows | Yes |
-| `importKey` | text, ≤ 128 chars | Yes (`DEC-DOC-0004`) |
+| body | CSV, UTF-8, ≤ 10 MB, ≤ 5,000 data rows | Yes |
+| `importKey` | text, ≤ 128 chars — **where it travels is Phase 2's to settle** (`DEC-DOC-0014`) | Yes (`DEC-DOC-0004`) |
+
+**`charset` is checked, not ignored.** `text/csv` and `text/csv; charset=utf-8` are the same contract; a
+request declaring any *other* charset is refused rather than decoded as UTF-8 anyway, and so is a body whose
+bytes are not valid UTF-8. A UTF-8 BOM is stripped, because `DEC-DOC-0008` has exports emit one and requires
+an exported file to re-import.
 
 ### Column contract
 

@@ -1,4 +1,4 @@
-namespace SSAS.Integration.Tests;
+﻿namespace SSAS.Integration.Tests;
 
 // Classes in this collection run ONE AT A TIME relative to each other. xUnit parallelizes by collection,
 // so every member added here is paid for by every other member, serially, on every run.
@@ -28,16 +28,43 @@ namespace SSAS.Integration.Tests;
 // written in terms of 1-3 (or the timing exception) does not belong here. If you cannot name the shared
 // resource, there isn't one.
 //
+// ---- THE MEMBERSHIP (five classes, 2026-08-23 after round 2)
+//
+//   TenantBackupProviderSqlServerTests              instance backup directory
+//   TenantRestoreVerificationProviderSqlServerTests  full-size restore files, same disk
+//   TenantRestoreVerificationProcessLossSqlServerTests  both of the above, plus mid-operation kills
+//   TenantBackupPermissionBoundarySqlServerTests     server-level principals (EXECUTE AS LOGIN)
+//   TenantRestoreVerificationPermissionSqlServerTests  server-level principals
+//
+// Every one names a resource under clause 1 or 2 of the rule above. None is here for weight, and none is
+// here because its neighbours are. **This list is part of the comment: a member added without a line here
+// is a member added without a reason.**
+//
 // ---- WHAT THIS COST, AND WHY THE RULE EXISTS
 //
 // The comment this replaces was written for THREE classes and said so ("these three classes") — it named
 // the buffer pool, cited a real observed failure, and was accurate. It was never updated. Twelve more
 // classes joined over the following weeks, each by pattern-matching its neighbours rather than by naming a
 // resource, and the comment went on describing a collection that no longer existed. By 2026-08-23 the chain
-// was FIFTEEN classes and the single longest pole in the gate.
+// was FIFTEEN classes and the single longest pole in the gate — the serial chain measured 6,788s against a
+// 6,790s suite, so the whole of Integration ran in the shadow of this one collection.
 //
-// Round 1 (2026-08-23) removed SEVEN that hold nothing shared. Each of them carries a note where its
-// attribute used to be, saying it LEFT and why, so the next reader does not re-add it by pattern.
+// ROUND 1 removed SEVEN that hold nothing shared. Wall 113m09s -> 46m29s.
+//
+// ROUND 2 removed THREE more, and the interesting one is why each had looked safe to keep:
+//
+//   * TenantCutoverOrchestration held NO shared resource at all. It was serial because it ASSERTED ON
+//     ELAPSED TIME — and a wall-clock assertion is not a reason to serialize, it is a reason to fix the
+//     assertion. The 30-second bound was converted to a 5-minute hang guard with the elapsed time reported
+//     rather than asserted, and the class left. It had been ~68% of the remaining chain.
+//   * TenantBackupSessionLoss took an applock that LOOKS instance-wide. `sp_getapplock` is
+//     database-scoped, and the worker connects to the fixture's own disposable catalog.
+//   * TenantBackupScheduler reads msdb.dbo.backupset, an instance-wide table — but every read is
+//     predicated on its own Guid-named catalog. Reading a shared table is not sharing it.
+//
+// **All three had a plausible-sounding reason that did not survive being checked.** That is the argument
+// for the rule above: a reason that is written down can be re-read, and a reason that is merely assumed
+// cannot.
 //
 // The one accuracy the old comment had is worth keeping: two of the founding three DID name their resource
 // (the instance backup directory, and full-size restore files on the same disk), and both are still here.

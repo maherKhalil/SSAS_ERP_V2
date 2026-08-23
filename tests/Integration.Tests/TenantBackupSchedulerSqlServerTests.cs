@@ -16,11 +16,15 @@ namespace SSAS.Integration.Tests;
 // established here is the INTERACTION: that a sweep drives the real executor and provider end to end, and
 // that Phase B's ownership and in-flight guards behave as the fleet layer assumes when two sweeps or an
 // outside backup collide.
-// SERIAL — reads msdb.dbo.backupset, an INSTANCE-WIDE history table. Its predicate is scoped to its own
-// catalog so concurrent backups cannot match it, which makes this the weakest claim in the collection
-// and a round-2 candidate. It stays for now because its own flake (see the test) shows this class is
-// timing-sensitive, and freeing it while that is unresolved would confound two variables.
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 2).
+// Its msdb reads ARE instance-wide table reads, and every one of them is PREDICATED ON ITS OWN
+// Guid-named TargetCatalog — re-read line by line on 2026-08-23 before removal. The count is
+// `WHERE database_name = N'{TargetCatalog}'`; the overlap self-join carries
+// `a.database_name = b.database_name` AND `WHERE a.database_name = N'{TargetCatalog}'`, so BOTH sides
+// are pinned. A concurrent backup of any other catalog cannot satisfy either predicate.
+//
+// Reading an instance-wide table is not sharing it. Sharing would be reading it UNPREDICATED, and this
+// class does not.
 public sealed class TenantBackupSchedulerSqlServerTests
 {
   [Fact]

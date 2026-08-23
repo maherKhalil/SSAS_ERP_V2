@@ -639,8 +639,7 @@ public sealed class TenantBackupProviderSqlServerTests
     }
 
     public static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     public static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog }.ConnectionString;

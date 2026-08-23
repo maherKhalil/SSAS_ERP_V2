@@ -366,8 +366,7 @@ public sealed class TenantRestoreVerificationPermissionSqlServerTests
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SSAS_BackupTests");
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     private async Task<SqlConnection> OpenAsync(string catalog, bool impersonate)
     {

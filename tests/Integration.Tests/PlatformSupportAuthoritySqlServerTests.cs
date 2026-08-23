@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -804,8 +804,7 @@ public sealed class PlatformSupportAuthoritySqlServerTests
     public static async Task<PlatformSupportSqlDatabase> CreateAsync(bool migrate = true)
     {
       var databaseName = $"SSAS_ERP_FP003_PSA_{Guid.NewGuid():N}";
-      var configured = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      var configured = IntegrationSqlEnvironment.BaseConnectionString;
       var builder = new SqlConnectionStringBuilder(configured) { InitialCatalog = databaseName };
       var database = new PlatformSupportSqlDatabase(builder.ConnectionString);
       try

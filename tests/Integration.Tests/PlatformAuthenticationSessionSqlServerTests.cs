@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
@@ -405,8 +405,7 @@ public sealed class PlatformAuthenticationSessionSqlServerTests
     public static async Task<PlatformSessionSqlDatabase> CreateAsync()
     {
       var databaseName = $"SSAS_ERP_FP003_PSESS_{Guid.NewGuid():N}";
-      var configured = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      var configured = IntegrationSqlEnvironment.BaseConnectionString;
       var builder = new SqlConnectionStringBuilder(configured) { InitialCatalog = databaseName };
       var database = new PlatformSessionSqlDatabase(builder.ConnectionString);
       try

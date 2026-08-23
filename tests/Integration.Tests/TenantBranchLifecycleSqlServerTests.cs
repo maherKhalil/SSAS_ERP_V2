@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -1352,8 +1352,7 @@ public sealed class TenantBranchLifecycleSqlServerTests
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=true;TrustServerCertificate=true";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     private static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog }.ConnectionString;

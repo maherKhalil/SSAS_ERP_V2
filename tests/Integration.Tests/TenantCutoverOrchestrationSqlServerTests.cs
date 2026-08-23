@@ -1111,8 +1111,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     public static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }

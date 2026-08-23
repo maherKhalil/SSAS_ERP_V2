@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -424,8 +424,7 @@ public sealed class PlatformLocalizationSqlServerTests
   {
     public static LocalizationSqlDatabase CreateUnmigrated()
     {
-      var configured = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      var configured = IntegrationSqlEnvironment.BaseConnectionString;
       var builder = new SqlConnectionStringBuilder(configured)
       {
         InitialCatalog = $"SSAS_ERP_FP004_{Guid.NewGuid():N}"

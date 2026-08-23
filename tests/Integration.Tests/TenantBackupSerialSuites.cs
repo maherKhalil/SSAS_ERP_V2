@@ -28,6 +28,13 @@
 // written in terms of 1-3 (or the timing exception) does not belong here. If you cannot name the shared
 // resource, there isn't one.
 //
+// AND THE REMEDY HAS A BOUNDARY: returning a class to this collection answers a SHARING failure only.
+// Saturation — the instance being unable to serve the concurrency the suite asks for, which surfaces as
+// setup timeouts spread across unrelated classes — is not sharing, and re-serializing classes to cure it
+// would spend the suite's parallelism on a problem that is not theirs. That case is answered where the
+// setup timeout lives (`IntegrationSqlEnvironment`), and its next escalation is a stated parallelism
+// ceiling, never a longer chain here.
+//
 // ---- THE MEMBERSHIP (five classes, 2026-08-23 after round 2)
 //
 //   TenantBackupProviderSqlServerTests              instance backup directory

@@ -951,8 +951,7 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     public static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }

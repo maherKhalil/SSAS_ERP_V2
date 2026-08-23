@@ -710,8 +710,7 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
 
     private static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(
-        Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False")
+        IntegrationSqlEnvironment.BaseConnectionString)
       {
         InitialCatalog = catalog,
         Pooling = false

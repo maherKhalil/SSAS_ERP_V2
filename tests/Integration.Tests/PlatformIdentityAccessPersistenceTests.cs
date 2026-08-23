@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -20,9 +20,9 @@ public sealed class PlatformIdentityAccessPersistenceTests
   public async Task Complete_platform_migration_chain_enforces_current_iam_persistence_invariants()
   {
     var databaseName = $"SSAS_ERP_FP001_{Guid.NewGuid():N}";
-    var connectionString = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      $"Server=localhost;Database={databaseName};Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
-    connectionString = WithDatabase(connectionString, databaseName);
+    // Resolved through IntegrationSqlEnvironment so this path carries the 120s setup command timeout
+    // like every other fixture — see that file for the 2026-08-23 startup-stampede incident.
+    var connectionString = WithDatabase(IntegrationSqlEnvironment.BaseConnectionString, databaseName);
     var tenantOne = Guid.NewGuid();
     var tenantTwo = Guid.NewGuid();
     var clock = new MutableClock(new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero));

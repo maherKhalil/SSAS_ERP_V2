@@ -221,3 +221,44 @@ Two of the fixes are worth recording for their content rather than their arithme
 * The retry's `TablesCopied` moved 7 → 14 while `TablesAlreadyComplete` stayed at **6**. GL's tables are
   empty in that fixture, and an empty destination table is indistinguishable from one never copied — so the
   retry re-copies all seven. The asymmetry is the retry's safety claim working, not a regression.
+
+## The exit gate lost its test host twice, and what the measurement said
+
+Between the first gate run and the green one, the Integration test host DIED twice — once in Release under
+a foreign integration suite sharing the box, once in Debug on a quiet box — each time in the two cutover
+classes, with 15 and 12 tests never executed. Recorded here because it shaped the gate this package leaves
+behind, not because GL caused it.
+
+**The first loss was nearly unclassifiable, and that was the real defect.** vstest reported
+`Failed: 3, Passed: 747, Total: 750` — which reads as an ordinary red while 15 tests had silently vanished
+from the total — and named the cause as a JWT certificate warning that was merely the last line the dying
+process wrote to stderr. Recovering even the CLASS of the loss took a TRX diff against the other
+configuration. Three structural fixes followed, in the same spirit as the earlier exit-code and
+log-filtering repairs: the Integration leg runs under `--blame-crash` (a sequence file names the test in
+flight), the console grep matches `Test Run Aborted|host process crashed`, and a coarse working-set sampler
+writes a CSV beside the logs. **A red that under-reports is one accident away from a green that
+under-reports.**
+
+**The leading hypothesis was measured, and it was wrong.** Both crashing classes had left the serial
+collection that same day under gate economics, so peak allocation from their new overlap was the obvious
+suspect. A three-arm experiment with pre-registered predictions — each class alone, then both together,
+memory sampled throughout — returned:
+
+| Arm | Tests | Peak host working set |
+|---|---|---|
+| Copy alone | 26/26 pass | 213 MB |
+| Orchestration alone | 16/16 pass | 239 MB |
+| Both together | 42/42 pass | **261 MB** |
+| Full suite, sixteen parallel collections | 765/765 pass | **509 MB Debug / 555 MB Release** |
+
+The prediction was ~450 MB and an additive climb toward death; the measurement was 261 MB, flat, and a clean
+pass. **The pair's overlap cannot produce the failure**, so the targeted remedy that had been prepared for it
+— serializing the two classes against each other — was NOT built. Across two deaths and five clean runs the
+host never grew large; it sits in the 200–555 MB band whether it lives or dies, and no dump, WER report or
+Application Error event was ever produced despite the crash utility being confirmed attached. That is the
+shape of a process ended rather than one that ran out of room, and the cause remains open.
+
+**A note on the removed allocation budget.** The 287 MB budget dropped on 2026-08-21 was a real signal with
+no valid discriminator — and these numbers show it was calibrated *below* where this suite normally runs, so
+it was destined to fire on a healthy machine. The sampler is the same vigilance in the valid form: reported,
+never asserted, so it can inform a diagnosis without ever failing a gate.

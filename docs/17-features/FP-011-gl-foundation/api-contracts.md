@@ -1,12 +1,21 @@
 ---
 package: FP-011
 title: General Ledger — API Contracts
-status: DRAFT — route surface sketched; no contract is fixed
-version: 0.1
+status: APPROVED — the decisions the sketch waited on are ruled; exact wire shapes are the build's
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — API Contracts
+
+> **DECISIONS CLOSED, 2026-08-23.** All nine owner decisions are ruled; conditional wording below is kept as
+> the record of what was weighed, with the ruling stated where it changes the answer.
+>
+> | | | | |
+> |---|---|---|---|
+> | `0001` catalog: ratified into `GL.md` | `0002` **single currency** | `0003` **tenant-level chart** | `0004` **company calendar** |
+> | `0005` **no branch dimension** | `0006` **reversal + `ReversesJournalId`** | `0007` **two aggregates** | `0008` **period close only** |
+> | `0009` **manual entry only** | | | |
 
 > **Sketch, not contract.** Request and response shapes follow `OD-GL-0002` (does an amount carry a currency?)
 > and `OD-GL-0005` (does a line carry a branch?), so fixing them now would fix the wrong thing. What is fixed
@@ -68,12 +77,11 @@ POST /api/gl/journals
 }
 ```
 
-* **Under `OD-GL-0002` option 2** each line additionally carries a transaction currency, amount and rate — and
-  the response carries both transaction and base amounts.
-* **Under `OD-GL-0005` option 3** each line carries a `branchId`, and the write path resolves the branch
-  dimension in addition to the company.
-* **Under `OD-GL-0007` option 2 or 3** a draft surface exists: `POST/PUT/DELETE /api/gl/journal-drafts` plus a
-  promotion route. Under option 1 none of that exists at all.
+* **`OD-GL-0002` ruled single currency**, so no line carries a currency, amount-in-currency or rate.
+* **`OD-GL-0005` declined the branch dimension**, so no line carries a `branchId`.
+* **`OD-GL-0007` ruled two aggregates**, so a draft surface DOES exist — a mutable
+  `/api/gl/journal-drafts` family plus a posting route that promotes a draft into a `JournalEntry`. The
+  journal-posting route above therefore posts *a draft*, not a body of lines.
 
 **The response never echoes a currency the request supplied**, because the request cannot supply one. It
 echoes the owning Company's `BaseCurrencyCode`, read through `ITenantCompanyCurrencyLookup` — `ADR-027`

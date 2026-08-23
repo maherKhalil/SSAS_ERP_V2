@@ -1,12 +1,21 @@
 ---
 package: FP-011
 title: General Ledger — Authorization Model
-status: DRAFT — permission set proposed; scope shape conditional on OD-GL-0003 and OD-GL-0005
-version: 0.1
+status: APPROVED — permission set and scope shape settled (2026-08-23)
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Authorization Model
+
+> **DECISIONS CLOSED, 2026-08-23.** All nine owner decisions are ruled; conditional wording below is kept as
+> the record of what was weighed, with the ruling stated where it changes the answer.
+>
+> | | | | |
+> |---|---|---|---|
+> | `0001` catalog: ratified into `GL.md` | `0002` **single currency** | `0003` **tenant-level chart** | `0004` **company calendar** |
+> | `0005` **no branch dimension** | `0006` **reversal + `ReversesJournalId`** | `0007` **two aggregates** | `0008` **period close only** |
+> | `0009` **manual entry only** | | | |
 
 > GL inherits an authorization model that is finished. Nothing here is new mechanism; the work is choosing
 > the permission set and deciding how many dimensions a GL read resolves.
@@ -83,8 +92,9 @@ total and silent, which is why it is worth repeating here.
 * **an empty set refuses the read** at construction, so `WHERE CompanyId IN ()` is unrepresentable rather than
   guarded against (`ADR-025` decision 10).
 
-**How many dimensions?** Two (tenant, company) if `OD-GL-0005` says no branch dimension; three if it adds one.
-The scope type's shape follows that answer, which is why `DEC-GL-0004` is drafted conditionally.
+**How many dimensions? TWO — tenant and company.** `OD-GL-0005` declined the branch dimension for V1, so
+`JournalReadScope` resolves two rather than three. It is a smaller scope object, not a weaker one: it is still
+unforgeable, still built by one resolver against live state, and still refuses an empty authorized set.
 
 ## Writes
 
@@ -94,8 +104,8 @@ that means:
 | Write | Company-scoped? |
 |---|---|
 | Post a journal | **Yes** — `JournalEntry` is company-owned |
-| Create or update an account | **Only under `OD-GL-0003` option 2.** Under option 1 the chart is tenant-level and account maintenance is a tenant-level write, authorized by permission alone |
-| Close a fiscal period | **Depends on `OD-GL-0004`** by the same mechanism |
+| Create or update an account | **No.** `OD-GL-0003` ruled the chart tenant-level, so account maintenance is a tenant-level write authorized by permission alone — `Account` is not `ICompanyOwnedEntity` |
+| Close a fiscal period | **Yes.** `OD-GL-0004` ruled the calendar company-level, so closing runs `AuthorizeCurrentCompanyAsync` |
 
 **This is the part most likely to be got wrong by reading the schema instead of the model.** `CompanyId`
 appearing on a table is not a column decision — it is `ICompanyOwnedEntity`, and it changes what

@@ -1,16 +1,20 @@
 ---
 package: FP-011
 title: General Ledger — Acceptance Criteria
-status: DRAFT — each AC inherits the OWNER-DECISION-REQUIRED status of its requirement
-version: 0.1
+status: APPROVED — every requirement these trace to is ratified (2026-08-23)
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Acceptance Criteria
 
-> Every `AC-GL-*` below traces to a **proposed** `REQ-GL-*` and therefore carries the same status. None is
-> agreed. Where an owner decision changes the criterion rather than merely its wording, the criterion says so
-> instead of picking an answer.
+> **APPROVED.** Every `AC-GL-*` traces to a ratified `REQ-GL-*`. Where a criterion was written
+> conditionally on an owner decision, the decision is now recorded beside it — the conditional wording is
+> kept so a reader can see what the criterion would have been under the other answer.
+>
+> Two are now settled rather than conditional: **`AC-GL-0005` holds at full strength** (`OD-GL-0007` chose
+> two aggregates, so posted-journal immutability is structurally enforced), and **`AC-GL-0013` asserts
+> uniqueness only** — gaplessness was raised and deliberately not promised.
 
 ---
 

@@ -1,12 +1,21 @@
 ---
 package: FP-011
 title: General Ledger — Data Model
-status: DRAFT — no schema is authored; shapes conditional on OD-GL-0002/0003/0004/0005/0007
-version: 0.1
+status: APPROVED — table shapes settled; the migration is the build's to author
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Data Model
+
+> **DECISIONS CLOSED, 2026-08-23.** All nine owner decisions are ruled; conditional wording below is kept as
+> the record of what was weighed, with the ruling stated where it changes the answer.
+>
+> | | | | |
+> |---|---|---|---|
+> | `0001` catalog: ratified into `GL.md` | `0002` **single currency** | `0003` **tenant-level chart** | `0004` **company calendar** |
+> | `0005` **no branch dimension** | `0006` **reversal + `ReversesJournalId`** | `0007` **two aggregates** | `0008` **period close only** |
+> | `0009` **manual entry only** | | | |
 
 > **No migration is authored and no schema is final.** `OD-GL-0002` (currency) and `OD-GL-0003` (chart
 > ownership) each change the column list of tables in this module, so writing DDL now would be work discarded
@@ -32,19 +41,19 @@ table naming is not a new invention.
 
 | Table | Purpose | Ownership | Append-only? |
 |---|---|---|---|
-| `GlAccount` | Chart of accounts | Tenant; **+ company under `OD-GL-0003` option 2** | No — `IsActive` and `Name` change |
-| `GlFiscalYear` | Fiscal years | Tenant; **+ company under `OD-GL-0004`** | No |
+| `GlAccount` | Chart of accounts | **Tenant only** (`OD-GL-0003`) | No — `IsActive` and `Name` change |
+| `GlFiscalYear` | Fiscal years | **Tenant + company** (`OD-GL-0004`) | No |
 | `GlFiscalPeriod` | Periods within a year | Via its year | No — `Status` changes on close |
-| `GlJournalEntry` | Journal headers | Tenant + company | **Yes, under `OD-GL-0007` options 1/3** |
+| `GlJournalEntry` | Journal headers | Tenant + company | **Yes** (`OD-GL-0007` ruled two aggregates) |
 | `GlJournalLine` | Journal lines | Via its entry | **Yes, with its entry** |
-| `GlJournalDraft` *(+ lines)* | Editable drafts | Tenant + company | No — **exists only under `OD-GL-0007` option 3** |
+| `GlJournalDraft` *(+ lines)* | Editable drafts | Tenant + company | No — **exists**, per `OD-GL-0007` option 3 |
 
 ## Indexes and constraints that are already implied
 
 | Constraint | Source | Shape |
 |---|---|---|
-| Journal number uniqueness | `BR-GL-0005` | Unique index on *(FiscalYear, JournalNumber)* **or** *(CompanyId, FiscalYear, JournalNumber)* — `OD-GL-0004` decides which, and it is not a change that can be made cheaply later |
-| Account code uniqueness | `REQ-GL-0005` | Unique within the owning scope — `OD-GL-0003` decides whether that scope includes `CompanyId` |
+| Journal number uniqueness | `BR-GL-0005` | Unique index on **_(CompanyId, FiscalYear, JournalNumber)_** — `OD-GL-0004` |
+| Account code uniqueness | `REQ-GL-0005` | Unique **within the tenant** — the chart is tenant-level (`OD-GL-0003`), so `CompanyId` is not part of the key |
 | Period non-overlap | `REQ-GL-0009` | Not expressible as a simple unique index; belongs to the aggregate, with a test that goes through real SQL |
 | Line-to-entry cascade | aggregate ownership | Lines are deleted with their entry — **which, for an append-only entry, is a path that must never execute**. Both halves should be asserted |
 | Balance | `BR-GL-0001` | **Deliberately not a database constraint.** `DEC-GL-0008` — a CHECK cannot see sibling rows, and a trigger puts a business rule where the domain cannot test it |

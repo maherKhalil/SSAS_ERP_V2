@@ -1,14 +1,28 @@
 ---
 package: FP-011
 title: General Ledger — Proposed Requirements
-status: DRAFT — every line below is OWNER-DECISION-REQUIRED
-version: 0.1
+status: APPROVED — ratified into Requirement-Catalog/GL.md (OD-GL-0001, 2026-08-23)
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Proposed Requirements
 
-> ## THE CATALOG GAP
+> ## RATIFIED, 2026-08-23 — AND THE CATALOG GAP IS CLOSED
+>
+> **`OD-GL-0001` ruled option 2: these lines are ratified into
+> `docs/00-Master-Product-Specification/Requirement-Catalog/GL.md`**, in `HR.md`'s flat shape — the shape
+> question answered as **precedent over template**, deliberately and on the record.
+>
+> The identifiers `REQ-GL-0001`–`0014` are **preserved exactly as drafted**. `README.md` makes requirement
+> IDs immutable, and renumbering them into `HR.md`'s 100-block families would have been a cosmetic change
+> that invalidated every acceptance criterion, test scenario and traceability row already written against
+> them.
+>
+> The `OWNER-DECISION-REQUIRED` markers below are left in place as the record of what each line was
+> conditional on when it was drafted, and which decision resolved it. They are no longer open.
+>
+> ## THE CATALOG GAP, AS IT WAS
 >
 > **`docs/00-Master-Product-Specification/Requirement-Catalog/` has no `GL.md`.** The domain is declared
 > (`Requirement-Catalog/README.md` lists `REQ-GL | General Ledger`) and the identifier space is reserved

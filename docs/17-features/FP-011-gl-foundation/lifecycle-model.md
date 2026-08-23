@@ -1,12 +1,21 @@
 ---
 package: FP-011
 title: General Ledger — Lifecycle Model
-status: DRAFT — the journal lifecycle depends entirely on OD-GL-0007
-version: 0.1
+status: APPROVED — OD-GL-0007 ruled two aggregates; period and account lifecycles settled
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Lifecycle Model
+
+> **DECISIONS CLOSED, 2026-08-23.** All nine owner decisions are ruled; conditional wording below is kept as
+> the record of what was weighed, with the ruling stated where it changes the answer.
+>
+> | | | | |
+> |---|---|---|---|
+> | `0001` catalog: ratified into `GL.md` | `0002` **single currency** | `0003` **tenant-level chart** | `0004` **company calendar** |
+> | `0005` **no branch dimension** | `0006` **reversal + `ReversesJournalId`** | `0007` **two aggregates** | `0008` **period close only** |
+> | `0009` **manual entry only** | | | |
 
 Three things have a lifecycle in GL: the **journal**, the **fiscal period**, and the **account**. Only one of
 them is genuinely undecided, and it is the one that decides whether `BR-GL-0002` is enforced by the platform
@@ -14,7 +23,11 @@ or by convention.
 
 ---
 
-# The journal — `OD-GL-0007`
+# The journal — `OD-GL-0007`, **RULED: option 3, two aggregates**
+
+The three options are kept below because the one chosen is only meaningful next to the ones refused — in
+particular, option 2 is the only one that would have cost `BR-GL-0002` its structural enforcement, and that
+is worth being able to re-read.
 
 ## Option 1 — no drafts (proposed default)
 

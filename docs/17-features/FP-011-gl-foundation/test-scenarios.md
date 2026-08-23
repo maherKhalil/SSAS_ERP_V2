@@ -1,12 +1,21 @@
 ---
 package: FP-011
 title: General Ledger — Test Scenarios
-status: DRAFT — scenarios proposed, none written
-version: 0.1
+status: APPROVED — scenarios settled by the 2026-08-23 rulings
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Test Scenarios
+
+> **DECISIONS CLOSED, 2026-08-23.** All nine owner decisions are ruled; conditional wording below is kept as
+> the record of what was weighed, with the ruling stated where it changes the answer.
+>
+> | | | | |
+> |---|---|---|---|
+> | `0001` catalog: ratified into `GL.md` | `0002` **single currency** | `0003` **tenant-level chart** | `0004` **company calendar** |
+> | `0005` **no branch dimension** | `0006` **reversal + `ReversesJournalId`** | `0007` **two aggregates** | `0008` **period close only** |
+> | `0009` **manual entry only** | | | |
 
 > Proposed scenarios, with the **layer each must run at** stated explicitly. That column is the point of this
 > document: several of the guarantees GL depends on are enforced by code a handler test never executes, and a

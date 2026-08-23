@@ -1,12 +1,21 @@
 ---
 package: FP-011
 title: General Ledger — Domain Model
-status: DRAFT — shapes conditional on OD-GL-0002, OD-GL-0003, OD-GL-0005, OD-GL-0007
-version: 0.1
+status: APPROVED — all shapes settled by the 2026-08-23 rulings
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Domain Model
+
+> **DECISIONS CLOSED, 2026-08-23.** All nine owner decisions are ruled; conditional wording below is kept as
+> the record of what was weighed, with the ruling stated where it changes the answer.
+>
+> | | | | |
+> |---|---|---|---|
+> | `0001` catalog: ratified into `GL.md` | `0002` **single currency** | `0003` **tenant-level chart** | `0004` **company calendar** |
+> | `0005` **no branch dimension** | `0006` **reversal + `ReversesJournalId`** | `0007` **two aggregates** | `0008` **period close only** |
+> | `0009` **manual entry only** | | | |
 
 > Four aggregates, and **not one of them has a settled shape**, because `OD-GL-0003` (chart ownership),
 > `OD-GL-0005` (branch dimension) and `OD-GL-0007` (drafts) each change interfaces rather than fields.
@@ -50,8 +59,9 @@ JournalEntry
   Lines               >= 2, balanced (BR-GL-0001)
 ```
 
-**Interfaces:** `Entity<Guid>, IAuditableEntity, ITenantOwnedEntity, ICompanyOwnedEntity` — and
-`IAppendOnlyEntity` **if and only if** `OD-GL-0007` resolves to option 1 or 3.
+**Interfaces:** `Entity<Guid>, IAuditableEntity, ITenantOwnedEntity, ICompanyOwnedEntity,
+IAppendOnlyEntity`. **`OD-GL-0007` ruled option 3 — two aggregates — so the append-only marker is
+unconditional**, and `JournalEntry` can be created only by posting a `JournalDraft`.
 
 **The `OD-GL-0007` consequence, stated concretely.** `IAppendOnlyEntity` is a property of the *type*. Under
 option 2 (one aggregate carrying a Draft/Posted status) the entity must be `Modified` to move from draft to
@@ -79,7 +89,7 @@ JournalLine
   Debit               decimal(19,4)  DEC-GL-0001
   Credit              decimal(19,4)  DEC-GL-0001
   Description         nvarchar, optional
-  BranchId            OD-GL-0005 option 3 only
+  (no BranchId)       OD-GL-0005 declined the branch dimension for V1
   LineNumber          stable ordering within the entry
 ```
 
@@ -101,7 +111,7 @@ the same change**, per that ADR's first deferred obligation.
 Account
   Id
   TenantId            always
-  CompanyId           ONLY under OD-GL-0003 option 2
+  (no CompanyId)      OD-GL-0003 ruled TENANT-level: ITenantOwnedEntity only, never ICompanyOwnedEntity
   Code                nvarchar, unique within its owning scope
   Name                nvarchar
   IsActive            BR-GL-0004
@@ -131,7 +141,7 @@ reconstructable."*
 FiscalYear                       FiscalPeriod
   Id                               Id
   TenantId                         FiscalYearId
-  CompanyId    OD-GL-0004          StartDate / EndDate   contiguous, non-overlapping
+  CompanyId    company-owned       StartDate / EndDate   contiguous, non-overlapping
   Code / Name                      Status                Open | Closed  (BR-GL-0003)
   StartDate / EndDate              RowVersion            mutable
   RowVersion

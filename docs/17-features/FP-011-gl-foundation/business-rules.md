@@ -1,12 +1,21 @@
 ---
 package: FP-011
 title: General Ledger — Business Rules as They Exist
-status: DRAFT — analysis of existing authority, no new rules proposed
-version: 0.1
+status: APPROVED — analysis of existing authority; the rulings it fed are recorded (2026-08-23)
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Business Rules
+
+> **DECISIONS CLOSED, 2026-08-23.** All nine owner decisions are ruled; conditional wording below is kept as
+> the record of what was weighed, with the ruling stated where it changes the answer.
+>
+> | | | | |
+> |---|---|---|---|
+> | `0001` catalog: ratified into `GL.md` | `0002` **single currency** | `0003` **tenant-level chart** | `0004` **company calendar** |
+> | `0005` **no branch dimension** | `0006` **reversal + `ReversesJournalId`** | `0007` **two aggregates** | `0008` **period close only** |
+> | `0009` **manual entry only** | | | |
 
 > **This document proposes no new business rules.** `Business-Rules.md` is product authority and adding to it
 > is not a feature package's act. What follows is the five existing `BR-GL-*` rules, read closely for what
@@ -15,7 +24,7 @@ date: 2026-08-23
 
 The rules are terse. That is not a criticism: five sentences that are each unambiguous are worth more than
 five pages that are not. But terse rules settle less than they appear to, and the reading below is the
-evidence for every `OD-GL-*` raised in [decisions-open.md](decisions-open.md).
+evidence for every `OD-GL-*` raised in [decisions-approved.md](decisions-approved.md).
 
 ---
 
@@ -26,8 +35,8 @@ for any journal type. `DEC-GL-0008` proposes enforcing it in the aggregate at po
 
 **Leaves open:** *balanced in what?* In a single-currency ledger the question does not arise. In a
 multi-currency one there are two distinct rules — balanced in the transaction currency, and balanced in the
-base currency after conversion — and they are not the same rule. `OD-GL-0002` decides whether this rule is
-one obligation or two.
+base currency after conversion — and they are not the same rule. **`OD-GL-0002` ruled single currency for
+V1, so this rule is ONE obligation.**
 
 **Why it is not a database constraint.** A CHECK constraint cannot see a set of sibling rows, and a trigger
 would place a business rule where the domain layer cannot test it. The rule belongs to the aggregate that owns
@@ -53,8 +62,9 @@ For GL: **a correction is another journal, never a rewrite.**
   assumes nothing beyond raising it — `OD-GL-0006`.
 * It says *posted* journals. If an unposted draft exists and is editable, then the aggregate is mutable for
   part of its life and **cannot carry `IAppendOnlyEntity` from creation**, because the interface is a property
-  of the type and not of a state. That is `OD-GL-0007`, and it decides whether `BR-GL-0002` is enforced
-  structurally or by convention.
+  of the type and not of a state. That is `OD-GL-0007`, **ruled: two aggregates.** `JournalDraft` carries the
+  mutable life, `JournalEntry` is append-only from creation, and `BR-GL-0002` is therefore enforced
+  **structurally** by the write boundary rather than by convention.
 
 ---
 
@@ -65,7 +75,8 @@ For GL: **a correction is another journal, never a rewrite.**
 **Leaves open:** whose period. The Glossary defines a Fiscal Period as *"a configurable accounting period used
 by the General Ledger"* without saying whether the calendar belongs to the tenant or to each company. In a
 group with several legal entities the difference is operationally large — one close for everyone, or each
-company closing its own books. `OD-GL-0004`.
+company closing its own books. **`OD-GL-0004` ruled the calendar COMPANY-level**, so each company closes its
+own books and closing is a company-scoped write.
 
 It is also silent on **reopening**. A rule that says closed periods prohibit posting does not say whether a
 period may be reopened, by whom, or whether reopening is itself an audited event. That silence is recorded
@@ -95,9 +106,8 @@ second pattern.
 
 **Leaves open, and this is the one most likely to be missed:**
 
-1. **Unique within *whose* fiscal year** — the same `OD-GL-0004` question. The constraint is either
-   *(FiscalYear, JournalNumber)* or *(CompanyId, FiscalYear, JournalNumber)*, and choosing wrong is a
-   migration later.
+1. **Unique within *whose* fiscal year** — the same `OD-GL-0004` question. **Ruled:
+   *(CompanyId, FiscalYear, JournalNumber)*.**
 2. **Unique is not gapless.** Accounting and audit practice frequently require journal numbers to have **no
    gaps**, which is a materially harder obligation than uniqueness: it forbids the natural implementation
    where a failed or abandoned attempt consumes a number. `BR-GL-0005` does not ask for gapless, and this
@@ -112,7 +122,7 @@ second pattern.
 | Rule | Text | Consequence |
 |---|---|---|
 | `BR-RPT-0001` | Reports shall only display data authorized for the current user | Every GL read is scope-gated; `DEC-GL-0004` makes that structural rather than remembered |
-| `BR-RPT-0002` | Reports shall always respect Tenant and Company boundaries | The company dimension is not optional in any GL read, whatever `OD-GL-0005` decides about branch |
+| `BR-RPT-0002` | Reports shall always respect Tenant and Company boundaries | The company dimension is not optional in any GL read; `OD-GL-0005` declined the branch dimension, so the scope is exactly tenant + company |
 
 `Business-Rules.md` also lists **Budgeting** among *Future Modules*, which is the clearest available signal
 that budget-versus-actual is out of V1 GL scope.

@@ -2,26 +2,44 @@
 package: FP-011
 title: General Ledger Foundation
 module: General Ledger
-status: DRAFT — analysis only, awaiting architect review
-version: 0.1
+status: APPROVED — all nine owner decisions closed, all ten engineering decisions ratified (2026-08-23)
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — General Ledger Foundation
 
-> **This is an analysis package, not an implementation package.** It contains no code, authors no ADR, and
-> ratifies no decision. Its job is to establish what General Ledger inherits, what it must decide, and what
-> the product does not yet know — before a line of GL is written.
+> **APPROVED FOR IMPLEMENTATION, 2026-08-23.** The analysis is complete, all nine owner decisions are
+> closed and all ten engineering decisions are ratified. This package is now the authority the GL build
+> works from.
+>
+> It still contains no ADR. GL needs one eventually and it remains not this package's to write — the same
+> reasoning that made `ADR-028` V5's rather than HR's when `OD-DOC-009` closed FP-010.
 
 ## Status
 
 | | |
 |---|---|
-| **Status** | **DRAFT.** Every `DEC-GL` below is *proposed*, not ratified |
-| **Owner decisions raised** | **9** (`OD-GL-0001` … `OD-GL-0009`) — see [decisions-open.md](decisions-open.md) |
-| **Engineering decisions proposed** | **10** (`DEC-GL-0001` … `DEC-GL-0010`) |
-| **Blocks** | Any GL schema. `OD-GL-0002` and `OD-GL-0003` change the shape of every table in the module |
+| **Status** | **APPROVED.** All nine owner decisions closed; all ten engineering decisions ratified |
+| **Owner decisions** | **9 closed** (`OD-GL-0001` … `OD-GL-0009`) — see [decisions-approved.md](decisions-approved.md) |
+| **Engineering decisions** | **10 ratified** (`DEC-GL-0001` … `DEC-GL-0010`) |
+| **Requirements** | `REQ-GL-0001`–`0014` ratified into `Requirement-Catalog/GL.md` |
+| **Blocks** | Nothing. The schema is unblocked |
 | **Does not block** | Anything shipped. HR's V1 catalog is complete and GL touches none of it |
+
+## The nine rulings
+
+| | Decision | Ruled |
+|---|---|---|
+| `OD-GL-0001` | Requirement catalog | Drafted `REQ-GL` lines ratified into `GL.md`, `HR.md`'s flat shape — **precedent over template** |
+| `OD-GL-0002` | Currency | **Single currency V1.** `ADR-027` unchanged and unamended |
+| `OD-GL-0003` | Chart of accounts | **Tenant-level.** `Account : ITenantOwnedEntity` only; balances never stored above company |
+| `OD-GL-0004` | Fiscal calendar | **Company-level.** Journal numbers unique within *(CompanyId, FiscalYear)*; close is a company-scoped write |
+| `OD-GL-0005` | Branch dimension | **None in V1.** Read scope is tenant + company |
+| `OD-GL-0006` | Correction | **Reversal journal carrying `ReversesJournalId`** |
+| `OD-GL-0007` | Drafts | **Two aggregates** — `JournalDraft` mutable, `JournalEntry` append-only, posting is the promotion |
+| `OD-GL-0008` | Year-end close | **Out of V1.** Period close only |
+| `OD-GL-0009` | Inbound postings | **None.** Manual entry only; Payroll (V2) is the first poster |
 
 ## The top-line finding: GL has no requirements
 
@@ -54,7 +72,7 @@ filing a pull request.**
 ## What GL inherits
 
 GL is the first module built after the platform's foundations settled, so it inherits more than any package
-before it. [decisions-open.md](decisions-open.md) records the architect's inheritance memo verbatim; the
+before it. [decisions-approved.md](decisions-approved.md) records the architect's inheritance memo verbatim; the
 mechanisms are traced to real code in [domain-model.md](domain-model.md) and [data-model.md](data-model.md).
 
 The inheritance with the sharpest consequence:
@@ -79,7 +97,7 @@ another journal, never a rewrite** — which is the definition of a reversal. Se
 
 | File | What it is |
 |---|---|
-| [requirements.md](requirements.md) | **PROPOSED** `REQ-GL` lines, all `OWNER-DECISION-REQUIRED`, plus the catalog gap |
+| [requirements.md](requirements.md) | `REQ-GL-0001`–`0014`, **ratified** into `Requirement-Catalog/GL.md` |
 | [business-rules.md](business-rules.md) | `BR-GL-0001`–`0005` as they exist, and what each does and does not settle |
 | [domain-model.md](domain-model.md) | Aggregates, the ownership dimensions, and which platform interfaces apply |
 | [data-model.md](data-model.md) | Tables, types, the `nvarchar` and no-cross-database-FK constraints, E3 |
@@ -88,7 +106,7 @@ another journal, never a rewrite** — which is the definition of a reversal. Se
 | [api-contracts.md](api-contracts.md) | Route surface sketch, strict transport rules inherited from HR |
 | [acceptance-criteria.md](acceptance-criteria.md) | `AC-GL` lines against the proposed requirements |
 | [test-scenarios.md](test-scenarios.md) | `TS-GL` scenarios, including the ones that must exist for E3 |
-| [decisions-open.md](decisions-open.md) | **`OD-GL-0001`–`0009`** and **`DEC-GL-0001`–`0010`** (proposed) |
+| [decisions-approved.md](decisions-approved.md) | **`OD-GL-0001`–`0009` closed** and **`DEC-GL-0001`–`0010` ratified** |
 | [traceability-matrix.md](traceability-matrix.md) | REQ → BR → AC → TS, and every unresolved edge |
 
 ## What is deliberately absent
@@ -97,8 +115,8 @@ another journal, never a rewrite** — which is the definition of a reversal. Se
 `ADR-028` V5's rather than HR's when `OD-DOC-009` closed FP-010. A package that authors the ADR binding a
 module the owner has not yet scoped binds them to reasoning nobody validated.
 
-**No schema, no migration, no code.** `OD-GL-0002` (multi-currency) and `OD-GL-0003` (chart-of-accounts
-ownership) each change the column list of every table in the module. Authoring a schema before them would be
-work thrown away, and worse, would make the decisions look already taken.
+**No schema, no migration, no code — in THIS package.** They were withheld until `OD-GL-0002` and
+`OD-GL-0003` were answered, because each changes the column list of every table in the module. Both are
+answered now, so the build proceeds from here rather than from guesswork.
 
 **No estimate and no sequencing.** Those follow the owner decisions, not the other way round.

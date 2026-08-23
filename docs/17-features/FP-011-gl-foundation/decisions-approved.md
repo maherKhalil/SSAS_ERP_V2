@@ -1,18 +1,21 @@
 ---
 package: FP-011
-title: General Ledger — Owner Decisions and Proposed Engineering Decisions
-status: DRAFT — nothing here is ratified
-version: 0.1
+title: General Ledger — Approved Decisions
+status: APPROVED — all nine owner decisions closed, all ten engineering decisions ratified (2026-08-23)
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Decisions
 
-> **Nothing in this file is approved.** `OD-GL-*` are questions for the owner. `DEC-GL-*` are engineering
-> decisions this package *proposes*; each is drafted so it can be ratified, amended or rejected as a unit.
+> **APPROVED, 2026-08-23.** All nine owner decisions are closed by the owner, and all ten engineering
+> decisions are ratified as drafted. The file was `decisions-open.md` while nothing in it was settled;
+> it is `decisions-approved.md` now that everything is, which is the same naming discipline FP-010 used
+> in the opposite direction.
 >
-> The file is named `decisions-open.md` rather than the usual `decisions-approved.md` deliberately: in a
-> draft package nothing is approved, and FP-010 established the name for exactly this state.
+> **Every options table below is kept intact.** The chosen option is marked, and the ones not taken stay
+> visible with their consequences — a decision whose alternatives were deleted cannot be re-examined
+> later without redoing the analysis that produced it.
 
 ---
 
@@ -128,6 +131,18 @@ consequences, and what is blocked until it is answered.
 
 ## `OD-GL-0001` — Who authors the GL requirement catalog, and does this package's draft count?
 
+**RULED: option 2 — FP-011's drafted `REQ-GL` lines are ratified into
+`Requirement-Catalog/GL.md`, in `HR.md`'s flat shape.**
+
+The shape question is **answered: precedent over template.** `GL.md` matches `HR.md` — identifier and title,
+grouped by family — rather than the fuller Requirement Template that `Requirement-Catalog/README.md` mandates
+and no existing catalog file follows. Recorded as a decision rather than left as a drift.
+
+**The drafted identifiers `REQ-GL-0001`–`0014` are preserved exactly.** They are what was ratified, and
+`README.md` makes requirement IDs immutable; renumbering them into `HR.md`'s 100-block families would have
+been a cosmetic change that broke the acceptance criteria, test scenarios and traceability rows already
+written against them.
+
 **The gap.** `Requirement-Catalog/` has no `GL.md`, while `README.md` declares the `REQ-GL` domain and
 `Requirement-Numbering.md` reserves the identifier space. Every previous package read its requirements; this
 one cannot.
@@ -149,6 +164,14 @@ template, or the precedent. They are not the same, and the difference is not GL'
 
 ## `OD-GL-0002` — Does V1 General Ledger support more than one currency?
 
+**RULED: option 1 — single currency for V1.** Every journal is denominated in its Company's
+`BaseCurrencyCode`, and no amount carries a currency of its own.
+
+**`ADR-027` is unchanged and unamended.** Decision 2 continues to hold, decision 5's "no `Money` type yet"
+stands, and decision 4's promotion of `BaseCurrencyCode` is **not** triggered. Decision 3's three conditions
+remain the named trigger for revisiting, and `OD-GL-0003`'s ruling below deliberately keeps condition 2
+untriggered as well.
+
 **Why it cannot be inferred.** `ADR-027` decision 3 names foreign-currency transactions and exchange rates as
 the exact triggers that end decision 2. GL is where they would arrive. Nothing in `BR-GL-0001`–`0005`, the
 Glossary or the Roadmap says whether they do.
@@ -162,6 +185,16 @@ Glossary or the Roadmap says whether they do.
 **Blocks:** every monetary column in the module, and whether `ADR-027` needs amending at all.
 
 ## `OD-GL-0003` — Is the Chart of Accounts owned by the tenant or by the company?
+
+**RULED: option 1 — the chart of accounts is TENANT-level.** `Account` implements
+`ITenantOwnedEntity` only; it is **not** `ICompanyOwnedEntity`, so account maintenance is a tenant-level write
+authorized by permission alone rather than a company-scoped write.
+
+**Balances are never stored above the Company.** This is the rationale that keeps `ADR-027` decision 3
+condition 2 — *"an amount is stored above the Company level, where no single base currency applies"* —
+**untriggered**. The chart is shared; the money is not. Every posted amount lives on a journal line beneath a
+company-owned journal, so every amount still has exactly one unambiguous currency, and the single-currency
+ruling in `OD-GL-0002` stays correct rather than being quietly undermined by the shared chart.
 
 **Why it matters more than it looks.** This is `ADR-027` decision 3 condition 2 — *"an amount is stored above
 the Company level, where no single base currency applies"* — and it decides which platform interface the
@@ -177,6 +210,14 @@ Account aggregate implements, which in turn decides whether writing an account i
 
 ## `OD-GL-0004` — Who owns the fiscal calendar, and what is a Journal Number unique within?
 
+**RULED: option 2 — the fiscal calendar is COMPANY-level.** `FiscalYear` and `FiscalPeriod` are
+company-owned, each company closes its own periods, and **closing a period is a company-scoped write**
+running `AuthorizeCurrentCompanyAsync` at the write boundary.
+
+**Journal numbers are unique within `(CompanyId, FiscalYear)`.** Note what this does not say: uniqueness, not
+gaplessness. `BR-GL-0005` asks for unique and V1 delivers unique; the gapless question raised against that
+rule stays open and unpromised.
+
 `BR-GL-0003` prohibits posting into a closed Fiscal Period. `BR-GL-0005` requires Journal Numbers unique
 within Fiscal Year. Neither says whose fiscal year.
 
@@ -191,6 +232,13 @@ within Fiscal Year. Neither says whose fiscal year.
 
 ## `OD-GL-0005` — Does a journal line carry a Branch dimension?
 
+**RULED: option 1 — no branch dimension in V1.** Journals carry no `BranchId` on the header or
+the line, and **`JournalReadScope` is two-dimensional: tenant + company.**
+
+Company and branch remain siblings (`ADR-023`); GL simply does not use the branch one. The scope type is
+still unforgeable and still refuses an empty authorized set — it resolves two dimensions instead of three,
+which is a smaller scope object, not a weaker one.
+
 Company and branch are **siblings, never nested** (`ADR-023`). HR data is branch-aware; whether financial
 postings are is a product question, not an inference.
 
@@ -204,6 +252,12 @@ postings are is a product question, not an inference.
 
 ## `OD-GL-0006` — What is the correction mechanism, and does a reversal link back?
 
+**RULED: option 1 — correction is a reversal journal carrying `ReversesJournalId`.**
+
+The link makes the correction discoverable from either side, and it matches the model `IAppendOnlyEntity`
+already states in its own words: *a correction is another transfer, never a rewrite.* For GL, another
+journal.
+
 `BR-GL-0002` forbids editing a posted journal. It does not say what replaces editing.
 
 | | Option | Consequence |
@@ -215,6 +269,15 @@ postings are is a product question, not an inference.
 **Blocks:** the `JournalEntry` aggregate's fields and the lifecycle model.
 
 ## `OD-GL-0007` — Is a draft journal the same aggregate as a posted one?
+
+**RULED: option 3 — TWO AGGREGATES.** `JournalDraft` is mutable and carries `RowVersion`;
+`JournalEntry` (with its lines) is append-only and can be created **only by posting a draft**. The promotion
+step is the only path from one to the other.
+
+**`DEC-GL-0002` is therefore UNCONDITIONAL.** `BR-GL-0002` — posted journals cannot be edited — is enforced
+structurally by the write boundary rather than by an aggregate-level guard a future path could bypass, and GL
+becomes `IAppendOnlyEntity`'s largest client. The cost the option table named is real and accepted: two types
+and a promotion step, in exchange for a guarantee no reviewer has to remember.
 
 **The sharpest engineering consequence in this package.** `IAppendOnlyEntity` refuses `Modified` for the type,
 not for a state. A journal that is created as a draft, edited, then posted **cannot** be `IAppendOnlyEntity`
@@ -230,6 +293,13 @@ from creation — the write boundary would refuse the second edit.
 
 ## `OD-GL-0008` — Is fiscal-year close in V1 scope, and does it produce opening balances?
 
+**RULED: option 1 — period close only. No year-end close in V1**, and therefore no
+carry-forward opening balances, no retained-earnings account, and no close-generated journal.
+
+`BR-GL-0003` is fully satisfied by period close alone. `REQ-GL-0013`'s balance enquiry has no opening balance
+to add, which is why its acceptance criterion asserts that a balance equals the sum of the movements
+returned.
+
 The Glossary defines Fiscal Year and Fiscal Period and lists *Close Fiscal Year* as an operation.
 `BR-GL-0003` only says closed periods prohibit posting.
 
@@ -243,6 +313,13 @@ The Glossary defines Fiscal Year and Fiscal Period and lists *Close Fiscal Year*
 
 ## `OD-GL-0009` — Does anything post to GL in V1, or is it entry-only?
 
+**RULED: option 1 — manual journal entry only.** Nothing posts to GL in V1; the first inbound
+poster will be **Payroll in V2**.
+
+GL therefore depends on no module, `ADR-012` is untouched, and there is no cross-module contract to design.
+There is also no import path: HR has one because `REQ-HR-0005` and the `OD-DOC-001` split created it, and no
+equivalent GL requirement exists.
+
 The Roadmap places GL in V1 alongside HR; Payroll is V2. Whether any module *feeds* GL in V1 is unstated.
 
 | | Option | Consequence |
@@ -255,27 +332,29 @@ The Roadmap places GL in V1 alongside HR; Payroll is V2. Whether any module *fee
 
 ---
 
-# Part 3 — Proposed engineering decisions
+# Part 3 — Ratified engineering decisions
 
-Ten. Each is drafted for ratification. Where one depends on an owner decision, it says so rather than
-assuming an answer.
+**All ten are architect-ratified as drafted (2026-08-23.)** The one that was written conditionally is no
+longer conditional — see `DEC-GL-0002`.
 
 **`DEC-GL-0001` — GL adopts `ADR-027` decision 1: every persisted monetary amount is `decimal(19,4)`.**
 This is the one position taken without an owner decision, because `ADR-027` explicitly requires a *recorded*
 adoption and names silent matching as the failure. Independent of `OD-GL-0002`: the *precision* is settled
 whether or not a currency column joins it.
 
-**`DEC-GL-0002` — Posted journals and journal lines implement `IAppendOnlyEntity`.** Conditional on
-`OD-GL-0007` option 1 or 3. Under option 2 this decision is withdrawn and `BR-GL-0002` loses its structural
-enforcement — which should be stated plainly when that option is weighed.
+**`DEC-GL-0002` — Posted journals and journal lines implement `IAppendOnlyEntity`. UNCONDITIONAL.**
+`OD-GL-0007` chose two aggregates, so the condition this decision was drafted under is satisfied and the
+withdrawal branch is moot. `JournalEntry` and `JournalLine` are append-only from creation; `JournalDraft` is
+the mutable aggregate, and posting is the one-way promotion between them.
 
 **`DEC-GL-0003` — Permission names are `GL.<Resource>.<Action>`**, three ASCII-identifier segments, defined by
 a `GlPermissionCatalogContributor` registered by the Host. Naming without registering authorizes nothing;
 `HrPermissionNames` records that failure and GL will not repeat it.
 
 **`DEC-GL-0004` — Every GL read requires an unforgeable `JournalReadScope`**, constructed only by a resolver
-that has checked the functional permission and resolved the authorized company set (and branch set, if
-`OD-GL-0005` adds one) against live state. Empty sets refuse the read; there is no scope meaning "everything".
+that has checked the functional permission and resolved the authorized company set against live state. Empty
+sets refuse the read; there is no scope meaning "everything". **Two dimensions — tenant and company** — since
+`OD-GL-0005` declined the branch dimension for V1.
 
 **`DEC-GL-0005` — Identifiers follow `ADR-013`**, not a GL-local convention.
 

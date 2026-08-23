@@ -1,14 +1,22 @@
 ---
 package: FP-011
 title: General Ledger — Traceability Matrix
-status: DRAFT — INCOMPLETE BY CONSTRUCTION, and says so
-version: 0.1
+status: APPROVED — anchored, now that Requirement-Catalog/GL.md exists (2026-08-23)
+version: 1.0
 date: 2026-08-23
 ---
 
 # FP-011 — Traceability Matrix
 
-> **This matrix cannot be completed, and the reason is the package's top-line finding.**
+> **COMPLETED 2026-08-23.** `OD-GL-0001` ratified the drafted lines into
+> `Requirement-Catalog/GL.md`, so the REQ column now anchors to real catalog entries rather than to
+> proposals. The "Blocked by" column below is kept as the record of what each row was waiting on and which
+> ruling released it.
+>
+> What follows is the finding as it stood, preserved because the gap it describes is the reason this package
+> exists in the form it does.
+>
+> **This matrix could not be completed, and the reason was the package's top-line finding.**
 >
 > Traceability in this product is REQ-anchored: `Requirement-Catalog/Traceability-Matrix.md` maps
 > `Requirement → BR → Feature → Screen → API → Table → Permission → Test`. GL has **no requirement catalog

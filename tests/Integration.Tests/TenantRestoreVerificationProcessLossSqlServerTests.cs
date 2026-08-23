@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
@@ -38,6 +38,9 @@ namespace SSAS.Integration.Tests;
 // NOTHING HERE PRESCRIBES SQL SERVER'S BEHAVIOUR. Whether the restore keeps going, whether the verification
 // database survives and in what state are MEASURED and reported; the assertions are about what the platform
 // then decides, which must be safe under every outcome the measurement can produce.
+// SERIAL — uses the INSTANCE BACKUP DIRECTORY and performs full-size restores while killing processes
+// mid-operation. Shares the resource the founding three named, and its failure modes are the ones
+// concurrency would make hardest to read.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abstractions.ITestOutputHelper output)
 {

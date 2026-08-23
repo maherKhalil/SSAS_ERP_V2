@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,7 +20,9 @@ namespace SSAS.Integration.Tests;
 // The complete D7 production path: production BACKUP provider -> reconciled Platform run evidence (including
 // CheckpointLsn) -> durable admission -> production selector -> isolated RESTORE -> real probes -> exact
 // source-run RestoreVerified evidence and readiness projection.
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 1).
+// One Guid-named catalog and its own backup files under its own path. Disk pressure is real but is not
+// mutual exclusion, and no server-level state is touched.
 public sealed class TenantRestoreVerificationExecutorSqlServerTests
 {
   [Fact]

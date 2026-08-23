@@ -28,6 +28,9 @@ namespace SSAS.Integration.Tests;
 // restores write full-size database files while the backup suites write full-size backups. That combination
 // was observed making timing-sensitive tests elsewhere in the suite fail for reasons unconnected to what
 // they assert. Parallelism stays enabled everywhere else.
+// SERIAL — shares DISK with the backup suites. Its restores write full-size database files while those
+// suites write full-size backups; the class comment argues this at length and is the other member that
+// named its resource on arrival.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantRestoreVerificationProviderSqlServerTests
 {

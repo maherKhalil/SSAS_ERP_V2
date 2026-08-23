@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Application.TenantStorage;
@@ -16,6 +16,10 @@ namespace SSAS.Integration.Tests;
 // established here is the INTERACTION: that a sweep drives the real executor and provider end to end, and
 // that Phase B's ownership and in-flight guards behave as the fleet layer assumes when two sweeps or an
 // outside backup collide.
+// SERIAL — reads msdb.dbo.backupset, an INSTANCE-WIDE history table. Its predicate is scoped to its own
+// catalog so concurrent backups cannot match it, which makes this the weakest claim in the collection
+// and a round-2 candidate. It stays for now because its own flake (see the test) shows this class is
+// timing-sensitive, and freeing it while that is unresolved would confound two variables.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantBackupSchedulerSqlServerTests
 {
@@ -126,34 +130,36 @@ public sealed class TenantBackupSchedulerSqlServerTests
     await fixture.AddPolicyAsync(id);
     await fixture.FillAsync();
 
+    // ---- ONE SWEEP, ONE ASSERTION. The five-attempt loop that used to stand here was removed on
+    // 2026-08-23, and the reason is worth stating because it looked like a reasonable mitigation.
+    //
+    // IT COULD NOT RETRY. The sweep picks work via `SelectDue`, which anchors on
+    // `LastSuccessfulFullBackupUtc`. If attempt 1 misses the competitor, the sweep BACKS THE DATABASE UP —
+    // so on attempt 2 the database is no longer due, the sweep does nothing, and the query re-reads the very
+    // same `Succeeded` row. `SuppressRecentAttemptsAsync` closes the other door: a recent skip is suppressed
+    // by `SkipRetryBackoff` too. Five attempts were one attempt wearing a loop, which is why the recorded
+    // failure was the FINAL assertion (`Expected: SkippedInFlightOperation, Actual: Succeeded`) rather than
+    // one of the precondition messages.
+    //
+    // So the precondition was made non-lapsable instead — see `StartCompetingBackup`, which now runs two
+    // overlapping processes so a BACKUP request is admitted at every instant. The wait below is a READINESS
+    // BARRIER, not a retry: it establishes once that the competitor has started, and fails hard if it never
+    // does. Nothing here sleeps, and the assertion is the same equality it always was.
     using var competing = fixture.StartCompetingBackup();
-    try
-    {
-      Assert.True(await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)),
-        "the competing backup never became visible, so the in-flight path was not exercised");
 
-      TenantDatabaseBackupRunStatus? observed = null;
-      for (var attempt = 0; attempt < 5 && observed is not TenantDatabaseBackupRunStatus.SkippedInFlightOperation; attempt++)
-      {
-        Assert.True(await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)),
-          "the competing backup stopped before the sweep could observe it");
+    Assert.True(await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)),
+      "the competing backup never became visible, so the in-flight path was not exercised");
 
-        await Scheduler(fixture).RunSweepAsync();
+    await Scheduler(fixture).RunSweepAsync();
 
-        await using var platform = fixture.PlatformContext();
-        observed = await platform.TenantDatabaseBackupRuns.AsNoTracking()
-          .Where(run => run.TenantDatabaseId == id)
-          .OrderByDescending(run => run.Id)
-          .Select(run => (TenantDatabaseBackupRunStatus?)run.Status)
-          .FirstOrDefaultAsync();
-      }
+    await using var platform = fixture.PlatformContext();
+    var observed = await platform.TenantDatabaseBackupRuns.AsNoTracking()
+      .Where(run => run.TenantDatabaseId == id)
+      .OrderByDescending(run => run.Id)
+      .Select(run => (TenantDatabaseBackupRunStatus?)run.Status)
+      .FirstOrDefaultAsync();
 
-      Assert.Equal(TenantDatabaseBackupRunStatus.SkippedInFlightOperation, observed);
-    }
-    finally
-    {
-      TenantBackupProviderSqlServerTests.BackupFixture.KillProcess(competing);
-    }
+    Assert.Equal(TenantDatabaseBackupRunStatus.SkippedInFlightOperation, observed);
   }
 
   [Fact]

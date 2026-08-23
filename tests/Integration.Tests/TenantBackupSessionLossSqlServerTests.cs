@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using SSAS.Platform.Infrastructure.TenantStorage;
@@ -19,6 +19,12 @@ namespace SSAS.Integration.Tests;
 // The termination is an ABRUPT CLIENT PROCESS KILL, not KILL <spid>. A server-initiated kill answers a
 // different question; ADR-022's scenario is a worker crashing, so the experiment reproduces a client
 // disappearing.
+// SERIAL FOR ROUND 1 ONLY — and the reason it was assumed to have is NOT the reason it has.
+// It takes the production applock N'SSAS.TenantStorage.Backup', which looks instance-wide. Traced
+// 2026-08-23: sp_getapplock is DATABASE-SCOPED, and the worker connects with -d against the fixture's
+// own disposable catalog (SSAS_ERP_BACKUPT_<guid>), so the lock cannot contend with any other class.
+// What remains is real backup I/O and an abrupt process kill. ROUND 2 CANDIDATE, to be measured
+// separately rather than freed on the same change as the seven.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITestOutputHelper output)
 {

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +26,12 @@ namespace SSAS.Integration.Tests;
 // Everything below drives the production orchestrator, which composes E1's freeze, E3's copy and exact
 // validation, the recovery activation gate, E4's atomic flip and E2's version-aware resolution. The tests
 // assert the DURABLE outcome by reading the catalogs directly — never the orchestrator's own report alone.
+// SERIAL — it is the ONLY class in the entire Integration suite that ASSERTS ON ELAPSED TIME
+// (Assert.True(waited.Elapsed < 30s) on the resume path). A wall-clock assertion is pollutable by any
+// concurrent load, so this class is serial because of what it measures rather than what it holds. It is
+// also the largest single member, which makes it the whole remaining prize — revisit only by deciding
+// whether that liveness assertion should become reported-not-asserted like every other timing in the
+// suite.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper output)
 {

@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -22,7 +22,8 @@ namespace SSAS.Integration.Tests;
 // verification identity is projected rather than a timestamp, that a newer full backup genuinely supersedes
 // a verified baseline in the run history, and that the whole boundary is keyed on the PHYSICAL database
 // rather than on a tenant.
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 1).
+// One Guid-named catalog, schema only, no disk and no server-level reads. Nothing to contend on.
 public sealed class TenantRecoveryActivationSqlServerTests
 {
   // A timestamp says WHEN. Activation needs WHICH — which baseline, at what depth, by which run.

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.Data.SqlClient;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.TenantStorage;
@@ -22,6 +22,8 @@ namespace SSAS.Integration.Tests;
 // without authenticating, and server-level permission checks and DMV visibility filtering both honour it.
 // That gives a faithful low-privilege token without changing the instance's authentication mode, which
 // would be a machine-wide security change made to satisfy a test.
+// SERIAL — same reason as the restore-permission suite: EXECUTE AS LOGIN and server-level permission
+// checks. Two classes manipulating instance-wide principals concurrently can observe each other.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantBackupPermissionBoundarySqlServerTests
 {

@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -18,6 +18,9 @@ namespace SSAS.Integration.Tests;
 // These execute ACTUAL backups — the first slice permitted to. Every one runs against a disposable generated
 // catalog, writes into a per-run folder under the instance backup directory, and cleans up only its own
 // files. No production or tenant database is ever a target, and nothing here restores.
+// SERIAL — shares the INSTANCE BACKUP DIRECTORY. It executes real backups into a per-run folder under the
+// instance default backup path, which is one resource however many folders are carved out of it. This is
+// one of the two members that named a resource when it joined.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantBackupProviderSqlServerTests
 {
@@ -438,31 +441,18 @@ public sealed class TenantBackupProviderSqlServerTests
 
     // A backup started by another process entirely, holding no application lock — exactly what a DBA or a
     // SQL Agent job looks like, and precisely what ownership alone cannot protect against.
+    // The five-attempt loop here was the twin of the scheduler's and is gone for the same underlying
+    // reason: it existed to paper over a gap between the competitor's iterations, and that gap is now closed
+    // at the source by running two overlapping competitors. One check, one execution, one assertion.
     using var competing = fixture.StartCompetingBackup();
-    try
-    {
-      TenantDatabaseBackupRunStatus? observed = null;
 
-      // The competitor runs backups back to back, but there is still a brief gap between iterations. An
-      // attempt that lands in one proves nothing either way, so attempts are repeated — each one confirming
-      // a backup is genuinely in flight FIRST, so a pass can only come from a real overlap.
-      for (var attempt = 0; attempt < 5 && observed is not TenantDatabaseBackupRunStatus.SkippedInFlightOperation; attempt++)
-      {
-        Assert.True(await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)),
-          "the competing backup never became visible, so the in-flight path was not exercised");
+    Assert.True(await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)),
+      "the competing backup never became visible, so the in-flight path was not exercised");
 
-        var outcome = await fixture.Executor().ExecuteAsync(
-          id, TenantDatabaseBackupOperation.SqlServerFull());
-        observed = outcome.Value.Status;
-      }
+    var outcome = await fixture.Executor().ExecuteAsync(
+      id, TenantDatabaseBackupOperation.SqlServerFull());
 
-      Assert.True(observed is TenantDatabaseBackupRunStatus.SkippedInFlightOperation,
-        $"expected SkippedInFlightOperation from the production path but observed {observed}");
-    }
-    finally
-    {
-      BackupFixture.KillProcess(competing);
-    }
+    Assert.Equal(TenantDatabaseBackupRunStatus.SkippedInFlightOperation, outcome.Value.Status);
   }
 
   [Fact]
@@ -827,8 +817,29 @@ public sealed class TenantBackupProviderSqlServerTests
       await ExecuteOnAsync("master", $"ALTER DATABASE [{TargetCatalog}] SET RECOVERY FULL");
     }
 
-    // A backup from a separate process, holding no application lock.
-    public System.Diagnostics.Process StartCompetingBackup()
+    // A backup from separate processes, holding no application lock.
+    //
+    // ---- WHY THERE ARE TWO OF THEM, AND WHY ONE WAS NOT ENOUGH
+    //
+    // The production predicate is `sys.dm_exec_requests WHERE database_id = DB_ID() AND command LIKE
+    // 'BACKUP%'`. A SINGLE looping process cannot satisfy it continuously: between iterations the BACKUP
+    // completes, control returns to sqlcmd, and the loop re-issues — and in that window NO backup request
+    // exists. Measured against this server on 2026-08-23 with a tight T-SQL poll of the exact production
+    // predicate: 11,684 misses in 440,047 samples, so the precondition was FALSE 2.66% of the time on an
+    // IDLE machine, and worse under gate load where the client round-trip is what gets starved.
+    //
+    // TWO processes close the window by construction rather than by probability. SQL Server serializes
+    // concurrent full backups of one database, so while process A's backup executes, process B's request is
+    // ALREADY ADMITTED and suspended — and `sys.dm_exec_requests` lists a suspended request with
+    // `command = 'BACKUP DATABASE'` exactly as it lists a running one. When A finishes, B is already there.
+    // There is no instant with zero backup requests. Same poll, same server, two processes: 0 misses in
+    // 506,102 samples.
+    //
+    // The zero is the structural claim, not the measurement: the measurement only confirms it.
+    public CompetingBackup StartCompetingBackup() =>
+      new(StartCompetitor(), StartCompetitor());
+
+    private System.Diagnostics.Process StartCompetitor()
     {
       var path = Path.Combine(BackupRoot, $"competing_{Guid.NewGuid():N}.bak");
       var builder = new SqlConnectionStringBuilder(Configured());
@@ -855,15 +866,14 @@ public sealed class TenantBackupProviderSqlServerTests
       // so a one-shot competitor turns the test into a race it usually loses.
       //
       // THE COMPETITOR RUNS UNTIL THE TEST KILLS IT, not for a fixed number of iterations. A fixed count was
-      // a second elapsed-time dependence hiding inside the first: 30 quick backups take a couple of seconds,
-      // while the observing test may spend up to five 30-second waits looking for one. Under load the
-      // competitor finished before the sweep ever inspected, and the test failed with "the competing backup
-      // stopped before the sweep could observe it" — reporting a race it lost rather than a defect.
+      // an elapsed-time dependence hiding inside the loop: 30 quick backups take a couple of seconds, while
+      // the observing test may spend far longer getting to its inspection.
       //
-      // Correctness now comes from the caller: every call site starts this inside a try/finally whose finally
-      // calls KillProcess, so the competitor is alive for exactly as long as the observation needs and no
-      // longer. The wall-clock cap below is ONLY a leak guard for a process that dies without its finally —
-      // it is deliberately far longer than any observation, so it never bounds the test.
+      // Lifetime is the CALLER's, enforced by the language rather than by discipline: `StartCompetingBackup`
+      // returns an IDisposable whose Dispose kills every process, so `using var` is sufficient and a call
+      // site cannot forget a finally. The wall-clock cap below is ONLY a leak guard for a test host that
+      // dies without unwinding — it is deliberately far longer than any observation, so it never bounds the
+      // test.
       start.ArgumentList.Add(
         $"DECLARE @deadline datetime2 = DATEADD(minute, 10, SYSDATETIME()); " +
         $"WHILE SYSDATETIME() < @deadline BEGIN " +
@@ -887,6 +897,26 @@ public sealed class TenantBackupProviderSqlServerTests
       }
 
       return false;
+    }
+
+    // Two competitors held as one thing, because a caller that kills one and not the other reopens exactly
+    // the gap this construction exists to close. `Process.Dispose()` does NOT kill, which is why holding the
+    // raw processes in a `using` was never sufficient on its own.
+    public sealed class CompetingBackup : IDisposable
+    {
+      private readonly System.Diagnostics.Process[] processes;
+
+      internal CompetingBackup(params System.Diagnostics.Process[] processes) =>
+        this.processes = processes;
+
+      public void Dispose()
+      {
+        foreach (var process in processes)
+        {
+          KillProcess(process);
+          process.Dispose();
+        }
+      }
     }
 
     public static void KillProcess(System.Diagnostics.Process process)

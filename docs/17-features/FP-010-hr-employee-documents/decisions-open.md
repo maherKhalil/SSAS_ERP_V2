@@ -1,15 +1,25 @@
 ---
 document_id: FP-010-DEC
 title: HR Employee Documents — Open and Carried Decisions
-status: Deferred — gated on ADR-028
+status: CLOSED — transferred to V5 Document Management (OD-DOC-009, 2026-08-23)
 version: 0.1
 ---
 
 # FP-010 — Open and Carried Decisions
 
-> Moved here unchanged by the `OD-DOC-001` split (2026-08-22). **The three owner decisions are OPEN-DEFERRED,
-> not closed**, and their options tables are intact — they are this package's starting inventory, and
-> re-deriving them later would waste the analysis that produced them.
+> Moved here unchanged by the `OD-DOC-001` split (2026-08-22).
+>
+> **CLOSED 2026-08-23 by `OD-DOC-009`: V5 Document Management owns this capability.**
+>
+> `OD-DOC-009` is **answered**. `OD-DOC-007` and `OD-DOC-008` are **transferred to V5 as its starting
+> inventory** — still open questions, but no longer HR's, and their options tables are intact below precisely
+> so V5 does not re-derive them. `DEC-DOC-0010`–`0013` remain ratified engineering decisions describing how
+> the feature *would* work; V5 may adopt, adapt or discard them, but it should not have to rediscover them.
+>
+> **`ADR-028` is not written, and is not HR's to write.** It is annotated throughout this document as
+> **V5's to author when Document Management is built** — the module that owns a capability writes the ADR
+> that binds it, and an ADR written speculatively by the module that decided *not* to build the thing would
+> bind V5 to reasoning nobody validated against a real design.
 
 ## Classification carried from the FP-009 analysis
 
@@ -34,6 +44,10 @@ worth saying plainly: they describe how the feature would work, not whether it w
 
 **`DEC-DOC-0010` — `ADR-028` is required** if documents ship in any form. Not required for import and export,
 which is what the `OD-DOC-001` split acted on.
+
+> **AS OF `OD-DOC-009` (2026-08-23): `ADR-028` IS V5'S TO WRITE.** The requirement stands — documents in any
+> form still need it — but the obligation moved with the capability. What follows is the scope analysis,
+> preserved so V5 inherits it rather than repeating it.
 
 An ADR is warranted when a decision binds more than one module and cannot be revisited cheaply. Binary
 content is both: the first module to store a file sets the platform's answer for every module after it, and
@@ -78,7 +92,11 @@ construct, so a metadata-only caller cannot reach content through any code path 
 bypass, a type they cannot construct. Uploading is `HR.EmployeeDocuments.Upload`; withdrawal is
 `HR.EmployeeDocuments.Withdraw`.
 
-## The three deferred owner decisions
+## The deferred owner decisions — now V5's starting inventory
+
+> **`OD-DOC-009` is ANSWERED (V5 owns this).** The two below are **transferred, not resolved**: they remain
+> genuinely open, and they are recorded here in full so that whoever builds Document Management starts from
+> the analysis rather than from the question.
 
 ### `OD-DOC-007` — Where does binary content live?
 
@@ -106,7 +124,15 @@ still holds the bytes. Backups hold them for as long as the retention policy say
 
 **This is legal and contractual before it is technical.**
 
-### `OD-DOC-009` — Does V5 Document Management own this?
+### `OD-DOC-009` — Does V5 Document Management own this? — **RULED 2026-08-23: YES**
+
+> **The owner ruled that V5 owns employee documents.** `REQ-HR-0005` stays deferred and traceable, FP-010 is
+> closed, and no stopgap is built — so there is no migration into the V5 capability to plan, and V5 inherits
+> no data shaped by a feature package rather than by its own design. That was option 2 below.
+>
+> **Asking this one first was the point.** It was the only question of the three that could close the package
+> rather than unblock it, and answering `OD-DOC-007` before it would have produced an `ADR-028` for a
+> capability nobody intended to build here.
 
 The Product Roadmap places **Document Management at Version 5**. If employee documents ship before it, either
 they are a deliberate stopgap that V5 replaces — with a migration to specify — or V5's scope shrinks to

@@ -98,15 +98,41 @@ The import key remains, and its job is now narrow and precise: it protects again
 timeout** — the caller who never learned whether their import applied — rather than against partial
 application, which can no longer happen. `DEC-DOC-0004` is restated on those terms.
 
-## The three deferred decisions
+## The three deferred decisions — and how they ended
 
 `OD-DOC-007` (binary storage location), `OD-DOC-008` (retention and erasure) and `OD-DOC-009` (V5 Document
-Management ownership) are **OPEN-DEFERRED**, not closed. Their options tables travelled to
-[FP-010](../FP-010-hr-employee-documents/) intact, and they are that package's starting inventory rather
-than questions this one answered.
+Management ownership) were **OPEN-DEFERRED**, not closed. Their options tables travelled to
+[FP-010](../FP-010-hr-employee-documents/) intact, as that package's starting inventory rather than questions
+this one answered.
 
-`ADR-028` is required before FP-010 can proceed, and **not required by this package** — which is precisely
-the asymmetry the split ruling acted on.
+> **RULED 2026-08-23 — `OD-DOC-009`: V5 DOCUMENT MANAGEMENT OWNS EMPLOYEE DOCUMENTS, AND FP-010 IS CLOSED.**
+>
+> `REQ-HR-0005` stays deferred and traceable, exactly as `DEC-EMP-0032` already deferred it once. No stopgap
+> is built, so there is no migration into the V5 capability to plan. `OD-DOC-007` and `OD-DOC-008` transfer
+> to V5 as its starting inventory — still open, no longer HR's — and **`ADR-028` is V5's to write** when
+> Document Management is built.
+>
+> Asking `OD-DOC-009` first was the point: it was the only one of the three that could END the package rather
+> than unblock it, and it did.
+
+`ADR-028` was required before FP-010 could proceed, and **not required by this package** — which is precisely
+the asymmetry the split ruling acted on, and why FP-009 shipped complete while documents did not ship at all.
+
+## HR's V1 catalog is complete
+
+With FP-009 merged, **every HR requirement the V1 roadmap carries is either shipped or explicitly and
+traceably deferred with a named owner**:
+
+| Package | Requirements | State |
+|---|---|---|
+| FP-006 | `REQ-HR-0001`–`0004`, `0008` — employee core, lifecycle, branch transfer, search | Shipped |
+| FP-007 | `REQ-HR-0100`–`0102` — departments | Shipped |
+| FP-008 | `REQ-HR-0200`–`0202` — positions and grades | Shipped |
+| **FP-009** | **`REQ-HR-0009`, `REQ-HR-0010` — import and export** | **Shipped** |
+| FP-010 | `REQ-HR-0005` — employee documents | **Closed; owned by V5** (`OD-DOC-009`) |
+
+Nothing in the HR line is open. The next feature line is **GL**, per the owner's GL-before-Payroll
+sequencing.
 
 ## Identifier space — `DEC-DOC` / `OD-DOC`
 

@@ -1,8 +1,8 @@
 ---
 document_id: FP-010
 title: HR Employee Documents
-status: Deferred — gated on ADR-028
-version: 0.1
+status: CLOSED — V5 Document Management owns this capability (OD-DOC-009, 2026-08-23)
+version: 1.0
 module: HR
 milestone: TBD
 depends_on:
@@ -16,26 +16,35 @@ depends_on:
 
 # Feature Package 010 — HR Employee Documents
 
-> **Deferred, not open.** This package exists because `OD-DOC-001` ruled a **split** on 2026-08-22: FP-009 is
-> Employee Import and Export, and `REQ-HR-0005` Employee Documents became FP-010, **gated on `ADR-028`**.
+> # CLOSED — 2026-08-23
 >
-> It is **not a complete feature package** and does not pretend to be. It is the analysis that was already
-> done, moved here intact, plus the three owner decisions that were deferred rather than answered. Its job is
-> to be the starting inventory for whoever picks documents up — not to look finished.
+> **`OD-DOC-009` RULED: V5 Document Management owns employee documents.** `REQ-HR-0005` stays deferred —
+> exactly as `DEC-EMP-0032` already deferred it once — and this package is **closed rather than built**.
+>
+> The question was asked first, deliberately, because it was the only one of the three that could END this
+> package rather than unblock it. It did. `OD-DOC-007` (where binary content lives) and `OD-DOC-008`
+> (retention and erasure) were never worth answering for HR, because HR is not the module that will answer
+> them.
+>
+> **Nothing here is deleted.** Every option table, every consequence, every piece of recovered authority
+> becomes **V5's starting inventory** — which is what this package was written to be from the moment
+> `OD-DOC-001` split it out. A closed package that kept its analysis is worth more than a deferred one that
+> has to be re-derived.
 
-## Status and what unblocks it
+## Status
 
 | | |
 |---|---|
-| **Blocked by** | `ADR-028` — Binary Content Storage, Custody and Movement, which does not exist |
-| **`ADR-028` is blocked by** | `OD-DOC-007` — where binary content lives |
-| **Also open** | `OD-DOC-008` (retention and erasure), `OD-DOC-009` (V5 Document Management ownership) |
-| **Not blocked by** | FP-009. The two packages share an identifier space and nothing else |
+| **Status** | **CLOSED.** V5 Document Management owns this capability (`OD-DOC-009`, 2026-08-23) |
+| **`REQ-HR-0005`** | Remains **deferred and traceable**, not discarded — `DEC-EMP-0032`, `AC-EMP-0047`, `TS-EMP-0118` |
+| **`ADR-028`** | **Not written, and not HR's to write.** It is annotated throughout as V5's, to be authored when Document Management is built |
+| **`OD-DOC-007`, `OD-DOC-008`** | **Transferred to V5 as its starting inventory**, options tables intact |
+| **Never blocked** | FP-009, which shipped complete. The two packages shared an identifier space and nothing else |
 
-**`OD-DOC-009` may end this package rather than start it.** The Product Roadmap places **Document Management
-at Version 5**. If the owner rules that V5 owns this capability, `REQ-HR-0005` stays deferred — exactly as
-`DEC-EMP-0032` already deferred it once — and FP-010 is closed rather than built. That question is asked
-before the storage question is worth answering.
+**Why closing beats deferring.** A deferred package invites someone to pick it up; a closed one with a named
+owner tells them who already has. The Product Roadmap places Document Management at **Version 5**, and the
+alternative — building a stopgap now — would have meant a migration into the V5 capability and V5 inheriting
+data shaped by a feature package rather than by its own design.
 
 ## What is here
 
@@ -46,8 +55,11 @@ before the storage question is worth answering.
 
 **What is deliberately absent**: requirements, acceptance criteria and test scenarios as documents of their
 own. Their *identifiers* travelled and are listed below, but writing them out as a finished package would be
-specifying a feature whose foundational decision has not been made — and a specification that outruns its
+specifying a feature whose foundational decision had not been made — and a specification that outruns its
 decisions is how a package acquires content nobody approved.
+
+**That absence is now permanently correct.** The foundational decision was made and it was *"not here"*, so
+the documents that were never written are documents that never should have been.
 
 ## Identifiers this package holds
 

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Infrastructure\SSAS.HR.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

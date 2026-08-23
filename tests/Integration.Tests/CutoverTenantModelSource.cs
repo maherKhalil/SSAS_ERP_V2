@@ -1,4 +1,5 @@
-using SSAS.BuildingBlocks.Infrastructure.Persistence;
+﻿using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.GL.Infrastructure.Persistence;
 using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
@@ -18,8 +19,17 @@ namespace SSAS.Integration.Tests;
 internal static class CutoverTenantModel
 {
   // The same shape the Host composes: Platform's own tenant entities plus every registered module's
-  // contribution. HR is the only contributing module today.
-  public static readonly ITenantModelContributor[] Contributors = [new HrTenantModelContributor()];
+  // contribution. TWO modules contribute today — HR and, from FP-011, GL.
+  //
+  // ---- THIS LIST IS THE ONE THAT MATTERS, AND IT IS NOT THE ONLY LIST.
+  //
+  // Twenty-one test sites construct a contributor array. Most build a model to prove something about ONE
+  // module's schema and correctly name only that module; adding GL to them would put seven irrelevant
+  // tables into fixtures that assert about Employees. THIS site is different: the cutover manifest tests
+  // DERIVE their expected set from it, so a module missing here is a module missing from every derived
+  // assertion — and an incomplete manifest is not an error, it is a shorter list that passes.
+  public static readonly ITenantModelContributor[] Contributors =
+    [new HrTenantModelContributor(), new GlTenantModelContributor()];
 
   public static ITenantModelSource Source { get; } = new ComposedTenantModelSource(Contributors);
 

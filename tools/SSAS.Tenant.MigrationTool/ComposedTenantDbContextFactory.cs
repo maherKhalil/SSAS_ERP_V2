@@ -4,6 +4,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.GL.Infrastructure.Persistence;
 using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
@@ -30,7 +31,8 @@ namespace SSAS.Tenant.MigrationTool;
 public sealed class ComposedTenantDbContextFactory : IDesignTimeDbContextFactory<TenantDbContext>
 {
   // Every module that contributes tenant entities. One line per module, reviewed like any other code.
-  private static readonly ITenantModelContributor[] Contributors = [new HrTenantModelContributor()];
+  private static readonly ITenantModelContributor[] Contributors =
+    [new HrTenantModelContributor(), new GlTenantModelContributor()];
 
   public TenantDbContext CreateDbContext(string[] args)
   {

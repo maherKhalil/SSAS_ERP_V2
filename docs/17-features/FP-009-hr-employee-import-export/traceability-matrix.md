@@ -348,3 +348,66 @@ reaping blind, because a blind sweep is exactly what the guard's comment rejects
 previous run's orphan from a sibling's live catalog either.
 
 Hand-reaping before a gate is no longer a step anyone performs or forgets.
+
+## Phase 2 exit gate — and the discharge of Phase 1's debt
+
+**Run 2026-08-22/23, both configurations, from a zero-catalog start the gate enforces itself.**
+
+| Suite | Debug | Release |
+|---|---|---|
+| Architecture.Tests | 404 | 404 |
+| Platform.Tests | 963 | 963 |
+| HR.Tests | 326 | 326 |
+| API.Tests | 622 | 622 |
+| Integration.Tests | 735 (+1 failure) | **736** |
+| **Total** | 3,050 + 1 failure | **3,051 clean** |
+
+Builds 0 warnings in both. Catalogs **0 before and 0 after** each configuration — the structural reap
+(`gate.sh`) working, and the condition Phase 1's failure was caused by is now impossible to arrive at by
+forgetting.
+
+### PHASE 1'S CERTIFICATION DEBT IS DISCHARGED
+
+Phase 1 closed green with one condition recorded: *"if Phase 2's Release Integration is anything but clean,
+Phase 1's green is VOID."* **Release Integration is 736 / 736 clean.** The debt is settled and Phase 1's
+green stands.
+
+### The Debug failure — class (c), and not FP-009's
+
+`TenantBackupSchedulerSqlServerTests.A_backup_started_outside_the_platform_makes_the_sweep_skip`, expected
+`SkippedInFlightOperation`, observed `Succeeded`.
+
+The test starts a real backup **outside** the platform, waits for it to become visible, then sweeps and
+expects the sweep to skip. It already carries a 30-second wait and **five retries** — the author knew it was
+timing-sensitive. It failed because the competing backup finished between the last visibility check and the
+sweep's inspection, so the precondition the assertion depends on had lapsed. **Nothing shows the product
+behaviour is wrong**; the case it exercises simply was not in flight when it was looked at.
+
+Evidence it is neither a stale test (a) nor a product defect (b):
+
+| Run | This test |
+|---|---|
+| Phase 1 gate, Debug (11 catalogs) | passed — the single failure there was the catalog guard |
+| Phase 1 gate, Release (3 catalogs) | passed — same |
+| Diagnostic, Debug (0 catalogs, 729/729) | **passed** (confirmed in its TRX) |
+| Phase 2 gate, Release (736/736) | **passed** (confirmed in its TRX) |
+| Phase 2 gate, Debug | failed |
+
+**FP-009 touched no backup or scheduler code** — `git diff --name-only 0e0ea4e..HEAD` matches nothing under
+either name.
+
+Per the standing rules a class-(c) finding **gets no retry-for-green**, so none was run. It is reported with
+its evidence and left for a ruling.
+
+*(It is also a member of the serial collection the gate-economics task will examine — `TenantBackupScheduler`
+is one of the thirteen no-stated-reason members, and this failure is a data point about what that chain's
+timing actually depends on.)*
+
+### The gate script's two fixes, proven by this run
+
+Both defects found after the Phase 1 gate are demonstrably closed:
+
+* the failing test's **identity was captured** — `[FAIL] …A_backup_started_outside_the_platform_makes_the_sweep_skip`
+  appears in the console output, where Phase 1's was destroyed by the filter;
+* the **exit code was honest** — `!!! Integration.Tests (Debug) EXITED 1` and a closing `[GATE RED]`, where
+  Phase 1's doubly-red gate reported success.

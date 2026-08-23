@@ -149,7 +149,31 @@ public sealed class HrRouteInventoryTests
         $"POST /api/hr/salary-grades/ => {Policy(HrPermissionNames.CreateSalaryGrades)}",
         $"POST /api/hr/salary-grades/{{salaryGradeId:guid}}/activate => {Policy(HrPermissionNames.DeactivateSalaryGrades)}",
         $"POST /api/hr/salary-grades/{{salaryGradeId:guid}}/deactivate => {Policy(HrPermissionNames.DeactivateSalaryGrades)}",
-        $"PUT /api/hr/salary-grades/{{salaryGradeId:guid}} => {Policy(HrPermissionNames.UpdateSalaryGrades)}"
+        $"PUT /api/hr/salary-grades/{{salaryGradeId:guid}} => {Policy(HrPermissionNames.UpdateSalaryGrades)}",
+
+        // ================================================================================================
+        // FP-009 PHASE 2. FIVE MORE, TAKING THE HR SURFACE FROM 41 ROUTES TO 46.
+        // ================================================================================================
+        //
+        // The PAIRING is what a count could never guard, and here it carries the whole of `OD-DOC-005`:
+        //
+        //   * the two routes that CREATE employees in bulk carry `HR.Employees.Import`, not `Create` — the
+        //     capability was separated precisely because "may add one" must not mean "may add five
+        //     thousand";
+        //   * the one route that takes data OUT carries `HR.Employees.Export`, which is the higher-risk
+        //     half and the only permission in the module guarding an operation that moves data beyond the
+        //     system's control;
+        //   * and BOTH audit listings carry `HR.Employees.View`, never `Import` or `Export`. Reading the
+        //     record that an extraction happened is an employee read; gating it on `Export` would mean the
+        //     people who audit extractions must also be able to perform them.
+        //
+        // Note the trailing-slash shapes: only the empty-suffix routes render with one, so these five do
+        // not — the same form `position-history` and `change-position` already take.
+        $"POST /api/hr/employees/import => {Policy(HrPermissionNames.ImportEmployees)}",
+        $"POST /api/hr/employees/import/validate => {Policy(HrPermissionNames.ImportEmployees)}",
+        $"GET /api/hr/employees/import-runs => {Policy(HrPermissionNames.ViewEmployees)}",
+        $"GET /api/hr/employees/export => {Policy(HrPermissionNames.ExportEmployees)}",
+        $"GET /api/hr/employees/export-runs => {Policy(HrPermissionNames.ViewEmployees)}"
       }
       .OrderBy(route => route, StringComparer.Ordinal),
       routes);
@@ -157,7 +181,7 @@ public sealed class HrRouteInventoryTests
     // The count is asserted BESIDE the exact list rather than instead of it. The list guards the pairing of
     // pattern to permission; this one sentence is what makes a reviewer's "twenty new routes" checkable at a
     // glance, and it is the number `api-contracts.md` fixed.
-    Assert.Equal(41, routes.Length);
+    Assert.Equal(46, routes.Length);
   }
 
   // ---- THE HR SURFACE USES NO DELETE VERB, AND THAT IS A CONVENTION RATHER THAN AN ACCIDENT.

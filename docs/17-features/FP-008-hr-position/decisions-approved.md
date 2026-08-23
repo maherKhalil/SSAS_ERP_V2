@@ -622,29 +622,44 @@ registration**: `TenantCutoverCopyPlan.Build` reflects over the composed model a
 `ITenantOwnedEntity` with a table name, ordering them by a topological sort of the foreign-key graph. There is
 no hand-maintained list to forget.
 
-**But nine assertion sites across eight tests pin the current set by name or by count and must be updated
+**But ten assertion sites across nine tests pin the current set by name or by count and must be updated
 deliberately** — they exist precisely so a new tenant-owned entity fails loudly rather than being silently
 absent:
 
-| # | Site | What it pins | Before FP-008 | After FP-008 Phase 1 |
-|---|---|---|---|---|
-| 1 | `TenantCutoverCopySqlServerTests.C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity` | The **exact** entity list | 7 entities | 11 entities |
-| 2 | `TenantCutoverCopySqlServerTests.C6_15_The_copy_order_places_every_principal_before_its_dependents` | The topological order | Departments before Employees | + `SalaryGrade < JobGrade < Position` and the history's two edges |
-| 3 | `TenantCutoverCopySqlServerTests.Copying_one_tenant_moves_only_that_tenant_and_leaves_its_co_tenant_alone` | `TablesCopied` **and its own second exact entity list** | 7 | 11 |
-| 4 | `TenantCutoverCopySqlServerTests.A_retry_revalidates_completed_tables_and_never_duplicates_them` | First-pass `TablesCopied` | 7 | 11 |
-| 5 | `TenantCutoverCopySqlServerTests.A_retry_revalidates_completed_tables_and_never_duplicates_them` | Second-pass `TablesCopied` — the empty tables recopied on retry | 6 | 10 |
-| 6 | `TenantCutoverCopySqlServerTests.C6_3_To_C6_10_A_real_cutover_carries_the_employee_and_its_whole_history` | `TablesCopied` **and its own third exact entity list** | 7 | 11 |
-| 7 | `TenantCutoverCopySqlServerTests.C6_Retrying_a_completed_copy_verifies_the_hr_tables_instead_of_duplicating_them` | The recopy **pair**: `TablesAlreadyComplete` / `TablesCopied` | 5 / 2 | 5 / 6 |
-| 8 | `TenantCutoverCopySqlServerTests.C6_14_A_contributor_free_plan_silently_omits_both_hr_tables` | The **gap** between the composed and contributor-free manifests, plus one `DoesNotContain` per HR entity | `Count - 5`, 5 clauses | `Count - 9`, 9 clauses |
-| 9 | `TenantRestoreVerificationProviderSqlServerTests.CopyFixture.PrepareTenantSchemaAsync` | The `DROP TABLE` list, **the reverse of the copy order** | 6 tables | 10 tables |
+| # | Site | What it pins | Before FP-008 | After FP-008 Phase 1 | After FP-009 Phase 1 |
+|---|---|---|---|---|---|
+| 1 | `TenantCutoverCopySqlServerTests.C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity` | The **exact** entity list | 7 entities | 11 entities | **13 entities** |
+| 2 | `TenantCutoverCopySqlServerTests.C6_15_The_copy_order_places_every_principal_before_its_dependents` | The topological order | Departments before Employees | + `SalaryGrade < JobGrade < Position` and the history's two edges | + `Company` before each run record, and a proof that **neither has any other edge** |
+| 3 | `TenantCutoverCopySqlServerTests.Copying_one_tenant_moves_only_that_tenant_and_leaves_its_co_tenant_alone` | `TablesCopied` **and its own second exact entity list** | 7 | 11 | **13** |
+| 4 | `TenantCutoverCopySqlServerTests.A_retry_revalidates_completed_tables_and_never_duplicates_them` | First-pass `TablesCopied` | 7 | 11 | **13** |
+| 5 | `TenantCutoverCopySqlServerTests.A_retry_revalidates_completed_tables_and_never_duplicates_them` | Second-pass `TablesCopied` — the empty tables recopied on retry | 6 | 10 | **12** |
+| 6 | `TenantCutoverCopySqlServerTests.C6_3_To_C6_10_A_real_cutover_carries_the_employee_and_its_whole_history` | `TablesCopied` **and its own third exact entity list** | 7 | 11 | **13** |
+| 7 | `TenantCutoverCopySqlServerTests.C6_Retrying_a_completed_copy_verifies_the_hr_tables_instead_of_duplicating_them` | The recopy **pair**: `TablesAlreadyComplete` / `TablesCopied` | 5 / 2 | 5 / 6 | **6 / 7** |
+| 8 | `TenantCutoverCopySqlServerTests.C6_14_A_contributor_free_plan_silently_omits_both_hr_tables` | The **gap** between the composed and contributor-free manifests, plus one `DoesNotContain` per HR entity | `Count - 5`, 5 clauses | `Count - 9`, 9 clauses | **`Count - 11`, 11 clauses** |
+| 9 | `TenantRestoreVerificationProviderSqlServerTests.CopyFixture.BreakApplicationSchemaAsync` | The `DROP TABLE` list, **the reverse of the copy order** | 6 tables | 10 tables | **12 tables** |
+| 10 | `EmployeeHostCompositionTests.H9_The_host_composed_tenant_model_contains_the_contributed_hr_entities` | The **exact** entity list, from the production DI graph rather than a test model | 7 entities | 11 entities | **13 entities** |
 
-Sites 3–8 are the ones this decision's first draft missed. Two properties of the set make it easy to
-under-count, and both are why the list above is grep-derived rather than remembered: **three separate tests
-carry their own exact entity list** (1, 3, 6 — not one shared constant), and **four sites pin a count that is
-not the manifest size** (5, 7 pin what a retry recopies; 8 pins a difference). Only site 7's first number is
-invariant under a new entity, and only because the four FP-008 tables hold no rows in that fixture — see the
-comment there recording that `Position` joins the row-bearing set in **Phase 3**, when `Employee.PositionId`
-becomes required.
+> **Corrected 2026-08-22 during FP-009 Phase 1, on two counts, both grep-derived.**
+>
+> **Site 9 named the wrong method.** `PrepareTenantSchemaAsync` migrates and asserts nothing; the `DROP TABLE`
+> list lives in `BreakApplicationSchemaAsync` on the same fixture. The row now names the method that actually
+> carries the list.
+>
+> **Site 10 was already known and was not in the table.** The FP-008 review recorded `H9` as "a tenth site
+> that sat outside all of it" and amended the phase exit gate because of it, but the inventory itself was left
+> at nine rows with the finding in prose beneath. A site inventory with a footnote saying it is incomplete is
+> not an inventory. FP-009 Phase 1 is the first change made with `H9` **inside** the list, and it was updated
+> in the same act as the other nine rather than discovered red afterwards.
+
+Sites 3–8 are the ones this decision's first draft missed; site 10 is the one the first *complete* draft still
+missed. Two properties of the set make it easy to under-count, and both are why the list above is grep-derived
+rather than remembered: **four separate tests carry their own exact entity list** (1, 3, 6, 10 — not one
+shared constant, and one of them in a different test project), and **four sites pin a count that is not the
+manifest size** (5, 7 pin what a retry recopies; 8 pins a difference). Only site 7's first number is invariant
+under a new entity — under FP-008 because the four position tables hold no rows in that fixture, and under
+FP-009 for a stronger reason: `Position` joined the row-bearing set in Phase 3 when `Employee.PositionId`
+became required, and **no run record can ever join it the same way**, because no employee column will ever
+reference one.
 
 Under `OD-POS-002` option (i) the manifest goes from **7 entities to 11** (`Position`, `JobGrade`,
 `SalaryGrade`, `EmployeePositionAssignment`); under (ii) or (iii) to 10; under (iv) to 9. The derived copy

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.HR.Domain.Departments;
 using SSAS.HR.Domain.Employees;
+using SSAS.HR.Domain.ImportExport;
 using SSAS.HR.Domain.Positions;
 
 namespace SSAS.HR.Infrastructure.Persistence;
@@ -45,6 +46,14 @@ public sealed class HrTenantModelContributor : ITenantModelContributor
     modelBuilder.ApplyConfiguration(new JobGradeConfiguration());
     modelBuilder.ApplyConfiguration(new PositionConfiguration());
     modelBuilder.ApplyConfiguration(new EmployeePositionAssignmentConfiguration());
+
+    // ---- FP-009 PHASE 1. Two run records, applied EXPLICITLY, for the reason stated above.
+    //
+    // Neither points at `Employee`: a run record names WHO RAN WHAT, never WHICH EMPLOYEES RESULTED. That is
+    // what keeps the copy graph unchanged in shape as well as valid — both depend only on `Companies`, so
+    // they sort ahead of `Employees` and introduce no new ordering constraint and no cycle.
+    modelBuilder.ApplyConfiguration(new EmployeeImportRunConfiguration());
+    modelBuilder.ApplyConfiguration(new EmployeeExportRunConfiguration());
 
     // ---- THE FOREIGN KEYS TO PLATFORM-OWNED PRINCIPALS.
     //
@@ -108,6 +117,30 @@ public sealed class HrTenantModelContributor : ITenantModelContributor
       .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
       .WithMany()
       .HasForeignKey(nameof(Position.CompanyId))
+      .OnDelete(DeleteBehavior.Restrict);
+
+    // ---- FP-009's TWO RUN RECORDS DO GET A COMPANY FOREIGN KEY, AND THE THREE ASSIGNMENT TABLES DO NOT.
+    //
+    // That is not an inconsistency. The assignment tables carry a `CompanyId` whose integrity is already
+    // anchored by their foreign key to the Employee they describe, so a second constraint to Company would
+    // add nothing. A RUN RECORD NAMES NO EMPLOYEE AT ALL — it deliberately points at nothing but the company
+    // — so this key is the only referential integrity it has, and `data-model.md` asks for it by name.
+    //
+    // It is also what puts both tables ahead of `Employees` in the derived copy order rather than leaving
+    // them unordered siblings that the topological sort places by tie-break.
+    //
+    // On `EmployeeExportRun` this is a constraint on an ordinary DATA column: the entity is deliberately not
+    // `ICompanyOwnedEntity`, and a foreign key is not an ownership declaration.
+    modelBuilder.Entity(typeof(EmployeeImportRun))
+      .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
+      .WithMany()
+      .HasForeignKey(nameof(EmployeeImportRun.CompanyId))
+      .OnDelete(DeleteBehavior.Restrict);
+
+    modelBuilder.Entity(typeof(EmployeeExportRun))
+      .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
+      .WithMany()
+      .HasForeignKey(nameof(EmployeeExportRun.CompanyId))
       .OnDelete(DeleteBehavior.Restrict);
   }
 }

@@ -1,4 +1,4 @@
-using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+﻿using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Domain;
@@ -567,6 +567,20 @@ public sealed class EmployeeReadScopeTests
 
     // The department count is the same kind of read and is recorded the same way (FP-007 employeeCount,
     // shipped 2026-08-22).
+    // FP-009. Recorded on the same terms as every other read here: the SCOPE is what this double exists to
+    // capture, so an export that reached the read service without one would be visible in `LastScope`.
+    public Task<IReadOnlyList<EmployeeExportRow>> ExportEmployeesAsync(
+      EmployeeReadScope scope,
+      EmployeeSearchCriteria criteria,
+      int ceiling,
+      CancellationToken cancellationToken = default)
+    {
+      Calls++;
+      LastScope = scope;
+
+      return Task.FromResult<IReadOnlyList<EmployeeExportRow>>([]);
+    }
+
     public Task<int> CountEmployeesByDepartmentAsync(
       EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default)
     {

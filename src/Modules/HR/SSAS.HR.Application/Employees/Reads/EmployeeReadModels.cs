@@ -1,4 +1,4 @@
-using SSAS.HR.Domain.Employees;
+﻿using SSAS.HR.Domain.Employees;
 
 namespace SSAS.HR.Application.Employees.Reads;
 
@@ -69,6 +69,29 @@ public sealed record EmployeeSummary(
   string EmployeeNumber,
   string FullName,
   DateTimeOffset EmploymentDate,
+  EmployeeStatus Status);
+
+// ONE ROW AS IT LEAVES THE SYSTEM (FP-009, DEC-DOC-0008, OD-DOC-006).
+//
+// ================================================================================================
+// `nationalId` IS NOT A FIELD ON THIS TYPE, AND THAT IS THE MECHANISM RATHER THAN AN OVERSIGHT.
+// ================================================================================================
+//
+// `OD-DOC-006` ruled it NEVER exported — unconditionally, with no permission, parameter or caller for which
+// the column appears. Not "excluded by default": ABSENT FROM THE CONTRACT, which is the distinction FP-006
+// draws between a field that is validated away and a field that does not exist. A projection that carried
+// it and a writer that dropped it would be one edit away from disclosure; a type that has no such property
+// cannot be made to leak one.
+//
+// It is a SIBLING of `EmployeeSummary`, not a reuse of it. The two differ in what they carry — this one
+// needs the position code and does not want the identifiers — and in what a change to either MEANS: a field
+// added to the summary changes a JSON response, while a field added here changes what leaves the building.
+public sealed record EmployeeExportRow(
+  string EmployeeNumber,
+  string FullName,
+  DateTimeOffset EmploymentDate,
+  string DepartmentCode,
+  string PositionCode,
   EmployeeStatus Status);
 
 // One row of the append-only branch history. SourceBranchId is null for the initial assignment, which

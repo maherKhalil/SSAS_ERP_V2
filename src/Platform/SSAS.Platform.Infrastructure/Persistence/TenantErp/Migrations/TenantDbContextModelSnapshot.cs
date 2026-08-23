@@ -435,6 +435,146 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SSAS.HR.Domain.ImportExport.EmployeeExportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("ExportRunId");
+
+                    b.Property<string>("ColumnSet")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ExecutedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ExecutedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ScopeBranchIds")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ScopeCompanyIds")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("TenantId", "CompanyId", "ExecutedUtc")
+                        .HasDatabaseName("IX_EmployeeExportRuns_TenantId_CompanyId_ExecutedUtc");
+
+                    b.ToTable("EmployeeExportRuns", "tenant", t =>
+                        {
+                            t.HasCheckConstraint("CK_EmployeeExportRuns_ColumnSet_Present", "LEN([ColumnSet]) > 0");
+
+                            t.HasCheckConstraint("CK_EmployeeExportRuns_RowCount_NonNegative", "[RowCount] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.ImportExport.EmployeeImportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("ImportRunId");
+
+                    b.Property<int>("AcceptedCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ByteCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ExecutedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ExecutedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<string>("ImportKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("NormalizedImportKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<int>("RejectedCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "NormalizedImportKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_EmployeeImportRuns_Company_Key");
+
+                    b.HasIndex("TenantId", "CompanyId", "ExecutedUtc")
+                        .HasDatabaseName("IX_EmployeeImportRuns_TenantId_CompanyId_ExecutedUtc");
+
+                    b.ToTable("EmployeeImportRuns", "tenant", t =>
+                        {
+                            t.HasCheckConstraint("CK_EmployeeImportRuns_AllOrNothing", "([Outcome] = N'Refused' AND [AcceptedCount] = 0) OR ([Outcome] <> N'Refused' AND [AcceptedCount] = [RowCount])");
+
+                            t.HasCheckConstraint("CK_EmployeeImportRuns_Counts_NonNegative", "[ByteCount] >= 0 AND [RowCount] >= 0 AND [AcceptedCount] >= 0 AND [RejectedCount] >= 0");
+
+                            t.HasCheckConstraint("CK_EmployeeImportRuns_Outcome", "[Outcome] IN (N'Validated', N'Applied', N'Refused')");
+
+                            t.HasCheckConstraint("CK_EmployeeImportRuns_RejectedWithinRowCount", "[RejectedCount] <= [RowCount]");
+                        });
+                });
+
             modelBuilder.Entity("SSAS.HR.Domain.Positions.EmployeePositionAssignment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1050,6 +1190,24 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.HasOne("SSAS.HR.Domain.Employees.Employee", null)
                         .WithMany("BranchAssignments")
                         .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.ImportExport.EmployeeExportRun", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.ImportExport.EmployeeImportRun", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

@@ -1,4 +1,4 @@
-using SSAS.BuildingBlocks.Api.Transport;
+﻿using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
 
 namespace SSAS.HR.API.Employees;
@@ -131,6 +131,41 @@ public static class EmployeeApiErrorMapper
       // The database had the last word on uniqueness. Same answer as the pre-check, so a race and a
       // sequential duplicate are indistinguishable to the caller.
       "Persistence.UniqueConstraint" => NumberConflict,
+
+      // ================================================================================================
+      // FP-009. EVERY IMPORT AND EXPORT CODE HAS AN ARM, SO NOTHING FALLS TO THE 500 BELOW.
+      // ================================================================================================
+      //
+      // The default is deliberately a server error, and that is exactly why this block must be complete: an
+      // unmapped code means this table is out of date, and a 500 makes the gap visible. Before these arms
+      // existed EVERY FP-009 failure — a bad header, an exceeded cap, an invalid import key — answered 500,
+      // which would have told a caller to retry something that will never succeed.
+      //
+      // ---- THE FILE CONTRACT'S FAILURES ARE 400s. They describe the caller's own submission.
+      "EmployeeImport.HeaderMissing" => ApiErrors.RequestInvalid,
+      "EmployeeImport.HeaderColumnUnknown" => ApiErrors.RequestInvalid,
+      "EmployeeImport.HeaderColumnMissing" => ApiErrors.RequestInvalid,
+      "EmployeeImport.HeaderColumnDuplicated" => ApiErrors.RequestInvalid,
+      "EmployeeImport.RowShapeInvalid" => ApiErrors.RequestInvalid,
+      "EmployeeImport.EmploymentDateInvalid" => ApiErrors.RequestInvalid,
+      "EmployeeImport.DuplicateWithinFile" => ApiErrors.RequestInvalid,
+      "EmployeeImport.StatusNotCreatable" => ApiErrors.RequestInvalid,
+
+      // The caps name a limit the caller exceeded, so they too describe the request (`DEC-DOC-0005`).
+      "EmployeeImport.RowLimitExceeded" => ApiErrors.RequestInvalid,
+      "EmployeeImport.ByteLimitExceeded" => ApiErrors.RequestInvalid,
+
+      // ---- THE RUN RECORDS' OWN DOMAIN REFUSALS.
+      //
+      // `InvalidImportKey` and `InvalidFileName` are caller input. `InvalidCounts` and `InvalidColumnSet`
+      // are NOT — no caller can express them, because the counts and the column set are computed by the
+      // pipeline. If one is ever returned, the pipeline's arithmetic is wrong, which is a server fault and
+      // is answered as one.
+      "EmployeeImportRun.InvalidImportKey" => ApiErrors.RequestInvalid,
+      "EmployeeImportRun.InvalidFileName" => ApiErrors.RequestInvalid,
+      "EmployeeImportRun.InvalidActor" => ApiErrors.Forbidden,
+      "EmployeeImportRun.InvalidCounts" => ApiErrors.WriteFailure,
+      "EmployeeExportRun.InvalidColumnSet" => ApiErrors.WriteFailure,
 
       // ---- EVERYTHING ELSE, including genuine storage and routing failure, keeps server semantics.
       _ => ApiErrors.WriteFailure

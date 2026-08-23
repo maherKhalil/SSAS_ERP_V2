@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.HR.Application.Employees.Reads;
@@ -90,34 +90,7 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
     ArgumentNullException.ThrowIfNull(criteria);
 
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
-    var query = Scoped(context, scope);
-
-    var statuses = criteria.Statuses is { Count: > 0 }
-      ? criteria.Statuses.Distinct().ToArray()
-      : DefaultStatuses;
-
-    query = query.Where(employee => statuses.Contains(employee.Status));
-
-    if (!string.IsNullOrWhiteSpace(criteria.EmployeeNumber))
-    {
-      // EXACT MATCH ON THE NORMALIZED COLUMN, normalized here the same way the domain normalizes it on
-      // write. Comparing against the display column instead would be both case-sensitive under the binary
-      // collation and inconsistent with the unique index that decides what "the same number" means.
-      var normalized = criteria.EmployeeNumber.Trim().ToUpperInvariant();
-
-      query = query.Where(employee => employee.NormalizedEmployeeNumber == normalized);
-    }
-
-    // ---- THE DEPARTMENT FILTER IS APPLIED **ON TOP OF** THE SCOPE, NEVER INSTEAD OF IT.
-    //
-    // `query` already carries the tenant, company and branch predicates from Scoped() above, and this only
-    // ever adds a conjunct. There is no branch of code where naming a department replaces or relaxes them,
-    // which is what makes the branch-visibility proof in FP-007 Phase 3 §25 hold structurally rather than
-    // by inspection.
-    if (criteria.DepartmentId is { } departmentId && departmentId != Guid.Empty)
-    {
-      query = query.Where(employee => employee.DepartmentId == departmentId);
-    }
+    var query = Filtered(Scoped(context, scope), criteria);
 
     // COUNTED THROUGH THE SAME SCOPED QUERY. A total computed from a wider query would leak the size of the
     // data outside the caller's scope even though none of those rows were returned.
@@ -293,6 +266,107 @@ internal sealed class EmployeeReadService(ITenantDbContextAccessor contextAccess
 
     return await Scoped(context, scope)
       .CountAsync(employee => employee.DepartmentId == departmentId, cancellationToken);
+  }
+
+  // ================================================================================================
+  // THE FILTER CONTRACT, IN ONE PLACE, BECAUSE THE EXPORT INHERITS IT RATHER THAN COPYING IT (FP-009)
+  // ================================================================================================
+  //
+  // Search and export apply the SAME conjuncts to the SAME criteria. That is a structural obligation rather
+  // than a convention: `TS-DOC-0016` asserts the export honours the `departmentId` filter, and the way to
+  // make that true for the NEXT filter as well is for there to be no second place to add one.
+  //
+  // The FP-006/FP-007 audit is why this is written this way. It found `FR-DEP-0111` implemented end-to-end
+  // below the transport and unreachable above it — a capability nobody could use. A filter that existed on
+  // search and silently not on export would be the same defect wearing a different hat, and a copied
+  // predicate is exactly how it would arrive.
+  //
+  // EVERY CONJUNCT NARROWS. Nothing here can widen `query`, which already carries the tenant, company and
+  // branch predicates from `Scoped`. There is no branch of code where naming a department replaces or
+  // relaxes them, which is what makes the branch-visibility proof hold structurally rather than by
+  // inspection.
+  private static IQueryable<Employee> Filtered(IQueryable<Employee> query, EmployeeSearchCriteria criteria)
+  {
+    // Omitted means Active AND Inactive — both are current employment. Terminated is excluded unless asked
+    // for by name (`DEC-DOC-0009` for the export, and the same default the search has always had), so a
+    // routine extract does not quietly carry people who have left.
+    var statuses = criteria.Statuses is { Count: > 0 }
+      ? criteria.Statuses.Distinct().ToArray()
+      : DefaultStatuses;
+
+    query = query.Where(employee => statuses.Contains(employee.Status));
+
+    if (!string.IsNullOrWhiteSpace(criteria.EmployeeNumber))
+    {
+      // EXACT MATCH ON THE NORMALIZED COLUMN, normalized here the same way the domain normalizes it on
+      // write. Comparing against the display column instead would be both case-sensitive under the binary
+      // collation and inconsistent with the unique index that decides what "the same number" means.
+      var normalized = criteria.EmployeeNumber.Trim().ToUpperInvariant();
+
+      query = query.Where(employee => employee.NormalizedEmployeeNumber == normalized);
+    }
+
+    if (criteria.DepartmentId is { } departmentId && departmentId != Guid.Empty)
+    {
+      query = query.Where(employee => employee.DepartmentId == departmentId);
+    }
+
+    return query;
+  }
+
+  // ---- THE EXPORT READ (FP-009, FR-DOC-0201, OD-DOC-006).
+  //
+  // Same scope, same filters, a different PROJECTION — and the projection is where `OD-DOC-006` lives:
+  // `EmployeeExportRow` has no national identifier to select into, so there is no line here to remove and
+  // no flag that could re-add one.
+  //
+  // ---- BOUNDED, AND BOUNDED SO THE RESULT CAN BE BUFFERED RATHER THAN STREAMED.
+  //
+  // `Take(ceiling + 1)` reads ONE ROW PAST the limit. That single extra row is what lets the caller tell
+  // "exactly at the ceiling" from "over it" and REFUSE the second, instead of returning a file that is
+  // silently short — the worst outcome available, because it looks complete. Everything a caller can ask
+  // for therefore fits in memory by construction, which is what makes a buffered response honest rather
+  // than optimistic.
+  //
+  // ORDERED THE WAY THE SEARCH ORDERS: full name then identifier. Paging and export agree about what "the
+  // next one" means, which is what makes an exported file comparable with the page the operator was
+  // looking at when they asked for it.
+  public async Task<IReadOnlyList<EmployeeExportRow>> ExportEmployeesAsync(
+    EmployeeReadScope scope,
+    EmployeeSearchCriteria criteria,
+    int ceiling,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+    ArgumentNullException.ThrowIfNull(criteria);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // Two INNER joins on NOT NULL foreign keys, so neither can add or remove a row. The CODES are what a
+    // file carries — nobody types a GUID into a spreadsheet — and they are the same values an import
+    // resolves against, which is what makes the round trip real rather than aspirational.
+    return await Filtered(Scoped(context, scope), criteria)
+      .Join(
+        context.Set<Department>(),
+        employee => employee.DepartmentId,
+        department => department.Id,
+        (employee, department) => new { employee, department })
+      .Join(
+        context.Set<Domain.Positions.Position>(),
+        row => row.employee.PositionId,
+        position => position.Id,
+        (row, position) => new { row.employee, row.department, position })
+      .OrderBy(row => row.employee.FullName)
+      .ThenBy(row => row.employee.Id)
+      .Take(ceiling + 1)
+      .Select(row => new EmployeeExportRow(
+        row.employee.EmployeeNumber.Value,
+        row.employee.FullName.Value,
+        row.employee.EmploymentDate,
+        row.department.Code.Value,
+        row.position.Code.Value,
+        row.employee.Status))
+      .ToArrayAsync(cancellationToken);
   }
 
   private static IQueryable<Employee> Scoped(DbContext context, EmployeeReadScope scope) =>

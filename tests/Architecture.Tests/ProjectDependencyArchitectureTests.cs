@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace SSAS.Architecture.Tests;
 
@@ -204,8 +204,33 @@ public sealed class ProjectDependencyArchitectureTests
         "SSAS.BuildingBlocks.Api.Transport.ApiResponseSecurity",
         // "This endpoint requires permission X" — the mechanism, never the permissions.
         "SSAS.BuildingBlocks.Api.Transport.PermissionEndpointConventions",
+        // ---- FP-009 PHASE 2. THE PER-ENDPOINT BODY CEILING, AND THE CASE FOR IT BEING HERE.
+        //
+        // This guard exists to force the conversation, so: it takes a number of bytes and sets a transport
+        // feature. It names no module, no route, no permission and no business concept — the same test
+        // `RequirePermission` passes, and it lives in that method's own file because the two are the same
+        // kind of thing: a convention a route declares about itself.
+        //
+        // The METADATA record is exported alongside it deliberately. A ceiling that only took effect at
+        // request time could not be asserted under a server that does not enforce body limits, and the
+        // harness runs on `TestServer`, which does not. Publishing what a route DECLARES is what makes the
+        // ceiling checkable without eleven megabytes of request.
+        "SSAS.BuildingBlocks.Api.Transport.RequestSizeEndpointConventions",
+        "SSAS.BuildingBlocks.Api.Transport.RequestSizeEndpointConventions+MaxRequestBodySizeMetadata",
         // One rowversion wire format for the whole estate.
         "SSAS.BuildingBlocks.Api.Transport.RowVersionCodec",
+        // ---- FP-009. THE CSV BODY READER, AND THE CASE FOR IT BEING HERE RATHER THAN IN HR.
+        //
+        // This guard exists to force exactly this conversation, so: it is here because it knows a content
+        // type, an encoding and a byte order mark, and nothing about an employee. Every argument for
+        // `StrictRequestReader` being shared applies to it unchanged — a second module accepting a CSV body
+        // would otherwise write a second decoder, and the two would disagree about the one thing that
+        // matters, which is what to do with bytes that will not decode.
+        //
+        // A SIBLING, NOT A WIDENING. `ReadStrictJsonAsync` opens with `HasJsonContentType()` and that line
+        // is its contract; teaching it a second content type would make its guarantees conditional. Two
+        // types, two gates, neither one branching on the other's.
+        "SSAS.BuildingBlocks.Api.Transport.StrictCsvReader",
         // Strict JSON and query parsing.
         "SSAS.BuildingBlocks.Api.Transport.StrictRequestReader"
       ],

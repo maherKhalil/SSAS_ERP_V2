@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
@@ -229,7 +229,9 @@ public sealed class EmployeeHostCompositionTests
     // The cutover engine DERIVES its manifest from this model, so it can never miss a table. This list is
     // the other half: it guarantees a human SEES a new one, because a new tenant-owned entity may need
     // ordering, identity or column decisions that "it compiles" does not settle. FP-007 Phase 1 added three,
-    // and this assertion is where they were noticed. FP-008 Phase 1 added four more.
+    // and this assertion is where they were noticed. FP-008 Phase 1 added four more, and FP-009 Phase 1 the
+    // two run records — the first addition made while this site was inside the inventory rather than
+    // outside it, and the first therefore updated in the same act as the other nine.
     //
     // ---- THIS ASSERTION WAS RED FROM FP-008 PHASE 1 UNTIL PHASE 3, AND NOTHING REPORTED IT.
     //
@@ -249,6 +251,8 @@ public sealed class EmployeeHostCompositionTests
         "Employee",
         "EmployeeBranchAssignment",
         "EmployeeDepartmentAssignment",
+        "EmployeeExportRun",
+        "EmployeeImportRun",
         "EmployeePositionAssignment",
         "JobGrade",
         "Position",
@@ -341,7 +345,15 @@ public sealed class EmployeeHostCompositionTests
       HrPermissionNames.ViewSalaryGrades,
       HrPermissionNames.CreateSalaryGrades,
       HrPermissionNames.UpdateSalaryGrades,
-      HrPermissionNames.DeactivateSalaryGrades
+      HrPermissionNames.DeactivateSalaryGrades,
+      // FP-009 Phase 1. Two more, taking the HR plane to twenty-three, and the first addition made while
+      // this guard was inside the manifest-and-permission inventory rather than outside it — so it moved in
+      // the same act as the catalog itself instead of failing quietly for two phases.
+      //
+      // They break the "four per family" shape on purpose (`OD-DOC-005`): bulk in and bulk out are not a
+      // CRUD quartet over a new aggregate, they are two operations over an existing one whose risk differs.
+      HrPermissionNames.ImportEmployees,
+      HrPermissionNames.ExportEmployees
     ];
 
     Assert.Equal(

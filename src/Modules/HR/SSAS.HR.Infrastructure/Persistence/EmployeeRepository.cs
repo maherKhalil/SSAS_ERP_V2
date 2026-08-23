@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Domain.Employees;
@@ -158,6 +158,47 @@ internal sealed class EmployeeRepository(ITenantDbContextAccessor contextAccesso
     return await context.Set<Domain.Positions.Position>()
       .AsNoTracking()
       .Where(position => position.CompanyId == companyId && position.Id == positionId)
+      .Select(position => new PositionAssignmentTarget(
+        position.Id,
+        position.Status == Domain.Positions.PositionStatus.Active))
+      .SingleOrDefaultAsync(cancellationToken);
+  }
+
+  // ---- THE BY-CODE PAIR (FP-009, OD-DOC-004).
+  //
+  // Identical to their by-identifier siblings in every respect that matters: the same company predicate, the
+  // same reduction to the two facts the assignment rules turn on, the same AsNoTracking, and the same
+  // absent-rather-than-refused answer for a record in another company.
+  //
+  // THE PREDICATE IS OVER THE NORMALIZED COLUMN, NOT THE VALUE-CONVERTED ONE. `Department.Code` is a value
+  // object behind a conversion, and `DEC-POS-0030` is the rule this obeys: EF translates a value-converted
+  // property in a PROJECTION but not in a PREDICATE. Written against `Code.Value` this would either fail to
+  // translate or evaluate client-side over every department in the company; written against
+  // `NormalizedCode` it uses the binary-collated unique index, which is also what makes the match ordinal
+  // rather than culture-dependent.
+  public async Task<DepartmentAssignmentTarget?> FindAssignableDepartmentByCodeAsync(
+    Guid companyId, string normalizedCode, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await context.Set<Domain.Departments.Department>()
+      .AsNoTracking()
+      .Where(department =>
+        department.CompanyId == companyId && department.NormalizedCode == normalizedCode)
+      .Select(department => new DepartmentAssignmentTarget(
+        department.Id,
+        department.Status == Domain.Departments.DepartmentStatus.Active))
+      .SingleOrDefaultAsync(cancellationToken);
+  }
+
+  public async Task<PositionAssignmentTarget?> FindAssignablePositionByCodeAsync(
+    Guid companyId, string normalizedCode, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await context.Set<Domain.Positions.Position>()
+      .AsNoTracking()
+      .Where(position => position.CompanyId == companyId && position.NormalizedCode == normalizedCode)
       .Select(position => new PositionAssignmentTarget(
         position.Id,
         position.Status == Domain.Positions.PositionStatus.Active))

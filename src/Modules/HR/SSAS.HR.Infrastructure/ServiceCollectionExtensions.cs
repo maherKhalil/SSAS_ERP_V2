@@ -1,8 +1,9 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.HR.Application.Departments;
 using SSAS.HR.Application.Departments.Reads;
 using SSAS.HR.Application.Employees;
+using SSAS.HR.Application.ImportExport;
 using SSAS.HR.Application.Employees.Reads;
 using SSAS.HR.Application.Positions;
 using SSAS.HR.Application.Positions.Reads;
@@ -122,6 +123,27 @@ public static class ServiceCollectionExtensions
 
     services.AddScoped<ActivateEmployeeCommandHandler>();
     services.AddScoped<DeactivateEmployeeCommandHandler>();
+
+    // ---- FP-009 PHASE 1. Import and export run records and the import pipeline.
+    //
+    // `ImportEmployeesCommandHandler` takes `CreateEmployeeCommandHandler` as a dependency rather than
+    // reaching for the repository itself, which is `BRULE-DOC-0603` expressed in the container: the import
+    // composes the existing create path and has no way not to.
+    services.AddScoped<IEmployeeImportRunRepository, EmployeeImportRunRepository>();
+    services.AddScoped<ImportEmployeesCommandHandler>();
+
+    // The export takes the SCOPE RESOLVER and the read service, not the repository — an export is a read,
+    // and giving it a write repository would be the first step towards it becoming something else.
+    services.AddScoped<IEmployeeExportRunRepository, EmployeeExportRunRepository>();
+    services.AddScoped<ExportEmployeesQueryHandler>();
+
+    // ---- FP-009 PHASE 2. The run-history reads (FR-DOC-0103, FR-DOC-0202).
+    //
+    // Scoped for the same reason every read here is: the scope they require is resolved per request, and a
+    // longer lifetime would be a cache of authorization state.
+    services.AddScoped<IEmployeeRunHistoryReadService, EmployeeRunHistoryReadService>();
+    services.AddScoped<SearchImportRunsQueryHandler>();
+    services.AddScoped<SearchExportRunsQueryHandler>();
 
     return services;
   }

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SSAS.GL.API;
 
 // GL'S WIRE SHAPES (api-contracts.md).
@@ -22,11 +24,11 @@ namespace SSAS.GL.API;
 // No `code` on the update request. `REQ-GL-0006` makes the code immutable from creation, and the aggregate
 // has no method to change it — so the wire shape has no field for it either. A caller who sends one gets a
 // 400 from the strict reader rather than a silently ignored property.
-public sealed record CreateAccountRequest(string Code, string Name);
+public sealed record CreateAccountRequest([property: JsonPropertyName("code")] string Code, [property: JsonPropertyName("name")] string Name);
 
-public sealed record UpdateAccountRequest(string Name, string? RowVersion);
+public sealed record UpdateAccountRequest([property: JsonPropertyName("name")] string Name, [property: JsonPropertyName("rowVersion")] string? RowVersion);
 
-public sealed record AccountActivationRequest(string? RowVersion);
+public sealed record AccountActivationRequest([property: JsonPropertyName("rowVersion")] string? RowVersion);
 
 public sealed record AccountResponse(Guid AccountId, string Code, string Name, bool IsActive);
 
@@ -36,14 +38,14 @@ public sealed record AccountResponse(Guid AccountId, string Code, string Name, b
 // SET, and `FiscalYear.Create` validates the whole partition in one call. A shape that allowed adding a
 // period later would allow a calendar to exist in an invalid state between two requests.
 public sealed record DefineFiscalYearRequest(
-  string Code,
-  DateTimeOffset StartUtc,
-  DateTimeOffset EndUtc,
-  IReadOnlyList<FiscalPeriodRequest> Periods);
+  [property: JsonPropertyName("code")] string Code,
+  [property: JsonPropertyName("startUtc")] DateTimeOffset StartUtc,
+  [property: JsonPropertyName("endUtc")] DateTimeOffset EndUtc,
+  [property: JsonPropertyName("periods")] IReadOnlyList<FiscalPeriodRequest> Periods);
 
-public sealed record FiscalPeriodRequest(string Name, DateTimeOffset StartUtc, DateTimeOffset EndUtc);
+public sealed record FiscalPeriodRequest([property: JsonPropertyName("name")] string Name, [property: JsonPropertyName("startUtc")] DateTimeOffset StartUtc, [property: JsonPropertyName("endUtc")] DateTimeOffset EndUtc);
 
-public sealed record FiscalPeriodStateRequest(string? RowVersion);
+public sealed record FiscalPeriodStateRequest([property: JsonPropertyName("rowVersion")] string? RowVersion);
 
 public sealed record FiscalPeriodResponse(
   Guid FiscalPeriodId,
@@ -60,27 +62,27 @@ public sealed record FiscalPeriodResponse(
 // keeping the wire honest about which side a line is on. A line carrying both, or neither, or a negative
 // amount is refused — those are malformed rather than merely unbalanced, so they fail at 400 rather than
 // 422.
-public sealed record JournalLineRequest(Guid AccountId, decimal Debit, decimal Credit, string? Description);
+public sealed record JournalLineRequest([property: JsonPropertyName("accountId")] Guid AccountId, [property: JsonPropertyName("debit")] decimal Debit, [property: JsonPropertyName("credit")] decimal Credit, [property: JsonPropertyName("description")] string? Description);
 
 public sealed record CreateJournalDraftRequest(
-  DateTimeOffset EntryDateUtc,
-  string Description,
-  string? Reference,
-  IReadOnlyList<JournalLineRequest> Lines);
+  [property: JsonPropertyName("entryDateUtc")] DateTimeOffset EntryDateUtc,
+  [property: JsonPropertyName("description")] string Description,
+  [property: JsonPropertyName("reference")] string? Reference,
+  [property: JsonPropertyName("lines")] IReadOnlyList<JournalLineRequest> Lines);
 
 public sealed record UpdateJournalDraftRequest(
-  DateTimeOffset EntryDateUtc,
-  string Description,
-  string? Reference,
-  IReadOnlyList<JournalLineRequest> Lines,
-  string? RowVersion);
+  [property: JsonPropertyName("entryDateUtc")] DateTimeOffset EntryDateUtc,
+  [property: JsonPropertyName("description")] string Description,
+  [property: JsonPropertyName("reference")] string? Reference,
+  [property: JsonPropertyName("lines")] IReadOnlyList<JournalLineRequest> Lines,
+  [property: JsonPropertyName("rowVersion")] string? RowVersion);
 
 // ---- POSTING AND REVERSAL.
 //
 // Posting takes NO body: everything it needs is on the draft it names, and a body would let a caller change
 // what is posted at the moment of posting — which is precisely the thing the draft/entry split exists to
 // make impossible.
-public sealed record ReverseJournalRequest(DateTimeOffset ReversalDateUtc, string Description);
+public sealed record ReverseJournalRequest([property: JsonPropertyName("reversalDateUtc")] DateTimeOffset ReversalDateUtc, [property: JsonPropertyName("description")] string Description);
 
 // ---- RESPONSES.
 //

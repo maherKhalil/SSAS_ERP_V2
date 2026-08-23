@@ -3101,6 +3101,78 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   // ================================================================================================
+  // I15. THE REFUSAL RECORD SURVIVES THE TRANSACTION THAT ROLLED ITS ROWS BACK
+  // ================================================================================================
+  //
+  // ---- IT GUARDS A CONTRACT, AND — SAID PLAINLY — IT WAS WRITTEN TO GUARD A DEFECT THAT DID NOT EXIST.
+  //
+  // The suspicion was that writing the refusal record inside the `await using var transaction` scope, just
+  // after `RollbackAsync`, would save against an already-rolled-back transaction. Checked by reintroducing
+  // that exact shape and running this test against real SQL: **it passed either way**, because
+  // `EfUnitOfWork.RollbackAsync` DISPOSES the transaction and nulls its field, so the next save opens its
+  // own. There was no defect.
+  //
+  // The test earns its place regardless, on the contract rather than the scare: `DEC-DOC-0006` makes the run
+  // record the audit trail, and nothing else asserted that a refusal ARRIVING AFTER A ROLLBACK still leaves
+  // one. A refusal whose record failed to persist would be an attempt that left no trace and a consumed
+  // import key released — so the submission the key exists to make unrepeatable could be replayed. That
+  // property now has a test instead of an assumption.
+  //
+  // ---- REACHING THE RACED PATH DETERMINISTICALLY.
+  //
+  // The path needs validation to PASS and the create to then FAIL, which is ordinarily a concurrency race.
+  // Revoking the caller's branch assignment after the graph is built produces it exactly: import validation
+  // never consults a branch — it checks the number, the name, the date and the two classification codes —
+  // while `CreateEmployeeCommandHandler` resolves the current branch before it writes anything. So the file
+  // validates cleanly, every row's create is refused, and the rollback-then-record sequence runs against a
+  // REAL transaction rather than a no-op.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0006")]
+  public async Task I15_A_refusal_after_rollback_still_persists_its_run_record()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+
+    // Built FIRST: the graph establishes a session against the branch, and revoking beforehand would fail
+    // the arrange step rather than the write.
+    using var graph = fixture.Graph(fixture.BranchA, fixture.NormalUserId);
+
+    await fixture.RevokeBranchAssignmentAsync(fixture.NormalUserId, fixture.BranchA);
+
+    var report = await graph.Import().HandleAsync(new ImportEmployeesCommand(
+      $"{ImportHeader}\nROLL-1,Layla Haddad,2026-03-01,DEPA,POSA",
+      "rollback-guard", "people.csv", ByteCount: 96));
+
+    Assert.True(report.IsSuccess, report.IsFailure ? report.Error.Code : null);
+    Assert.Equal(EmployeeImportOutcome.Refused, report.Value.Outcome);
+    Assert.Equal(0, report.Value.AcceptedCount);
+
+    // ---- THE ROWS ARE GONE. The transaction rolled back, so no employee survives.
+    Assert.Equal(0, await fixture.EmployeeCountAsync("ROLL-"));
+
+    // ---- AND THE RECORD IS THERE. This is the assertion the whole test exists for: the save that writes it
+    // runs AFTER the rolled-back transaction's scope has closed, so it commits on its own.
+    var stored = await fixture.ImportRunAsync("ROLLBACK-GUARD");
+
+    Assert.NotNull(stored);
+    Assert.Equal("Refused", stored!.Outcome);
+    Assert.Equal(0, stored.AcceptedCount);
+    Assert.Equal("people.csv", stored.FileName);
+
+    // ---- AND THE KEY IS THEREFORE CONSUMED, which is what the record existing MEANS.
+    //
+    // Replaying it returns the original refusal rather than importing — proving the record is not merely
+    // present but authoritative. Branch access is still revoked, so a second attempt could not succeed
+    // anyway; what this shows is that it never reaches the attempt.
+    var replayed = await graph.Import().HandleAsync(new ImportEmployeesCommand(
+      $"{ImportHeader}\nROLL-2,Other Person,2026-03-01,DEPA,POSA",
+      "rollback-guard", "people.csv", ByteCount: 96));
+
+    Assert.True(replayed.Value.WasReplayed);
+    Assert.Equal("ROLLBACK-GUARD", stored.NormalizedImportKey);
+    Assert.Equal(1, await fixture.ImportRunCountAsync("ROLLBACK-GUARD"));
+  }
+
+  // ================================================================================================
   // FP-009 PHASE 2 SLICE 1 — THE RUN-HISTORY READS (FR-DOC-0103, FR-DOC-0202)
   // ================================================================================================
 

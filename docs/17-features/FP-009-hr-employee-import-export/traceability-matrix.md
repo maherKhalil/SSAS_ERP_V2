@@ -411,3 +411,36 @@ Both defects found after the Phase 1 gate are demonstrably closed:
   appears in the console output, where Phase 1's was destroyed by the filter;
 * the **exit code was honest** — `!!! Integration.Tests (Debug) EXITED 1` and a closing `[GATE RED]`, where
   Phase 1's doubly-red gate reported success.
+
+## A correction to this record — the "BLOCKER" was not one
+
+**Recorded 2026-08-23, after the Phase 2 gate.**
+
+Stage C reported a BLOCKER: that `ApplyAsync` wrote the import refusal record inside the `await using var
+transaction` scope it had just rolled back, and that `await using var` running to end-of-method meant the
+save was issued against a dead transaction.
+
+**The reasoning about `await using var` is right. The conclusion was wrong.**
+`EfUnitOfWork.RollbackAsync` disposes the transaction in its `finally` and nulls its own field, which clears
+it from the `DbContext` — so the following `SaveChangesAsync` opens its own transaction and commits normally.
+
+It was checked rather than argued: the original shape was **reintroduced deliberately** and `I15` — the
+integration test written to guard it, running against real SQL Server — **passed either way**. A regression
+guard that passes in the presence of the defect it names is no guard at all, which is what that experiment
+was for.
+
+**What stands, and why:**
+
+* The two-method split is **kept**, on an honest justification rather than the first one: it makes the
+  transaction unreachable from the method that decides what to record, so the next reader does not have to
+  re-derive the question. It is clarity, not a fix.
+* `I15` is **kept**, on the contract rather than the scare: `DEC-DOC-0006` makes the run record the audit
+  trail, and nothing else asserted that a refusal arriving after a rollback still leaves one. That property
+  now has a test instead of an assumption.
+* Both code comments and the API test's comment are **corrected in place**, because a comment asserting a
+  defect that never existed would send a later reader looking for it — or worse, stop them simplifying the
+  structure for a reason that is not true.
+
+The commit message on `666df69` describes the change as a fix for a blocker. It is left as written and
+corrected here, in the same spirit as every other superseded claim in this package: the record shows what was
+believed, when, and what checking it produced.

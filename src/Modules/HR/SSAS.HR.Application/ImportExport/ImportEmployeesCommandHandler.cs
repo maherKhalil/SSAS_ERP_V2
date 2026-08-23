@@ -482,17 +482,22 @@ public sealed class ImportEmployeesCommandHandler(
   // APPLY — AND THE REFUSAL IS RECORDED **OUTSIDE** THE TRANSACTION IT DISCARDS
   // ================================================================================================
   //
-  // ---- WHY THIS IS TWO METHODS AND NOT ONE.
+  // ---- WHY THIS IS TWO METHODS AND NOT ONE, STATED ACCURATELY.
   //
   // The first version wrote the refusal record inside the `await using` scope, immediately after rolling
-  // back. That is wrong, and subtly: `await using var transaction` runs to the END OF THE METHOD, so the
-  // rolled-back transaction was still the context's current transaction when the refusal's
-  // `SaveChangesAsync` executed. A save issued against a transaction that has already been rolled back does
-  // not quietly open a new one.
+  // back, and that was SUSPECTED of being a defect: `await using var transaction` runs to the end of the
+  // METHOD, so the rolled-back transaction looked like it would still be the context's current transaction
+  // when the refusal's `SaveChangesAsync` executed.
   //
-  // So the transaction is owned ENTIRELY by `CommitEmployeesAsync`, whose scope ends before this method
-  // decides what to record. The structure is the guarantee: there is no line in `ApplyAsync` from which the
-  // transaction is reachable, so the mistake cannot be made again here.
+  // **IT WAS NOT A DEFECT, and the check is worth recording because the reasoning looked sound.**
+  // `EfUnitOfWork.RollbackAsync` DISPOSES the transaction in its `finally` and nulls its own field, which
+  // clears it from the `DbContext` — so the following save opens its own transaction and commits normally.
+  // Reintroducing the original shape and running `I15` against real SQL confirmed it: the test passed
+  // either way.
+  //
+  // The split is kept anyway, for one honest reason and not the one first claimed: it makes the transaction
+  // UNREACHABLE from the method that decides what to record, so the question does not have to be re-derived
+  // by the next reader. It is clarity, not a fix.
   private async Task<Result<EmployeeImportReport>> ApplyAsync(
     Guid tenantId,
     Guid companyId,
@@ -509,8 +514,8 @@ public sealed class ImportEmployeesCommandHandler(
     //
     // The per-company unique indexes are authoritative and the validation probes are an optimisation of the
     // error message, not the rule — so a concurrent create can take a number between the probe and the
-    // insert. Everything written is already rolled back and the transaction is already gone; the key must
-    // still be consumed, so the refusal is recorded now, in its own transaction.
+    // insert. Everything written is already rolled back and the transaction is disposed; the key must still
+    // be consumed, so the refusal is recorded now, on its own.
     if (outcome.Raced is { } raced)
     {
       return await RefuseAsync(

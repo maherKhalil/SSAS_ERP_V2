@@ -509,15 +509,14 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
   // It covers the CONTRACT: after a failed write the outcome is `Refused`, the offending row is named, and
   // the run record exists so the key stays consumed.
   //
-  // It does NOT catch the defect that prompted it. The first implementation wrote the refusal record inside
-  // the `await using` transaction scope, immediately after rolling back — and `await using var` runs to the
-  // end of the METHOD, so that save was issued against an already-rolled-back transaction. **This harness's
-  // transaction is a no-op** (`StubUnitOfWork.NoOpTransaction`), so the old code would pass this test too.
+  // It does NOT establish anything about TRANSACTION scoping, and cannot: this harness's transaction is a
+  // no-op (`StubUnitOfWork.NoOpTransaction`). The rollback-and-still-record property is asserted against
+  // real SQL by `I15` in `Integration.Tests`.
   //
-  // The fix is therefore STRUCTURAL rather than test-enforced: the transaction now lives entirely inside
-  // `CommitEmployeesAsync`, whose scope ends before anything decides what to record, so there is no line in
-  // the deciding method from which the transaction is reachable. Recorded here because a reader who assumes
-  // this test guards the scoping would be wrong, and might undo the structure believing it is covered.
+  // (An earlier version of this comment claimed the handler had a transaction-scoping defect that this test
+  // could not catch. There was no such defect — `EfUnitOfWork.RollbackAsync` disposes the transaction, so a
+  // following save opens its own. The claim was checked by reintroducing the suspect shape and re-running
+  // `I15`, which passed either way.)
   [Fact]
   [Trait("Decision", "DEC-DOC-0004")]
   public async Task T22_A_write_that_fails_after_validation_still_records_a_refused_run()

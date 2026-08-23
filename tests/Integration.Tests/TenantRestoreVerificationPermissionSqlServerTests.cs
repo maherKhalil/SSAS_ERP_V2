@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.Data.SqlClient;
 using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Infrastructure.TenantStorage;
@@ -26,6 +26,8 @@ namespace SSAS.Integration.Tests;
 // SAFETY. Every database created here carries the reserved verification vocabulary or an equally distinctive
 // test prefix, is created by this test, and is dropped by it. Nothing touches the Platform database, a real
 // tenant database, or any pre-existing user database. `sysadmin` is never granted to the probe principal.
+// SERIAL — mutates SERVER-LEVEL PRINCIPALS. It impersonates via EXECUTE AS LOGIN and reads
+// sys.server_principals; logins are an instance-wide resource that no per-test catalog isolates.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantRestoreVerificationPermissionSqlServerTests
 {
@@ -364,8 +366,7 @@ public sealed class TenantRestoreVerificationPermissionSqlServerTests
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SSAS_BackupTests");
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     private async Task<SqlConnection> OpenAsync(string catalog, bool impersonate)
     {

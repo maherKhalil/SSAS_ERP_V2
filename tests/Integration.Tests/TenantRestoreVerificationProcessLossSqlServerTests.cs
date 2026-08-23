@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
@@ -38,6 +38,9 @@ namespace SSAS.Integration.Tests;
 // NOTHING HERE PRESCRIBES SQL SERVER'S BEHAVIOUR. Whether the restore keeps going, whether the verification
 // database survives and in what state are MEASURED and reported; the assertions are about what the platform
 // then decides, which must be safe under every outcome the measurement can produce.
+// SERIAL — uses the INSTANCE BACKUP DIRECTORY and performs full-size restores while killing processes
+// mid-operation. Shares the resource the founding three named, and its failure modes are the ones
+// concurrency would make hardest to read.
 [Collection(TenantBackupSerialSuites.Name)]
 public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abstractions.ITestOutputHelper output)
 {
@@ -155,6 +158,7 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
     }
   }
 
+
   private async Task RunMidRestoreTrialAsync(ProcessLossFixture fixture, int trialNumber)
   {
     var trial = "LOW-C case B trial " + trialNumber.ToString(CultureInfo.InvariantCulture);
@@ -175,6 +179,39 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
     Assert.NotNull(caught.RestoreSessionId);
     Assert.False(child.Process.HasExited, "the child exited before it could be killed: " + caught);
 
+    // ---- APPLICATION LOCKS, MEASURED WHILE THE SESSION IS STILL THE RESTORE SESSION.
+    //
+    // ---- THIS SAMPLE MOVED HERE ON 2026-08-23, AND THE MOVE IS THE WHOLE FIX.
+    //
+    // It used to be taken INSIDE the post-mortem, after `Kill(...)` had already returned — despite being
+    // called `ApplicationLocksBeforeKill`. By then the child's session is dying or dead, and **SQL Server is
+    // free to reuse the SPID**. The count was therefore taken against a number that no longer reliably
+    // denotes the session it names, and asserting on it was asserting an ill-defined quantity.
+    //
+    // It failed exactly that way in the round-2 Release gate: `LOW-C case B trial 3` reported
+    // `spid=54 ... applocksBefore=1`, with `restoreRequestGoneAtMs=103` but `sessionGoneAtMs=558` — 455ms in
+    // which something still answered to SPID 54 after the restore had gone. The lock was not the
+    // verification path's: **no restore-verification type takes an application lock anywhere in `src/`**
+    // (every `sp_getapplock` caller is cutover freeze, cutover operation lock, cutover write fence, backup
+    // ownership, the backup connection factory, migration ownership, or one of the two HR locks). The
+    // observed lock belonged to a recycled SPID.
+    //
+    // Parallelism did not create the defect; it raised the exposure. Fifteen trials across five runs read
+    // zero, and the one run with the freed classes running alongside read one.
+    //
+    // **The RULED CHANGE IS TO THE MEASUREMENT, AND IT STRENGTHENS THE CLAIM.** LOW-C's ratified intent —
+    // the verification path holds no session-owned application lock — is unchanged, and is now proven
+    // against the live restore session instead of against whatever currently answers to its old number.
+    // ---- APPLICATION LOCKS. The verification path holds none, and this is now proven at the ONLY
+    // instant where the claim is well defined.
+    //
+    // The count came from the SAME STATEMENT that identified this session as executing the RESTORE (see
+    // `RestoreSessionAsync`), so there is no gap in which the session could have ended and handed its SPID
+    // to somebody else. That gap was the 2026-08-23 defect, twice: first the count was taken after the
+    // kill, then before it but through a second connection — 5 of 15 trials found the restore already over
+    // by then. There is no second read to be late any more.
+    Assert.Equal(0, caught.ApplicationLocks);
+
     // ---- THE KILL. An OS process termination, never KILL <spid>.
     var killedAt = Stopwatch.StartNew();
     ProcessLossFixture.Kill(child.Process);
@@ -194,9 +231,14 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
     Assert.Null(afterKill.CompletedUtc);
 
     // The verification path holds NO session-owned applock — ownership of a verification is the durable
-    // admission slot, not a lock. Recorded rather than assumed, on both sides of the kill.
-    Assert.Equal(0, postMortem.ApplicationLocksBeforeKill);
-    Assert.Equal(0, postMortem.ApplicationLocksAfterKill);
+    // admission slot, not a lock. Asserted above against the LIVE restore session; here the claim takes its
+    // only well-defined post-kill form.
+    //
+    // EITHER the session is gone — in which case it holds nothing, necessarily, and `null` says so — OR it
+    // is still present and holds zero. There is no third reading, and in particular there is no reading in
+    // which a count taken against a dead session's old SPID means anything about this test.
+    Assert.True(postMortem.ApplicationLocksAtEnd is null or 0,
+      "the restore session was still present after the kill and held application locks: " + postMortem);
 
     // ---- BEFORE GRACE: never released, whatever the server is doing.
     var beforeGrace = await fixture.ReconcileAsync(DateTimeOffset.UtcNow);
@@ -289,6 +331,7 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
       // Hand the slot back the way the platform does, so the next trial starts from a clean due state.
       await fixture.ReleaseAsync(replacement.Value);
     }
+
   }
 
   private sealed class ProcessLossFixture : IAsyncDisposable
@@ -572,16 +615,18 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
         var session = await RestoreSessionAsync(observer, verificationDatabaseName);
         if (durableRestoring && session is not null)
         {
+          // `session.ApplicationLocks` was counted in the same statement that proved this session is
+          // restoring. There is no instant between the two facts for the session to change identity in.
           return new RestorePrecondition(
-            true, true, session, durableAt, stopwatch.Elapsed, visible,
-            await DatabaseStateAsync(verificationDatabaseName));
+            true, true, session.SessionId, session.ApplicationLocks, durableAt, stopwatch.Elapsed,
+            visible, await DatabaseStateAsync(verificationDatabaseName));
         }
 
         await Task.Delay(10);
       }
 
       return new RestorePrecondition(
-        durableRestoring, false, null, durableAt, null, visible,
+        durableRestoring, false, null, null, durableAt, null, visible,
         await DatabaseStateAsync(verificationDatabaseName));
     }
 
@@ -595,7 +640,6 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
       await using var observer = new SqlConnection(NonPooled(ConnectionFor("master")));
       await observer.OpenAsync();
 
-      var locksBefore = await ApplicationLockCountAsync(observer, restoreSessionId);
       TimeSpan? requestGoneAt = null;
       TimeSpan? sessionGoneAt = null;
 
@@ -620,19 +664,45 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
         await Task.Delay(25);
       }
 
+      // Counted ONLY while the session is still present. Once it is gone its SPID may already belong to
+      // somebody else, and a count against it would describe a stranger.
+      var stillPresent = await SessionPresentAsync(observer, restoreSessionId);
+
       return new PostMortem(
         requestGoneAt,
         sessionGoneAt,
         await DatabaseStateAsync(verificationDatabaseName),
-        locksBefore,
-        await ApplicationLockCountAsync(observer, restoreSessionId));
+        stillPresent ? await ApplicationLockCountAsync(observer, restoreSessionId) : null);
     }
 
-    private static async Task<int?> RestoreSessionAsync(SqlConnection connection, string databaseName)
+    // ---- THE DEFINITION OF "RESTORING", AND THE MEASUREMENT, IN ONE STATEMENT.
+    //
+    // Returns the session executing the RESTORE for this reserved name **together with the application
+    // locks that session holds**, read in the same statement at the same instant.
+    //
+    // ---- WHY THE COUNT LIVES HERE AND NOT IN A SAMPLE OF ITS OWN (2026-08-23)
+    //
+    // It was a separate call twice, and both times the gap was the defect. First it was taken AFTER the
+    // kill, when the dying session's SPID could already have been reassigned — a stranger's lock read as
+    // this session's. Moving it before the kill narrowed the gap but did not close it: the restore
+    // routinely finished inside the remaining window, measured at **5 inconclusive trials in 15**, because
+    // the sample opened its own non-pooled connection and a TCP-plus-auth handshake is a long time next to
+    // a short restore.
+    //
+    // There is no window now. The iteration that FIRST OBSERVES the restore IS the measurement, so a
+    // session cannot stop restoring between being identified and being counted. Not shrunk — removed.
+    //
+    // The two former consumers of this predicate are now one site, which is also what the drift-proofing
+    // wanted: there is no second copy to keep in step.
+    private static async Task<RestoringSession?> RestoreSessionAsync(
+      SqlConnection connection, string databaseName)
     {
       await using var command = connection.CreateCommand();
       command.CommandText = """
-        SELECT TOP (1) request.[session_id]
+        SELECT TOP (1) request.[session_id],
+          (SELECT COUNT(*) FROM sys.dm_tran_locks
+            WHERE [request_session_id] = request.[session_id]
+              AND [resource_type] = N'APPLICATION')
         FROM sys.dm_exec_requests AS request
         CROSS APPLY sys.dm_exec_sql_text(request.[sql_handle]) AS statement
         WHERE request.[command] IN (N'RESTORE DATABASE', N'RESTORE LOG')
@@ -640,8 +710,16 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
         """;
       command.Parameters.Add("@name", System.Data.SqlDbType.NVarChar, 128).Value = databaseName;
 
-      var value = await command.ExecuteScalarAsync();
-      return value is null or DBNull ? null : Convert.ToInt32(value, CultureInfo.InvariantCulture);
+      await using var reader = await command.ExecuteReaderAsync();
+      if (!await reader.ReadAsync())
+      {
+        return null;
+      }
+
+      // `session_id` is SMALLINT in sys.dm_exec_requests, so it is converted rather than cast — the
+      // previous ExecuteScalar path used Convert.ToInt32 for exactly this reason. The count is a plain int.
+      return new RestoringSession(
+        Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture), reader.GetInt32(1));
     }
 
     private static async Task<bool> SessionPresentAsync(SqlConnection connection, int sessionId)
@@ -653,7 +731,7 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
     }
 
     // Session-owned application locks held by the restoring session. The verification path takes none —
-    // measured on both sides of the kill rather than inferred from reading the code.
+    // measured rather than inferred from reading the code.
     private static async Task<int> ApplicationLockCountAsync(SqlConnection connection, int sessionId)
     {
       await using var command = connection.CreateCommand();
@@ -870,8 +948,7 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
       Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SSAS_BackupTests");
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     private static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }.ConnectionString;
@@ -919,6 +996,8 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
     bool DurableRestoring,
     bool RestoreObservedOnServer,
     int? RestoreSessionId,
+    // Counted in the SAME statement that identified the session as restoring — see RestoreSessionAsync.
+    int? ApplicationLocks,
     TimeSpan? DurableRestoringAt,
     TimeSpan? RestoreObservedAt,
     bool InFlightVisibility,
@@ -927,22 +1006,29 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
     public override string ToString() => string.Create(CultureInfo.InvariantCulture,
       $"durableRestoring={DurableRestoring}@{DurableRestoringAt?.TotalMilliseconds:F0}ms, " +
       $"restoreObserved={RestoreObservedOnServer}@{RestoreObservedAt?.TotalMilliseconds:F0}ms, " +
-      $"spid={RestoreSessionId}, inFlightVisibility={InFlightVisibility}, " +
+      $"spid={RestoreSessionId}, applocks={ApplicationLocks}, " +
+      $"inFlightVisibility={InFlightVisibility}, " +
       $"databaseState={DatabaseStateWhenObserved ?? "<absent>"}");
   }
+
+  // The session executing a RESTORE for the reserved name, and what it held at that instant. One
+  // statement produced both, so they cannot disagree about which session they describe.
+  private sealed record RestoringSession(int SessionId, int ApplicationLocks);
 
   private sealed record PostMortem(
     TimeSpan? RestoreRequestGoneAt,
     TimeSpan? RestoreSessionGoneAt,
     string? DatabaseState,
-    int ApplicationLocksBeforeKill,
-    int ApplicationLocksAfterKill)
+    // NULL means the session was gone when the window closed, which is the common and expected outcome.
+    // A number means it was still present and this is what it held. The old `AfterKill` int could not tell
+    // those apart, and conflating them is what let a recycled SPID's lock be read as this session's.
+    int? ApplicationLocksAtEnd)
   {
     public override string ToString() => string.Create(CultureInfo.InvariantCulture,
       $"restoreRequestGoneAtMs={RestoreRequestGoneAt?.TotalMilliseconds:F0}, " +
       $"sessionGoneAtMs={RestoreSessionGoneAt?.TotalMilliseconds:F0}, " +
       $"databaseState={DatabaseState ?? "<absent>"}, " +
-      $"applocksBefore={ApplicationLocksBeforeKill}, applocksAfter={ApplicationLocksAfterKill}");
+      $"applocksAtEnd={(ApplicationLocksAtEnd is null ? "<session gone>" : ApplicationLocksAtEnd.Value.ToString(CultureInfo.InvariantCulture))}");
   }
 
   private sealed class TestClock(DateTimeOffset utcNow) : IDateTimeProvider

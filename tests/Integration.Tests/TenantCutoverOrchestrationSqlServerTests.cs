@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +26,14 @@ namespace SSAS.Integration.Tests;
 // Everything below drives the production orchestrator, which composes E1's freeze, E3's copy and exact
 // validation, the recovery activation gate, E4's atomic flip and E2's version-aware resolution. The tests
 // assert the DURABLE outcome by reading the catalogs directly — never the orchestrator's own report alone.
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 2).
+// It was the LAST member whose reason was not a shared resource at all: it held nothing, and was serial
+// only because it ASSERTED ON ELAPSED TIME — the one wall-clock assertion in the suite. That assertion
+// was converted to a load-immune hang guard on the same day (see the resume path in section L: bound
+// raised to 5 minutes, actual elapsed reported rather than asserted). With the precision claim gone the
+// stated reason for serialization went with it, and nothing replaced it.
+//
+// It was also ~68% of the remaining chain — the whole round-2 prize was this one class.
 public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper output)
 {
   // ---- A + B. The happy path, and the co-tenant that must not notice.
@@ -246,12 +253,27 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     Assert.Equal(TenantStorageErrors.CutoverCopyOwnershipNotAcquired.Code, flip.Error.Code);
 
     // ---- L. A second Resume cannot take ownership, and does not wait indefinitely.
+    //
+    // ---- THIS BOUND IS A HANG GUARD, NOT A PERFORMANCE ASSERTION (2026-08-23 ruling).
+    //
+    // It used to read `< 30 seconds`, and that number asserted a PRECISION CLAIM that only holds on an idle
+    // instance: under parallel load a 30-second budget measures the neighbours rather than the product. It
+    // is the allocation-budget lesson in the time dimension — `TenantCutoverCopy`'s 287MB budget was removed
+    // on 2026-08-21 for exactly this, that it could not discriminate between a regression and a busy box.
+    //
+    // What the assertion was actually FOR survives intact: a Resume that blocks forever on ownership is a
+    // real defect and must fail loudly. Five minutes keeps that and gives up nothing, because no plausible
+    // parallel contention on this suite reaches it while a genuine hang exceeds it by definition.
+    //
+    // The elapsed time is REPORTED, exactly like every other timing in this class, so a drift from
+    // milliseconds to seconds is visible to anyone reading the log without being asserted on by anyone.
     var waited = Stopwatch.StartNew();
     var resumed = await fixture.Orchestrator().ResumeAsync(operationId);
     waited.Stop();
     Assert.True(resumed.IsFailure);
     Assert.Equal(TenantStorageErrors.CutoverCopyOwnershipNotAcquired.Code, resumed.Error.Code);
-    Assert.True(waited.Elapsed < TimeSpan.FromSeconds(30), $"resume waited {waited.Elapsed}");
+    output.WriteLine($"Second Resume refused ownership in {waited.ElapsedMilliseconds}ms.");
+    Assert.True(waited.Elapsed < TimeSpan.FromMinutes(5), $"resume appears hung: waited {waited.Elapsed}");
 
     // The durable state is untouched by any of it.
     await fixture.AssertStillSharedAndFrozenAsync(operationId);
@@ -1089,8 +1111,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     public static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }

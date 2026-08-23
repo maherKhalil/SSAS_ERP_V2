@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -321,8 +321,7 @@ public sealed class PlatformTenantLifecycleSqlServerTests
     public static TenantSqlDatabase CreateUnmigrated()
     {
       var databaseName = $"SSAS_ERP_FP003_{Guid.NewGuid():N}";
-      var configured = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      var configured = IntegrationSqlEnvironment.BaseConnectionString;
       var builder = new SqlConnectionStringBuilder(configured) { InitialCatalog = databaseName };
       return new TenantSqlDatabase(builder.ConnectionString);
     }

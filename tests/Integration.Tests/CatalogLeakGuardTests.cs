@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 
 namespace SSAS.Integration.Tests;
 
@@ -36,8 +36,7 @@ public sealed class CatalogLeakGuardTests
 
     await using var connection = new SqlConnection(
       new SqlConnectionStringBuilder(
-        Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False")
+        IntegrationSqlEnvironment.BaseConnectionString)
       {
         InitialCatalog = "master",
       }.ConnectionString);

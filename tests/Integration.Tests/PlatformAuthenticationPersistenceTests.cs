@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -1105,8 +1105,7 @@ public sealed class PlatformAuthenticationPersistenceTests
     public static async Task<SqlTestDatabase> CreateAsync(bool migrate = true)
     {
       var name = $"SSAS_ERP_FP002_M2_{Guid.NewGuid():N}";
-      var configured = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      var configured = IntegrationSqlEnvironment.BaseConnectionString;
       var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = name }.ConnectionString;
       var database = new SqlTestDatabase(connectionString);
       try

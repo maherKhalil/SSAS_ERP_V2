@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -710,8 +710,7 @@ public sealed class PlatformSupportBootstrapSqlServerTests
     public static async Task<BootstrapSqlDatabase> CreateAsync()
     {
       var databaseName = $"SSAS_ERP_FP003_BOOT_{Guid.NewGuid():N}";
-      var configured = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      var configured = IntegrationSqlEnvironment.BaseConnectionString;
       var builder = new SqlConnectionStringBuilder(configured) { InitialCatalog = databaseName };
       var database = new BootstrapSqlDatabase(builder.ConnectionString);
       try

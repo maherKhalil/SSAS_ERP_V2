@@ -396,8 +396,16 @@ Evidence it is neither a stale test (a) nor a product defect (b):
 **FP-009 touched no backup or scheduler code** — `git diff --name-only 0e0ea4e..HEAD` matches nothing under
 either name.
 
-Per the standing rules a class-(c) finding **gets no retry-for-green**, so none was run. It is reported with
-its evidence and left for a ruling.
+Per the standing rules a class-(c) finding **gets no retry-for-green**, so none was run.
+
+> **RULED 2026-08-23 — CLASS (c) CONFIRMED; the Phase 2 gate verdict is GREEN WITH RECORDED CLASS-(c).**
+> No confirming re-run: four green full runs, zero FP-009 commits under backup or scheduler, and a fully
+> understood mechanism mean one more green would prove nothing not already known.
+>
+> **Remediation is assigned to the gate-economics task**, where this class already sits as a
+> no-stated-reason serial member. The weakness named there: the test **conflates "the sweep failed to see an
+> in-flight backup" with "nothing was in flight any more by the time it looked"** — a lapsable precondition
+> asserted as an outcome. The test is deliberately NOT touched now.
 
 *(It is also a member of the serial collection the gate-economics task will examine — `TenantBackupScheduler`
 is one of the thirteen no-stated-reason members, and this failure is a data point about what that chain's

@@ -138,8 +138,9 @@ public sealed class JournalEntry : AggregateRoot<Guid>, IAuditableEntity, ITenan
 
   // ---- POSTING. The ONLY way a JournalEntry comes into existence.
   //
-  // `internal` so nothing outside this assembly can fabricate a posted journal that never passed through a
-  // draft and its checks. The same reasoning `EmployeePositionAssignment`'s history factories used under
+  // `internal` so nothing outside the GL MODULE can fabricate a posted journal that never passed through a
+  // draft and its checks. The application layer is granted access via `InternalsVisibleTo` because it is the
+  // one legitimate caller; the API layer, the Host and every other module still cannot reach it. The same reasoning `EmployeePositionAssignment`'s history factories used under
   // `DEC-POS-0008`, and the reason this assembly grants `InternalsVisibleTo` to its test project rather than
   // widening the surface to make it reachable.
   //

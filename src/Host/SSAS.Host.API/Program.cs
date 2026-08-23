@@ -4,6 +4,7 @@ using SSAS.HR.API.Positions;
 using System.Globalization;
 using Serilog;
 using SSAS.GL.API;
+using SSAS.GL.Application.Permissions;
 using SSAS.GL.Infrastructure;
 using SSAS.Host.API.Authentication;
 using SSAS.Host.API.Authorization;
@@ -61,8 +62,12 @@ try
   // here contributes nothing and its endpoints refuse everyone. That is a loud, reviewable omission rather
   // than a silent one, and it is registration -- never reflection-based discovery.
   //
-  // GL adds its line here when it defines permissions of its own.
   builder.Services.AddSingleton<IPermissionCatalogContributor, HrPermissionCatalogContributor>();
+
+  // GL's line, added by FP-011. Thirteen definitions; without this every GL endpoint refuses every caller,
+  // which is precisely the FP-006P failure -- the constants existed, no catalog defined them, and no role
+  // could hold one.
+  builder.Services.AddSingleton<IPermissionCatalogContributor, GlPermissionCatalogContributor>();
 
   var app = builder.Build();
 
@@ -102,6 +107,10 @@ try
   app.MapHrJobGradeEndpoints();
   app.MapHrSalaryGradeEndpoints();
   app.MapHrEmployeePositionEndpoints();
+
+  // GL's surface: nineteen routes across accounts, the fiscal calendar, drafts, posted journals and
+  // reporting. Mapped after HR so the route inventory reads in module order.
+  app.MapGlEndpoints();
 
   app.Run();
 }

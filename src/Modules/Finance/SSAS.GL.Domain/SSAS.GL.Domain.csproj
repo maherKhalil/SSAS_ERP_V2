@@ -5,6 +5,15 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\SSAS.BuildingBlocks.SharedKernel.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      JournalEntry's factories are `internal` (OD-GL-0007): a posted journal may be created ONLY by posting
+      a JournalDraft, and nothing outside this assembly may fabricate one. Granting the test assembly access
+      is the same third option SSAS.HR.Domain took rather than shipping a wider surface to be depended on.
+    -->
+    <InternalsVisibleTo Include="SSAS.Finance.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

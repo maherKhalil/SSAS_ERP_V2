@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -27,7 +27,9 @@ namespace SSAS.Integration.Tests;
 // records that routing moved. Everything else here is about what happens to writers on both sides of that
 // instant — the stale context still bound to the source, the fresh one that resolves the target, and the
 // instance that was never told anything at all.
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 1).
+// One Guid-named catalog and a session-scoped plan capture (SET STATISTICS XML, not the procedure cache —
+// the instance-wide version was deliberately removed). No shared resource.
 public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper output)
 {
   // ---- A. The flip itself.
@@ -949,8 +951,7 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     public static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }

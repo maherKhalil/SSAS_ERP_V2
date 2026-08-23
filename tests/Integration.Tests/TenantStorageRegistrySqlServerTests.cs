@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -385,8 +385,7 @@ public sealed class TenantStorageRegistrySqlServerTests
     public static async Task<TenantStorageSqlDatabase> CreateAsync()
     {
       var name = $"SSAS_ERP_TS1_{Guid.NewGuid():N}";
-      var configured = Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      var configured = IntegrationSqlEnvironment.BaseConnectionString;
       var builder = new SqlConnectionStringBuilder(configured) { InitialCatalog = name };
       var database = new TenantStorageSqlDatabase(builder.ConnectionString, name);
       try

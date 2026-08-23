@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -26,7 +26,10 @@ namespace SSAS.Integration.Tests;
 // and none can be undone by a later migration that cannot know what they meant. A test that only checked
 // "it throws" would miss the half that matters — that the database is left exactly as it was.
 [Trait("Category", "SqlServer")]
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 1).
+// The only HR class that was ever in the chain. It arrived five days after the collection was defined,
+// from a different feature stream, with no comment above the attribute and nothing in its commit message
+// about serialization. One Guid-named catalog; nothing shared.
 public sealed class EmployeeDepartmentMigrationSqlServerTests
 {
   // The migration immediately before the one under test: Departments exist, Employee has no DepartmentId.
@@ -707,8 +710,7 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
 
     private static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(
-        Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-        "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False")
+        IntegrationSqlEnvironment.BaseConnectionString)
       {
         InitialCatalog = catalog,
         Pooling = false

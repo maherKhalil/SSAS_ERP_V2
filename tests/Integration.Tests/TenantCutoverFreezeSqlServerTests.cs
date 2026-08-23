@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -30,7 +30,10 @@ namespace SSAS.Integration.Tests;
 // checked "not frozen", was descheduled, and commits after the freeze returned. Every test here therefore
 // uses independent connections and real transactions, and the drain tests hold a genuine open transaction
 // while the freeze runs.
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 1).
+// Its subject is a RACE between writers and a freeze, proven with real transactions on its own disposable
+// catalogs. "Needs real SQL and real transactions" is an argument for being an integration test, not for
+// being serial — and no shared resource was ever named for it.
 public sealed class TenantCutoverFreezeSqlServerTests
 {
   // A: writes are ordinary when no cutover holds the tenant.
@@ -499,8 +502,7 @@ public sealed class TenantCutoverFreezeSqlServerTests
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     private static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }

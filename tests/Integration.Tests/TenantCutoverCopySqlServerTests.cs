@@ -34,7 +34,12 @@ namespace SSAS.Integration.Tests;
 //   state that a retry could mistake for completion.
 //
 // Every assertion below reads the physical catalogs directly rather than trusting the engine's own report.
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 1).
+// The heaviest member by load — 20,000 rows plus co-tenant noise — and still no SHARED resource: its own
+// catalogs, session-scoped plan capture, and GC counters that are REPORTED, never asserted. The
+// allocation budget that once failed at 287MB under parallel load was removed on 2026-08-21 precisely
+// because it could not discriminate, so the founding parallel-load argument no longer describes this
+// class.
 public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 {
   // ---- A. The load-bearing test: one tenant moves, the other is untouched on both sides.
@@ -2133,8 +2138,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     public static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }

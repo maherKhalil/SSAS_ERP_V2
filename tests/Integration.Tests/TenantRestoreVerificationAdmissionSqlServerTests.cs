@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -31,7 +31,9 @@ namespace SSAS.Integration.Tests;
 //
 // NOTHING HERE RESTORES ANYTHING. No RESTORE, no CREATE DATABASE, no DROP DATABASE: this proves who is
 // allowed to proceed, which is settled entirely in the Platform database.
-[Collection(TenantBackupSerialSuites.Name)]
+// LEFT THE SERIAL COLLECTION on 2026-08-23 (gate-economics round 1).
+// It creates NO database and restores nothing — the comment above already says so — so it holds no disk,
+// no backup device and no server-level state. It joined by arrival convention, never by contention.
 public sealed class TenantRestoreVerificationAdmissionSqlServerTests
 {
   [Fact]
@@ -574,8 +576,7 @@ public sealed class TenantRestoreVerificationAdmissionSqlServerTests
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=True;TrustServerCertificate=True;Encrypt=False";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     private static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog }.ConnectionString;

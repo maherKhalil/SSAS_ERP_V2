@@ -1,4 +1,4 @@
-using SSAS.BuildingBlocks.Tenancy.Branches;
+﻿using SSAS.BuildingBlocks.Tenancy.Branches;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -967,8 +967,7 @@ public sealed class BranchTransferBoundarySqlServerTests
     }
 
     private static string Configured() =>
-      Environment.GetEnvironmentVariable("SSAS_TEST_SQLSERVER") ??
-      "Server=localhost;Integrated Security=true;TrustServerCertificate=true";
+      IntegrationSqlEnvironment.BaseConnectionString;
 
     private static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog }.ConnectionString;

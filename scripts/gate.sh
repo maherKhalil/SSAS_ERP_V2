@@ -65,6 +65,20 @@ set -u
 #     the gate-economics work pay off, applied in the other direction. Expect roughly 45-55 minutes per
 #     Integration leg -- still far under the 113-minute serial era that work replaced.
 #
+#     ---- NEVER EDIT THIS FILE WHILE IT IS RUNNING. Paid for 2026-08-25.
+#
+#     bash reads a script INCREMENTALLY as it executes, so inserting lines into a running gate shifts the
+#     code underneath the interpreter. A LEAN run completed every leg green and then died with
+#     "syntax error near unexpected token" on its own trailing lines, purely because this header grew by
+#     nine lines mid-run. The results were valid and had to be recovered from the TRX files. Edit between
+#     runs, or copy the script first.
+#
+#     TROUBLESHOOTING, PAID FOR ON 2026-08-24: before concluding a box cannot meet its floor, CHECK FOR
+#     STALE BUILD NODES. Three `dotnet` MSBuild processes survived `MSBUILDDISABLENODEREUSE=1` after aborted
+#     runs and held 372 MB between them; killing them moved the box from 1820 MB (below the LEAN floor) to
+#     2390 MB (above it). Node reuse is disabled for the builds this script starts, not for whatever ran
+#     before it.
+#
 #  7a. A MEMORY FLOOR IN THE PRECONDITIONS (4096 MB in FULL, 2048 MB in LEAN, before EACH leg).
 #     2026-08-24: BOTH Integration legs exited 127 with NO TRX AT ALL -- not a partial one, no blame
 #     sequence, no dump. The sampler showed the box down to 14 MB free during Debug and 92 MB during

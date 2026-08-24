@@ -69,6 +69,7 @@ requirements are reachable at all. Its absence in FP-011 meant every GL write ro
 | `BR-PAY-0013` Per-line rounding, total = sum of rounded lines | calculation engine | `TS-PAY-0009` |
 | `DEC-PAY-0016` **Jurisdiction-neutral V1** | the whole feature boundary | nothing asserts a statutory figure |
 | `DEC-PAY-0017` **Two sanctioned employee read shapes** | the HR roster boundary | three architecture guards on `EmployeeRosterService` |
+| `DEC-PAY-0018` **No GL permission on the poster** | the ledger boundary | the company write boundary + rule reuse; `TS-PAY-0011` |
 
 ---
 

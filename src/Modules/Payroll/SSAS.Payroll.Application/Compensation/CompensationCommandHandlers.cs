@@ -58,7 +58,7 @@ public sealed class RecordCompensationCommandHandler(
     // legacy arrangement — and `OD-PAY-0004` ruled it is warned about rather than refused.
     record.Value.RecordGradeBandObservation(command.WasOutsideGradeBand, command.GradeBandObservation);
 
-    compensation.Add(record.Value);
+    await compensation.AddAsync(record.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
     return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(record.Value.Id);

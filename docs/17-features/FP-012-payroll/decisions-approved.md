@@ -33,6 +33,7 @@ traced; a decision that needs the owner is raised with options and consequences 
 | `DEC-PAY-0015` | `DEC-POS-0023` is not reopened | **SETTLED** |
 | **`DEC-PAY-0016`** | **V1 is JURISDICTION-NEUTRAL — no tax tables, no statutory deductions** | **RULED** 2026-08-24 |
 | **`DEC-PAY-0017`** | **Two sanctioned employee read shapes; the roster gets its own structural lock** | **RULED** 2026-08-24 |
+| **`DEC-PAY-0018`** | **The ledger poster checks no GL permission; payroll authority is the elevation** | **RULED** 2026-08-24 |
 
 ### `DEC-PAY-0001` — Payroll is pulled forward. **CLOSED.**
 
@@ -593,3 +594,49 @@ saying "this one is fine" is an **exception**. The three new guards are what mak
 the roster to everything the HR read shape is held to, minus the one predicate the ruling deliberately
 removed — and they assert that removal explicitly, so restoring it would be a deliberate act rather than a
 tidy-up.
+
+---
+
+# `DEC-PAY-0018` — The ledger poster checks no GL permission. RULED 2026-08-24.
+
+**Written down because a future security review will ask, and the answer should be waiting rather than
+reconstructed.**
+
+## The call
+
+`GlJournalPoster` — the implementation behind `IJournalPoster`, the only route by which Payroll reaches the
+ledger — **performs no `GL.Journals.Post` check.** A payroll operator posts a run holding
+`Payroll.Runs.Post` and no ledger permission at all.
+
+## Why that is correct rather than lax
+
+**`BR-PLT-0103` names the sensitive operation as *Payroll Processing*.** Its elevation is
+`Payroll.Runs.Approve` and `Payroll.Runs.Post` (`OD-PAY-0009`, `OD-PAY-0016`). Demanding `GL.Journals.Post`
+*on top* would force every payroll operator into ledger grants — recreating on the GL side exactly the
+coupling `DEC-PAY-0017` rejected on the HR side, and for the same reason: **holding payroll authority must
+not require holding another module's authority.**
+
+Two properties make this safe, and both are structural rather than a matter of trust:
+
+**1. The authorization that must hold is unskippable.**
+`TenantDbContext.ApplyCompanyRulesAsync` authorizes every company-owned write at save time against the
+trusted company execution context. A payroll post into a company the caller cannot reach is refused **by the
+write boundary itself**, not by a check the poster remembered to write. That guarantee cannot be forgotten
+by a future method added to that class, which is more than any hand-written check could promise.
+
+**2. The posting rules are enforced by REUSE, not by trust.**
+The poster does not implement posting; it calls GL's own path. `JournalDraft.EnsurePostable` enforces
+`BR-GL-0001` and the two-line minimum, `FiscalYear.ResolveOpenPeriodFor` enforces `BR-GL-0003`,
+`Account.EnsureCanReceiveTransactions` enforces `BR-GL-0004`, and `NextJournalNumberAsync` enforces
+`BR-GL-0005` — the same code, in the same transaction shape, as a user-posted journal.
+
+**There is one set of books.** A payroll-posted journal is not a journal that took a shortcut; it is a
+journal that took the same road. A second posting path re-implementing any of those rules would be a second
+set of books' worth of invariants to keep in step, and the one that drifted would be the one nobody was
+watching — because it has no UI.
+
+## What would change this
+
+A GL permission check would become necessary if the poster ever stopped reusing GL's path, or if posting
+ever became reachable other than through an approved payroll run. Either change invalidates this decision
+and should re-open it rather than route around it.

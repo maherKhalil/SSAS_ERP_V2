@@ -82,7 +82,7 @@ public sealed class GeneratePayrollPeriodCommandHandler(
       return Result.Failure<Guid>(period.Error);
     }
 
-    periods.Add(period.Value);
+    await periods.AddAsync(period.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
     return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(period.Value.Id);
@@ -126,7 +126,7 @@ public sealed class CreatePayrollRunCommandHandler(
       return Result.Failure<Guid>(run.Error);
     }
 
-    runs.Add(run.Value);
+    await runs.AddAsync(run.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
     return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(run.Value.Id);

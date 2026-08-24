@@ -63,7 +63,7 @@ public sealed class CreatePayElementCommandHandler(
       }
     }
 
-    elements.Add(element.Value);
+    await elements.AddAsync(element.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
     return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(element.Value.Id);

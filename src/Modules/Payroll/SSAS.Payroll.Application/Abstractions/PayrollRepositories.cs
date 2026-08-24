@@ -27,7 +27,7 @@ public interface IPayElementRepository
   Task<IReadOnlyList<PayElement>> GetByIdsAsync(
     IReadOnlyCollection<Guid> payElementIds, CancellationToken cancellationToken = default);
 
-  void Add(PayElement payElement);
+  Task AddAsync(PayElement payElement, CancellationToken cancellationToken = default);
 }
 
 public interface IEmployeeCompensationRepository
@@ -46,7 +46,7 @@ public interface IEmployeeCompensationRepository
   Task<IReadOnlyList<EmployeeCompensation>> GetHistoryForCompanyAsync(
     Guid companyId, CancellationToken cancellationToken = default);
 
-  void Add(EmployeeCompensation compensation);
+  Task AddAsync(EmployeeCompensation compensation, CancellationToken cancellationToken = default);
 
   // ---- THERE IS NO Update, AND NO Remove.
   //
@@ -62,7 +62,7 @@ public interface IPayrollPeriodRepository
   Task<bool> ExistsForFiscalPeriodAsync(
     Guid companyId, Guid fiscalPeriodId, CancellationToken cancellationToken = default);
 
-  void Add(PayrollPeriod period);
+  Task AddAsync(PayrollPeriod period, CancellationToken cancellationToken = default);
 }
 
 public interface IPayrollRunRepository
@@ -79,7 +79,7 @@ public interface IPayrollRunRepository
   Task<bool> ExistsForPeriodAsync(
     Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default);
 
-  void Add(PayrollRun run);
+  Task AddAsync(PayrollRun run, CancellationToken cancellationToken = default);
 
   // ---- THE THREE LOADERS ARE SEPARATE ON PURPOSE.
   //

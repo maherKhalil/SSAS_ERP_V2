@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SSAS.Payroll.Domain\SSAS.Payroll.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Tenancy\SSAS.BuildingBlocks.Tenancy.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      THE ONLY REFERENCE PAYROLL HAS INTO THE LEDGER, AND IT IS A CONTRACT, NOT A MODULE.
+      ADR-012 permits a promoted contract or an event and forbids one module referencing another's
+      assemblies. OD-PAY-0013 ruled the synchronous contract. So this points at SSAS.GL.Contracts and there
+      is NO reference to SSAS.GL.Domain, .Application, .Infrastructure or .API anywhere in this module — an
+      architecture guard asserts that in both directions.
+    -->
+    <ProjectReference Include="..\..\Finance\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SSAS.Payroll.Tests" />
+    <InternalsVisibleTo Include="SSAS.Integration.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

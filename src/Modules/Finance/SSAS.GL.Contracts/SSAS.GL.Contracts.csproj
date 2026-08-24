@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RECREATED 2026-08-24 BY ITS CONSUMER, WHICH IS THE WHOLE POINT.
+
+    FP-011 DELETED this project rather than leave it empty. OD-GL-0009 had ruled that nothing posts to GL in
+    V1, and an empty contracts assembly already referenced by three source projects and two test projects is
+    closer to the coupling that ruling excluded than an unreferenced stub is. The removal recorded its own
+    recreate-condition: "returns when Payroll consumes it, SHAPED BY ITS CONSUMER".
+
+    That condition has now fired. OD-PAY-0013 ruled a synchronous posting contract, and everything in this
+    assembly exists because Payroll needs it — not because someone guessed in advance what a ledger
+    contract ought to look like. That is the difference between a contract and a wish.
+
+    It holds NO project references on purpose. A contract that referenced GL's domain would re-create the
+    coupling ADR-012 forbids by another route: the consumer would transitively see the ledger's internals.
+    Everything crossing this boundary is a primitive or a type declared here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

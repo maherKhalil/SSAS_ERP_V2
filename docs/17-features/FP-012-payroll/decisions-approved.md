@@ -32,6 +32,7 @@ traced; a decision that needs the owner is raised with options and consequences 
 | `DEC-PAY-0014` | Payroll never writes to HR | **PROPOSED** |
 | `DEC-PAY-0015` | `DEC-POS-0023` is not reopened | **SETTLED** |
 | **`DEC-PAY-0016`** | **V1 is JURISDICTION-NEUTRAL — no tax tables, no statutory deductions** | **RULED** 2026-08-24 |
+| **`DEC-PAY-0017`** | **Two sanctioned employee read shapes; the roster gets its own structural lock** | **RULED** 2026-08-24 |
 
 ### `DEC-PAY-0001` — Payroll is pulled forward. **CLOSED.**
 
@@ -528,3 +529,67 @@ objection the package raised does not arise, because what a payslip refers to *i
   being wrong.
 * `domain-model.md` — the divergence paragraph is rewritten to record that the divergence was **considered
   and refuted**, citing `OD-GL-0007`.
+
+---
+
+# `DEC-PAY-0017` — Two sanctioned employee read shapes. RULED 2026-08-24.
+
+## How it came up
+
+FP-012's `IEmployeeRoster` failed `EmployeeReadScopeArchitectureTests` twice, and **the guard was right both
+times.** First it caught a separate roster file as a third door onto `Set<Employee>()` — *"a query no guard
+here inspects, scoped by nothing but its author's memory."* Moving the query into the blessed file then hit
+the stricter assertion: **exactly one** query site there, everything through `Scoped(...)`, which demands
+tenant **+ company + branch** from a proven `EmployeeReadScope`.
+
+The build **stopped** rather than editing the guard. A guard that gains an entry every time something needs
+past it stops being a guard.
+
+## The ruling
+
+> **The branch predicate never protected "employees" in the abstract; it protects HR CALLERS from exceeding
+> their branch authority.** A cross-module roster read is a different regime with its own authority — the
+> payroll permission plus company access — and it gets its own structural shape, **not an exemption**.
+
+Two rejected alternatives, on the record:
+
+* **A branch-scoped roster** (payroll runs per branch) — rejected on the merits. It contradicts
+  company-owned runs (`OD-PAY-0005`), company-scoped periods (`OD-PAY-0002`), and `OD-GL-0005`'s precedent
+  that finance is not branch-dimensional.
+* **An event-fed HR projection in Payroll** — rejected as already ruled. `OD-PAY-0013` chose synchronous
+  contracts precisely because the outbox and reconciliation machinery an event style needs does not exist;
+  building it to dodge a read-shape question would be a large cost for the wrong reason.
+
+## What was built
+
+| | First shape | Second shape |
+|---|---|---|
+| File | `EmployeeReadService.cs` | `EmployeeRosterService.cs` |
+| Serves | HR callers | the Payroll module, across a contract |
+| Predicates | tenant + company + **branch** | tenant + company, **no branch** |
+| Authority | a proven `EmployeeReadScope` | resolved **live, inside the implementation** |
+| Guarded by | tests 10, 12, 16 | tests 16, **16b (three new)** |
+
+**The authority is resolved, never accepted.** The roster takes a company *identifier* and then resolves the
+caller's permitted companies from `ITenantCompanyAccessResolver` on every call. An `AuthorizedCompanySet`
+parameter would be forgeable by whoever called; the property that makes a scope trustworthy is *checked
+live, just now*, and this read earns it by doing the work rather than by trusting a caller who claims to
+have done it. A guard asserts no scope-shaped parameter can appear in the contract.
+
+**Refusal throws rather than returning an empty list.** An empty list would claim "this company employs
+nobody" — a statement about the data — and a payroll built on it would calculate cleanly, produce nothing,
+and fail at approval with a message sending someone hunting through HR for employees that exist.
+
+**The projection is pinned by name**, with `NationalId` named individually because `OD-DOC-006` protected it.
+A contract is forever-ish: a roster returning `EmployeeDetail` would let every future Payroll feature read HR
+personal data **with no call-site change for anyone to review**.
+
+**`DEC-PAY-0014` is unchanged.** The roster is read-only; this ruling opened no write path.
+
+## The distinction that matters
+
+A second door with a lock as good as the first door's is a **sanctioned shape**. A second door with a note
+saying "this one is fine" is an **exception**. The three new guards are what make this the first: they hold
+the roster to everything the HR read shape is held to, minus the one predicate the ruling deliberately
+removed — and they assert that removal explicitly, so restoring it would be a deliberate act rather than a
+tidy-up.

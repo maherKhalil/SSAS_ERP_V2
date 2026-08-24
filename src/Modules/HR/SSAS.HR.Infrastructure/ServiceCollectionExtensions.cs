@@ -29,6 +29,13 @@ public static class ServiceCollectionExtensions
     // the key, but it would suggest the mapping could vary — which is exactly what must never be true.
     services.AddSingleton<ITenantModelContributor, HrTenantModelContributor>();
 
+// HR's side of the Payroll boundary (FP-012, DEC-PAY-0017). The contract lives in SSAS.HR.Contracts so
+
+// Payroll never sees Employee; this is the second sanctioned read shape, guarded as strictly as the first.
+
+services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeRoster, EmployeeRosterService>();
+
+
 services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 
     services.AddScoped<IDepartmentRepository, DepartmentRepository>();

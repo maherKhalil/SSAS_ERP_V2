@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+using SSAS.BuildingBlocks.Application.Authorization;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Domain;
@@ -8,38 +8,28 @@ using SSAS.BuildingBlocks.Tenancy.Companies;
 namespace SSAS.Payroll.Application.Reads;
 
 // ================================================================================================
-// THE PROMOTION TRIGGER HAS FIRED. THIS IS THE THIRD CONSUMER — AND IT IS RAISED, NOT TAKEN.
+// THE THIRD CONSUMER. THE PROMOTION IT TRIGGERED WAS RULED AND PERFORMED ON 2026-08-24.
 // ================================================================================================
 //
-// `GlReadScope` wrote the condition where it would be found, and it names this exact moment:
+// `GlReadScope` wrote the condition where it would be found, and Payroll met it:
 //
 //   > **THE TRIGGER, WRITTEN WHERE IT WILL BE FOUND: a THIRD consumer.** Two modules each carrying a guarded
 //   > identifier list is duplication nobody trips over. Three is where the shapes start to drift, and drift
-//   > in a scope type is a SECURITY DEFECT rather than an inconvenience — so the third module that needs one
-//   > raises the promotion as its own reviewed change, and does not simply write a fourth copy.
+//   > in a scope type is a SECURITY DEFECT rather than an inconvenience.
 //
-// HR's `AuthorizedCompanyScope` is one, `GlReadScope` is two, **this is three.**
+// HR's `AuthorizedCompanyScope` was one, `GlReadScope` two, this three. The promotion was raised rather than
+// taken at the keyboard — `ADR-027` decision 4 makes it a reviewed change to shared foundations — and the
+// review then ruled it. `AuthorizedCompanySet` in `SSAS.BuildingBlocks.Application.Authorization` is the
+// result.
 //
-// ---- WHY THE COPY EXISTS ANYWAY, AND WHAT WAS RAISED INSTEAD.
+// ---- WHAT MOVED, AND WHAT DELIBERATELY DID NOT.
 //
-// Promotion into `SSAS.BuildingBlocks` is governed by `ADR-027` decision 4, which SANCTIONS it but is
-// explicit that it is "a deliberate, reviewed change to shared foundations, **not a side effect of a feature
-// package needing a type**". A build prompt is precisely such a side effect. Performing the promotion here
-// would edit shared foundations on the way past — doing the right thing by the wrong route, and in the one
-// place where getting it wrong is a security defect rather than a tidiness complaint.
+// **The VALUE moved**: the materialized, never-empty, never-writeable company set.
 //
-// So the promotion is **raised to the architect** in the FP-012 report and the as-built, and this copy
-// stands until it is ruled. **Whoever rules it should note that this is now the third divergent shape**, and
-// that `PayrollReadScope` is deliberately identical to `GlReadScope` rather than improved — a copy that
-// "improved" on the original would make the eventual merge harder and the drift the trigger warns about
-// real.
-//
-// ---- WHAT THE TYPE GUARANTEES (unchanged from GL's, deliberately).
-//
-// Holding one is proof that BOTH dimensions were checked, live, just now. The constructor is private, the
-// factory is internal, and its only caller is `PayrollScopeResolver`. Every payroll read requires one — a
-// read that omitted a scope predicate is not something a reviewer has to notice, because it is not something
-// a caller can express.
+// **This TYPE did not.** Its constructor is private, its factory is `internal`, and its only caller is
+// `PayrollScopeResolver`. Holding one is proof that PAYROLL's permission check and PAYROLL's company
+// resolution both ran against live state — a shared scope type would let any module that could build one
+// hand it to any other module's read service, and the proof would become a shrug.
 //
 // **On this surface that matters more than anywhere it has mattered before.** Everywhere else a forgeable
 // scope is an authorization defect; for compensation it is a personal-data breach.
@@ -49,16 +39,19 @@ namespace SSAS.Payroll.Application.Reads;
 // second is true, and only the second stays true when someone later grants the caller a company.
 public sealed class PayrollReadScope
 {
-  private PayrollReadScope(Guid tenantId, IReadOnlyList<Guid> companyIds)
+  private PayrollReadScope(Guid tenantId, AuthorizedCompanySet companies)
   {
     TenantId = tenantId;
-    CompanyIds = companyIds;
+    Companies = companies;
   }
 
   // Carried so a query STATES the invariant it depends on rather than inheriting it from the global filter.
   public Guid TenantId { get; }
 
-  public IReadOnlyList<Guid> CompanyIds { get; }
+  // The promoted set (`ADR-027` d4). The wrapper is what carries the proof; this is only the data.
+  public AuthorizedCompanySet Companies { get; }
+
+  public IReadOnlyList<Guid> CompanyIds => Companies.CompanyIds;
 
   // `internal`, single caller. The empty check lives here rather than in the resolver so it holds for every
   // future caller of the factory, not merely the one that exists today.
@@ -66,12 +59,13 @@ public sealed class PayrollReadScope
   {
     ArgumentNullException.ThrowIfNull(companyIds);
 
-    if (tenantId == Guid.Empty || companyIds.Count == 0)
+    if (tenantId == Guid.Empty)
     {
       return null;
     }
 
-    return new PayrollReadScope(tenantId, new ReadOnlyCollection<Guid>([.. companyIds]));
+    var companies = AuthorizedCompanySet.Create(companyIds);
+    return companies is null ? null : new PayrollReadScope(tenantId, companies);
   }
 }
 

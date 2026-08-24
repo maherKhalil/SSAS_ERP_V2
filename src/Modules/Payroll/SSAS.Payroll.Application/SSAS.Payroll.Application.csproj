@@ -16,6 +16,7 @@
       architecture guard asserts that in both directions.
     -->
     <ProjectReference Include="..\..\Finance\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
+    <ProjectReference Include="..\..\HR\SSAS.HR.Contracts\SSAS.HR.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

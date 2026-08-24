@@ -108,3 +108,28 @@ public sealed record JournalPostingOutcome(
   public static JournalPostingOutcome Refused(JournalPostingStatus status, string? detail = null) =>
     new(status, null, null, detail);
 }
+
+// ---- INSPECTING THE WINDOW BEFORE COMMITTING TO IT.
+//
+// `OD-PAY-0014` requires Payroll to refuse a run **at approval**, naming the closed period. Posting happens
+// later, at the Approved -> Posted transition, so the posting call cannot be what discovers it: by then the
+// run would already be Approved and unpostable — a state with no legitimate exit, which is exactly the
+// outcome the ruling chose approval-time refusal to avoid.
+//
+// So the consumer needs to ASK, without writing anything. This is that question, and it exists because
+// Payroll needs it — not because a ledger contract would naturally offer introspection.
+//
+// It is explicitly NOT a reservation and NOT a promise: a period open when this returns may be closed by the
+// time the posting runs. That race is why `PostAsync` still answers `PeriodClosed` and why Payroll still
+// refuses the transition on it. This narrows a window that cannot be closed by asking politely.
+public enum PostingWindowStatus
+{
+  Open = 0,
+  PeriodClosed = 1,
+  PeriodNotFound = 2
+}
+
+public sealed record PostingWindow(PostingWindowStatus Status, string? PeriodName)
+{
+  public bool IsOpen => Status == PostingWindowStatus.Open;
+}

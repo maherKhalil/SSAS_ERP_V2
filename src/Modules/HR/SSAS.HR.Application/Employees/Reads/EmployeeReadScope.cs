@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using SSAS.BuildingBlocks.Application.Authorization;
 
 namespace SSAS.HR.Application.Employees.Reads;
 
@@ -53,23 +54,28 @@ public sealed class EmployeeReadScope
 }
 
 // The companies a read may see, already proven and already materialized.
+//
+// ---- WRAPS THE PROMOTED `AuthorizedCompanySet` SINCE 2026-08-24 (ADR-027 d4).
+//
+// The never-empty, never-writeable list is now `SSAS.BuildingBlocks.Application.Authorization`'s, because
+// GL and Payroll had each written the same shape and a third copy is where drift starts.
+//
+// **This type did NOT move, and that is the point.** Its constructor is private and its factory is
+// `internal`, so only HR's own resolver can produce one — and possessing an `EmployeeReadScope` therefore
+// remains proof that HR's permission check and HR's company resolution both ran. The promoted piece is the
+// data shape; the credential stays here.
 public sealed class AuthorizedCompanyScope
 {
-  private AuthorizedCompanyScope(IReadOnlyList<Guid> companyIds)
-  {
-    CompanyIds = companyIds;
-  }
+  private AuthorizedCompanyScope(AuthorizedCompanySet companies) => Companies = companies;
 
-  // NEVER EMPTY. A scope with no companies would compose a predicate matching nothing at best, and would be
-  // mistaken for "unrestricted" at worst; the resolver refuses before one can be built.
-  //
-  // AND NEVER WRITEABLE. An IReadOnlyList<Guid> handed a Guid[] is castable straight back to Guid[], so the
-  // "read-only" would be a suggestion: any code holding a scope could add a company to it after the
-  // authorization that produced it had already passed. The wrapper below is what makes it a fact.
-  public IReadOnlyList<Guid> CompanyIds { get; }
+  public AuthorizedCompanySet Companies { get; }
+
+  // Passthrough, so every existing HR query reads unchanged.
+  public IReadOnlyList<Guid> CompanyIds => Companies.CompanyIds;
 
   internal static AuthorizedCompanyScope Create(IReadOnlyList<Guid> companyIds) =>
-    new(new ReadOnlyCollection<Guid>([.. companyIds]));
+    new(AuthorizedCompanySet.Create(companyIds)
+      ?? throw new ArgumentException("An authorized company scope cannot be empty.", nameof(companyIds)));
 }
 
 // The branches a read may see, already proven and already materialized.

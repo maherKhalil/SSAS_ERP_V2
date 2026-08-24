@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+using SSAS.BuildingBlocks.Application.Authorization;
 
 namespace SSAS.GL.Application.Reads;
 
@@ -52,17 +52,25 @@ namespace SSAS.GL.Application.Reads;
 // raises the promotion as its own reviewed change, and does not simply write a fourth copy.
 public sealed class GlReadScope
 {
-  private GlReadScope(Guid tenantId, IReadOnlyList<Guid> companyIds)
+  private GlReadScope(Guid tenantId, AuthorizedCompanySet companies)
   {
     TenantId = tenantId;
-    CompanyIds = companyIds;
+    Companies = companies;
   }
 
   // The trusted tenant the scope was resolved within. Carried so a query STATES the invariant it depends on
   // rather than inheriting it from the global filter.
   public Guid TenantId { get; }
 
-  public IReadOnlyList<Guid> CompanyIds { get; }
+  // ---- THE PROMOTED SET (ADR-027 d4, 2026-08-24).
+  //
+  // Payroll was the third consumer the trigger below named, so the never-empty materialized list moved to
+  // `SSAS.BuildingBlocks.Application.Authorization`. **This type did not move**: its private constructor and
+  // internal factory are the security property, and they stay per-module. See `AuthorizedCompanySet`.
+  public AuthorizedCompanySet Companies { get; }
+
+  // Passthrough, so every existing GL query reads unchanged.
+  public IReadOnlyList<Guid> CompanyIds => Companies.CompanyIds;
 
   // `internal` and called from exactly one place. The empty check is here rather than in the resolver so it
   // holds for every future caller of the factory, not merely for the one that exists today.
@@ -70,11 +78,12 @@ public sealed class GlReadScope
   {
     ArgumentNullException.ThrowIfNull(companyIds);
 
-    if (tenantId == Guid.Empty || companyIds.Count == 0)
+    if (tenantId == Guid.Empty)
     {
       return null;
     }
 
-    return new GlReadScope(tenantId, new ReadOnlyCollection<Guid>([.. companyIds]));
+    var companies = AuthorizedCompanySet.Create(companyIds);
+    return companies is null ? null : new GlReadScope(tenantId, companies);
   }
 }

@@ -29,7 +29,7 @@ public static class ServiceCollectionExtensions
     // the key, but it would suggest the mapping could vary — which is exactly what must never be true.
     services.AddSingleton<ITenantModelContributor, HrTenantModelContributor>();
 
-    services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 
     services.AddScoped<IDepartmentRepository, DepartmentRepository>();
 

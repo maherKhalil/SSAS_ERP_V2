@@ -45,4 +45,17 @@ public interface IJournalPoster
   Task<JournalPostingOutcome> ReverseAsync(
     JournalReversalRequest request,
     CancellationToken cancellationToken = default);
+
+  // Asks whether a date currently falls in an open fiscal period, WITHOUT writing anything.
+  //
+  // Payroll calls this at APPROVAL because `OD-PAY-0014` requires the closed-period refusal to happen there,
+  // naming the period. Discovering it at posting instead would leave a run Approved and unpostable, with no
+  // legitimate transition available.
+  //
+  // Not a reservation and not a promise -- see `PostingWindow`. `PostAsync` still answers `PeriodClosed`,
+  // because a period open now may be closed by the time posting runs.
+  Task<PostingWindow> InspectPostingWindowAsync(
+    Guid companyId,
+    DateTimeOffset entryDateUtc,
+    CancellationToken cancellationToken = default);
 }

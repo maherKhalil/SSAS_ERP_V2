@@ -48,6 +48,23 @@ set -u
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
 #
+#  7a. A MEMORY FLOOR IN THE PRECONDITIONS (>= 4 GB free before EACH leg).
+#     2026-08-24: BOTH Integration legs exited 127 with NO TRX AT ALL -- not a partial one, no blame
+#     sequence, no dump. The sampler showed the box down to 14 MB free during Debug and 92 MB during
+#     Release. The instant-of-exit sample looked healthy (229 MB working set, 1362 MB free), which is
+#     exactly what a memory kill looks like from outside: the sampler's last reading is taken after the
+#     kill has already released the memory.
+#     A busy box is a PRECONDITION FAILURE, not a flaky suite -- the same principle already applied to
+#     foreign testhosts and orphan catalogs, now applied to memory. Checked before EACH leg rather than
+#     once, because Debug's footprint bleeding into Release's start is what the two death timestamps show.
+#
+#  7b. SQL SERVER IS CAPPED AT 4096 MB ON THIS INSTANCE.
+#     Applied and persisted 2026-08-24 (`sp_configure 'max server memory (MB)', 4096`). It was UNBOUNDED
+#     (2147483647) -- entitled to all 15 GB. It sat at ~600 MB at rest, which is irrelevant: the
+#     ENTITLEMENT is what kills under load, and a dev-box instance entitled to all physical RAM is a
+#     landmine every future suite steps on. This is an instance setting and survives restarts; it is
+#     recorded here because nothing in the repository would otherwise say it had been done.
+#
 #  7. MSBUILDDISABLENODEREUSE=1.
 #     This box is memory-bound (~15 GB, one local SQL Server) and the gate builds TWICE before running
 #     two ~30-minute Integration legs, so Debug's worker nodes would sit resident through the whole
@@ -88,8 +105,28 @@ reap_count () {
     "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.databases WHERE name LIKE 'SSAS[_]%'" 2>/dev/null | head -1 | tr -d '[:space:]'
 }
 
+# Minimum free physical memory, in MB, required before a leg may start.
+MEMORY_FLOOR_MB=${GATE_MEMORY_FLOOR_MB:-4096}
+
 reap_to_zero () {
   local CFG="$1"
+
+# 0. THE BOX MUST HAVE ROOM. Measured at the start of EVERY leg, not once for the run.
+#
+#    Aborts LOUDLY and distinctly: this is a precondition failure, and reporting it as a suite failure
+#    would send someone hunting for a defect in the tests. See note 7a in the header for the incident.
+  local FREE_MB
+  FREE_MB=$(powershell.exe -NoProfile -Command     "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB,0)"     2>/dev/null | tr -d '[:space:]')
+  FREE_MB=${FREE_MB:-0}
+
+  echo "--- free physical memory before $CFG: ${FREE_MB} MB (floor ${MEMORY_FLOOR_MB} MB)"
+
+  if [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then
+    echo "!!! ABORT ($CFG): PRECONDITION FAILURE -- only ${FREE_MB} MB free, floor is ${MEMORY_FLOOR_MB} MB."
+    echo "!!! This is NOT a suite failure. Quiet the box (editors, browsers) and run again."
+    echo "!!! On 2026-08-24 both Integration legs died with no TRX at 14 MB and 92 MB free."
+    exit 5
+  fi
 
   # 1. NO TESTHOST OF OURS MAY BE RUNNING. One means a sibling suite is live and its catalogs are not
   #    orphans. Matched on the repo path: counting every testhost.exe on the machine over-reaches, and

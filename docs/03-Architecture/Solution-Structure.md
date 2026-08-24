@@ -156,11 +156,19 @@ Modules
 
 ├── SSAS.GL.Domain
 
-├── SSAS.GL.Infrastructure
-
-└── SSAS.GL.Contracts
+└── SSAS.GL.Infrastructure
 
 ```
+
+> **`SSAS.GL.Contracts` was removed on 2026-08-23 (FP-011).** `OD-GL-0009` ruled that nothing posts to
+> General Ledger in V1 — Payroll (V2) is the first inbound poster — so GL has no cross-module contract
+> surface to publish. The project existed empty and was already referenced by GL's API, Application and
+> Infrastructure, which is one step closer to the coupling that ruling excluded than an unreferenced stub
+> would be: the dependency edges were in place, waiting only for content.
+>
+> **It returns when Payroll consumes it, shaped by its actual consumer** — the promote-when-needed
+> discipline `ADR-027` decision 4 applies to types, applied here to an assembly. Git history preserves the
+> skeleton for anyone who needs the archaeology.
 
 ---
 

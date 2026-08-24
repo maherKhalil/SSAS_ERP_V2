@@ -22,6 +22,387 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("SSAS.GL.Domain.Accounts.Account", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("NormalizedCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "NormalizedCode")
+                        .IsUnique()
+                        .HasDatabaseName("UX_GlAccounts_Tenant_NormalizedCode");
+
+                    b.ToTable("GlAccounts", "tenant");
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Calendar.FiscalPeriod", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("EndUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FiscalYearId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset>("StartUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FiscalYearId", "StartUtc")
+                        .HasDatabaseName("IX_GlFiscalPeriods_Year_Start");
+
+                    b.ToTable("GlFiscalPeriods", "tenant", t =>
+                        {
+                            t.HasCheckConstraint("CK_GlFiscalPeriods_Range", "[EndUtc] > [StartUtc]");
+
+                            t.HasCheckConstraint("CK_GlFiscalPeriods_Status", "[Status] IN (N'Open', N'Closed')");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Calendar.FiscalYear", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("EndUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset>("StartUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("TenantId", "CompanyId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_GlFiscalYears_Tenant_Company_Code");
+
+                    b.ToTable("GlFiscalYears", "tenant");
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalDraft", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset>("EntryDateUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("TenantId", "CompanyId")
+                        .HasDatabaseName("IX_GlJournalDrafts_Tenant_Company");
+
+                    b.ToTable("GlJournalDrafts", "tenant");
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalDraftLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Credit")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<decimal>("Debit")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid>("JournalDraftId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("JournalDraftId", "LineNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_GlJournalDraftLines_Draft_LineNumber");
+
+                    b.ToTable("GlJournalDraftLines", "tenant", t =>
+                        {
+                            t.HasCheckConstraint("CK_GlJournalDraftLines_SingleSided", "([Debit] > 0 AND [Credit] = 0) OR ([Credit] > 0 AND [Debit] = 0)");
+                        });
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset>("EntryDateUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FiscalPeriodId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FiscalYearId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("JournalNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid?>("ReversesJournalEntryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("ReversesJournalEntryId");
+
+                    b.HasIndex("TenantId", "ReversesJournalEntryId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_GlJournalEntries_OneReversalPerOriginal")
+                        .HasFilter("[ReversesJournalEntryId] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "CompanyId", "EntryDateUtc")
+                        .HasDatabaseName("IX_GlJournalEntries_Tenant_Company_EntryDate");
+
+                    b.HasIndex("TenantId", "CompanyId", "FiscalYearId", "JournalNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_GlJournalEntries_Tenant_Company_Year_Number");
+
+                    b.ToTable("GlJournalEntries", "tenant");
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Credit")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<decimal>("Debit")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid>("JournalEntryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("JournalEntryId", "LineNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_GlJournalLines_Entry_LineNumber");
+
+                    b.HasIndex("TenantId", "AccountId")
+                        .HasDatabaseName("IX_GlJournalLines_Tenant_Account");
+
+                    b.ToTable("GlJournalLines", "tenant", t =>
+                        {
+                            t.HasCheckConstraint("CK_GlJournalLines_SingleSided", "([Debit] > 0 AND [Credit] = 0) OR ([Credit] > 0 AND [Debit] = 0)");
+                        });
+                });
+
             modelBuilder.Entity("SSAS.HR.Domain.Departments.Department", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1109,6 +1490,77 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SSAS.GL.Domain.Calendar.FiscalPeriod", b =>
+                {
+                    b.HasOne("SSAS.GL.Domain.Calendar.FiscalYear", null)
+                        .WithMany("Periods")
+                        .HasForeignKey("FiscalYearId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Calendar.FiscalYear", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalDraft", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalDraftLine", b =>
+                {
+                    b.HasOne("SSAS.GL.Domain.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.GL.Domain.Journals.JournalDraft", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("JournalDraftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalEntry", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.GL.Domain.Journals.JournalEntry", null)
+                        .WithMany()
+                        .HasForeignKey("ReversesJournalEntryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalLine", b =>
+                {
+                    b.HasOne("SSAS.GL.Domain.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.GL.Domain.Journals.JournalEntry", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("JournalEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SSAS.HR.Domain.Departments.Department", b =>
                 {
                     b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
@@ -1294,6 +1746,21 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         });
 
                     b.Navigation("Band");
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Calendar.FiscalYear", b =>
+                {
+                    b.Navigation("Periods");
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalDraft", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalEntry", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("SSAS.HR.Domain.Employees.Employee", b =>

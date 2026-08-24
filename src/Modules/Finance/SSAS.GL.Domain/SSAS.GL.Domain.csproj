@@ -5,6 +5,30 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\SSAS.BuildingBlocks.SharedKernel.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      JournalEntry's factories are `internal` (OD-GL-0007): a posted journal may be created ONLY by posting
+      a JournalDraft, and nothing outside this assembly may fabricate one. Granting the test assembly access
+      is the same third option SSAS.HR.Domain took rather than shipping a wider surface to be depended on.
+    -->
+    <InternalsVisibleTo Include="SSAS.Finance.Tests" />
+    <!--
+      And the module's OWN application layer, which is the one legitimate caller of JournalEntry.Post and
+      JournalEntry.Reverse. Making them `public` instead would have been the easy fix and the wrong one: the
+      boundary that matters is "nothing OUTSIDE THE GL MODULE can fabricate a posted journal", and public
+      would have opened them to the API layer, to the Host, and to any future module. Internal-plus-this
+      keeps the guarantee exactly where OD-GL-0007 put it.
+    -->
+    <InternalsVisibleTo Include="SSAS.GL.Application" />
+    <!--
+      And the real-SQL proofs, which must seed a posted journal the way POSTING does: through the internal
+      factory, from a balanced draft, so the row under test is the row the product would have written. A
+      test that inserted a JournalEntry by some other route would be asserting the write boundary's
+      behaviour against a row the write boundary never produced.
+    -->
+    <InternalsVisibleTo Include="SSAS.Integration.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

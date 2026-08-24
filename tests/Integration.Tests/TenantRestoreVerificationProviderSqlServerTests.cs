@@ -526,8 +526,28 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     // everything that depends on Employees. They are listed first here, which satisfies that and is the
     // safest position: nothing in this list references either table, so no later DROP can be blocked by
     // them still standing.
+    //
+    // ---- FP-011 ADDS SEVEN, AND THEY GO AT THE TOP FOR THE SAME REASON, INTERNALLY ORDERED.
+    //
+    // GL's tables reference Companies and each other, and NOTHING outside GL references them — so the whole
+    // block must precede Companies and may otherwise sit anywhere. Inside the block the rule is the rule:
+    // the copy order read backwards. Lines before their headers (GlJournalLines before GlJournalEntries,
+    // GlJournalDraftLines before GlJournalDrafts), periods before years, and GlAccounts LAST of the seven
+    // because both line tables carry a foreign key to it.
+    //
+    // The drop list is the one that has broken twice in this codebase's history, both times because a new
+    // foreign key changed the required order rather than merely lengthening the list. Seven tables with five
+    // internal dependencies is the largest single extension it has taken, which is why the order is derived
+    // here rather than appended.
     public Task BreakApplicationSchemaAsync() =>
       ExecuteAsync(SourceDatabase, """
+        DROP TABLE [tenant].[GlJournalLines];
+        DROP TABLE [tenant].[GlJournalDraftLines];
+        DROP TABLE [tenant].[GlJournalEntries];
+        DROP TABLE [tenant].[GlJournalDrafts];
+        DROP TABLE [tenant].[GlFiscalPeriods];
+        DROP TABLE [tenant].[GlFiscalYears];
+        DROP TABLE [tenant].[GlAccounts];
         DROP TABLE [tenant].[EmployeeImportRuns];
         DROP TABLE [tenant].[EmployeeExportRuns];
         DROP TABLE [tenant].[EmployeePositionAssignments];

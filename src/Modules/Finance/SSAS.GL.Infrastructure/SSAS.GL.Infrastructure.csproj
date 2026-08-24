@@ -3,8 +3,17 @@
   <ItemGroup>
     <ProjectReference Include="..\SSAS.GL.Application\SSAS.GL.Application.csproj" />
     <ProjectReference Include="..\SSAS.GL.Domain\SSAS.GL.Domain.csproj" />
-    <ProjectReference Include="..\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Infrastructure\SSAS.BuildingBlocks.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Tenancy\SSAS.BuildingBlocks.Tenancy.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real-SQL proofs compose the production graph directly — the real repository over the real
+         context — because a test that substituted either would prove nothing about the write boundary. -->
+    <InternalsVisibleTo Include="SSAS.Integration.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

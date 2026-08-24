@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -31,7 +31,6 @@
     <ProjectReference Include="..\..\src\Host\SSAS.Host.API\SSAS.Host.API.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.API\SSAS.GL.API.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Application\SSAS.GL.Application.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Domain\SSAS.GL.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.API\SSAS.HR.API.csproj" />

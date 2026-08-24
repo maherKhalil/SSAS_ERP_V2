@@ -3,7 +3,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\SSAS.GL.Application\SSAS.GL.Application.csproj" />
-    <ProjectReference Include="..\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
+  <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Api\SSAS.BuildingBlocks.Api.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

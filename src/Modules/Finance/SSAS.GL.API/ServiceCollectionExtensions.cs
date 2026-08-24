@@ -8,6 +8,10 @@ public static class ServiceCollectionExtensions
   {
     ArgumentNullException.ThrowIfNull(services);
 
+    // The endpoint filter that establishes company context for every GL route. Registered here rather than
+    // in AddGlInfrastructure because it is transport, not persistence -- the same split HR uses.
+    services.AddScoped<GlCompanyContextEndpointFilter>();
+
     return services;
   }
 }

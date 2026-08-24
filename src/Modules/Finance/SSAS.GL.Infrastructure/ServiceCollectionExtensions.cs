@@ -37,6 +37,13 @@ public static class ServiceCollectionExtensions
     // `IGlScopeResolver` is the ONLY producer of a `GlReadScope`, and `GlReadScope`'s factory is internal to
     // the Application assembly. Registering a second implementation would not widen that: the type still
     // could not be constructed anywhere else.
+    // ---- GL'S SIDE OF THE PAYROLL BOUNDARY (OD-GL-0009's named first inbound poster, OD-PAY-0013).
+    //
+    // Registered against the CONTRACT type, so Payroll resolves an interface from SSAS.GL.Contracts and
+    // never sees this assembly. The implementation is a thin adapter over GL's own posting path -- it does
+    // not re-implement any ledger rule.
+    services.AddScoped<SSAS.GL.Contracts.Posting.IJournalPoster, SSAS.GL.Application.Posting.GlJournalPoster>();
+
     services.AddScoped<IGlScopeResolver, GlScopeResolver>();
     services.AddScoped<IGlReadService, GlReadService>();
 

@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SSAS.GL.Domain\SSAS.GL.Domain.csproj" />
+    <!-- GL implements its own published contract (OD-PAY-0013): the poster lives here, the shape lives there. -->
+    <ProjectReference Include="..\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
   <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Tenancy\SSAS.BuildingBlocks.Tenancy.csproj" />

@@ -82,6 +82,9 @@ public static class PayrollCalculator
     // calculate because a no-longer-used element exists would be unusable.
     var ordered = elements
       .Where(element => element.IsActive)
+      // The net-pay payable carries a MAPPING, not an amount. Net pay is derived from the other lines, so a
+      // line for it would double-count -- see the behaviour's own comment.
+      .Where(element => element.Behaviour != PayElementBehaviour.NetPayPayable)
       .OrderBy(element => element.CalculationOrder)
       .ThenBy(element => element.NormalizedCode, StringComparer.Ordinal)
       .ToList();

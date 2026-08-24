@@ -200,7 +200,14 @@ public sealed class GlJournalPoster(
     var period = year.ResolveOpenPeriodFor(entryDateUtc);
     if (period.IsSuccess)
     {
-      return new PostingWindow(PostingWindowStatus.Open, period.Value.Name);
+      // Identity and bounds travel with the status: PayrollPeriod.CreateAlignedTo needs them, and asking
+      // twice would be two answers about one calendar with a race between them.
+      return new PostingWindow(
+        PostingWindowStatus.Open,
+        period.Value.Name,
+        period.Value.Id,
+        period.Value.StartUtc,
+        period.Value.EndUtc);
     }
 
     var closed = year.Periods.FirstOrDefault(p => p.Covers(entryDateUtc));

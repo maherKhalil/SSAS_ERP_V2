@@ -129,7 +129,22 @@ public enum PostingWindowStatus
   PeriodNotFound = 2
 }
 
-public sealed record PostingWindow(PostingWindowStatus Status, string? PeriodName)
+// Carries the period's IDENTITY AND BOUNDS as well as its status, because Payroll needs both and asking
+// twice would be two answers about one calendar with a race between them.
+//
+// `OD-PAY-0002` ruled a payroll period maps to exactly ONE fiscal period, and `PayrollPeriod.CreateAlignedTo`
+// is built so alignment is guaranteed by construction rather than validated afterwards — it takes the fiscal
+// period's identity and bounds and is not permitted to disagree with them. That constructor needs this data,
+// and this is the only sanctioned way for Payroll to obtain it.
+//
+// Everything here is null on a refusal except `Status`. A caller that reads `FiscalPeriodId` without
+// checking `IsOpen` gets `null` rather than a plausible-looking wrong answer.
+public sealed record PostingWindow(
+  PostingWindowStatus Status,
+  string? PeriodName,
+  Guid? FiscalPeriodId = null,
+  DateTimeOffset? StartUtc = null,
+  DateTimeOffset? EndUtc = null)
 {
   public bool IsOpen => Status == PostingWindowStatus.Open;
 }

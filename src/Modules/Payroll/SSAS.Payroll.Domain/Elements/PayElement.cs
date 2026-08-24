@@ -59,7 +59,24 @@ public enum PayElementBehaviour
   // This is the behaviour that makes `REQ-PAY-0004`'s explicit ordering load-bearing rather than decorative:
   // move this element earlier and its result legitimately changes, which is why the order is stored on the
   // element and the order actually used is stored on the line.
-  PercentageOfGrossToDate = 2
+  PercentageOfGrossToDate = 2,
+
+  // ---- THE BALANCING CREDIT, AND WHY IT IS AN ELEMENT TOO.
+  //
+  // A payroll journal debits each earning's account and credits each deduction's account. Those two do not
+  // balance: the difference is NET PAY, which must credit a liability account — what the company now owes
+  // its employees. Without somewhere to put it, `BR-GL-0001` refuses every payroll posting.
+  //
+  // No `OD-PAY` names that account, and rather than invent a new mechanism this applies the one already
+  // established: **only an element carries a GL mapping**, which is the same reason `BaseSalary` is an
+  // element rather than a special case in the calculator. A company defines exactly one element with this
+  // behaviour and maps it to its net-pay payable account.
+  //
+  // **The calculator produces NO LINE for it.** Net pay is derived from the other lines, not computed
+  // alongside them — a line would double-count. This behaviour exists ONLY to carry the mapping, and the
+  // poster reads it when composing the journal. That asymmetry is stated here because it is the one place in
+  // the model where an element is not a line.
+  NetPayPayable = 4
 }
 
 public sealed class PayElementCode : ValueObject

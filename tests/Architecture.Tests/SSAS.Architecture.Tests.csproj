@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\src\Host\SSAS.Host.API\SSAS.Host.API.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.API\SSAS.GL.API.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Application\SSAS.GL.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Domain\SSAS.GL.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.API\SSAS.HR.API.csproj" />
@@ -38,6 +39,10 @@
     <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Contracts\SSAS.HR.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Domain\SSAS.HR.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Infrastructure\SSAS.HR.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.API\SSAS.Payroll.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.Application\SSAS.Payroll.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.Domain\SSAS.Payroll.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.Infrastructure\SSAS.Payroll.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.API\SSAS.Platform.API.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Application\SSAS.Platform.Application.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />

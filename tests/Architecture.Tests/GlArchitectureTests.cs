@@ -45,19 +45,53 @@ public sealed class GlArchitectureTests
     Assert.Empty(forbidden);
   }
 
+  // ================================================================================================
+  // THE CONTRACTS ASSEMBLY RETURNED, ON THE CONDITION ITS OWN GUARD NAMED (FP-012, OD-PAY-0013).
+  // ================================================================================================
+  //
+  // The guard replaced here asserted that `SSAS.GL.Contracts` did NOT exist, and its comment named the exact
+  // circumstance under which that would stop being right:
+  //
+  //   > This guard is what stops it being recreated as scaffolding rather than because a consumer exists —
+  //   > when Payroll needs one, it returns SHAPED BY ITS CONSUMER, and this test is the deliberate speed
+  //   > bump.
+  //
+  // FP-012 met that condition. **The guard was REPLACED rather than deleted**, because the thing worth
+  // protecting did not go away — it changed from "this must not exist" to "if it exists, it must still be a
+  // contract rather than a window into the ledger".
+  //
+  // ---- AND THE OLD GUARD WAS VACUOUS, WHICH IS WORTH RECORDING.
+  //
+  // It asked `AppDomain.CurrentDomain.GetAssemblies()` whether `SSAS.GL.Contracts` was LOADED. Architecture
+  // .Tests never referenced it, so the assembly was never loaded and the assertion passed **by not
+  // looking** — it would have passed just as happily on the day the project was recreated. A guard that
+  // cannot fail is not protecting anything, and this one would have reported green through the very change
+  // it was written to catch.
   [Fact]
-  [Trait("Decision", "OD-GL-0009")]
-  public void There_is_no_gl_contracts_assembly()
+  [Trait("Decision", "OD-PAY-0013")]
+  public void The_contracts_assembly_exists_because_a_consumer_needs_it()
   {
-    // `OD-GL-0009` ruled that nothing posts to GL in V1, so GL publishes no cross-module contract surface.
-    // The empty project that once existed was removed with its five references (FP-011). This guard is what
-    // stops it being recreated as scaffolding rather than because a consumer exists — when Payroll needs
-    // one, it returns SHAPED BY ITS CONSUMER, and this test is the deliberate speed bump.
-    var loaded = AppDomain.CurrentDomain.GetAssemblies()
-      .Select(assembly => assembly.GetName().Name)
-      .Any(name => string.Equals(name, "SSAS.GL.Contracts", StringComparison.Ordinal));
+    // Loaded by REFERENCE, not by hoping something else loaded it — the failure mode of the guard this
+    // replaces.
+    var contracts = typeof(SSAS.GL.Contracts.Posting.IJournalPoster).Assembly;
 
-    Assert.False(loaded);
+    Assert.Equal("SSAS.GL.Contracts", contracts.GetName().Name);
+  }
+
+  [Fact]
+  [Trait("Decision", "OD-PAY-0013")]
+  public void The_contracts_assembly_references_nothing_so_it_cannot_leak_the_ledger()
+  {
+    // A contract that referenced GL's domain would re-create the coupling `ADR-012` forbids by another
+    // route: the consumer would transitively see the ledger's internals. Everything crossing this boundary
+    // is a primitive or a type declared in the contract itself.
+    var referenced = typeof(SSAS.GL.Contracts.Posting.IJournalPoster).Assembly
+      .GetReferencedAssemblies()
+      .Select(assembly => assembly.Name)
+      .Where(name => name is not null && name.StartsWith("SSAS.", StringComparison.Ordinal))
+      .ToArray();
+
+    Assert.Empty(referenced);
   }
 
   // ================================================================================================

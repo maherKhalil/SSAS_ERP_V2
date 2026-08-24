@@ -266,7 +266,10 @@ internal sealed class PayrollReadService(ITenantDbContextAccessor contextAccesso
 
   // Totals are the SUM OF THE STORED LINES (`OD-PAY-0008`), never recomputed. That is what makes the
   // payslip add up by construction rather than by arithmetic performed twice.
-  private static PayrollRunView ProjectRun(PayrollRun run, IReadOnlyDictionary<Guid, string> periodNames) =>
+  // CA1859: the concrete Dictionary rather than the interface. Both call sites construct one with
+  // ToDictionaryAsync and this method is private, so nothing is given up -- and the analyzer is right that
+  // the interface dispatch buys nothing here.
+  private static PayrollRunView ProjectRun(PayrollRun run, Dictionary<Guid, string> periodNames) =>
     new(run.Id, run.CompanyId, run.PayrollPeriodId,
       periodNames.TryGetValue(run.PayrollPeriodId, out var name) ? name : string.Empty,
       run.Status, run.CalculatedBy, run.CalculatedUtc, run.ApprovedBy, run.ApprovedUtc,

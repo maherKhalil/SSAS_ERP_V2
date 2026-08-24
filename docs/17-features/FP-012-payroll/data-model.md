@@ -1,10 +1,20 @@
 # FP-012 — Data Model (RATIFIED)
 
-**Six** tables under a `payroll` schema, all in the **Tenant** database.
+**Seven** tables under a `payroll` schema, all in the **Tenant** database.
 
-> **AMENDMENT 2026-08-24 — five became six.** The ruling that split run lines into a mutable draft type and
-> an append-only approved type added `payroll.PayrollRunDraftLine`. Every count on this page is corrected
-> accordingly, and the correction is dated rather than absorbed.
+> **AMENDMENT 2026-08-24 — five, then six, and the truth is SEVEN.**
+>
+> The package first said five tables. The aggregate-split ruling added `PayrollRunDraftLine` and the
+> amendment said six. **Both were wrong.** The migration scaffolded from the composed model creates
+> **seven**, because the original five never listed `PayrollPeriod` at all — a table the package's own
+> `lifecycle-model.md` and `OD-PAY-0002` require.
+>
+> Derived from the snapshot rather than counted by hand: `ToTable("Payroll…")` appears **7** times, and the
+> whole composed tenant model is **27** entities.
+>
+> **This is the third wrong count in one document, and it is exactly what the "derive it, don't print it"
+> note two sections down was written about — including when the author of that note is the one counting.**
+> The numbers below are now derived; treat every one of them as needing re-derivation before use.
 
 ---
 
@@ -19,7 +29,7 @@
 | `payroll.PayrollRunDraftLine` | tenant | yes, replaced wholesale | no |
 | `payroll.PayrollRunLine` | tenant | never | **yes** (`IAppendOnlyEntity`) |
 
-**Six new tenant-owned entities**, all carrying `ITenantOwnedEntity`.
+**Seven new tenant-owned entities**, all carrying `ITenantOwnedEntity`.
 
 **`PayrollRun` is mutable for its whole life and is deliberately not append-only**: it must record
 `PostedUtc` and `JournalEntryId` after approval, and the context's append-only guard is unconditional, so
@@ -86,7 +96,7 @@ fiction at the schema layer even while `ADR-012` held at the assembly layer.
 
 ## E3 manifest and the cutover inventory
 
-**All six entities join the E3 manifest** (`DEC-PAY-0010`).
+**All seven entities join the E3 manifest** (`DEC-PAY-0010`).
 
 `TenantCutoverCopyPlan.Build` derives the manifest by **reflecting over `ITenantOwnedEntity`**. A type
 without the interface is not in the manifest and is **silently absent from cutover** — FP-011 shipped two
@@ -101,10 +111,10 @@ itself would reveal.
 
 FP-011's build learned that these expectations are written in **several different shapes** — literal name
 arrays, arithmetic against a derived count (`composed.Value.Count - 18`), and a `TablesCopied` literal — and
-a sweep that looks for only one shape finds only some of them. The manifest count moves **20 → 26**.
+a sweep that looks for only one shape finds only some of them. The manifest count moves **20 → 27** (derived from the snapshot: 27 `ToTable` entries).
 
-> **The numbers on this page are not the authority for the edit.** The package originally said five tables
-> and 20 → 25, and that figure was **wrong** the moment the aggregate ruling landed. **Derive the real count
+> **The numbers on this page are not the authority for the edit.** The package said five tables and 20 → 25, then the
+> amendment said six, and BOTH were wrong. **Derive the real count
 > at implementation from the composed model, then search for EVERY shape of expectation** — literal name
 > arrays, arithmetic against a derived count, and `TablesCopied` literals. FP-011 derived correctly but
 > searched for one shape, and the gate found the remainder.

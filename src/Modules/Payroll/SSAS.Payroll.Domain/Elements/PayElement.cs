@@ -64,6 +64,8 @@ public enum PayElementBehaviour
 
 public sealed class PayElementCode : ValueObject
 {
+  public const int MaximumLength = 64;
+
   private PayElementCode(string value)
   {
     Value = value;
@@ -76,7 +78,7 @@ public sealed class PayElementCode : ValueObject
 
   public static Result<PayElementCode> Create(string? value)
   {
-    if (string.IsNullOrWhiteSpace(value) || value.Length > 64 || value.Any(char.IsControl))
+    if (string.IsNullOrWhiteSpace(value) || value.Length > MaximumLength || value.Any(char.IsControl))
     {
       return Result.Failure<PayElementCode>(PayElementErrors.InvalidCode);
     }
@@ -92,13 +94,15 @@ public sealed class PayElementCode : ValueObject
 
 public sealed class PayElementName : ValueObject
 {
+  public const int MaximumLength = 256;
+
   private PayElementName(string value) => Value = value;
 
   public string Value { get; }
 
   public static Result<PayElementName> Create(string? value)
   {
-    if (string.IsNullOrWhiteSpace(value) || value.Length > 256)
+    if (string.IsNullOrWhiteSpace(value) || value.Length > MaximumLength)
     {
       return Result.Failure<PayElementName>(PayElementErrors.InvalidName);
     }

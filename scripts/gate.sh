@@ -48,7 +48,24 @@ set -u
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
 #
-#  7a. A MEMORY FLOOR IN THE PRECONDITIONS (>= 4 GB free before EACH leg).
+#  7z. TWO MODES, AND THE PAIRING IS THE POINT.
+#
+#     GATE_MODE=FULL (default) -- no parallelism ceiling, memory floor 4096 MB. For a build box.
+#     GATE_MODE=LEAN           -- xUnit.MaxParallelThreads=4, memory floor 2048 MB. For THIS box.
+#
+#     **This development machine runs LEAN**, because it hosts resident agent sessions alongside the suite
+#     and cannot supply 4 GB with them running. A CI or build machine runs FULL.
+#
+#     **A floor without its matching ceiling is either theatre or a wall.** Memory scales with the number of
+#     concurrent fixtures, so each floor is calibrated to what the suite actually needs UNDER its ceiling.
+#     Raising the ceiling without raising the floor re-creates the 2026-08-24 starvation; lowering the floor
+#     without lowering the ceiling just moves the wall.
+#
+#     Four threads is the lean shape rather than an arbitrary number: it is the sum/N arithmetic that made
+#     the gate-economics work pay off, applied in the other direction. Expect roughly 45-55 minutes per
+#     Integration leg -- still far under the 113-minute serial era that work replaced.
+#
+#  7a. A MEMORY FLOOR IN THE PRECONDITIONS (4096 MB in FULL, 2048 MB in LEAN, before EACH leg).
 #     2026-08-24: BOTH Integration legs exited 127 with NO TRX AT ALL -- not a partial one, no blame
 #     sequence, no dump. The sampler showed the box down to 14 MB free during Debug and 92 MB during
 #     Release. The instant-of-exit sample looked healthy (229 MB working set, 1362 MB free), which is
@@ -105,8 +122,20 @@ reap_count () {
     "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.databases WHERE name LIKE 'SSAS[_]%'" 2>/dev/null | head -1 | tr -d '[:space:]'
 }
 
-# Minimum free physical memory, in MB, required before a leg may start.
-MEMORY_FLOOR_MB=${GATE_MEMORY_FLOOR_MB:-4096}
+# ---- MODE. See note 7z in the header. FULL is the default so a build box needs no ceremony.
+GATE_MODE=${GATE_MODE:-FULL}
+
+if [ "$GATE_MODE" = "LEAN" ]; then
+  # The ceiling travels as a RunSettings argument rather than an xunit.runner.json, so the repository holds
+  # no file asserting a parallelism policy that is true of only one machine.
+  RUNSETTINGS_ARGS="-- xUnit.MaxParallelThreads=4"
+  MEMORY_FLOOR_MB=${GATE_MEMORY_FLOOR_MB:-2048}
+else
+  RUNSETTINGS_ARGS=""
+  MEMORY_FLOOR_MB=${GATE_MEMORY_FLOOR_MB:-4096}
+fi
+
+echo "########## GATE MODE: $GATE_MODE (floor ${MEMORY_FLOOR_MB} MB, ceiling: ${RUNSETTINGS_ARGS:-none})"
 
 reap_to_zero () {
   local CFG="$1"
@@ -229,6 +258,7 @@ for CFG in Debug Release; do
     dotnet test "$F" -c "$CFG" --nologo -v q --no-build $BLAME \
       --logger "trx;LogFileName=$P-$CFG.trx" \
       --results-directory "$LOGS" \
+      $RUNSETTINGS_ARGS \
       > "$LOGS/$P-$CFG.log" 2>&1
     STATUS=$?
 

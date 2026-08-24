@@ -91,7 +91,15 @@ public sealed class ProjectDependencyArchitectureTests
       "SSAS.GL.API",
       "SSAS.Platform.Infrastructure",
       "SSAS.HR.Infrastructure",
-      "SSAS.GL.Infrastructure"
+      "SSAS.GL.Infrastructure",
+
+      // ---- PAYROLL JOINS THE INVENTORY BY ACKNOWLEDGEMENT, WHICH IS WHAT THIS LIST IS FOR (FP-012).
+      //
+      // An EXACT allowlist, deliberately. The Host is where a module becomes reachable, so a reference
+      // appearing here without a human noticing is a module wired into the product by accident. Adding
+      // Payroll to the Host failed this guard on the first run, exactly as intended.
+      "SSAS.Payroll.API",
+      "SSAS.Payroll.Infrastructure"
     };
 
     Assert.All(host.References, reference => Assert.Contains(reference, allowedReferences));

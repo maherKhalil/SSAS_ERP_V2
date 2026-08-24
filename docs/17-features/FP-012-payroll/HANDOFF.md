@@ -21,11 +21,22 @@ authoring plus two measured 65-minute gate runs, and that deserves a session tha
 | Pushed | **NO** |
 | Build | Debug **0 warnings**, Release **0 warnings** |
 | Architecture guards | **424** green (was 421; +3 roster guards) |
+| Fast suites, all verified at HEAD | Architecture 424 · Platform 963 · HR 326 · API 650 · Finance 46 |
 
 ```bash
-git -C <worktree> log --oneline -1          # expect bb1b1df
-git -C <worktree> rev-list --count main..HEAD   # expect 12
+git -C <worktree> log --oneline -1              # expect the HEAD above
+git -C <worktree> rev-list --count main..HEAD   # expect the count above
 ```
+
+> **The "green" above was WRONG in this file's first draft, and the correction is the point.** It claimed
+> 424 green after running the suites following the roster commit — but Host wiring landed AFTERWARDS, and
+> `ProjectDependencyArchitectureTests.Host_references_only_approved_module_api_and_infrastructure_projects`
+> holds an EXACT allowlist of Host references that Payroll was not in. It failed, correctly: the Host is
+> where a module becomes reachable, so a reference appearing without a human noticing is a module wired into
+> the product by accident.
+>
+> **Building is not testing.** Every commit here built zero-warning; the guard still went red. Re-run the
+> fast suites after ANY wiring change, not merely after the change you think is risky.
 
 ### The twelve commits
 

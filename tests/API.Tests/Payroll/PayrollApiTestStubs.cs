@@ -1,0 +1,242 @@
+using SSAS.BuildingBlocks.Domain;
+using SSAS.GL.Contracts.Posting;
+using SSAS.HR.Contracts.Employment;
+using SSAS.Payroll.Application.Abstractions;
+using SSAS.Payroll.Application.Reads;
+using SSAS.Payroll.Domain.Compensation;
+using SSAS.Payroll.Domain.Elements;
+using SSAS.Payroll.Domain.Runs;
+
+namespace SSAS.API.Tests.Payroll;
+
+// Transport-layer stubs. They stand in for persistence and for the two cross-module contracts, so these
+// tests are about the HTTP surface — routing, authorization, binding, and error mapping — and nothing else.
+//
+// **The two contract stubs are the point of the harness.** `IJournalPoster` and `IEmployeeRoster` are the
+// only ways Payroll reaches GL and HR, so substituting them here proves the surface works without a ledger
+// or an employee table — and proves, by their being substitutable at all, that the boundary is real.
+
+public sealed class StubPayrollReads : IPayrollReadService
+{
+  public List<PayElementView> Elements { get; } = [];
+
+  public List<CompensationView> Compensation { get; } = [];
+
+  public List<PayrollPeriodView> Periods { get; } = [];
+
+  public List<PayrollRunView> Runs { get; } = [];
+
+  public PayslipView? Payslip { get; set; }
+
+  public void Reset()
+  {
+    Elements.Clear();
+    Compensation.Clear();
+    Periods.Clear();
+    Runs.Clear();
+    Payslip = null;
+  }
+
+  public Task<IReadOnlyList<PayElementView>> GetElementsAsync(
+    PayrollReadScope scope, Guid companyId, string? search, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<PayElementView>>(Elements);
+
+  public Task<PayElementView?> GetElementAsync(
+    PayrollReadScope scope, Guid payElementId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Elements.FirstOrDefault(element => element.PayElementId == payElementId));
+
+  public Task<IReadOnlyList<CompensationView>> GetCompensationHistoryAsync(
+    PayrollReadScope scope, Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<CompensationView>>(Compensation);
+
+  public Task<CompensationView?> GetCompensationInForceAsync(
+    PayrollReadScope scope, Guid employeeId, DateTimeOffset onUtc, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Compensation.FirstOrDefault());
+
+  public Task<IReadOnlyList<PayrollPeriodView>> GetPeriodsAsync(
+    PayrollReadScope scope, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<PayrollPeriodView>>(Periods);
+
+  public Task<IReadOnlyList<PayrollRunView>> GetRunsAsync(
+    PayrollReadScope scope, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<PayrollRunView>>(Runs);
+
+  public Task<PayrollRunView?> GetRunAsync(
+    PayrollReadScope scope, Guid payrollRunId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Runs.FirstOrDefault(run => run.PayrollRunId == payrollRunId));
+
+  public Task<PayslipView?> GetPayslipAsync(
+    PayrollReadScope scope, Guid payrollRunId, Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Payslip);
+
+  public Task<IReadOnlyList<PayslipView>> GetPayslipsForEmployeeAsync(
+    PayrollReadScope scope, Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<PayslipView>>(Payslip is null ? [] : [Payslip]);
+}
+
+public sealed class StubPayElementRepository : IPayElementRepository
+{
+  public List<PayElement> Stored { get; } = [];
+
+  public bool CodeTaken { get; set; }
+
+  public void Reset()
+  {
+    Stored.Clear();
+    CodeTaken = false;
+  }
+
+  public Task<PayElement?> GetByIdAsync(Guid payElementId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Stored.FirstOrDefault(element => element.Id == payElementId));
+
+  public Task<bool> CodeExistsAsync(
+    Guid companyId, string normalizedCode, CancellationToken cancellationToken = default) =>
+    Task.FromResult(CodeTaken);
+
+  public Task<IReadOnlyList<PayElement>> GetActiveForCompanyAsync(
+    Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<PayElement>>([.. Stored.Where(element => element.IsActive)]);
+
+  public Task<IReadOnlyList<PayElement>> GetByIdsAsync(
+    IReadOnlyCollection<Guid> payElementIds, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<PayElement>>([.. Stored.Where(element => payElementIds.Contains(element.Id))]);
+
+  public Task AddAsync(PayElement payElement, CancellationToken cancellationToken = default)
+  {
+    Stored.Add(payElement);
+    return Task.CompletedTask;
+  }
+}
+
+public sealed class StubCompensationRepository : IEmployeeCompensationRepository
+{
+  public List<EmployeeCompensation> Stored { get; } = [];
+
+  public void Reset() => Stored.Clear();
+
+  public Task<IReadOnlyList<EmployeeCompensation>> GetHistoryAsync(
+    Guid companyId, Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<EmployeeCompensation>>(
+      [.. Stored.Where(record => record.EmployeeId == employeeId)]);
+
+  public Task<IReadOnlyList<EmployeeCompensation>> GetHistoryForCompanyAsync(
+    Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<EmployeeCompensation>>(Stored);
+
+  public Task AddAsync(EmployeeCompensation compensation, CancellationToken cancellationToken = default)
+  {
+    Stored.Add(compensation);
+    return Task.CompletedTask;
+  }
+}
+
+public sealed class StubPayrollPeriodRepository : IPayrollPeriodRepository
+{
+  public List<PayrollPeriod> Stored { get; } = [];
+
+  public bool Exists { get; set; }
+
+  public void Reset()
+  {
+    Stored.Clear();
+    Exists = false;
+  }
+
+  public Task<PayrollPeriod?> GetByIdAsync(Guid payrollPeriodId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Stored.FirstOrDefault(period => period.Id == payrollPeriodId));
+
+  public Task<bool> ExistsForFiscalPeriodAsync(
+    Guid companyId, Guid fiscalPeriodId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Exists);
+
+  public Task AddAsync(PayrollPeriod period, CancellationToken cancellationToken = default)
+  {
+    Stored.Add(period);
+    return Task.CompletedTask;
+  }
+}
+
+public sealed class StubPayrollRunRepository : IPayrollRunRepository
+{
+  public List<PayrollRun> Stored { get; } = [];
+
+  public bool Exists { get; set; }
+
+  public void Reset()
+  {
+    Stored.Clear();
+    Exists = false;
+  }
+
+  public Task<PayrollRun?> GetByIdAsync(Guid payrollRunId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Stored.FirstOrDefault(run => run.Id == payrollRunId));
+
+  public Task<PayrollRun?> GetWithDraftLinesAsync(
+    Guid payrollRunId, CancellationToken cancellationToken = default) =>
+    GetByIdAsync(payrollRunId, cancellationToken);
+
+  public Task<PayrollRun?> GetWithLinesAsync(Guid payrollRunId, CancellationToken cancellationToken = default) =>
+    GetByIdAsync(payrollRunId, cancellationToken);
+
+  public Task<bool> ExistsForPeriodAsync(
+    Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Exists);
+
+  public Task AddAsync(PayrollRun run, CancellationToken cancellationToken = default)
+  {
+    Stored.Add(run);
+    return Task.CompletedTask;
+  }
+}
+
+// THE LEDGER, STUBBED AT THE CONTRACT. Every field a test needs to steer is settable, so a closed period or
+// a refusal can be produced without a database — which is the whole reason the contract answers with a
+// closed set of outcomes rather than an open problem code.
+public sealed class StubJournalPoster : IJournalPoster
+{
+  public PostingWindow Window { get; set; } = new(PostingWindowStatus.Open, "January 2026", Guid.NewGuid(),
+    new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+    new DateTimeOffset(2026, 1, 31, 0, 0, 0, TimeSpan.Zero));
+
+  public JournalPostingOutcome PostOutcome { get; set; } = JournalPostingOutcome.Success(Guid.NewGuid());
+
+  public JournalPostingOutcome ReverseOutcome { get; set; } = JournalPostingOutcome.Success(Guid.NewGuid());
+
+  public JournalPostingRequest? LastPosted { get; private set; }
+
+  public void Reset()
+  {
+    Window = new(PostingWindowStatus.Open, "January 2026", Guid.NewGuid(),
+      new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2026, 1, 31, 0, 0, 0, TimeSpan.Zero));
+    PostOutcome = JournalPostingOutcome.Success(Guid.NewGuid());
+    ReverseOutcome = JournalPostingOutcome.Success(Guid.NewGuid());
+    LastPosted = null;
+  }
+
+  public Task<JournalPostingOutcome> PostAsync(
+    JournalPostingRequest request, CancellationToken cancellationToken = default)
+  {
+    LastPosted = request;
+    return Task.FromResult(PostOutcome);
+  }
+
+  public Task<JournalPostingOutcome> ReverseAsync(
+    JournalReversalRequest request, CancellationToken cancellationToken = default) =>
+    Task.FromResult(ReverseOutcome);
+
+  public Task<PostingWindow> InspectPostingWindowAsync(
+    Guid companyId, DateTimeOffset entryDateUtc, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Window);
+}
+
+public sealed class StubEmployeeRoster : IEmployeeRoster
+{
+  public List<EmploymentRecord> Employment { get; } = [];
+
+  public void Reset() => Employment.Clear();
+
+  public Task<IReadOnlyList<EmploymentRecord>> GetEmploymentAsync(
+    Guid companyId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<EmploymentRecord>>(Employment);
+}

@@ -41,8 +41,22 @@ namespace SSAS.Payroll.API;
 public sealed record CreatePayElementRequest(
   [property: JsonPropertyName("code")] string Code,
   [property: JsonPropertyName("name")] string Name,
-  [property: JsonPropertyName("kind")] PayElementKind Kind,
-  [property: JsonPropertyName("behaviour")] PayElementBehaviour Behaviour,
+  // ---- THE ENUMS NEED A CONVERTER, AND A TEST FOUND THAT THE HARD WAY.
+  //
+  // `StrictRequestReader` uses `JsonSerializerOptions.Default`, which cannot turn `"Earning"` into a
+  // `PayElementKind` — it deserializes enums from NUMBERS only. Without these attributes the whole record
+  // failed to bind and this route answered `400 request.invalid` for every well-formed request, which is
+  // the FP-011 defect in a second costume: the record reads correctly and the fault is an absence.
+  //
+  // It was caught by the write-route binding test on its first run, and the consequence would have been
+  // total: no pay element could be created, so no payroll could ever be calculated.
+  //
+  // A property-level `[JsonConverter]` is honoured regardless of the serializer options, which is why it
+  // works here where a global option would not.
+  [property: JsonPropertyName("kind")]
+  [property: JsonConverter(typeof(JsonStringEnumConverter))] PayElementKind Kind,
+  [property: JsonPropertyName("behaviour")]
+  [property: JsonConverter(typeof(JsonStringEnumConverter))] PayElementBehaviour Behaviour,
   [property: JsonPropertyName("defaultRateOrAmount")] decimal DefaultRateOrAmount,
   [property: JsonPropertyName("calculationOrder")] int CalculationOrder,
   [property: JsonPropertyName("glAccountId")] Guid? GlAccountId);

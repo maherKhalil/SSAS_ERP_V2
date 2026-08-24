@@ -472,3 +472,59 @@ What this means concretely, so nobody discovers it late:
   product cannot move money. This is why `OD-PAY-0009` option 3 has no implementable trigger.
 * **Multi-currency.** `DEC-PAY-0003`.
 * **Anything attendance-derived.** `DEC-PAY-0002`.
+
+---
+
+# AMENDMENT 2026-08-24 — the run-line aggregate split
+
+**A ratified document yields to a demonstrated contradiction, recorded as a dated amendment — never
+silently, and never at the keyboard alone.** This is that record.
+
+## What the package said, and why it was wrong
+
+`domain-model.md` proposed **one `PayrollRun` aggregate with a status-dependent guard**, describing it as
+*"the one place where FP-012 deliberately diverges from GL's shape."* The build **stopped** on the
+contradiction rather than resolving it in passing, and the ruling overrides the package.
+
+**The proof is mechanical, not a matter of taste.** `TenantDbContext.PreventAppendOnlyMutation` refuses
+`Modified` **or `Deleted`** for any `IAppendOnlyEntity`, **unconditionally** — it cannot know a run is still
+Draft. Therefore:
+
+1. **`IAppendOnlyEntity` from birth forbids recalculation.** Replacing a line set requires `Deleted`, so an
+   append-only line type makes the free pre-approval recalculation `OD-PAY-0011` ruled **impossible**.
+2. **Omitting it leaves protection behavioural only.** The strongest guard in the codebase would never
+   engage on the records stating what people were paid, and one aggregate bug would defeat it.
+
+The package identified the mechanism correctly and drew the wrong conclusion — *"therefore the guard lives
+in the aggregate"* — when the available conclusion was *"therefore the types must be split."*
+
+**The "deliberate divergence" was the error.** GL's shape is not a style FP-012 was free to differ from:
+**GL met this exact problem and `OD-GL-0007` solved it.** GL carries two line types — `JournalDraftLine`
+(mutable) and `JournalLine : IAppendOnlyEntity` — and `JournalEntry` never mutates either, because
+`IsReversed` is **projected on read, not stored** and `Reverse` constructs a *new* entry carrying
+`ReversesJournalEntryId`. FP-012 inherits the solution rather than re-deriving the temptation.
+
+## The ruled shape — three types
+
+| Type | Mutability | Guard |
+|---|---|---|
+| `PayrollRun` | **mutable its whole life** — RowVersion, status, audit, `PostedUtc`, `JournalEntryId` | domain guard after Posted — **behavioural, and acceptable here** |
+| `PayrollRunDraftLine` | mutable, **replaced wholesale** on recalculation | none needed |
+| `PayrollRunLine` | written **once** at the Approved transition, never mutated | **`IAppendOnlyEntity`** — structural |
+
+**Why a behavioural guard is acceptable on the run and nowhere else:** the run is the *wrapper*. The
+truth-bearing records — the approved lines and the GL journal — are **both structurally append-only**, so a
+wrapper bug cannot rewrite what anyone was paid or what was posted. The run must stay mutable because it
+records `PostedUtc` and `JournalEntryId` after approval, and an unconditional guard would refuse that write.
+
+**This honours `OD-PAY-0015` more exactly than the superseded shape did.** The payslip projects over
+`PayrollRunLine` only, so a payslip exists precisely when an approved record exists — and the identity
+objection the package raised does not arise, because what a payslip refers to *is* the approved record.
+
+## Consequences carried into the other documents
+
+* `data-model.md` — **six tables, not five**; E3 manifest **20 → 26**; and the cutover inventory numbers are
+  to be **derived at implementation**, because the package's superseded figures read as authority while
+  being wrong.
+* `domain-model.md` — the divergence paragraph is rewritten to record that the divergence was **considered
+  and refuted**, citing `OD-GL-0007`.

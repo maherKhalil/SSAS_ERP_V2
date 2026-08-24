@@ -57,60 +57,57 @@ than reproducing the failure; Payroll should do the same rather than rediscover 
 * `JournalEntryId` — the GL journal this run produced, **by identifier**, no reference to GL's assembly
 * `IAuditableEntity`, `ITenantOwnedEntity`, `ICompanyOwnedEntity`, `RowVersion` while mutable
 
-**`IAppendOnlyEntity` applies from Posted onward.** GL solved the same problem with two aggregates —
-`JournalDraft` is mutable, `JournalEntry` is append-only, and promotion crosses the boundary. Payroll has a
-choice: one aggregate whose mutability depends on status, or GL's two-aggregate split.
+**`PayrollRun` itself is NEVER `IAppendOnlyEntity`.** It must record `PostedUtc` and `JournalEntryId`
+*after* it is Approved, and an append-only run would have that write refused by the context. Its
+post-Posted edit refusal is therefore a **domain guard — behavioural, and acceptable here**, because the
+run is the *wrapper*: the truth-bearing records are the approved lines and the GL journal, and **both are
+structurally append-only**, so a wrapper bug cannot rewrite what anyone was paid or what was posted.
 
-> ## ⛔ OPEN AT THE BUILD SITE — the analysis package and the build prompt disagree here
->
-> **The analysis package proposed a single aggregate with a status guard.** The build prompt directs a split
-> that keeps the append-only guard **structural** (the `OD-GL-0007` lesson) and says to STOP if the package
-> contradicts it. **It does contradict it, so this is recorded open rather than decided at the keyboard.**
->
-> **The package's proposal is wrong, and the evidence is mechanical.**
-> `TenantDbContext.PreventAppendOnlyMutation` refuses `Modified` **or `Deleted`** for any
-> `IAppendOnlyEntity`, unconditionally — it has no way to know a run is still Draft. So:
->
-> * If `PayrollRunLine : IAppendOnlyEntity`, **recalculation before approval is impossible**, because
->   replacing a line set requires `Deleted`. That directly contradicts `OD-PAY-0011`'s ruling.
-> * If it is not, the post-approval guarantee is **behavioural** — a bug in the aggregate defeats it, and
->   the strongest guard in the codebase never engages on the records that say what people were paid.
->
-> The package identified the mechanism correctly and drew the wrong conclusion from it: it reasoned
-> *"therefore the guard must live in the aggregate"* when the available conclusion was *"therefore the types
-> must be split, as GL split them."*
->
-> **GL's actual shape, verified in the repository:** two line types —
-> `JournalDraftLine : Entity<Guid>, ITenantOwnedEntity` (mutable) and
-> `JournalLine : Entity<Guid>, ITenantOwnedEntity, IAppendOnlyEntity` (never touched again). And
-> `JournalEntry` never mutates either: `IsReversed` is **projected on read, not stored**, and `Reverse`
-> constructs a **new** `JournalEntry` carrying `ReversesJournalEntryId`.
->
-> **The complication the prompt's shape meets.** `PayrollRun` must record `PostedUtc` and `JournalEntryId`
-> *after* it is Approved. If the run itself became append-only at Approved, that write would be refused. So
-> the run cannot be the append-only type — only its **lines** can be.
->
-> **Recommended resolution (not applied):** keep `PayrollRun` mutable for its whole life (RowVersion,
-> carrying status and audit and the journal identity) and split the lines exactly as GL does — a mutable
-> draft line replaced freely while Draft/Calculated, and a separate `PayrollRunLine : IAppendOnlyEntity`
-> written once at the Approved transition and never touched again. The payslip projects over the append-only
-> type, so the identity objection the package raised does not arise: a payslip only exists after approval.
->
-> This satisfies `OD-PAY-0011` and makes the guard structural. **It needs an architect ruling because it
-> overrides a ratified package, and because it adds a table the data model does not list.**
+### The divergence was considered and REFUTED — amendment 2026-08-24
 
-### `PayrollRunLine` — append-only
+The first draft of this package proposed **one aggregate with a status guard**, and called it *"the one
+place where FP-012 deliberately diverges from GL's shape."* **That was the error, and it is recorded here
+rather than quietly corrected.**
 
-One line per employee per pay element in a calculated run.
+`TenantDbContext.PreventAppendOnlyMutation` is **unconditional** — it refuses `Modified` *or* `Deleted` for
+any `IAppendOnlyEntity` and has no way to know a run is still Draft. Two consequences follow mechanically:
+
+* `IAppendOnlyEntity` **from birth** forbids the wholesale line replacement `OD-PAY-0011` ruled for
+  recalculation before approval.
+* Omitting it leaves protection **behavioural only**, so the strongest guard in the codebase never engages
+  on the records that state what people were paid.
+
+**GL's shape is not a style this package chose to differ from — it is the solution to this exact problem.**
+`OD-GL-0007` split `JournalDraft` from `JournalEntry` and gave GL two line types: `JournalDraftLine`
+(mutable) and `JournalLine : IAppendOnlyEntity` (written once). `JournalEntry` never mutates either —
+`IsReversed` is **projected on read, not stored**, and `Reverse` constructs a *new* entry carrying
+`ReversesJournalEntryId`. **FP-012 inherits that solution rather than re-deriving the temptation.**
+
+**RULED 2026-08-24: three types, not two.** `PayrollRun` stays mutable for its whole life; draft lines are
+mutable and replaced wholesale; approved lines are a separate append-only type.
+
+### `PayrollRunDraftLine` — mutable, replaced wholesale
+
+The working line set, produced by calculation and **replaced entirely** on recalculation rather than
+adjusted in place. Follows `JournalDraftLine`: `Entity<Guid>, ITenantOwnedEntity`, and deliberately **not**
+`IAppendOnlyEntity`, which is what makes `OD-PAY-0011`'s free recalculation possible at all.
+
+### `PayrollRunLine` — `IAppendOnlyEntity`, written once at Approved
+
+Written **once**, at the Approved transition, from the final calculation — then never mutated. One line per
+employee per pay element.
 
 * `PayrollRunLineId`, `PayrollRunId`, `EmployeeId`, `PayElementId`
 * `Amount` — `decimal(19,4)`, already rounded per `OD-PAY-0008`
 * `Sequence` — the order the element was evaluated in, retained so a payslip can explain itself
 * `ITenantOwnedEntity`, `IAppendOnlyEntity`
 
-**Lines are never updated.** A recalculation before approval **replaces** the line set; after posting,
-nothing changes at all (`BR-PAY-0008`). This is what makes `REQ-PAY-0018`'s payslip-as-projection
-permanently faithful.
+**The payslip projects over `PayrollRunLine` only** — never over draft lines. That honours `OD-PAY-0015`
+exactly: a payslip exists only after approval, because before approval the append-only record does not yet
+exist. It also removes the identity objection the superseded draft raised, since the thing a payslip refers
+to is the approved record.
+
+**Recalculation replaces draft lines; approval writes the append-only set; posting touches neither.**
 
 ---
 

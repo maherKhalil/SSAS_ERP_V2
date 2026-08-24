@@ -1,7 +1,10 @@
 # FP-012 — Data Model (RATIFIED)
 
-Five tables under a `payroll` schema, all in the **Tenant** database. Shapes are proposals; the
-compensation table in particular cannot be fixed until `OD-PAY-0003` is ruled.
+**Six** tables under a `payroll` schema, all in the **Tenant** database.
+
+> **AMENDMENT 2026-08-24 — five became six.** The ruling that split run lines into a mutable draft type and
+> an append-only approved type added `payroll.PayrollRunDraftLine`. Every count on this page is corrected
+> accordingly, and the correction is dated rather than absorbed.
 
 ---
 
@@ -12,10 +15,17 @@ compensation table in particular cannot be fixed until `OD-PAY-0003` is ruled.
 | `payroll.EmployeeCompensation` | tenant + company | inserts only after `OD-PAY-0003` opt. 2 | history is |
 | `payroll.PayElementAssignment` | tenant | with its parent | — |
 | `payroll.PayElement` | tenant + company | yes | — |
-| `payroll.PayrollRun` | tenant + company | until Posted | after Posted |
-| `payroll.PayrollRunLine` | tenant | never | yes |
+| `payroll.PayrollRun` | tenant + company | **its whole life** | no — see note |
+| `payroll.PayrollRunDraftLine` | tenant | yes, replaced wholesale | no |
+| `payroll.PayrollRunLine` | tenant | never | **yes** (`IAppendOnlyEntity`) |
 
-**Five new tenant-owned entities**, all carrying `ITenantOwnedEntity`.
+**Six new tenant-owned entities**, all carrying `ITenantOwnedEntity`.
+
+**`PayrollRun` is mutable for its whole life and is deliberately not append-only**: it must record
+`PostedUtc` and `JournalEntryId` after approval, and the context's append-only guard is unconditional, so
+that write would be refused. Its immutability after Posted is a domain guard. That is acceptable because the
+run is the wrapper — `PayrollRunLine` and the GL journal are both structurally append-only, so a wrapper
+bug cannot rewrite what anyone was paid.
 
 ---
 
@@ -67,13 +77,16 @@ fiction at the schema layer even while `ADR-012` held at the assembly layer.
   superseding runs. Under the supersede option two runs may legitimately share a period and the constraint
   cannot exist — noted because it is a schema consequence of a lifecycle decision, and the two are easy to
   rule separately and inconsistently.
-* `PayrollRunLine` — index on `(PayrollRunId, EmployeeId, Sequence)`, the payslip's access path.
+* `PayrollRunDraftLine` — index on `(PayrollRunId, EmployeeId, Sequence)`; rows are deleted in bulk on
+  recalculation, so nothing else should reference them.
+* `PayrollRunLine` — index on `(PayrollRunId, EmployeeId, Sequence)`, the payslip's access path. **The
+  payslip reads this table only**, never the draft table.
 
 ---
 
 ## E3 manifest and the cutover inventory
 
-**All five entities join the E3 manifest** (`DEC-PAY-0010`).
+**All six entities join the E3 manifest** (`DEC-PAY-0010`).
 
 `TenantCutoverCopyPlan.Build` derives the manifest by **reflecting over `ITenantOwnedEntity`**. A type
 without the interface is not in the manifest and is **silently absent from cutover** — FP-011 shipped two
@@ -88,9 +101,16 @@ itself would reveal.
 
 FP-011's build learned that these expectations are written in **several different shapes** — literal name
 arrays, arithmetic against a derived count (`composed.Value.Count - 18`), and a `TablesCopied` literal — and
-a sweep that looks for only one shape finds only some of them. The count moves **20 → 25** entities.
+a sweep that looks for only one shape finds only some of them. The manifest count moves **20 → 26**.
 
-**Do not attempt to update these from memory. Derive them, and search for every shape.**
+> **The numbers on this page are not the authority for the edit.** The package originally said five tables
+> and 20 → 25, and that figure was **wrong** the moment the aggregate ruling landed. **Derive the real count
+> at implementation from the composed model, then search for EVERY shape of expectation** — literal name
+> arrays, arithmetic against a derived count, and `TablesCopied` literals. FP-011 derived correctly but
+> searched for one shape, and the gate found the remainder.
+>
+> **A superseded number in a ratified document is more dangerous than no number at all**, because it reads
+> as authority. That is why this is written as *derive it*, not as a figure to copy.
 
 ---
 

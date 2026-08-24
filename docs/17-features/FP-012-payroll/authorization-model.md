@@ -1,4 +1,4 @@
-# FP-012 — Authorization Model (PROPOSED)
+# FP-012 — Authorization Model (RATIFIED)
 
 **Pay data is the most sensitive read surface this product will have.** That sentence governs the whole
 page, and it is the reason the read side gets more attention here than in any previous package.

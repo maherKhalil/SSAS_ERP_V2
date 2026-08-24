@@ -1,4 +1,4 @@
-# FP-012 — Business Rules (PROPOSED)
+# FP-012 — Business Rules (RATIFIED)
 
 **No `BR-PAY-####` rule exists anywhere in the product today.** `Business-Rules.md` lists Payroll under
 *"Future Modules — Business Rules for the following modules will be added in future releases."*
@@ -21,13 +21,12 @@ company-owned; a run that spanned companies could not produce a single balanced 
 
 ### `BR-PAY-0002` — Compensation is recorded with an effective date and is never overwritten
 The amount in force on a given date is derived from the record effective on that date. **Rests on:**
-`REQ-PAY-0001`; ruling at `OD-PAY-0003`. *If `OD-PAY-0003` option 1 is chosen, this rule cannot exist* —
-which is the clearest statement of what that option costs.
+`REQ-PAY-0001`; **`OD-PAY-0003` RULED for dated history**, so this rule stands.
 
 ### `BR-PAY-0003` — An employee employed for any part of a period is included in that period's run
 Including an employee terminated during the period. **Rests on:** an interpretation of `BR-HR-0004` —
-final pay discharges an obligation already incurred rather than assigning a new transaction. **This
-interpretation is `OD-PAY-0010` and must be ruled, not assumed.**
+final pay discharges an obligation already incurred rather than assigning a new transaction. **`OD-PAY-0010` RULED: include them.** The reading is recorded on the ruling — `BR-HR-0004` bars new
+obligations, not the settlement of obligations already incurred.
 
 ### `BR-PAY-0004` — Pay elements are evaluated in a defined order
 An element computed from another is evaluated after it. **Rests on:** `REQ-PAY-0004`; `OD-PAY-0007`.
@@ -78,5 +77,7 @@ register that does not exist (`DEC-PAY-0002`).
 
 **Minimum-wage or ceiling constraints.** Jurisdictional, same problem as statutory deductions.
 
-**Rounding.** Deliberately *not* proposed as a `BR-PAY` rule, because it is `OD-PAY-0008` and may have a
-statutory answer that overrides any recommendation this package could make. It becomes a rule once ruled.
+### `BR-PAY-0013` — Each pay line is rounded to two decimal places, half away from zero, and a run total is
+the sum of its rounded lines
+**Rests on:** `OD-PAY-0008`, RULED 2026-08-24. The protected invariant is that **the payslip adds up** —
+under this rule it holds by construction rather than by recomputation.

@@ -1,7 +1,26 @@
 # FP-012 — Payroll Foundation (analysis package)
 
-**Status:** DRAFT — analysis only. No code, no schema, no ADR. Every `OD-PAY-####` in
-[`decisions-open.md`](decisions-open.md) is **OWNER-DECISION-REQUIRED** and blocks the build prompt.
+**Status:** **RATIFIED 2026-08-24.** All eighteen `OD-PAY` decisions are ruled and `DEC-PAY-0001`–`0015`
+are ratified as drafted; `DEC-PAY-0016` is new. `Requirement-Catalog/PAY.md` carries `REQ-PAY-0001`–`0018`
+and `REQ-PAY` is indexed in the catalog README. See [`decisions-approved.md`](decisions-approved.md).
+
+---
+
+# ⚠ THE BOUNDARY OF THIS FEATURE — read this before anything else
+
+> **FP-012 V1 IS JURISDICTION-NEUTRAL. IT SHIPS NO TAX TABLES AND NO STATUTORY DEDUCTIONS.**
+>
+> The net figure it produces is **gross minus configured deductions**. It is **not** a legally compliant
+> net pay in any jurisdiction, and nothing built on it should imply that it is.
+
+This is `DEC-PAY-0016`, ruled knowingly rather than overlooked. Income tax, social insurance and mandated
+contributions are legal facts of a jurisdiction, not product choices; no jurisdiction is named anywhere in
+the specification, and inventing one would encode a guess as a requirement and ship it as authority.
+
+A tenant **can** define a deduction element with an amount or a rate. A tenant **cannot** have the product
+compute a statutory liability, apply a bracket, or produce a filing. Adding a jurisdiction later is
+additive under `OD-PAY-0006`'s ruling — a behaviour bound to elements — so nothing here has to be undone to
+accommodate it. That is what makes the boundary affordable rather than merely accepted.
 
 ---
 
@@ -162,7 +181,8 @@ and `OD-PAY-0001` asks the owner to confirm the V1 element set inside it.
 | `api-contracts.md` | Proposed route surface |
 | `acceptance-criteria.md` | `AC-PAY-####` |
 | `test-scenarios.md` | `TS-PAY-####` |
-| `decisions-open.md` | `DEC-PAY-####` (settled/proposed) and `OD-PAY-####` (owner-decision-required) |
+| `decisions-approved.md` | `DEC-PAY-####` (settled/proposed) and `OD-PAY-####` (owner-decision-required) |
 | `traceability-matrix.md` | Requirement → rule → AC → test → decision, plus the orphan check |
 
-**Nothing here is buildable until `decisions-open.md` is ruled.**
+**All decisions are ruled; the package is buildable.** One build-site question is recorded OPEN in
+[`domain-model.md`](domain-model.md) — the aggregate split for run lines. See the note there.

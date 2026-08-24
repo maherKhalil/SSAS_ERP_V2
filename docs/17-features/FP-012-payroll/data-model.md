@@ -1,4 +1,4 @@
-# FP-012 — Data Model (PROPOSED)
+# FP-012 — Data Model (RATIFIED)
 
 Five tables under a `payroll` schema, all in the **Tenant** database. Shapes are proposals; the
 compensation table in particular cannot be fixed until `OD-PAY-0003` is ruled.

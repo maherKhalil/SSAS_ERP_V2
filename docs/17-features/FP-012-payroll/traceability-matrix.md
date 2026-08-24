@@ -66,6 +66,8 @@ requirements are reachable at all. Its absence in FP-011 meant every GL write ro
 | `DEC-PAY-0003` Single currency | every monetary response; no stored currency | `TS-PAY-0022` |
 | `DEC-PAY-0009` `RowVersion` on mutable aggregates | `PayElement`, `PayrollRun`, compensation | concurrency behaviour, `AC-PAY-0030` schema shape |
 | `BR-PAY-0012` Amounts in the company's base currency | calculation and posting | `TS-PAY-0022`, `TS-PAY-0029` |
+| `BR-PAY-0013` Per-line rounding, total = sum of rounded lines | calculation engine | `TS-PAY-0009` |
+| `DEC-PAY-0016` **Jurisdiction-neutral V1** | the whole feature boundary | nothing asserts a statutory figure |
 
 ---
 

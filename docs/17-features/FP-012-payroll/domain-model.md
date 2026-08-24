@@ -1,6 +1,6 @@
-# FP-012 — Domain Model (PROPOSED)
+# FP-012 — Domain Model (RATIFIED)
 
-Shapes below are proposals. Several cannot be fixed until `decisions-open.md` is ruled, and where that is
+Shapes below are proposals. Several cannot be fixed until `decisions-approved.md` is ruled, and where that is
 true it is said rather than papered over with a plausible default.
 
 ---
@@ -61,11 +61,43 @@ than reproducing the failure; Payroll should do the same rather than rediscover 
 `JournalDraft` is mutable, `JournalEntry` is append-only, and promotion crosses the boundary. Payroll has a
 choice: one aggregate whose mutability depends on status, or GL's two-aggregate split.
 
-**This package proposes the single aggregate with a status guard**, because a payroll run's identity must
-survive the transition — a payslip refers to *the run*, and splitting it would give the same run two
-identifiers. It is flagged as the one place where FP-012 deliberately diverges from GL's shape, with the
-reason stated rather than assumed. *`TenantDbContext.PreventAppendOnlyMutation` is an instruction to the
-context, so a status-dependent guard has to live in the aggregate, not the interface.*
+> ## ⛔ OPEN AT THE BUILD SITE — the analysis package and the build prompt disagree here
+>
+> **The analysis package proposed a single aggregate with a status guard.** The build prompt directs a split
+> that keeps the append-only guard **structural** (the `OD-GL-0007` lesson) and says to STOP if the package
+> contradicts it. **It does contradict it, so this is recorded open rather than decided at the keyboard.**
+>
+> **The package's proposal is wrong, and the evidence is mechanical.**
+> `TenantDbContext.PreventAppendOnlyMutation` refuses `Modified` **or `Deleted`** for any
+> `IAppendOnlyEntity`, unconditionally — it has no way to know a run is still Draft. So:
+>
+> * If `PayrollRunLine : IAppendOnlyEntity`, **recalculation before approval is impossible**, because
+>   replacing a line set requires `Deleted`. That directly contradicts `OD-PAY-0011`'s ruling.
+> * If it is not, the post-approval guarantee is **behavioural** — a bug in the aggregate defeats it, and
+>   the strongest guard in the codebase never engages on the records that say what people were paid.
+>
+> The package identified the mechanism correctly and drew the wrong conclusion from it: it reasoned
+> *"therefore the guard must live in the aggregate"* when the available conclusion was *"therefore the types
+> must be split, as GL split them."*
+>
+> **GL's actual shape, verified in the repository:** two line types —
+> `JournalDraftLine : Entity<Guid>, ITenantOwnedEntity` (mutable) and
+> `JournalLine : Entity<Guid>, ITenantOwnedEntity, IAppendOnlyEntity` (never touched again). And
+> `JournalEntry` never mutates either: `IsReversed` is **projected on read, not stored**, and `Reverse`
+> constructs a **new** `JournalEntry` carrying `ReversesJournalEntryId`.
+>
+> **The complication the prompt's shape meets.** `PayrollRun` must record `PostedUtc` and `JournalEntryId`
+> *after* it is Approved. If the run itself became append-only at Approved, that write would be refused. So
+> the run cannot be the append-only type — only its **lines** can be.
+>
+> **Recommended resolution (not applied):** keep `PayrollRun` mutable for its whole life (RowVersion,
+> carrying status and audit and the journal identity) and split the lines exactly as GL does — a mutable
+> draft line replaced freely while Draft/Calculated, and a separate `PayrollRunLine : IAppendOnlyEntity`
+> written once at the Approved transition and never touched again. The payslip projects over the append-only
+> type, so the identity objection the package raised does not arise: a payslip only exists after approval.
+>
+> This satisfies `OD-PAY-0011` and makes the guard structural. **It needs an architect ruling because it
+> overrides a ratified package, and because it adds a table the data model does not list.**
 
 ### `PayrollRunLine` — append-only
 

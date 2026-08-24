@@ -1,4 +1,4 @@
-# FP-012 — Acceptance Criteria (PROPOSED)
+# FP-012 — Acceptance Criteria (RATIFIED)
 
 `AC-PAY-####`, traced to the requirement each verifies. Criteria marked **conditional** exist only under a
 particular ruling and are labelled with it, so that a ruling which removes them removes them cleanly rather
@@ -13,7 +13,7 @@ than leaving orphans.
 | `AC-PAY-0001` | Creating a compensation record for an employee stores it with its effective date and does not alter any prior record. | `REQ-PAY-0001` |
 | `AC-PAY-0002` | The compensation in force on a date is the record with the greatest effective date not after it. | `REQ-PAY-0001` |
 | `AC-PAY-0003` | No compensation value is readable through any HR endpoint or stored on any HR table. | `REQ-PAY-0002` |
-| `AC-PAY-0004` | An amount outside the employee's salary grade band is accepted and recorded, and the out-of-band condition is surfaced to the caller. | `REQ-PAY-0006` — **conditional on `OD-PAY-0004` opt. 1** |
+| `AC-PAY-0004` | An amount outside the employee's salary grade band is accepted and recorded, and the out-of-band condition is surfaced to the caller. | `REQ-PAY-0006` — **`OD-PAY-0004` RULED opt. 1** — informational |
 | `AC-PAY-0005` | Compensation granted in one company is not readable from another. | `REQ-PAY-0002`, `OD-PAY-0005` |
 
 ## Pay elements
@@ -30,7 +30,7 @@ than leaving orphans.
 | ID | Criterion | Verifies |
 |---|---|---|
 | `AC-PAY-0010` | A run is created for one company and one period, and includes every employee employed for at least one day of it. | `REQ-PAY-0007`, `REQ-PAY-0008` |
-| `AC-PAY-0011` | An employee terminated during the period is included. | `REQ-PAY-0008` — **conditional on `OD-PAY-0010` opt. 1** |
+| `AC-PAY-0011` | An employee terminated during the period is included. | `REQ-PAY-0008` — **`OD-PAY-0010` RULED opt. 1** — include |
 | `AC-PAY-0012` | An employee terminated before the period begins is not included. | `REQ-PAY-0008` |
 | `AC-PAY-0013` | Calculating produces one line per applicable element per included employee, and a net amount. | `REQ-PAY-0009` |
 | `AC-PAY-0014` | Recalculating replaces the previous line set entirely. | `REQ-PAY-0012` |
@@ -46,7 +46,7 @@ than leaving orphans.
 | `AC-PAY-0019` | Posting an approved run creates exactly one journal in GL for the company, in the fiscal period containing the pay date. | `REQ-PAY-0015` |
 | `AC-PAY-0020` | The created journal balances: total debits equal total credits. | `REQ-PAY-0015`, `BR-PAY-0006` |
 | `AC-PAY-0021` | A run containing an element with no account mapping cannot be approved, and the response names the element. | `REQ-PAY-0005` |
-| `AC-PAY-0022` | A run whose pay date falls in a closed fiscal period cannot be approved, and the response names the period. | `REQ-PAY-0016` — **conditional on `OD-PAY-0014` opt. 1** |
+| `AC-PAY-0022` | A run whose pay date falls in a closed fiscal period cannot be approved, and the response names the period. | `REQ-PAY-0016` — **`OD-PAY-0014` RULED opt. 1** — refuse at approval |
 | `AC-PAY-0023` | Closing a fiscal period is not reversed by any payroll operation. | `REQ-PAY-0016`, `OD-PAY-0014` |
 | `AC-PAY-0024` | Correcting a posted run produces a reversing journal and a second run; the original run and journal are unchanged. | `REQ-PAY-0013` |
 | `AC-PAY-0025` | No Payroll assembly references a GL assembly, and no GL assembly references a Payroll assembly. | `REQ-PAY-0017`, `ADR-012` |
@@ -76,6 +76,5 @@ test that encodes a guess as a requirement.
 
 **No criterion asserts an attendance-derived value** (`DEC-PAY-0002`).
 
-**No criterion asserts rounding behaviour until `OD-PAY-0008` is ruled.** `AC-PAY-0026` asserts the
-*invariant* — the lines sum to the total — which holds under option 1 and fails under option 2. That is
-intentional: the criterion is written so the ruling visibly determines whether it can pass.
+**`OD-PAY-0008` is RULED (option 1),** so `AC-PAY-0026` — the lines sum to the total — is now a criterion
+that must pass rather than one whose passability depended on a ruling.

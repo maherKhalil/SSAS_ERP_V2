@@ -1,4 +1,4 @@
-# FP-012 — Lifecycle Model (PROPOSED)
+# FP-012 — Lifecycle Model (RATIFIED)
 
 The run state machine, and the two questions it cannot answer alone.
 

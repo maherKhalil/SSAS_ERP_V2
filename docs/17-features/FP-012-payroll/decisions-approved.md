@@ -1,4 +1,8 @@
-# FP-012 — Decisions
+# FP-012 — Decisions (APPROVED)
+
+> **All eighteen `OD-PAY` decisions were RULED by the owner on 2026-08-24, and `DEC-PAY-0001`–`0015` were
+> ratified as drafted.** The options tables are kept intact beneath each ruling: a decision is only legible
+> later if the alternatives it beat are still visible.
 
 Two registers. **`DEC-PAY-####`** are settled or proposed by this package and do not need the owner.
 **`OD-PAY-####`** are **OWNER-DECISION-REQUIRED** and each one blocks the build prompt.
@@ -27,6 +31,7 @@ traced; a decision that needs the owner is raised with options and consequences 
 | `DEC-PAY-0013` | No document store exists; a payslip cannot be a stored file | **SETTLED-BY-ABSENCE** — FP-010 closed to V5 |
 | `DEC-PAY-0014` | Payroll never writes to HR | **PROPOSED** |
 | `DEC-PAY-0015` | `DEC-POS-0023` is not reopened | **SETTLED** |
+| **`DEC-PAY-0016`** | **V1 is JURISDICTION-NEUTRAL — no tax tables, no statutory deductions** | **RULED** 2026-08-24 |
 
 ### `DEC-PAY-0001` — Payroll is pulled forward. **CLOSED.**
 
@@ -143,6 +148,8 @@ Eighteen decisions. Each blocks the build prompt.
 
 ### `OD-PAY-0001` — Which pay elements are in V1?
 
+**RULED: option 2 — fixed salary + recurring allowances and deductions.** No one-off elements in V1. Every element is a standing instruction; nothing is derived from input the product lacks.
+
 Nothing authored says. `DEC-PAY-0002` fixes the outer boundary; inside it the owner chooses.
 
 | | Option | Consequence |
@@ -156,6 +163,8 @@ Nothing authored says. `DEC-PAY-0002` fixes the outer boundary; inside it the ow
 requires no input the product lacks.
 
 ### `OD-PAY-0002` — Pay frequency and schedule model
+
+**RULED: option 1 — monthly, company-scoped — AND ALIGNED.** A payroll period maps to **exactly one** GL fiscal period. This closes the sub-question raised here: alignment is mandatory, not incidental, which is what makes `OD-PAY-0014`'s closed-period check a single unambiguous lookup rather than a straddle.
 
 | | Option | Consequence |
 |---|---|---|
@@ -171,6 +180,8 @@ They are defined independently today (`FiscalYear` is company-owned with a valid
 and a payroll period that straddles two fiscal periods makes `OD-PAY-0014` materially harder.
 
 ### `OD-PAY-0003` — The employee compensation record **(the `DEC-POS-0023` slot)**
+
+**RULED: option 2 — dated compensation history.** An `effectiveFrom` series; the value in force is **derived by date**, never stored as a current-flag. This is what makes a past run reproducible and `OD-PAY-0018`'s deferral cheap.
 
 **This is the package's central data question.** `DEC-POS-0023` created a deliberate vacancy — HR holds no
 compensation value — and FP-012 fills it. The shape chosen here determines what every later payroll
@@ -192,6 +203,8 @@ without a migration**, which is why deferring retro is safe under option 2 and e
 
 ### `OD-PAY-0004` — Is compensation validated against the SalaryGrade band?
 
+**RULED: option 1 — informational.** An out-of-band amount is recorded and **warned**, never refused. A band stays what `DEC-POS-0027` said it is.
+
 HR holds `SalaryGrade` bands as **informational structure** (`DEC-POS-0023`, `DEC-POS-0027` — the band is
 atomic). Should Payroll refuse an amount outside the employee's grade band?
 
@@ -207,6 +220,8 @@ audit — three things nobody has asked for.
 
 ### `OD-PAY-0005` — Is the compensation record tenant- or company-owned?
 
+**RULED: option 1 — company-owned.** `ICompanyOwnedEntity`, consistent with `Employee`, journals and fiscal calendars.
+
 | | Option | Consequence |
 |---|---|---|
 | 1 | **Company-owned** *(recommended)* | Matches `Employee`, matches journals and fiscal calendars; pay scope partitions the way every other sensitive read does |
@@ -215,6 +230,8 @@ audit — three things nobody has asked for.
 **Recommendation: option 1**, consistent with `ICompanyOwnedEntity` throughout.
 
 ### `OD-PAY-0006` — Closed pay-element set, or tenant-configurable?
+
+**RULED: option 3 — tenant-configurable elements bound to code-defined behaviours.** A tenant names and classifies elements; the product implements what each one does. The calculation model stays finite.
 
 | | Option | Consequence |
 |---|---|---|
@@ -227,6 +244,8 @@ and `SalaryGrade` are all tenant data with code-defined behaviour — and it kee
 calculation model finite.
 
 ### `OD-PAY-0007` — Calculation ordering and proration
+
+**RULED: option 1 — explicit ordinal evaluation, calendar-day proration.** Deterministic, inspectable, and explainable on a payslip. Working-day proration would need a calendar the product does not have.
 
 Order matters as soon as any element depends on another (a percentage-of-basic allowance, a deduction
 capped at a proportion of gross).
@@ -243,6 +262,8 @@ product does not have (that is Attendance again).
 
 ### `OD-PAY-0008` — Rounding **(a money-truth question — owner input expected)**
 
+**RULED: option 1 — each line rounded to 2dp, half away from zero; the run total is the SUM OF ROUNDED LINES.** The invariant is that **the payslip adds up**, and it now holds by construction rather than by recomputation.
+
 `ADR-027` fixes *storage* at `decimal(19,4)`. It does not say what a person is paid.
 
 | | Option | Consequence |
@@ -256,6 +277,8 @@ jurisdictional question as much as a technical one, and the owner may have a sta
 overrides the recommendation — which is exactly why it is raised rather than assumed.
 
 ### `OD-PAY-0009` — Run lifecycle states, and who approves
+
+**RULED: option 2 — Draft → Calculated → Approved → Posted**, with **`Payroll.Runs.Approve` as its own permission**. Approval is the sensitive act `BR-PLT-0103` points at.
 
 `BR-PLT-0103` names **Payroll Processing** a sensitive operation requiring elevated permissions, so *some*
 elevation is authored. What it attaches to is not.
@@ -271,6 +294,8 @@ elevation is authored. What it attaches to is not.
 grants so they can be different people.
 
 ### `OD-PAY-0010` — Terminated employees and final pay (`BR-HR-0004`)
+
+**RULED: option 1 — include anyone employed for at least one day of the period**, terminated or not. The reading of `BR-HR-0004` is recorded explicitly: it bars **new obligations**, not the settlement of obligations already incurred. Final pay is a settlement.
 
 `BR-HR-0004`: *a terminated employee cannot be assigned new business transactions.* A final-pay run is, on
 its face, exactly that.
@@ -288,6 +313,8 @@ is precisely what this register exists to prevent.
 
 ### `OD-PAY-0011` — Rerun and correction semantics
 
+**RULED: option 1 — recalculate freely before Approved; after Posted, correct only by reversing and running again.** No edit path exists at any point after posting.
+
 | | Option | Consequence |
 |---|---|---|
 | 1 | **Recalculate freely before Approved; after Posted, correct only by reversing and running again** *(recommended)* | Matches `DEC-PAY-0012` and GL's append-only truth exactly |
@@ -297,6 +324,8 @@ is precisely what this register exists to prevent.
 **Recommendation: option 1.** Option 2 is excluded by inherited fact rather than preference.
 
 ### `OD-PAY-0012` — GL account mapping: configured where, validated how
+
+**RULED: option 1 — mapping per pay element per company, validated at APPROVAL.** An unmapped element blocks approval, not posting, so the failure surfaces before anyone treats the run as final.
 
 The posting must turn pay elements into balanced journal lines. Something must say *which account*.
 
@@ -310,6 +339,8 @@ The posting must turn pay elements into balanced journal lines. Something must s
 element is caught before anyone believes the run is final.
 
 ### `OD-PAY-0013` — The posting mechanism **(`ADR-012`)**
+
+**RULED: option 1 — recreate `SSAS.GL.Contracts` with a SYNCHRONOUS posting contract, shaped by Payroll's need.** GL implements it internally; Payroll references **only the contract** (`ADR-012`). Posting occurs at the Approved → Posted transition and **a posting failure refuses the transition** — a run can never claim it posted when it did not.
 
 This is **the product's first cross-module integration.** `ADR-012` constrains it absolutely: a promoted
 contract or an event — **never an assembly reference from one module to another.**
@@ -332,6 +363,8 @@ of "shaped by its consumer", and it is why the type was deleted rather than left
 
 ### `OD-PAY-0014` — Posting into a closed period
 
+**RULED: option 1 — refused at approval, naming the closed period.** Option 3 (auto-reopen) is rejected on the record: a subordinate module must never defeat `GL.Periods.Close`.
+
 `BR-GL-0003` prohibits posting into a closed fiscal period. A payroll run approved late will meet exactly
 this.
 
@@ -346,6 +379,8 @@ automated reopen turns `GL.Periods.Close` into a suggestion.
 
 ### `OD-PAY-0015` — What is a payslip?
 
+**RULED: option 1 — a read projection over the stored run lines.** No document, because there is no document store.
+
 `DEC-PAY-0013`: there is no document store, so a stored PDF is not available.
 
 | | Option | Consequence |
@@ -358,6 +393,8 @@ automated reopen turns `GL.Periods.Close` into a suggestion.
 *permanently* faithful — which a rendered document would not be.
 
 ### `OD-PAY-0016` — The pay-data read permission and its scope
+
+**RULED: option 1 — its own pay-data permission, granted separately from every HR permission.** **Self-service is DEFERRED**: option 3 depends on an identity → employee mapping which this package flagged as unverified, and **it must not be built on.**
 
 **Pay data is the most sensitive read surface this product will have.** `DEC-POS-0018` separated
 `HR.SalaryGrades.View` from ordinary HR reads when the data was merely *structural*. Individual
@@ -375,6 +412,8 @@ package does **not** assert that such a mapping exists today.
 
 ### `OD-PAY-0017` — Module home
 
+**RULED: option 1 — `src/Modules/Payroll/SSAS.Payroll.*`, tests in `tests/Payroll.Tests`.** The name was **confirmed against `SSAS.ERP.sln` before use** — no Payroll project exists, so the name is free. (FP-011 wrote `InternalsVisibleTo("SSAS.GL.Tests")` for an assembly that did not exist; the check is now a step, not a hope.)
+
 The sweep found **no Payroll tree anywhere**, so unlike FP-011 there is nothing to adopt.
 
 | | Option | Consequence |
@@ -387,6 +426,8 @@ The sweep found **no Payroll tree anywhere**, so unlike FP-011 there is nothing 
 **confirmed against the solution** before it is written into any `InternalsVisibleTo`, not guessed.
 
 ### `OD-PAY-0018` — Retroactive pay, advances and loans
+
+**RULED: option 1 — retroactive pay, advances and loans are DEFERRED**, and the deferral is recorded rather than left silent. Under `OD-PAY-0003`'s ruling the deferral is cheap: dated history is exactly the substrate retro needs.
 
 | | Option | Consequence |
 |---|---|---|
@@ -401,12 +442,32 @@ deferral becomes expensive**, because the history retro would need was never wri
 
 ---
 
+### `DEC-PAY-0016` — **V1 IS JURISDICTION-NEUTRAL.** RULED 2026-08-24.
+
+> **FP-012 ships NO tax tables and NO statutory deductions. None. This is the known boundary of the
+> feature, and it is stated here, in the README, and in the pull request, deliberately and loudly.**
+
+The analysis package raised this as the largest gap between FP-012 and a payroll any organisation could
+actually run, and the ruling **accepts that gap knowingly** rather than closing it. The reasoning is that
+income tax, social insurance and mandated contributions are **legal facts of a jurisdiction**, not product
+choices — no jurisdiction is named anywhere in the specification, and inventing one would encode a guess as
+a requirement and ship it as if it were authority.
+
+What this means concretely, so nobody discovers it late:
+
+* A tenant can define a **deduction element** and give it an amount or a rate. What a tenant **cannot** do
+  is have the product compute a statutory liability, apply a bracket, or produce a filing.
+* The net figure FP-012 produces is **gross minus configured deductions**. It is not a legally compliant
+  net pay in any jurisdiction, and nothing in the product should imply that it is.
+* Adding a jurisdiction later is **additive** — a behaviour bound to elements, per `OD-PAY-0006`'s ruling
+  — and nothing in this design has to be undone to accommodate it. That is why the boundary is affordable.
+
+---
+
 ## What is deliberately not decided here
 
-* **Tax, statutory contributions and social insurance.** Not raised as an `OD-PAY` because they are not a
-  choice this product can offer — they are jurisdictional requirements with no authored source anywhere in
-  the specification. **Any real payroll needs them**, and their absence should be understood as the largest
-  gap between this package and a shippable payroll, not as a decision taken.
+* **Tax, statutory contributions and social insurance.** Now `DEC-PAY-0016` — ruled as an accepted
+  boundary rather than left as an open gap.
 * **Payment and disbursement.** No banking or payment integration exists; a run can be posted to GL but the
   product cannot move money. This is why `OD-PAY-0009` option 3 has no implementable trigger.
 * **Multi-currency.** `DEC-PAY-0003`.

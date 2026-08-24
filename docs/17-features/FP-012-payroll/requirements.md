@@ -1,8 +1,12 @@
-# FP-012 — Requirements (PROPOSED)
+# FP-012 — Requirements (RATIFIED)
 
-**Every requirement on this page is `OWNER-DECISION-REQUIRED`.** None is authored anywhere in the master
-specification: `REQ-PAY-0001` exists in `Requirement-Numbering.md` as a **bare prefix reservation** and
-there is no `Requirement-Catalog/PAY.md`.
+**RATIFIED 2026-08-24.** `Requirement-Catalog/PAY.md` now exists and carries `REQ-PAY-0001`–`0018`;
+`REQ-PAY` is indexed in the catalog README beside `REQ-GL` and `REQ-HR`. The gap this page was written
+against is closed.
+
+*What follows is the original derivation, kept because the authority column is the evidence for each line
+and would otherwise be lost.* When drafted, `REQ-PAY-0001` was a **bare prefix reservation** in
+`Requirement-Numbering.md` and there was no `Requirement-Catalog/PAY.md`.
 
 This follows the `GL.md` precedent exactly. FP-011 met the same absence, drafted `REQ-GL-0001`–`0014` as
 proposals, and the owner ratified them into the catalog. The same is asked here — and, as there, the
@@ -60,8 +64,9 @@ being asked about.
 Listing these is part of the analysis: a reader must be able to tell the difference between *decided
 against* and *overlooked*.
 
-**Tax, statutory deductions, and social insurance.** No requirement is drafted because there is no
-authority to draft one from — no jurisdiction is named anywhere in the specification, and these are not
+**Tax, statutory deductions, and social insurance.** **RULED `DEC-PAY-0016`: V1 is jurisdiction-neutral —
+no tax tables, no statutory deductions.** No requirement is drafted because there is no authority to draft
+one from — no jurisdiction is named anywhere in the specification, and these are not
 product choices but legal ones. **This is the largest gap between FP-012 and a payroll any organisation
 could actually run**, and it is stated here rather than buried so the owner sees it before the build
 prompt, not after.

@@ -210,10 +210,10 @@ public sealed class PayrollArchitectureTests
   public void Every_monetary_column_is_decimal_19_4()
   {
     var offenders = PayrollEntities()
-      .SelectMany(entity => entity.GetProperties())
-      .Where(property => property.ClrType == typeof(decimal) || property.ClrType == typeof(decimal?))
-      .Where(property => property.GetPrecision() != 19 || property.GetScale() != 4)
-      .Select(property => $"{property.DeclaringEntityType.ShortName()}.{property.Name}")
+      .SelectMany(entity => entity.GetProperties().Select(property => (Entity: entity, Property: property)))
+      .Where(pair => pair.Property.ClrType == typeof(decimal) || pair.Property.ClrType == typeof(decimal?))
+      .Where(pair => pair.Property.GetPrecision() != 19 || pair.Property.GetScale() != 4)
+      .Select(pair => $"{pair.Entity.ShortName()}.{pair.Property.Name}")
       .ToArray();
 
     Assert.Empty(offenders);
@@ -226,10 +226,10 @@ public sealed class PayrollArchitectureTests
     // `Constraints.md` requires Arabic and English. A pay element's name is exactly the field a user writes
     // in their own language.
     var offenders = PayrollEntities()
-      .SelectMany(entity => entity.GetProperties())
-      .Where(property => property.ClrType == typeof(string))
-      .Where(property => property.IsUnicode() == false)
-      .Select(property => $"{property.DeclaringEntityType.ShortName()}.{property.Name}")
+      .SelectMany(entity => entity.GetProperties().Select(property => (Entity: entity, Property: property)))
+      .Where(pair => pair.Property.ClrType == typeof(string))
+      .Where(pair => pair.Property.IsUnicode() == false)
+      .Select(pair => $"{pair.Entity.ShortName()}.{pair.Property.Name}")
       .ToArray();
 
     Assert.Empty(offenders);

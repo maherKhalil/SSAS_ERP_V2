@@ -31,8 +31,8 @@ Every significant architectural decision must be documented before implementatio
 | ADR-021 | Customer-Managed Tenant Database Connectivity and Operations | Proposed |
 | ADR-022 | Tenant Database Backup and Recovery Orchestration | Proposed |
 | ADR-023 | Tenant Branch Model, Authorization and Execution Context | Accepted |
-| ADR-024 | Employee Branch Assignment and Transfer Model | Proposed |
-| ADR-025 | Company Execution Context and Authorization | Proposed |
+| ADR-024 | Employee Branch Assignment and Transfer Model | Accepted |
+| ADR-025 | Company Execution Context and Authorization | Accepted |
 | ADR-026 | HR Organizational Structure and Department Hierarchy | Accepted |
 | ADR-027 | Monetary Value Representation and Cross-Module Value-Object Reuse | Accepted |
 | ADR-028 | *Reserved* — Binary Content Storage, Custody and Movement | Not written; V5's to author (`OD-DOC-009`) |

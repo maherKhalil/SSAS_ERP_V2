@@ -2,9 +2,9 @@
 id: ADR-024
 title: Employee Branch Assignment and Transfer Model
 category: Architecture Decision Record
-version: 1.0
-status: Proposed
-date: 2026-08-18
+version: 1.1
+status: Accepted
+date: 2026-08-25
 owner: Solution Architecture Team
 tags:
   - branch
@@ -34,9 +34,11 @@ used_by:
 
 # Status
 
-**Proposed**
+**Accepted** — 2026-08-25.
 
-Proposed alongside the FP-006 Employee design review. No production code implements it yet: `Employee` does not exist, and `Employee` is the first production `IBranchOwnedEntity`.
+Proposed alongside the FP-006 Employee design review, on the stated ground that **no production code implemented it yet: `Employee` did not exist**. That ground has lapsed — `Employee` shipped in FP-006 (PR #40) as the first production `IBranchOwnedEntity`, and `EmployeeBranchAssignment` implements this ADR's transfer model directly.
+
+**Evidence — inference from use, not a recorded activation.** This ADR states no acceptance precondition, so its acceptance is inferred rather than recorded, and is named as an inference (`DEC-L-020`). The inference is that FP-006's `decisions-approved.md` declares "the architecture recorded in `ADR-024` and `ADR-025` … binding for FP-006 implementation", citing decisions 1, 4, 5 and 9 against shipped behaviour, and that `BranchTransferArchitectureTests` and `EmployeeArchitectureTests` assert it executably. What is absent is any closed decision saying this ADR is accepted, as `OD-POS-004` said of `ADR-027`.
 
 This ADR resolves the one question `ADR-023` deliberately left open for the first branch-owned business entity — how a record may legitimately change branch — and it does so **before** the entity exists, because the answer determines the Employee schema and the shape of the branch-write boundary that every future branch-owned entity inherits.
 
@@ -361,3 +363,4 @@ This ADR should be reviewed when:
 | Version | Date | Author | Description |
 |----------|------|--------|-------------|
 | 1.0 | 2026-08-18 | Solution Architecture Team | Establishes the Employee branch assignment and transfer model. Records the thirteen decisions resolving REQ-HR-0004 against the ADR-023 branch-write boundary. |
+| 1.1 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. It was Proposed on the stated ground that `Employee` did not yet exist; `Employee` shipped in FP-006 as the first production `IBranchOwnedEntity` and `EmployeeBranchAssignment` implements this transfer model. Acceptance is an **inference** from that use rather than a recorded activation — this ADR states no acceptance precondition, and none is claimed for it (`DEC-L-020`). |

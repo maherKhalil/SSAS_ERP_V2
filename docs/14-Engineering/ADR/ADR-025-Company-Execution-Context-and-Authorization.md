@@ -2,9 +2,9 @@
 id: ADR-025
 title: Company Execution Context and Authorization
 category: Architecture Decision Record
-version: 1.1
-status: Proposed
-date: 2026-08-18
+version: 1.2
+status: Accepted
+date: 2026-08-25
 owner: Solution Architecture Team
 tags:
   - multi-tenancy
@@ -36,13 +36,17 @@ used_by:
 
 # Status
 
-**Proposed**
+**Accepted** — 2026-08-25.
 
 Proposed alongside the FP-006 Employee design review, as the companion to `ADR-024`.
 
 This ADR **supersedes the deferred and unselected portions of `ADR-014`**: its decision 7 (company scope-resolution mechanism deferred and unchosen), its decision 8 (user↔company authorization deferred), and the company query-filter machinery sketched in its decision 6. `ADR-014` remains the authority on Company *ownership* — that Company is tenant-owned, is a true data-partition dimension, is the company root, and that `CompanyId` is a `Guid`. Those decisions are unchanged.
 
-No production code implements this ADR yet. `ICompanyOwnedEntity` does not exist, and `Employee` will be its first consumer.
+It was Proposed on the stated ground that **no production code implemented it yet: `ICompanyOwnedEntity` did not exist, and `Employee` would be its first consumer.** That ground has lapsed exactly as written — `ICompanyOwnedEntity` ships in `SSAS.BuildingBlocks.Domain`, and FP-006 records `Employee` as "the **first production consumer** of that interface", introducing the company-ownership machinery `ADR-014` decision 6 deferred until "the first real company-owned business record".
+
+**Evidence — inference from use, not a recorded activation.** This ADR states no acceptance precondition, so its acceptance is inferred and is named as an inference (`DEC-L-020`). The inference is that FP-006's `decisions-approved.md` declares the architecture recorded here "binding for FP-006 implementation", and that `CompanyOwnershipArchitectureTests`, `CompanyArchitectureTests` and `DepartmentApplicationArchitectureTests` assert it executably. What is absent is any closed decision saying this ADR is accepted.
+
+It also removes a standing inconsistency: this record supersedes deferred portions of `ADR-014`, which is itself `Accepted`, and a `Proposed` record superseding an `Accepted` one is not a coherent pairing.
 
 ---
 
@@ -360,3 +364,4 @@ This ADR should be reviewed when:
 |----------|------|--------|-------------|
 | 1.0 | 2026-08-18 | Solution Architecture Team | Establishes the company execution context and authorization model. Supersedes ADR-014 decisions 7 and 8 and the company query-filter machinery sketched in ADR-014 decision 6. |
 | 1.1 | 2026-08-19 | Solution Architecture Team | Correction A: the executable architecture guard required by decision 10 exists as of `FP-006C4`, delivered in the same slice as the first company-scoped reads. Enforcement is structural — an unforgeable resolved scope that every read requires — and is proven by 19 architecture guards, including one asserting that no global query filter on the composed tenant model references `CompanyId` or `BranchId`, plus real-SQL proofs `R1`–`R23`. No decision text changed. |
+| 1.2 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. It was Proposed on the stated ground that `ICompanyOwnedEntity` did not yet exist and `Employee` would be its first consumer; both have since happened. Acceptance is an **inference** from that use rather than a recorded activation — this ADR states no acceptance precondition (`DEC-L-020`). Also resolves a `Proposed` record superseding the `Accepted` `ADR-014`. |

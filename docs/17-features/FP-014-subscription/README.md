@@ -78,8 +78,8 @@ Run 2026-08-25 against `main` at `f9b247a`.
 | `docs/17-features/` | FP-001…FP-013. **No package covers the commercial model** |
 | `docs/00-Master-Product-Specification/Product-Roadmap.md` | Versions 1–5. **Not one occurrence of subscription, billing, plan, metering, pricing, invoicing, licensing or signup** |
 | `Requirement-Numbering.md` | ten functional prefixes — PLT, HR, GL, INV, CRM, PRJ, PAY, ATT, PRC, MFG. **No `SUB`.** Four business-rule prefixes — PLT, HR, GL, ATT. **No `BR-SUB`** |
-| `CON-0001` across all of `docs/` | **exactly one occurrence — its own definition**, `Requirement-Catalog/Constraints.md:21` |
-| `BR-PLT-0008` across all of `docs/` | **two occurrences** — its definition at `Business-Rules.md:162`, and a bare listing at `Tenant-Management.md:35` |
+| `CON-0001` across all of `docs/` | **exactly one occurrence — its own definition**, `Requirement-Catalog/Constraints.md` § `CON-0001` |
+| `BR-PLT-0008` across all of `docs/` | **two occurrences** — its definition at `Business-Rules.md` § `BR-PLT-0008`, and a bare listing in `Tenant-Management.md`'s Business Rules section |
 | `CON-0001` or `BR-PLT-0008` in `src/` or `tests/` | **zero** |
 
 ## The false positives, named so nobody re-derives them
@@ -111,9 +111,9 @@ the master register now also carries `BR-SUB-0001`–`0021` (T-022).
 
 | Source | What it says, verbatim |
 |---|---|
-| `Requirement-Catalog/Constraints.md:23` — **`CON-0001`** | "The application shall operate as a subscription-based Software-as-a-Service (SaaS) platform." |
-| `Business-Rules.md:168`–`170` — **`BR-PLT-0008` Feature Enablement** | "Modules may be enabled or disabled per subscription plan." / "Disabled modules shall not appear in menus or APIs." |
-| `Glossary.md:283` — **Subscription** | "A commercial agreement determining which modules and features are available to a Tenant." |
+| `Requirement-Catalog/Constraints.md` § **`CON-0001`** | "The application shall operate as a subscription-based Software-as-a-Service (SaaS) platform." |
+| `Business-Rules.md` § **`BR-PLT-0008` Feature Enablement** | "Modules may be enabled or disabled per subscription plan." / "Disabled modules shall not appear in menus or APIs." |
+| `Glossary.md` § **Subscription** | "A commercial agreement determining which modules and features are available to a Tenant." |
 
 That is all of it. **This package says so rather than dressing it up.** `CON-0001` carries real weight
 despite its brevity — its own file's preamble states that constraints "are mandatory and shall not be
@@ -145,7 +145,7 @@ and lists "Expired Subscription" as a failure scenario (`:141`). **That document
 sharpest illustration of the gap: an authored authentication rule with no data behind it. Whether it
 becomes binding is `OD-SUB-0009`, not an assumption this package may make.
 
-**`ADR-005:248`** lists "Subscription management" and "License management" among platform-administrator
+**`ADR-005`, § Platform Administration** lists "Subscription management" and "License management" among platform-administrator
 capabilities. It names them; it does not model them.
 
 **`docs/02-Functional/Platform/README.md:25`** lists "Subscription" as a Platform area. A table of
@@ -174,7 +174,7 @@ than that, and narrower is better.
 and plan metadata is Platform-database data (`:164`), and Platform-database operation "never
 depends on tenant-database routing or availability" (`:169`); an unavailable tenant database
 yields a controlled unavailability result rather than a fallback (`:376`–`:378`). **Amended by
-`DEC-L-024`** — formerly `ADR-021:207`, which is `Proposed` and does not yet bind. A design that reads entitlement from the tenant ERP database fails that
+`DEC-L-024`** — formerly `ADR-021` § 10 Outage behaviour (`:207`), which is `Proposed` and does not yet bind. A design that reads entitlement from the tenant ERP database fails that
 requirement the first time a customer's VPN drops.
 
 **`FP-002` forbids entitlements in the access token.** The token model has **exact claim cardinality**

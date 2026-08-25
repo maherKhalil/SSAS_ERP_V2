@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Attendance.Contracts.Summaries;
 using SSAS.GL.Contracts.Posting;
 using SSAS.HR.Contracts.Employment;
 using SSAS.Payroll.Application.Abstractions;
@@ -239,4 +240,62 @@ public sealed class StubEmployeeRoster : IEmployeeRoster
   public Task<IReadOnlyList<EmploymentRecord>> GetEmploymentAsync(
     Guid companyId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default) =>
     Task.FromResult<IReadOnlyList<EmploymentRecord>>(Employment);
+}
+
+// ================================================================================================
+// THE THIRD ROUTE OUT OF PAYROLL (FP-013), AND ITS ABSENCE FAILED EVERY TEST IN THIS HARNESS.
+// ================================================================================================
+//
+// The host's header says the point of stubbing `IJournalPoster` and `IEmployeeRoster` is that the module
+// boundary is DEMONSTRATED rather than asserted: they can be replaced here with no GL or HR service
+// registered at all.
+//
+// FP-013 added a third — `IAttendanceSummary`, consumed by calculation and by approval — and until this
+// existed the host could not build its service provider. **Every Payroll API test failed**, which is the
+// harness telling the truth about a new dependency rather than a defect in the module.
+//
+// It went unnoticed for one run because I had verified the new tests with
+// `--filter FullyQualifiedName~Attendance`, and a filtered run cannot fail on what it does not execute.
+//
+// ---- IT DEFAULTS TO `Available` WITH ZERO QUANTITIES.
+//
+// So an existing test that says nothing about attendance behaves exactly as it did before FP-013: no
+// overtime, no unpaid absence, and no refusal at approval. A default of `PeriodOpen` would have made every
+// approval test fail for a reason none of them is about.
+public sealed class StubAttendanceSummary : IAttendanceSummary
+{
+  public AttendanceSummaryStatus SummaryStatus { get; set; } = AttendanceSummaryStatus.Available;
+
+  public AttendanceSummaryStatus InspectionStatus { get; set; } = AttendanceSummaryStatus.Available;
+
+  public IDictionary<string, decimal> OvertimeByTier { get; } =
+    new Dictionary<string, decimal>(StringComparer.Ordinal);
+
+  public decimal UnpaidAbsenceQuantity { get; set; }
+
+  public void Reset()
+  {
+    SummaryStatus = AttendanceSummaryStatus.Available;
+    InspectionStatus = AttendanceSummaryStatus.Available;
+    OvertimeByTier.Clear();
+    UnpaidAbsenceQuantity = 0m;
+  }
+
+  public Task<AttendanceSummaryResult> GetForPeriodAsync(
+    Guid companyId, Guid employeeId, DateTimeOffset anyDateInPeriodUtc,
+    CancellationToken cancellationToken = default) =>
+    Task.FromResult(new AttendanceSummaryResult(
+      SummaryStatus, employeeId, companyId, Guid.NewGuid(),
+      anyDateInPeriodUtc, anyDateInPeriodUtc,
+      WorkedQuantity: 0m,
+      new Dictionary<string, decimal>(OvertimeByTier, StringComparer.Ordinal),
+      PaidAbsenceQuantity: 0m,
+      UnpaidAbsenceQuantity));
+
+  public Task<AttendancePeriodInspection> InspectPeriodAsync(
+    Guid companyId, DateTimeOffset anyDateInPeriodUtc, CancellationToken cancellationToken = default) =>
+    Task.FromResult(new AttendancePeriodInspection(
+      InspectionStatus, Guid.NewGuid(), "Stub period",
+      anyDateInPeriodUtc, anyDateInPeriodUtc,
+      IsClosed: InspectionStatus == AttendanceSummaryStatus.Available));
 }

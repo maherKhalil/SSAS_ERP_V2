@@ -27,16 +27,62 @@ An em-dash in a matrix cell is a DECLARED gap, not a defect: the matrices are ex
 inventing a parent to make the table tidier would make it mean less. Declared gaps are
 reported separately from failures and never turn the check red.
 
+CHECK 7 — THE MASTER REGISTER, ONE LEVEL ABOVE THE PACKAGES
+-----------------------------------------------------------
+Checks 1-6 look INSIDE `docs/17-features/`. That is where the identifiers a package owns
+live, and for two years it was the only place anyone looked.
+
+It is not where the expensive failures happened. Both instances found so far are one level
+UP, in the master specification that outranks every package:
+
+  * `CON-0001` — "The application shall operate as a subscription-based SaaS platform."
+    A mandatory constraint, in a file whose preamble says constraints "shall not be violated
+    without an approved ADR". It appears exactly once in the whole repository: in its own
+    definition. No requirement, no acceptance criterion, no test, no line of code. The
+    product's defining commercial constraint was invisible to a checker that only reads
+    packages, because a package that never mentions it looks complete.
+
+  * `BR-ATT-0001`…`0012` and `BR-PAY-0001`…`0013` — drafted inside FP-013 and FP-012 and
+    NEVER PROMOTED to the master `Business-Rules.md`, which still lists Attendance and
+    Payroll under "will be added in future releases" while both modules ship. Checks 1-6
+    pass both packages cleanly, and correctly: the rules ARE defined in their home files.
+    The defect is that the master register does not know they exist.
+
+  7. MASTER REGISTER — three findings, reported ABOVE the package line and never mixed into
+                    a package's result:
+
+       ORPHAN     a `CON-####` or `BR-###-####` defined in the master specification and
+                  cited NOWHERE else in the repository.
+       UNTRACED   cited somewhere, but never in the same block as a `REQ-` identifier. It is
+                  mentioned; nothing implements it. `BR-PLT-0008` is the type specimen — it
+                  is named once in `Tenant-Management.md` and has no requirement anywhere.
+       UNPROMOTED a `BR-<MODULE>` space defined inside a feature package where the master
+                  `Business-Rules.md` carries no rule for that module at all.
+
+Co-occurrence within a block is the tracing signal, the same signal checks 3 and 4 use for
+the chain table. Where the check cannot decide, it reports: a checker that under-reports is
+worse than one that occasionally asks a human to look, because it is trusted at exactly the
+moment it is wrong.
+
+**A finding here is not a broken package**, which is why it is printed in its own section
+with its own verdict line and is excluded from the `[TRACE RED] n of m package(s)` tally.
+
 USAGE
     python3 scripts/trace-check.py                          # every package
     python3 scripts/trace-check.py FP-013-attendance         # one package
     python3 scripts/trace-check.py --json                    # machine-readable
     python3 scripts/trace-check.py --features-dir docs/17-features
+    python3 scripts/trace-check.py --no-master               # checks 1-6 only
 
 EXIT CODES
     0  all checked packages clean
     1  at least one package has a failure
     2  usage / no packages found
+    3  every package clean, but the MASTER REGISTER has findings (check 7)
+
+    Codes 0-2 keep the meaning they have always had. A caller testing `== 1` is unaffected
+    by check 7; a caller testing `!= 0` sees it. That is the intended split — the master
+    register is a different question from package health and deserves a different answer.
 """
 
 from __future__ import annotations
@@ -78,6 +124,33 @@ RANGE_RE = re.compile(
 DEPENDENT_RE = re.compile(r"-dependent\b")
 
 DASH_ONLY = re.compile(r"^[\s–—-]*$")
+
+# ---- check 7: the master register -----------------------------------------------------
+#
+# `CON-####` carries NO module token, unlike every space in SPACES, so it needs its own
+# pattern rather than a widened ID_RE. Widening ID_RE would change what checks 1-6 see.
+CON_RE = re.compile(r"\bCON-(\d{4})\b")
+
+# A definition in the master files is a heading. Both registers use `## <ID>` today; `###`
+# is tolerated so a nesting change does not silently empty the check — the same reason
+# parse_chain identifies chain rows by shape rather than by heading text.
+MASTER_CON_DEF_RE = re.compile(r"^#{2,3}\s+(CON-\d{4})\s*$", re.M)
+MASTER_BR_DEF_RE = re.compile(r"^#{2,3}\s+(BR-[A-Z]{2,4}-\d{4})\s*$", re.M)
+
+# A requirement — any module. Used as the tracing signal for check 7.
+REQ_ANY_RE = re.compile(r"\bREQ-[A-Z]{2,4}-\d{4}\b")
+
+MASTER_SPEC_DIR = ("docs", "00-Master-Product-Specification")
+MASTER_CON_FILE = MASTER_SPEC_DIR + ("Requirement-Catalog", "Constraints.md")
+MASTER_BR_FILE = MASTER_SPEC_DIR + ("Business-Rules.md",)
+
+# Where a citation may live. Deliberately wider than docs/: a constraint satisfied by a
+# comment in a `.cs` file IS traced, and refusing to look there would manufacture orphans.
+CITATION_SUFFIXES = frozenset(
+    {".md", ".cs", ".yml", ".yaml", ".sql", ".json", ".csproj", ".props", ".targets"}
+)
+CITATION_ROOTS = ("docs", "src", "tests", "tools", "scripts", ".github")
+SKIP_PARTS = frozenset({"obj", "bin", ".git", "node_modules", "TestResults"})
 
 
 class Ident:
@@ -544,8 +617,229 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
 
 
 # --------------------------------------------------------------------------------------
+# Check 7 — the master register, one level above the packages
+# --------------------------------------------------------------------------------------
+
+def _citation_corpus(root: Path, exclude: set[Path]) -> list[tuple[Path, str]]:
+    """
+    Every file a citation could plausibly live in, minus the two definition files.
+
+    The definition files are excluded rather than filtered per-identifier because a
+    constraint's own `## CON-0001` heading is not a citation of itself, and neither is the
+    paragraph under it. Excluding the file is exact; excluding "the heading line" would
+    quietly count the body text as evidence that something references the rule.
+    """
+    corpus: list[tuple[Path, str]] = []
+    for name in CITATION_ROOTS:
+        base = root / name
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in CITATION_SUFFIXES:
+                continue
+            if SKIP_PARTS & set(path.parts):
+                continue
+            if path in exclude:
+                continue
+            try:
+                corpus.append((path, path.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                continue
+    return corpus
+
+
+def check_master_register(root: Path, features: Path) -> dict:
+    """
+    Check 7. Reads the master specification, then asks two questions the package-level
+    checks structurally cannot ask.
+
+    Returns its own result dict. It is never merged into a package result: a rule that
+    nobody implemented is a governance finding, not a defect in whichever package happened
+    to be scanned at the time.
+    """
+    result: dict = {
+        "orphans": [],       # defined in the master register, cited nowhere at all
+        "untraced": [],      # cited, but never beside a REQ- identifier
+        "unpromoted": [],    # BR-<MODULE> owned by a package, absent from the master file
+        "defined": 0,
+        "files_scanned": 0,
+        "sources": [],
+        "notes": [],
+    }
+
+    con_path = root.joinpath(*MASTER_CON_FILE)
+    br_path = root.joinpath(*MASTER_BR_FILE)
+
+    master: dict[str, Path] = {}
+    if con_path.is_file():
+        text = con_path.read_text(encoding="utf-8", errors="replace")
+        for key in MASTER_CON_DEF_RE.findall(text):
+            master[key] = con_path
+        result["sources"].append(con_path.relative_to(root).as_posix())
+    else:
+        result["notes"].append(
+            f"no {'/'.join(MASTER_CON_FILE)} — CON- constraints not checked"
+        )
+
+    master_br_modules: set[str] = set()
+    if br_path.is_file():
+        text = br_path.read_text(encoding="utf-8", errors="replace")
+        for key in MASTER_BR_DEF_RE.findall(text):
+            master[key] = br_path
+            master_br_modules.add(key.split("-")[1])
+        result["sources"].append(br_path.relative_to(root).as_posix())
+    else:
+        result["notes"].append(
+            f"no {'/'.join(MASTER_BR_FILE)} — BR- rules and promotion not checked"
+        )
+
+    result["defined"] = len(master)
+    result["master_br_modules"] = sorted(master_br_modules)
+
+    # ---- 7a/7b. orphan and untraced ---------------------------------------------------
+    #
+    # ONE PASS OVER THE CORPUS, NOT ONE PASS PER IDENTIFIER. Fifty-one identifiers against
+    # a few thousand files is a product this script should not be paying; inverting the
+    # loop makes it linear in blocks and keeps the whole check under a second.
+    if master:
+        corpus = _citation_corpus(root, exclude={con_path, br_path})
+        result["files_scanned"] = len(corpus)
+
+        cited: set[str] = set()
+        traced: set[str] = set()
+        cited_in: dict[str, set[str]] = defaultdict(set)
+        traced_in: dict[str, set[str]] = defaultdict(set)
+
+        for path, text in corpus:
+            # Cheap rejection first: most files mention neither register.
+            if "CON-" not in text and "BR-" not in text:
+                continue
+            rel = path.relative_to(root).as_posix()
+            for block in split_blocks(text):
+                keys = {f"CON-{n}" for n in CON_RE.findall(block)}
+                keys |= {i.key for i in scan_ids(block) if i.space == "BR"}
+                keys &= master.keys()
+                if not keys:
+                    continue
+                cited |= keys
+                for key in keys:
+                    cited_in[key].add(rel)
+                if REQ_ANY_RE.search(block):
+                    traced |= keys
+                    for key in keys:
+                        traced_in[key].add(rel)
+
+        for key in sorted(master):
+            if key not in cited:
+                result["orphans"].append(
+                    f"{key} — defined in "
+                    f"{master[key].relative_to(root).as_posix()} and cited nowhere else in "
+                    f"the repository"
+                )
+            elif key not in traced:
+                where = sorted(cited_in[key])
+                shown = ", ".join(where[:3]) + (" …" if len(where) > 3 else "")
+                result["untraced"].append(
+                    f"{key} — cited in {len(where)} file(s) ({shown}) but never alongside a "
+                    f"REQ- identifier: mentioned, not implemented"
+                )
+
+    # ---- 7c. unpromoted package BR spaces ---------------------------------------------
+    #
+    # A package that defines BR-ATT in its own business-rules.md is COMPLETE by checks 1-6,
+    # and correctly so. This is the only check that can see that the master register does
+    # not know those rules exist.
+    if br_path.is_file() and features.is_dir():
+        for pkg in sorted(p for p in features.iterdir() if p.is_dir()):
+            home = pkg / "business-rules.md"
+            if not home.is_file():
+                continue
+            text = home.read_text(encoding="utf-8", errors="replace")
+            by_module: dict[str, set[str]] = defaultdict(set)
+            for ident in scan_ids(text):
+                if ident.space == "BR":
+                    by_module[ident.module].add(ident.key)
+            for module, keys in sorted(by_module.items()):
+                if module in master_br_modules:
+                    continue
+                # A package citing ONE rule of a foreign module is quoting a neighbour, not
+                # owning a space. Three is the same floor own_modules() uses for the same
+                # reason, so the two rules cannot disagree about what a package owns.
+                if len(keys) < 3:
+                    continue
+                lo = min(keys)
+                hi = max(keys)
+                result["unpromoted"].append(
+                    f"BR-{module} — {len(keys)} rule(s) ({lo}…{hi}) defined in "
+                    f"{pkg.name}/business-rules.md, and the master Business-Rules.md "
+                    f"carries no BR-{module} rule at all"
+                )
+
+    result["total"] = (
+        len(result["orphans"]) + len(result["untraced"]) + len(result["unpromoted"])
+    )
+    return result
+
+
+# --------------------------------------------------------------------------------------
 # Reporting
 # --------------------------------------------------------------------------------------
+
+MASTER_LIST_CAP = 12
+
+
+def report_master(m: dict) -> None:
+    """
+    Printed in its own section, with its own verdict, ABOVE the package results.
+
+    It deliberately does NOT use the RED/GREEN words the package sections use. A reader
+    scanning for "RED" must not find one here and conclude a package is broken — the whole
+    point of check 7 is that these findings belong to nobody's package.
+    """
+    findings = m.get("total", 0)
+    verdict = f"{findings} FINDING(S)" if findings else "CLEAN"
+    print(f"\n{'=' * 86}")
+    print(f"MASTER REGISTER (check 7, above the package line)  [{verdict}]")
+    print("=" * 86)
+
+    if m.get("sources"):
+        print(f"\n  Read: {', '.join(m['sources'])}")
+    print(f"  {m.get('defined', 0)} identifier(s) defined; "
+          f"{m.get('files_scanned', 0)} file(s) scanned for citations")
+    if m.get("master_br_modules"):
+        print(f"  Master BR modules: {', '.join(m['master_br_modules'])}")
+
+    for label, items, gloss in (
+        ("ORPHAN", m.get("orphans", []),
+         "defined in the master register and cited nowhere else"),
+        ("UNTRACED", m.get("untraced", []),
+         "cited, but no requirement anywhere references it"),
+        ("UNPROMOTED", m.get("unpromoted", []),
+         "a package owns a BR space the master register does not carry"),
+    ):
+        if not items:
+            continue
+        print(f"\n  {label} ({len(items)}) — {gloss}:")
+        for item in items[:MASTER_LIST_CAP]:
+            print(f"    - {item}")
+        if len(items) > MASTER_LIST_CAP:
+            print(f"    … and {len(items) - MASTER_LIST_CAP} more")
+
+    for note in m.get("notes", []):
+        print(f"\n  NOTE: {note}")
+
+    print()
+    if findings:
+        print("  A finding here is NOT a broken package. It is a rule the product wrote "
+              "down and never")
+        print("  implemented, or implemented and never registered. Fixing one is a "
+              "product ruling, not a")
+        print("  tidy-up — see the packages' own decision registers.")
+    else:
+        print("  Every master-register rule is cited and reaches a requirement.")
+
 
 def report(results: list[dict]) -> int:
     red = 0
@@ -606,6 +900,8 @@ def main() -> int:
                     help="package directory names (default: all under --features-dir)")
     ap.add_argument("--features-dir", default="docs/17-features")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--no-master", action="store_true",
+                    help="skip check 7 (the master register) and run checks 1-6 only")
     args = ap.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -632,11 +928,28 @@ def main() -> int:
     global_index = build_global_index(features, root)
     results = [check_package(d, global_index) for d in dirs]
 
-    if args.json:
-        print(json.dumps(results, indent=2))
-        return 1 if any(r["failures"] for r in results) else 0
+    # Check 7 reads the master specification, not the packages, so it is unaffected by
+    # which packages were named on the command line and runs identically either way.
+    master = None if args.no_master else check_master_register(root, features)
 
-    return report(results)
+    package_red = any(r["failures"] for r in results)
+    master_findings = bool(master and master.get("total"))
+
+    if args.json:
+        payload: dict = {"packages": results}
+        if master is not None:
+            payload["master_register"] = master
+        print(json.dumps(payload, indent=2))
+    else:
+        if master is not None:
+            report_master(master)
+        report(results)
+
+    # 1 keeps its original meaning — a package failed — so a caller testing `== 1` is
+    # untouched by check 7. 3 is the new answer to a different question.
+    if package_red:
+        return 1
+    return 3 if master_findings else 0
 
 
 if __name__ == "__main__":

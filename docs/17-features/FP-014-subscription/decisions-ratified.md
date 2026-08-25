@@ -193,6 +193,11 @@ makes a traceability matrix start lying.
 
 ## 3. ~~FP-014 rests on `ADR-021`, which is still `Proposed`~~ — **CLOSED by `DEC-L-024`, 2026-08-25**
 
+> **Everything from here to the ruling below describes the position BEFORE the amendment**, kept as
+> the record of what was found. `ADR-021` is still `Proposed` and still does not bind; what changed is
+> that **no citation in this package rests on it any more.** The present-tense citations named below
+> have all been re-pointed to `ADR-017`.
+
 The ratification instruction asked for a `DEC-L-021` check against records still `Proposed`. It clears
 for the four ADRs named — `ADR-017` and `ADR-027` moved to `Accepted` in T-011, `ADR-029` and
 `ADR-030` were born `Accepted`. **It does not clear for `ADR-021`.**
@@ -217,9 +222,9 @@ condition `DEC-L-021` names as incoherent.**
 obvious repair and was never available — `ADR-021:37` states its own acceptance precondition, and
 overriding a document's own terms with an argument from use is exactly what `DEC-L-020` forbids.
 Every citation above now reads `ADR-017`; `REQ-SUB-0005`, `DEC-SUB-0004` and `OD-SUB-0004` are
-unchanged in substance. **Two citations elsewhere in this package are not yet re-pointed** —
-`data-model.md:21` and `README.md:160` — and are named in the T-024 result rather than left to be
-found.
+unchanged in substance. **Every citation in this package has now been re-pointed** — the last three
+sites, `data-model.md`, `README.md`'s outage paragraph and this file's own count of open concerns,
+were completed on the same day. **`ADR-021` appears nowhere in FP-014 as a binding authority.**
 
 ---
 
@@ -229,3 +234,4 @@ found.
 |---|---|---|---|
 | 1.0 | 2026-08-25 | Solution Architecture Team | Ratifies FP-014. All seventeen `OD-SUB` rulings moved into the package from the 2026-08-25 ruling set, each attributed to the owner or the architect. All twelve `DEC-SUB` ratified as drafted. Three concerns carried as open at ratification: the undefined seat, `REQ-SUB-0027`'s two enforcement semantics, and this package's dependence on the still-`Proposed` `ADR-021`. |
 | 1.1 | 2026-08-25 | Solution Architecture Team | **Amendment under `DEC-L-024`.** No requirement, rule or ruling changed. `ADR-021` is `Proposed` and conditions its own acceptance on a customer-hosted deployment being contracted (`:37`), so it does not bind; every citation of it in `requirements.md`, `business-rules.md` and `decisions-open.md` is re-pointed to `ADR-017:164`, `:169` and `:376`–`:378`, which carry the same conclusion in two steps rather than one. `OD-SUB-0004`'s entry records the moved authority. Open concern 3 is closed. |
+| 1.2 | 2026-08-25 | Solution Architecture Team | Completes the `DEC-L-024` re-point. `data-model.md` and `README.md`'s outage paragraph now derive from `ADR-017:164`, `:169` and `:376`–`:378`; the ratification banner's count of open concerns is corrected from three to two, concern 3 having been closed. No requirement, rule or ruling changed. |

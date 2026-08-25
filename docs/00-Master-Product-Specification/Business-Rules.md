@@ -30,6 +30,7 @@ Every Business Rule receives a permanent identifier.
 BR-PLT-0001
 BR-HR-0001
 BR-GL-0001
+BR-SUB-0001
 ```
 
 Business Rule identifiers shall never be reused.
@@ -542,6 +543,224 @@ Reports shall always respect Tenant and Company boundaries.
 
 ---
 
+# Subscription Business Rules
+
+Rules `BR-SUB-0001`–`BR-SUB-0021`, promoted from `FP-014` at its ratification under `DEC-L-012`.
+The rule statements are carried **as `FP-014` states them**; the titles are section labels added here.
+`FP-014`'s [`business-rules.md`](../17-features/FP-014-subscription/business-rules.md) records each
+rule's authority and the decisions it derives from.
+
+---
+
+## BR-SUB-0001
+
+### Title
+
+One Subscription In Force
+
+A tenant has **at most one subscription in force at any instant**. The record in force at instant `T` is the one with the greatest `EffectiveFromUtc` not later than `T` — derived by ordering, never stored
+
+---
+
+## BR-SUB-0002
+
+### Title
+
+Subscription History Is Append-Only
+
+A subscription record is **never modified and never deleted**. A plan change, a renewal and a billing-currency change are each a new record
+
+---
+
+## BR-SUB-0003
+
+### Title
+
+History Is Appended, Never Inserted Into
+
+A new subscription record's `EffectiveFromUtc` is **strictly greater** than that tenant's current maximum. History is appended to, never inserted into
+
+---
+
+## BR-SUB-0004
+
+### Title
+
+Subscription Administration Is Platform-Plane
+
+**No tenant-plane actor may create, amend or delete** a subscription, plan, grant or invoice, whatever permissions it holds
+
+---
+
+## BR-SUB-0005
+
+### Title
+
+Entitlement Grants Only Raise
+
+An entitlement grant may only **raise**. Resolved entitlement is `plan ∪ grants` for modules and `max(plan, grants)` for every cap
+
+---
+
+## BR-SUB-0006
+
+### Title
+
+Metering Is Judged Against The Record In Force
+
+A metered quantity is judged against **the subscription record in force when the quantity was observed**, not against the record in force now
+
+---
+
+## BR-SUB-0007
+
+### Title
+
+Unentitled Modules Are Refused Before The Handler
+
+A request to a route belonging to a module the tenant is not entitled to is **refused with `403`** before the handler runs
+
+---
+
+## BR-SUB-0008
+
+### Title
+
+Platform-Plane Routes Are Never Gated
+
+**Platform-plane routes are never subject to module enablement** — authentication, tenant selection, refresh, logout, platform support and the subscription surface itself stay reachable
+
+---
+
+## BR-SUB-0009
+
+### Title
+
+Disabled-Module Permissions Are Ineffective
+
+A permission belonging to a module the tenant is not entitled to is **neither grantable nor effective**, so a stale role assignment cannot reach a disabled module
+
+---
+
+## BR-SUB-0010
+
+### Title
+
+Losing Entitlement Never Destroys Data
+
+Losing entitlement to a module **does not delete, alter or hide** the tenant's data in it. The data is unreachable, not destroyed, and returns intact on re-entitlement
+
+---
+
+## BR-SUB-0011
+
+### Title
+
+Entitlement Is Never A Token Claim
+
+**Entitlement never appears in an access token** and is resolved server-side on every request
+
+---
+
+## BR-SUB-0012
+
+### Title
+
+Entitlement Changes Take Effect Immediately
+
+An entitlement change **takes effect without re-issuing a token and without restarting the host**. The cache is invalidated on change and never refreshed on a timer
+
+---
+
+## BR-SUB-0013
+
+### Title
+
+Expiry Refuses Login, Distinctly
+
+A tenant whose subscription term has **expired cannot log in**, and that refusal is **distinct** from a refusal on tenant status
+
+---
+
+## BR-SUB-0014
+
+### Title
+
+Subscription State And Tenant Status Are Orthogonal
+
+Subscription state and `TenantStatus` are **orthogonal**. Expiry never writes `TenantStatus`, and no commercial reason is added to `TenantStatusChangeReason`
+
+---
+
+## BR-SUB-0015
+
+### Title
+
+No Subscription Means No Entitlement
+
+A tenant with **no subscription record has no entitlement** and reaches no gated module. There is no default plan
+
+---
+
+## BR-SUB-0016
+
+### Title
+
+Plans Are Retired, Never Deleted
+
+A plan is **retired, never deleted**, because historical subscription records reference it
+
+---
+
+## BR-SUB-0017
+
+### Title
+
+Issued Invoices Are Never Edited
+
+An **issued invoice is never edited**. A correction is a credit note, never an amendment
+
+---
+
+## BR-SUB-0018
+
+### Title
+
+Invoice Numbers Are Never Reused
+
+An **invoice number is never reused**, including the number of a voided invoice
+
+---
+
+## BR-SUB-0019
+
+### Title
+
+Tenants Read Modules, Not Commercial Terms
+
+A tenant may read **which modules it has**; it may not read price, invoice, payment state or any other commercial term
+
+---
+
+## BR-SUB-0020
+
+### Title
+
+No Cardholder Data
+
+**No cardholder datum is stored, transmitted in any request or response, or logged** by this package
+
+---
+
+## BR-SUB-0021
+
+### Title
+
+Seat Caps Are Enforced At Admission
+
+A seat cap is enforced **at admission and nowhere else**. Creating or activating a user beyond the tenant's resolved cap is refused **at that moment**, naming the cap, the current count and the plan. **Login is never refused for a seat cap.** An excess arriving by plan downgrade is **billed and reported**, never enforced against anyone already working
+
+---
 # Future Modules
 
 Business Rules for the following modules will be added in future releases:

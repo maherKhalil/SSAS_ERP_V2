@@ -11,18 +11,19 @@ Ledger's and live in the Tenant ERP database (`DEC-SUB-0001`).
 
 ## Settled before any table is drawn
 
-**Residency — the Platform database, schema `platform`.** Not chosen here; inherited. `ADR-017:162`
-places "Subscription/plan metadata when introduced" in the Platform-database residency list, and
-`ADR-017:475` classifies subscription plans and module definitions as **Class A — Platform global**,
+**Residency — the Platform database, schema `platform`.** Not chosen here; inherited. `ADR-017`
+§ Platform database boundary (`:164`) places "Subscription/plan metadata when introduced" in the
+Platform-database residency list, and § Lookup classification, class **A — Platform global** (`:477`)
+classifies subscription plans and module definitions as
 "Stored in the Platform database. **Tenants cannot create global rows**" (`DEC-SUB-0003`,
 `REQ-SUB-0003`). `OD-SUB-0004` ruled the per-tenant **assignment** to the same database, resolved per
 request behind a cache **invalidated on subscription change, never TTL-refreshed**.
 
-**And it is load-bearing, not incidental.** `ADR-017:164` places subscription/plan metadata in the
-**Platform** database, and `ADR-017:169` makes Platform-database operation independent of
-tenant-database routing or availability; `:376`–`:378` require a controlled unavailability result
-rather than a fallback (`DEC-SUB-0004`, `REQ-SUB-0005`). **Amended by `DEC-L-024`** — this formerly
-cited `ADR-021:207`, which named "account, **subscription**, and other platform-only pages" in the
+**And it is load-bearing, not incidental.** `ADR-017` § Platform database boundary places subscription/plan
+metadata in the **Platform** database and makes Platform-database operation independent of
+tenant-database routing or availability (`:164`, `:169`); § No automatic fallback (`:376`–`:378`)
+requires a controlled unavailability result rather than a fallback (`DEC-SUB-0004`, `REQ-SUB-0005`). **Amended by `DEC-L-024`** — this formerly
+cited `ADR-021` § 10 Outage behaviour, which named "account, **subscription**, and other platform-only pages" in the
 word, but `ADR-021` is `Proposed` and `:37` conditions its acceptance on a customer-hosted deployment
 being contracted. The derivation is now two passages rather than one quotation. Because enablement gates *every* request under `REQ-SUB-0011`, an entitlement read
 that touched the Tenant ERP database would take a tenant's whole API down the moment its SQL Server
@@ -66,7 +67,7 @@ keys.
 
 Unique: `(NormalizedPlanCode)` — **plans are Platform-global, so the key carries no `TenantId`.**
 That is the visible difference between this table and every tenant-owned table in the product, and
-it is `ADR-017:475`'s "tenants cannot create global rows" expressed as a constraint.
+it is `ADR-017` § Lookup classification's "tenants cannot create global rows" expressed as a constraint.
 
 A plan is **never deleted**; it is `Retired`. Historical subscription records point at it and
 `REQ-SUB-0028`'s reconstruction needs it to still resolve.

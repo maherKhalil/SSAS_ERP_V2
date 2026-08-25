@@ -37,7 +37,7 @@ avoid asking.
 | **`OD-SUB-0001`** scope | **Owner** | **E + C — the whole plane.** Enablement and the commercial record together. All 28 `REQ-SUB` in force; no `OD-SUB` collapses. (`DEC-L-004`, `DEC-L-006`.) |
 | **`OD-SUB-0002`** identifier space | Architect | **A new `REQ-SUB` prefix**, added to `Requirement-Numbering.md` **at ratification** — the `REQ-ATT` precedent from FP-013. The ruled scope is E+C, and invoicing, payment capture, metering and pricing are not "Platform" in the sense `REQ-PLT` uses it; a 28-requirement space with its own lifecycle would swamp it. |
 | **`OD-SUB-0003`** sequencing | Architect | **Yes — the enablement gate ships before the next module.** The violation of `BR-PLT-0008` grows monotonically and the retrofit is never cheaper later. |
-| **`OD-SUB-0004`** assignment residency | Architect | **Assignment lives in the Platform database, resolved per request, behind a cache invalidated on subscription change — never a TTL refresh.** Cache invalidation is part of `REQ-SUB-0009`'s test surface, not an implementation detail. A tenant-database projection contradicts `DEC-SUB-0004`; a scheduled refresh makes `REQ-SUB-0009` false by construction, and a TTL cache is that same failure wearing a different hat. **Authority amended by `DEC-L-024`:** the outage constraint this ruling relies on to exclude a tenant-database projection now derives from `ADR-017:169` and `:376`–`:378` rather than `ADR-021:207`. **The ruling itself is unchanged.** |
+| **`OD-SUB-0004`** assignment residency | Architect | **Assignment lives in the Platform database, resolved per request, behind a cache invalidated on subscription change — never a TTL refresh.** Cache invalidation is part of `REQ-SUB-0009`'s test surface, not an implementation detail. A tenant-database projection contradicts `DEC-SUB-0004`; a scheduled refresh makes `REQ-SUB-0009` false by construction, and a TTL cache is that same failure wearing a different hat. **Authority amended by `DEC-L-024`:** the outage constraint this ruling relies on to exclude a tenant-database projection now derives from `ADR-017` § Platform database boundary and § No automatic fallback (`:169`, `:376`–`:378`) rather than `ADR-021` § 10 Outage behaviour. **The ruling itself is unchanged.** |
 | **`OD-SUB-0005`** what a module is | Architect | **The unit that already carries exactly one `IPermissionCatalogContributor` and one `Add*Module()` registration** — today HR, Finance/GL, Payroll, Attendance. **Not** the route group, **not** the assembly. Each declares a stable module key. Verified against the code: four contributors, seventeen route groups, because HR alone mounts seven. |
 | **`OD-SUB-0006`** disabled-module response | **Owner (round 2)** | **403 Forbidden.** The route exists; this tenant may not reach it. Chosen over 404 **with the disclosure cost accepted knowingly** — a tenant can enumerate the product surface by probing, and in exchange support can answer "why can't I reach payroll" from the response rather than from server logs. |
 | **`OD-SUB-0007`** what "menus" binds to | Architect | **`REQ-SUB-0014`'s server-provided enabled-module set, and nothing client-side.** The product's obligation is to publish the set truthfully; rendering is the client's. The product cannot enforce a menu it does not draw, and a UI assertion would not make `BR-PLT-0008` testable. |
@@ -242,7 +242,7 @@ pointing at nothing.
 **Why the wide reading is the right one, and why this is not a guess — it is document order.**
 `BR-SUB-0020` was written in T-007, commit `187445a` at 16:19. `ADR-029` was written in T-010, commit
 `f03c5ff` at 20:43 — **more than four hours later** — and it rules that no cardholder datum enters
-**SSAS**, not the commercial plane and not this package (`ADR-029` Decision 1; `DEC-L-018`). The one
+**SSAS**, not the commercial plane and not this package (`ADR-029` § Decision 1; `DEC-L-018`). The one
 commit that touched this file in between, `d1b38c7` (T-013), added `BR-SUB-0021` and did not revisit
 `BR-SUB-0020`.
 
@@ -251,8 +251,12 @@ the sentence was never looked at again. Recorded because ordering is invisible l
 seeing a package rule and an ADR disagree has no way to tell which came first, and would reasonably
 assume the narrower one was deliberate.
 
-**No ledger identifier was minted for this amendment.** The architect ruled it in the T-028 issue and
-assigned no `DEC-L`; the highest on the board is `DEC-L-025`. Minting one is not the coder's act.
+**This amendment is `DEC-L-026`, and the number arrived after the amendment did.** It was made in
+T-028 carrying no ledger identifier, because the architect had ruled it without assigning one and
+minting a `DEC-L` is not the coder's act — the record said so at the time. The number was assigned
+when T-029 was issued, and is recorded here rather than back-dated: **the ordering is itself the kind
+of fact `DEC-L-026` was ruled on**, and a record reading as though the number had always existed would
+reproduce, one level up, the exact relic this amendment corrected.
 
 ---
 
@@ -264,3 +268,4 @@ assigned no `DEC-L`; the highest on the board is `DEC-L-025`. Minting one is not
 | 1.1 | 2026-08-25 | Solution Architecture Team | **Amendment under `DEC-L-024`.** No requirement, rule or ruling changed. `ADR-021` is `Proposed` and conditions its own acceptance on a customer-hosted deployment being contracted (`:37`), so it does not bind; every citation of it in `requirements.md`, `business-rules.md` and `decisions-open.md` is re-pointed to `ADR-017:164`, `:169` and `:376`–`:378`, which carry the same conclusion in two steps rather than one. `OD-SUB-0004`'s entry records the moved authority. Open concern 3 is closed. |
 | 1.2 | 2026-08-25 | Solution Architecture Team | Completes the `DEC-L-024` re-point. `data-model.md` and `README.md`'s outage paragraph now derive from `ADR-017:164`, `:169` and `:376`–`:378`; the ratification banner's count of open concerns is corrected from three to two, concern 3 having been closed. No requirement, rule or ruling changed. |
 | 1.3 | 2026-08-25 | Solution Architecture Team | Amends `BR-SUB-0020`'s scope from "by this package" to "anywhere in SSAS", the boundary `ADR-029` Decision 1 actually rules. **The prohibition is unchanged**; only the boundary becomes explicit. Recorded with the commit ordering that makes the original phrasing a relic — `BR-SUB-0020` predates `ADR-029` by four hours and was never revisited. The master `Business-Rules.md` copy is updated to match, so the two do not diverge. |
+| 1.4 | 2026-08-25 | Solution Architecture Team | Records that the `BR-SUB-0020` amendment is **`DEC-L-026`** — a number assigned after the amendment was made, and recorded as such rather than back-dated. Converts this file's live `ADR-017` and `ADR-029` citations to section anchors with line numbers kept beside them (`DEC-L-028`); the Revision History rows below are left as written, because they record what was cited at the time. No decision changed. |

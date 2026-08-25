@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Domain.Branches;
@@ -115,6 +116,58 @@ public sealed class PlatformDbContext(
     PreventTenantStorageRegistryDeletion();
     PromoteAssignmentOwners();
     return base.SaveChangesAsync(cancellationToken);
+  }
+
+  // ---- APPEND-ONLY RECORDS ARE NEVER UPDATED AND NEVER DELETED, ON THIS SIDE TOO (FP-014, AC-SUB-0044).
+  //
+  // `TenantDbContext` has carried this rule since FP-006C3 and the Platform database has not, because
+  // until now no Platform entity was append-only. `OD-SUB-0008` rules the subscription history append-only
+  // and `ADR-017` places that history HERE — so the ruling would otherwise have rested on a mechanism that
+  // does not exist on the side of the product where the data lives. **`IAppendOnlyEntity` without this
+  // guard is the appearance of immutability and none of it**, which is worse than not claiming it: the
+  // interface would be present and a reviewer would stop reading.
+  //
+  // ---- WHY THIS HOOKS THE INNERMOST OVERLOADS AND NOT THE CONVENIENCE ONE ABOVE.
+  //
+  // `PersistenceDbContext` states the rule and the reason: EF Core's chain is `SaveChangesAsync(ct)` ->
+  // `SaveChangesAsync(bool, ct)` and `SaveChanges()` -> `SaveChanges(bool)`, both by virtual dispatch, so a
+  // rule hung on a convenience overload alone leaves the inner one able to commit straight past it.
+  //
+  // `TenantDbContext` reaches the same coverage differently — its async funnel calls the guard and its
+  // synchronous overload throws outright, for cutover reasons that do not apply here. Platform has no
+  // reason to refuse synchronous writes, so it fences both innermost overloads instead. **What is mirrored
+  // is the property that no path bypasses the rule, not the line count.**
+  //
+  // The other seven guards on this context still hang on `SaveChangesAsync(ct)` above and are therefore
+  // reachable past — that is pre-existing, out of this task's scope, and reported rather than silently
+  // changed.
+  public override Task<int> SaveChangesAsync(
+    bool acceptAllChangesOnSuccess,
+    CancellationToken cancellationToken = default)
+  {
+    PreventAppendOnlyMutation();
+    return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+  }
+
+  public override int SaveChanges(bool acceptAllChangesOnSuccess)
+  {
+    PreventAppendOnlyMutation();
+    return base.SaveChanges(acceptAllChangesOnSuccess);
+  }
+
+  // The refusal names no entity type: it is a rule about a classification, and the message a caller sees
+  // should describe the rule rather than the row. Identical in shape, exception type and text to
+  // `TenantDbContext.PreventAppendOnlyMutation` — one behaviour, not two dialects of one.
+  private void PreventAppendOnlyMutation()
+  {
+    var mutated = ChangeTracker.Entries<IAppendOnlyEntity>()
+      .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+    if (mutated)
+    {
+      throw new InvalidOperationException(
+        "Append-only records cannot be modified or deleted after they are written.");
+    }
   }
 
   // Routing history is retained operational state: an assignment is superseded by setting EndedUtc, never

@@ -13,9 +13,10 @@ attributed, because reopening a commercial decision is a different act from reop
   `Requirement-Numbering.md` (`OD-SUB-0002` ruled they arrive at ratification), `BR-SUB-0001`…`0021`
   are not yet promoted to the master `Business-Rules.md` under `DEC-L-012`, and the commercial plane
   still has **no `Product-Roadmap.md` entry**.
-- **Three concerns are open at ratification** — the undefined seat, `REQ-SUB-0027`'s two enforcement
-  semantics, and this package's dependence on the still-`Proposed` `ADR-021`. All three are recorded
-  at the foot of the ratification file.
+- **Two concerns are open at ratification** — the undefined seat and `REQ-SUB-0027`'s two enforcement
+  semantics. Both are recorded at the foot of the ratification file. A third, this package's
+  dependence on the still-`Proposed` `ADR-021`, was **closed by `DEC-L-024`** (2026-08-25): the ADR
+  stays `Proposed` and every citation of it here now derives from `ADR-017`, which is `Accepted`.
 
 `ADR-029` (tokenized payment capture) was written for this package and is `Accepted`. The tax question
 `OD-SUB-0016` raised remains unauthored anywhere in the repository.
@@ -157,9 +158,11 @@ per-tenant *assignment* remains genuinely open — see `OD-SUB-0004`. This is a 
 premise the task was issued under**, which assumed residency was wholly undecided; it is narrower
 than that, and narrower is better.
 
-**`ADR-021` requires the subscription surface to survive a tenant-database outage.** During a
-customer-managed database outage, "account, subscription, and other platform-only pages" must
-continue to work (`:207`). A design that reads entitlement from the tenant ERP database fails that
+**`ADR-017` requires the subscription surface to survive a tenant-database outage.** Subscription
+and plan metadata is Platform-database data (`:164`), and Platform-database operation "never
+depends on tenant-database routing or availability" (`:169`); an unavailable tenant database
+yields a controlled unavailability result rather than a fallback (`:376`–`:378`). **Amended by
+`DEC-L-024`** — formerly `ADR-021:207`, which is `Proposed` and does not yet bind. A design that reads entitlement from the tenant ERP database fails that
 requirement the first time a customer's VPN drops.
 
 **`FP-002` forbids entitlements in the access token.** The token model has **exact claim cardinality**

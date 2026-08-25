@@ -8,6 +8,22 @@ Status
 
 Draft
 
+Lifecycle authority
+
+Approved FP-002 (`docs/17-features/FP-002-authentication-token-lifecycle/`) supersedes this Draft wherever this document describes credential verification, login, post-authentication tenant selection, session and JWT access-token issuance, token claim content, refresh-token rotation, logout, revocation, password reset, lockout, or the authentication API routes. FP-002's `/api/platform/auth/*` routes supersede every `/api/auth/*` route named below. Where this document and FP-002 disagree, FP-002 governs: this document states the access token carries a Company ID, and FP-002 excludes `CompanyId` from token claims.
+
+Approved FP-001 (`docs/17-features/FP-001-identity-access/`) supersedes this Draft wherever this document describes users, actors, roles, role assignment, or the permission model.
+
+Approved FP-003 (`docs/17-features/FP-003-tenant-lifecycle/`) supersedes this Draft wherever this document describes Tenant status or tenant authentication eligibility. Only an `Active` Tenant is authentication-eligible.
+
+Approved FP-004 (`docs/17-features/FP-004-localization/`) supersedes this Draft wherever this document describes language selection or language resolution.
+
+Approved FP-005 (`docs/17-features/FP-005-company-legal-entity/`) supersedes this Draft wherever this document describes Company identity or Company status.
+
+The expired-subscription login rule is no longer stated here. `OD-SUB-0009` ruled it binding and it is carried as `REQ-SUB-0018` in FP-014 (`docs/17-features/FP-014-subscription/`), an analysis package not yet approved for implementation. This document cites that requirement and does not restate it, so that one ruled rule does not exist in two places to drift apart.
+
+The remaining Remember Me, theme selection, whether Company status gates login, audit, notification, and future-enhancement material below is deferred and non-authoritative until covered by an approved feature package. FP-002 names immutable audit storage, notification delivery, MFA and external identity providers among its own deferrals, so no approved package specifies them today. This account is what a section-by-section sweep on 2026-08-25 found; it is not a claim of exhaustiveness.
+
 ---
 
 # Requirement References
@@ -120,7 +136,7 @@ Suspended tenants cannot login.
 
 Inactive companies cannot login.
 
-Expired subscriptions cannot login.
+Subscription expiry and login: see `REQ-SUB-0018` (ruled binding by `OD-SUB-0009`).
 
 ---
 

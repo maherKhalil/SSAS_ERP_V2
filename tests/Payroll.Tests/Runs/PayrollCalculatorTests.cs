@@ -1,3 +1,4 @@
+using SSAS.Attendance.Contracts.Summaries;
 using SSAS.Payroll.Domain.Elements;
 using SSAS.Payroll.Domain.Runs;
 
@@ -143,16 +144,80 @@ public sealed class PayrollCalculatorTests
         name.Contains("Statutory", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("Bracket", StringComparison.OrdinalIgnoreCase));
   }
+  // ================================================================================================
+  // REPLACED, NOT DELETED (FP-013, DEC-ATT-0012).
+  // ================================================================================================
+  //
+  // This slot held `No_attendance_driven_behaviour_exists_because_attendance_is_unbuilt`, which asserted
+  // that no `PayElementBehaviour` name contained *Hour*, *Overtime* or *Absence*. It guarded `DEC-PAY-0002`:
+  // overtime and absence deduction could not exist because the INPUT did not exist.
+  //
+  // **FP-013 built the input, so the guard went red — correctly.** The fact it protected has changed.
+  //
+  // It is REPLACED rather than deleted, on exactly the pattern FP-012 used when GL's vacuous
+  // `There_is_no_gl_contracts_assembly` was superseded by two guards that load the assembly by reference.
+  // The two successors below assert the NEW positive truth, so the principle `DEC-PAY-0002` expressed —
+  // **no behaviour without an input** — is preserved rather than discarded along with its old wording.
+  //
+  // **A green suite obtained by deleting the test that went red is not a green suite.**
+
+  [Fact]
+  [Trait("Decision", "DEC-ATT-0012")]
+  [Trait("Requirement", "REQ-ATT-0022")]
+  public void The_attendance_driven_behaviours_exist_now_that_attendance_supplies_them()
+  {
+    // The positive half. `DEC-PAY-0002` is lifted for exactly two behaviours, and both have a declared
+    // input on `AttendanceSummaryResult`.
+    var names = Enum.GetNames<PayElementBehaviour>();
+
+    Assert.Contains(nameof(PayElementBehaviour.OvertimeHourly), names);
+    Assert.Contains(nameof(PayElementBehaviour.UnpaidAbsenceDeduction), names);
+
+    // And the inputs they consume are actually on the contract — not merely believed to be. A behaviour
+    // whose named input had been renamed away would still pass a name-only assertion.
+    var summary = typeof(AttendanceSummaryResult).GetProperties().Select(property => property.Name).ToArray();
+    Assert.Contains(nameof(AttendanceSummaryResult.OvertimeQuantityByTier), summary);
+    Assert.Contains(nameof(AttendanceSummaryResult.UnpaidAbsenceQuantity), summary);
+  }
 
   [Fact]
   [Trait("Decision", "DEC-PAY-0002")]
-  public void No_attendance_driven_behaviour_exists_because_attendance_is_unbuilt()
+  public void No_pay_element_behaviour_exists_without_an_input_this_product_has()
   {
+    // ---- THE PRINCIPLE, PRESERVED AND STATED POSITIVELY.
+    //
+    // `DEC-PAY-0002` was never "no overtime"; it was **no behaviour whose input does not exist**. Attendance
+    // now supplies hours, tiers and unpaid days — so overtime and absence deduction are permitted, and
+    // SHIFT DIFFERENTIAL and LATENESS are still not, because `AttendanceRecord` records neither.
+    //
+    // `DEC-PAY-0016` independently bars tax and statutory brackets: V1 is jurisdiction-neutral, and
+    // Attendance did nothing to change that.
     Assert.DoesNotContain(
       Enum.GetNames<PayElementBehaviour>(),
-      name => name.Contains("Hour", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains("Overtime", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains("Absen", StringComparison.OrdinalIgnoreCase));
+      name => name.Contains("Shift", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Differential", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Late", StringComparison.OrdinalIgnoreCase));
+  }
+
+  [Fact]
+  [Trait("Requirement", "REQ-ATT-0022")]
+  public void Payroll_reaches_attendance_only_through_the_published_contract()
+  {
+    // `DEC-ATT-0002` and `ADR-012`. The contracts assembly is loaded BY REFERENCE — via a type — rather than
+    // by name, so a rename cannot make this guard silently vacuous. That is the failure mode FP-012 found in
+    // GL's original absence guard.
+    var contracts = typeof(IAttendanceSummary).Assembly.GetName().Name;
+    Assert.Equal("SSAS.Attendance.Contracts", contracts);
+
+    var payrollReferences = typeof(PayrollCalculator).Assembly
+      .GetReferencedAssemblies()
+      .Select(assembly => assembly.Name)
+      .ToArray();
+
+    // The DOMAIN does not reference the contracts at all: the handler unpacks the contract into plain values
+    // before the calculator sees them, so `ADR-012`'s boundary is kept at the layer where it costs nothing.
+    Assert.DoesNotContain(payrollReferences, name =>
+      name is not null && name.StartsWith("SSAS.Attendance", StringComparison.Ordinal));
   }
 
   [Fact]

@@ -38,6 +38,8 @@
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <Private>false</Private>
     </ProjectReference>
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Application\SSAS.Attendance.Application.csproj" />
   </ItemGroup>
 
   <!-- The apphost the harness starts is named by the PLATFORM, not by this repository: `.exe` on Windows and
@@ -50,8 +52,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <AssemblyMetadata Include="VerificationProcessHostPath"
-      Value="$(MSBuildThisFileDirectory)..\TestSupport\SSAS.TestSupport.VerificationHost\bin\$(Configuration)\net8.0\$(VerificationHostFileName)" />
+    <AssemblyMetadata Include="VerificationProcessHostPath" Value="$(MSBuildThisFileDirectory)..\TestSupport\SSAS.TestSupport.VerificationHost\bin\$(Configuration)\net8.0\$(VerificationHostFileName)" />
   </ItemGroup>
 
 </Project>

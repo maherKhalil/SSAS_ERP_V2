@@ -17,6 +17,13 @@
     -->
     <ProjectReference Include="..\..\Finance\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj" />
     <ProjectReference Include="..\..\HR\SSAS.HR.Contracts\SSAS.HR.Contracts.csproj" />
+
+    <!--
+      FP-013. The attendance side of the same rule: SSAS.Attendance.Contracts and NOTHING else. Payroll
+      consumes per-period totals through IAttendanceSummary and has no reference to any Attendance
+      implementation assembly, which an architecture guard asserts in both directions.
+    -->
+    <ProjectReference Include="..\..\Attendance\SSAS.Attendance.Contracts\SSAS.Attendance.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -23,6 +23,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Host\SSAS.Host.API\SSAS.Host.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.API\SSAS.Attendance.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -233,7 +233,7 @@ for CFG in Debug Release; do
   dotnet build SSAS.ERP.sln -c "$CFG" --nologo -v m > "$LOGS/build-$CFG.log" 2>&1
   grep -E "Warning\(s\)|Error\(s\)|Build succeeded|Build FAILED|error" "$LOGS/build-$CFG.log" | head -20
 
-  for P in Architecture Platform HR API Finance Payroll Integration; do
+  for P in Architecture Platform HR API Finance Payroll Attendance Integration; do
     case $P in
       Architecture) F=tests/Architecture.Tests/SSAS.Architecture.Tests.csproj;;
       Platform)     F=tests/Platform.Tests/SSAS.Platform.Tests.csproj;;
@@ -241,6 +241,9 @@ for CFG in Debug Release; do
       API)          F=tests/API.Tests/SSAS.API.Tests.csproj;;
       Finance)      F=tests/Finance.Tests/SSAS.Finance.Tests.csproj;;
       Payroll)      F=tests/Payroll.Tests/SSAS.Payroll.Tests.csproj;;
+      # FP-013. Added IN THE CREATING COMMIT rather than after a gate ran without it -- a suite the gate does
+      # not name is a suite nobody runs, and its absence looks exactly like green.
+      Attendance)   F=tests/Attendance.Tests/SSAS.Attendance.Tests.csproj;;
       Integration)  F=tests/Integration.Tests/SSAS.Integration.Tests.csproj;;
     esac
 

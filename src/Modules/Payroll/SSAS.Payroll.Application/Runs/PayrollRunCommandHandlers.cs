@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.Attendance.Contracts.Summaries;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.GL.Contracts.Posting;
@@ -144,6 +145,7 @@ public sealed class CalculatePayrollRunCommandHandler(
   IPayElementRepository elements,
   IEmployeeCompensationRepository compensation,
   IEmployeeRoster roster,
+  IAttendanceSummary attendanceSummary,
   IPayrollScopeResolver scope,
   ITenantUnitOfWork unitOfWork,
   ICurrentUser currentUser)
@@ -198,8 +200,39 @@ public sealed class CalculatePayrollRunCommandHandler(
         continue;
       }
 
+      // ---- THE ATTENDANCE INPUT (FP-013, REQ-ATT-0022), THROUGH THE CONTRACT AND NOTHING ELSE.
+      //
+      // `DEC-ATT-0002` and `ADR-012`: Payroll references `SSAS.Attendance.Contracts` and NOTHING under
+      // `SSAS.Attendance.Domain`, `.Application`, `.Infrastructure` or `.API`. An architecture guard asserts
+      // that in both directions.
+      //
+      // The period is named by a DATE inside it (`OD-ATT-0009`) — the pay date, which by `OD-PAY-0002`'s 1:1
+      // alignment falls inside the payroll period. Attendance resolves which of ITS periods covers that
+      // date, so no caller can express a straddle.
+      //
+      // ---- AN OPEN OR ABSENT PERIOD YIELDS ZERO HERE, AND IS REFUSED AT APPROVAL.
+      //
+      // Calculation COMMITS NOTHING and may be repeated — `OD-PAY-0009`'s reasoning, which is why the
+      // sensitivity sits at approval. So an open attendance period does not fail here; it produces a run
+      // with no attendance-driven lines, and `ApprovePayrollRunCommandHandler` refuses to bless it.
+      //
+      // Getting this ordering backwards would be worse in both directions: refusing at calculation would
+      // stop an operator previewing anything before attendance closed, and refusing NOWHERE would let a run
+      // computed from an open period be approved and posted to the ledger.
+      var attendance = await attendanceSummary.GetForPeriodAsync(
+        run.CompanyId, record.EmployeeId, period.PayDateUtc, cancellationToken);
+
+      var overtimeByTier = attendance.Status == AttendanceSummaryStatus.Available
+        ? attendance.OvertimeQuantityByTier
+        : null;
+
+      var unpaidAbsence = attendance.Status == AttendanceSummaryStatus.Available
+        ? attendance.UnpaidAbsenceQuantity
+        : 0m;
+
       inputs.Add(new PayrollEmployeeInput(
-        record.EmployeeId, record.EmploymentDateUtc, record.TerminationDateUtc, inForce));
+        record.EmployeeId, record.EmploymentDateUtc, record.TerminationDateUtc, inForce,
+        overtimeByTier, unpaidAbsence));
     }
 
     var active = await elements.GetActiveForCompanyAsync(run.CompanyId, cancellationToken);
@@ -231,6 +264,7 @@ public sealed class ApprovePayrollRunCommandHandler(
   IPayrollPeriodRepository periods,
   IPayElementRepository elements,
   IJournalPoster ledger,
+  IAttendanceSummary attendanceSummary,
   IPayrollScopeResolver scope,
   ITenantUnitOfWork unitOfWork,
   ICurrentUser currentUser)
@@ -285,6 +319,44 @@ public sealed class ApprovePayrollRunCommandHandler(
       {
         return Result.Failure(PayElementErrors.Unmapped(element.Code.Value));
       }
+    }
+
+    // ================================================================================================
+    // THE ATTENDANCE GATE (FP-013, OD-ATT-0010) — THE InspectPostingWindowAsync PATTERN, INVERTED.
+    // ================================================================================================
+    //
+    // `OD-ATT-0010` ruled (a): **attendance periods close, and Payroll refuses an open one.**
+    //
+    // The reason is not tidiness. A run calculated from a period still being edited is a snapshot of a
+    // moving target — and approval is the assertion that these are the amounts these people will be paid,
+    // after which the lines are append-only and the run posts to the ledger. **A wrong snapshot becomes a
+    // posted journal entry, and reversing one of those is a business event rather than a fix.**
+    //
+    // Checked HERE and not at calculation, on `OD-PAY-0009`'s reasoning: calculation commits nothing and may
+    // be repeated, so an operator can preview a run while attendance is still being recorded. Approval is
+    // where the world stops moving, so approval is where it must have stopped.
+    //
+    // ---- WHY IT IS AN INSPECTION AND NOT AN EXCEPTION.
+    //
+    // `IJournalPoster.InspectPostingWindowAsync` let Payroll ask GL whether a period was open BEFORE
+    // composing a journal, so the refusal arrived before the work rather than after it. This is the same
+    // shape pointing the other way, and `AttendanceSummaryStatus` is a closed enum for the same reason
+    // `JournalPostingStatus` is: every outcome is a value the compiler can see a caller ignoring.
+    //
+    // Named by the PAY DATE, which under `OD-PAY-0002`'s 1:1 alignment falls inside the payroll period —
+    // the same date the calculation used, so the gate and the data cannot disagree about which attendance
+    // period is meant.
+    var attendance = await attendanceSummary.InspectPeriodAsync(
+      run.CompanyId, period.PayDateUtc, cancellationToken);
+
+    // `PeriodNotFound` is NOT refused. A company that records no attendance at all has no attendance period,
+    // and refusing would make this feature a prerequisite for running payroll — which would break every
+    // existing tenant on the day it shipped. The refusal is narrow on purpose: a period that EXISTS and is
+    // still OPEN is the dangerous state, because it means somebody is recording into the numbers this run
+    // was computed from.
+    if (attendance.Status == AttendanceSummaryStatus.PeriodOpen)
+    {
+      return Result.Failure(PayrollErrors.AttendancePeriodOpen);
     }
 
     // The balancing credit must be mapped too, or the journal cannot balance and `BR-GL-0001` would refuse

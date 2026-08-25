@@ -18,6 +18,8 @@
     <ProjectReference Include="..\..\Modules\Payroll\SSAS.Payroll.API\SSAS.Payroll.API.csproj" />
     <ProjectReference Include="..\..\Modules\Payroll\SSAS.Payroll.Infrastructure\SSAS.Payroll.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Attendance\SSAS.Attendance.API\SSAS.Attendance.API.csproj" />
+    <ProjectReference Include="..\..\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

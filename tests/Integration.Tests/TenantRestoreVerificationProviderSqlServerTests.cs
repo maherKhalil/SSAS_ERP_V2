@@ -550,8 +550,28 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     // assignment table come before the headers they reference; PayrollRuns before PayrollPeriods; and
     // PayrollElements LAST of the seven, because the two line tables AND the assignment table all carry a
     // foreign key to it.
+    // ---- ATTENDANCE (FP-013) JOINS THE BLOCK, AND ITS ABSENCE FAILED THIS TEST OUTRIGHT.
+    //
+    // Seven tables, all referencing Companies, so the DROP of Companies at the foot of this list failed with
+    // "Could not drop object 'tenant.Companies' because it is referenced by a FOREIGN KEY constraint."
+    // Not a subtle failure -- but a hand-maintained list in dependency order is exactly the kind of
+    // inventory a new module is easy to leave out of.
+    //
+    // Same internal rule as the Payroll block: the copy order read backwards. Holidays before their
+    // calendar; records before their period; leave requests and balances before the leave TYPE all three
+    // reference; and the four company-owned roots last.
+    //
+    // AttendanceRecords also references Branches, which this list does not drop -- so the record table must
+    // still precede nothing else on that account, and does not constrain the order further.
     public Task BreakApplicationSchemaAsync() =>
       ExecuteAsync(SourceDatabase, """
+        DROP TABLE [tenant].[AttendanceCalendarHolidays];
+        DROP TABLE [tenant].[AttendanceRecords];
+        DROP TABLE [tenant].[AttendanceLeaveRequests];
+        DROP TABLE [tenant].[AttendanceLeaveBalances];
+        DROP TABLE [tenant].[AttendanceLeaveTypes];
+        DROP TABLE [tenant].[AttendancePeriods];
+        DROP TABLE [tenant].[AttendanceWorkingCalendars];
         DROP TABLE [tenant].[PayrollRunLines];
         DROP TABLE [tenant].[PayrollRunDraftLines];
         DROP TABLE [tenant].[PayrollElementAssignments];

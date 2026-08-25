@@ -48,6 +48,10 @@
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj" />
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.API\SSAS.Attendance.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Application\SSAS.Attendance.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Domain\SSAS.Attendance.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -22,6 +22,16 @@ public static class PayElementErrors
     "Payroll.PayElementCodeConflict",
     "A pay element with this code already exists in this company.");
 
+  public static readonly Error OvertimeTierInvalid = new(
+    "Payroll.PayElementOvertimeTierInvalid",
+    "An overtime tier must be at most 32 characters and cannot contain control characters.");
+
+  // A tier on a non-overtime element would sit in the database looking like configuration while the
+  // calculator never consults it — so it is refused rather than ignored.
+  public static readonly Error OvertimeTierNotApplicable = new(
+    "Payroll.PayElementOvertimeTierNotApplicable",
+    "Only an hourly-overtime pay element carries an overtime tier.");
+
   public static readonly Error NotFound = new(
     "Payroll.PayElementNotFound",
     "The pay element does not exist.");

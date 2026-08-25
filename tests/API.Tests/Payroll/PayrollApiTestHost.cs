@@ -18,6 +18,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
+using SSAS.Attendance.Contracts.Summaries;
 using SSAS.GL.Contracts.Posting;
 using SSAS.HR.Contracts.Employment;
 using SSAS.Host.API.Authentication;
@@ -96,6 +97,9 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
 
   public StubEmployeeRoster Roster { get; } = new();
 
+  // FP-013's third route out of the module. See the stub for why its absence failed every test here.
+  public StubAttendanceSummary Attendance { get; } = new();
+
   public HttpClient Client => client ?? throw new InvalidOperationException("The test host has not started.");
 
   private static string FirstMethodOf(RouteEndpoint endpoint)
@@ -159,6 +163,7 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     // The two doors out of the module, and nothing else from GL or HR is registered at all.
     builder.Services.AddSingleton<IJournalPoster>(Ledger);
     builder.Services.AddSingleton<IEmployeeRoster>(Roster);
+    builder.Services.AddSingleton<IAttendanceSummary>(Attendance);
 
     builder.Services.AddScoped<IPayrollScopeResolver, PayrollScopeResolver>();
     builder.Services.AddScoped<CreatePayElementCommandHandler>();
@@ -205,6 +210,7 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     Runs.Reset();
     Ledger.Reset();
     Roster.Reset();
+    Attendance.Reset();
     UnitOfWork.Failure = null;
   }
 

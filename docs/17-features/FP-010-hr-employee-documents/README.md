@@ -9,6 +9,9 @@ depends_on:
   - ADR-005
   - ADR-020
   - ADR-022
+  # RESERVED, deliberately unwritten — "Binary Content Storage, Custody and Movement".
+  # Required by DEC-DOC-0010; made V5 Document Management's to author by OD-DOC-009 (2026-08-23).
+  # This is a forward reference to a deferred decision, NOT a dependency on a missing file.
   - ADR-028
   - FP-006
   - FP-009

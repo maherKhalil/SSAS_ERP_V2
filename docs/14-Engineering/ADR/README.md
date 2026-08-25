@@ -37,3 +37,4 @@ Every significant architectural decision must be documented before implementatio
 | ADR-027 | Monetary Value Representation and Cross-Module Value-Object Reuse | Accepted |
 | ADR-028 | *Reserved* — Binary Content Storage, Custody and Movement | Not written; V5's to author (`OD-DOC-009`) |
 | ADR-029 | Tokenized Payment Capture and the Cardholder Data Boundary | Accepted |
+| ADR-030 | Identity-to-Employee Mapping | Accepted |

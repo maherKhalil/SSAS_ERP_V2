@@ -3,8 +3,8 @@ id: ADR-017
 title: Tenant Storage Topology and Routing
 category: Architecture Decision Record
 version: 1.6
-status: Proposed
-date: 2026-08-13
+status: Accepted
+date: 2026-08-25
 owner: Solution Architecture Team
 tags:
   - architecture
@@ -32,9 +32,11 @@ used_by:
 
 # Status
 
-**Proposed**
+**Accepted** — 2026-08-25.
 
-Proposed as the storage-topology decision gate that must be resolved **before** substantial tenant-owned ERP persistence (HR, GL, Payroll, Sales, Purchasing, Inventory) is implemented. It does not supersede `ADR-015`/`ADR-016`: the two-plane security model, the platform token profile, and platform-support authority remain in force and are unaffected. It is the parent decision for `ADR-018` (schema health and migration orchestration), `ADR-019` (dynamic placement policy), `ADR-020` (shared-to-dedicated migration and cutover), and `ADR-021` (customer-managed tenant database connectivity and operations).
+It was written as the storage-topology gate to resolve **before** substantial tenant-owned ERP persistence was implemented. That persistence has since shipped — HR, GL, Payroll and Attendance — on this topology, so the gate was passed rather than left open. It remains the parent decision for `ADR-018`, `ADR-019`, `ADR-020` and `ADR-021`, and it does not supersede `ADR-015`/`ADR-016`.
+
+**Evidence:** `TenantDatabase`, `TenantDatabaseAssignment` and `TenantCutoverOperation` ship in `SSAS.Platform.Domain/TenantStorage/`; `TenantCutoverCopyPlan.Build` derives the Shared→Dedicated manifest by reflecting over the `ITenantOwnedEntity` boundary this ADR defines; and `FP-014`'s `DEC-SUB-0003` inherits its residency ruling verbatim, citing `:162` and `:475`, rather than re-deciding it.
 
 ---
 

@@ -24,7 +24,7 @@ Every significant architectural decision must be documented before implementatio
 | ADR-014 | Company / Legal-Entity Ownership and Scoping | Accepted |
 | ADR-015 | Platform-Plane Authentication and Authorization | Accepted |
 | ADR-016 | Platform-Support Bootstrap, Lifecycle, and Authority Administration | Accepted |
-| ADR-017 | Tenant Storage Topology and Routing | Proposed |
+| ADR-017 | Tenant Storage Topology and Routing | Accepted |
 | ADR-018 | Tenant Schema Health and Migration Orchestration | Proposed |
 | ADR-019 | Dynamic Tenant Placement Policy | Proposed |
 | ADR-020 | Shared-to-Dedicated Tenant Migration and Cutover | Proposed |
@@ -33,7 +33,7 @@ Every significant architectural decision must be documented before implementatio
 | ADR-023 | Tenant Branch Model, Authorization and Execution Context | Accepted |
 | ADR-024 | Employee Branch Assignment and Transfer Model | Proposed |
 | ADR-025 | Company Execution Context and Authorization | Proposed |
-| ADR-026 | HR Organizational Structure and Department Hierarchy | Proposed |
-| ADR-027 | Monetary Value Representation and Cross-Module Value-Object Reuse | Proposed |
+| ADR-026 | HR Organizational Structure and Department Hierarchy | Accepted |
+| ADR-027 | Monetary Value Representation and Cross-Module Value-Object Reuse | Accepted |
 | ADR-028 | *Reserved* — Binary Content Storage, Custody and Movement | Not written; V5's to author (`OD-DOC-009`) |
 | ADR-029 | Tokenized Payment Capture and the Cardholder Data Boundary | Accepted |

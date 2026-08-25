@@ -3,8 +3,8 @@ id: ADR-026
 title: HR Organizational Structure and Department Hierarchy
 category: Architecture Decision Record
 version: 1.0
-status: Proposed
-date: 2026-08-20
+status: Accepted
+date: 2026-08-25
 owner: Solution Architecture Team
 tags:
   - hr
@@ -32,11 +32,16 @@ used_by:
 
 # Status
 
-**Proposed**
+**Accepted** — 2026-08-25.
 
-This ADR records decisions proposed by the FP-007A analysis. Three of them (`decision 4`, `decision 9`,
-`decision 10`) depend on owner input recorded as `OD-DEP-001`, `OD-DEP-003` and `OD-DEP-005` in the FP-007
-package. **The ADR should not be accepted until those are answered.**
+This ADR named its own acceptance test: `decision 4`, `decision 9` and `decision 10` depended on owner
+input recorded as `OD-DEP-001`, `OD-DEP-003` and `OD-DEP-005`, and it stated it should not be accepted
+until those were answered. **They were answered, and the test passes.**
+
+**Evidence:** all five FP-007 owner decisions closed on 2026-08-20 — `OD-DEP-001` → `DEC-DEP-0009`
+(fail-loud `BR-HR-0005` enforcement), `OD-DEP-003` → `DEC-DEP-0014`, `OD-DEP-005` → `DEC-DEP-0019`.
+`Department` shipped in PR #45, and `tests/Architecture.Tests/DepartmentApplicationArchitectureTests.cs`
+carries executable guards tagged `[Trait("Decision", "ADR-026")]`.
 
 ---
 

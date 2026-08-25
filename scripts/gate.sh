@@ -28,6 +28,32 @@ set -u
 #     red Integration suite. A gate that reports success on a failing run is worse than one that
 #     reports nothing, because nobody goes looking.
 #
+#     ---- EVERY ABORT PATH EXITS NON-ZERO, AND IT MUST STAY THAT WAY. Do not "tidy" one back to 0.
+#
+#     The four preconditions in `reap_to_zero` exit with DISTINCT codes so a caller can tell them apart:
+#
+#       2  a testhost of ours is already running -- a sibling suite is live
+#       3  a catalog matches the test prefix but does not look like a test catalog
+#       4  the reap left catalogs behind; CatalogLeakGuardTests would fail on them
+#       5  the box is below the memory floor for this mode
+#
+#     A merge rule was built on this file's exit code (`DEC-L-007`: a green gate is merge authority for
+#     code), so a precondition abort that returned 0 would let untested code merge. It does not, and the
+#     reason it does not is that `exit` inside `reap_to_zero` terminates the script rather than the
+#     function -- the function is called plainly from the `for CFG` loop, never in a subshell and never
+#     behind a pipe. **Wrapping that call in a pipeline or `$( )` would silently break all four.**
+#
+#     ---- DO NOT PIPE THIS SCRIPT. `$?` BECOMES THE PIPE'S STATUS, NOT THE GATE'S. Paid for 2026-08-25.
+#
+#     `bash scripts/gate.sh | tail -80` reports exit 0 for an abort that exited 5, because a shell
+#     pipeline yields the status of its LAST command and `tail` succeeded. It also BUFFERS: a 69-minute
+#     run produced no output at all until it finished, so a live gate was indistinguishable from a task
+#     that had produced nothing. Both effects were diagnosed as defects in this script; neither was.
+#
+#     Run it bare and let it stream. If output must be captured, use a redirect -- `bash scripts/gate.sh
+#     2>&1 | tee log` still loses `$?` unless `set -o pipefail` is set in the CALLING shell, so prefer
+#     `bash scripts/gate.sh > log 2>&1` and read the exit code directly.
+#
 #  4. REAP TO ZERO, WITH VERIFIED PRECONDITIONS.
 #     `CatalogLeakGuardTests` asserts no SSAS_ catalog predates the test process -- correct and
 #     deliberately unweakenable. A Phase 1 gate failed it in BOTH configurations because filtered runs
@@ -50,11 +76,24 @@ set -u
 #
 #  7z. TWO MODES, AND THE PAIRING IS THE POINT.
 #
-#     GATE_MODE=FULL (default) -- no parallelism ceiling, memory floor 4096 MB. For a build box.
-#     GATE_MODE=LEAN           -- xUnit.MaxParallelThreads=4, memory floor 2048 MB. For THIS box.
+#     GATE_MODE=LEAN (DEFAULT) -- xUnit.MaxParallelThreads=4, memory floor 2048 MB. For THIS box.
+#     GATE_MODE=FULL           -- no parallelism ceiling, memory floor 4096 MB. For a build box.
 #
 #     **This development machine runs LEAN**, because it hosts resident agent sessions alongside the suite
-#     and cannot supply 4 GB with them running. A CI or build machine runs FULL.
+#     and cannot supply 4 GB with them running. A CI or build machine sets FULL explicitly.
+#
+#     LEAN BECAME THE DEFAULT ON 2026-08-25, and the reason is worth keeping. This note already said the
+#     machine runs LEAN while the code defaulted to FULL, so the correct invocation was the one nobody
+#     types -- a plain `bash scripts/gate.sh` aborted on a floor this box cannot meet. Documentation that
+#     contradicts its own default is a trap with a paper trail.
+#
+#     MEASURED ON THIS BOX UNDER LEAN, 2026-08-25 -- use these to estimate, not the FULL figures:
+#       Integration Debug    32 m 21 s      Integration Release  32 m 35 s
+#       whole run, both configurations, seven other suites included:  69 minutes
+#     The two Integration legs landed within FOURTEEN SECONDS of each other, so one measured leg is a
+#     sound basis for estimating the second. The 45-55 minute figure quoted in note 6 is the FULL shape;
+#     estimating a LEAN run from it produced a 90-110 minute projection that had to be revised down
+#     mid-run.
 #
 #     **A floor without its matching ceiling is either theatre or a wall.** Memory scales with the number of
 #     concurrent fixtures, so each floor is calibrated to what the suite actually needs UNDER its ceiling.
@@ -88,6 +127,27 @@ set -u
 #     A busy box is a PRECONDITION FAILURE, not a flaky suite -- the same principle already applied to
 #     foreign testhosts and orphan catalogs, now applied to memory. Checked before EACH leg rather than
 #     once, because Debug's footprint bleeding into Release's start is what the two death timestamps show.
+#
+#     ---- THE FLOOR IS A PRE-LEG PRECONDITION, NOT A RUNNING MINIMUM. Read this before acting on a dip.
+#
+#     A HEALTHY LEAN INTEGRATION LEG ON THIS BOX RUNS DOWN TO ROUGHLY 1,200-1,500 MB FREE MID-LEG, which
+#     is far below the 2048 MB floor and is entirely normal. Measured 2026-08-25, both legs green:
+#
+#       Debug     min_free 1510 MB    peak testhost working set 586 MB    free at leg start 3550 MB
+#       Release   min_free 1232 MB    peak testhost working set 641 MB    free at leg start 2985 MB
+#
+#     The floor asks one question -- "is there room to START this leg" -- and the sampler answers a
+#     different one. A mid-leg reading below the floor is the suite using the memory it was given.
+#
+#     TWO WRONG REACTIONS, BOTH ALREADY ATTEMPTED ONCE. Raising the floor because a running leg dipped
+#     under it would refuse runs that would have passed. Aborting a healthy leg because free memory fell
+#     to 1.2 GB would throw away a completed Debug configuration. On 2026-08-25 a mid-leg reading of
+#     1946 MB was reported as a risk to be acted on; it was normal working depth, and the run finished
+#     green with both legs dipping lower still.
+#
+#     WHAT AN ACTUAL MEMORY DEATH LOOKS LIKE, for contrast, from 2026-08-24: 14 MB and 92 MB free, and
+#     NO TRX AT ALL from either leg -- not a partial one, no blame sequence, no dump. If the TRX is
+#     written and the sampler ran to the end, memory was not the problem.
 #
 #  7b. SQL SERVER IS CAPPED AT 4096 MB ON THIS INSTANCE.
 #     Applied and persisted 2026-08-24 (`sp_configure 'max server memory (MB)', 4096`). It was UNBOUNDED
@@ -136,8 +196,17 @@ reap_count () {
     "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.databases WHERE name LIKE 'SSAS[_]%'" 2>/dev/null | head -1 | tr -d '[:space:]'
 }
 
-# ---- MODE. See note 7z in the header. FULL is the default so a build box needs no ceremony.
-GATE_MODE=${GATE_MODE:-FULL}
+# ---- MODE. See note 7z in the header.
+#
+# LEAN IS THE DEFAULT BECAUSE THIS REPOSITORY LIVES ON THIS BOX. Note 7z has said "this development
+# machine runs LEAN" since it was written, while the code defaulted to FULL -- so the documented-correct
+# invocation was the one nobody types, and getting it wrong aborts on a 4096 MB floor this machine
+# cannot meet with agent sessions resident. That happened on 2026-08-25 and cost a run.
+#
+# Defaulting to the safe mode rather than refusing to run without one: a gate that demands ceremony
+# before it will start is a gate people stop running. A build box sets GATE_MODE=FULL once, in CI
+# configuration, where an explicit value belongs.
+GATE_MODE=${GATE_MODE:-LEAN}
 
 if [ "$GATE_MODE" = "LEAN" ]; then
   # The ceiling travels as a RunSettings argument rather than an xunit.runner.json, so the repository holds
@@ -302,3 +371,19 @@ done
 
 if [ $GATE_FAILED -ne 0 ]; then echo "[GATE RED]"; else echo "[GATE GREEN]"; fi
 echo "[GATE COMPLETE -- full logs and TRX in $LOGS]"
+
+# ---- AND THE VERDICT REACHES `$?`. Do not remove this line. Paid for 2026-08-25.
+#
+# WITHOUT IT A RED GATE EXITED 0. `GATE_FAILED=1` was set, `[GATE RED]` was printed, and then the script
+# fell off its own end -- and a bash script that ends without `exit` returns the status of its last
+# command, which was the `echo` above. Success.
+#
+# That is the failure this file's note 3 describes, arrived at from the other direction: not a pipe
+# swallowing the status, but no status ever being set. And it landed on the one path that matters most,
+# because `DEC-L-007` makes a green gate the merge authority for code -- so a gate whose SUITES FAILED
+# was reporting success to anything reading `$?`.
+#
+# 1 is deliberate and distinct from the precondition codes in note 3: 2, 3, 4 and 5 mean the run never
+# started, 1 means it ran and something failed. A caller can tell "the box was not ready" from "the code
+# is broken", which is the distinction the whole precondition apparatus exists to preserve.
+exit $GATE_FAILED

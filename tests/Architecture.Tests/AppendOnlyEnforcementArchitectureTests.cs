@@ -128,7 +128,18 @@ public sealed class AppendOnlyEnforcementArchitectureTests
       .Where(type => typeof(PersistenceDbContext).IsAssignableFrom(type))
       .ToList();
 
-    Assert.True(contexts.Count >= 2, $"Expected at least two persistence contexts, found {contexts.Count}.");
+    // ---- THE TWO KNOWN CONTEXTS ARE NAMED, NOT LEFT TO DISCOVERY (T-018).
+    //
+    // A count check alone tells you the scan found *something*. It does not tell you it found the type
+    // you care about, and "at least two" is satisfied by two types neither of which is the one a reader
+    // assumes is covered.
+    //
+    // `TenantDbContext` satisfied this assertion by ACCIDENT until T-018 — it happened not to declare a
+    // convenience overload, and nothing asserted that it was covered. Naming both makes the coverage a
+    // stated property: if either is ever moved to another assembly or renamed, this fails on the day it
+    // happens rather than silently narrowing to whatever is left.
+    Assert.Contains(typeof(PlatformDbContext), contexts);
+    Assert.Contains(typeof(TenantDbContext), contexts);
 
     var offenders = contexts
       .Where(type => DeclaresConvenienceAsyncSave(type) || DeclaresConvenienceSyncSave(type))

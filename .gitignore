@@ -11,3 +11,6 @@ coverage/
 *.nupkg
 *.snupkg
 .dotnet-cli-home/
+
+# Architect/Coder loop: session pointers are machine-local, the task history is not.
+.claude/handoff/session/

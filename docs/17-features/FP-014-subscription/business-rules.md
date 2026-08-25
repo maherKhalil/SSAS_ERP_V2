@@ -1,4 +1,4 @@
-# FP-014 — Proposed business rules
+# FP-014 — Business rules
 
 Written from the ruling set of 2026-08-25. Reads on from
 [`domain-model.md`](domain-model.md), [`lifecycle-model.md`](lifecycle-model.md) and
@@ -6,16 +6,21 @@ Written from the ruling set of 2026-08-25. Reads on from
 
 ---
 
-## ⚠ THESE RULES ARE NOT IN THE MASTER REGISTER, AND PROMOTING THEM IS A SEPARATE ACT
+## THESE RULES ARE NOW IN THE MASTER REGISTER — PROMOTED AT RATIFICATION BY T-022
 
-**`docs/00-Master-Product-Specification/Business-Rules.md` contains no `BR-SUB` rule.** It carries
-four business-rule prefixes — `BR-PLT`, `BR-HR`, `BR-GL`, `BR-ATT` — and
-`Requirement-Numbering.md` lists the same four. `SUB` is in neither.
+**`docs/00-Master-Product-Specification/Business-Rules.md` now carries `BR-SUB-0001`–`BR-SUB-0021`,
+and `Requirement-Numbering.md` registers both `REQ-SUB-0001` and `BR-SUB-0001`** (T-022, 2026-08-25).
 
-So every rule below is a **proposal for that file, not a citation from it.** Adding them is a
-governing-document edit and an owner decision, exactly as `OD-SUB-0002`'s `REQ-SUB` prefix is, and
-**this package does not perform it.** `OD-SUB-0002` ruled that the `REQ-SUB` prefix is added *at
-ratification, not now*, following FP-013's precedent; the `BR-SUB` space follows the same rule.
+**Until then — while this package was being drafted — neither file carried `SUB` at all.** The master
+register held four business-rule prefixes, `BR-PLT`, `BR-HR`, `BR-GL` and `BR-ATT`, and
+`Requirement-Numbering.md` listed the same four. **The reasoning below is kept because it is still the
+argument for why promotion belongs to ratification** (`DEC-L-027`: change the tense, not the content).
+
+While this package was being drafted, every rule below was a **proposal for that file, not a citation
+from it.** Adding them was a governing-document edit and an owner decision, exactly as `OD-SUB-0002`'s
+`REQ-SUB` prefix was, and **this package did not perform it while drafting.** `OD-SUB-0002` ruled that
+the `REQ-SUB` prefix is added *at ratification, not before*, following FP-013's precedent; the
+`BR-SUB` space followed the same rule, and **ratification then performed both.**
 
 ### This is written here because it is precisely where the last two packages lost their rules
 
@@ -26,8 +31,8 @@ modules that are in `main`, carrying migrations and test suites.
 
 Nothing caught it, because a package that defines `BR-ATT` in its own `business-rules.md` looks
 **complete** to a checker that reads inside the package. That gap is now closed: `trace-check.py`
-check 7 reports both as `UNPROMOTED`, and would report `BR-SUB` the same way the moment this file
-lands:
+check 7 reports both as `UNPROMOTED`, and reported `BR-SUB` the same way until T-022 promoted it.
+**What check 7 says today — two rows, not three:**
 
 ```
 UNPROMOTED (2) - a package owns a BR space the master register does not carry:
@@ -37,10 +42,9 @@ UNPROMOTED (2) - a package owns a BR space the master register does not carry:
     and the master Business-Rules.md carries no BR-ATT rule at all
 ```
 
-**A third row appears once this file lands, and it has been verified: `BR-SUB`, 21 rules, alongside
-`BR-PAY` and `BR-ATT`.** What that row means changed while this package was being written, and the
-distinction is worth stating precisely because it is the difference between a working check and an
-accepted defect:
+**A third row — `BR-SUB`, 21 rules — appeared when this file landed, and ratification closed it.**
+What that row meant changed while this package was being written, and the distinction is worth stating
+precisely because it is the difference between a working check and an accepted defect:
 
 - **Before ratification it is the check working.** Promotion is an act of ratification, not of
   drafting — `OD-SUB-0002` ruled the `REQ-SUB` prefix is added at ratification and the `BR-SUB` space
@@ -58,11 +62,13 @@ each module is next touched, rather than in a sweep, because a 51-identifier dif
 nobody is changing would land unread.
 
 **What this file guarantees is that the rules exist, are numbered contiguously from `0001`, and are
-findable.** What it does not do is claim they are in force at the master level. They are not — yet.
+findable.** Until ratification it did not claim they were in force at the master level. **They now
+are** — T-022 promoted all twenty-one, and T-028 amended `BR-SUB-0020`'s scope in both copies at once
+so the source and the promoted copy cannot drift.
 
 ---
 
-## Proposed rules
+## The rules
 
 | ID | Rule | Basis |
 |---|---|---|

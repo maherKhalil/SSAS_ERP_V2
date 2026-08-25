@@ -1,4 +1,13 @@
-# FP-014 — Subscription and the Commercial Plane (analysis package)
+---
+package: FP-014
+title: Subscription and the Commercial Plane
+module: Platform
+status: RATIFIED — all seventeen owner decisions ruled (2026-08-25), registers promoted; specification only, no code
+version: 1.0
+date: 2026-08-25
+---
+
+# FP-014 — Subscription and the Commercial Plane
 
 **Status:** **RATIFIED — 2026-08-25.** All seventeen `OD-SUB` owner decisions are ruled, and
 [`decisions-ratified.md`](decisions-ratified.md) is **this package's authority** — where it and
@@ -6,13 +15,14 @@
 unblocked. Six rulings are the owner's, seven the architect's, four the owner's second round; each is
 attributed, because reopening a commercial decision is a different act from reopening a structural one.
 
-**Still outstanding, stated plainly rather than left to be inferred from a status word:**
+**What is and is not done, stated plainly rather than left to be inferred from a status word:**
 
 - **No code and no schema.** Nothing here is implemented.
-- **The master-register promotion is not done.** The `REQ-SUB` and `BR-SUB` prefixes are not yet in
-  `Requirement-Numbering.md` (`OD-SUB-0002` ruled they arrive at ratification), `BR-SUB-0001`…`0021`
-  are not yet promoted to the master `Business-Rules.md` under `DEC-L-012`, and the commercial plane
-  still has **no `Product-Roadmap.md` entry**.
+- **The master-register promotion is done.** `REQ-SUB-0001` and `BR-SUB-0001` are registered in
+  `Requirement-Numbering.md` and `BR-SUB-0001`…`0021` are promoted into the master
+  `Business-Rules.md` (T-022), which makes FP-014 **the first package to close `DEC-L-012`'s
+  obligation at ratification** rather than leaving its rules stranded as `BR-PAY` and `BR-ATT` were.
+  The commercial plane has its `Product-Roadmap.md` entry (T-027).
 - **Two concerns are open at ratification** — the undefined seat and `REQ-SUB-0027`'s two enforcement
   semantics. Both are recorded at the foot of the ratification file. A third, this package's
   dependence on the still-`Proposed` `ADR-021`, was **closed by `DEC-L-024`** (2026-08-25): the ADR
@@ -69,7 +79,7 @@ Run 2026-08-25 against `main` at `f9b247a`.
 | `docs/00-Master-Product-Specification/Product-Roadmap.md` | Versions 1–5. **Not one occurrence of subscription, billing, plan, metering, pricing, invoicing, licensing or signup** |
 | `Requirement-Numbering.md` | ten functional prefixes — PLT, HR, GL, INV, CRM, PRJ, PAY, ATT, PRC, MFG. **No `SUB`.** Four business-rule prefixes — PLT, HR, GL, ATT. **No `BR-SUB`** |
 | `CON-0001` across all of `docs/` | **exactly one occurrence — its own definition**, `Requirement-Catalog/Constraints.md:21` |
-| `BR-PLT-0008` across all of `docs/` | **two occurrences** — its definition at `Business-Rules.md:161`, and a bare listing at `Tenant-Management.md:35` |
+| `BR-PLT-0008` across all of `docs/` | **two occurrences** — its definition at `Business-Rules.md:162`, and a bare listing at `Tenant-Management.md:35` |
 | `CON-0001` or `BR-PLT-0008` in `src/` or `tests/` | **zero** |
 
 ## The false positives, named so nobody re-derives them
@@ -93,14 +103,16 @@ SQL Server SKU. The product has no commercial concept implemented anywhere.
 
 ---
 
-# What authority actually exists — three lines
+# What authority existed before this package — three lines
 
-The entire written basis for this package is three sentences, in three files:
+**As of 2026-08-25, before ratification**, the entire written basis for the commercial plane was three
+sentences, in three files. That scarcity is why this package exists, and it is recorded as it stood:
+the master register now also carries `BR-SUB-0001`–`0021` (T-022).
 
 | Source | What it says, verbatim |
 |---|---|
 | `Requirement-Catalog/Constraints.md:23` — **`CON-0001`** | "The application shall operate as a subscription-based Software-as-a-Service (SaaS) platform." |
-| `Business-Rules.md:167`–`169` — **`BR-PLT-0008` Feature Enablement** | "Modules may be enabled or disabled per subscription plan." / "Disabled modules shall not appear in menus or APIs." |
+| `Business-Rules.md:168`–`170` — **`BR-PLT-0008` Feature Enablement** | "Modules may be enabled or disabled per subscription plan." / "Disabled modules shall not appear in menus or APIs." |
 | `Glossary.md:283` — **Subscription** | "A commercial agreement determining which modules and features are available to a Tenant." |
 
 That is all of it. **This package says so rather than dressing it up.** `CON-0001` carries real weight
@@ -208,26 +220,36 @@ them.
 
 # What this package does not contain
 
-Ten of the thirteen files an FP-013-shaped package carries are **deliberately absent**:
-`domain-model.md`, `data-model.md`, `api-contracts.md`, `authorization-model.md`, `lifecycle-model.md`,
-`business-rules.md`, `acceptance-criteria.md`, `test-scenarios.md`, `traceability-matrix.md`,
-`decisions-ratified.md`.
+**All thirteen files an FP-013-shaped package carries now exist.** Ten of them were **deliberately
+absent** while this package was analysis only — `domain-model.md`, `data-model.md`, `api-contracts.md`,
+`authorization-model.md`, `lifecycle-model.md`, `business-rules.md`, `acceptance-criteria.md`,
+`test-scenarios.md`, `traceability-matrix.md` and `decisions-ratified.md` — and the reason is kept
+here rather than deleted, because it is the argument for the order the work was done in.
 
-Each of them would state a design, and **no design has been chosen.** Whether a subscription has
-states, whether pricing exists, whether a module is the unit of enablement, and whether the identifier
-space is `REQ-SUB` or `REQ-PLT` are all open in [`decisions-open.md`](decisions-open.md). Writing a
-data model on top of fourteen unruled questions would encode guesses as specification and give them
-the authority of a checked-in document — which is precisely the failure `CON-0001` itself demonstrates,
+Each of them states a design, and **while the owner decisions were open no design had been chosen.**
+Whether a subscription has states, whether pricing exists, whether a module is the unit of enablement,
+and whether the identifier space was `REQ-SUB` or `REQ-PLT` were all open questions. **Writing a data
+model on top of seventeen unruled questions would have encoded guesses as specification** and given
+them the authority of a checked-in document — precisely the failure `CON-0001` itself demonstrates,
 one level up.
 
-This package also does **not**:
+**They were written once the rulings existed, not before**, and `decisions-ratified.md` records which
+ruling each rests on.
 
-- add a prefix to `Requirement-Numbering.md` — that is `OD-SUB-0002`, and FP-013 created `REQ-ATT` at
-  **ratification**, not at analysis;
-- add an entry to `Product-Roadmap.md` — the roadmap gains an entry when the package is ratified;
-- claim an ADR number — `ADR-028` is currently the subject of a dangling reference from FP-010 and is
-  not free to take;
-- touch any file under `src/` or `tests/`. The enablement gate is specified here and built later.
+**While it was analysis only, this package also did not** — and each of these was deferred to
+ratification rather than skipped:
+
+- add a prefix to `Requirement-Numbering.md` — `OD-SUB-0002`, and FP-013 created `REQ-ATT` at
+  **ratification**, not at analysis. **Done by T-022:** `REQ-SUB-0001` and `BR-SUB-0001` are registered;
+- add an entry to `Product-Roadmap.md` — the roadmap gains an entry when the package is ratified.
+  **Done by T-027**, in Version 1, marked specified and not yet implemented;
+- claim an ADR number. **`ADR-029` was subsequently written for this package** (T-010) and is
+  `Accepted`; `ADR-028` stays reserved for V5 Document Management and was never this package's to take.
+
+**One of the four still stands, and it is the one that matters:**
+
+- this package touches **no file under `src/` or `tests/`.** The enablement gate is specified here and
+  built later. `BR-PLT-0008` remains violated by every mounted route group until it is.
 
 ---
 

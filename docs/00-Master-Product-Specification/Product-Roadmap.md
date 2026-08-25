@@ -8,6 +8,8 @@ Identity
 
 Tenant Management
 
+Subscription Management (specified — FP-014, ratified 2026-08-25; not yet implemented)
+
 Company Management
 
 Role Management

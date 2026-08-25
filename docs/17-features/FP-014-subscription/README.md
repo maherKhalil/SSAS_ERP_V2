@@ -1,10 +1,24 @@
 # FP-014 — Subscription and the Commercial Plane (analysis package)
 
-**Status:** **DRAFT — analysis only.** No code, no schema, no ADR, no roadmap entry. Every
-`OD-SUB-####` in [`decisions-open.md`](decisions-open.md) is **OWNER-DECISION-REQUIRED** and blocks the
-build prompt. This package delivers three files — this one, [`requirements.md`](requirements.md) and
-[`decisions-open.md`](decisions-open.md). The model documents are deliberately absent; see
-[What this package does not contain](#what-this-package-does-not-contain).
+**Status:** **RATIFIED — 2026-08-25.** All seventeen `OD-SUB` owner decisions are ruled, and
+[`decisions-ratified.md`](decisions-ratified.md) is **this package's authority** — where it and
+[`decisions-open.md`](decisions-open.md) disagree, the ratification file wins. The build prompt is
+unblocked. Six rulings are the owner's, seven the architect's, four the owner's second round; each is
+attributed, because reopening a commercial decision is a different act from reopening a structural one.
+
+**Still outstanding, stated plainly rather than left to be inferred from a status word:**
+
+- **No code and no schema.** Nothing here is implemented.
+- **The master-register promotion is not done.** The `REQ-SUB` and `BR-SUB` prefixes are not yet in
+  `Requirement-Numbering.md` (`OD-SUB-0002` ruled they arrive at ratification), `BR-SUB-0001`…`0021`
+  are not yet promoted to the master `Business-Rules.md` under `DEC-L-012`, and the commercial plane
+  still has **no `Product-Roadmap.md` entry**.
+- **Three concerns are open at ratification** — the undefined seat, `REQ-SUB-0027`'s two enforcement
+  semantics, and this package's dependence on the still-`Proposed` `ADR-021`. All three are recorded
+  at the foot of the ratification file.
+
+`ADR-029` (tokenized payment capture) was written for this package and is `Accepted`. The tax question
+`OD-SUB-0016` raised remains unauthored anywhere in the repository.
 
 **Authority for the package existing at all:** `DEC-L-004` — the owner has ruled that `CON-0001` is
 **upheld, not amended**, and that the commercial plane gets a full analysis package rather than a

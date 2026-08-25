@@ -2,8 +2,8 @@
 id: ADR-020
 title: Shared-to-Dedicated Tenant Migration and Cutover
 category: Architecture Decision Record
-version: 1.5
-status: Proposed
+version: 1.6
+status: Accepted
 date: 2026-08-13
 owner: Solution Architecture Team
 tags:
@@ -27,9 +27,15 @@ used_by:
 
 # Status
 
-**Proposed**
+**Accepted** — 2026-08-25.
 
 Depends on the routing model of `ADR-017`, the schema-health model of `ADR-018`, and the recommendation/approval model of `ADR-019`. It defines the workflow that physically moves one tenant's ERP data from a shared database to a dedicated database and switches routing safely.
+
+**Evidence:** the workflow ships in full — `TenantCutoverOrchestrator`, `TenantCutoverCopyPlan`, `TenantCutoverCopyService`, `TenantCutoverFreezeService`, `TenantCutoverWriteFence`, `TenantCutoverRoutingFlipService` and `TenantCutoverOperationLock` in `SSAS.Platform.Infrastructure/TenantStorage/` — under four architecture suites and four SQL Server integration suites (`TenantCutoverCopySqlServerTests`, `TenantCutoverFreezeSqlServerTests`, `TenantCutoverOrchestrationSqlServerTests`, `TenantCutoverRoutingFlipSqlServerTests`). Six approved packages cite it, and **five `Accepted` ADRs — `ADR-023`, `ADR-024`, `ADR-025`, `ADR-026`, `ADR-030` — already declare `depends_on: ADR-020`.**
+
+**Acceptance is inferred from that use, not recorded in a closed decision** (`DEC-L-020`). This ADR states no acceptance precondition of its own.
+
+**One dependency does not follow it into `Accepted`:** `ADR-019`, the recommendation and approval model, is unimplemented and stays `Proposed`. That is consistent rather than contradictory — this ADR already rules recommendation to be advisory and dedicated-to-shared migration to be manual-only, so the executed workflow never required the policy engine to exist.
 
 ---
 
@@ -555,3 +561,4 @@ This ADR should be reviewed if:
 | 1.3 | 2026-08-13 | Solution Architecture Team | Editorial: replaced stale rollback wording in Risks and Consequences that implied source retention alone makes post-cutover flip-back safe; updated the split-brain risk to the `RoutingVersion`-plus-invalidation model; scoped Compliance Rule 4 to the V1 Shared → empty Dedicated path and excluded `rowversion`. No decision changed |
 | 1.4 | 2026-08-14 | Solution Architecture Team | Added the binding pre-cutover backup/recovery readiness gate: a dedicated target may not become production-active until policy, initialised chain, appropriate recovery model and restore-verification policy exist |
 | 1.5 | 2026-08-14 | Solution Architecture Team | Made the pre-cutover recovery-readiness gate concrete against `ADR-022`: enabled policy, valid recovery model, successful full baseline, established log chain where required, at least one successful actual restore verification, and `RecoveryReadinessStatus` = Protected |
+| 1.6 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. The cutover workflow ships in full under four architecture suites and four SQL Server integration suites, six approved packages cite it, and five `Accepted` ADRs already declared `depends_on` it while it stood `Proposed`. Acceptance is inferred from that use rather than recorded in a closed decision, and is named as an inference (`DEC-L-020`). `ADR-019` remains `Proposed` and unimplemented; recommendation is advisory here, so the dependency is not load-bearing on execution. |

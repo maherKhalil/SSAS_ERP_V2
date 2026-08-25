@@ -25,11 +25,11 @@ Every significant architectural decision must be documented before implementatio
 | ADR-015 | Platform-Plane Authentication and Authorization | Accepted |
 | ADR-016 | Platform-Support Bootstrap, Lifecycle, and Authority Administration | Accepted |
 | ADR-017 | Tenant Storage Topology and Routing | Accepted |
-| ADR-018 | Tenant Schema Health and Migration Orchestration | Proposed |
+| ADR-018 | Tenant Schema Health and Migration Orchestration | Accepted |
 | ADR-019 | Dynamic Tenant Placement Policy | Proposed |
-| ADR-020 | Shared-to-Dedicated Tenant Migration and Cutover | Proposed |
+| ADR-020 | Shared-to-Dedicated Tenant Migration and Cutover | Accepted |
 | ADR-021 | Customer-Managed Tenant Database Connectivity and Operations | Proposed |
-| ADR-022 | Tenant Database Backup and Recovery Orchestration | Proposed |
+| ADR-022 | Tenant Database Backup and Recovery Orchestration | Accepted |
 | ADR-023 | Tenant Branch Model, Authorization and Execution Context | Accepted |
 | ADR-024 | Employee Branch Assignment and Transfer Model | Accepted |
 | ADR-025 | Company Execution Context and Authorization | Accepted |

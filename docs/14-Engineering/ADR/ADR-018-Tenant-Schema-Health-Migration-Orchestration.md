@@ -2,8 +2,8 @@
 id: ADR-018
 title: Tenant Schema Health and Migration Orchestration
 category: Architecture Decision Record
-version: 1.7
-status: Proposed
+version: 1.8
+status: Accepted
 date: 2026-08-13
 owner: Solution Architecture Team
 tags:
@@ -27,9 +27,13 @@ used_by:
 
 # Status
 
-**Proposed**
+**Accepted** — 2026-08-25.
 
 Depends on the physical database model established by `ADR-017`. It defines how multiple physical tenant databases are kept schema-compatible with the deployed application, and how the system behaves when they are not.
+
+**Evidence:** `TenantDatabaseMigrationOrchestrator` ships in `SSAS.Platform.Infrastructure/TenantStorage/` and is registered in `PlatformPersistenceServiceCollectionExtensions`; `tools/SSAS.Tenant.MigrationTool` implements the two-stream deployment procedure this ADR defines; `TenantSchemaHealthSqlServerTests` and `TenantDatabaseSchemaHealthTests` exercise the health model; and the `nvarchar` rule is applied by every module's EF configuration. Four approved packages — `FP-011`, `FP-012`, `FP-013`, `FP-014` — cite it as binding.
+
+**Acceptance is inferred from that use, not recorded in a closed decision** (`DEC-L-020`). This ADR states no acceptance precondition of its own, so inference is the strongest evidence available and is named as such.
 
 ---
 
@@ -673,3 +677,4 @@ This ADR should be reviewed if:
 | 1.5 | 2026-08-14 | Solution Architecture Team | Recorded that schema health and migration orchestration are implemented: reclassified the manual two-stream commands as development/break-glass, and named the orchestrator as the normal path for the platform-managed estate. No architecture decision changed |
 | 1.6 | 2026-08-14 | Solution Architecture Team | Documented one-writer-per-dimension: connectivity and schema observations have independent writers, a check that observes nothing about a dimension writes nothing to it, LastSchemaCheckUtc advances only on an actual schema observation, and concurrent writers reapply only their own dimension. No architecture decision changed |
 | 1.7 | 2026-08-14 | Solution Architecture Team | Recorded that `ADR-022` owns recovery readiness as an independent fourth dimension; backup fields are not added to the schema-health model. No decision changed |
+| 1.8 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. The orchestration this ADR specifies ships — `TenantDatabaseMigrationOrchestrator`, `tools/SSAS.Tenant.MigrationTool`, the schema-health suites — and four approved packages cite it as binding. Acceptance is inferred from that use rather than recorded in a closed decision, and is named as an inference (`DEC-L-020`). |

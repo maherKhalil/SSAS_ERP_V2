@@ -35,3 +35,5 @@ Every significant architectural decision must be documented before implementatio
 | ADR-025 | Company Execution Context and Authorization | Proposed |
 | ADR-026 | HR Organizational Structure and Department Hierarchy | Proposed |
 | ADR-027 | Monetary Value Representation and Cross-Module Value-Object Reuse | Proposed |
+| ADR-028 | *Reserved* — Binary Content Storage, Custody and Movement | Not written; V5's to author (`OD-DOC-009`) |
+| ADR-029 | Tokenized Payment Capture and the Cardholder Data Boundary | Accepted |

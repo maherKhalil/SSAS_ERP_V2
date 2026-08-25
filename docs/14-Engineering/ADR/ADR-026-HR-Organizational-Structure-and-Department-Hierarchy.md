@@ -2,7 +2,7 @@
 id: ADR-026
 title: HR Organizational Structure and Department Hierarchy
 category: Architecture Decision Record
-version: 1.0
+version: 1.1
 status: Accepted
 date: 2026-08-25
 owner: Solution Architecture Team
@@ -263,3 +263,4 @@ enforced, the honest record is that it is open.**
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 1.0 | 2026-08-20 | Solution Architecture Team | Proposes the HR organizational-structure model: Department ownership, hierarchy representation and invariant, the manager association shape and its cutover cause, and the process for retroactive and unenforceable business rules. Ten decisions, three of them dependent on owner input. |
+| 1.1 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. This ADR stated its own acceptance precondition — that `decision 4`, `decision 9` and `decision 10` awaited `OD-DEP-001`, `OD-DEP-003` and `OD-DEP-005` — and that precondition is satisfied: all five FP-007 owner decisions closed on 2026-08-20 as `DEC-DEP-0009`, `DEC-DEP-0014` and `DEC-DEP-0019`. Accepted against its own test rather than by inference from use (`DEC-L-020`). |

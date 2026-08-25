@@ -2,7 +2,7 @@
 id: ADR-017
 title: Tenant Storage Topology and Routing
 category: Architecture Decision Record
-version: 1.6
+version: 1.7
 status: Accepted
 date: 2026-08-25
 owner: Solution Architecture Team
@@ -816,3 +816,4 @@ Customer-managed tenant ERP database support does not change this. It alters not
 | 1.4 | 2026-08-13 | Solution Architecture Team | Editorial: corrected the routing-cache implementation guidance to resolve per `TenantDbContext` creation / unit of work with `RoutingVersion` as the correctness mechanism. No decision changed |
 | 1.5 | 2026-08-14 | Solution Architecture Team | Added per-physical-database backup and recovery policy with the shared-restore consequence and the `TS-Backup` sequencing constraint; added database-provider extensibility with SQL Server as the only V1 runtime provider and `DatabaseProvider` as a dimension independent of `HostingMode`/`StorageMode`; added the implementation sequence table; clarified the tenant migration-stream and context-factory guidelines |
 | 1.6 | 2026-08-14 | Solution Architecture Team | Pointed backup and recovery mechanism decisions to the new `ADR-022`; this ADR retains the topology rationale only. No decision changed |
+| 1.7 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. It was written as the storage-topology gate to resolve before substantial tenant-owned ERP persistence was implemented; that persistence has since shipped across HR, GL, Payroll and Attendance on this topology, so the gate was passed rather than left open. Acceptance is inferred from that use rather than recorded in a closed decision, and is named as an inference (`DEC-L-020`). |

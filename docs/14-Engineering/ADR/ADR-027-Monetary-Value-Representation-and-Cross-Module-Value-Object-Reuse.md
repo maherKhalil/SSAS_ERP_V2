@@ -2,7 +2,7 @@
 id: ADR-027
 title: Monetary Value Representation and Cross-Module Value-Object Reuse
 category: Architecture Decision Record
-version: 1.0
+version: 1.1
 status: Accepted
 date: 2026-08-25
 owner: Solution Architecture Team
@@ -254,3 +254,4 @@ recorded decision, is the outcome this ADR exists to prevent.
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 1.0 | 2026-08-21 | Solution Architecture Team | Proposes the product's monetary representation — `decimal(19,4)`, no currency column while a Company's immutable base currency is unambiguous, and named conditions for revisiting — together with the promotion rule for cross-module value objects. Five decisions. Drafted conditional on `OD-POS-004`; **activated** the same day when that decision chose a money-bearing Salary Grade, so the conditional-withdrawal clause is moot. |
+| 1.1 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. Acceptance was recorded rather than inferred: `OD-POS-004` closed on 2026-08-21 and FP-008's register states that `DEC-POS-0015` and `DEC-POS-0016` activate "and `ADR-027` with them", so this record was accepted in substance that day and only the front-matter lagged. Four modules have since inherited `decimal(19,4)`. |

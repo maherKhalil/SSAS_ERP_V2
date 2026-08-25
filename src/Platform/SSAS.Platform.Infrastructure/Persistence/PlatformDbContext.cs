@@ -105,7 +105,31 @@ public sealed class PlatformDbContext(
     base.OnModelCreating(modelBuilder);
   }
 
-  public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+  // ---- EVERY WRITE RULE ON THIS CONTEXT, IN ONE PLACE, ON THE PATHS NOTHING CAN GO ROUND (T-015).
+  //
+  // These eight ran from an override of `SaveChangesAsync(CancellationToken)` until 2026-08-25, and that
+  // override has been REMOVED rather than left delegating. EF Core routes `SaveChangesAsync(ct)` to
+  // `SaveChangesAsync(bool, ct)` and `SaveChanges()` to `SaveChanges(bool)` by virtual dispatch, so a rule
+  // hung on a convenience overload is reachable past by a caller who names the inner one —
+  // `SaveChangesAsync(true, ct)` or any synchronous `SaveChanges` committed straight through all seven
+  // refusals AND the owner promotion below.
+  //
+  // Latent rather than live, since every caller in the repository used the guarded path. But these are
+  // DELETION guards on tenancy and authorization, and "no current caller does the wrong thing" is a
+  // coincidence that holds until somebody writes the obvious line. `PersistenceDbContext` documents the
+  // same dispatch lesson about its own audit stamping, having been on the wrong side of it once.
+  //
+  // ---- ORDER IS DELIBERATE: EVERY REFUSAL, THEN THE ONE MUTATION.
+  //
+  // `PromoteAssignmentOwners` marks parent rows modified, so it must not run ahead of a rule that may
+  // throw — otherwise a refused save leaves the change tracker altered by a write that never happened.
+  // It stays last, exactly where it was.
+  //
+  // `PromoteAssignmentOwners` moved with the guards for a reason worth stating: it is not a refusal, so a
+  // bypass of it is SILENT. A save through the inner overload skipped it and produced rows whose parent
+  // timestamps were never bumped — no exception, no log line, just different data. Of the eight, it was
+  // the one whose omission nothing would have surfaced.
+  private void ApplyPlatformWriteRules()
   {
     PreventTenantDeletion();
     PreventPlatformSupportPrincipalDeletion();
@@ -114,8 +138,8 @@ public sealed class PlatformDbContext(
     PreventLocalizationHistoryMutation();
     PreventIdentityOwnershipChanges();
     PreventTenantStorageRegistryDeletion();
+    PreventAppendOnlyMutation();
     PromoteAssignmentOwners();
-    return base.SaveChangesAsync(cancellationToken);
   }
 
   // ---- APPEND-ONLY RECORDS ARE NEVER UPDATED AND NEVER DELETED, ON THIS SIDE TOO (FP-014, AC-SUB-0044).
@@ -138,20 +162,20 @@ public sealed class PlatformDbContext(
   // reason to refuse synchronous writes, so it fences both innermost overloads instead. **What is mirrored
   // is the property that no path bypasses the rule, not the line count.**
   //
-  // The other seven guards on this context still hang on `SaveChangesAsync(ct)` above and are therefore
-  // reachable past — that is pre-existing, out of this task's scope, and reported rather than silently
-  // changed.
+  // T-015 brought the other seven rules onto these same two overloads, so the warning that used to stand
+  // here — that they were reachable past — is no longer true and has been removed rather than left to rot.
+  // A stale warning is worse than none: it teaches a reader to discount the accurate ones beside it.
   public override Task<int> SaveChangesAsync(
     bool acceptAllChangesOnSuccess,
     CancellationToken cancellationToken = default)
   {
-    PreventAppendOnlyMutation();
+    ApplyPlatformWriteRules();
     return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
   }
 
   public override int SaveChanges(bool acceptAllChangesOnSuccess)
   {
-    PreventAppendOnlyMutation();
+    ApplyPlatformWriteRules();
     return base.SaveChanges(acceptAllChangesOnSuccess);
   }
 

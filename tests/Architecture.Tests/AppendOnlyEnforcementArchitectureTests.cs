@@ -103,6 +103,46 @@ public sealed class AppendOnlyEnforcementArchitectureTests
       $"convenience overload leaves the inner one reachable. Unfenced: {string.Join(", ", unfenced)}.");
   }
 
+  // ---- AND NO RULE MAY SIT SOMEWHERE REACHABLE PAST. This is the strengthening T-015 called for.
+  //
+  // "The context fences both innermost overloads" was too weak, and the gap was live: `PlatformDbContext`
+  // satisfied it while seven of its own guards hung on an override of `SaveChangesAsync(CancellationToken)`
+  // that a caller naming the inner overload went straight round. A context can fence the right methods and
+  // still keep its rules on the wrong one.
+  //
+  // ---- WHAT IS ASSERTED, AND WHY IT IS THE ABSENCE RATHER THAN THE PRESENCE.
+  //
+  // "Every guard sits at the fence" is not directly expressible by reflection — a method body is not
+  // readable, so no test can see WHICH method calls a guard. What IS expressible is the only place a rule
+  // could hide: **a convenience-overload override.** `SaveChangesAsync(ct)` and `SaveChanges()` exist to
+  // delegate inward, so a context that declares neither has nowhere to put a bypassable rule.
+  //
+  // That turns an unprovable claim about method bodies into a provable one about method surface. It is
+  // strictly stronger than what it replaces, and it is the assertion that would have failed on
+  // `PlatformDbContext` before T-015 and passes after it.
+  [Fact]
+  public void No_persistence_context_declares_a_convenience_save_overload()
+  {
+    var contexts = PlatformInfrastructure.GetTypes()
+      .Where(type => type is { IsClass: true, IsAbstract: false })
+      .Where(type => typeof(PersistenceDbContext).IsAssignableFrom(type))
+      .ToList();
+
+    Assert.True(contexts.Count >= 2, $"Expected at least two persistence contexts, found {contexts.Count}.");
+
+    var offenders = contexts
+      .Where(type => DeclaresConvenienceAsyncSave(type) || DeclaresConvenienceSyncSave(type))
+      .Select(type => type.Name)
+      .ToList();
+
+    Assert.True(
+      offenders.Count == 0,
+      "A persistence context must not override SaveChangesAsync(CancellationToken) or SaveChanges(). " +
+      "EF Core routes both inward by virtual dispatch, so any rule placed on them is reachable past by a " +
+      "caller who names the inner overload — which is exactly how seven PlatformDbContext guards were " +
+      $"bypassable until T-015. Put write rules on the innermost overloads. Offenders: {string.Join(", ", offenders)}.");
+  }
+
   private static MethodInfo? FindGuard(Type contextType) =>
     contextType.GetMethod(
       GuardMethodName,
@@ -122,5 +162,21 @@ public sealed class AppendOnlyEnforcementArchitectureTests
       BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly,
       binder: null,
       [typeof(bool)],
+      modifiers: null) is not null;
+
+  private static bool DeclaresConvenienceAsyncSave(Type contextType) =>
+    contextType.GetMethod(
+      nameof(PersistenceDbContext.SaveChangesAsync),
+      BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly,
+      binder: null,
+      [typeof(CancellationToken)],
+      modifiers: null) is not null;
+
+  private static bool DeclaresConvenienceSyncSave(Type contextType) =>
+    contextType.GetMethod(
+      nameof(PersistenceDbContext.SaveChanges),
+      BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly,
+      binder: null,
+      Type.EmptyTypes,
       modifiers: null) is not null;
 }

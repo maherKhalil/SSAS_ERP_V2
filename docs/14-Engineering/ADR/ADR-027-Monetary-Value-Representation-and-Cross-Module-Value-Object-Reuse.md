@@ -2,9 +2,9 @@
 id: ADR-027
 title: Monetary Value Representation and Cross-Module Value-Object Reuse
 category: Architecture Decision Record
-version: 1.0
-status: Proposed
-date: 2026-08-21
+version: 1.1
+status: Accepted
+date: 2026-08-25
 owner: Solution Architecture Team
 tags:
   - money
@@ -32,11 +32,17 @@ used_by:
 
 # Status
 
-**Proposed**
+**Accepted** — 2026-08-25.
 
-`Proposed` is this repository's ADR status for records whose feature has not yet shipped — `ADR-024`,
-`ADR-025` and `ADR-026` all stand at `Proposed` alongside delivered work — so the status says nothing about
-whether these decisions are settled. They are.
+This record previously stood at `Proposed` alongside delivered work, on the reasoning that the status said
+nothing about whether the decisions were settled. They were, and the status now says so. `ADR-024` and
+`ADR-025` still stand at `Proposed` on that older reading.
+
+**Evidence:** `OD-POS-004` closed on 2026-08-21 **activating** this ADR — FP-008's register records
+"`DEC-POS-0015` and `DEC-POS-0016` activate, and `ADR-027` with them" — so acceptance is not inferred from
+use but recorded in a closed owner decision. Four modules then inherited `decimal(19,4)`:
+`SalaryGradeConfiguration` (HR), `JournalDraft` (GL), `EmployeeCompensation` (Payroll) and
+`AttendanceRecord` (Attendance).
 
 **The conditional clause is resolved: this ADR is ACTIVATED.** It was drafted conditionally, because whether
 FP-008 would persist a monetary amount was `OD-POS-004`, an owner decision in the FP-008 package. That
@@ -248,3 +254,4 @@ recorded decision, is the outcome this ADR exists to prevent.
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 1.0 | 2026-08-21 | Solution Architecture Team | Proposes the product's monetary representation — `decimal(19,4)`, no currency column while a Company's immutable base currency is unambiguous, and named conditions for revisiting — together with the promotion rule for cross-module value objects. Five decisions. Drafted conditional on `OD-POS-004`; **activated** the same day when that decision chose a money-bearing Salary Grade, so the conditional-withdrawal clause is moot. |
+| 1.1 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. Acceptance was recorded rather than inferred: `OD-POS-004` closed on 2026-08-21 and FP-008's register states that `DEC-POS-0015` and `DEC-POS-0016` activate "and `ADR-027` with them", so this record was accepted in substance that day and only the front-matter lagged. Four modules have since inherited `decimal(19,4)`. |

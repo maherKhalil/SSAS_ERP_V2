@@ -228,6 +228,34 @@ were completed on the same day. **`ADR-021` appears nowhere in FP-014 as a bindi
 
 ---
 
+## `BR-SUB-0020` — the scope was a relic of document order, and the record says so
+
+**Amended 2026-08-25.** The rule read *"…or logged **by this package**"*. Promoted into the master
+`Business-Rules.md` by T-022, that phrase had no referent: a reader who has not read FP-014 cannot tell
+whether it binds the product, the module, or the sentence's own paragraph.
+
+**What changed and what did not.** The prohibition is **identical** — it already forbade storing,
+transmitting in any request or response, and logging. **Only the boundary it applies to becomes
+explicit**, from "this package" to "anywhere in SSAS". The rule gained no new teeth; it stopped
+pointing at nothing.
+
+**Why the wide reading is the right one, and why this is not a guess — it is document order.**
+`BR-SUB-0020` was written in T-007, commit `187445a` at 16:19. `ADR-029` was written in T-010, commit
+`f03c5ff` at 20:43 — **more than four hours later** — and it rules that no cardholder datum enters
+**SSAS**, not the commercial plane and not this package (`ADR-029` Decision 1; `DEC-L-018`). The one
+commit that touched this file in between, `d1b38c7` (T-013), added `BR-SUB-0021` and did not revisit
+`BR-SUB-0020`.
+
+**So nothing ever ruled the narrow scope.** The wide one was ruled after the sentence was written, and
+the sentence was never looked at again. Recorded because ordering is invisible later: a future reader
+seeing a package rule and an ADR disagree has no way to tell which came first, and would reasonably
+assume the narrower one was deliberate.
+
+**No ledger identifier was minted for this amendment.** The architect ruled it in the T-028 issue and
+assigned no `DEC-L`; the highest on the board is `DEC-L-025`. Minting one is not the coder's act.
+
+---
+
 # Revision History
 
 | Version | Date | Author | Change |
@@ -235,3 +263,4 @@ were completed on the same day. **`ADR-021` appears nowhere in FP-014 as a bindi
 | 1.0 | 2026-08-25 | Solution Architecture Team | Ratifies FP-014. All seventeen `OD-SUB` rulings moved into the package from the 2026-08-25 ruling set, each attributed to the owner or the architect. All twelve `DEC-SUB` ratified as drafted. Three concerns carried as open at ratification: the undefined seat, `REQ-SUB-0027`'s two enforcement semantics, and this package's dependence on the still-`Proposed` `ADR-021`. |
 | 1.1 | 2026-08-25 | Solution Architecture Team | **Amendment under `DEC-L-024`.** No requirement, rule or ruling changed. `ADR-021` is `Proposed` and conditions its own acceptance on a customer-hosted deployment being contracted (`:37`), so it does not bind; every citation of it in `requirements.md`, `business-rules.md` and `decisions-open.md` is re-pointed to `ADR-017:164`, `:169` and `:376`–`:378`, which carry the same conclusion in two steps rather than one. `OD-SUB-0004`'s entry records the moved authority. Open concern 3 is closed. |
 | 1.2 | 2026-08-25 | Solution Architecture Team | Completes the `DEC-L-024` re-point. `data-model.md` and `README.md`'s outage paragraph now derive from `ADR-017:164`, `:169` and `:376`–`:378`; the ratification banner's count of open concerns is corrected from three to two, concern 3 having been closed. No requirement, rule or ruling changed. |
+| 1.3 | 2026-08-25 | Solution Architecture Team | Amends `BR-SUB-0020`'s scope from "by this package" to "anywhere in SSAS", the boundary `ADR-029` Decision 1 actually rules. **The prohibition is unchanged**; only the boundary becomes explicit. Recorded with the commit ordering that makes the original phrasing a relic — `BR-SUB-0020` predates `ADR-029` by four hours and was never revisited. The master `Business-Rules.md` copy is updated to match, so the two do not diverge. |

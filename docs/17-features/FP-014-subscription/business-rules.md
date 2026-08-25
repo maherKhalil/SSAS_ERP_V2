@@ -85,7 +85,7 @@ findable.** What it does not do is claim they are in force at the master level. 
 | `BR-SUB-0017` | An **issued invoice is never edited**. A correction is a credit note, never an amendment | GL's posted-journal discipline; `REQ-SUB-0025` |
 | `BR-SUB-0018` | An **invoice number is never reused**, including the number of a voided invoice | `REQ-SUB-0025` |
 | `BR-SUB-0019` | A tenant may read **which modules it has**; it may not read price, invoice, payment state or any other commercial term | `REQ-SUB-0021`; the `FP-002` disclosure precedent |
-| `BR-SUB-0020` | **No cardholder datum is stored, transmitted in any request or response, or logged** by this package | `OD-SUB-0016`; boundary held for `T-010` |
+| `BR-SUB-0020` | **No cardholder datum is stored, transmitted in any request or response, or logged** anywhere in SSAS | `OD-SUB-0016`; `ADR-029`. **Amended 2026-08-25** — the scope read "by this package" until `ADR-029`, written after this rule, ruled the boundary product-wide. The prohibition is unchanged |
 | `BR-SUB-0021` | A seat cap is enforced **at admission and nowhere else**. Creating or activating a user beyond the tenant's resolved cap is refused **at that moment**, naming the cap, the current count and the plan. **Login is never refused for a seat cap.** An excess arriving by plan downgrade is **billed and reported**, never enforced against anyone already working | `DEC-L-009` closing the `OD-SUB-0017` residue; `REQ-SUB-0027` |
 
 Twenty-one rules, `BR-SUB-0001` through `BR-SUB-0021`, contiguous.

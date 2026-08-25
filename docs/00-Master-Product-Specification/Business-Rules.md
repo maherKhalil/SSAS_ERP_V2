@@ -748,7 +748,7 @@ A tenant may read **which modules it has**; it may not read price, invoice, paym
 
 No Cardholder Data
 
-**No cardholder datum is stored, transmitted in any request or response, or logged** by this package
+**No cardholder datum is stored, transmitted in any request or response, or logged** anywhere in SSAS
 
 ---
 

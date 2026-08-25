@@ -130,24 +130,36 @@ set -u
 #
 #     ---- THE FLOOR IS A PRE-LEG PRECONDITION, NOT A RUNNING MINIMUM. Read this before acting on a dip.
 #
-#     A HEALTHY LEAN INTEGRATION LEG ON THIS BOX RUNS DOWN TO ROUGHLY 1,200-1,500 MB FREE MID-LEG, which
-#     is far below the 2048 MB floor and is entirely normal. Measured 2026-08-25, both legs green:
+#     A HEALTHY LEAN INTEGRATION LEG ON THIS BOX HAS BEEN OBSERVED DOWN TO ~550 MB FREE MID-LEG, far
+#     below the 2048 MB floor, with every leg green. FOUR MEASURED LEGS, both runs finishing clean:
 #
-#       Debug     min_free 1510 MB    peak testhost working set 586 MB    free at leg start 3550 MB
-#       Release   min_free 1232 MB    peak testhost working set 641 MB    free at leg start 2985 MB
+#       2026-08-25 run 1  Debug     min_free 1510 MB   peak testhost ws 586 MB   free at leg start 3550 MB
+#       2026-08-25 run 1  Release   min_free 1232 MB   peak testhost ws 641 MB   free at leg start 2985 MB
+#       2026-08-25 run 2  Debug     min_free  551 MB   peak testhost ws 564 MB
+#       2026-08-25 run 2  Release   min_free  580 MB   peak testhost ws 573 MB
+#
+#     ---- THIS IS AN OBSERVED RANGE, NOT A THRESHOLD. Do not read it as one.
+#
+#     The first two legs alone were once written up here as a 1,200-1,500 MB "healthy band". The next run
+#     went to less than half that and finished green twice, so the band was never a property of the suite
+#     -- it was two samples generalised into a rule. Treat 550 MB as the LOWEST SEEN SO FAR, not the floor
+#     of safe operation, and expect a future run to go lower without that meaning anything.
 #
 #     The floor asks one question -- "is there room to START this leg" -- and the sampler answers a
 #     different one. A mid-leg reading below the floor is the suite using the memory it was given.
 #
-#     TWO WRONG REACTIONS, BOTH ALREADY ATTEMPTED ONCE. Raising the floor because a running leg dipped
-#     under it would refuse runs that would have passed. Aborting a healthy leg because free memory fell
-#     to 1.2 GB would throw away a completed Debug configuration. On 2026-08-25 a mid-leg reading of
-#     1946 MB was reported as a risk to be acted on; it was normal working depth, and the run finished
-#     green with both legs dipping lower still.
+#     ---- THE NUMBER IS NOT THE SIGNAL. THE SIGNATURE IS.
 #
-#     WHAT AN ACTUAL MEMORY DEATH LOOKS LIKE, for contrast, from 2026-08-24: 14 MB and 92 MB free, and
-#     NO TRX AT ALL from either leg -- not a partial one, no blame sequence, no dump. If the TRX is
-#     written and the sampler ran to the end, memory was not the problem.
+#     A memory death does not look like a low reading. It looks like this, from 2026-08-24: 14 MB and
+#     92 MB free, and NO TRX AT ALL from either leg -- not a partial one, no blame sequence, no dump.
+#     **If the TRX was written and the sampler ran to the end, memory was not the problem**, whatever
+#     number the sampler bottomed out at. That is the check to make, and it is the only one.
+#
+#     TWO WRONG REACTIONS, BOTH ALREADY ATTEMPTED. Raising the floor because a running leg dipped under
+#     it would refuse runs that would have passed. Aborting a healthy leg on a low reading would throw
+#     away a completed configuration. On 2026-08-25 a mid-leg reading of 1946 MB was reported as a risk
+#     to be acted on -- and both legs of that same run went lower still and finished green. The reading
+#     that triggered the alarm was nearly four times the lowest healthy figure since measured.
 #
 #  7b. SQL SERVER IS CAPPED AT 4096 MB ON THIS INSTANCE.
 #     Applied and persisted 2026-08-24 (`sp_configure 'max server memory (MB)', 4096`). It was UNBOUNDED

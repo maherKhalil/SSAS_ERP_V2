@@ -3,15 +3,29 @@ using SSAS.Payroll.Domain.Compensation;
 using SSAS.Payroll.Domain.Elements;
 
 namespace SSAS.Payroll.Domain.Runs;
-
-// What the calculator needs to know about one employee. Assembled by the handler from HR data and this
-// module's own compensation history, so the calculator itself touches no repository and no clock — which is
-// what makes `TS-PAY-0010` and the determinism scenarios assertable without a database.
+// What the calculator needs to know about one employee. Assembled by the handler from HR data, this module's
+// own compensation history, and — since FP-013 — Attendance's per-period summary. The calculator itself
+// touches no repository and no clock, which is what makes `TS-PAY-0010` and the determinism scenarios
+// assertable without a database.
 public sealed record PayrollEmployeeInput(
   Guid EmployeeId,
   DateTimeOffset HiredUtc,
   DateTimeOffset? TerminatedUtc,
-  EmployeeCompensation Compensation);
+  EmployeeCompensation Compensation,
+
+  // ---- THE ATTENDANCE INPUT (FP-013, REQ-ATT-0022) — PLAIN VALUES, NOT THE CONTRACT TYPE.
+  //
+  // `AttendanceSummaryResult` lives in `SSAS.Attendance.Contracts`, and this is `SSAS.Payroll.Domain`.
+  // The handler unpacks the contract into these two fields, so the domain gains the capability without the
+  // reference — `ADR-012`'s boundary applied at the layer where it costs nothing to keep.
+  //
+  // It also keeps the calculator testable with a dictionary literal rather than a constructed contract
+  // record, which is why every attendance scenario in `PayrollCalculatorTests` reads as arithmetic.
+  //
+  // Both DEFAULT TO EMPTY. An employee with no attendance is the ordinary case for a company that configures
+  // no attendance-driven elements, and it must not require every existing call site to say so.
+  IReadOnlyDictionary<string, decimal>? OvertimeQuantityByTier = null,
+  decimal UnpaidAbsenceQuantity = 0m);
 
 // ================================================================================================
 // THE CALCULATION ENGINE (OD-PAY-0007, OD-PAY-0008).
@@ -121,10 +135,24 @@ public static class PayrollCalculator
         // assignment for it would be ceremony. Every other behaviour is a standing instruction that must
         // have been granted to this employee.
         //
+        // ---- AND SINCE FP-013, `UnpaidAbsenceDeduction` IS EXEMPT TOO — FOR A DIFFERENT AND SHARPER REASON.
+        //
+        // Its amount is DERIVED from base salary and the days Attendance reported, so like base salary it
+        // needs no per-employee configuration. But the consequence of getting this wrong is not ceremony:
+        // **an employee nobody remembered to assign the element to would have their unpaid leave silently
+        // go undeducted.** They would simply be paid in full for days they were not working, and every
+        // number on the payslip would look right.
+        //
+        // `OvertimeHourly` is deliberately NOT exempt. Overtime eligibility is a real per-employee decision,
+        // and its absence means "this employee is not paid overtime" — a legitimate standing instruction,
+        // and the failure direction is a missing payment somebody notices rather than a silent overpayment
+        // nobody does.
+        //
         // An element the employee is not assigned produces NO LINE AT ALL — not a zero line. A zero line
         // would clutter every payslip with things that do not apply, and "absent" and "zero" are different
         // facts.
-        if (assignment is null && element.Behaviour != PayElementBehaviour.BaseSalary)
+        if (assignment is null &&
+          element.Behaviour is not (PayElementBehaviour.BaseSalary or PayElementBehaviour.UnpaidAbsenceDeduction))
         {
           continue;
         }
@@ -142,6 +170,31 @@ public static class PayrollCalculator
           PayElementBehaviour.FixedAmount => rateOrAmount * factor,
           PayElementBehaviour.PercentageOfBaseSalary => baseAmount * rateOrAmount / 100m,
           PayElementBehaviour.PercentageOfGrossToDate => grossToDate * rateOrAmount / 100m,
+
+          // ---- OVERTIME AT A TIER (FP-013, OD-ATT-0008).
+          //
+          // Attendance supplied the QUANTITY per tier; this element supplies the RATE for the one tier it
+          // names. An element whose tier is absent from the summary contributes zero and is skipped below,
+          // on the same rule as any other zero line.
+          //
+          // NOT PRORATED, and that is deliberate. Overtime is hours actually worked, not an entitlement
+          // spread across a period: a mid-month joiner who worked six overtime hours worked six, and scaling
+          // them by their fraction of the month would pay them for fewer hours than they were present for.
+          PayElementBehaviour.OvertimeHourly => OvertimeQuantity(employee, element) * rateOrAmount,
+
+          // ---- UNPAID ABSENCE (FP-013, OD-ATT-0008).
+          //
+          // Daily rate times unpaid days, where the daily rate divides the PRORATED base by the period's
+          // CALENDAR days — the same divisor proration itself uses, because `OD-ATT-0015` ruled `OD-PAY-0007`
+          // UNCHANGED. Using working days here would make a day of absence and a day of proration worth
+          // different amounts, which is exactly the inconsistency that ruling prevents.
+          //
+          // The amount is POSITIVE like every other amount in this module; the element's `Kind` is what makes
+          // it deduct. A negative here would encode the distinction as a sign, which `PayElementKind`'s own
+          // comment refuses.
+          PayElementBehaviour.UnpaidAbsenceDeduction =>
+            baseAmount / periodDays * employee.UnpaidAbsenceQuantity,
+
           _ => 0m
         };
 
@@ -169,6 +222,21 @@ public static class PayrollCalculator
     }
 
     return Result.Success<IReadOnlyList<PayrollRunDraftLine>>(lines);
+  }
+
+  // The quantity Attendance reported for the tier this element prices. Absent tier, or no attendance at all,
+  // is zero — which produces no line rather than a zero one.
+  //
+  // Ordinal comparison, matching how `AttendanceSummaryService` groups them. A culture-sensitive lookup
+  // would make the same tier label match or not depending on the server's locale.
+  private static decimal OvertimeQuantity(PayrollEmployeeInput employee, PayElement element)
+  {
+    if (element.OvertimeTier is not { } tier || employee.OvertimeQuantityByTier is not { } quantities)
+    {
+      return 0m;
+    }
+
+    return quantities.TryGetValue(tier, out var quantity) ? quantity : 0m;
   }
 
   // CALENDAR-DAY PRORATION. Employed days over period days, capped at 1.

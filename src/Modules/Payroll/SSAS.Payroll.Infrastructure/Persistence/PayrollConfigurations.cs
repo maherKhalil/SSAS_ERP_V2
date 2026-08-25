@@ -62,6 +62,12 @@ public sealed class PayElementConfiguration : IEntityTypeConfiguration<PayElemen
 
     builder.Property(element => element.CalculationOrder).IsRequired();
 
+    // FP-013. Bounded to match `AttendanceRecord.OvertimeTierMaximumLength`: the two sides of the same label
+    // must agree, and an unbounded nvarchar(max) here would let a tier be stored that Attendance could never
+    // have recorded.
+    builder.Property(element => element.OvertimeTier)
+      .HasMaxLength(PayElement.OvertimeTierMaximumLength);
+
     // Nullable: an element can exist before anyone has decided where it posts. What is refused is APPROVING
     // a run containing an unmapped element (`OD-PAY-0012`) — a domain rule, not a column constraint, because
     // the database cannot know which elements a run actually used.

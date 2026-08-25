@@ -25,6 +25,7 @@ public static class PayrollApiErrorMapper
   public static readonly ApiError RunStateInvalid = new(409, "payroll.run_state_invalid");
   public static readonly ApiError LedgerRefused = new(409, "payroll.ledger_refused");
   public static readonly ApiError NothingToCalculate = new(422, "payroll.nothing_to_calculate");
+  public static readonly ApiError AttendancePeriodOpen = new(409, "payroll.attendance_period_open");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
 
   public static ApiError Map(Error error)
@@ -92,6 +93,10 @@ public static class PayrollApiErrorMapper
       // nothing to compute. That is a semantic refusal, not a missing resource.
       "Payroll.NoIncludedEmployees" => NothingToCalculate,
       "Payroll.UnbalancedPosting" => NothingToCalculate,
+
+      // FP-013, OD-ATT-0010. A 409 rather than a 422: the request is well-formed and the world is not ready
+      // — somebody has to close the attendance period, which is the same shape as `PeriodClosed` above.
+      "Payroll.AttendancePeriodOpen" => AttendancePeriodOpen,
 
       // ---- AUTHORIZATION. Naming no company, no tenant and no topology.
       "Payroll.InvalidActor" => ApiErrors.Forbidden,

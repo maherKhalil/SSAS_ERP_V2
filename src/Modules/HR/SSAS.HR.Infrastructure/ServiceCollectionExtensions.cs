@@ -35,6 +35,10 @@ public static class ServiceCollectionExtensions
 
 services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeRoster, EmployeeRosterService>();
 
+    // The THIRD sanctioned employee read shape (FP-013, OD-ATT-0007). Attendance walks the department-manager
+    // chain through this rather than reaching HR.Domain, on the same terms as the roster above.
+    services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeApproverDirectory, EmployeeApproverDirectoryService>();
+
 
 services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 

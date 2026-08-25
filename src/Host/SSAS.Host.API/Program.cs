@@ -4,10 +4,13 @@ using SSAS.HR.API.Positions;
 using System.Globalization;
 using Serilog;
 using SSAS.GL.API;
+using SSAS.Attendance.API;
 using SSAS.Payroll.API;
 using SSAS.GL.Application.Permissions;
+using SSAS.Attendance.Application.Permissions;
 using SSAS.Payroll.Application.Permissions;
 using SSAS.GL.Infrastructure;
+using SSAS.Attendance.Infrastructure;
 using SSAS.Payroll.Infrastructure;
 using SSAS.Host.API.Authentication;
 using SSAS.Host.API.Authorization;
@@ -63,7 +66,17 @@ try
     // tenant model, from the migration stream, and -- because TenantCutoverCopyPlan derives its manifest
     // from the model -- from Shared-to-Dedicated cutover, which fails SILENTLY.
     .AddPayrollModule()
-    .AddPayrollInfrastructure();
+    .AddPayrollInfrastructure()
+    // Attendance (FP-013), on the same terms as the three before it. Without AddAttendanceInfrastructure,
+    // Attendance's seven entities are absent from the tenant model, from the migration stream, and --
+    // because TenantCutoverCopyPlan derives its manifest from the model -- from Shared-to-Dedicated
+    // cutover, which fails SILENTLY.
+    //
+    // It also registers IAttendanceSummary, which Payroll now consumes at calculation and at approval.
+    // Without it, every payroll approval would fail to resolve a dependency at REQUEST time rather than at
+    // startup -- which is precisely the class of failure the eager composition below exists to prevent.
+    .AddAttendanceModule()
+    .AddAttendanceInfrastructure();
 
   // ---- MODULE PERMISSION DEFINITIONS, REGISTERED EXPLICITLY (ADR-012 r1.2, FP-006P).
   //
@@ -81,6 +94,11 @@ try
   // Payroll's line (FP-012). Nine definitions; without this every payroll endpoint refuses every caller --
   // FP-006P's incident, where HR's constants existed, no catalog defined them, and no role could hold one.
   builder.Services.AddSingleton<IPermissionCatalogContributor, PayrollPermissionCatalogContributor>();
+
+  // Attendance's line (FP-013). Fourteen definitions; without this every attendance endpoint refuses every
+  // caller -- FP-006P's incident, where HR's constants existed, no catalog defined them, and no role could
+  // hold one.
+  builder.Services.AddSingleton<IPermissionCatalogContributor, AttendancePermissionCatalogContributor>();
 
   var app = builder.Build();
 
@@ -128,6 +146,10 @@ try
   // Payroll's surface: twenty routes across compensation, pay elements, periods, the run lifecycle and
   // payslips. Nothing responds to DELETE.
   app.MapPayrollEndpoints();
+
+  // Attendance's surface (FP-013): twenty-five routes across the working calendar, attendance periods,
+  // records and their adjustments, leave types, leave requests and administered balances.
+  app.MapAttendanceEndpoints();
 
   app.Run();
 }

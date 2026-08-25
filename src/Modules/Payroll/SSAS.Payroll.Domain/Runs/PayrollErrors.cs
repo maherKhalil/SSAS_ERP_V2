@@ -101,6 +101,15 @@ public static class PayrollErrors
     "Only a posted payroll run can be reversed.");
 
   // ---- CALCULATION.
+  // ---- FP-013, OD-ATT-0010. The attendance gate at approval.
+  //
+  // Narrow on purpose: only a period that EXISTS and is still OPEN is refused. A company that records no
+  // attendance has no attendance period, and refusing that would make FP-013 a prerequisite for running
+  // payroll at all.
+  public static readonly Error AttendancePeriodOpen = new(
+    "Payroll.AttendancePeriodOpen",
+    "The attendance period covering this pay date is still open; close it before approving the run.");
+
   public static readonly Error NoIncludedEmployees = new(
     "Payroll.NoIncludedEmployees",
     "No employee was employed during this period, so there is nothing to calculate.");

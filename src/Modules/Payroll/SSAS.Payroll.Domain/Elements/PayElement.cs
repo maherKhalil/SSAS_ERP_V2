@@ -76,7 +76,49 @@ public enum PayElementBehaviour
   // alongside them — a line would double-count. This behaviour exists ONLY to carry the mapping, and the
   // poster reads it when composing the journal. That asymmetry is stated here because it is the one place in
   // the model where an element is not a line.
-  NetPayPayable = 4
+  NetPayPayable = 4,
+
+  // ================================================================================================
+  // THE TWO ATTENDANCE-DRIVEN BEHAVIOURS (FP-013, REQ-ATT-0022) — DEC-PAY-0002 LIFTED.
+  // ================================================================================================
+  //
+  // `DEC-PAY-0002` refused these **because the input did not exist**, not because they were out of scope:
+  //
+  //   > Overtime computed from worked hours, absence deductions derived from a register [...] each require a
+  //   > source of truth this product does not have. This is not a scoping preference; it is a missing input.
+  //
+  // FP-013 built the register. `IAttendanceSummary` supplies per-period totals, so these two now have an
+  // input and may exist.
+  //
+  // The ruling was deliberate about WHICH ones: **overtime by tier and unpaid-absence deduction**. Shift
+  // differential and lateness are still absent, because `AttendanceRecord` records quantities and tiers and
+  // has no concept of either. Same discipline, applied to what FP-013 actually built rather than to what it
+  // might have.
+
+  // ---- OVERTIME AT A TIER (OD-ATT-0008).
+  //
+  // Attendance records the QUANTITY of overtime and the TIER it was worked at; the MULTIPLIER is money and
+  // lives here, as this element's `DefaultRateOrAmount`. The element names which tier it prices via
+  // `OvertimeTier`, so a company defines one element per tier — NIGHT at one rate, HOLIDAY at another.
+  //
+  // An element whose tier matches no recorded overtime produces no line, on the same rule as any other zero
+  // amount: absent and zero are different facts.
+  OvertimeHourly = 5,
+
+  // ---- UNPAID ABSENCE (OD-ATT-0008).
+  //
+  // A DEDUCTION whose amount is DERIVED rather than configured: the employee's daily rate multiplied by the
+  // unpaid days `IAttendanceSummary` reports.
+  //
+  // **The daily rate uses the SAME calendar-day divisor as proration**, and that is a decision rather than a
+  // convenience. `OD-ATT-0015` asked whether building a working calendar reopened `OD-PAY-0007`, and the
+  // owner ruled **proration UNCHANGED — calendar days**. Deriving this deduction from WORKING days instead
+  // would mean a month's absence and a month's proration disagreed about what one day is worth, which is
+  // precisely the inconsistency that ruling exists to prevent.
+  //
+  // It takes no configured rate. A per-day amount an administrator maintained would drift from salary the
+  // moment anybody got a raise, and the drift would be invisible.
+  UnpaidAbsenceDeduction = 6
 }
 
 public sealed class PayElementCode : ValueObject
@@ -142,6 +184,10 @@ public sealed class PayElementName : ValueObject
 // write boundary applies — which `Account` deliberately does not.
 public sealed class PayElement : AggregateRoot<Guid>, IAuditableEntity, ITenantOwnedEntity, ICompanyOwnedEntity
 {
+  // Matches `AttendanceRecord.OvertimeTierMaximumLength`. The two sides of the same label must agree, and
+  // the value is duplicated rather than shared because Payroll cannot reference Attendance's domain.
+  public const int OvertimeTierMaximumLength = 32;
+
   private string normalizedCode = string.Empty;
   private string normalizedName = string.Empty;
 
@@ -223,6 +269,17 @@ public sealed class PayElement : AggregateRoot<Guid>, IAuditableEntity, ITenantO
   // (`ADR-012`). There is no navigation property and no database foreign key to GL's tables.
   public Guid? GlAccountId { get; private set; }
 
+  // ---- WHICH OVERTIME TIER THIS ELEMENT PRICES (FP-013, OD-ATT-0008).
+  //
+  // Meaningful only for `OvertimeHourly`, and null for every other behaviour. Attendance records overtime
+  // with a TIER LABEL and no rate; this is the Payroll side of that split, so a company defines one element
+  // per tier and gives each its own `DefaultRateOrAmount`.
+  //
+  // A bare string rather than an enum, because the tier vocabulary is a company's business — the same reason
+  // `AttendanceSummaryResult` carries a dictionary rather than fixed fields. Freezing it into an enum here
+  // would put a jurisdictional list into the calculation model.
+  public string? OvertimeTier { get; private set; }
+
   public bool IsActive { get; private set; }
 
   public DateTimeOffset CreatedUtc { get; set; }
@@ -277,6 +334,31 @@ public sealed class PayElement : AggregateRoot<Guid>, IAuditableEntity, ITenantO
       defaultRateOrAmount, calculationOrder));
   }
 
+
+  // ---- SETTING THE TIER, ON THE `MapToAccount` PRECEDENT RATHER THAN AS A `Create` PARAMETER.
+  //
+  // `GlAccountId` is not a constructor argument either: an element can exist before anyone has decided where
+  // it posts, and the same is true of which tier it prices. Following that shape keeps `Create`'s signature
+  // stable, which matters because every existing call site and test would otherwise have to change to say
+  // "no tier" — and a parameter that is null almost everywhere is a parameter people stop reading.
+  public Result SetOvertimeTier(string? overtimeTier)
+  {
+    // A tier on any other behaviour is a caller who has misunderstood the model, not a harmless extra: it
+    // would sit in the database looking like configuration while the calculator never consults it.
+    if (Behaviour != PayElementBehaviour.OvertimeHourly && !string.IsNullOrWhiteSpace(overtimeTier))
+    {
+      return Result.Failure(PayElementErrors.OvertimeTierNotApplicable);
+    }
+
+    if (overtimeTier is not null &&
+      (overtimeTier.Length > OvertimeTierMaximumLength || overtimeTier.Any(char.IsControl)))
+    {
+      return Result.Failure(PayElementErrors.OvertimeTierInvalid);
+    }
+
+    OvertimeTier = string.IsNullOrWhiteSpace(overtimeTier) ? null : overtimeTier.Trim();
+    return Result.Success();
+  }
   public Result Update(string? name, decimal defaultRateOrAmount, int calculationOrder)
   {
     var elementName = PayElementName.Create(name);

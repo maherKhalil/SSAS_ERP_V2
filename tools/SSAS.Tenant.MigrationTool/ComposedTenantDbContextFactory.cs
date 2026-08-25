@@ -5,6 +5,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.GL.Infrastructure.Persistence;
+using SSAS.Payroll.Infrastructure.Persistence;
 using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
@@ -32,7 +33,7 @@ public sealed class ComposedTenantDbContextFactory : IDesignTimeDbContextFactory
 {
   // Every module that contributes tenant entities. One line per module, reviewed like any other code.
   private static readonly ITenantModelContributor[] Contributors =
-    [new HrTenantModelContributor(), new GlTenantModelContributor()];
+    [new HrTenantModelContributor(), new GlTenantModelContributor(), new PayrollTenantModelContributor()];
 
   public TenantDbContext CreateDbContext(string[] args)
   {

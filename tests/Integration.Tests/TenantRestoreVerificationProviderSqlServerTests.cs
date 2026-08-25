@@ -539,8 +539,26 @@ public sealed class TenantRestoreVerificationProviderSqlServerTests
     // foreign key changed the required order rather than merely lengthening the list. Seven tables with five
     // internal dependencies is the largest single extension it has taken, which is why the order is derived
     // here rather than appended.
+    //
+    // ---- FP-012 ADDS SEVEN MORE, AND THEY GO ABOVE GL'S BLOCK.
+    //
+    // Payroll references Companies and its own tables, and NOTHING outside Payroll references it -- there is
+    // deliberately NO database foreign key to GL's journals or HR's employees, because those are module
+    // boundaries. So the block may sit anywhere above Companies, and is placed first.
+    //
+    // Internally the rule is the same one: the copy order read backwards. Both line tables and the
+    // assignment table come before the headers they reference; PayrollRuns before PayrollPeriods; and
+    // PayrollElements LAST of the seven, because the two line tables AND the assignment table all carry a
+    // foreign key to it.
     public Task BreakApplicationSchemaAsync() =>
       ExecuteAsync(SourceDatabase, """
+        DROP TABLE [tenant].[PayrollRunLines];
+        DROP TABLE [tenant].[PayrollRunDraftLines];
+        DROP TABLE [tenant].[PayrollElementAssignments];
+        DROP TABLE [tenant].[PayrollRuns];
+        DROP TABLE [tenant].[PayrollEmployeeCompensation];
+        DROP TABLE [tenant].[PayrollPeriods];
+        DROP TABLE [tenant].[PayrollElements];
         DROP TABLE [tenant].[GlJournalLines];
         DROP TABLE [tenant].[GlJournalDraftLines];
         DROP TABLE [tenant].[GlJournalEntries];

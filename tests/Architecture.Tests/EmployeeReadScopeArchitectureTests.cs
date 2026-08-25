@@ -522,7 +522,111 @@ public sealed class EmployeeReadScopeArchitectureTests
       .OrderBy(name => name, StringComparer.Ordinal)
       .ToArray();
 
-    Assert.Equal(["EmployeeReadService.cs", "EmployeeRepository.cs"], touching);
+    // ---- THREE FILES, BECAUSE THERE ARE NOW TWO SANCTIONED READ SHAPES (RULED 2026-08-24, DEC-PAY-0017).
+    //
+    // `EmployeeRosterService.cs` joined this list by a RULING, not by growing an exception. The distinction
+    // is the whole reason the list is exact:
+    //
+    //   * `EmployeeReadService` serves HR CALLERS — tenant + company + BRANCH, every predicate from a proven
+    //     `EmployeeReadScope`. Guarded by tests 10 and 12 above.
+    //   * `EmployeeRosterService` serves the PAYROLL MODULE across a contract — tenant + company, no branch,
+    //     with the company set resolved LIVE inside the implementation and never accepted from a caller.
+    //     Guarded by the roster tests below, which are as strict as tests 10 and 12.
+    //
+    // The branch predicate never protected "employees" in the abstract; it protects HR callers from
+    // exceeding their branch authority. A cross-module read is a different authority regime and gets its own
+    // structural shape — **with its own lock**. A second door with a good lock is a sanctioned shape; a
+    // second door with a note saying "this one is fine" is an exception.
+    //
+    // A FOURTH file appearing here is a defect until someone rules otherwise and writes it a guard.
+    Assert.Equal(
+      ["EmployeeReadService.cs", "EmployeeRepository.cs", "EmployeeRosterService.cs"],
+      touching);
+  }
+
+  // ================================================================================================
+  // 16b. THE ROSTER SHAPE, PINNED AS STRICTLY AS THE FIRST (DEC-PAY-0017).
+  // ================================================================================================
+  //
+  // Everything test 10 asserts about the HR read shape, asserted about the roster's — because a sanctioned
+  // second shape that nobody guards is an exception wearing a ruling's clothes.
+  [Fact]
+  [Trait("Decision", "DEC-PAY-0017")]
+  public void The_roster_read_is_composed_through_one_scoped_query()
+  {
+    var source = ReadHrCode("SSAS.HR.Infrastructure", "Persistence", "EmployeeRosterService.cs");
+
+    // Exactly one query site, exactly as the HR read service is held to.
+    Assert.Equal(1, CountOccurrences(source, "Set<Employee>()"));
+
+    var scoped = source[source.IndexOf("private static IQueryable<Employee> RosterScoped(", StringComparison.Ordinal)..];
+
+    Assert.Contains("employee.TenantId == tenantId", scoped, StringComparison.Ordinal);
+    Assert.Contains("employee.CompanyId == companyId", scoped, StringComparison.Ordinal);
+
+    // NO BRANCH PREDICATE, BY DESIGN — and asserted, so that adding one is a deliberate act rather than a
+    // tidy-up. Payroll pays the company; a branch-scoped roster would mean payroll ran per branch, which
+    // contradicts company-owned runs (`OD-PAY-0005`), company-scoped periods (`OD-PAY-0002`) and
+    // `OD-GL-0005`'s precedent that finance is not branch-dimensional.
+    Assert.DoesNotContain("BranchId", scoped, StringComparison.Ordinal);
+
+    Assert.DoesNotContain("IgnoreQueryFilters", source, StringComparison.Ordinal);
+  }
+
+  // ---- THE AUTHORITY IS RESOLVED LIVE, NEVER ACCEPTED.
+  //
+  // The property that makes a scope trustworthy is *checked live, just now*. The roster has no scope object,
+  // so it must earn that property by doing the work itself: it resolves permitted companies from
+  // `ITenantCompanyAccessResolver` on every call. A set accepted as a parameter would be forgeable by
+  // whoever called, which is precisely what the scope types exist to prevent.
+  [Fact]
+  [Trait("Decision", "DEC-PAY-0017")]
+  public void The_roster_resolves_its_own_company_authority_and_accepts_none()
+  {
+    var source = ReadHrCode("SSAS.HR.Infrastructure", "Persistence", "EmployeeRosterService.cs");
+
+    Assert.Contains("ITenantCompanyAccessResolver", source, StringComparison.Ordinal);
+    Assert.Contains("GetPermittedCompaniesAsync", source, StringComparison.Ordinal);
+
+    // No scope or company-set type may appear in the roster's own signature: the contract passes a company
+    // IDENTIFIER, and authority is resolved rather than supplied.
+    foreach (var method in typeof(SSAS.HR.Contracts.Employment.IEmployeeRoster).GetMethods())
+    {
+      foreach (var parameter in method.GetParameters())
+      {
+        Assert.False(
+          parameter.ParameterType.Name.Contains("Scope", StringComparison.Ordinal) ||
+          parameter.ParameterType.Name.Contains("AuthorizedCompanySet", StringComparison.Ordinal),
+          $"{method.Name} accepts {parameter.ParameterType.Name}; the roster must resolve its own authority.");
+      }
+    }
+  }
+
+  // ---- THE FIELD LIST NEVER WIDENS (the field-never-leaves pattern, FP-009).
+  //
+  // A contract is forever-ish. A roster that returned `EmployeeDetail` would let every future Payroll
+  // feature read HR personal data with NO CALL-SITE CHANGE for anyone to review — the widening would be
+  // invisible in a diff of the consumer. So the shape is pinned by name, and `NationalId` is named
+  // explicitly because it is the field `OD-DOC-006` protected.
+  [Fact]
+  [Trait("Decision", "DEC-PAY-0017")]
+  public void The_roster_projection_carries_only_the_ratified_fields()
+  {
+    var properties = typeof(SSAS.HR.Contracts.Employment.EmploymentRecord)
+      .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+      .Select(property => property.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Equal(
+      ["CompanyId", "EmployeeId", "EmploymentDateUtc", "TerminationDateUtc"],
+      properties);
+
+    // Named individually, so a future widening has to delete an assertion that says why it exists.
+    foreach (var forbidden in new[] { "NationalId", "FullName", "EmployeeNumber", "BranchId", "DepartmentId", "PositionId", "Status" })
+    {
+      Assert.DoesNotContain(forbidden, properties, StringComparer.Ordinal);
+    }
   }
 
   // ---- 17. NO DEFERRED QUERY OVER EMPLOYEE ESCAPES INFRASTRUCTURE.

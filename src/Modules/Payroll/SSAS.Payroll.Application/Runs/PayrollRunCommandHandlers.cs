@@ -1,0 +1,510 @@
+using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Tenancy.Persistence;
+using SSAS.GL.Contracts.Posting;
+using SSAS.HR.Contracts.Employment;
+using SSAS.Payroll.Application.Abstractions;
+using SSAS.Payroll.Application.Permissions;
+using SSAS.Payroll.Application.Reads;
+using SSAS.Payroll.Domain.Compensation;
+using SSAS.Payroll.Domain.Elements;
+using SSAS.Payroll.Domain.Runs;
+
+namespace SSAS.Payroll.Application.Runs;
+
+public sealed record GeneratePayrollPeriodCommand(
+  Guid CompanyId, string? Name, DateTimeOffset AnyDateInPeriodUtc, DateTimeOffset PayDateUtc);
+
+public sealed record CreatePayrollRunCommand(Guid CompanyId, Guid PayrollPeriodId);
+
+public sealed record CalculatePayrollRunCommand(Guid PayrollRunId);
+
+public sealed record ApprovePayrollRunCommand(Guid PayrollRunId);
+
+public sealed record PostPayrollRunCommand(Guid PayrollRunId);
+
+public sealed record ReversePayrollRunCommand(
+  Guid PayrollRunId, DateTimeOffset ReversalDateUtc, string Description);
+
+// ---- PERIOD GENERATION, FROM THE FISCAL CALENDAR (OD-PAY-0002).
+//
+// A payroll period is GENERATED from a fiscal period rather than authored beside one, which is how 1:1
+// alignment is guaranteed by construction. The caller names a date; GL resolves which fiscal period covers
+// it and returns its identity and bounds; `PayrollPeriod.CreateAlignedTo` is not permitted to disagree.
+//
+// A caller cannot supply the bounds, and that absence is the ruling: bounds a caller could name are bounds
+// a caller could misalign, and `OD-PAY-0014`'s closed-period check would then be guarding a straddle.
+public sealed class GeneratePayrollPeriodCommandHandler(
+  IPayrollPeriodRepository periods,
+  IJournalPoster ledger,
+  IPayrollScopeResolver scope,
+  ITenantUnitOfWork unitOfWork)
+{
+  public async Task<Result<Guid>> HandleAsync(
+    GeneratePayrollPeriodCommand command, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(command);
+
+    var authorized = await scope.AuthorizeAsync(
+      PayrollPermissionNames.ManageRuns, command.CompanyId, cancellationToken);
+    if (authorized.IsFailure)
+    {
+      return Result.Failure<Guid>(authorized.Error);
+    }
+
+    var window = await ledger.InspectPostingWindowAsync(
+      command.CompanyId, command.AnyDateInPeriodUtc, cancellationToken);
+
+    if (window.Status == PostingWindowStatus.PeriodNotFound || window.FiscalPeriodId is null)
+    {
+      return Result.Failure<Guid>(PayrollErrors.FiscalPeriodNotFound);
+    }
+
+    // A CLOSED fiscal period still has identity and bounds, so a payroll period can be generated for it —
+    // generating is not posting. The closed-period refusal belongs at APPROVAL (`OD-PAY-0014`), and moving
+    // it here would stop an operator preparing next month's payroll while last month is being closed.
+
+    if (await periods.ExistsForFiscalPeriodAsync(
+      command.CompanyId, window.FiscalPeriodId.Value, cancellationToken))
+    {
+      return Result.Failure<Guid>(PayrollErrors.PeriodAlreadyExists);
+    }
+
+    var period = PayrollPeriod.CreateAlignedTo(
+      command.CompanyId,
+      window.FiscalPeriodId.Value,
+      command.Name ?? window.PeriodName,
+      window.StartUtc!.Value,
+      window.EndUtc!.Value,
+      command.PayDateUtc);
+    if (period.IsFailure)
+    {
+      return Result.Failure<Guid>(period.Error);
+    }
+
+    await periods.AddAsync(period.Value, cancellationToken);
+
+    var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
+    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(period.Value.Id);
+  }
+}
+
+public sealed class CreatePayrollRunCommandHandler(
+  IPayrollRunRepository runs,
+  IPayrollPeriodRepository periods,
+  IPayrollScopeResolver scope,
+  ITenantUnitOfWork unitOfWork)
+{
+  public async Task<Result<Guid>> HandleAsync(
+    CreatePayrollRunCommand command, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(command);
+
+    var authorized = await scope.AuthorizeAsync(
+      PayrollPermissionNames.ManageRuns, command.CompanyId, cancellationToken);
+    if (authorized.IsFailure)
+    {
+      return Result.Failure<Guid>(authorized.Error);
+    }
+
+    var period = await periods.GetByIdAsync(command.PayrollPeriodId, cancellationToken);
+    if (period is null || period.CompanyId != command.CompanyId)
+    {
+      return Result.Failure<Guid>(PayrollErrors.PeriodNotFound);
+    }
+
+    // One run per company per period (`OD-PAY-0011` ruled reverse-and-rerun rather than superseding runs).
+    // The unique index is the authority; this is the courteous answer.
+    if (await runs.ExistsForPeriodAsync(command.CompanyId, command.PayrollPeriodId, cancellationToken))
+    {
+      return Result.Failure<Guid>(PayrollErrors.RunAlreadyExistsForPeriod);
+    }
+
+    var run = PayrollRun.Create(command.CompanyId, command.PayrollPeriodId);
+    if (run.IsFailure)
+    {
+      return Result.Failure<Guid>(run.Error);
+    }
+
+    await runs.AddAsync(run.Value, cancellationToken);
+
+    var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
+    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(run.Value.Id);
+  }
+}
+
+// ---- CALCULATION. Free before approval, impossible after (OD-PAY-0011).
+//
+// The handler's job is to ASSEMBLE inputs and let `PayrollCalculator` — which touches no repository and no
+// clock — do the arithmetic. That separation is what makes the determinism scenarios assertable without a
+// database, and it is why the roster, the compensation history and the element set are all read here.
+public sealed class CalculatePayrollRunCommandHandler(
+  IPayrollRunRepository runs,
+  IPayrollPeriodRepository periods,
+  IPayElementRepository elements,
+  IEmployeeCompensationRepository compensation,
+  IEmployeeRoster roster,
+  IPayrollScopeResolver scope,
+  ITenantUnitOfWork unitOfWork,
+  ICurrentUser currentUser)
+{
+  public async Task<Result> HandleAsync(
+    CalculatePayrollRunCommand command, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(command);
+
+    var run = await runs.GetWithDraftLinesAsync(command.PayrollRunId, cancellationToken);
+    if (run is null)
+    {
+      return Result.Failure(PayrollErrors.RunNotFound);
+    }
+
+    var authorized = await scope.AuthorizeAsync(
+      PayrollPermissionNames.ManageRuns, run.CompanyId, cancellationToken);
+    if (authorized.IsFailure)
+    {
+      return authorized;
+    }
+
+    var period = await periods.GetByIdAsync(run.PayrollPeriodId, cancellationToken);
+    if (period is null)
+    {
+      return Result.Failure(PayrollErrors.PeriodNotFound);
+    }
+
+    // HR's fact, through HR's contract. Payroll never sees `Employee` (`ADR-012`, `DEC-PAY-0017`).
+    var employment = await roster.GetEmploymentAsync(
+      run.CompanyId, period.StartUtc, period.EndUtc, cancellationToken);
+
+    var history = await compensation.GetHistoryForCompanyAsync(run.CompanyId, cancellationToken);
+    var byEmployee = history.GroupBy(record => record.EmployeeId)
+      .ToDictionary(group => group.Key, group => group.ToList());
+
+    var inputs = new List<PayrollEmployeeInput>();
+    foreach (var record in employment)
+    {
+      if (!byEmployee.TryGetValue(record.EmployeeId, out var employeeHistory))
+      {
+        // An employee with no compensation on file is SKIPPED, not defaulted to zero. A zero-pay line would
+        // look like a decision somebody made; an absence is the truth, and it surfaces as a missing payslip
+        // rather than as a payslip for nothing.
+        continue;
+      }
+
+      // The record IN FORCE on the pay date, derived — never a stored "current" flag (`OD-PAY-0003`).
+      var inForce = EmployeeCompensation.InForceOn(employeeHistory, period.PayDateUtc);
+      if (inForce is null)
+      {
+        continue;
+      }
+
+      inputs.Add(new PayrollEmployeeInput(
+        record.EmployeeId, record.EmploymentDateUtc, record.TerminationDateUtc, inForce));
+    }
+
+    var active = await elements.GetActiveForCompanyAsync(run.CompanyId, cancellationToken);
+
+    var calculated = PayrollCalculator.Calculate(run.Id, period, inputs, active);
+    if (calculated.IsFailure)
+    {
+      return Result.Failure(calculated.Error);
+    }
+
+    var set = run.SetCalculation(calculated.Value, currentUser.UserId);
+    if (set.IsFailure)
+    {
+      return set;
+    }
+
+    return await unitOfWork.SaveChangesAsync(cancellationToken);
+  }
+}
+
+// ---- APPROVAL. The sensitive act, and the last point at which anything can be refused.
+//
+// Two checks live here rather than at posting, both because `OD-PAY-0014` and `OD-PAY-0012` put them here,
+// and both for the same underlying reason: a run that reached Approved and could not post would be in a
+// state with no legitimate exit. It cannot return to Draft — approval already happened — and it cannot go
+// forward.
+public sealed class ApprovePayrollRunCommandHandler(
+  IPayrollRunRepository runs,
+  IPayrollPeriodRepository periods,
+  IPayElementRepository elements,
+  IJournalPoster ledger,
+  IPayrollScopeResolver scope,
+  ITenantUnitOfWork unitOfWork,
+  ICurrentUser currentUser)
+{
+  public async Task<Result> HandleAsync(
+    ApprovePayrollRunCommand command, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(command);
+
+    var run = await runs.GetWithDraftLinesAsync(command.PayrollRunId, cancellationToken);
+    if (run is null)
+    {
+      return Result.Failure(PayrollErrors.RunNotFound);
+    }
+
+    // `Payroll.Runs.Approve`, NOT `ManageRuns`. `BR-PLT-0103` names payroll processing sensitive and
+    // `OD-PAY-0009` placed the sensitive act here, so preparing and authorizing can be different people.
+    var authorized = await scope.AuthorizeAsync(
+      PayrollPermissionNames.ApproveRuns, run.CompanyId, cancellationToken);
+    if (authorized.IsFailure)
+    {
+      return authorized;
+    }
+
+    var period = await periods.GetByIdAsync(run.PayrollPeriodId, cancellationToken);
+    if (period is null)
+    {
+      return Result.Failure(PayrollErrors.PeriodNotFound);
+    }
+
+    // ---- MAPPING, CHECKED AT APPROVAL (OD-PAY-0012).
+    //
+    // Every element the run actually used must exist, be active, and be mapped. The refusal NAMES the
+    // element, because "a pay element is unmapped" sends a user hunting through the whole element list.
+    var usedIds = run.DraftLines.Select(line => line.PayElementId).Distinct().ToArray();
+    var used = await elements.GetByIdsAsync(usedIds, cancellationToken);
+    var byId = used.ToDictionary(element => element.Id);
+
+    foreach (var id in usedIds)
+    {
+      if (!byId.TryGetValue(id, out var element))
+      {
+        return Result.Failure(PayElementErrors.NotFound);
+      }
+
+      if (!element.IsActive)
+      {
+        return Result.Failure(PayElementErrors.Inactive(element.Code.Value));
+      }
+
+      if (element.GlAccountId is null)
+      {
+        return Result.Failure(PayElementErrors.Unmapped(element.Code.Value));
+      }
+    }
+
+    // The balancing credit must be mapped too, or the journal cannot balance and `BR-GL-0001` would refuse
+    // it at posting — which is exactly the stranded-Approved state this check exists to prevent.
+    var payable = (await elements.GetActiveForCompanyAsync(run.CompanyId, cancellationToken))
+      .FirstOrDefault(element => element.Behaviour == PayElementBehaviour.NetPayPayable);
+
+    if (payable is null || payable.GlAccountId is null)
+    {
+      return Result.Failure(PayElementErrors.Unmapped("net pay payable"));
+    }
+
+    // ---- THE CLOSED-PERIOD REFUSAL, NAMING THE PERIOD (OD-PAY-0014).
+    var window = await ledger.InspectPostingWindowAsync(
+      run.CompanyId, period.PayDateUtc, cancellationToken);
+
+    if (window.Status == PostingWindowStatus.PeriodClosed)
+    {
+      return Result.Failure(PayrollErrors.PeriodClosedForPosting(window.PeriodName ?? period.Name));
+    }
+
+    if (!window.IsOpen)
+    {
+      return Result.Failure(PayrollErrors.FiscalPeriodNotFound);
+    }
+
+    var approved = run.Approve(currentUser.UserId);
+    if (approved.IsFailure)
+    {
+      return approved;
+    }
+
+    return await unitOfWork.SaveChangesAsync(cancellationToken);
+  }
+}
+
+// ---- POSTING. Synchronous, and a failure REFUSES THE TRANSITION (OD-PAY-0013).
+//
+// The run reaches `Posted` only after the ledger has actually accepted the journal. That is what makes "a
+// run cannot claim it posted when it did not" true rather than aspirational, and it is the property that
+// decided the contract's shape against an event.
+public sealed class PostPayrollRunCommandHandler(
+  IPayrollRunRepository runs,
+  IPayrollPeriodRepository periods,
+  IPayElementRepository elements,
+  IJournalPoster ledger,
+  IPayrollScopeResolver scope,
+  ITenantUnitOfWork unitOfWork,
+  ICurrentUser currentUser)
+{
+  public async Task<Result> HandleAsync(
+    PostPayrollRunCommand command, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(command);
+
+    var run = await runs.GetWithLinesAsync(command.PayrollRunId, cancellationToken);
+    if (run is null)
+    {
+      return Result.Failure(PayrollErrors.RunNotFound);
+    }
+
+    var authorized = await scope.AuthorizeAsync(
+      PayrollPermissionNames.PostRuns, run.CompanyId, cancellationToken);
+    if (authorized.IsFailure)
+    {
+      return authorized;
+    }
+
+    if (run.Status != PayrollRunStatus.Approved)
+    {
+      return Result.Failure(PayrollErrors.RunNotPostable(run.Status));
+    }
+
+    var period = await periods.GetByIdAsync(run.PayrollPeriodId, cancellationToken);
+    if (period is null)
+    {
+      return Result.Failure(PayrollErrors.PeriodNotFound);
+    }
+
+    var companyElements = await elements.GetActiveForCompanyAsync(run.CompanyId, cancellationToken);
+    var journalLines = ComposeJournal(run, companyElements);
+    if (journalLines.IsFailure)
+    {
+      return Result.Failure(journalLines.Error);
+    }
+
+    var outcome = await ledger.PostAsync(
+      new JournalPostingRequest(
+        run.CompanyId,
+        period.PayDateUtc,
+        $"Payroll {period.Name}",
+        run.Id.ToString(),
+        journalLines.Value),
+      cancellationToken);
+
+    if (!outcome.IsPosted)
+    {
+      // The transition is refused, and the closed-period case still names its period even here — the window
+      // inspected at approval is not a reservation, so a period can close in between and this is the honest
+      // answer when it does.
+      return outcome.Status == JournalPostingStatus.PeriodClosed
+        ? Result.Failure(PayrollErrors.PeriodClosedForPosting(outcome.PeriodName ?? period.Name))
+        : Result.Failure(PayrollErrors.LedgerRefusedPosting);
+    }
+
+    var posted = run.MarkPosted(outcome.JournalEntryId!.Value, currentUser.UserId);
+    if (posted.IsFailure)
+    {
+      return posted;
+    }
+
+    return await unitOfWork.SaveChangesAsync(cancellationToken);
+  }
+
+  // ---- HOW A PAYROLL BECOMES A BALANCED JOURNAL.
+  //
+  // Earnings DEBIT their mapped accounts (a cost the company incurred). Deductions CREDIT theirs (amounts
+  // withheld and owed onward). Neither side balances the other: the difference is NET PAY, credited to the
+  // payable account, which is what the company now owes its employees.
+  //
+  // Amounts are the STORED line amounts, already rounded (`OD-PAY-0008`), so the journal's two sides are the
+  // same numbers the payslip shows. Recomputing here would risk a journal that balanced against figures no
+  // employee could see.
+  private static Result<IReadOnlyList<JournalPostingLine>> ComposeJournal(
+    PayrollRun run, IReadOnlyList<PayElement> companyElements)
+  {
+    var byId = companyElements.ToDictionary(element => element.Id);
+    var lines = new List<JournalPostingLine>();
+
+    // Grouped per account so a journal has one line per account rather than one per employee — a hundred
+    // employees on one salary-expense account is one ledger line, not a hundred. The payslip keeps the
+    // per-employee detail; the ledger records the movement.
+    foreach (var group in run.Lines.GroupBy(line => line.PayElementId))
+    {
+      if (!byId.TryGetValue(group.Key, out var element) || element.GlAccountId is null)
+      {
+        return Result.Failure<IReadOnlyList<JournalPostingLine>>(PayElementErrors.Unmapped(group.Key.ToString()));
+      }
+
+      var total = group.Sum(line => line.Amount);
+      if (total == 0m)
+      {
+        continue;
+      }
+
+      lines.Add(element.Kind == PayElementKind.Earning
+        ? new JournalPostingLine(element.GlAccountId.Value, total, 0m, element.Name.Value)
+        : new JournalPostingLine(element.GlAccountId.Value, 0m, total, element.Name.Value));
+    }
+
+    var payable = companyElements.FirstOrDefault(
+      element => element.Behaviour == PayElementBehaviour.NetPayPayable);
+
+    if (payable?.GlAccountId is null)
+    {
+      return Result.Failure<IReadOnlyList<JournalPostingLine>>(PayElementErrors.Unmapped("net pay payable"));
+    }
+
+    var net = run.NetPay;
+    if (net != 0m)
+    {
+      lines.Add(new JournalPostingLine(payable.GlAccountId.Value, 0m, net, "Net pay payable"));
+    }
+
+    return Result.Success<IReadOnlyList<JournalPostingLine>>(lines);
+  }
+}
+
+// ---- CORRECTION IS A REVERSAL (DEC-PAY-0012, OD-PAY-0011).
+//
+// There is no edit path and there never will be: a posted run's lines are `IAppendOnlyEntity` and its
+// journal is append-only. Correcting means reversing the journal and running the period again.
+public sealed class ReversePayrollRunCommandHandler(
+  IPayrollRunRepository runs,
+  IJournalPoster ledger,
+  IPayrollScopeResolver scope)
+{
+  public async Task<Result<Guid>> HandleAsync(
+    ReversePayrollRunCommand command, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(command);
+
+    var run = await runs.GetByIdAsync(command.PayrollRunId, cancellationToken);
+    if (run is null)
+    {
+      return Result.Failure<Guid>(PayrollErrors.RunNotFound);
+    }
+
+    // Reversing a payroll unwinds a ledger posting, so it takes the POSTING permission rather than the
+    // approval one — it is the same authority being exercised in the opposite direction.
+    var authorized = await scope.AuthorizeAsync(
+      PayrollPermissionNames.PostRuns, run.CompanyId, cancellationToken);
+    if (authorized.IsFailure)
+    {
+      return Result.Failure<Guid>(authorized.Error);
+    }
+
+    if (run.Status != PayrollRunStatus.Posted || run.JournalEntryId is null)
+    {
+      return Result.Failure<Guid>(PayrollErrors.RunNotReversible);
+    }
+
+    var outcome = await ledger.ReverseAsync(
+      new JournalReversalRequest(run.JournalEntryId.Value, command.ReversalDateUtc, command.Description),
+      cancellationToken);
+
+    if (!outcome.IsPosted)
+    {
+      return outcome.Status == JournalPostingStatus.PeriodClosed
+        ? Result.Failure<Guid>(PayrollErrors.PeriodClosedForPosting(outcome.PeriodName ?? "the reversal period"))
+        : Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal);
+    }
+
+    // ---- THE RUN IS NOT MUTATED, AND THAT IS DELIBERATE.
+    //
+    // The run stays `Posted` and keeps naming its original journal. Marking it "reversed" would be a claim
+    // the ledger already makes better — GL derives reversal from the reversing entry's existence rather than
+    // writing a flag onto the original, because writing one would be mutating an append-only row. Payroll
+    // follows the same discipline: the correction is a NEW run for the same period, and the reversal makes
+    // the ledger truthful in the meantime.
+    return Result.Success(outcome.JournalEntryId!.Value);
+  }
+}

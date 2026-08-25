@@ -13,9 +13,10 @@ public sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
 {
   // The tenant schema and its binary collation, restated here rather than imported: HR cannot reference
   // Platform's TenantPersistenceConstants, and the values are part of the tenant contract either way.
-  public const string TenantSchema = "tenant";
+  // Aliased to the promoted truth 2026-08-24 (ADR-027 d4). One source for the schema name.
+  public const string TenantSchema = SSAS.BuildingBlocks.Infrastructure.Persistence.TenantPersistenceConventions.TenantSchema;
 
-  public const string OrdinalCollation = "Latin1_General_100_BIN2";
+  public const string OrdinalCollation = SSAS.BuildingBlocks.Infrastructure.Persistence.TenantPersistenceConventions.OrdinalCollation;
 
   public void Configure(EntityTypeBuilder<Employee> builder)
   {

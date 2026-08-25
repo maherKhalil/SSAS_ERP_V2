@@ -48,6 +48,54 @@ set -u
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
 #
+#  7z. TWO MODES, AND THE PAIRING IS THE POINT.
+#
+#     GATE_MODE=FULL (default) -- no parallelism ceiling, memory floor 4096 MB. For a build box.
+#     GATE_MODE=LEAN           -- xUnit.MaxParallelThreads=4, memory floor 2048 MB. For THIS box.
+#
+#     **This development machine runs LEAN**, because it hosts resident agent sessions alongside the suite
+#     and cannot supply 4 GB with them running. A CI or build machine runs FULL.
+#
+#     **A floor without its matching ceiling is either theatre or a wall.** Memory scales with the number of
+#     concurrent fixtures, so each floor is calibrated to what the suite actually needs UNDER its ceiling.
+#     Raising the ceiling without raising the floor re-creates the 2026-08-24 starvation; lowering the floor
+#     without lowering the ceiling just moves the wall.
+#
+#     Four threads is the lean shape rather than an arbitrary number: it is the sum/N arithmetic that made
+#     the gate-economics work pay off, applied in the other direction. Expect roughly 45-55 minutes per
+#     Integration leg -- still far under the 113-minute serial era that work replaced.
+#
+#     ---- NEVER EDIT THIS FILE WHILE IT IS RUNNING. Paid for 2026-08-25.
+#
+#     bash reads a script INCREMENTALLY as it executes, so inserting lines into a running gate shifts the
+#     code underneath the interpreter. A LEAN run completed every leg green and then died with
+#     "syntax error near unexpected token" on its own trailing lines, purely because this header grew by
+#     nine lines mid-run. The results were valid and had to be recovered from the TRX files. Edit between
+#     runs, or copy the script first.
+#
+#     TROUBLESHOOTING, PAID FOR ON 2026-08-24: before concluding a box cannot meet its floor, CHECK FOR
+#     STALE BUILD NODES. Three `dotnet` MSBuild processes survived `MSBUILDDISABLENODEREUSE=1` after aborted
+#     runs and held 372 MB between them; killing them moved the box from 1820 MB (below the LEAN floor) to
+#     2390 MB (above it). Node reuse is disabled for the builds this script starts, not for whatever ran
+#     before it.
+#
+#  7a. A MEMORY FLOOR IN THE PRECONDITIONS (4096 MB in FULL, 2048 MB in LEAN, before EACH leg).
+#     2026-08-24: BOTH Integration legs exited 127 with NO TRX AT ALL -- not a partial one, no blame
+#     sequence, no dump. The sampler showed the box down to 14 MB free during Debug and 92 MB during
+#     Release. The instant-of-exit sample looked healthy (229 MB working set, 1362 MB free), which is
+#     exactly what a memory kill looks like from outside: the sampler's last reading is taken after the
+#     kill has already released the memory.
+#     A busy box is a PRECONDITION FAILURE, not a flaky suite -- the same principle already applied to
+#     foreign testhosts and orphan catalogs, now applied to memory. Checked before EACH leg rather than
+#     once, because Debug's footprint bleeding into Release's start is what the two death timestamps show.
+#
+#  7b. SQL SERVER IS CAPPED AT 4096 MB ON THIS INSTANCE.
+#     Applied and persisted 2026-08-24 (`sp_configure 'max server memory (MB)', 4096`). It was UNBOUNDED
+#     (2147483647) -- entitled to all 15 GB. It sat at ~600 MB at rest, which is irrelevant: the
+#     ENTITLEMENT is what kills under load, and a dev-box instance entitled to all physical RAM is a
+#     landmine every future suite steps on. This is an instance setting and survives restarts; it is
+#     recorded here because nothing in the repository would otherwise say it had been done.
+#
 #  7. MSBUILDDISABLENODEREUSE=1.
 #     This box is memory-bound (~15 GB, one local SQL Server) and the gate builds TWICE before running
 #     two ~30-minute Integration legs, so Debug's worker nodes would sit resident through the whole
@@ -88,8 +136,40 @@ reap_count () {
     "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.databases WHERE name LIKE 'SSAS[_]%'" 2>/dev/null | head -1 | tr -d '[:space:]'
 }
 
+# ---- MODE. See note 7z in the header. FULL is the default so a build box needs no ceremony.
+GATE_MODE=${GATE_MODE:-FULL}
+
+if [ "$GATE_MODE" = "LEAN" ]; then
+  # The ceiling travels as a RunSettings argument rather than an xunit.runner.json, so the repository holds
+  # no file asserting a parallelism policy that is true of only one machine.
+  RUNSETTINGS_ARGS="-- xUnit.MaxParallelThreads=4"
+  MEMORY_FLOOR_MB=${GATE_MEMORY_FLOOR_MB:-2048}
+else
+  RUNSETTINGS_ARGS=""
+  MEMORY_FLOOR_MB=${GATE_MEMORY_FLOOR_MB:-4096}
+fi
+
+echo "########## GATE MODE: $GATE_MODE (floor ${MEMORY_FLOOR_MB} MB, ceiling: ${RUNSETTINGS_ARGS:-none})"
+
 reap_to_zero () {
   local CFG="$1"
+
+# 0. THE BOX MUST HAVE ROOM. Measured at the start of EVERY leg, not once for the run.
+#
+#    Aborts LOUDLY and distinctly: this is a precondition failure, and reporting it as a suite failure
+#    would send someone hunting for a defect in the tests. See note 7a in the header for the incident.
+  local FREE_MB
+  FREE_MB=$(powershell.exe -NoProfile -Command     "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB,0)"     2>/dev/null | tr -d '[:space:]')
+  FREE_MB=${FREE_MB:-0}
+
+  echo "--- free physical memory before $CFG: ${FREE_MB} MB (floor ${MEMORY_FLOOR_MB} MB)"
+
+  if [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then
+    echo "!!! ABORT ($CFG): PRECONDITION FAILURE -- only ${FREE_MB} MB free, floor is ${MEMORY_FLOOR_MB} MB."
+    echo "!!! This is NOT a suite failure. Quiet the box (editors, browsers) and run again."
+    echo "!!! On 2026-08-24 both Integration legs died with no TRX at 14 MB and 92 MB free."
+    exit 5
+  fi
 
   # 1. NO TESTHOST OF OURS MAY BE RUNNING. One means a sibling suite is live and its catalogs are not
   #    orphans. Matched on the repo path: counting every testhost.exe on the machine over-reaches, and
@@ -153,13 +233,14 @@ for CFG in Debug Release; do
   dotnet build SSAS.ERP.sln -c "$CFG" --nologo -v m > "$LOGS/build-$CFG.log" 2>&1
   grep -E "Warning\(s\)|Error\(s\)|Build succeeded|Build FAILED|error" "$LOGS/build-$CFG.log" | head -20
 
-  for P in Architecture Platform HR API Finance Integration; do
+  for P in Architecture Platform HR API Finance Payroll Integration; do
     case $P in
       Architecture) F=tests/Architecture.Tests/SSAS.Architecture.Tests.csproj;;
       Platform)     F=tests/Platform.Tests/SSAS.Platform.Tests.csproj;;
       HR)           F=tests/HR.Tests/SSAS.HR.Tests.csproj;;
       API)          F=tests/API.Tests/SSAS.API.Tests.csproj;;
       Finance)      F=tests/Finance.Tests/SSAS.Finance.Tests.csproj;;
+      Payroll)      F=tests/Payroll.Tests/SSAS.Payroll.Tests.csproj;;
       Integration)  F=tests/Integration.Tests/SSAS.Integration.Tests.csproj;;
     esac
 
@@ -191,6 +272,7 @@ for CFG in Debug Release; do
     dotnet test "$F" -c "$CFG" --nologo -v q --no-build $BLAME \
       --logger "trx;LogFileName=$P-$CFG.trx" \
       --results-directory "$LOGS" \
+      $RUNSETTINGS_ARGS \
       > "$LOGS/$P-$CFG.log" 2>&1
     STATUS=$?
 

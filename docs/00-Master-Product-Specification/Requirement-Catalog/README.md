@@ -19,6 +19,7 @@ The catalog is organized by business domain rather than by implementation layer.
 | REQ-PLT | Platform |
 | REQ-HR | Human Resources |
 | REQ-GL | General Ledger |
+| REQ-PAY | Payroll |
 | REQ-RPT | Reporting |
 | REQ-SEC | Security |
 | REQ-INT | Integration |

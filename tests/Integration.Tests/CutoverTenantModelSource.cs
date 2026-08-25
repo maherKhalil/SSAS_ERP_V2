@@ -1,5 +1,6 @@
 ﻿using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.GL.Infrastructure.Persistence;
+using SSAS.Payroll.Infrastructure.Persistence;
 using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
@@ -29,7 +30,7 @@ internal static class CutoverTenantModel
   // DERIVE their expected set from it, so a module missing here is a module missing from every derived
   // assertion — and an incomplete manifest is not an error, it is a shorter list that passes.
   public static readonly ITenantModelContributor[] Contributors =
-    [new HrTenantModelContributor(), new GlTenantModelContributor()];
+    [new HrTenantModelContributor(), new GlTenantModelContributor(), new PayrollTenantModelContributor()];
 
   public static ITenantModelSource Source { get; } = new ComposedTenantModelSource(Contributors);
 

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.API\SSAS.Payroll.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.Application\SSAS.Payroll.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.Domain\SSAS.Payroll.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.Infrastructure\SSAS.Payroll.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

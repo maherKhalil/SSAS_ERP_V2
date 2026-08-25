@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\SSAS.BuildingBlocks.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      PayrollRunLine's factory is `internal`, on exactly the reasoning OD-GL-0007 used for JournalEntry: the
+      append-only record of what people were paid may be created ONLY by approving a run, and nothing outside
+      this assembly may fabricate one. The test assembly gets access so it can seed an approved run the way
+      APPROVAL does — a test that inserted the row by another route would assert the write boundary's
+      behaviour against a row the write boundary never produced.
+
+      The name was CONFIRMED against SSAS.ERP.sln before being written here. FP-011 wrote
+      InternalsVisibleTo("SSAS.GL.Tests") for an assembly that did not exist; the check is a step now.
+    -->
+    <InternalsVisibleTo Include="SSAS.Payroll.Tests" />
+    <!--
+      And the module's own application layer, the one legitimate caller of PayrollRun.Approve. Making the
+      factory public instead would be the easy fix and the wrong one: the boundary is "nothing OUTSIDE THE
+      PAYROLL MODULE fabricates an approved pay record", and public opens it to the API layer, the Host, and
+      every future module.
+    -->
+    <InternalsVisibleTo Include="SSAS.Payroll.Application" />
+    <InternalsVisibleTo Include="SSAS.Integration.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

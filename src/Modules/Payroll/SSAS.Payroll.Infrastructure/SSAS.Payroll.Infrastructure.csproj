@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SSAS.Payroll.Application\SSAS.Payroll.Application.csproj" />
+    <ProjectReference Include="..\SSAS.Payroll.Domain\SSAS.Payroll.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Infrastructure\SSAS.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Tenancy\SSAS.BuildingBlocks.Tenancy.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real-SQL proofs compose the production graph directly — the real repository over the real
+         context — because a test that substituted either would prove nothing about the write boundary. -->
+    <InternalsVisibleTo Include="SSAS.Integration.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

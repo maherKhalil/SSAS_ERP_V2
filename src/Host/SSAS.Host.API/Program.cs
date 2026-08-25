@@ -4,8 +4,11 @@ using SSAS.HR.API.Positions;
 using System.Globalization;
 using Serilog;
 using SSAS.GL.API;
+using SSAS.Payroll.API;
 using SSAS.GL.Application.Permissions;
+using SSAS.Payroll.Application.Permissions;
 using SSAS.GL.Infrastructure;
+using SSAS.Payroll.Infrastructure;
 using SSAS.Host.API.Authentication;
 using SSAS.Host.API.Authorization;
 using SSAS.Host.API.Configuration;
@@ -54,7 +57,13 @@ try
     // is the one place permitted to see a module's Infrastructure, and registration is explicit. Without
     // this line GL's seven entities are absent from the tenant model, from the migration stream, and --
     // silently -- from Shared to Dedicated cutover.
-    .AddGlInfrastructure();
+    .AddGlInfrastructure()
+    // Payroll (FP-012), on the same terms as HR's and GL's: the Host registers the module and its
+    // persistence EXPLICITLY. Without AddPayrollInfrastructure, Payroll's six entities are absent from the
+    // tenant model, from the migration stream, and -- because TenantCutoverCopyPlan derives its manifest
+    // from the model -- from Shared-to-Dedicated cutover, which fails SILENTLY.
+    .AddPayrollModule()
+    .AddPayrollInfrastructure();
 
   // ---- MODULE PERMISSION DEFINITIONS, REGISTERED EXPLICITLY (ADR-012 r1.2, FP-006P).
   //
@@ -68,6 +77,10 @@ try
   // which is precisely the FP-006P failure -- the constants existed, no catalog defined them, and no role
   // could hold one.
   builder.Services.AddSingleton<IPermissionCatalogContributor, GlPermissionCatalogContributor>();
+
+  // Payroll's line (FP-012). Nine definitions; without this every payroll endpoint refuses every caller --
+  // FP-006P's incident, where HR's constants existed, no catalog defined them, and no role could hold one.
+  builder.Services.AddSingleton<IPermissionCatalogContributor, PayrollPermissionCatalogContributor>();
 
   var app = builder.Build();
 
@@ -111,6 +124,10 @@ try
   // GL's surface: nineteen routes across accounts, the fiscal calendar, drafts, posted journals and
   // reporting. Mapped after HR so the route inventory reads in module order.
   app.MapGlEndpoints();
+
+  // Payroll's surface: twenty routes across compensation, pay elements, periods, the run lifecycle and
+  // payslips. Nothing responds to DELETE.
+  app.MapPayrollEndpoints();
 
   app.Run();
 }

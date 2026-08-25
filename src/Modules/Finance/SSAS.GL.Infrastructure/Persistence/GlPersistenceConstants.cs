@@ -14,25 +14,28 @@ namespace SSAS.GL.Infrastructure.Persistence;
 // a foundations change to share them would cost more review than it saves, and would put GL in the business
 // of editing BuildingBlocks on its way past.
 //
-// If a third module needs them, that is the moment the promotion earns its review — three call sites is
-// where drift starts to cost something. Recorded here so that moment is recognised rather than rediscovered.
+// ---- THE TRIGGER FIRED, AND THE PROMOTION HAPPENED (2026-08-24).
+//
+// Payroll was the third module. These are now ALIASES of `TenantPersistenceConventions`, promoted into
+// `SSAS.BuildingBlocks.Infrastructure` under `ADR-027` decision 4. The names stay so GL's configurations read
+// unchanged; the VALUES now have exactly one source. Do not re-inline a literal here.
 internal static class GlPersistenceConstants
 {
   // Tenant business data lives in ONE schema, in ONE context, on ONE migration stream (`ADR-017`).
-  public const string TenantSchema = "tenant";
+  public const string TenantSchema = SSAS.BuildingBlocks.Infrastructure.Persistence.TenantPersistenceConventions.TenantSchema;
 
   // Binary collation, so comparison on the normalized shadow columns is ordinal and the unique index is
   // authoritative about what counts as the same code.
-  public const string OrdinalCollation = "Latin1_General_100_BIN2";
+  public const string OrdinalCollation = SSAS.BuildingBlocks.Infrastructure.Persistence.TenantPersistenceConventions.OrdinalCollation;
 
   // Matches the platform's actor column width everywhere else in the tenant model.
-  public const int ActorMaximumLength = 256;
+  public const int ActorMaximumLength = SSAS.BuildingBlocks.Infrastructure.Persistence.TenantPersistenceConventions.ActorMaximumLength;
 
   // ---- EVERY MONETARY COLUMN IN THIS MODULE (DEC-GL-0001, ADR-027 decision 1).
   //
   // `ADR-027` named General Ledger in its deferred obligations: "must either adopt decision 1 or amend this
   // ADR. Matching HR by observation, without a recorded decision, is the outcome this ADR exists to
   // prevent." `DEC-GL-0001` adopted it, and this is where the adoption becomes a column type.
-  public const int MoneyPrecision = 19;
-  public const int MoneyScale = 4;
+  public const int MoneyPrecision = SSAS.BuildingBlocks.Infrastructure.Persistence.TenantPersistenceConventions.MoneyPrecision;
+  public const int MoneyScale = SSAS.BuildingBlocks.Infrastructure.Persistence.TenantPersistenceConventions.MoneyScale;
 }

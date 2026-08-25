@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\HR\SSAS.HR.Infrastructure\SSAS.HR.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payroll\SSAS.Payroll.Infrastructure\SSAS.Payroll.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

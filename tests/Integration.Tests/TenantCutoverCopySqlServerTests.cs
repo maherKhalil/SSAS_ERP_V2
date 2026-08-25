@@ -65,7 +65,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // in FP-009 Phase 1. Only Company holds rows in this fixture, so TotalRows is unchanged while the table
     // count is not — and this count is precisely what would have stayed at two while a promotion silently
     // left every employee behind.
-    Assert.Equal(20, copied.Value.TablesCopied);
+    Assert.Equal(27, copied.Value.TablesCopied);
     Assert.Equal(0, copied.Value.TablesAlreadyComplete);
     Assert.Equal(
       [
@@ -76,6 +76,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "DepartmentManager",
         "Employee",
         "EmployeeBranchAssignment",
+        "EmployeeCompensation",
         "EmployeeDepartmentAssignment",
         "EmployeeExportRun",
         "EmployeeImportRun",
@@ -87,6 +88,12 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "JournalDraftLine",
         "JournalEntry",
         "JournalLine",
+        "PayElement",
+        "PayElementAssignment",
+        "PayrollPeriod",
+        "PayrollRun",
+        "PayrollRunDraftLine",
+        "PayrollRunLine",
         "Position",
         "SalaryGrade"
       ],
@@ -173,7 +180,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // model added in FP-006C6, the three FP-007 Phase 1 added, the four FP-008 Phase 1 added, the two
     // run records FP-009 Phase 1 added, and the SEVEN GL tables FP-011 added — the largest single
     // contribution since the platform itself.
-    Assert.Equal(20, first.Value.TablesCopied);
+    Assert.Equal(27, first.Value.TablesCopied);
 
     // The retry a dead process's replacement would perform.
     var second = await fixture.CopyService().CopyAsync(operationId);
@@ -184,7 +191,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // rather than a gap: an empty table is indistinguishable from one that was never copied, so the engine
     // copies each again, moving nothing. The retry's safety claim is about not DUPLICATING rows, which the
     // counts below still prove exactly.
-    Assert.Equal(19, second.Value.TablesCopied);
+    Assert.Equal(26, second.Value.TablesCopied);
     Assert.Equal(1, second.Value.TablesAlreadyComplete);
     Assert.Equal(5, second.Value.TotalRows);
 
@@ -728,6 +735,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "DepartmentManager",
         "Employee",
         "EmployeeBranchAssignment",
+        "EmployeeCompensation",
         "EmployeeDepartmentAssignment",
         "EmployeeExportRun",
         "EmployeeImportRun",
@@ -739,6 +747,12 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "JournalDraftLine",
         "JournalEntry",
         "JournalLine",
+        "PayElement",
+        "PayElementAssignment",
+        "PayrollPeriod",
+        "PayrollRun",
+        "PayrollRunDraftLine",
+        "PayrollRunLine",
         "Position",
         "SalaryGrade"
       ],
@@ -984,7 +998,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // rather than as a literal so the two halves cannot drift: if a module adds a table and forgets this
     // test, the count on the left moves and the assertion fails, which is the whole point of the guard.
     Assert.Equal(
-      composed.Value.Count - 18,
+      composed.Value.Count - 25,
       contributorFree.Value.Count);
     Assert.Equal(2, contributorFree.Value.Count);
   }
@@ -1113,7 +1127,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // terms for Positions and their grades, and FP-009 Phase 1 to thirteen for the two run records — which
     // carry the audit trail of who imported and exported employee data, and would otherwise have been the
     // one thing a promoted tenant could not prove about itself.
-    Assert.Equal(20, copied.Value.TablesCopied);
+    Assert.Equal(27, copied.Value.TablesCopied);
     Assert.Equal(
       [
         "Account",
@@ -1123,6 +1137,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "DepartmentManager",
         nameof(Employee),
         nameof(EmployeeBranchAssignment),
+        "EmployeeCompensation",
         "EmployeeDepartmentAssignment",
         "EmployeeExportRun",
         "EmployeeImportRun",
@@ -1134,6 +1149,12 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "JournalDraftLine",
         "JournalEntry",
         "JournalLine",
+        "PayElement",
+        "PayElementAssignment",
+        "PayrollPeriod",
+        "PayrollRun",
+        "PayrollRunDraftLine",
+        "PayrollRunLine",
         "Position",
         "SalaryGrade"
       ],
@@ -1267,7 +1288,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // six and the copied count moves 7 -> 14. That asymmetry is the retry's safety claim working: it
     // re-copies what it cannot verify and moves nothing.
     Assert.Equal(6, retried.Value.TablesAlreadyComplete);
-    Assert.Equal(14, retried.Value.TablesCopied);
+    Assert.Equal(21, retried.Value.TablesCopied);
 
     // And the destination still holds exactly one of each, so "already complete" was a verification rather
     // than a shrug.

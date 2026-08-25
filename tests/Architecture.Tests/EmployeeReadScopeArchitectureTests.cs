@@ -538,9 +538,30 @@ public sealed class EmployeeReadScopeArchitectureTests
     // structural shape — **with its own lock**. A second door with a good lock is a sanctioned shape; a
     // second door with a note saying "this one is fine" is an exception.
     //
-    // A FOURTH file appearing here is a defect until someone rules otherwise and writes it a guard.
+    // ---- AND A FOURTH, BY THE SAME MECHANISM (RULED 2026-08-25, OD-ATT-0007).
+    //
+    // The paragraph above set the condition: *a fourth file is a defect until someone rules otherwise AND
+    // WRITES IT A GUARD.* Both halves are discharged here rather than one.
+    //
+    //   * `EmployeeApproverDirectoryService` serves ATTENDANCE across a contract — tenant + company, no
+    //     branch, company set resolved LIVE inside the implementation. It walks the department-manager
+    //     chain `OD-ATT-0007` ruled, which Attendance cannot do itself because departments are HR's.
+    //
+    // NO BRANCH PREDICATE, and for a THIRD distinct reason worth distinguishing from the roster's: approval
+    // runs through the DEPARTMENT tree, and `Employee` carries branch and department as SIBLING dimensions.
+    // A branch predicate would silently truncate the chain for anyone whose manager sits elsewhere, and the
+    // failure would read as "no approver found" rather than as a bug.
+    //
+    // Guarded by 16c below, which is as strict as 16b.
+    //
+    // A FIFTH file appearing here is a defect until someone rules otherwise and writes it a guard.
     Assert.Equal(
-      ["EmployeeReadService.cs", "EmployeeRepository.cs", "EmployeeRosterService.cs"],
+      [
+        "EmployeeApproverDirectoryService.cs",
+        "EmployeeReadService.cs",
+        "EmployeeRepository.cs",
+        "EmployeeRosterService.cs"
+      ],
       touching);
   }
 
@@ -571,6 +592,57 @@ public sealed class EmployeeReadScopeArchitectureTests
     Assert.DoesNotContain("BranchId", scoped, StringComparison.Ordinal);
 
     Assert.DoesNotContain("IgnoreQueryFilters", source, StringComparison.Ordinal);
+  }
+
+  // ================================================================================================
+  // 16c. THE APPROVER-DIRECTORY SHAPE, PINNED AS STRICTLY AS THE OTHER TWO (OD-ATT-0007).
+  // ================================================================================================
+  //
+  // Everything 16b asserts about the roster's shape, asserted about this one — because a sanctioned third
+  // shape that nobody guards is an exception wearing a ruling's clothes, which is precisely what the ruling
+  // that created the SECOND shape refused to allow.
+  [Fact]
+  [Trait("Decision", "OD-ATT-0007")]
+  public void The_approver_directory_read_is_composed_through_one_scoped_query()
+  {
+    var source = ReadHrCode("SSAS.HR.Infrastructure", "Persistence", "EmployeeApproverDirectoryService.cs");
+
+    // Exactly TWO `Set<Employee>()` sites, and the number is deliberate rather than tolerated: one resolves
+    // the requester's own department through `ApproverScoped`, the other excludes terminated managers inside
+    // the seat join. A third would be a query no guard inspects.
+    Assert.Equal(2, CountOccurrences(source, "Set<Employee>()"));
+
+    var scoped = source[source.IndexOf("private static IQueryable<Employee> ApproverScoped(", StringComparison.Ordinal)..];
+
+    Assert.Contains("employee.TenantId == tenantId", scoped, StringComparison.Ordinal);
+    Assert.Contains("employee.CompanyId == companyId", scoped, StringComparison.Ordinal);
+
+    // NO BRANCH PREDICATE, BY DESIGN — approval runs through the DEPARTMENT tree, and branch is a SIBLING
+    // dimension. Asserted so that adding one is a deliberate act rather than a tidy-up, and so the reason is
+    // discoverable from the failure rather than only from the source comment.
+    Assert.DoesNotContain("BranchId", scoped, StringComparison.Ordinal);
+
+    Assert.DoesNotContain("IgnoreQueryFilters", source, StringComparison.Ordinal);
+
+    // ---- IT REFUSES RATHER THAN RETURNING AN EMPTY LIST, AND HERE THAT MATTERS MORE THAN USUAL.
+    //
+    // An empty list is a MEANINGFUL ANSWER on this contract: it means "the chain is exhausted, use the root
+    // fallback". Returning it for an authorization failure would route an unauthorized caller into the
+    // permission-holder fallback path instead of refusing them.
+    Assert.Contains("throw new UnauthorizedAccessException", source, StringComparison.Ordinal);
+
+    // ---- AND IT NEVER WRITES (DEC-ATT-0003).
+    //
+    // Targeted at the EF WRITE APIs specifically. A bare `.Add(` was the first form of this assertion and
+    // it matched `visited.Add(node)` — a HashSet guarding the parent-chain walk against a cycle. The guard
+    // was wrong, not the code, and a guard that fires on the wrong thing teaches people to edit guards.
+    Assert.DoesNotContain("SaveChanges", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("AddAsync(", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("context.Add", source, StringComparison.Ordinal);
+    Assert.DoesNotContain(".Update(", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("RemoveRange(", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("ExecuteDelete", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("ExecuteUpdate", source, StringComparison.Ordinal);
   }
 
   // ---- THE AUTHORITY IS RESOLVED LIVE, NEVER ACCEPTED.

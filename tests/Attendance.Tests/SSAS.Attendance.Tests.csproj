@@ -11,7 +11,6 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -22,8 +21,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Host\SSAS.Host.API\SSAS.Host.API.csproj" />
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.API\SSAS.Attendance.API.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Application\SSAS.Attendance.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Domain\SSAS.Attendance.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
   </ItemGroup>
 

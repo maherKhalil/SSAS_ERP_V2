@@ -70,8 +70,11 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.Equal(
       [
         "Account",
+        "AttendancePeriod",
+        "AttendanceRecord",
         nameof(Branch),
         nameof(Company),
+        "CalendarHoliday",
         "Department",
         "DepartmentManager",
         "Employee",
@@ -88,6 +91,9 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "JournalDraftLine",
         "JournalEntry",
         "JournalLine",
+        "LeaveBalance",
+        "LeaveRequest",
+        "LeaveType",
         "PayElement",
         "PayElementAssignment",
         "PayrollPeriod",
@@ -95,7 +101,8 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "PayrollRunDraftLine",
         "PayrollRunLine",
         "Position",
-        "SalaryGrade"
+        "SalaryGrade",
+        "WorkingCalendar"
       ],
       copied.Value.Tables.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
 
@@ -729,8 +736,11 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.Equal(
       [
         "Account",
+        "AttendancePeriod",
+        "AttendanceRecord",
         "Branch",
         "Company",
+        "CalendarHoliday",
         "Department",
         "DepartmentManager",
         "Employee",
@@ -747,6 +757,9 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "JournalDraftLine",
         "JournalEntry",
         "JournalLine",
+        "LeaveBalance",
+        "LeaveRequest",
+        "LeaveType",
         "PayElement",
         "PayElementAssignment",
         "PayrollPeriod",
@@ -754,7 +767,8 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "PayrollRunDraftLine",
         "PayrollRunLine",
         "Position",
-        "SalaryGrade"
+        "SalaryGrade",
+        "WorkingCalendar"
       ],
       derived);
 
@@ -1131,8 +1145,11 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.Equal(
       [
         "Account",
+        "AttendancePeriod",
+        "AttendanceRecord",
         nameof(Branch),
         nameof(Company),
+        "CalendarHoliday",
         "Department",
         "DepartmentManager",
         nameof(Employee),
@@ -1149,6 +1166,9 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "JournalDraftLine",
         "JournalEntry",
         "JournalLine",
+        "LeaveBalance",
+        "LeaveRequest",
+        "LeaveType",
         "PayElement",
         "PayElementAssignment",
         "PayrollPeriod",
@@ -1156,7 +1176,8 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "PayrollRunDraftLine",
         "PayrollRunLine",
         "Position",
-        "SalaryGrade"
+        "SalaryGrade",
+        "WorkingCalendar"
       ],
       copied.Value.Tables.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
 

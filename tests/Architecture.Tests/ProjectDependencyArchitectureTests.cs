@@ -100,6 +100,14 @@ public sealed class ProjectDependencyArchitectureTests
       // Payroll to the Host failed this guard on the first run, exactly as intended.
       "SSAS.Payroll.API",
       "SSAS.Payroll.Infrastructure"
+
+      // ---- AND ATTENDANCE, BY THE SAME ACKNOWLEDGEMENT (FP-013).
+      //
+      // This guard failed on the first run after wiring Attendance into the Host, exactly as it did for
+      // Payroll and exactly as intended. The list is an INVENTORY OF WHAT IS DELIBERATELY REACHABLE, so
+      // extending it is the acknowledgement — not a formality to be done reflexively when the test goes red.
+      ,"SSAS.Attendance.API",
+      "SSAS.Attendance.Infrastructure"
     };
 
     Assert.All(host.References, reference => Assert.Contains(reference, allowedReferences));

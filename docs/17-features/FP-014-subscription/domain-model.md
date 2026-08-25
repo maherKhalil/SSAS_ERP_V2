@@ -47,7 +47,7 @@ later.** The append-only guard is
 `SaveChangesAsync` and **from nowhere else**.
 
 Every commercial record in this package lives in the **Platform** database (`DEC-SUB-0003`,
-`ADR-017:162`, `ADR-017:475`), and `PlatformDbContext` has **no equivalent guard** — its
+`ADR-017` § Platform database boundary (`:164`), `ADR-017` § Lookup classification, class A (`:477`)), and `PlatformDbContext` has **no equivalent guard** — its
 `SaveChangesAsync` at `PlatformDbContext.cs:107` does not call one.
 
 So `OD-SUB-0008`'s ruling rests on a mechanism that is not present on the side of the product where
@@ -62,7 +62,7 @@ claiming it.
 
 ### `SubscriptionPlan` — the reusable commercial definition
 
-Platform-global catalog data. `ADR-017:475` classifies subscription plans as **Class A — Platform
+Platform-global catalog data. `ADR-017` § Lookup classification, class A (`:477`) classifies subscription plans as **Class A — Platform
 global**, "Stored in the Platform database. **Tenants cannot create global rows**"
 (`REQ-SUB-0002`, `REQ-SUB-0003`).
 
@@ -100,7 +100,7 @@ Today that is **four**: HR, Finance/GL, Payroll, Attendance — verified against
 `IPermissionCatalogContributor` implementations while mounting **seventeen** route groups, seven of
 them HR's alone.
 
-- Root: `ModuleDefinition` — `AggregateRoot<Guid>`, Platform-global. `ADR-017:475` names "module
+- Root: `ModuleDefinition` — `AggregateRoot<Guid>`, Platform-global. `ADR-017` § Lookup classification, class A (`:477`) names "module
   definitions" in the same Class A list as subscription plans, so its residency is inherited, not
   chosen.
 - `ModuleKey` (value object) — stable, never reused, and the single token that both a plan grant and

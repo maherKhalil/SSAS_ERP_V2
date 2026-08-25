@@ -24,10 +24,10 @@ The full statement is in [`README.md`](README.md#-the-boundary-of-this-feature--
 and is settled here so no later document has to relitigate it.
 
 The reason it is a `DEC` rather than an `OD` is that ruling otherwise would contradict three things
-already in force: `ADR-017:475` puts subscription plans in the **Platform** database while General
-Ledger is a **Tenant ERP** module; `ADR-017:169` and `:376`–`:378` require the subscription surface to work while
+already in force: `ADR-017` § Lookup classification, class A (`:477`) puts subscription plans in the **Platform** database while General
+Ledger is a **Tenant ERP** module; `ADR-017` § Platform database boundary (`:169`) and `:376`–`:378` require the subscription surface to work while
 the tenant database is *down*, which a GL-resident record cannot (**amended by `DEC-L-024`**, formerly
-`ADR-021:207`); and `FP-011` scopes GL to the tenant's
+`ADR-021` § 10 Outage behaviour (`:207`)); and `FP-011` scopes GL to the tenant's
 own books. **The separation is not a preference — it is already implied by the topology.**
 
 **The concrete failure this prevents:** a vendor invoice recorded as a GL journal would be copied
@@ -67,26 +67,26 @@ binding here because the repository already builds on it throughout, but it shar
 ### `DEC-SUB-0004` — the subscription surface must survive tenant-database unavailability
 
 **Amended by `DEC-L-024` (2026-08-25). The decision is unchanged; its authority moved.** It formerly
-rested on `ADR-021:200`–`:207`, which names "**account, subscription**, and other platform-only pages"
+rested on `ADR-021` § 10 Outage behaviour (`:200`–`:207`), which names "**account, subscription**, and other platform-only pages"
 explicitly — but `ADR-021` is `Proposed`, and at `:37` it states that it moves to `Accepted` only when a
 customer-hosted deployment is actually contracted. None is, so it does not yet bind.
 
 **The same conclusion follows from `ADR-017`, which is `Accepted`, in two steps rather than one:**
 
-1. **Subscription data is Platform-database data.** `ADR-017:164` — "Subscription/plan metadata when
+1. **Subscription data is Platform-database data.** `ADR-017` § Platform database boundary (`:164`) — "Subscription/plan metadata when
    introduced" — sits in the list of what the Platform database holds.
-2. **Platform-database operation does not depend on the tenant server.** `ADR-017:169` — keeping this
+2. **Platform-database operation does not depend on the tenant server.** `ADR-017` § Platform database boundary (`:169`) — keeping this
    data in the Platform database means "authentication remains a single-database operation" and
    "never depends on tenant-database routing or availability". `:376`–`:378` complete it: an
    unavailable tenant database yields "a controlled unavailability result", never a fallback.
 
-**What the re-point costs, stated rather than glossed:** `ADR-021:207` said *subscription* in the word.
+**What the re-point costs, stated rather than glossed:** `ADR-021` § 10 Outage behaviour (`:207`) said *subscription* in the word.
 `ADR-017` never puts the two facts side by side, so the derivation is now an inference across two
 passages instead of a quotation from one. It is sound — `:164` is a list membership and `:169` is an
 unconditional consequence of that membership — but a reader who expected the obvious citation should
 see why it was dropped rather than assume it was overlooked.
 
-**And `ADR-017:169` does not itself depend on customer-managed hosting.** `:171` names customer-managed
+**And `ADR-017` § Platform database boundary (`:169`) does not itself depend on customer-managed hosting.** `:171` names customer-managed
 hosting as what makes the rule *decisive*; `:169` states the independence unconditionally, for any
 tenant database. The re-point does not smuggle the deferred decision back in through its parent.
 
@@ -149,7 +149,7 @@ the Platform/Tenant split (`:168`, `:450`). Commercial records live Platform-sid
 
 ### `DEC-SUB-0010` — administration is platform-plane, and the two planes stay mechanically separate
 
-`ADR-005:248` lists "Subscription management" among platform-administrator capabilities.
+`ADR-005` § Platform Administration (`:248`) lists "Subscription management" among platform-administrator capabilities.
 `ADR-015` (status **Accepted**) establishes the dedicated platform authorization plane, and
 `PermissionEndpointConventions:27`–`:29` keeps `RequirePermission` and `RequirePlatformPermission` as
 **two methods** precisely so "a caller cannot choose the wrong plane by passing a flag".
@@ -258,8 +258,8 @@ equal strength.**
 
 - **The authority is already Platform-numbered.** `BR-PLT-0008` *is* the rule this package implements.
   Requirements answering a `BR-PLT` rule under a non-`PLT` prefix split one concern across two spaces.
-- **The data is Platform-database data** by `ADR-017:475`, administered on the Platform plane by
-  `ADR-005:248`, on a Platform surface by `ADR-017:169` (**amended by `DEC-L-024`**, formerly `ADR-021:207`). By residency, authority and plane it is
+- **The data is Platform-database data** by `ADR-017` § Lookup classification, class A (`:477`), administered on the Platform plane by
+  `ADR-005` § Platform Administration (`:248`), on a Platform surface by `ADR-017` § Platform database boundary (`:169`) (**amended by `DEC-L-024`**, formerly `ADR-021` § 10 Outage behaviour (`:207`)). By residency, authority and plane it is
   Platform.
 - **`Tenant-Management.md` already places it there** — `TBL-PLT-Subscription`, in the `PLT` table space.
 - **A prefix is permanent.** `Requirement-Numbering.md` states identifiers "never change" and are
@@ -444,7 +444,7 @@ whose enablement states can disagree.
 
 | Option | Consequence |
 |---|---|
-| **Platform administrators only** | Matches `ADR-005:248` exactly. Every plan change is a support request. |
+| **Platform administrators only** | Matches `ADR-005` § Platform Administration (`:248`) exactly. Every plan change is a support request. |
 | **Platform administrators, plus a tenant-visible read-only view** | `REQ-SUB-0021` already proposes the read. Needs the disclosure boundary drawn: modules yes, price and payment state no. |
 | **Tenant self-service upgrade** | A different product. Requires payment capture (`OD-SUB-0016`), a public plan catalog, and a tenant-plane write path that `REQ-SUB-0004` currently forbids — so it would have to amend that requirement rather than extend it. |
 
@@ -508,7 +508,7 @@ subject of a dangling reference from FP-010. Claiming a number is not this packa
 
 **No `OD` reopening `ADR-017`, `ADR-027` or `FP-002`.** Each constrains this package and each is
 recorded in Part 1. **`ADR-021` was in this list and was removed by `DEC-L-024` (2026-08-25):** it is
-`Proposed`, and `ADR-021:37` makes its acceptance conditional on a customer-hosted deployment being
+`Proposed`, and `ADR-021` § Status (`:37`) makes its acceptance conditional on a customer-hosted deployment being
 contracted, which has not happened. It therefore does not constrain this package, and every citation of
 it here has been re-pointed to `ADR-017`. It remains a **cross-reference only** — an
 implementation-deferred decision that does not yet bind. If a ruling here would contradict one of them, that is an ADR amendment

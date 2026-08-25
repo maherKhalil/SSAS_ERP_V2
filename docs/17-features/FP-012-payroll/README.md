@@ -1,8 +1,32 @@
-# FP-012 — Payroll Foundation (analysis package)
+---
+package: FP-012
+title: Payroll Foundation
+module: Payroll
+status: DELIVERED — all eighteen owner decisions ruled (2026-08-24), merged to main by PR #51 (f465c9b)
+version: 1.0
+date: 2026-08-25
+---
 
-**Status:** **RATIFIED 2026-08-24.** All eighteen `OD-PAY` decisions are ruled and `DEC-PAY-0001`–`0015`
-are ratified as drafted; `DEC-PAY-0016` is new. `Requirement-Catalog/PAY.md` carries `REQ-PAY-0001`–`0018`
-and `REQ-PAY` is indexed in the catalog README. See [`decisions-approved.md`](decisions-approved.md).
+# FP-012 — Payroll Foundation
+
+> **DELIVERED 2026-08-25.** Ratified 2026-08-24 — all eighteen `OD-PAY` decisions ruled,
+> `DEC-PAY-0001`–`0015` ratified as drafted and `DEC-PAY-0016` new, `Requirement-Catalog/PAY.md`
+> carrying `REQ-PAY-0001`–`0018` with `REQ-PAY` indexed in the catalog README; see
+> [`decisions-approved.md`](decisions-approved.md).
+>
+> **Built and merged to `main` by PR #51** (`f465c9b`): `src/Modules/Payroll/SSAS.Payroll.*` carrying
+> Compensation, Elements and Runs, the `20260824175418_AddPayrollFoundation` migration, the
+> `tests/Payroll.Tests/` suite, and `tests/Architecture.Tests/PayrollArchitectureTests.cs` as its
+> guard.
+
+> ### Everything below the boundary section is the analysis, kept as the historical record
+>
+> A delivered package still has to show **what was open when it was written and how it was ruled**, so
+> the analysis is preserved rather than rewritten. **Its present-tense statements describe the
+> repository before PR #51, not the repository today**, and where a passage would now mislead about
+> what exists it is marked inline rather than deleted.
+>
+> The boundary section immediately below is the exception: **it is not historical and it still binds.**
 
 ---
 
@@ -26,6 +50,10 @@ accommodate it. That is what makes the boundary affordable rather than merely ac
 
 ## The sweep came first, and it found nothing
 
+**Run before PR #51. Every row below records the repository as it was then** — the Payroll tree, its
+test home and its migration all exist now. The sweep is kept because what a greenfield module found
+before it was built is part of why it was designed the way it was.
+
 Before a line of this package was written, the solution, `src/Modules` (including the `Finance` folder),
 `tools/`, `tests/`, every local and remote branch, and every object in every ref were swept for a
 pre-existing Payroll skeleton, project, test home or document.
@@ -39,14 +67,21 @@ pre-existing Payroll skeleton, project, test home or document.
 | Every path in every ref | **No file path matching `payroll`, `SSAS.Pay*`, or `/Pay*`** |
 | Commit messages | Payroll appears in **prose only** (GL, FP-008 and tenant-storage docs) |
 
-**Payroll is genuinely unbuilt.** This is the opposite of FP-011, where a GL skeleton already existed and
-`Program.cs` already called `AddGlModule()`. Nothing here is being adopted; the module home is therefore a
-real proposal rather than a discovery — see `OD-PAY-0014`.
+**Payroll was genuinely unbuilt when this was written.** That was the opposite of FP-011, where a GL
+skeleton already existed and `Program.cs` already called `AddGlModule()`. Nothing was being adopted; the
+module home was therefore a real proposal rather than a discovery — see `OD-PAY-0014`. **PR #51 built it:**
+`Program.cs` now calls `AddPayrollModule()` and `AddPayrollInfrastructure()`, and
+`src/Modules/Payroll/SSAS.Payroll.*` exists.
 
 *Incidental finding, reported and not acted on:* `src/Modules/Finance/SSAS.GL.Contracts/` still exists on
 disk, containing **only gitignored `bin/` and `obj/` build residue** from before FP-011 removed it. It is
 untracked, absent from the solution, and referenced by nothing. It is not a skeleton and it is not this
 package's to delete.
+
+**Overtaken by this package's own delivery.** `SSAS.GL.Contracts` is no longer residue: FP-012 needed a
+GL posting contract, so the project is tracked, holds `Posting/IJournalPoster.cs` and
+`Posting/JournalPostingContracts.cs`, and is referenced by Payroll. The finding is kept as the record
+of what the sweep saw.
 
 ---
 
@@ -54,6 +89,11 @@ package's to delete.
 
 This is the **thinnest authority base of any feature package so far**, and saying so plainly is part of the
 analysis rather than a complaint.
+
+**As at analysis time, before ratification.** Two rows below are the ones this package changed:
+`Requirement-Catalog/PAY.md` now exists carrying `REQ-PAY-0001`–`0018`, and `REQ-PAY` is indexed in the
+catalog README. The rows are kept because the absence is what the drafting had to work around. FP-013
+has since taken the "thinnest base" title.
 
 | Source | What it actually says |
 |---|---|
@@ -155,7 +195,7 @@ None of these are open:
 
 ## The boundary the pull-forward creates
 
-**Attendance is unbuilt, and it is a separate Roadmap V2 line.** Therefore:
+**Attendance was unbuilt when this was written, and it was a separate Roadmap V2 line.** Therefore:
 
 > **Attendance-driven pay components cannot exist in FP-012.** Overtime computed from worked hours,
 > absence deductions derived from an attendance register, shift differentials, and late penalties all
@@ -164,6 +204,15 @@ None of these are open:
 This is not a scoping preference — it is an absence of input. A V1 payroll can accept a **manually entered
 quantity or amount** for such an element, but it cannot *derive* one. `DEC-PAY-0002` records the boundary,
 and `OD-PAY-0001` asks the owner to confirm the V1 element set inside it.
+
+**The missing input now exists, and `DEC-PAY-0002` was FP-013's birth certificate.** Attendance shipped
+in PR #52 (`f9b247a`), and Payroll consumes it across a contracts boundary —
+`SSAS.Payroll.Application` references `SSAS.Attendance.Contracts` and its `IAttendanceSummary` alone,
+under `DEC-ATT-0002` and `ADR-012`. The guard that asserted the absence,
+`No_attendance_driven_behaviour_exists_because_attendance_is_unbuilt`, was **replaced rather than
+deleted** as `DEC-ATT-0012` required; `tests/Payroll.Tests/Runs/PayrollCalculatorTests.cs:151` records
+the slot. **The paragraph above is kept because it is why FP-013 exists**, not because the absence
+still holds.
 
 ---
 

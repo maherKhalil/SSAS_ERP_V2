@@ -25,8 +25,9 @@ and is settled here so no later document has to relitigate it.
 
 The reason it is a `DEC` rather than an `OD` is that ruling otherwise would contradict three things
 already in force: `ADR-017:475` puts subscription plans in the **Platform** database while General
-Ledger is a **Tenant ERP** module; `ADR-021:207` requires the subscription surface to work while the
-tenant database is *down*, which a GL-resident record cannot; and `FP-011` scopes GL to the tenant's
+Ledger is a **Tenant ERP** module; `ADR-017:169` and `:376`–`:378` require the subscription surface to work while
+the tenant database is *down*, which a GL-resident record cannot (**amended by `DEC-L-024`**, formerly
+`ADR-021:207`); and `FP-011` scopes GL to the tenant's
 own books. **The separation is not a preference — it is already implied by the topology.**
 
 **The concrete failure this prevents:** a vendor invoice recorded as a GL journal would be copied
@@ -65,9 +66,29 @@ binding here because the repository already builds on it throughout, but it shar
 
 ### `DEC-SUB-0004` — the subscription surface must survive tenant-database unavailability
 
-`ADR-021:200`–`:207`: during a customer-managed database outage, login, token refresh, platform
-authority evaluation, tenant membership resolution, platform administration, and "**account,
-subscription**, and other platform-only pages" all **continue to work**.
+**Amended by `DEC-L-024` (2026-08-25). The decision is unchanged; its authority moved.** It formerly
+rested on `ADR-021:200`–`:207`, which names "**account, subscription**, and other platform-only pages"
+explicitly — but `ADR-021` is `Proposed`, and at `:37` it states that it moves to `Accepted` only when a
+customer-hosted deployment is actually contracted. None is, so it does not yet bind.
+
+**The same conclusion follows from `ADR-017`, which is `Accepted`, in two steps rather than one:**
+
+1. **Subscription data is Platform-database data.** `ADR-017:164` — "Subscription/plan metadata when
+   introduced" — sits in the list of what the Platform database holds.
+2. **Platform-database operation does not depend on the tenant server.** `ADR-017:169` — keeping this
+   data in the Platform database means "authentication remains a single-database operation" and
+   "never depends on tenant-database routing or availability". `:376`–`:378` complete it: an
+   unavailable tenant database yields "a controlled unavailability result", never a fallback.
+
+**What the re-point costs, stated rather than glossed:** `ADR-021:207` said *subscription* in the word.
+`ADR-017` never puts the two facts side by side, so the derivation is now an inference across two
+passages instead of a quotation from one. It is sound — `:164` is a list membership and `:169` is an
+unconditional consequence of that membership — but a reader who expected the obvious citation should
+see why it was dropped rather than assume it was overlooked.
+
+**And `ADR-017:169` does not itself depend on customer-managed hosting.** `:171` names customer-managed
+hosting as what makes the rule *decisive*; `:169` states the independence unconditionally, for any
+tenant database. The re-point does not smuggle the deferred decision back in through its parent.
 
 This forecloses an entire family of designs. Any entitlement read that touches the Tenant ERP
 database fails the moment a customer's SQL Server is unreachable — and because enablement gates
@@ -194,7 +215,8 @@ reasons, both evidential rather than aesthetic. First, `BR-PLT-0008` is the only
 behaviour in the entire authority, and it is currently violated by all seventeen mounted route
 groups; the violation grows by one module each release, and the retrofit is never cheaper than now.
 Second, E needs no ruling this package cannot obtain — it inherits residency from `ADR-017`, the
-outage constraint from `ADR-021`, the token constraint from `FP-002` and the seam from
+outage constraint from `ADR-017` (**amended by `DEC-L-024`**, formerly `ADR-021`), the token
+constraint from `FP-002` and the seam from
 `PermissionEndpointConventions`. C is blocked on five owner decisions with no defaults, and drafting
 it now would produce exactly the kind of authoritative-looking guesswork this package exists to
 correct.
@@ -237,7 +259,7 @@ equal strength.**
 - **The authority is already Platform-numbered.** `BR-PLT-0008` *is* the rule this package implements.
   Requirements answering a `BR-PLT` rule under a non-`PLT` prefix split one concern across two spaces.
 - **The data is Platform-database data** by `ADR-017:475`, administered on the Platform plane by
-  `ADR-005:248`, on a Platform surface by `ADR-021:207`. By residency, authority and plane it is
+  `ADR-005:248`, on a Platform surface by `ADR-017:169` (**amended by `DEC-L-024`**, formerly `ADR-021:207`). By residency, authority and plane it is
   Platform.
 - **`Tenant-Management.md` already places it there** — `TBL-PLT-Subscription`, in the `PLT` table space.
 - **A prefix is permanent.** `Requirement-Numbering.md` states identifiers "never change" and are
@@ -484,6 +506,10 @@ for the build task, not an owner decision.
 **No `OD` about ADR numbering.** This package needs an ADR eventually, and `ADR-028` is currently the
 subject of a dangling reference from FP-010. Claiming a number is not this package's to do.
 
-**No `OD` reopening `ADR-017`, `ADR-021`, `ADR-027` or `FP-002`.** Each constrains this package and
-each is recorded in Part 1. If a ruling here would contradict one of them, that is an ADR amendment
+**No `OD` reopening `ADR-017`, `ADR-027` or `FP-002`.** Each constrains this package and each is
+recorded in Part 1. **`ADR-021` was in this list and was removed by `DEC-L-024` (2026-08-25):** it is
+`Proposed`, and `ADR-021:37` makes its acceptance conditional on a customer-hosted deployment being
+contracted, which has not happened. It therefore does not constrain this package, and every citation of
+it here has been re-pointed to `ADR-017`. It remains a **cross-reference only** — an
+implementation-deferred decision that does not yet bind. If a ruling here would contradict one of them, that is an ADR amendment
 and it should be raised as such rather than smuggled in as a package decision.

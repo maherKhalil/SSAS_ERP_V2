@@ -4,6 +4,13 @@
 as drafted.** [`decisions-open.md`](decisions-open.md) remains the record of what was asked and why;
 this file is what was answered. **Where the two disagree, this file wins.**
 
+> **AMENDED 2026-08-25 — `DEC-L-024`.** `ADR-021` is `Proposed` and, at its own `:37`, moves to
+> `Accepted` only when a customer-hosted deployment is actually contracted. None is, so it does not
+> bind. **Every citation of it in this package has been re-pointed to `ADR-017`, which is `Accepted`.**
+> **No requirement, rule or ruling changed — only the authority under them.** Recorded here rather
+> than applied quietly, because a ratified document changing its basis is an act with a record.
+> Open concern 3 below is closed by this amendment.
+
 The rulings were taken in `.claude/handoff/notes/2026-08-25-fp-014-rulings.md` and are moved here
 because a ruling recorded outside the package is one the package cannot cite and `trace-check` cannot
 see. That note remains the contemporaneous record; this file is the package's own.
@@ -30,7 +37,7 @@ avoid asking.
 | **`OD-SUB-0001`** scope | **Owner** | **E + C — the whole plane.** Enablement and the commercial record together. All 28 `REQ-SUB` in force; no `OD-SUB` collapses. (`DEC-L-004`, `DEC-L-006`.) |
 | **`OD-SUB-0002`** identifier space | Architect | **A new `REQ-SUB` prefix**, added to `Requirement-Numbering.md` **at ratification** — the `REQ-ATT` precedent from FP-013. The ruled scope is E+C, and invoicing, payment capture, metering and pricing are not "Platform" in the sense `REQ-PLT` uses it; a 28-requirement space with its own lifecycle would swamp it. |
 | **`OD-SUB-0003`** sequencing | Architect | **Yes — the enablement gate ships before the next module.** The violation of `BR-PLT-0008` grows monotonically and the retrofit is never cheaper later. |
-| **`OD-SUB-0004`** assignment residency | Architect | **Assignment lives in the Platform database, resolved per request, behind a cache invalidated on subscription change — never a TTL refresh.** Cache invalidation is part of `REQ-SUB-0009`'s test surface, not an implementation detail. A tenant-database projection contradicts `DEC-SUB-0004`; a scheduled refresh makes `REQ-SUB-0009` false by construction, and a TTL cache is that same failure wearing a different hat. |
+| **`OD-SUB-0004`** assignment residency | Architect | **Assignment lives in the Platform database, resolved per request, behind a cache invalidated on subscription change — never a TTL refresh.** Cache invalidation is part of `REQ-SUB-0009`'s test surface, not an implementation detail. A tenant-database projection contradicts `DEC-SUB-0004`; a scheduled refresh makes `REQ-SUB-0009` false by construction, and a TTL cache is that same failure wearing a different hat. **Authority amended by `DEC-L-024`:** the outage constraint this ruling relies on to exclude a tenant-database projection now derives from `ADR-017:169` and `:376`–`:378` rather than `ADR-021:207`. **The ruling itself is unchanged.** |
 | **`OD-SUB-0005`** what a module is | Architect | **The unit that already carries exactly one `IPermissionCatalogContributor` and one `Add*Module()` registration** — today HR, Finance/GL, Payroll, Attendance. **Not** the route group, **not** the assembly. Each declares a stable module key. Verified against the code: four contributors, seventeen route groups, because HR alone mounts seven. |
 | **`OD-SUB-0006`** disabled-module response | **Owner (round 2)** | **403 Forbidden.** The route exists; this tenant may not reach it. Chosen over 404 **with the disclosure cost accepted knowingly** — a tenant can enumerate the product surface by probing, and in exchange support can answer "why can't I reach payroll" from the response rather than from server logs. |
 | **`OD-SUB-0007`** what "menus" binds to | Architect | **`REQ-SUB-0014`'s server-provided enabled-module set, and nothing client-side.** The product's obligation is to publish the set truthfully; rendering is the client's. The product cannot enforce a menu it does not draw, and a UI assertion would not make `BR-PLT-0008` testable. |
@@ -184,7 +191,7 @@ outcome with no refusal at all.
 rather than split, because renumbering a requirement space at ratification is exactly the act that
 makes a traceability matrix start lying.
 
-## 3. FP-014 rests on `ADR-021`, which is still `Proposed` — **found by the `DEC-L-021` check, architect's**
+## 3. ~~FP-014 rests on `ADR-021`, which is still `Proposed`~~ — **CLOSED by `DEC-L-024`, 2026-08-25**
 
 The ratification instruction asked for a `DEC-L-021` check against records still `Proposed`. It clears
 for the four ADRs named — `ADR-017` and `ADR-027` moved to `Accepted` in T-011, `ADR-029` and
@@ -203,9 +210,16 @@ stands in a **defined relationship** to it:
 Two further citations are incidental rather than structural: `ADR-018` (`nvarchar`, also `Proposed`)
 and `ADR-020` (a diagram label, also `Proposed`).
 
-**Ratifying this package makes it authority, and an authority resting on a `Proposed` record is the
-condition `DEC-L-021` names as incoherent.** Not resolved here — an ADR status change is its own act,
-on the T-011 and T-020 precedent, and it is not in this task's scope.
+**Ratifying this package made it authority, and an authority resting on a `Proposed` record is the
+condition `DEC-L-021` names as incoherent.**
+
+**Ruled `DEC-L-024`: `ADR-021` stays `Proposed` and the citation moves.** Moving the ADR was the
+obvious repair and was never available — `ADR-021:37` states its own acceptance precondition, and
+overriding a document's own terms with an argument from use is exactly what `DEC-L-020` forbids.
+Every citation above now reads `ADR-017`; `REQ-SUB-0005`, `DEC-SUB-0004` and `OD-SUB-0004` are
+unchanged in substance. **Two citations elsewhere in this package are not yet re-pointed** —
+`data-model.md:21` and `README.md:160` — and are named in the T-024 result rather than left to be
+found.
 
 ---
 
@@ -214,3 +228,4 @@ on the T-011 and T-020 precedent, and it is not in this task's scope.
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 1.0 | 2026-08-25 | Solution Architecture Team | Ratifies FP-014. All seventeen `OD-SUB` rulings moved into the package from the 2026-08-25 ruling set, each attributed to the owner or the architect. All twelve `DEC-SUB` ratified as drafted. Three concerns carried as open at ratification: the undefined seat, `REQ-SUB-0027`'s two enforcement semantics, and this package's dependence on the still-`Proposed` `ADR-021`. |
+| 1.1 | 2026-08-25 | Solution Architecture Team | **Amendment under `DEC-L-024`.** No requirement, rule or ruling changed. `ADR-021` is `Proposed` and conditions its own acceptance on a customer-hosted deployment being contracted (`:37`), so it does not bind; every citation of it in `requirements.md`, `business-rules.md` and `decisions-open.md` is re-pointed to `ADR-017:164`, `:169` and `:376`–`:378`, which carry the same conclusion in two steps rather than one. `OD-SUB-0004`'s entry records the moved authority. Open concern 3 is closed. |

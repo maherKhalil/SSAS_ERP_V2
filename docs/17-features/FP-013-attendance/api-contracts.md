@@ -1,5 +1,9 @@
 # FP-013 — API contracts (proposed)
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 Two surfaces: **HTTP**, for people and clients, and the **in-process module contract** Payroll consumes.
 
 ---
@@ -67,7 +71,7 @@ removes the ability to use it.
 GET    /api/attendance/periods                        Attendance.Periods.View
 POST   /api/attendance/periods                        Attendance.Periods.Manage
 POST   /api/attendance/periods/{id}/close             Attendance.Periods.Close
-POST   /api/attendance/periods/{id}/reopen            Attendance.Periods.Close  [ONLY IF OD-ATT-0012 = (b)]
+POST   /api/attendance/periods/{id}/reopen            Attendance.Periods.Close   [SAFE under append-only: reopen permits appending, never editing]
 ```
 
 **No status field on any request body.** Every transition is a named-action POST with its own permission.

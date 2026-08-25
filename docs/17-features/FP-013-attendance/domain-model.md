@@ -1,5 +1,9 @@
 # FP-013 — Domain model (proposed)
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 **Conditional throughout.** `OD-ATT-0001` (scope) decides which aggregates exist at all, and `OD-ATT-0011`
 (branch) decides the ownership interfaces every one of them carries. This document says what follows from
 each ruling rather than quietly picking one.
@@ -51,7 +55,7 @@ anyone would like. Its changes are audited, not frozen.
 The atom, whose grain is `OD-ATT-0003`. Under this package's opinion (daily records) it is one employee,
 one date, the quantities observed.
 
-- `ITenantOwnedEntity`, `ICompanyOwnedEntity`, `IAuditableEntity`, **`IBranchOwnedEntity` iff `OD-ATT-0011`**
+- `ITenantOwnedEntity`, `ICompanyOwnedEntity`, `IAuditableEntity`, **`IBranchOwnedEntity`** — RULED present
 - Append-only-ness per the table above
 - Quantities only: worked, overtime by tier (per `OD-ATT-0008`), absence paid and unpaid. **No money**
   (`DEC-ATT-0004`)

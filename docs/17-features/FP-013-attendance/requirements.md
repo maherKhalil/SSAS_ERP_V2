@@ -1,5 +1,9 @@
 # FP-013 — Proposed requirements
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 **Every identifier below is a PROPOSAL in a namespace that does not yet exist.**
 `Requirement-Numbering.md` has no `ATT` prefix (`OD-ATT-0002`), so these are provisional and renumberable —
 including their prefix.
@@ -66,12 +70,14 @@ that reason.
 
 ---
 
-## Counts, per scope ruling
+## Counts — RULED: scope is BOTH, so all 25 are in force
+
+The table below is kept as the record of what each scope would have cost.
 
 | `OD-ATT-0001` ruling | Requirements in force |
 |---|---|
 | **A** — attendance only | 3 calendar + 6 capture + 5 period/contract + 2 reading = **16** |
-| **B** — leave only | 3 calendar + 1 (`0009`) + 8 leave + 5 period/contract + 3 reading = **20** |
+| **B** — leave only | 3 calendar + 1 (`REQ-ATT-0009`) + 8 leave + 5 period/contract + 3 reading = **20** |
 | **C** — both | **25** |
 
 ## What is deliberately absent, and why

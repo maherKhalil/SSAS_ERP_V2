@@ -1,5 +1,9 @@
 # FP-013 — Lifecycle model (proposed)
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 Two lifecycles, and the discipline that connects this module to Payroll.
 
 ---
@@ -10,7 +14,7 @@ Two lifecycles, and the discipline that connects this module to Payroll.
         Open ──── close ────▶ Closed
          ▲                       │
          └──── reopen ───────────┘
-              (ONLY IF OD-ATT-0012 = (b))
+       (RULED IN: safe, because append-only records mean reopen permits appending, never editing)
 ```
 
 **The reopen arrow exists or it does not, and `OD-ATT-0012` decides.** It is drawn dashed here because the

@@ -1,5 +1,9 @@
 # FP-013 — Data model (proposed)
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 **Every table below is conditional on `OD-ATT-0001` (which exist) and `OD-ATT-0011` (whether each carries
 `BranchId`).** Column types are not conditional — those are settled.
 
@@ -34,7 +38,7 @@ but the reviewer should see the tension named.
 | `WorkingCalendarId` | `uniqueidentifier` | PK |
 | `TenantId` | `uniqueidentifier` | value, no FK |
 | `CompanyId` | `uniqueidentifier` | |
-| `BranchId` | `uniqueidentifier` | **iff `OD-ATT-0011` rules branch-owned** |
+| `BranchId` | `uniqueidentifier` | **RULED PRESENT** — stamped by the write boundary from the execution context |
 | `Name` | `nvarchar(200)` | |
 | `WeekendDays` | `nvarchar(64)` | the day set, **persisted as data** — see below |
 | `IsDefault` | `bit` | |
@@ -91,7 +95,7 @@ reads as an environment problem rather than a fixture bug.
 |---|---|---|
 | `AttendanceRecordId` | `uniqueidentifier` | PK |
 | `TenantId`, `CompanyId` | `uniqueidentifier` | |
-| `BranchId` | `uniqueidentifier` | **iff `OD-ATT-0011`** |
+| `BranchId` | `uniqueidentifier` | **RULED PRESENT** — `IBranchOwnedEntity`, stamped by the write boundary |
 | `AttendancePeriodId` | `uniqueidentifier` | FK |
 | `EmployeeId` | `uniqueidentifier` | FK available — see the note above |
 | `AttendanceDate` | `date` | |
@@ -106,7 +110,7 @@ reads as an environment problem rather than a fixture bug.
 **`RowVersion` is present only if `OD-ATT-0012` leaves the record mutable.** An append-only row has nothing
 to concurrency-check — the column would be dead weight that implies an update path exists.
 
-Unique: `(TenantId, EmployeeId, AttendanceDate)` — **if and only if `OD-ATT-0012` rules (a) or (c)**. Under
+**RULED: NO unique index on `(TenantId, EmployeeId, AttendanceDate)`.** `OD-ATT-0012` ruled adjustments-never-edits, and under
 ruling (b), or under any adjustment model that appends a correcting row, **a second row for the same
 employee-date is exactly what corrections look like** and the unique index makes the ruling
 unimplementable.
@@ -125,7 +129,7 @@ Index: `(TenantId, AttendancePeriodId, EmployeeId)` — the shape the summary co
 | `Code` | `nvarchar(32)` | immutable from creation, following `Account` and `PayElement` |
 | `NormalizedCode` | `nvarchar(32)` | the HR normalization precedent |
 | `Name` | `nvarchar(200)` | |
-| `Behaviour` | `nvarchar(32)` | closed enum, membership per `OD-ATT-0005`/`0006` |
+| `Behaviour` | `nvarchar(32)` | closed enum, membership per `OD-ATT-0005` and `OD-ATT-0006` |
 | `IsActive` | `bit` | deactivation, never deletion |
 | audit + `RowVersion` | | |
 

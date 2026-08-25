@@ -1,5 +1,9 @@
 # FP-013 — Test scenarios (proposed)
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 Layered as the existing modules are: **domain** (no database), **API** (host + stubbed dependencies),
 **integration** (real SQL Server), **architecture** (reflection over the built assemblies).
 
@@ -79,7 +83,7 @@ section so the gap and its closure remain visible.
 | `TS-ATT-0042` | Payroll calculation against an open attendance period is refused with a modelled outcome — the caller handles a value, not an exception | `AC-ATT-0025` |
 | `TS-ATT-0043` | The summary contract returns no leave **type** when `OD-ATT-0013`(3) rules it sensitive — the contract is not laxer than the HTTP surface | `AC-ATT-0027` |
 | `TS-ATT-0044` | A caller whose company access is revoked **after** their session begins is refused at scope construction — authority is re-asked, not cached | `AC-ATT-0029` |
-| `TS-ATT-0045` | **`OD-ATT-0011`-dependent.** Branch-owned: a caller sees only authorized, **active** branches. Tenant-global: no Attendance entity implements `IBranchOwnedEntity`, asserted explicitly | `AC-ATT-0031` |
+| `TS-ATT-0045` | **RULED: THE SPLIT.** A caller sees only authorized, **active** branches on record reads; the summary contract applies **no** branch predicate. Both asserted, plus the entity-by-entity classification including the negatives | `AC-ATT-0031` |
 | `TS-ATT-0046` | Paid and unpaid absence are separate quantities and only the unpaid one drives deduction | `AC-ATT-0039` |
 | `TS-ATT-0047` | Entitlement is settable; consumed is not directly settable | `AC-ATT-0040` |
 | `TS-ATT-0048` | Submission records all four facts and refuses an inverted date range | `AC-ATT-0041` |

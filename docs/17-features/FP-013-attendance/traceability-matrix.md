@@ -1,5 +1,9 @@
 # FP-013 — Traceability matrix
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 Requirement → business rule → acceptance criterion → test scenario → governing decision.
 
 **Every count in this document was derived by a script over the package's own files, not typed from

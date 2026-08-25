@@ -1,5 +1,9 @@
 # FP-013 — Authorization model (proposed)
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 Three parts: the permission names, the read scope, and **the self-service blocker** — which is not a
 preference but a missing input, and is the most important thing in this document.
 

@@ -160,6 +160,8 @@ one**, because it records that somebody decided rather than that nobody noticed.
 
 ### `OD-ATT-0001` — **SCOPE: attendance, leave, or both?** ← decide this first
 
+**RULED: BOTH, sequenced — attendance core first, the leave entitlement ledger second; one module, one calendar, one approval shape.**
+
 **Everything else in this package is conditional on this answer**, and it is the reason the package is
 written in conditional voice throughout.
 
@@ -194,6 +196,8 @@ saving and this package should be cut to match rather than delivered whole and h
 
 ### `OD-ATT-0002` — **the `REQ-ATT` identifier space does not exist and must be created** *(all scopes)*
 
+**RULED: REQ-ATT space created by this ratification — prefix in Requirement-Numbering.md, catalog at Requirement-Catalog/ATT.md.**
+
 `Requirement-Numbering.md` defines nine prefixes: PLT, HR, GL, INV, CRM, PRJ, PAY, PRC, MFG. **There is no
 ATT.** Payroll at least had `REQ-PAY` reserved; Attendance has nothing.
 
@@ -219,6 +223,8 @@ The package uses `REQ-ATT`/`BR-ATT` provisionally and every identifier is renumb
 
 ### `OD-ATT-0003` — **capture model: what is the atomic record?** *(A and C)*
 
+**RULED: DAILY RECORDS — the package's opinion, not clock events.**
+
 Three shapes, and they are not interchangeable:
 
 | | **Clock events** | **Daily records** | **Period timesheets** |
@@ -241,6 +247,8 @@ into v1. **Ruling required.**
 ---
 
 ### `OD-ATT-0004` — **the working calendar: whose is it, and at what granularity?** *(all scopes)*
+
+**RULED: COMPANY-OWNED calendar; weekly pattern as data plus a dated holiday list.**
 
 Every scope needs one: attendance needs it to know which days *should* have records, leave needs it to know
 which days a request consumes.
@@ -265,6 +273,8 @@ superset and can be added without invalidating a company one. **Ruling required.
 
 ### `OD-ATT-0005` — **leave types: fixed enum or configurable catalog?** *(B and C)*
 
+**RULED: CONFIGURABLE CATALOG with a closed behaviour enum.**
+
 Annual, sick, unpaid, maternity/paternity, bereavement, study, hajj/pilgrimage, compassionate — the list is
 **jurisdictional**, and a fixed enum in the domain freezes a list that varies by country and by employer.
 
@@ -284,6 +294,8 @@ with the enum's membership derived from whatever `OD-ATT-0006` rules. **Ruling r
 
 ### `OD-ATT-0006` — **accrual rules: in scope, or is a balance simply administered?** *(B and C)*
 
+**RULED: BALANCES ADMINISTERED. Accrual rules deferred.**
+
 The largest single lever inside leave, and the difference between a small module and a large one.
 
 - **Administered balances.** An administrator sets an employee's entitlement; requests decrement it. Simple,
@@ -302,6 +314,8 @@ leave management without a second calculation engine, and — importantly — an
 reverse is not true. **Ruling required.**
 
 ### `OD-ATT-0007` — **approval workflow: who approves, and via which reporting line?** *(B and C; A only for corrections)*
+
+**RULED: DEPARTMENT-MANAGER approval; self-approval barred; parent-chain escalation for unmanaged and self-referential departments; permission-holder fallback at the root.**
 
 The Glossary's only mention of leave is as an example of a **Workflow**, and this is where that shows up.
 
@@ -345,6 +359,8 @@ three sub-questions — the fallbacks are not derivable from the code, only the 
 
 ### `OD-ATT-0008` — **overtime: recorded fact or computed rule?** *(A and C)*
 
+**RULED: RECORDED with a tier label. Every rate stays in Payroll.**
+
 `DEC-PAY-0002` named overtime first among the things it could not build. Lifting it needs a ruling on what
 overtime *is*:
 
@@ -362,6 +378,8 @@ lifts `DEC-PAY-0002` for overtime with the smallest correct surface, and keeps e
 **Ruling required.**
 
 ### `OD-ATT-0009` — **the Attendance→Payroll contract: exact shape** *(all scopes)*
+
+**RULED: PER-PERIOD summary — the caller names a date, the module resolves the period. No straddles.**
 
 `DEC-ATT-0002` settles that it is a published, consumer-shaped **summary** contract. What it carries is open,
 and it is the most consequential open question after `OD-ATT-0001` because it determines what Payroll can
@@ -389,6 +407,8 @@ precisely what `OD-PAY-0002` refused to permit in payroll bounds.
 
 ### `OD-ATT-0010` — **close discipline: must an attendance period be closed before Payroll may read it?** *(all scopes)*
 
+**RULED: (a) — periods close and Payroll refuses an open one, via an Inspect method returning a closed-enum outcome.**
+
 The `InspectPostingWindowAsync` question, inverted. GL let Payroll *inspect* whether a period was open before
 attempting to post, so the caller got a clear refusal rather than a late failure.
 
@@ -405,6 +425,8 @@ the refusal is a modelled outcome in a closed enum rather than an exception. It 
 already solved and the precedent is one module away. **Ruling required.**
 
 ### `OD-ATT-0011` — **branch dimension: is Attendance branch-owned?** *(all scopes)* ← a genuine question, and the mechanism already exists
+
+**RULED: THE SPLIT — attendance records are branch-owned; the Payroll summary contract is deliberately branch-blind and company-complete. The hole is INTENDED, stated at the site and guard-asserted.**
 
 **A correction to this package's own earlier draft, which said branch was descriptive in HR and carried no
 authorization meaning. That was wrong, and the repository is unambiguous.** Branch is a **first-class,
@@ -464,6 +486,8 @@ operational units with their own supervisors is a fact about the owner's busines
 
 ### `OD-ATT-0012` — **retro corrections to a closed period** *(all scopes)*
 
+**RULED: NEW ADJUSTMENT RECORDS, never edits.**
+
 Attendance corrections are **ordinary business**, not an exception: a missed record surfaces after close, a
 leave request is retro-dated, a supervisor mis-keyed a day.
 
@@ -480,6 +504,8 @@ whichever wins, it dictates the aggregate split under `DEC-ATT-0009`**, so it ca
 data model.
 
 ### `OD-ATT-0013` — **read and reporting permissions: whose attendance can a person see?** *(all scopes)*
+
+**RULED: SELF-SERVICE DEFERRED. No identity-to-employee assumption anywhere. Now a recorded future package.**
 
 The permission grammar is `<Plane>.<Resource>.<Action>` with sensitivity splits, and attendance data is
 personal: it records where someone was and when they were absent, and leave reveals **medical absence** by
@@ -513,6 +539,8 @@ existing convention for exactly this kind of asymmetry. **Ruling required on all
 
 ### `OD-ATT-0014` — **module home and project layout** *(all scopes)*
 
+**RULED: OWN MODULE — src/Modules/Attendance/.**
+
 `src/Modules/Attendance/SSAS.Attendance.*` as a peer of HR, Finance and Payroll — or `src/Modules/HR/` as a
 second module family under the HR folder, given attendance is arguably an HR concern.
 
@@ -523,6 +551,8 @@ so the requirement prefix and the folder do not disagree.
 **This package's opinion:** peer module, matching the roadmap. **Ruling required.**
 
 ### `OD-ATT-0015` — **does `OD-PAY-0007` reopen once a working calendar exists?** *(all scopes)*
+
+**RULED: PAYROLL PRORATION UNCHANGED — calendar days. The lever is recorded as untaken.**
 
 `OD-PAY-0007` ruled **calendar-day** proration, and the stated reason was that working-day proration needs a
 calendar the product does not have. `OD-ATT-0004` creates that calendar, so the stated reason expires.
@@ -538,6 +568,8 @@ failing to raise it would leave a stale justification in the Payroll package wit
 noticed. **Ruling required — including the entirely legitimate ruling "no change".**
 
 ### `OD-ATT-0016` — **hardware and device integration: in or out?** *(A and C)*
+
+**RULED: OUT.**
 
 Biometric readers, badge terminals, mobile geofenced check-in. Each is an **integration surface** with device
 protocols, offline buffering, clock drift and duplicate-punch handling — a body of work comparable to the
@@ -561,5 +593,5 @@ kind of gap that surfaces at acceptance. **Ruling required.**
 | `OD-ATT` owner-decision-required | **16** |
 
 **`OD-ATT-0001` (scope) and `OD-ATT-0011` (branch) should be ruled first** — between them they move
-`OD-ATT-0004`, `0005`, `0006`, `0007`, `0009`, `0013` and the entire shape of
+`OD-ATT-0004`, `OD-ATT-0005`, `OD-ATT-0006`, `OD-ATT-0007`, `OD-ATT-0009`, `OD-ATT-0013` and the entire shape of
 [`domain-model.md`](domain-model.md). The remaining fourteen can be ruled in any order.

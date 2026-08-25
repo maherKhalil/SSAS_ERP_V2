@@ -1,5 +1,9 @@
 # FP-013 — Proposed business rules
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 **`Business-Rules.md` contains no `BR-ATT` rule.** "Attendance" appears in it exactly once, under
 *"Future Modules — Business Rules for these modules will be added in future releases."*
 
@@ -19,7 +23,7 @@ Scope: `A` attendance, `B` leave, `*` both.
 | `BR-ATT-0003` | The number of days a leave request consumed is **fixed at the moment of decision** and does not change if the calendar is later amended | `B` | derived from `PayrollRunLine`'s append-only reasoning — a settled figure stays settled |
 | `BR-ATT-0004` | Attendance may not be recorded for a date outside an employee's employment window | `A` | `BR-HR-0004`, read per `OD-PAY-0010` |
 | `BR-ATT-0005` | Records already made remain readable and reportable after termination; what is barred is **new** recording | `*` | `BR-HR-0004` as read by `OD-PAY-0010` — the rule bars new obligations, not the settlement of existing ones |
-| `BR-ATT-0006` | A closed attendance period does not change. A correction is a new, dated record | `*` | `ADR-014`; **`OD-ATT-0012`-dependent** |
+| `BR-ATT-0006` | A closed attendance period does not change. A correction is a new, dated record | `*` | `ADR-014`; **RULED** — adjustments, never edits |
 | `BR-ATT-0007` | An employee may not approve their own leave request | `B` | `OD-PAY-0009`'s separation-of-duty reading, applied |
 | `BR-ATT-0008` | Attendance records **quantities only**. No rate, amount or currency is recorded, stored or returned | `*` | `ADR-027 d1`/`d2` module boundary; `DEC-ATT-0004` |
 | `BR-ATT-0009` | A leave type is **deactivated, never deleted**. Requests referencing a deactivated type remain intact | `B` | the `PayElement` and `Account` precedent |
@@ -54,7 +58,7 @@ branch, and what happens to a period's records when an employee transfers branch
 even when the inputs that produced it later change. It is `PayrollRunLine`'s append-only reasoning applied to
 two different facts.
 
-**`BR-ATT-0006` is `OD-ATT-0012`-dependent and cannot be finalised before that ruling.** If the owner rules
+**`BR-ATT-0006` is now RULED.** Corrections are new adjustment records, never edits, so the rule stands as written. The paragraph below is kept as the reasoning that produced it. Had the owner ruled
 that periods reopen, `BR-ATT-0006` is not the rule — and, per `DEC-ATT-0009`, the records cannot be
 append-only either, so the whole immutability story changes shape.
 

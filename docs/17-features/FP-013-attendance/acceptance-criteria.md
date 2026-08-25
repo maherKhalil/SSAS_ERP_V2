@@ -1,5 +1,9 @@
 # FP-013 — Acceptance criteria (proposed)
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 Each `AC-ATT-####` is stated so it can be **failed**. Criteria that depend on an unruled decision say which,
 and criteria that cannot be written until a ruling lands are named as such rather than guessed.
 
@@ -34,7 +38,7 @@ Scope column: `A` attendance, `B` leave, `*` both.
 |---|---|---|---|
 | `AC-ATT-0012` | Closing a period refuses a subsequent write into it | `*` | `REQ-ATT-0018` |
 | `AC-ATT-0013` | Close records `ClosedUtc` and `ClosedBy`, and closing an already-closed period is refused rather than silently repeated | `*` | `REQ-ATT-0018` |
-| `AC-ATT-0014` | **`OD-ATT-0012`-dependent.** Under (a): a correction after close creates an adjustment in the *next* period and the closed period's totals are unchanged. Under (b): reopen requires `Attendance.Periods.Close` and is audited. Under (c): the close converts draft records to final ones and a write to a final record is refused **by the persistence layer**, not by a status check | `*` | `REQ-ATT-0019` |
+| `AC-ATT-0014` | **RULED (a).** A correction after close creates an adjustment record in the next period; the closed period is never edited, and the refusal comes from the persistence layer rather than from a status check | `*` | `REQ-ATT-0019` |
 | `AC-ATT-0015` | Attempting to modify or delete any `IAppendOnlyEntity` attendance row throws, **regardless of period status** — the refusal is unconditional and no code path may assume otherwise | `*` | `REQ-ATT-0019` |
 
 ## Leave
@@ -55,7 +59,7 @@ Scope column: `A` attendance, `B` leave, `*` both.
 |---|---|---|---|
 | `AC-ATT-0023` | The summary contract returns totals for one employee and one period, and exposes **no punch-level, per-event or time-of-day data** | `*` | `REQ-ATT-0020` |
 | `AC-ATT-0024` | `InspectPeriodAsync` on an open period returns `PeriodOpen` **as a value** — it does not throw, and it does not return data | `*` | `REQ-ATT-0021` |
-| `AC-ATT-0025` | **`OD-ATT-0010`-dependent.** Under (a): payroll calculation against an open attendance period is refused with a modelled outcome the caller must handle | `*` | `REQ-ATT-0021` |
+| `AC-ATT-0025` | **RULED (a).** Payroll calculation against an open attendance period is refused with a modelled outcome the caller must handle | `*` | `REQ-ATT-0021` |
 | `AC-ATT-0026` | Payroll consumes the contract **without an assembly reference** to any Attendance implementation project — asserted by an architecture test, not by inspection | `*` | `REQ-ATT-0020` |
 | `AC-ATT-0027` | The contract does not disclose leave **type** if `OD-ATT-0013`(3) rules it sensitive — the contract may not be laxer than the module's own HTTP surface | `B` | `REQ-ATT-0020` |
 
@@ -66,7 +70,7 @@ Scope column: `A` attendance, `B` leave, `*` both.
 | `AC-ATT-0028` | A read scope constructed for a company the caller has no authority over throws `UnauthorizedAccessException` — it does **not** return an empty list | `*` | `REQ-ATT-0005` |
 | `AC-ATT-0029` | Authority is resolved **live** at scope construction; a caller whose access was revoked after their session began is refused | `*` | `REQ-ATT-0005` |
 | `AC-ATT-0030` | The read scope cannot be constructed outside its factory — private constructor, internal factory, asserted by an architecture test | `*` | `REQ-ATT-0005` |
-| `AC-ATT-0031` | **`OD-ATT-0011`-dependent.** If branch-owned: a caller sees only their authorized branches, and `ITenantBranchAccessResolver` returns active branches only. If tenant-global: **no Attendance entity implements `IBranchOwnedEntity`**, asserted explicitly | `*` | `REQ-ATT-0024` |
+| `AC-ATT-0031` | **RULED: THE SPLIT.** A caller sees only their authorized, active branches on record reads, resolved live from `ITenantBranchAccessResolver`; **and the Payroll summary contract applies no branch predicate at all** — company-complete by design, guard-asserted | `*` | `REQ-ATT-0024` |
 | `AC-ATT-0032` | **No `ViewOwn` permission exists in the catalog**, because no identity→employee mapping exists to resolve its subject | `*` | `REQ-ATT-0023` |
 
 ## Persistence and platform

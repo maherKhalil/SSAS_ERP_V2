@@ -1,5 +1,9 @@
 # FP-013 — Attendance (analysis package)
 
+> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
+> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
+> ruling removes a fork; where they are not, the ratification file is authoritative.
+
 **Status:** DRAFT — analysis only. No code, no schema, no ADR. Every `OD-ATT-####` in
 [`decisions-open.md`](decisions-open.md) is **OWNER-DECISION-REQUIRED** and blocks the build prompt.
 

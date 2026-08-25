@@ -150,6 +150,25 @@ public sealed class TenantDbContext(
   // are fenced here and are fenced EXACTLY ONCE. Overriding the convenience overload as well would take the
   // application lock twice for one write; overriding only the convenience overload — as this type
   // previously did — left `SaveChangesAsync(true, ct)` able to commit against a frozen tenant.
+  //
+  // ================================================================================================
+  // NO CONVENIENCE OVERLOAD MAY BE DECLARED ON THIS TYPE, AND A TEST ASSERTS IT (T-018).
+  // ================================================================================================
+  //
+  // Neither `SaveChangesAsync(CancellationToken)` nor `SaveChanges()` may be declared here — not even
+  // one that merely delegates. The paragraph above explains why this type does not need them; this is
+  // the separate point that it may not have them.
+  //
+  // The reason is not the lock, it is what an overload BECOMES. An outer overload is a place a future
+  // rule gets written, and a rule written there is reachable past by any caller naming the inner one —
+  // which is exactly how seven `PlatformDbContext` guards sat bypassable until T-015 found them.
+  // Declaring no such method removes the place rather than relying on nobody using it.
+  //
+  // `AppendOnlyEnforcementArchitectureTests.No_persistence_context_declares_a_convenience_save_overload`
+  // enforces this across every `PersistenceDbContext` in the assembly, and it names this type
+  // explicitly so the coverage is a stated property rather than a by-product of type discovery. Before
+  // T-018 this context satisfied that assertion by ACCIDENT: it happened not to declare them, and
+  // nothing here recorded that as a requirement. It now does.
   public override async Task<int> SaveChangesAsync(
     bool acceptAllChangesOnSuccess,
     CancellationToken cancellationToken = default)

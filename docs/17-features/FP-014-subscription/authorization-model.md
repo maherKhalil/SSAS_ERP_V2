@@ -21,7 +21,7 @@ with every permission the product defines still cannot change what their tenant 
 **Why it has to be structural rather than careful.** `BR-PLT-0008` says disabled modules shall not
 appear in menus or APIs. If a tenant-plane permission could amend entitlement, then the rule would be
 enforced against a value the enforced party controls, and the whole of `CON-0001` would rest on
-nobody granting the wrong permission. `ADR-005:248` lists "Subscription management" among
+nobody granting the wrong permission. `ADR-005` § Platform Administration (`:248`) lists "Subscription management" among
 **platform-administrator** capabilities, and `ADR-015` (status **Accepted**) makes the platform plane
 a separate authorization plane rather than a role inside the tenant one. Both were already true;
 `DEC-SUB-0010` recorded it and this document builds on it.

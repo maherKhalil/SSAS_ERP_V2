@@ -1,15 +1,42 @@
-# FP-013 — Attendance (analysis package)
+---
+package: FP-013
+title: Attendance
+module: Attendance
+status: DELIVERED — all sixteen owner decisions ruled (2026-08-25), merged to main by PR #52 (f9b247a)
+version: 1.0
+date: 2026-08-25
+---
 
-> **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
-> [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
-> ruling removes a fork; where they are not, the ratification file is authoritative.
+# FP-013 — Attendance
 
-**Status:** DRAFT — analysis only. No code, no schema, no ADR. Every `OD-ATT-####` in
-[`decisions-open.md`](decisions-open.md) is **OWNER-DECISION-REQUIRED** and blocks the build prompt.
+> **DELIVERED 2026-08-25.** All sixteen `OD-ATT` rulings are closed — see
+> [`decisions-ratified.md`](decisions-ratified.md) — and the module is **built and merged to `main` by
+> PR #52** (`f9b247a`): `src/Modules/Attendance/SSAS.Attendance.*` carrying Calendars, Leave, Periods
+> and Records, the `20260825024834_AddAttendanceFoundation` migration, the `tests/Attendance.Tests/`
+> suite, and `tests/Architecture.Tests/AttendanceArchitectureTests.cs` as its guard.
+>
+> Conditional passages below are resolved inline where the ruling removes a fork; where they are not,
+> the ratification file is authoritative.
+
+> ### Everything below this line is the analysis, kept as the historical record
+>
+> A delivered package still has to show **what was open when it was written and how it was ruled**, so
+> the analysis is preserved rather than rewritten. **Its present-tense statements describe the
+> repository on 2026-08-25 *before* PR #52, not the repository today.** Where a passage would now
+> mislead about what exists, it is marked inline; nothing is deleted.
+>
+> **Status at analysis time, superseded by the line above:** *"DRAFT — analysis only. No code, no
+> schema, no ADR. Every `OD-ATT-####` in [`decisions-open.md`](decisions-open.md) is
+> OWNER-DECISION-REQUIRED and blocks the build prompt."* All sixteen are now ruled, and the build has
+> shipped.
 
 ---
 
 ## The sweep came first, and it found nothing — but not *quite* nothing
+
+**Run before PR #52. Every row below records the repository as it was then** — the Attendance tree,
+its test home, its migration and its branch all exist now, and the sweep is kept because what a
+greenfield module found before it was built is part of why it was designed the way it was.
 
 | Swept | Result |
 |---|---|
@@ -30,17 +57,33 @@ PayrollCalculator.cs:48     "No overtime, absence deduction, shift differential 
 PayrollCalculatorTests:149  No_attendance_driven_behaviour_exists_because_attendance_is_unbuilt   ← A GUARD
 ```
 
-**That last one is a live test asserting this module does not exist.** It passes today by checking that no
+**That last one was a live test asserting this module does not exist.** It passed by checking that no
 `PayElementBehaviour` name contains *Hour*, *Overtime* or *Absence*. When FP-013's follow-up work adds those
 behaviours to Payroll, that guard **fails — correctly** — and must be **replaced, not deleted**, exactly as
 FP-012 replaced GL's `There_is_no_gl_contracts_assembly`. Recorded as `DEC-ATT-0012` so it is met as a
 ruling rather than discovered as an obstacle.
+
+**Discharged as ruled.** PR #52 replaced the guard rather than deleting it —
+`tests/Payroll.Tests/Runs/PayrollCalculatorTests.cs:151` now records the slot it occupied and what it
+asserted.
 
 ---
 
 ## What authority actually exists — the thinnest base of any package so far
 
 Thinner than FP-012's, which was itself the thinnest at the time.
+
+**As at analysis time, before ratification.** One row below is the one this package changed: under
+`OD-ATT-0002` the ratification added the **`REQ-ATT` and `BR-ATT` prefixes** to
+`Requirement-Numbering.md` and created `Requirement-Catalog/ATT.md`, so the row reading
+*"NO `REQ-ATT` PREFIX EXISTS … the file lists nine"* is superseded — the file now lists ten.
+
+**The `Business-Rules.md` row below is still true today, and is left standing deliberately.** The
+ratification added the `BR-ATT` prefix to `Requirement-Numbering.md`, and this package drafted
+`BR-ATT-0001`–`0012` in its own [`business-rules.md`](business-rules.md) — but **the master
+`docs/00-Master-Product-Specification/Business-Rules.md` still carries no `BR-ATT` rule**, and
+attendance still sits under its *Future Modules* heading. The rules exist in the package and were
+never promoted to the master register. That is a live gap, not a stale sentence.
 
 | Source | What it actually says |
 |---|---|
@@ -56,6 +99,10 @@ illustrate what the word *Workflow* means. It is evidence that the authors expec
 eventually; it is **not** a requirement, and this package does not treat it as one.
 
 ### The identifier space itself has to be created
+
+**Done — `OD-ATT-0002` was ruled and the space was created at ratification.** `Requirement-Numbering.md`
+now carries `REQ-ATT-0001` and `BR-ATT-0001`. The paragraph below records the position this package
+argued from.
 
 Payroll had `REQ-PAY-0001` reserved as a bare line. **Attendance has nothing.** So this package cannot merely
 draft requirements into a reserved space — **it must propose the space**, which is an addition to
@@ -82,6 +129,13 @@ consumes them — is **Payroll-side**.
 extended Payroll while calling itself Attendance would put the change where nobody reviewing Attendance
 would look for it.
 
+**The obligation was discharged in the same delivery, and visibly.** PR #52 carried the Payroll-side
+work as a separate, reviewable step — `PayElementBehaviour` gained `OvertimeHourly = 5` and
+`UnpaidAbsenceDeduction = 6`, and `PayrollCalculator` consumes `IAttendanceSummary` through
+`SSAS.Attendance.Contracts`. Shift differential and lateness remain absent, because
+`AttendanceRecord` carries quantities and tiers and neither of those has an input yet. The paragraph
+above is kept as the record of why the Payroll change was made where a Payroll reviewer would find it.
+
 ### `OD-PAY-0007` — the calendar this module probably births
 
 > **Proration: CALENDAR DAYS.** Working-day proration was refused because it needs a working calendar the
@@ -92,6 +146,11 @@ If FP-013 creates a working calendar, the stated reason for calendar-day prorati
 Payroll's proration then moves to working days is an owner decision** (`OD-ATT-0015`) — not an automatic
 consequence, and not this package's to assume. It changes what every existing employee is paid for a partial
 month, which is a business decision wearing a technical costume.
+
+**The calendar now exists** — `SSAS.Attendance.Domain/Calendars/` — so the condition in that paragraph
+is met, and **`OD-ATT-0015` was ruled: Payroll proration is unchanged, still calendar days, with the
+lever recorded as untaken** ([`decisions-ratified.md`](decisions-ratified.md)). The `OD-PAY-0007` quote
+above is retained verbatim as the inherited ruling it was, not as a current statement about the product.
 
 ### The cross-module mechanism is settled by triple precedent
 

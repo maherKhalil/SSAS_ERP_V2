@@ -37,13 +37,28 @@ UNPROMOTED (2) - a package owns a BR space the master register does not carry:
     and the master Business-Rules.md carries no BR-ATT rule at all
 ```
 
-**Expect a third row after this file merges. That is the check working, not a defect in this
-package.** The owner has an open ruling on the whole class — 29 orphans and 22 untraced against 73
-master identifiers — and promoting `BR-SUB` ahead of that ruling would settle by action a question
-that is being decided deliberately.
+**A third row appears once this file lands, and it has been verified: `BR-SUB`, 21 rules, alongside
+`BR-PAY` and `BR-ATT`.** What that row means changed while this package was being written, and the
+distinction is worth stating precisely because it is the difference between a working check and an
+accepted defect:
+
+- **Before ratification it is the check working.** Promotion is an act of ratification, not of
+  drafting — `OD-SUB-0002` ruled the `REQ-SUB` prefix is added at ratification and the `BR-SUB` space
+  follows the same rule. A package that promoted its own rules while drafting them would be editing a
+  governing document on its own authority.
+- **After ratification the same row is a ratification defect.** `DEC-L-012` closed the wider question
+  — 29 orphans and 22 untraced against 73 master identifiers — and closed it **forwards**: every
+  package promotes its `BR-` rules and cites the constraints it satisfies **at ratification**, with
+  `trace-check` check 7 as the mechanism. An `UNPROMOTED` row that survives ratification is a defect
+  in the ratification, not a cost the product has agreed to carry.
+
+**So this is promotion work that ratification must do, not a backlog item it may inherit.** The
+existing `BR-PAY` and `BR-ATT` rows are on different terms: `DEC-L-012` pays those per module when
+each module is next touched, rather than in a sweep, because a 51-identifier diff across documents
+nobody is changing would land unread.
 
 **What this file guarantees is that the rules exist, are numbered contiguously from `0001`, and are
-findable.** What it does not do is claim they are in force at the master level. They are not.
+findable.** What it does not do is claim they are in force at the master level. They are not — yet.
 
 ---
 
@@ -71,12 +86,13 @@ findable.** What it does not do is claim they are in force at the master level. 
 | `BR-SUB-0018` | An **invoice number is never reused**, including the number of a voided invoice | `REQ-SUB-0025` |
 | `BR-SUB-0019` | A tenant may read **which modules it has**; it may not read price, invoice, payment state or any other commercial term | `REQ-SUB-0021`; the `FP-002` disclosure precedent |
 | `BR-SUB-0020` | **No cardholder datum is stored, transmitted in any request or response, or logged** by this package | `OD-SUB-0016`; boundary held for `T-010` |
+| `BR-SUB-0021` | A seat cap is enforced **at admission and nowhere else**. Creating or activating a user beyond the tenant's resolved cap is refused **at that moment**, naming the cap, the current count and the plan. **Login is never refused for a seat cap.** An excess arriving by plan downgrade is **billed and reported**, never enforced against anyone already working | `DEC-L-009` closing the `OD-SUB-0017` residue; `REQ-SUB-0027` |
 
-Twenty rules, `BR-SUB-0001`–`BR-SUB-0020`, contiguous.
+Twenty-one rules, `BR-SUB-0001` through `BR-SUB-0021`, contiguous.
 
 ---
 
-## The two that are not obvious, and why they are rules rather than implementation notes
+## The three that are not obvious, and why they are rules rather than implementation notes
 
 **`BR-SUB-0003` — the monotonic append.** It looks like a database detail and it is a business rule,
 because of what it protects. `BR-SUB-0006` judges a metered quantity against the record in force when
@@ -90,6 +106,30 @@ function's `max(plan, grants)` makes it structurally impossible to violate, and 
 `CHECK` constraint and no validation branch could reasonably conclude it is unenforced. It is
 enforced twice: refused at write so the mistake is loud, and unable to take effect at read even if a
 row existed.
+
+**`BR-SUB-0021` — the enforcement point, and why it is not `BR-SUB-0006` with more words.**
+`BR-SUB-0006` says how a metered quantity is **judged**: against the subscription record in force
+when it was observed. `BR-SUB-0021` says where a cap is **enforced**. They are different statements
+about different moments, and neither implies the other — a product could judge historically and still
+enforce at login, which is exactly the design `DEC-L-009` rejected.
+
+**The asymmetry with `BR-SUB-0013` needs stating, because side by side the two read as
+inconsistent.** Expiry blocks login; a seat cap does not. The events are not alike:
+
+| | Expiry — `BR-SUB-0013` | Seat excess — `BR-SUB-0021` |
+|---|---|---|
+| When it arrives | on a **dated** term everyone could see coming | incrementally, as users are added |
+| Who it affects | the **whole tenant**, at one instant | whichever user happens to sign in next |
+| Who can resolve it | the tenant's administrator, by renewing | nobody, at the moment it would bite |
+
+Blocking a login for a seat cap would enforce against an arbitrary user who did nothing, at the
+moment they sat down to work, in an ERP of record — converting a commercial disagreement into an
+operational outage for someone with no power to end it. **Refusing at admission tells the person who
+caused the excess, immediately and specifically, and they can act on it.**
+
+**No grace period exists, and none is needed.** A grace period softens a lapse; with the cap enforced
+at admission nothing lapses. `BR-SUB-0013`'s expiry remains the only commercial event that blocks a
+login, and it is the one that is dated, foreseeable and whole-tenant.
 
 ---
 

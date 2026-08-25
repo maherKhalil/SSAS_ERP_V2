@@ -18,7 +18,7 @@ reports resolvable citations as unresolved. That is a fault in the invocation, n
 | Space | Count | Numbering | Orphans |
 |---|---|---|---|
 | `REQ-SUB` | **28** | 0001 to 0028, contiguous | none |
-| `BR-SUB` | **20** | 0001 to 0020, contiguous | none |
+| `BR-SUB` | **21** | 0001 to 0021, contiguous | none |
 | `AC-SUB` | **51** | 0001 to 0051, contiguous | none |
 | `TS-SUB` | **50** | 0001 to 0050, contiguous | none |
 | `DEC-SUB` | **12** | 0001 to 0012, contiguous | none |
@@ -65,7 +65,7 @@ so `BUILD BLOCKED` is the honest state of the package until it happens.
 | `REQ-SUB-0025` the invoice | `BR-SUB-0017`, `BR-SUB-0018`, `BR-SUB-0020` | `AC-SUB-0038`, `AC-SUB-0039`, `AC-SUB-0048` | `TS-SUB-0011`, `TS-SUB-0012`, `TS-SUB-0047` | `OD-SUB-0016` |
 | `REQ-SUB-0026` payment capture — **owned by `T-010`**, see below | `BR-SUB-0020` | — | — | `OD-SUB-0016` |
 | `REQ-SUB-0027` metering and caps | `BR-SUB-0006` | `AC-SUB-0040`, `AC-SUB-0041`, `AC-SUB-0043` | `TS-SUB-0013`, `TS-SUB-0014`, `TS-SUB-0016` | `OD-SUB-0017` |
-| `REQ-SUB-0027` seat admission — cap enforced at the grant, never at login | `BR-SUB-0006` | `AC-SUB-0049`, `AC-SUB-0050`, `AC-SUB-0051` | `TS-SUB-0048`, `TS-SUB-0049`, `TS-SUB-0050` | `OD-SUB-0017` |
+| `REQ-SUB-0027` seat admission — cap enforced at the grant, never at login | `BR-SUB-0021` | `AC-SUB-0049`, `AC-SUB-0050`, `AC-SUB-0051` | `TS-SUB-0048`, `TS-SUB-0049`, `TS-SUB-0050` | `OD-SUB-0017` |
 | `REQ-SUB-0028` proration | `BR-SUB-0016` | `AC-SUB-0042` | `TS-SUB-0012` | `OD-SUB-0015` |
 
 Twenty-eight requirements over thirty rows. `REQ-SUB-0011` carries a second row because one of its
@@ -90,8 +90,6 @@ evaporates as prose.
 obligation, and it stays red until `PlatformDbContext` gains the guard. No FP-014 entity may carry
 `IAppendOnlyEntity` before then — the interface without the guard is the appearance of immutability
 with none of it.
-
----
 
 ---
 
@@ -165,13 +163,6 @@ tests cell is a declared gap rather than a scenario pretending to cover it.
   **`DEC-L-012` sharpens what happens next**, and it changes the obligation rather than the current
   state: the seventy-percent orphan class is closed **forwards**, so a package promotes its `BR-`
   rules at ratification and **an `UNPROMOTED` row that survives ratification is a ratification
-  defect, not an accepted cost.** This package's twenty rules are therefore promotion work that
+  defect, not an accepted cost.** This package's twenty-one rules are therefore promotion work that
   ratification must do, not a backlog item it may inherit. The existing `BR-PAY` and `BR-ATT` rows
   are paid per module when those modules are next touched — not here, and not in one sweep.
-
-- **A rule for seat admission.** `DEC-L-009` ruled that the cap is enforced at the grant and never at
-  login, and `AC-SUB-0049` through `AC-SUB-0051` carry it. `BR-SUB-0006` states how a metered
-  quantity is **judged** and remains correct as written; what the package does not yet have is a
-  rule stating **where the cap is enforced**. That is a twenty-first `BR-SUB` rule and
-  [`business-rules.md`](business-rules.md) is outside this task's scope, so it is raised for the
-  architect rather than reached into.

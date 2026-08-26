@@ -207,6 +207,35 @@ Stopping badly is worse than not stopping. In order:
 
 Answering the owner. Reporting state. Reading the board. Ending a turn cleanly.
 
+### The mechanism: no wait outlives its obligation
+
+`DEC-L-042`. **No background wait you start may be longer than the reporting interval, whatever it is
+waiting for.**
+
+Every background wait is a **bounded** loop: poll for the finish condition, cap the loop below the
+reporting interval, then print the current state and exit. **Its completion notification is the report
+trigger.** Still running → report progress and start another bounded wait. Finished early → the loop
+breaks early and you report the result.
+
+Three properties, and the third is why this differs from an intention:
+
+1. **The timer is never longer than the rule**, so a report cannot be later than one interval *by
+   construction*.
+2. **The harness is the clock, not you.** It survives you being absorbed, because you are not the
+   thing keeping time.
+3. **A failed waiter is bounded damage.** One dropped notification costs one interval, not an hour,
+   because the next wait is a fresh task rather than a continuation of a broken one.
+
+**Set the tool timeout well above the loop's own duration** as ordinary prudence — but note that
+this is *not* what the rule rests on. **The load-bearing part is the bound on the loop itself.** The
+51-minute gap of 2026-08-26 was first attributed to a waiter killed by its own timeout; the evidence
+later showed that waiter ran fifty-three minutes to completion and its notification arrived. **The
+defect was that its duration was set by the gate rather than by the rule** — which is true whether a
+waiter dies or completes.
+
+**The limit, stated rather than discovered:** this makes *waiting* safe. It does not make *starting*
+automatic, and it fails if a turn ends without a waiter at all.
+
 ### Detection, honestly
 
 **Neither role can query the usage meter.** No tool exposes it. The rule therefore fires on:

@@ -32,6 +32,18 @@ do not guess a name, and do not do the other role's job yourself.
 
 ## 2. The message envelope
 
+**Every message begins with a timestamp — `[HH:MM]` — in both directions, without exception**
+(`DEC-L-038`). Not the header, not the subject: the first characters of the body.
+
+This costs one `date` call and it buys the thing this loop has repeatedly lacked: a reader can see how
+old a claim is, how long a silence ran, and whether two reports describe the same run. Three separate
+incidents in one day turned on not knowing when something happened — a gate believed live that was
+hours dead, an orphaned sampler mistaken for a current run, and two `PROGRESS` reports the owner had
+to ask for because nothing showed the gap.
+
+A message without a timestamp is incomplete. Say so and re-send.
+
+
 Every `SendMessage` body starts with one header line, then a short human summary.
 The detail always lives in the referenced file, never in the message.
 

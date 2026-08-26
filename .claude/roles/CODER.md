@@ -105,6 +105,42 @@ The build runs at **zero warnings** today. A warning you introduced is a failure
 `API.Tests` needs a reachable SQL Server and **fails rather than skips** without one. If it
 cannot connect, that is not a pass — report `PARTIAL` and say exactly which suites ran.
 
+### Which gate, and when — `DEC-L-051`
+
+`scripts/gate.sh` calls itself **THE PHASE-EXIT GATE** on its own first line, and it means it: every
+suite, Debug *and* Release. Its measured cost is in its own header — **Integration Debug 32 m 21 s,
+Integration Release 32 m 35 s**. Roughly 65 of its ~75 minutes are those two legs.
+
+That instrument was being run per task, because it was the only way to get Integration with its
+memory preconditions and catalog reaping intact. **That is the defect, not the test suite.**
+
+| | What runs | When |
+|---|---|---|
+| **`GATE_SCOPE=TASK`** (default) | Build Debug at zero warnings; Architecture, Platform, HR, API, plus your module's suite. Integration **in one configuration**, and only if condition 3 applies. | Every task, before `DONE`. |
+| **`GATE_SCOPE=PHASE`** | Everything, both configurations. | Phase exit. **And before anything lands that touches a migration, the model snapshot, or the cutover inventory** — those are exactly where a Release-only or ordering-dependent failure hides, and they are the failures that are unrecoverable rather than merely red. |
+
+**Do not economise below `TASK`.** The tiering buys back the ~65 minutes that were being spent to
+learn nothing; it does not license skipping a suite because you judged it irrelevant. Condition 2
+still says *"not the ones I thought were relevant"*, and it still means it.
+
+### Writing code while a gate runs — `DEC-L-053`
+
+You may start the next task while a gate runs, **but never in the tree under test.** The suite reads
+the working tree; edit it mid-run and the result describes a tree that no longer exists — the
+`DEC-L-013` problem with a timer on it.
+
+Use a second worktree: `git worktree add ../SSAS_gate <branch>`. Run the gate in one directory, write
+code in the other. Two constraints, both real:
+
+- **One gate at a time.** `gate.sh` already refuses when a sibling `testhost` from this repo is live,
+  and it reaps `SSAS_%` catalogs — two concurrent runs would take each other's databases out.
+- **Build sparingly during a run.** The LEAN floor is 2048 MB and note 7 records that this box
+  *"hosts resident agent sessions alongside the suite"*. Writing code is nearly free; a second
+  `--no-incremental` build is not, and dropping below the floor aborts the gate you were waiting for.
+
+Remove the worktree when the task closes. A worktree that outlives its run is the same shape of
+leftover as the four gate logs and three probe files that outlived theirs.
+
 ---
 
 ## Long-running work — report every 20 minutes
@@ -168,8 +204,10 @@ Tightened by the owner on 2026-08-25 (`DEC-L-008`) after the first three merges.
 2. **Every suite in the gate ran in this session and passed** — Architecture, Platform, HR, API, plus
    the suite for the module you changed. Not "the ones I thought were relevant".
 3. **`Integration.Tests` ran and passed** if the task touched persistence, a migration, an EF
-   configuration, or the Shared→Dedicated cutover inventory. Run it through `scripts/gate.sh`, which
-   holds the memory preconditions and the catalog reaping — do not invoke that leg by hand.
+   configuration, or the Shared→Dedicated cutover inventory. Run it through
+   `GATE_SCOPE=TASK scripts/gate.sh`, which holds the memory preconditions and the catalog reaping
+   — do not invoke that leg by hand. **`GATE_SCOPE=TASK` runs Integration in ONE configuration**
+   (`DEC-L-051`); the both-configuration run is a phase-exit instrument, not a per-task one.
 4. **The tests the task required exist in this diff and pass.** This is the one that is easy to miss
    and it is why the rule was tightened: *a suite that is green because nothing exercises your new
    code is not green.* If you added an aggregate, a handler, an endpoint or an invariant and the

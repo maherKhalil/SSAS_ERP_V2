@@ -100,9 +100,13 @@ wrong for this product.
   A downgrade that puts a tenant over its new cap deactivates nobody. (`AC-SUB-0051`.)
 
 **No grace period, and none is needed.** A grace period softens a lapse; nothing lapses here. The
-refusal is at admission and it is immediate, specific and actionable. `OD-SUB-0009`'s expiry remains
-the **only** commercial event that blocks login, and it blocks the whole tenant on a dated,
-foreseeable term rather than an arbitrary user on an incremental one. **That asymmetry is deliberate.**
+refusal is at admission and it is immediate, specific and actionable.
+
+**This paragraph closed by calling `OD-SUB-0009`'s expiry "the only commercial event that blocks
+login" and the asymmetry deliberate. `DEC-L-033` (2026-08-26) removed the asymmetry by amending that
+ruling: no commercial event blocks login now.** What survives is the distinction that carried the
+argument — expiry is dated, foreseeable and whole-tenant; a seat excess is incremental and lands on
+an arbitrary user. That is still why one acts at the gate and the other at the grant.
 
 ### The interaction to carry into the model rather than discover later
 

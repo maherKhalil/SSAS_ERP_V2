@@ -676,9 +676,11 @@ An entitlement change **takes effect without re-issuing a token and without rest
 
 ### Title
 
-Expiry Refuses Login, Distinctly
+Expiry Gates Modules, Never Login
 
-A tenant whose subscription term has **expired cannot log in**, and that refusal is **distinct** from a refusal on tenant status
+A tenant whose subscription term has **expired reaches no gated module, and still authenticates**. Expiry never refuses a login; a refusal on tenant status still does, and the two remain **distinct**
+
+> **Amended 2026-08-26 by `DEC-L-033`**, which changed `OD-SUB-0009`. This rule previously read *"Expiry Refuses Login, Distinctly — a tenant whose subscription term has expired cannot log in"*. The reason it changed: **a lapsed customer who cannot log in cannot reach the page that would let them subscribe.** The statement above is carried verbatim from `FP-014`'s [`business-rules.md`](../17-features/FP-014-subscription/business-rules.md), which remains its source.
 
 ---
 

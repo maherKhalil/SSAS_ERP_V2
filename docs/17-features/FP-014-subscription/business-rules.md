@@ -144,9 +144,14 @@ moment they sat down to work, in an ERP of record — converting a commercial di
 operational outage for someone with no power to end it. **Refusing at admission tells the person who
 caused the excess, immediately and specifically, and they can act on it.**
 
-**No grace period exists, and none is needed.** A grace period softens a lapse; with the cap enforced
-at admission nothing lapses. `BR-SUB-0013`'s expiry remains the only commercial event that blocks a
-login, and it is the one that is dated, foreseeable and whole-tenant.
+**No grace period exists for the seat cap, and none is needed.** A grace period softens a lapse; with
+the cap enforced at admission nothing lapses.
+
+**This paragraph used to end by calling expiry "the only commercial event that blocks a login". After
+`DEC-L-033` no commercial event blocks a login at all** — expiry gates modules instead. What survives
+is the distinction that mattered: expiry is **dated, foreseeable and whole-tenant**, and a seat excess
+is incremental and arbitrary in who it would hit. That is still why one is enforced at the gate and
+the other at the grant.
 
 ---
 

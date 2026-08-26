@@ -63,3 +63,24 @@ fix to the factory would look correct and be beside the point. Test that before 
 `main` builds clean at 0 warnings with **3,486 tests green** in both configurations.
 `BR-PLT-0008` is enforced — modules gate on subscription, tenants get a 14-day all-module trial,
 expiry costs modules rather than the door.
+
+## Who was in the windows (`DEC-L-050`)
+
+Written by each side for itself. A name here is how the other window addresses you with
+`SendMessage`; a name that is stale is worse than absent, because it fails as a *delivery*
+rather than as a lookup. Rewrite your own line on resume - do not trust the one you find.
+
+| Role | Session name | Last written |
+|---|---|---|
+| Architect | `ssas-erp-v2-88` | 2026-08-26 23:05 |
+| Coder | `ssas-erp-v2-37` | 2026-08-26 23:05, by the architect - **coder to confirm or correct** |
+
+The coder's line is second-hand: read from `ListAgents`, not written by the coder itself.
+It is recorded because an unverified pointer that can be checked beats no pointer at all -
+but the coder owns that row, and should overwrite it on resume rather than assume it holds.
+
+## Standing down - 2026-08-26 23:05
+
+Owner's instruction, both windows. Nothing is queued and nothing is running. `main` is at
+`92961bb`; T-050 is merged. The work that was *not* scheduled to tomorrow by either window's
+own initiative is listed under the open items above, in the order it was left.

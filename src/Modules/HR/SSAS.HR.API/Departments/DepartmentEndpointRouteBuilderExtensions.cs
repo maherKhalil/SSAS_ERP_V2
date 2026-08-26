@@ -56,6 +56,10 @@ public static class DepartmentEndpointRouteBuilderExtensions
   {
     ArgumentNullException.ThrowIfNull(endpoints);
 
+    // The gate's dependency, asserted HERE so a host that mounts these routes without it fails at
+    // startup rather than answering 500 per request (T-034).
+    endpoints.RequireModuleEnablementServices(HrModuleEnablement.Key);
+
     var group = endpoints.MapGroup(RoutePrefix)
       .WithTags("HR Departments")
       // ---- THE MODULE ENABLEMENT GATE, ON THE GROUP (FP-014, `OD-SUB-0003`).
@@ -138,6 +142,10 @@ public static class DepartmentEndpointRouteBuilderExtensions
   public static IEndpointRouteBuilder MapHrEmployeeDepartmentEndpoints(this IEndpointRouteBuilder endpoints)
   {
     ArgumentNullException.ThrowIfNull(endpoints);
+
+    // The gate's dependency, asserted HERE so a host that mounts these routes without it fails at
+    // startup rather than answering 500 per request (T-034).
+    endpoints.RequireModuleEnablementServices(HrModuleEnablement.Key);
 
     var group = endpoints.MapGroup(EmployeeRoutePrefix)
       .WithTags("HR Employees")

@@ -233,6 +233,21 @@ public sealed class ProjectDependencyArchitectureTests
         "SSAS.BuildingBlocks.Api.Authorization.ITenantModuleEntitlement",
         "SSAS.BuildingBlocks.Api.Authorization.ModuleEnablementEndpointConventions",
         "SSAS.BuildingBlocks.Api.Authorization.ModuleEnablementMetadata",
+        // ---- T-034. A MODULE'S ROUTE GROUPS ASSERT THEIR OWN DEPENDENCY AT MAP TIME.
+        //
+        // This guard exists to force the conversation, so: it takes an `IEndpointRouteBuilder` and a module
+        // key — a string the caller supplies — and asks the container whether one contract is registered. It
+        // names no module, no route and no business concept, which is the same test `RequirePermission` and
+        // `RequireModule` pass.
+        //
+        // It is here because it belongs to the seam it guards. `RequireModule` is in this project and
+        // resolves `ITenantModuleEntitlement` as a required service; the check that the service exists
+        // cannot live further from the requirement than the requirement does.
+        //
+        // **Why it is a separate type from `ModuleEnablementEndpointConventions`.** That one shapes an
+        // endpoint; this one refuses to build a host. A convention that sometimes throws during composition
+        // would be two behaviours behind one name, and the failure it produces is the whole point of it.
+        "SSAS.BuildingBlocks.Api.Authorization.ModuleEndpointRequirements",
         // The canonical policy-name spelling, shared by the Host that reads it and the endpoints that emit it.
         "SSAS.BuildingBlocks.Api.Authorization.PermissionPolicyNames",
         "SSAS.BuildingBlocks.Api.Authorization.TransitionalGrantsEveryModuleEntitlement",

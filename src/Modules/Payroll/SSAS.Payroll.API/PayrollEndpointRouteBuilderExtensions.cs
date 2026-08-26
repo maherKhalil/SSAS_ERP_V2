@@ -42,6 +42,10 @@ public static class PayrollEndpointRouteBuilderExtensions
   {
     ArgumentNullException.ThrowIfNull(endpoints);
 
+    // The gate's dependency, asserted HERE so a host that mounts these routes without it fails at
+    // startup rather than answering 500 per request (T-034).
+    endpoints.RequireModuleEnablementServices(PayrollModuleEnablement.Key);
+
     var group = endpoints.MapGroup(RoutePrefix)
       .WithTags("Payroll")
       // ---- THE MODULE ENABLEMENT GATE, ON THE GROUP (FP-014, `OD-SUB-0003`).

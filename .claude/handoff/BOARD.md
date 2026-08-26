@@ -289,3 +289,31 @@ Run directly, not through `gate.sh`. A code task that leaves these unchanged has
 | 2026-08-26 | **UNRESOLVED, and deliberately not closed: the simple story cannot be right.** `git log -S modelContributors` over the factory returns **nothing, ever** - it has never supplied contributors - and it **predates every module migration** (factory 2026-08-14; first module migration 2026-08-19; last 2026-08-25). **So thirteen module migrations were scaffolded correctly while the factory was already contributor-less.** Something else supplied a complete model then and it is not yet established what. Candidates, none tested: a startup project whose service provider EF preferred; a different context or command; hand-authored migrations. **The coder is recording no cause for this half until it is tested against the symptom.** | **High** | T-048 diagnosis |
 | 2026-08-26 | **The migration tool's own comment is a FALSE REASSURANCE, and it is worse than a stale one.** `ComposedTenantDbContextFactory.cs:19-20` says Platform's factory *“would silently produce an EMPTY migration for a module's tables”*. **It produces a DESTRUCTIVE one - 32 `DropTable`.** A reader who hits the wrong startup project and remembers that sentence concludes the output is useless rather than dangerous, **and stops checking.** Empty and destructive call for opposite reactions. Correcting it belongs with the `ADR-018` fix. | **High** | T-048 resolution |
 | 2026-08-26 | **Three candidates closed by test rather than argument, including one of the coder's own.** *Startup project EF preferred* - **refuted, and it cannot even run**: `--startup-project src/Host/SSAS.Host.API` fails to load `Microsoft.EntityFrameworkCore.Design`. *A different context or command* - **confirmed**, as a different startup project. *Hand-authored* - not needed, the tool path reproduces clean scaffolding today. And the coder's own suspicion that module configurations once lived in Platform's tenant namespace: **refuted - that directory has held exactly `Branch` and `Company` in every commit that ever touched it.** | Medium | T-048 resolution |
+
+---
+
+## Closing note, 2026-08-26 — which rules actually worked
+
+The coder's synthesis of the day, and it is a test to apply to the next ruling written here.
+
+**Nearly every rule that held fires on a contradiction, an absence, or a check — not on
+remembering a rule at the moment it applies.** `DEC-L-042` bounds a waiter so the harness keeps
+time instead of the agent. `DEC-L-044` prints what was covered so a green is readable without
+breaking the test. `DEC-L-047` forbids a filter that cannot show the bad case. `DEC-L-043` fires
+when a result contradicts an expectation, which is a thing that happens to you rather than a thing
+you must do.
+
+**The ones phrased as things to remember are the ones that failed** — and they failed for both
+roles equally. *Checking costs one command against a file* was true and useless. *Verify a green
+that looks too good* asked for a judgement on every pass. *Check the match count on every
+substitution* was corrected to *do not use a line anchor in this repository*, which cannot be
+forgotten because it is not a step.
+
+**The proof is the last one of the day.** The MSYS path-conversion trap was on this board, put
+there by the coder in the afternoon — and the architect walked into it at 22:20 anyway. **The
+board entry did not stop it. The contradiction did**: *“BOARD.md is not on main”* was false
+against something already known, and that is what triggered the re-check.
+
+**So: when writing the next rule here, ask what fires it.** If the answer is “someone remembers
+this”, it is a preference. If the answer is a contradiction, an absent channel, or a check that
+runs whether or not anyone is paying attention, it is a mechanism.

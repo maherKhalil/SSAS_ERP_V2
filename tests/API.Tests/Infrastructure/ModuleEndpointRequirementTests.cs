@@ -87,7 +87,7 @@ public sealed class ModuleEndpointRequirementTests
     string entryPoint, Action<IEndpointRouteBuilder> map)
   {
     var builder = WebApplication.CreateBuilder();
-    builder.Services.AddScoped<ITenantModuleEntitlement, TransitionalGrantsEveryModuleEntitlement>();
+    builder.Services.AddModuleEndpointRequirements();
     var application = builder.Build();
 
     map(application);
@@ -109,8 +109,6 @@ public sealed class ModuleEndpointRequirementTests
 
     Assert.Contains(PayrollModuleEnablement.Key, failure.Message, StringComparison.Ordinal);
     Assert.Contains(nameof(ITenantModuleEntitlement), failure.Message, StringComparison.Ordinal);
-    Assert.Contains(
-      nameof(TransitionalGrantsEveryModuleEntitlement), failure.Message, StringComparison.Ordinal);
     Assert.Contains("misconfigured", failure.Message, StringComparison.OrdinalIgnoreCase);
   }
 }

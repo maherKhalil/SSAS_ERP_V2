@@ -31,6 +31,9 @@ using SSAS.Platform.API.PlatformSupport;
 using SSAS.Platform.Infrastructure;
 using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Infrastructure.RequestContext;
+using SSAS.Platform.Application.Subscriptions;
+using SSAS.Platform.Infrastructure.Subscriptions;
+using SSAS.Platform.API.Subscriptions;
 
 Log.Logger = new LoggerConfiguration()
   .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
@@ -101,25 +104,29 @@ try
   // hold one.
   builder.Services.AddSingleton<IPermissionCatalogContributor, AttendancePermissionCatalogContributor>();
 
-  // ---- MODULE ENABLEMENT: THE SEAM IS MOUNTED, THE DATA IS NOT YET THERE (FP-014, OD-SUB-0003).
+  // ---- MODULE ENABLEMENT: THE SEAM NOW READS REAL DATA (FP-014, T-040).
   //
-  // Every module route group passes through `RequireModule`, and an architecture guard asserts that no
-  // module group can be added without it. What the gate ASKS is this contract; what answers it today is
-  // deliberately a resolver that grants every module to every tenant.
+  // Every module route group passes through `RequireModule`, an architecture guard asserts no module
+  // group can be added without it, and each module's own mapping refuses to start without this contract
+  // registered (T-034). What answers it is now the Platform database.
   //
-  // **This does not satisfy `BR-PLT-0008` and is not meant to.** There is no plan, no per-tenant
-  // assignment and no entitlement grant in this product yet; `OD-SUB-0004` places that data in the
-  // Platform database and the build obligation is no backfill and no default plan. Until it exists the
-  // only honest answer is "yes", and answering anything else would be inventing a commercial state.
+  // **This is the cutover, and it is deliberately not lenient.** The transitional resolver that granted
+  // every module to every tenant is DELETED, not left unregistered. A tenant with no subscription record
+  // now reaches no gated module -- correct under `CON-0001`, which forbids a default plan, and the
+  // interim state until T-041 seeds the 14-day trial `DEC-L-034` ruled.
   //
-  // The commercial plane's schema task REPLACES this registration -- it does not add a second one beside
-  // it. An architecture test asserts exactly one implementation of the contract exists, so a second one
-  // fails the build rather than silently competing in the container.
+  // ---- WHY THE PIECES SIT WHERE THEY DO.
   //
-  // Scoped, not singleton: the real resolver reads per-request tenant state behind a cache invalidated on
-  // subscription change, and registering the transitional one at a longer lifetime now would make that
-  // replacement a lifetime change as well as a type change.
-  builder.Services.AddScoped<ITenantModuleEntitlement, TransitionalGrantsEveryModuleEntitlement>();
+  // The READ is Platform infrastructure; the CACHE is a singleton because it outlives a request by
+  // design; the RESOLVER is scoped because it reads the request's tenant. `Platform.API` owns the
+  // adapter because it is the one project referencing both the transport contract and Platform's
+  // application layer -- Infrastructure must not take a dependency on `BuildingBlocks.Api`.
+  //
+  // The cache holds FACTS, not the answer, so expiry needs no invalidation event: `OD-SUB-0004` ruled
+  // invalidation-on-change and never a TTL, and a lapsing term writes nothing to invalidate on.
+  builder.Services.AddScoped<ITenantEntitlementReader, TenantEntitlementReader>();
+  builder.Services.AddSingleton<ITenantEntitlementCache, InMemoryTenantEntitlementCache>();
+  builder.Services.AddScoped<ITenantModuleEntitlement, TenantModuleEntitlement>();
 
   var app = builder.Build();
 

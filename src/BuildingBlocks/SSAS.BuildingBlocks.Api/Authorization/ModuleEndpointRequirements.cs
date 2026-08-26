@@ -68,8 +68,8 @@ public static class ModuleEndpointRequirements
       "registered. Every module route group passes through RequireModule, whose filter resolves that " +
       "contract as a required service, so without it every route below answers 500 at request time " +
       "rather than failing here. " +
-      $"Register one — the Host registers {nameof(TransitionalGrantsEveryModuleEntitlement)} until the " +
-      "commercial plane's resolver replaces it. This is a composition defect, not a runtime condition: " +
+      "Register one — the Host registers the Platform-database resolver, and a test host registers " +
+      "whichever implementation its suite needs. This is a composition defect, not a runtime condition: " +
       "a host that mounts a gated surface and cannot say whether the tenant is entitled is " +
       "misconfigured, and admitting the request instead would be a gate that does nothing.");
   }

@@ -35,15 +35,37 @@ namespace SSAS.API.Tests.Infrastructure;
 // problem as five hosts differing by accident**, and here they do both, in different places.
 public static class ModuleEndpointHostRequirements
 {
-  // Scoped, matching the Host's registration and the lifetime the real resolver will need: it reads
-  // per-request tenant state behind a cache invalidated on subscription change. Registering it longer
-  // here would make the eventual replacement a lifetime change as well as a type change.
+  // ---- A TEST DOUBLE, AND IT IS NOT THE PRODUCTION DEFAULT WEARING A TEST NAME (T-040).
+  //
+  // The Host now resolves entitlement from the Platform database; the transitional grant-everything
+  // implementation is DELETED, not moved here. These five hosts exist to exercise module ENDPOINTS —
+  // their suites assert routing, validation, permissions and transport — and none of them has a
+  // database, a subscription record or any reason to care what entitlement answers.
+  //
+  // So the double grants everything, which restores exactly the behaviour those suites were written
+  // against and asserts nothing new. **Entitlement itself is tested where it can be: the snapshot in
+  // `Platform.Tests`, the refusal end-to-end in `ModuleEnablementGateTests`, and the real read against
+  // real SQL in `Integration.Tests`.**
+  //
+  // Scoped, matching the Host's registration for the real resolver.
   public static IServiceCollection AddModuleEndpointRequirements(this IServiceCollection services)
   {
     ArgumentNullException.ThrowIfNull(services);
 
-    services.AddScoped<ITenantModuleEntitlement, TransitionalGrantsEveryModuleEntitlement>();
+    services.AddScoped<ITenantModuleEntitlement, AlwaysEntitled>();
 
     return services;
+  }
+}
+
+// The double itself. Named for what it does, so a reader of a failing test is not left wondering whether
+// entitlement was in play: in these five suites it never is.
+internal sealed class AlwaysEntitled : ITenantModuleEntitlement
+{
+  public ValueTask<bool> IsEnabledAsync(string moduleKey, CancellationToken cancellationToken)
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(moduleKey);
+
+    return ValueTask.FromResult(true);
   }
 }

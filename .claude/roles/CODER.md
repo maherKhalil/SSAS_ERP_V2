@@ -181,6 +181,49 @@ The `RESULT` message says `DONE` as before; the architect reads the merge state 
 
 ---
 
+## Usage ceiling — stop at 80% weekly
+
+Ruled by the owner on 2026-08-25 (`DEC-L-025`). Applies to **both windows**.
+
+**When weekly usage reaches 80%, neither window starts new work.** The loop goes idle until the weekly
+allowance resets.
+
+### What "stop" means, precisely
+
+Stopping badly is worse than not stopping. In order:
+
+1. **Finish the task in flight** — through to its merge, or to an honest `PARTIAL`. **Never abandon a
+   task mid-way.** Uncommitted work in a shared working tree is the worst state this loop can be left
+   in, and a half-applied change to a persistence context or a governing document is worse than either
+   finishing or never starting.
+2. **A running gate is cheap — let it finish.** `gate.sh` is local `dotnet` work and costs almost no
+   allowance; the cost is in agent turns, not test minutes. Killing a gate mid-leg reaps catalogs and
+   wastes the 69 minutes already spent.
+3. **Commit, push, and report.** Leave the branch in a state the next session can pick up.
+4. **Then say so and go idle.** Do not silently stop — a silent stop is indistinguishable from a
+   crash, which this repository has already spent a day learning.
+
+### What does NOT stop
+
+Answering the owner. Reporting state. Reading the board. Ending a turn cleanly.
+
+### Detection, honestly
+
+**Neither role can query the usage meter.** No tool exposes it. The rule therefore fires on:
+
+- a usage warning either window sees in its own context, or
+- the owner saying so.
+
+**Whichever window sees it first tells the other**, immediately, before finishing its own turn. Do not
+assume the other window has seen the same warning — they are separate sessions with separate context.
+
+### Resuming
+
+The loop resumes when the owner says the allowance has reset. Neither window resumes on its own
+judgement, and neither infers a reset from a turn that happened to succeed.
+
+---
+
 ## Reporting
 
 Write `.claude/handoff/results/T-###.md` from `.claude/handoff/RESULT-TEMPLATE.md`. Paste the

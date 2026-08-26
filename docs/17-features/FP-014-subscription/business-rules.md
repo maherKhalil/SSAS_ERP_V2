@@ -84,7 +84,7 @@ so the source and the promoted copy cannot drift.
 | `BR-SUB-0010` | Losing entitlement to a module **does not delete, alter or hide** the tenant's data in it. The data is unreachable, not destroyed, and returns intact on re-entitlement | `OD-SUB-0012`; `REQ-SUB-0016` |
 | `BR-SUB-0011` | **Entitlement never appears in an access token** and is resolved server-side on every request | `FP-002` `authentication-model.md:16`; `DEC-SUB-0005`; `REQ-SUB-0008` |
 | `BR-SUB-0012` | An entitlement change **takes effect without re-issuing a token and without restarting the host**. The cache is invalidated on change and never refreshed on a timer | `OD-SUB-0004`; `REQ-SUB-0009` |
-| `BR-SUB-0013` | A tenant whose subscription term has **expired cannot log in**, and that refusal is **distinct** from a refusal on tenant status | `OD-SUB-0009`; `OD-SUB-0010`; `REQ-SUB-0018`, `REQ-SUB-0019` |
+| `BR-SUB-0013` | A tenant whose subscription term has **expired reaches no gated module, and still authenticates**. Expiry never refuses a login; a refusal on tenant status still does, and the two remain **distinct** | `OD-SUB-0009` as amended by `DEC-L-033`; `OD-SUB-0010`; `REQ-SUB-0018`, `REQ-SUB-0019` |
 | `BR-SUB-0014` | Subscription state and `TenantStatus` are **orthogonal**. Expiry never writes `TenantStatus`, and no commercial reason is added to `TenantStatusChangeReason` | `OD-SUB-0010`; `REQ-SUB-0019` |
 | `BR-SUB-0015` | A tenant with **no subscription record has no entitlement** and reaches no gated module. There is no default plan | `CON-0001`; `REQ-SUB-0007` |
 | `BR-SUB-0016` | A plan is **retired, never deleted**, because historical subscription records reference it | the `PayElement` and `Account` precedent; `REQ-SUB-0028` |
@@ -119,14 +119,25 @@ when it was observed. `BR-SUB-0021` says where a cap is **enforced**. They are d
 about different moments, and neither implies the other — a product could judge historically and still
 enforce at login, which is exactly the design `DEC-L-009` rejected.
 
-**The asymmetry with `BR-SUB-0013` needs stating, because side by side the two read as
-inconsistent.** Expiry blocks login; a seat cap does not. The events are not alike:
+**THERE IS NO LONGER AN ASYMMETRY HERE, AND `DEC-L-033` IS WHAT COLLAPSED IT.**
+
+This paragraph used to explain why expiry blocked login while a seat cap did not, and set the two side
+by side to show the events were not alike. **`DEC-L-033` (2026-08-26) amended `OD-SUB-0009`: expiry now
+gates modules and never blocks login.** So **no commercial event blocks authentication at all**, and the
+rule is uniform rather than asymmetric:
 
 | | Expiry — `BR-SUB-0013` | Seat excess — `BR-SUB-0021` |
 |---|---|---|
+| Blocks authentication | **no** | **no** |
+| Where it bites | every gated module, for the whole tenant | at the grant, when a user is created or activated |
 | When it arrives | on a **dated** term everyone could see coming | incrementally, as users are added |
-| Who it affects | the **whole tenant**, at one instant | whichever user happens to sign in next |
-| Who can resolve it | the tenant's administrator, by renewing | nobody, at the moment it would bite |
+| Who can resolve it | the tenant's administrator, by renewing | the administrator who caused the excess |
+
+**The original reasoning is preserved because it is why the rule is what it is.** The two events were
+never alike, and `DEC-L-009` refused a login block for a seat cap on grounds that applied just as well
+to expiry once the owner looked at it again: **a lapsed customer who cannot sign in cannot reach the
+page that would let them subscribe.** The asymmetry was the argument that survived one of the two
+cases; the amendment removed the other.
 
 Blocking a login for a seat cap would enforce against an arbitrary user who did nothing, at the
 moment they sat down to work, in an ERP of record — converting a commercial disagreement into an
@@ -156,8 +167,11 @@ Named as absences rather than guessed, in the manner FP-013 used for accrual and
   quantity is judged; it deliberately does not state the consequence. **This is the one gap in the
   ruling set that a build could stumble into**, because both readings are consistent with
   "seats plus limits".
-- **Nothing on grace.** Whether an expired subscription has a grace period before `BR-SUB-0013` bites
-  is unauthored. The ruling is that expiry blocks login; a grace period would be a second ruling.
+- **Nothing on grace, and the amendment makes it matter less.** Whether an expired subscription has a
+  grace period before `BR-SUB-0013` bites is still unauthored. But `DEC-L-033` moved the bite from
+  authentication to the gated modules, so a lapse no longer locks a tenant out of the surface it would
+  renew from — which is most of what a grace period exists to soften. A grace period would still be a
+  second ruling; it is now a smaller one.
 
 ---
 

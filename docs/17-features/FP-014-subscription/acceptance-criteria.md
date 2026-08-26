@@ -57,7 +57,7 @@ likely to be dropped between an analysis package and an implementation prompt.
 |---|---|---|
 | `AC-SUB-0027` | A `Fixed` term requires an end **after** its start; a `Perpetual` term requires a null end. `Fixed` with a null end and `Perpetual` with an end are both refused at construction | `REQ-SUB-0017` |
 | `AC-SUB-0028` | Advancing the clock past `TermEndUtc` changes the resolved commercial state from `InTerm` to `Expired` **with no row written and no job run** | `REQ-SUB-0017`, `REQ-SUB-0018` |
-| `AC-SUB-0029` | Login is refused for a tenant whose term has expired, and the modelled outcome is **distinct** from the outcome for a suspended or archived tenant | `REQ-SUB-0018`, `REQ-SUB-0019` |
+| `AC-SUB-0029` | A tenant whose term has expired **authenticates successfully** and is refused every gated module. A **suspended or archived** tenant is still refused at authentication, and the two outcomes remain **distinct** — one is commercial and reversible by the customer, the other administrative | `REQ-SUB-0018`, `REQ-SUB-0019` |
 | `AC-SUB-0030` | Expiry writes nothing to `Tenant`. The tenant's `TenantStatus` remains `Active`, and a suspended tenant that is paid up remains `Suspended` | `REQ-SUB-0019` |
 | `AC-SUB-0031` | `TenantStatusChangeReason` contains **no commercial member** — no `NonPayment`, no `Expired`, no `SubscriptionLapsed`. Asserted over the enum, so adding one fails the build's guards rather than review | `REQ-SUB-0019` |
 | `AC-SUB-0032` | A cached entitlement entry **does not outlive `TermEndUtc`**. A tenant cached as entitled at `TermEndUtc − 1s` is refused at `TermEndUtc + 1s` without any invalidation event having occurred | `REQ-SUB-0018` |
@@ -109,9 +109,12 @@ it by rejecting both of the answers originally on the table.
 | `AC-SUB-0050` | **Login is never refused for a seat cap.** A tenant standing at or above its cap authenticates every one of its users normally, and no seat check runs on the authentication path at all | `REQ-SUB-0027` |
 | `AC-SUB-0051` | A plan change that puts a tenant **over** its new cap deactivates nobody and blocks nobody. The excess is **billed and reported**, and every existing `TenantUser` keeps working | `REQ-SUB-0027`, `REQ-SUB-0028` |
 
-**Why the enforcement point is the grant, stated because it looks like an inconsistency next to
-`AC-SUB-0029`.** Expiry blocks login; a seat cap does not. That asymmetry is deliberate and the two
-events are not alike:
+**Why the enforcement point is the grant. This no longer contrasts with `AC-SUB-0029`, and that is a
+change.** It used to: expiry blocked login and a seat cap did not, and the asymmetry needed defending.
+**`DEC-L-033` (2026-08-26) amended `OD-SUB-0009` so expiry gates modules instead**, which means **no
+commercial event blocks authentication at all** and the rule is now uniform. The reasoning below is
+kept because it is still why a seat cap is refused at the grant, and it is the argument the owner
+applied to expiry when reconsidering it:
 
 - **Expiry is dated, foreseeable and whole-tenant.** Everyone is affected at an instant everyone
   could see coming, and the tenant's administrator can renew.

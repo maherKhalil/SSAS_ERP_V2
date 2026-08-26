@@ -101,24 +101,30 @@ not to be.
 ### Login — two independent gates
 
 `FP-002` already validates **live** tenant status on every tenant-scoped authenticated request and
-permits only `Active`. `OD-SUB-0009` makes expiry block login too, which turns
-`Authentication.md`'s currently-`Draft` "Expired subscriptions cannot login" into a binding rule and
-removes `REQ-SUB-0018`'s conditional.
+permits only `Active`.
 
-So login evaluates two conditions, resolved independently and reported distinctly:
+**`OD-SUB-0009` originally made expiry block login too. `DEC-L-033` (2026-08-26) amended that: expiry
+gates modules and never blocks login.** The reason is recorded because it is not obvious from the
+mechanism — **a lapsed customer who cannot sign in cannot reach the page that would let them
+subscribe.**
 
-| `TenantStatus` | Commercial state | Outcome |
-|---|---|---|
-| `Active` | `InTerm` | login proceeds |
-| `Active` | `Expired` or `Unsubscribed` | **refused — commercial** |
-| `Suspended` / `Archived` / `Provisioning` | any | **refused — tenant lifecycle** |
+So **login evaluates one condition, not two.** Commercial state is resolved per request at the
+enablement gate instead:
 
-They are never collapsed into one boolean. **`Authentication.md` already lists "Expired Subscription"
-as a failure scenario distinct from "Inactive Tenant"**, so the two-outcome shape is what the
-authored document expects — this ruling makes it real rather than inventing it.
+| `TenantStatus` | Commercial state | Login | Gated modules |
+|---|---|---|---|
+| `Active` | `InTerm` | proceeds | reachable, per entitlement |
+| `Active` | `Expired` or `Unsubscribed` | **proceeds** | **none — `403 module-not-enabled`** |
+| `Suspended` / `Archived` / `Provisioning` | any | **refused — tenant lifecycle** | not reached |
 
-> **`Authentication.md` needs a corresponding edit** — it is status `Draft` and its rule is now
-> binding. That file is outside this package and outside T-006's scope. Flagged, not touched.
+The two outcomes are never collapsed into one boolean, and they now happen at different places:
+a tenant-lifecycle refusal at authentication, a commercial one at the enablement gate.
+
+> **`Authentication.md` was edited, and it needs no further edit for this amendment.** T-012 gave it
+> the `Tenant-Management.md` disclaimer shape and replaced its expired-subscription rule with a
+> **pointer** to `REQ-SUB-0018` rather than a restatement. Because it points rather than states, it
+> stays correct through this amendment without being touched — which is precisely what that decision
+> was for. Verified: the pointer resolves.
 
 ---
 

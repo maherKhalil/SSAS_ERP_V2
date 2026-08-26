@@ -42,12 +42,12 @@ avoid asking.
 | **`OD-SUB-0006`** disabled-module response | **Owner (round 2)** | **403 Forbidden.** The route exists; this tenant may not reach it. Chosen over 404 **with the disclosure cost accepted knowingly** — a tenant can enumerate the product surface by probing, and in exchange support can answer "why can't I reach payroll" from the response rather than from server logs. |
 | **`OD-SUB-0007`** what "menus" binds to | Architect | **`REQ-SUB-0014`'s server-provided enabled-module set, and nothing client-side.** The product's obligation is to publish the set truthfully; rendering is the client's. The product cannot enforce a menu it does not draw, and a UI assertion would not make `BR-PLT-0008` testable. |
 | **`OD-SUB-0008`** one subscription or a history | **Owner (round 2)** | **Append-only history, exactly one in force at a time.** A plan change closes the current record and opens the next. `REQ-SUB-0001` becomes a queryable invariant rather than a mutation, and prorated multi-currency billing can reconstruct what was in force on any date. Matches the department and position history convention `Employee` already carries. |
-| **`OD-SUB-0009`** term and expiry | **Owner** | **A term exists**, with a start and an end or an explicit perpetual marker. **Expiry blocks login for the tenant.** This makes `Authentication.md`'s then-`Draft` rule binding, so `REQ-SUB-0018` ceases to be conditional. |
-| **`OD-SUB-0010`** relation to `TenantStatus` | **Owner (round 2)** | **Orthogonal — both checked at login.** Subscription state and `TenantStatus` are independent dimensions. Expiry blocks login **without touching `TenantStatus`**, so a billing lapse is never confused with an administrative suspension and the platform keeps the ability to suspend a paying tenant for abuse or legal cause. **No commercial reason is added to `TenantStatusChangeReason`.** |
+| **`OD-SUB-0009`** term and expiry | **Owner** | **A term exists**, with a start and an end or an explicit perpetual marker. **AMENDED 2026-08-26 by `DEC-L-033`: expiry GATES MODULES and does not block login.** An expired tenant authenticates, reaches the platform plane including the subscription surface, and reaches no gated module. **The original ruling — "expiry blocks login for the tenant" — is preserved below with the reason it changed.** |
+| **`OD-SUB-0010`** relation to `TenantStatus` | **Owner (round 2)** | **Orthogonal — independent dimensions, both evaluated on every request.** Expiry never touches `TenantStatus`, so a billing lapse is never confused with an administrative suspension and the platform keeps the ability to suspend a paying tenant for abuse or legal cause. **No commercial reason is added to `TenantStatusChangeReason`.** **Mechanism corrected 2026-08-26 by `DEC-L-033`:** this row read *"both checked at login"*, which was true only while expiry blocked login. It no longer does — `TenantStatus` is checked at authentication and commercial state at the enablement gate. **The orthogonality is untouched; only where each is evaluated changed.** |
 | **`OD-SUB-0011`** grants above or below plan | **Owner (round 2)** | **Additive grants only.** A tenant may be granted a module or a raised cap above its plan, **never below**. Covers pilots, negotiated deals and goodwill grants without letting an override silently remove something the customer is paying for. Entitlement resolves as **plan ∪ grants** — one direction to model, one to test. |
 | **`OD-SUB-0012`** data and permissions on disable | Architect | **Data is retained untouched and permissions become ineffective.** A disabled module's permissions are neither grantable nor effective, so a stale role assignment cannot reach it. `REQ-SUB-0016` already binds retention. Deleting tenant data on a commercial event would make a billing lapse destructive and irreversible — unacceptable for an ERP of record. |
 | **`OD-SUB-0013`** who administers | Architect | **Platform plane only. No tenant-plane actor may administer a subscription, whatever permissions it holds.** Not genuinely open: `ADR-005` § Platform Administration (`:248`) lists subscription management as a platform-administrator capability and `ADR-015` makes the platform plane a separate authorization plane. **Recorded rather than re-decided.** |
-| **`OD-SUB-0014`** trials | **Owner** | **No trial concept.** A trial, if ever needed, is a plan with a short term — not a state, not a flag. **`REQ-SUB-0020` falls away.** |
+| **`OD-SUB-0014`** trials | **Owner** | **No trial concept.** A trial, if ever needed, is a plan with a short term — not a state, not a flag. **`REQ-SUB-0020` falls away.** **USED, not overturned, by `DEC-L-034` (2026-08-26):** a tenant without a subscription gets an all-module plan with a 14-day term. That is this ruling being applied — no state and no flag was introduced. |
 | **`OD-SUB-0015`** pricing, currency, proration | **Owner** | **Multi-currency, prorated.** A plan carries a price per supported currency; a mid-term change is adjusted for the unused portion. Money is `ADR-027` `decimal(19,4)`, **inherited, not re-decided**. |
 | **`OD-SUB-0016`** invoicing and payment capture | **Owner** | **The product issues invoices and captures payment itself.** Both, in-product. **The widest blast radius in the package** — see below. |
 | **`OD-SUB-0017`** metering | **Owner** | **Seats plus limits.** Seats are metered for billing; the plan **additionally** sets hard caps enforced alongside module enablement. The residue — what happens when a cap is exceeded — was ruled by the architect; see below. |
@@ -260,6 +260,68 @@ reproduce, one level up, the exact relic this amendment corrected.
 
 ---
 
+## `OD-SUB-0009` amended — expiry gates modules and never blocks login (`DEC-L-033`)
+
+**Amended 2026-08-26, on the owner's ruling. The original stands below because the reason a ruling changed
+is worth more than the ruling.**
+
+### What it said
+
+> **A term exists**, with a start and an end or an explicit perpetual marker. **Expiry blocks login for
+> the tenant** — this makes `Authentication.md`'s currently-`Draft` rule binding, so `REQ-SUB-0018` ceases
+> to be conditional.
+
+### What it says now
+
+**A term exists, unchanged. Expiry denies every gated module and never denies authentication.** An expired
+tenant signs in, reaches the platform plane — its account, its users, and the subscription surface itself —
+and reaches no gated module.
+
+### Why it changed
+
+**A lapsed customer who cannot log in cannot reach the page that would let them subscribe.** The original
+ruling made expiry the one commercial event that blocked authentication, and the surface a tenant would
+renew from sits behind that same authentication. The refusal foreclosed its own remedy.
+
+### What did NOT change, stated because an amendment invites over-reading
+
+- **The term itself.** Start, end or explicit perpetual marker, exactly as ruled.
+- **`OD-SUB-0010`'s orthogonality.** Subscription state and `TenantStatus` remain independent dimensions.
+  A **suspended or archived** tenant is still refused at authentication; that is administrative, not
+  commercial, and the two outcomes stay distinct.
+- **`REQ-SUB-0013`.** The platform plane was already ungated, which is why this amendment needs **no
+  special case**: expiry acts through the same enablement gate as every other entitlement, and the
+  surface an expired tenant needs is reachable because it always was.
+
+### What it simplifies
+
+**`DEC-L-009`'s asymmetry collapses, and the rule gets simpler rather than more complex.** That ruling
+refused a seat cap at login and defended the difference by expiry being *the only commercial event that
+blocks login*. **No commercial event blocks authentication at all now.** The rule is uniform: commercial
+state is resolved per request at the gate, and authentication answers only to tenant lifecycle.
+
+---
+
+## The trial is a plan with a term, and that is `OD-SUB-0014` being used (`DEC-L-034`)
+
+**Ruled 2026-08-26.** A tenant with no subscription record gets an **all-module plan with a 14-day term** —
+seeded at cutover for the existing estate, and on tenant creation thereafter.
+
+**No new concept was introduced, and that is the point.** `OD-SUB-0014` already ruled: *"a trial, if ever
+needed, is a plan with a short term — not a state, not a flag."* This is that ruling being **used**. There
+is no `Trial` status, no `IsTrial` column and no fourth lifecycle state; there is a plan, and it has a
+term, and every mechanism that already handles plans and terms handles it unchanged.
+
+**It also answers what `CON-0001` left sharp.** With no backfill and no default plan, a tenant without a
+subscription row reaches no gated module — correct, and also how an entire existing estate is locked out
+in one deploy. A seeded term is not a default plan smuggled back in: it is dated, it expires, and when it
+does the tenant still signs in, by `DEC-L-033` above.
+
+**Neither the seeding nor the resolver is built here.** This file records the ruling; T-040 switches the
+resolver and T-041 seeds. The record changes first, deliberately (`DEC-L-027`).
+
+---
+
 # Revision History
 
 | Version | Date | Author | Change |
@@ -269,3 +331,4 @@ reproduce, one level up, the exact relic this amendment corrected.
 | 1.2 | 2026-08-25 | Solution Architecture Team | Completes the `DEC-L-024` re-point. `data-model.md` and `README.md`'s outage paragraph now derive from `ADR-017:164`, `:169` and `:376`–`:378`; the ratification banner's count of open concerns is corrected from three to two, concern 3 having been closed. No requirement, rule or ruling changed. |
 | 1.3 | 2026-08-25 | Solution Architecture Team | Amends `BR-SUB-0020`'s scope from "by this package" to "anywhere in SSAS", the boundary `ADR-029` Decision 1 actually rules. **The prohibition is unchanged**; only the boundary becomes explicit. Recorded with the commit ordering that makes the original phrasing a relic — `BR-SUB-0020` predates `ADR-029` by four hours and was never revisited. The master `Business-Rules.md` copy is updated to match, so the two do not diverge. |
 | 1.4 | 2026-08-25 | Solution Architecture Team | Records that the `BR-SUB-0020` amendment is **`DEC-L-026`** — a number assigned after the amendment was made, and recorded as such rather than back-dated. Converts this file's live `ADR-017` and `ADR-029` citations to section anchors with line numbers kept beside them (`DEC-L-028`); the Revision History rows below are left as written, because they record what was cited at the time. No decision changed. |
+| 1.5 | 2026-08-26 | Solution Architecture Team | **Amends `OD-SUB-0009` under `DEC-L-033`:** expiry gates modules and never blocks login; the original ruling is preserved with the reason it changed. Records `DEC-L-034` — a tenant without a subscription gets an all-module plan with a 14-day term, which is `OD-SUB-0014` being used rather than overturned. `REQ-SUB-0018`, `BR-SUB-0013`, `AC-SUB-0029`, `TS-SUB-0029` and the traceability row are rewritten; `DEC-L-009`'s asymmetry note is collapsed, because no commercial event blocks authentication any longer. No code is written from this yet — T-040 and T-041. |

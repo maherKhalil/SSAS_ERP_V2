@@ -17,9 +17,24 @@ namespace SSAS.Tenant.MigrationTool;
 // ---- WHY THIS EXISTS SEPARATELY FROM PLATFORM'S OWN DESIGN-TIME FACTORY.
 //
 // Platform's factory builds the model Platform can see: its own tenant entities and nothing else, which is
-// correct for it and would silently produce an EMPTY migration for a module's tables. A migration is
-// generated from a model, so the model has to be the composed one — and only a project that may reference
-// every module can compose it.
+// correct for it. A migration is generated from a model, so the model has to be the composed one — and
+// only a project that may reference every module can compose it.
+//
+// ---- WHAT SCAFFOLDING WITHOUT THIS TOOL ACTUALLY PRODUCES. CORRECTED 2026-08-26 (T-050).
+//
+// **This paragraph said Platform's factory "would silently produce an EMPTY migration for a module's
+// tables". It does not. It produces a DESTRUCTIVE one** — an `Up` of 32 `DropTable` covering the whole of
+// HR, Finance/GL, Payroll and Attendance, because those tables exist in the database and in no model,
+// which is the definition of a table to drop.
+//
+// **The original claim was written before anyone had run it**, and it is dated rather than deleted
+// (`DEC-L-039`) because the difference between the two is the whole point: **empty and destructive call
+// for opposite reactions.** An empty migration is a no-op nobody commits, so a reader who remembers that
+// sentence concludes the output is useless and STOPS CHECKING. That is worse than no comment at all.
+//
+// The evidence, from T-048: the same no-op scaffold with `--startup-project` on
+// `SSAS.Platform.Infrastructure` emits 32 `DropTable`; with this tool it emits an empty migration.
+// `ADR-018` § *Scaffolding a tenant migration* carries the procedure and the recognition test.
 //
 // ---- THE CONTRIBUTOR LIST IS EXPLICIT, AND THAT IS THE POINT.
 //

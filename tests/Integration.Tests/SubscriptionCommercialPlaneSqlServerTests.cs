@@ -67,18 +67,37 @@ public sealed class SubscriptionCommercialPlaneSqlServerTests
     }
   }
 
-  // ---- THE DELETE IS REFUSED TWICE OVER, AND THE FIRST REFUSAL IS NOT THE GUARD.
+  // ---- THE DELETE IS REFUSED BY THE GUARD, WHICH IS THE MECHANISM THAT WAS ALWAYS MEANT TO REFUSE IT.
   //
-  // Written expecting `PreventAppendOnlyMutation` to refuse this at `SaveChangesAsync`, as it does for
-  // `TenantEntitlementGrant` below. It does not get the chance: `TenantSubscription` owns
-  // `SubscriptionTerm`, so `Remove` severs a required owned relationship and **EF throws at tracking time,
-  // before any save is attempted**.
+  // **This test used to assert a different refusal, and T-035 said so in the sentence that mattered.** It
+  // read: *"The record is protected either way — and it is protected by two independent mechanisms, only
+  // one of which is the append-only guard. **Remove the guard and this test still passes**, which is
+  // exactly why the grant test below exists."* `Remove` severed a required owned relationship and EF threw
+  // at tracking time, so `PreventAppendOnlyMutation` never got the chance.
   //
-  // Asserted as it actually behaves rather than as it was expected to, because the difference matters to a
-  // future reader. The record is protected either way — and it is protected by two independent mechanisms,
-  // only one of which is the append-only guard. **Remove the guard and this test still passes**, which is
-  // exactly why the grant test below exists: that type owns nothing, so its delete reaches the guard and
-  // demonstrates it.
+  // **That severing was a side effect of `Restrict` on an ownership foreign key**, applied by a blanket
+  // loop in `PersistenceDbContext` that carried no comment at all. T-047 exempted ownership keys from that
+  // loop — the model could not agree with its own migrations snapshot otherwise, and every migration
+  // scaffolded in this repository carried six spurious operations because of it — and the incidental
+  // refusal went with it. `DEC-L-048` ruled the exemption stands and **this assertion was the thing that
+  // was wrong**.
+  //
+  // ---- SO IT NOW ASSERTS THE GUARD, AND IS STRONGER THAN IT HAS EVER BEEN.
+  //
+  // It passed before whether or not `PreventAppendOnlyMutation` existed. It fails now if the guard is
+  // removed. It also closes a hole nothing else covered: no test demonstrated that the guard refuses a
+  // **`TenantSubscription`** delete — only that it refuses one for `TenantEntitlementGrant`, which owns
+  // nothing and therefore never had the severing to hide behind.
+  //
+  // **What did not change is the protection.** The record was never deletable and still is not; what
+  // changed is which mechanism refuses it, and at which moment.
+  //
+  // ---- WHY THE OWNED TERM DOES NOT MAKE THIS PASS FOR THE WRONG REASON.
+  //
+  // `Remove` now marks the owned `SubscriptionTerm` entry `Deleted` too. **`SubscriptionTerm` is a value
+  // object and not `IAppendOnlyEntity`**, so it is not among the entries the guard scans — the refusal
+  // below can only be the principal. Had it been append-only, this test would have gone green on a
+  // refusal about the wrong row.
   [Fact]
   public async Task A_persisted_subscription_record_cannot_be_deleted()
   {
@@ -95,13 +114,22 @@ public sealed class SubscriptionCommercialPlaneSqlServerTests
     {
       var record = await context.TenantSubscriptions.SingleAsync();
 
-      var refusal = Assert.Throws<InvalidOperationException>(() => context.TenantSubscriptions.Remove(record));
-      Assert.Contains("severed", refusal.Message, StringComparison.OrdinalIgnoreCase);
+      // Tracking accepts it: the owned term is cascade-deleted with its owner rather than severed, so
+      // nothing throws here. Asserted rather than assumed — if EF ever refuses at this point again, this
+      // test should be the thing that says which mechanism is doing the work.
+      context.TenantSubscriptions.Remove(record);
+
+      var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+      Assert.Contains("append-only", refusal.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    // And the row survives. **A refusal thrown after writing would satisfy the assertion above and still
+    // have deleted the record** — asserting the exception without asserting the state is how a guard gets
+    // credited for a rollback it did not perform.
     await using (var context = database.CreateContext())
     {
       Assert.Equal(1, await context.TenantSubscriptions.CountAsync());
+      Assert.Equal(1, await context.SubscriptionPlans.CountAsync(plan => plan.Id == planId));
     }
   }
 

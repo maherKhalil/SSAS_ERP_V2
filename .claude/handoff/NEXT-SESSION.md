@@ -21,8 +21,19 @@ the surface those four contributors configure.
 (`git log -S` finds nothing, ever) and predates every module migration — yet **thirteen were scaffolded
 correctly anyway.** Something else supplied a complete model then and nobody knows what.
 
+**A narrowing arrived late and it rules out one whole branch of reasoning.** `git show ea335c1^`:
+before the contributor mechanism existed, `OnModelCreating` applied **only** the Platform-assembly
+tenant configuration namespace. So **the design-time model appears never to have contained module
+entities, by any route** — while thirteen module migrations were scaffolded correctly anyway.
+**That kills "the contributor refactor broke it"** and leaves *something else supplied the model*
+as the surviving shape. It is a narrowing, not a cause.
+
 **Candidates, none tested:** a startup project whose service provider EF preferred; a different
 context or command; hand-authored migrations.
+
+**No fix is proposed, deliberately.** The obvious repair — pass the contributors in the factory —
+is untested against the question of *why it was ever unnecessary*. Proposing it now would be a fix
+to the understood half, recommended for a defect only half explained (`DEC-L-045`).
 
 **Why it matters:** if something else supplied the model, **the factory is not what changed** — and a
 fix to the factory would look correct and be beside the point. Test that before proposing anything.

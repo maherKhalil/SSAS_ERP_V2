@@ -79,10 +79,36 @@ EXIT CODES
     1  at least one package has a failure
     2  usage / no packages found
     3  every package clean, but the MASTER REGISTER has findings (check 7)
+    4  packages and master register clean, but the two DECISION REGISTERS disagree (check 8)
 
     Codes 0-2 keep the meaning they have always had. A caller testing `== 1` is unaffected
-    by check 7; a caller testing `!= 0` sees it. That is the intended split — the master
-    register is a different question from package health and deserves a different answer.
+    by checks 7 and 8; a caller testing `!= 0` sees them. That is the intended split — the
+    master register and the decision registers are different questions from package health
+    and deserve different answers.
+
+    They are ORDERED, not combined, because an exit code carries one number: 1 outranks 3
+    outranks 4. So a run returning 1 or 3 may ALSO have check 8 findings that the exit code
+    does not show. Read the section, or `--json`, if that is the question being asked.
+
+CHECK 8 — THE TWO DECISION REGISTERS AGREE
+-------------------------------------------
+Check 6 asks whether every `OD-` carries a ruling and reads the answer from
+`decisions-ratified.md` / `decisions-approved.md`. **Nothing verified that the other register
+agreed.** FP-014 was ratified — check 6 green, `0 unruled` — while `decisions-open.md` still
+introduced all seventeen decisions as open questions and still said each one blocks the build
+prompt. The tool was green because it consulted the file that knew; the file a person opens
+was the one that did not.
+
+  8. REGISTER      an `OD-` ruled in the ruling register and still presented as an open
+                   question, by its own heading, in `decisions-open.md`.
+
+Reported in its own section with its own verdict, like check 7, and excluded from the
+`[TRACE RED]` tally: a divergence is not a broken package. Both files are internally coherent
+and the defect is that they disagree with each other.
+
+**A GREEN here means the two registers agree — NOT that every decision is recorded
+somewhere.** A ruling that lives only in a note or a message is invisible to this check and to
+check 6 alike, which is exactly what `DEC-L-034` was until T-036 moved it.
 """
 
 from __future__ import annotations
@@ -790,6 +816,213 @@ def check_master_register(root: Path, features: Path) -> dict:
 MASTER_LIST_CAP = 12
 
 
+# --------------------------------------------------------------------------------------
+# Check 8 — the two decision registers agree
+# --------------------------------------------------------------------------------------
+#
+# WHAT THIS CATCHES, AND WHY CHECK 6 IS GREEN WHILE IT IS TRUE
+# ------------------------------------------------------------
+# Check 6 asks whether every `OD-` carries a ruling, and it reads the ruling from
+# `decisions-ratified.md` / `decisions-approved.md` — correctly. It reports `0 unruled` and
+# is satisfied.
+#
+# **Nothing verified that the OTHER register agreed.** FP-014 was ratified while
+# `decisions-open.md` still introduced all seventeen of its decisions as open questions and
+# still said "each one blocks the build prompt". The tool was green because it consulted the
+# file that knew; the file a person opens was the one that did not.
+#
+# That is the same shape as `AC-SUB-0047` — one fact in two registers, only one aware it
+# changed — and this is the buildable half of it.
+#
+# HOW A RULING IS RECOGNISED — SURVEYED, NOT INVENTED
+# ----------------------------------------------------
+# **FP-013 already had the convention, and it is the reason this check has something to
+# match rather than something to impose.** Every one of its sixteen decisions carries a
+# `**RULED: <the answer>**` line directly under its heading, written when the package was
+# ratified. FP-014 carries none of it.
+#
+# So the marker vocabulary below is taken from the corpus. `RULED` is FP-013's word; the
+# others are the obvious neighbours a later package might reach for, and a link to the ruling
+# register is accepted because pointing at the answer is an acknowledgement too. **The check
+# prints which marker it matched**, so the vocabulary stays auditable from the output rather
+# than trusted.
+#
+# It accepts the marker in the heading OR in the lines just beneath it, because the two
+# packages place it differently — FP-013 on the line below, FP-014's one marked decision in
+# the heading itself. **Neither placement is adjudicated here.** Reporting the divergence is
+# this check's job; choosing a house style is not.
+#
+# Word forms are matched UPPERCASE ONLY. Lower-case "ruled" is ordinary prose in these files
+# ("`OD-SUB-0009` ruled that…") and matching it would make every cross-reference look like an
+# acknowledgement.
+#
+# WHAT IT CANNOT SEE — stated because a GREEN here is narrower than it looks
+# --------------------------------------------------------------------------
+#   * A ruling recorded in NEITHER file — in an architect's note, or a message — is invisible
+#     to both this check and check 6. `DEC-L-034` was exactly that until T-036 moved it.
+#   * A ruling recorded ONLY in the open register is check 6's finding, not this one.
+#   * It reads HEADINGS. A decision discussed in prose without a heading of its own is not
+#     seen at all.
+#   * It cannot tell a stale acknowledgement from a current one: a heading marked RULED whose
+#     ruling was later reversed reads as agreement.
+#   * A package with no `decisions-open.md` is SKIPPED, not passed. Eleven of the fourteen
+#     packages keep a single `decisions-approved.md`, where the two registers are one file
+#     and cannot disagree.
+#
+# Its bias is to over-report, which is this script's stated posture: a checker that
+# under-reports is worse than one that occasionally asks a human to look.
+
+OPEN_REGISTER = "decisions-open.md"
+RULING_REGISTERS = ("decisions-ratified.md", "decisions-approved.md")
+
+# A heading DEFINES the decision whose identifier comes first in it. FP-013 carries
+# `### \`DEC-ATT-0014\` — … whichever way \`OD-ATT-0011\` rules`, which mentions an OD and
+# defines a DEC; taking the first identifier rather than any identifier is what tells them
+# apart.
+HEADING_RE = re.compile(r"^(#{2,6})[ \t]+(.*\S)[ \t]*$", re.M)
+
+# Uppercase only, and as whole words. See the note above.
+ACK_TOKEN_RE = re.compile(r"\b(RULED|RATIFIED|SUPERSEDED|WITHDRAWN|DECIDED|CLOSED)\b")
+ACK_LINK_RE = re.compile(r"decisions-(?:ratified|approved)\.md")
+
+# How far past the heading an acknowledgement may sit before it stops being an announcement
+# and becomes a remark buried in the discussion.
+ACK_LEAD_LINES = 8
+
+
+def _heading_blocks(text: str) -> list[tuple[int, str, str]]:
+    """(1-based line number, heading text, block body) for every markdown heading."""
+    matches = list(HEADING_RE.finditer(text))
+    out: list[tuple[int, str, str]] = []
+    for n, m in enumerate(matches):
+        level = len(m.group(1))
+        end = len(text)
+        for later in matches[n + 1:]:
+            if len(later.group(1)) <= level:
+                end = later.start()
+                break
+        line_no = text.count("\n", 0, m.start()) + 1
+        out.append((line_no, m.group(2), text[m.end():end]))
+    return out
+
+
+def check_decision_registers(pkg_dir: Path) -> dict:
+    """One package's answer to: do the open and the ruling register tell the same story?"""
+    result: dict = {
+        "package": pkg_dir.name,
+        "applicable": False,
+        "reason": "",
+        "headed": 0,
+        "diverged": [],
+        "acknowledged": [],
+        "notes": [],
+    }
+
+    open_path = pkg_dir / OPEN_REGISTER
+    ruling_paths = [pkg_dir / name for name in RULING_REGISTERS
+                    if (pkg_dir / name).is_file()]
+
+    if not open_path.is_file():
+        result["reason"] = (
+            f"no {OPEN_REGISTER} — the two registers are one file and cannot disagree")
+        return result
+    if not ruling_paths:
+        result["reason"] = (
+            f"{OPEN_REGISTER} with no ruling register — nothing claims these are ruled, "
+            f"so check 6 owns this package, not check 8")
+        return result
+
+    result["applicable"] = True
+    result["registers"] = [p.name for p in ruling_paths]
+
+    ruling_text = "\n".join(
+        p.read_text(encoding="utf-8", errors="replace") for p in ruling_paths)
+    ruled = {i.key for i in scan_ids(ruling_text) if i.space == "OD"}
+
+    open_text = open_path.read_text(encoding="utf-8", errors="replace")
+
+    for line_no, heading, body in _heading_blocks(open_text):
+        first = ID_RE.search(heading)
+        if not first or first.group(1) != "OD":
+            continue
+
+        key = f"{first.group(1)}-{first.group(2)}-{first.group(3)}"
+        result["headed"] += 1
+
+        if key not in ruled:
+            continue  # Genuinely open. Check 6 already reports it if it should not be.
+
+        lead = heading + "\n" + "\n".join(body.splitlines()[:ACK_LEAD_LINES])
+        token = ACK_TOKEN_RE.search(lead)
+        link = ACK_LINK_RE.search(lead)
+
+        if token or link:
+            result["acknowledged"].append(
+                f"{key} — {OPEN_REGISTER}:{line_no}, matched "
+                f"{token.group(1) if token else link.group(0)}")
+        else:
+            result["diverged"].append(
+                f"{key} — ruled in {', '.join(p.name for p in ruling_paths)}, still "
+                f"presented as open at {OPEN_REGISTER}:{line_no}")
+
+    return result
+
+
+def report_registers(rows: list[dict]) -> int:
+    """
+    Its own section, its own verdict, and deliberately NOT the RED/GREEN words the package
+    sections use — for check 7's reason. A divergence is not a broken package: both files
+    are internally coherent and the defect is that they disagree with each other.
+
+    Returns the number of diverged decisions.
+    """
+    applicable = [r for r in rows if r["applicable"]]
+    diverged_rows = [r for r in applicable if r["diverged"]]
+    total = sum(len(r["diverged"]) for r in applicable)
+
+    verdict = f"{total} DIVERGENT in {len(diverged_rows)} package(s)" if total else "AGREED"
+    print(f"\n{'=' * 86}")
+    print(f"DECISION REGISTERS (check 8, open vs ruled)  [{verdict}]")
+    print("=" * 86)
+
+    print(f"\n  {len(applicable)} of {len(rows)} package(s) keep both registers and can "
+          f"therefore disagree.")
+
+    for r in rows:
+        if r["applicable"]:
+            continue
+        print(f"    skipped  {r['package']:<38} {r['reason']}")
+
+    for r in applicable:
+        marks = f"{len(r['acknowledged'])} acknowledged" if r["acknowledged"] else ""
+        print(f"\n  {r['package']}  —  {r['headed']} decision(s) headed in "
+              f"{OPEN_REGISTER}"
+              + (f", {marks}" if marks else ""))
+        if not r["diverged"]:
+            print("    both registers agree")
+            continue
+        print(f"    DIVERGENT ({len(r['diverged'])}) — ruled in the ruling register and "
+              f"still open here:")
+        for item in r["diverged"][:MASTER_LIST_CAP]:
+            print(f"      - {item}")
+        if len(r["diverged"]) > MASTER_LIST_CAP:
+            print(f"      … and {len(r['diverged']) - MASTER_LIST_CAP} more")
+
+    print()
+    if total:
+        print("  Check 6 is GREEN for these packages and is right to be: the rulings exist, "
+              "in the file")
+        print("  it reads. This is the register a PERSON opens still saying the question is "
+              "open.")
+    print("  What this cannot see: a ruling recorded in NEITHER register — in a note or a "
+          "message — is")
+    print("  invisible here and to check 6 alike. A GREEN means the two registers agree, "
+          "NOT that every")
+    print("  decision is recorded somewhere.")
+
+    return total
+
+
 def report_master(m: dict) -> None:
     """
     Printed in its own section, with its own verdict, ABOVE the package results.
@@ -932,6 +1165,9 @@ def main() -> int:
     # which packages were named on the command line and runs identically either way.
     master = None if args.no_master else check_master_register(root, features)
 
+    # Check 8 reads the packages named, like checks 1-6.
+    registers = [check_decision_registers(d) for d in dirs]
+
     package_red = any(r["failures"] for r in results)
     master_findings = bool(master and master.get("total"))
 
@@ -939,17 +1175,28 @@ def main() -> int:
         payload: dict = {"packages": results}
         if master is not None:
             payload["master_register"] = master
+        payload["decision_registers"] = registers
         print(json.dumps(payload, indent=2))
+        register_findings = sum(len(r["diverged"]) for r in registers)
     else:
         if master is not None:
             report_master(master)
+        register_findings = report_registers(registers)
         report(results)
 
     # 1 keeps its original meaning — a package failed — so a caller testing `== 1` is
-    # untouched by check 7. 3 is the new answer to a different question.
+    # untouched by checks 7 and 8. 3 and 4 are answers to different questions, and they are
+    # ordered rather than combined because an exit code carries one number.
+    #
+    # THE CONSEQUENCE, STATED SO IT IS NOT DISCOVERED: when this returns 1 or 3, check 8's
+    # findings may ALSO be present and are not visible in the exit code. The section above is
+    # where to look. A caller that cares specifically about register divergence should read
+    # `--json`, not the exit status.
     if package_red:
         return 1
-    return 3 if master_findings else 0
+    if master_findings:
+        return 3
+    return 4 if register_findings else 0
 
 
 if __name__ == "__main__":

@@ -8,8 +8,10 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Abstractions.Persistence;
+using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Application.Tenants;
 using SSAS.Platform.Domain.Enums;
+using SSAS.Platform.Domain.Subscriptions;
 using SSAS.Platform.Domain.Tenants;
 using SSAS.Platform.Domain.ValueObjects;
 using SSAS.Platform.Infrastructure.Persistence;
@@ -120,13 +122,17 @@ public sealed class PlatformTenantLifecycleSqlServerTests
     var gate = new AsyncGate(2);
     var firstDispatcher = new RecordingDomainEventDispatcher();
     var secondDispatcher = new RecordingDomainEventDispatcher();
+    // The REAL trial issuer over the real repository (`DEC-L-034`, T-041): the tenant and its 14-day
+    // subscription share one unit of work, so this test now also covers the losing side rolling BOTH back.
     var firstHandler = new CreateTenantCommandHandler(
       new GatedTenantRepository(new TenantRepository(firstContext), gate),
+      new TrialSubscriptionIssuer(new TenantSubscriptionRepository(firstContext), new TestClock()),
       new PlatformUnitOfWork(firstContext, firstDispatcher),
       new TestCurrentUser(),
       new TestClock());
     var secondHandler = new CreateTenantCommandHandler(
       new GatedTenantRepository(new TenantRepository(secondContext), gate),
+      new TrialSubscriptionIssuer(new TenantSubscriptionRepository(secondContext), new TestClock()),
       new PlatformUnitOfWork(secondContext, secondDispatcher),
       new TestCurrentUser(),
       new TestClock());
@@ -147,6 +153,17 @@ public sealed class PlatformTenantLifecycleSqlServerTests
     Assert.Equal("ACME", await verification.Tenants.AsNoTracking()
       .Select(tenant => tenant.NormalizedTenantCode)
       .SingleAsync());
+
+    // ---- AND THE TRIAL WENT WITH THE WINNER, ONCE, WHILE THE LOSER LEFT NOTHING BEHIND.
+    //
+    // The stronger claim under contention: one tenant, one subscription. A trial issued outside the
+    // tenant's transaction would have left the loser's record stranded here with no tenant to belong to.
+    Assert.Equal(1, await verification.TenantSubscriptions.AsNoTracking().CountAsync());
+    Assert.Equal(
+      TrialSubscription.PlanId,
+      await verification.TenantSubscriptions.AsNoTracking()
+        .Select(subscription => subscription.SubscriptionPlanId)
+        .SingleAsync());
   }
 
   [Fact]

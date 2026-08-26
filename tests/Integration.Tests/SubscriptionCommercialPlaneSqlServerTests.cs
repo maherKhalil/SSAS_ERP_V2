@@ -1,5 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
@@ -25,6 +27,10 @@ namespace SSAS.Integration.Tests;
 public sealed class SubscriptionCommercialPlaneSqlServerTests
 {
   private static readonly DateTimeOffset Now = new(2026, 8, 26, 12, 0, 0, TimeSpan.Zero);
+
+  // The migration whose OWN effect section 4 asserts (`DEC-L-041`). Named rather than inferred from the
+  // end of the chain, so the claim moves only when someone deliberately moves it.
+  private const string CommercialPlaneMigration = "20260826031515_AddSubscriptionCommercialPlane";
 
   // ==================================================================================================
   // 1. THE APPEND-ONLY GUARD, ACTUALLY REFUSING.
@@ -175,7 +181,7 @@ public sealed class SubscriptionCommercialPlaneSqlServerTests
     {
       Assert.Equal(
         SSAS.Platform.Domain.Enums.SubscriptionPlanStatus.Active,
-        (await context.SubscriptionPlans.SingleAsync()).Status);
+        (await context.SubscriptionPlans.SingleAsync(item => item.Id == planId)).Status);
     }
   }
 
@@ -251,16 +257,24 @@ public sealed class SubscriptionCommercialPlaneSqlServerTests
   }
 
   // ==================================================================================================
-  // 4. THE MIGRATION CREATED THE PLANE EMPTY.
+  // 4. THE MIGRATION CREATED THE PLANE EMPTY — PINNED TO THAT MIGRATION (`DEC-L-041`).
   // ==================================================================================================
   //
-  // `CON-0001` and `OD-SUB-0004`: no backfill and no default plan. Asserted against a freshly migrated
-  // database, because "the migration writes no rows" is a claim about the migration rather than about the
-  // code that reads it.
+  // `CON-0001` and `OD-SUB-0004`: no backfill and no default plan.
+  //
+  // ---- THIS TEST USED TO OBSERVE THE END OF THE CHAIN, WHICH IS THE THING ITS OWN COMMENT WARNED ABOUT.
+  //
+  // It migrated a fresh database all the way and asserted every table was empty — while stating that
+  // *"the migration writes no rows" is a claim about the migration rather than about the code that reads
+  // it*. The claim was pinned to the chain, so `AddTrialSubscriptionSeed` (T-041), which deliberately DOES
+  // write rows, would have turned it red for a reason that has nothing to do with what it asserts.
+  //
+  // **It now migrates to `AddSubscriptionCommercialPlane` and stops there.** Not a relaxation — the
+  // strictly stronger claim, and one that stays true however many migrations follow.
   [Fact]
-  public async Task The_migration_creates_the_commercial_plane_with_no_rows()
+  public async Task The_commercial_plane_migration_itself_creates_no_rows()
   {
-    await using var database = await SubscriptionSqlDatabase.CreateAsync();
+    await using var database = await SubscriptionSqlDatabase.CreateAsync(CommercialPlaneMigration);
 
     await using var context = database.CreateContext();
 
@@ -270,6 +284,35 @@ public sealed class SubscriptionCommercialPlaneSqlServerTests
     Assert.Equal(0, await context.TenantEntitlementGrants.CountAsync());
   }
 
+  // ---- AND THE OTHER HALF OF THE PAIR: THE NEXT MIGRATION FILLS WHAT THIS ONE LEFT EMPTY.
+  //
+  // Together these two are the ordering, stated as behaviour rather than as a comment: **the plane is
+  // created empty and proved empty, and a separate, dated migration seeds it.** The `THROW` at the foot of
+  // `AddSubscriptionCommercialPlane` is a check on its own effect and does not fire for its successor —
+  // asserted here, because a reader could reasonably expect it to.
+  [Fact]
+  public async Task The_following_migration_seeds_the_trial_plan_without_tripping_that_throw()
+  {
+    await using var database = await SubscriptionSqlDatabase.CreateAsync();
+
+    await using var context = database.CreateContext();
+
+    var plan = await context.SubscriptionPlans
+      .AsNoTracking()
+      .Include(item => item.ModuleGrants)
+      .SingleAsync(item => item.Id == TrialSubscription.PlanId);
+
+    Assert.Equal(TrialSubscription.PlanCodeValue, plan.PlanCode.Value);
+    Assert.Equal(SSAS.Platform.Domain.Enums.SubscriptionPlanStatus.Active, plan.Status);
+    Assert.Equal(
+      [.. TrialSubscription.ModuleKeys.Order(StringComparer.Ordinal)],
+      plan.ModuleGrants.Select(grant => grant.ModuleKey.Value).Order(StringComparer.Ordinal));
+
+    // No tenant existed when the seed ran, so it issued nothing. The plane is seeded; the estate is not
+    // invented.
+    Assert.Equal(0, await context.TenantSubscriptions.CountAsync());
+  }
+
   private static TenantSubscription NewSubscription(Guid tenantId, Guid planId, DateTimeOffset effectiveFrom) =>
     TenantSubscription.Append(
       tenantId, planId, effectiveFrom, null, SubscriptionTerm.Perpetual(effectiveFrom),
@@ -277,7 +320,10 @@ public sealed class SubscriptionCommercialPlaneSqlServerTests
 
   private sealed class SubscriptionSqlDatabase(string connectionString) : IAsyncDisposable
   {
-    public static async Task<SubscriptionSqlDatabase> CreateAsync()
+    // `targetMigration` stops the chain at a named migration (`DEC-L-041`): a claim about what ONE
+    // migration did is asserted against a database migrated to exactly that point, so it cannot be
+    // falsified by a successor doing something entirely legitimate. Null runs the whole chain.
+    public static async Task<SubscriptionSqlDatabase> CreateAsync(string? targetMigration = null)
     {
       var builder = new SqlConnectionStringBuilder(IntegrationSqlEnvironment.BaseConnectionString)
       {
@@ -287,7 +333,16 @@ public sealed class SubscriptionCommercialPlaneSqlServerTests
       try
       {
         await using var context = database.CreateContext();
-        await context.Database.MigrateAsync();
+
+        if (targetMigration is null)
+        {
+          await context.Database.MigrateAsync();
+        }
+        else
+        {
+          await context.Database.GetService<IMigrator>().MigrateAsync(targetMigration);
+        }
+
         return database;
       }
       catch

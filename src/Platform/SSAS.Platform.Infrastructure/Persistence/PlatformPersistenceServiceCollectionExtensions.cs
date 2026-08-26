@@ -27,6 +27,7 @@ using SSAS.Platform.Infrastructure.Companies;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
+using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Infrastructure.Persistence.Repositories;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Identity;
@@ -74,6 +75,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<IPlatformAuthenticationSessionRepository, PlatformAuthenticationSessionRepository>();
     services.AddScoped<ITenantSelectionTransactionRepository, TenantSelectionTransactionRepository>();
     services.AddScoped<ITenantRepository, TenantRepository>();
+    services.AddScoped<ITenantSubscriptionRepository, TenantSubscriptionRepository>();
     services.AddScoped<ICompanyRepository, CompanyRepository>();
     services.AddScoped<ITenantLocalizationSettingsRepository, TenantLocalizationSettingsRepository>();
     services.AddScoped<ITenantLocalizationOverrideRepository, TenantLocalizationOverrideRepository>();
@@ -553,6 +555,9 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<RefreshPlatformAuthenticationSessionCommandHandler>();
     services.AddScoped<RevokeCurrentPlatformAuthenticationSessionCommandHandler>();
     services.AddScoped<RevokeCurrentAuthenticationSessionCommandHandler>();
+    // Registered beside the handler that consumes it: a tenant and its 14-day trial are created in one
+    // transaction (`DEC-L-034`), so anything able to create a tenant must be able to issue one.
+    services.AddScoped<ITrialSubscriptionIssuer, TrialSubscriptionIssuer>();
     services.AddScoped<CreateTenantCommandHandler>();
     services.AddScoped<ActivateTenantCommandHandler>();
     services.AddScoped<SuspendTenantCommandHandler>();

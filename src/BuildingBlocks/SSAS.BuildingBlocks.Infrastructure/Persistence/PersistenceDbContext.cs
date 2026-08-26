@@ -40,7 +40,42 @@ public abstract class PersistenceDbContext(
       ConfigureTenantFilterMethod.MakeGenericMethod(entityType.ClrType).Invoke(this, [modelBuilder]);
     }
 
-    foreach (var foreignKey in modelBuilder.Model.GetEntityTypes().SelectMany(entityType => entityType.GetForeignKeys()))
+    // ==================================================================================================
+    // NO REFERENCE BETWEEN AGGREGATES CASCADES A DELETE. OWNERSHIP IS EXEMPT, DELIBERATELY.
+    // ==================================================================================================
+    //
+    // ---- WHAT THE LOOP IS FOR.
+    //
+    // EF's convention makes a required reference `Cascade`, so `Employee` -> `Department`, `Journal` ->
+    // `Account` and every other cross-aggregate reference would delete its dependents on the way past.
+    // **This is an ERP of record**: a row disappearing because something upstream was removed is the
+    // failure mode the whole append-only and archive-rather-than-delete posture exists to prevent. The
+    // loop makes the default REFUSAL rather than propagation, once, instead of relying on ~200
+    // configurations each remembering `.OnDelete(Restrict)`.
+    //
+    // ---- WHAT IT DELIBERATELY NO LONGER TOUCHES, AND WHY THAT IS NOT A WEAKENING.
+    //
+    // **Ownership foreign keys are skipped.** An owned entity has no independent existence — EF deletes
+    // owned rows with their owner as a matter of definition, not of configuration — so `Restrict` here
+    // does not protect an aggregate from a careless reference. **It is also UNEXPRESSIBLE**: the
+    // migrations snapshot format serialises no delete behaviour for an owned relationship, so
+    // rehydration implies `Cascade` while the model said `Restrict`, and the differ is right to report a
+    // change. That disagreement is permanent and self-regenerating — **every migration scaffolded in
+    // this repository carried six spurious foreign-key operations because of it**, and it cost two wrong
+    // diagnoses (T-041, T-043) before the cause was found.
+    //
+    // ---- WHAT THE EXEMPTION GIVES UP, STATED RATHER THAN GLOSSED.
+    //
+    // It is not nothing. With `Restrict` on the ownership key, a **raw** `DELETE FROM SubscriptionPlans`
+    // against a plan no subscription references would fail; with `Cascade` it succeeds and takes the
+    // plan's module grants, limits and prices with it. That window is narrow — a plan any tenant is on is
+    // still protected by `TenantSubscriptions`' own reference key, which this loop still restricts, and
+    // `SubscriptionPlan`'s lifecycle has no removal at all — and it was never a protection anyone chose.
+    // `SubscriptionPlanOwnershipCascadeSqlServerTests` asserts the behaviour we now have, so the trade is
+    // recorded as a test rather than as a claim.
+    foreach (var foreignKey in modelBuilder.Model.GetEntityTypes()
+      .SelectMany(entityType => entityType.GetForeignKeys())
+      .Where(foreignKey => !foreignKey.IsOwnership))
     {
       foreignKey.DeleteBehavior = DeleteBehavior.Restrict;
     }

@@ -14,6 +14,7 @@ using SSAS.Platform.Domain.TenantStorage;
 using SSAS.Platform.Domain.TenantUsers;
 using SSAS.Platform.Domain.Tenants;
 using PlatformIdentity = SSAS.Platform.Domain.Identities.Identity;
+using SSAS.Platform.Domain.Subscriptions;
 
 namespace SSAS.Platform.Infrastructure.Persistence;
 
@@ -51,6 +52,22 @@ public sealed class PlatformDbContext(
   public DbSet<AccountActionToken> AccountActionTokens => Set<AccountActionToken>();
 
   public DbSet<Tenant> Tenants => Set<Tenant>();
+
+  // ---- THE COMMERCIAL PLANE (FP-014, T-035).
+  //
+  // Platform-database residency is inherited, not chosen: `ADR-017` puts subscription plans and module
+  // definitions in class A -- Platform global -- and `DEC-SUB-0003` records that the package does not
+  // re-decide it. **None of these participate in Shared->Dedicated cutover** (`DEC-SUB-0011`), because
+  // cutover moves the tenant ERP database and nothing here lives there; an architecture test asserts it
+  // rather than leaving it to a future reflection-based manifest to get right.
+  public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
+
+  public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
+
+  // Append-only, and `PreventAppendOnlyMutation` is what makes that real rather than decorative.
+  public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
+
+  public DbSet<TenantEntitlementGrant> TenantEntitlementGrants => Set<TenantEntitlementGrant>();
 
   public DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
 

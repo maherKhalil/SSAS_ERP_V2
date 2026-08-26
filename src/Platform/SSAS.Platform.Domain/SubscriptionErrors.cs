@@ -43,6 +43,16 @@ public static class SubscriptionErrors
     "Subscription.GrantWouldNotRaise",
     "An entitlement grant may only raise a limit above the plan's value; it may never lower one.");
 
+  // ---- THE SEED IS MISSING, WHICH IS A DEPLOYMENT DEFECT AND NOT A CALLER'S MISTAKE.
+  //
+  // `DEC-L-034`'s trial plan is created by `AddTrialSubscriptionSeed`. If it is absent the foreign key
+  // would refuse the insert anyway and the whole transaction would roll back — so the tenant is safe either
+  // way and only the DIAGNOSIS differs. It is modelled rather than left to a constraint violation because
+  // "the trial plan has not been seeded" names the remedy and a foreign-key error does not.
+  public static readonly Error TrialPlanMissing = new(
+    "Subscription.TrialPlanMissing",
+    "The trial subscription plan has not been seeded; apply the platform database migrations.");
+
   public static readonly Error GrantKindMismatch = new(
     "Subscription.GrantKindMismatch",
     "An entitlement grant must carry a module key or a limit, matching its kind, and never both.");

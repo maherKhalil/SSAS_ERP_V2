@@ -19,9 +19,27 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
     //
     // ---- WHAT THAT MEANS AT CUTOVER, STATED SO THE SEQUENCING IS REVIEWABLE RATHER THAN DISCOVERED.
     //
+    // **The paragraph that follows was written on 2026-08-26 and was true on that date. It is no longer,
+    // and it is dated rather than corrected** (`DEC-L-039`): a migration is a record of a change at a
+    // point in time, and rewriting its account of the world would leave nothing saying what the world
+    // looked like when the change was made. What has happened since is recorded beneath it.
+    //
     // **Today this changes nothing.** The enablement seam (T-032) resolves through
     // `TransitionalGrantsEveryModuleEntitlement`, which grants every module to every tenant and does not
     // read these tables at all. Applying this migration is invisible to every caller.
+    //
+    // ---- WHAT HAPPENED AFTER THAT DATE, APPENDED RATHER THAN SUBSTITUTED.
+    //
+    // T-040 (2026-08-26) deleted `TransitionalGrantsEveryModuleEntitlement` and switched the seam to
+    // `TenantModuleEntitlement`, which reads these tables. T-041 (2026-08-26) added
+    // `AddTrialSubscriptionSeed`, the successor migration that fills them with the 14-day all-module
+    // trial `DEC-L-034` ruled.
+    //
+    // **The `THROW` below still holds and is not in conflict with that successor.** It counts rows at the
+    // foot of THIS `Up`, inside THIS migration's transaction, before any later migration runs -- so it
+    // constrains what this file does and nothing else. A later migration writing to these tables is the
+    // reviewable, separately-decided act this comment asked for; a backfill added to this file is the
+    // mistake it refuses.
     //
     // **On the day the resolver is switched to read them, a tenant with no subscription row reaches no
     // gated module.** With four gateable modules that is HR, Finance/GL, Payroll and Attendance -- in

@@ -13,19 +13,22 @@ namespace SSAS.API.Tests.Infrastructure;
 //
 // ---- WHY THIS TEST BUILDS ITS OWN HOST INSTEAD OF USING THE REAL ONE.
 //
-// **The real host cannot demonstrate a refusal today, and a test pretending otherwise would assert
-// nothing.** The only registered resolver is `TransitionalGrantsEveryModuleEntitlement`, which grants every
-// module to every tenant because there is no subscription data to answer from. Against the real host, "a
-// tenant without the module gets 403" has no tenant that lacks a module — the test would either be
-// unwritable or would pass for a reason unrelated to the gate.
+// **Because the resolver is the thing being varied, and varying it is the whole experiment.** This host
+// mounts one gated route and one ungated route and swaps the `ITenantModuleEntitlement` between them, so
+// the difference observed is the seam and nothing else: **it refuses when entitlement says no, and admits
+// when it says yes.**
 //
-// So the resolver is the thing varied, on a two-route host built here. That is honest about what is being
-// checked: **the seam refuses when entitlement says no, and admits when it says yes.** Whether any real
-// tenant is ever refused depends on data this task deliberately does not add.
+// A test comment describes the present, so this one is CORRECTED rather than dated (`DEC-L-039` — the
+// migration beside it got the opposite treatment for the opposite reason). It used to say the real host
+// could not demonstrate a refusal at all, because the only registered resolver was
+// `TransitionalGrantsEveryModuleEntitlement` and it granted every module to every tenant. **That is no
+// longer true.** T-040 deleted that type and registered `TenantModuleEntitlement`, which reads real
+// subscription data; T-041 seeds the trial that data now consists of.
 //
-// When the commercial plane's schema lands, the end-to-end version of this test becomes writable against
-// the real host — a tenant with no assignment for a module, refused on that module's route. This test does
-// not replace that one; it makes the mechanism testable before the data exists.
+// The end-to-end version this file once anticipated therefore exists: `ExpiredTenantGateTests` and
+// `TrialTenantGateTests` run the real resolver and demonstrate an actual refusal. **This test is not
+// superseded by them** — they show what the resolver answers, and this shows what the seam does with the
+// answer, which stays worth isolating however entitlement comes to be decided.
 public sealed class ModuleEnablementGateTests
 {
   private const string ModuleKey = "Payroll";

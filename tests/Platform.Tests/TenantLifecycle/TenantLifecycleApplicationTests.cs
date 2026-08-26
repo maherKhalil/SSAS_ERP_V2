@@ -5,6 +5,7 @@ using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.Abstractions.Queries;
+using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Application.Tenants;
 using SSAS.Platform.Domain;
 using SSAS.Platform.Domain.Enums;
@@ -25,13 +26,19 @@ public sealed class TenantLifecycleApplicationTests
   {
     var repository = new FakeTenantRepository();
     var unitOfWork = new FakeUnitOfWork();
-    var handler = new CreateTenantCommandHandler(repository, unitOfWork, new TestCurrentUser("platform-actor"), new TestClock());
+    var issuer = new FakeTrialSubscriptionIssuer();
+    var handler = new CreateTenantCommandHandler(
+      repository, issuer, unitOfWork, new TestCurrentUser("platform-actor"), new TestClock());
 
     var result = await handler.HandleAsync(new CreateTenantCommand("  Acme  ", "  Shared Name  "));
 
     Assert.True(result.IsSuccess);
     Assert.NotEqual(Guid.Empty, result.Value);
     Assert.Equal(result.Value, repository.Added?.TenantId);
+
+    // The trial was issued for THIS tenant before the single commit — one save covering both, so there is
+    // no interval in which the tenant exists without one (`DEC-L-034`).
+    Assert.Equal(result.Value, issuer.IssuedFor);
     Assert.Equal("ACME", repository.Added?.NormalizedTenantCode);
     Assert.Equal(TenantStatus.Provisioning, repository.Added?.Status);
     Assert.Equal(TenantStatusChangeReason.Created, repository.Added?.StatusChangeReasonCode);
@@ -55,6 +62,7 @@ public sealed class TenantLifecycleApplicationTests
     };
     var handler = new CreateTenantCommandHandler(
       repository,
+      new FakeTrialSubscriptionIssuer(),
       unitOfWork,
       new TestCurrentUser("platform-actor"),
       new TestClock());
@@ -71,7 +79,8 @@ public sealed class TenantLifecycleApplicationTests
   {
     var repository = new FakeTenantRepository();
     var unitOfWork = new FakeUnitOfWork();
-    var anonymous = new CreateTenantCommandHandler(repository, unitOfWork, new TestCurrentUser(null, ["Administrator"]), new TestClock());
+    var anonymous = new CreateTenantCommandHandler(
+      repository, new FakeTrialSubscriptionIssuer(), unitOfWork, new TestCurrentUser(null, ["Administrator"]), new TestClock());
 
     var result = await anonymous.HandleAsync(new CreateTenantCommand("ACME", "Acme"));
 
@@ -205,6 +214,20 @@ public sealed class TenantLifecycleApplicationTests
       System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     Assert.NotNull(field);
     field.SetValue(tenant, value);
+  }
+
+  // Tenant creation now issues the 14-day trial into the SAME unit of work (`DEC-L-034`, T-041). These
+  // tests are about the lifecycle rather than about the trial, so the issuer is recorded rather than run —
+  // `TrialSubscriptionIssuanceTests` exercises the real one through this same handler.
+  private sealed class FakeTrialSubscriptionIssuer(Error? failure = null) : ITrialSubscriptionIssuer
+  {
+    public Guid? IssuedFor { get; private set; }
+
+    public Task<Result> IssueAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+      IssuedFor = tenantId;
+      return Task.FromResult(failure is null ? Result.Success() : Result.Failure(failure));
+    }
   }
 
   private sealed class FakeTenantRepository(params Tenant[] tenants) : ITenantRepository

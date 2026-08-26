@@ -109,9 +109,9 @@ public sealed class ModuleEnablementArchitectureTests
   // EXACTLY ONE ENTITLEMENT IMPLEMENTATION — SO THE NEXT TASK REPLACES IT RATHER THAN ADDING BESIDE IT.
   // ==================================================================================================
   //
-  // Today that one implementation is `TransitionalGrantsEveryModuleEntitlement`, which grants everything
-  // because there is no subscription data to answer from. The commercial plane's schema task replaces it
-  // with a resolver reading the per-tenant assignment from the Platform database (`OD-SUB-0004`).
+  // Today that one implementation is `TenantModuleEntitlement`, which resolves the per-tenant assignment
+  // from the Platform database (`OD-SUB-0004`). It REPLACED the transitional grant-everything resolver in
+  // T-040 rather than being added beside it, and that type is deleted.
   //
   // **This test is what stops it being added BESIDE the transitional one.** Two registered implementations
   // would leave the container's last-wins ordering deciding whether entitlement is real — a difference
@@ -140,6 +140,6 @@ public sealed class ModuleEnablementArchitectureTests
       "REPLACED when subscription data arrives, not competed with — two implementations would let " +
       "container ordering decide whether entitlement is enforced.");
 
-    Assert.Equal(typeof(TransitionalGrantsEveryModuleEntitlement).FullName, implementations[0]);
+    Assert.Equal(typeof(SSAS.Platform.API.Subscriptions.TenantModuleEntitlement).FullName, implementations[0]);
   }
 }

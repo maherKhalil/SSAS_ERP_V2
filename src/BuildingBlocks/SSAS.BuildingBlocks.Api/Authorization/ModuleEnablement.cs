@@ -55,44 +55,6 @@ public interface ITenantModuleEntitlement
   ValueTask<bool> IsEnabledAsync(string moduleKey, CancellationToken cancellationToken);
 }
 
-// ==================================================================================================
-// THE TRANSITIONAL IMPLEMENTATION — IT GRANTS EVERYTHING, AND IT IS NOT THE REAL ONE.
-// ==================================================================================================
-//
-// ---- READ THE NAME. IT IS NOT AN OVERSIGHT AND IT IS NOT A DEFAULT.
-//
-// This answers **true for every module and every tenant**, which is precisely today's behaviour: every
-// tenant reaches every module regardless of plan. Installing the seam does not change what any caller can
-// do, and that is intended — a seam that changed behaviour on the day it shipped would have needed data
-// that does not exist to decide what the change should be.
-//
-// ---- WHAT REPLACES IT, AND WHEN.
-//
-// The commercial plane's schema task replaces this type with a resolver reading the per-tenant subscription
-// assignment from the **Platform database** (`OD-SUB-0004`), behind a cache **invalidated on subscription
-// change and never refreshed on a timer** (`REQ-SUB-0009` makes that part of its test surface, not an
-// implementation detail).
-//
-// **Replace this type — do not add a second implementation beside it.** An architecture test asserts that
-// exactly one implementation of `ITenantModuleEntitlement` exists, so a second one fails the build rather
-// than silently competing with this in the container. That assertion is the reason the next task cannot
-// leave this behind by accident.
-//
-// ---- WHY IT IS NOT SIMPLY OMITTED.
-//
-// The convention resolves this contract from the request scope. With no registration the gate would throw
-// at request time, so the alternative to a transitional implementation is a seam that cannot be mounted at
-// all — which would mean shipping the guard without the mechanism it guards.
-public sealed class TransitionalGrantsEveryModuleEntitlement : ITenantModuleEntitlement
-{
-  public ValueTask<bool> IsEnabledAsync(string moduleKey, CancellationToken cancellationToken)
-  {
-    ArgumentException.ThrowIfNullOrWhiteSpace(moduleKey);
-
-    return ValueTask.FromResult(true);
-  }
-}
-
 // ---- THE MODULE'S OWN DECLARATION OF ITS KEY.
 //
 // One implementation per gateable module assembly, and none in a platform-plane assembly. It exists as a

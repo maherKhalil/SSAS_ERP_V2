@@ -250,7 +250,11 @@ public sealed class ProjectDependencyArchitectureTests
         "SSAS.BuildingBlocks.Api.Authorization.ModuleEndpointRequirements",
         // The canonical policy-name spelling, shared by the Host that reads it and the endpoints that emit it.
         "SSAS.BuildingBlocks.Api.Authorization.PermissionPolicyNames",
-        "SSAS.BuildingBlocks.Api.Authorization.TransitionalGrantsEveryModuleEntitlement",
+        // `TransitionalGrantsEveryModuleEntitlement` stood here until T-040 and is DELETED, not
+        // merely unregistered. It was the one entry on this list that was never permanent, and it
+        // said so in its own name; the real resolver reads the Platform database and therefore lives
+        // in `Platform.API`, which is the one project referencing both this contract and Platform's
+        // application layer. Removing the line is what makes the replacement a replacement.
         // A (status, code) pair, and the five generic transport failures every module hits.
         "SSAS.BuildingBlocks.Api.Transport.ApiError",
         "SSAS.BuildingBlocks.Api.Transport.ApiErrors",

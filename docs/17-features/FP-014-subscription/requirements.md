@@ -2,12 +2,15 @@
 
 **Status: DRAFT — analysis only. Every identifier below is a PROPOSAL.**
 
-**The prefix itself is unresolved.** `Requirement-Numbering.md` lists ten functional prefixes — PLT,
-HR, GL, INV, CRM, PRJ, PAY, ATT, PRC, MFG — and **`SUB` is not among them**. `REQ-SUB-####` is used
-below as a working label so the rows can be referenced at all. Whether the commercial plane takes a
-new `REQ-SUB` space or extends `REQ-PLT` (which already runs to `REQ-PLT-0067`) is **`OD-SUB-0002`**,
-argued both ways there and settled by neither this file nor its author. Every identifier here is
-renumberable, prefix included.
+**The prefix is settled.** `OD-SUB-0002` ruled a **new `REQ-SUB` space** rather than an extension of
+`REQ-PLT`, and `Requirement-Numbering.md` carries `REQ-SUB` and `BR-SUB` as registered prefixes. The
+identifiers below are stable; they are not working labels.
+
+> *Amended 2026-08-26 by T-046.* This paragraph read: *"The prefix itself is unresolved …
+> **`SUB` is not among them** … settled by neither this file nor its author. Every identifier here is
+> renumberable, prefix included."* **True when written and false since ratification** — `SUB` is
+> registered and the ruling that registered it is `OD-SUB-0002`. Dated rather than deleted
+> (`DEC-L-039`), because the argument for a separate space is why the space exists.
 
 **The `Authority` column reads honestly.** Where a requirement traces to something authored, it says
 where and quotes it. Where it does not, it says **UNAUTHORED** — and it says that often, because the
@@ -20,7 +23,9 @@ subscription material disclaims itself at its own line 13; `Authentication.md` c
 Where a row leans on either, the column says so, and the row is conditional on an `OD-SUB` that asks
 the owner whether to make it binding. Naming them is not the same as relying on them.
 
-**Scope column** — see `OD-SUB-0001`, which must be ruled first:
+**Scope column.** `OD-SUB-0001` ruled **E + C — the whole plane**, so **every row below is in force**
+and no scope strikes any of them. The codes are kept because they still say which half of the plane a
+row belongs to, which is useful when reading it; they no longer gate anything.
 
 | Code | Meaning |
 |---|---|
@@ -28,8 +33,9 @@ the owner whether to make it binding. Naming them is not the same as relying on 
 | `C` | **Commercial.** The agreement itself — term, price, invoicing, payment. |
 | `*` | Both — the subscription record that either scope needs. |
 
-**If the owner rules `E` only, every `C` row is struck.** The counts at the bottom are given per scope
-for that reason.
+**Nothing is struck.** The per-scope counts at the bottom were given because an `E`-only ruling would
+have struck every `C` row; `OD-SUB-0001` ruled `E + C`, so they now read as a breakdown rather than as
+two possible futures.
 
 ---
 
@@ -51,7 +57,7 @@ for that reason.
 | `REQ-SUB-0007` | For any **(tenant, module)** pair the product answers, authoritatively, whether that module is enabled | `E` | `BR-PLT-0008` — "Modules may be enabled or disabled per subscription plan" | `OD-SUB-0005` |
 | `REQ-SUB-0008` | Enablement is resolved **per request, server-side**, and is **never carried in the access token** | `E` | `FP-002 authentication-model.md:16` — tokens "exclude … subscription or billing information", under **exact claim cardinality** | `DEC-SUB-0005` |
 | `REQ-SUB-0009` | A change to a tenant's enablement takes effect **without re-issuing tokens and without restarting the host** | `E` | **UNAUTHORED** — a consequence of `REQ-SUB-0008`; stated so it is tested rather than assumed | `DEC-SUB-0005` |
-| `REQ-SUB-0010` | Enablement may be **overridden for one tenant** above or below what its plan grants, or it may not — the product supports exactly one of these and says which | `E` | **UNAUTHORED** | `OD-SUB-0011` |
+| `REQ-SUB-0010` | Enablement may be **overridden for one tenant ABOVE what its plan grants, and never below.** Entitlement resolves as **plan ∪ grants** | `E` | **UNAUTHORED** — no authored document states it, which the ruling did not change. **Settled by `OD-SUB-0011` (2026-08-25): additive grants only.** The row formerly asked which direction the product supported | `OD-SUB-0011` |
 
 ## Enforcement — `BR-PLT-0008`, second sentence
 
@@ -75,7 +81,7 @@ as prose, because it is the only sentence in the authority that says *shall* abo
 |---|---|---|---|---|
 | `REQ-SUB-0017` | A subscription carries a **dated term** — a start, and an end or an indication that it does not end | `*` | `Glossary.md:283` "agreement" — thin; the term is inferred from the noun, not stated | `OD-SUB-0009` |
 | `REQ-SUB-0018` | An **expired** subscription denies that tenant every **gated module**, and **never denies authentication**. An expired tenant signs in, reaches the platform plane — its account, its users and the subscription surface itself — and reaches no gated module | `*` | `OD-SUB-0009` **as amended by `DEC-L-033`** (2026-08-26). No special case is needed to keep the platform plane reachable: `REQ-SUB-0013` already exempts it, so expiry acts through the same enablement gate every other entitlement does | `OD-SUB-0009`, `DEC-L-033`; `REQ-SUB-0013` |
-| `REQ-SUB-0019` | The relationship between **subscription state and `TenantStatus`** is explicit: whether expiry suspends the tenant, or the two are orthogonal dimensions both checked at login | `*` | **UNAUTHORED** — `TenantStatus` today is `Provisioning`/`Active`/`Suspended`/`Archived` with no commercial reason among the change reasons | `OD-SUB-0010` |
+| `REQ-SUB-0019` | **Subscription state and `TenantStatus` are ORTHOGONAL** — independent dimensions. Expiry never writes `TenantStatus`, and **no commercial reason joins `TenantStatusChangeReason`**. `TenantStatus` is evaluated at **authentication** and commercial state at the **enablement gate** | `*` | **UNAUTHORED** — no authored document states it, which the ruling did not change. `TenantStatus` today is `Provisioning`/`Active`/`Suspended`/`Archived` with no commercial reason among the change reasons. **Settled by `OD-SUB-0010` (2026-08-25): orthogonal.** The row formerly asked whether expiry suspends the tenant, and described both dimensions as *"checked at login"* — true only while expiry blocked login, and **corrected by `DEC-L-033`** | `OD-SUB-0010`, `DEC-L-033` |
 | `REQ-SUB-0020` | A **trial is a plan with a short term**, and is nothing else. A tenant without a subscription holds an **all-module plan on a 14-day fixed term** — seeded by migration for tenants existing at cutover and issued on tenant creation thereafter, by **one rule** rather than two that agree. **No trial state, flag, column or enum member exists**: the trial ends because a later record takes effect, which is the mechanism every plan change already uses | `*` | `OD-SUB-0014` **as ruled by `DEC-L-034`** (2026-08-26). **Formerly UNAUTHORED** — the word "trial" appeared nowhere in the authority when this row was written, and `DEC-L-034` authored it | `OD-SUB-0014`, `DEC-L-034`; `DEC-L-009` (no grace period), `DEC-L-033` (expiry gates modules, never login) |
 
 ## Reading and disclosure
@@ -85,19 +91,28 @@ as prose, because it is the only sentence in the authority that says *shall* abo
 | `REQ-SUB-0021` | A tenant-plane user may read **which modules its tenant has**, and may **not** read the commercial terms — price, invoice, payment state | `*` | `FP-002 business-rules.md:55` establishes the precedent that billing and subscription data are withheld from the tenant-facing token; the same reasoning applies to the read surface | `DEC-SUB-0002`, `OD-SUB-0013` |
 | `REQ-SUB-0022` | Platform administration reads **across tenants**; the subscription read surface is not tenant-filtered for a platform-plane caller | `*` | `ADR-005` § Platform Administration (`:248`); `ADR-015` | `DEC-SUB-0010` |
 
-## Commercial — struck entirely if `OD-SUB-0001` rules `E`
+## Commercial — in force, and none of it built
 
-**Every row below is conditional on the scope ruling and on the `OD-SUB` it names. None of them is
-proposed for building today**; they exist so the owner can see what ruling `C` would commit to.
+**Every row below is in force.** `OD-SUB-0001` ruled `E + C`, and the `OD-SUB` each row named has been
+ruled too.
+
+**None of them is built, and being in force does not say otherwise.** A requirement in force means the
+question is settled — not that the code exists. Invoicing, payment capture, metering and proration have
+no implementation in this repository, and nothing below should be read as reporting delivery.
+
+> *Amended 2026-08-26 by T-046.* The heading read *"struck entirely if `OD-SUB-0001` rules `E`"* and
+> the paragraph said every row was *"conditional on the scope ruling"* — accurate before ratification,
+> and the reason the rows were written in conditional voice at all. The half that is still true, and
+> was the more important half then as now, is that **none of this is proposed for building today.**
 
 | ID | Requirement | Scope | Authority | Decisions |
 |---|---|---|---|---|
 | `REQ-SUB-0023` | A plan carries a **price**, in a currency, for a billing period | `C` | **UNAUTHORED** — no pricing statement exists anywhere in the repository | `OD-SUB-0015` |
 | `REQ-SUB-0024` | Monetary amounts in the commercial plane use the product's money representation, **inherited unchanged** | `C` | `ADR-027` — `decimal(19,4)`. **Inherited, not re-decided** | `DEC-SUB-0008` |
-| `REQ-SUB-0025` | **CONDITIONAL ON `OD-SUB-0016`.** The product issues an **invoice** from the vendor to the tenant, and that invoice is recorded outside the tenant's General Ledger | `C` | **UNAUTHORED** | `DEC-SUB-0001`, `OD-SUB-0016` |
-| `REQ-SUB-0026` | **CONDITIONAL ON `OD-SUB-0016`.** **Payment capture** is either performed by this product or delegated to an external provider, and the product states which | `C` | **UNAUTHORED** | `OD-SUB-0016` |
-| `REQ-SUB-0027` | **CONDITIONAL ON `OD-SUB-0017`.** Usage that affects price — seats, tenants, storage, transaction volume — is **metered**, and the product names exactly what is counted | `C` | **UNAUTHORED** | `OD-SUB-0017` |
-| `REQ-SUB-0028` | **CONDITIONAL ON `OD-SUB-0015`.** A mid-term plan change is **prorated**, or it is not, and the product says which | `C` | **UNAUTHORED**. Note `OD-PAY-0007` ruled proration for *payroll* on calendar days — that is a different subject and sets no precedent here | `OD-SUB-0015` |
+| `REQ-SUB-0025` | The product issues an **invoice** from the vendor to the tenant, and that invoice is recorded outside the tenant's General Ledger | `C` | `OD-SUB-0016` **as ruled 2026-08-25** — the product issues invoices in-product. **Formerly UNAUTHORED and conditional**, which was accurate until the ruling | `DEC-SUB-0001`, `OD-SUB-0016` |
+| `REQ-SUB-0026` | **Payment capture is performed by this product, and it is TOKENIZED.** The product owns the payment flow, its state and its reconciliation; **no primary account number, card verification value, cardholder name or expiry date ever enters SSAS** — those are captured by the provider's hosted fields or redirect. **Both halves are the requirement.** "We capture payment" and "we never see a card number" are both true, and reading either without the other gives the wrong system | `C` | `OD-SUB-0016` **as ruled 2026-08-25** (capture is in-product), **qualified by `ADR-029` and `DEC-L-018`** (capture is tokenized). **Formerly UNAUTHORED and conditional** | `OD-SUB-0016`, `DEC-L-018` |
+| `REQ-SUB-0027` | Usage that affects price — seats, tenants, storage, transaction volume — is **metered**, and the product names exactly what is counted | `C` | `OD-SUB-0017` **as ruled 2026-08-25** — seats plus limits, with the residue ruled by `DEC-L-009`: a cap is enforced at admission, never at login. **Formerly UNAUTHORED and conditional** | `OD-SUB-0017` |
+| `REQ-SUB-0028` | A mid-term plan change is **prorated** for the unused portion | `C` | `OD-SUB-0015` **as ruled 2026-08-25** — multi-currency, prorated. **Formerly UNAUTHORED and conditional.** Note `OD-PAY-0007` ruled proration for *payroll* on calendar days — that is a different subject and sets no precedent here | `OD-SUB-0015` |
 
 ---
 
@@ -137,11 +152,16 @@ conditional.** That document is `Draft`, and it describes refusals for a state t
 represent. Treating it as authority would let a draft written before any of this existed dictate the
 lifecycle.
 
-**No dunning, no credit control, no tax.** Each is a substantial subsystem, none is named in any
-authored document, and `OD-SUB-0015` and `OD-SUB-0016` must be ruled before any of them can even be
-scoped. Naming them as absences is deliberate: "subscription billing" means *all* of them to many
-readers, and an unstated exclusion surfaces at acceptance.
+**No dunning, no credit control, no tax.** Each is a substantial subsystem and none is named in any
+authored document. `OD-SUB-0015` and `OD-SUB-0016` have since been ruled — **and they scoped invoicing,
+capture, pricing and proration, not these.** The absence is therefore a live exclusion rather than a
+question awaiting a ruling. Naming them is deliberate: "subscription billing" means *all* of them to
+many readers, and an unstated exclusion surfaces at acceptance.
 
-**No `BR-SUB` business rules.** `Requirement-Numbering.md` has four business-rule prefixes — PLT, HR,
-GL, ATT. Adding one is part of `OD-SUB-0002`, and `BR-PLT-0008` already sits in the `PLT` space, which
-is itself an argument in that decision.
+**`BR-SUB` exists.** `OD-SUB-0002` ruled the new space and `Requirement-Numbering.md` carries `BR-SUB`;
+[`business-rules.md`](business-rules.md) defines twenty-one rules in it. `BR-PLT-0008` still sits in the
+`PLT` space, which was an argument in that decision and is now a fact about where the product's oldest
+enablement rule lives.
+
+> *Amended 2026-08-26 by T-046.* This paragraph read *"**No `BR-SUB` business rules.** …
+> Adding one is part of `OD-SUB-0002`"*, and was true before ratification.

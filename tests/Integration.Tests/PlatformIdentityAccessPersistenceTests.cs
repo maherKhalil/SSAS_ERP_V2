@@ -114,6 +114,9 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "Companies_MigratedToTenant",
             "Identities",
             "LocalizationCatalogStates",
+            // The four gateable modules (FP-014, OD-SUB-0005). Platform-global catalog data by
+            // ADR-017 class A, and the single token both a plan grant and a route gate resolve against.
+            "ModuleDefinitions",
             "PlatformAuthenticationSessions",
             "PlatformPermissionAssignments",
             "PlatformRefreshTokenRecords",
@@ -121,6 +124,14 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "RefreshTokenRecords",
             "RolePermissionAssignments",
             "Roles",
+            // The commercial plane (FP-014, T-035). Plans are Platform-global, so their uniqueness key
+            // carries no TenantId -- the one structural difference from every tenant-owned table here.
+            // Modules, limits and prices are owned collections: the composite pair IS the fact, so no
+            // surrogate. None of them participates in Shared-to-Dedicated cutover (DEC-SUB-0011).
+            "SubscriptionPlanLimits",
+            "SubscriptionPlanModules",
+            "SubscriptionPlanPrices",
+            "SubscriptionPlans",
             // Shared → Dedicated cutover operations (ADR-020, TS-Storage Phase E1). The freeze must survive
             // the process that established it, so it is a table rather than runtime state.
             "TenantCutoverOperations",
@@ -135,10 +146,17 @@ public sealed class PlatformIdentityAccessPersistenceTests
             // created which database.
             "TenantDatabaseRestoreVerificationRuns",
             "TenantDatabases",
+            // Additive entitlement grants, append-only (OD-SUB-0011). A grant in force last March must
+            // still be discoverable next March, so revocation is a later record and never an edit.
+            "TenantEntitlementGrants",
             "TenantLocalizationOverrideVersions",
             "TenantLocalizationOverrides",
             "TenantLocalizationSettings",
             "TenantSelectionTransactions",
+            // The append-only subscription history (OD-SUB-0008). No EffectiveToUtc, no RowVersion and
+            // no ModifiedUtc/ModifiedBy: the row is never updated, so the interval is derived by
+            // ordering and there is no concurrency state to protect.
+            "TenantSubscriptions",
             "TenantUserRoleAssignments",
             "TenantUsers",
             "Tenants",

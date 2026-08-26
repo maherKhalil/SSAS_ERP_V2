@@ -91,6 +91,21 @@ An already issued token does not override current non-Active status. Before ordi
 
 The first implementation milestone introduces no subscription, company, branding, configuration, notification, authentication-session, refresh-token, JWT-issuance, tenant endpoint, Angular, or immutable-audit-store implementation.
 
+> **This criterion describes FP-003's FIRST MILESTONE and is partly superseded. Which concern by which package is recorded below rather than left to be re-derived** (`DEC-L-030`, 2026-08-26; `DEC-L-027`).
+>
+> | Deferred concern | Superseded by |
+> |---|---|
+> | company | **FP-005** — `Company` ships as the tenant-owned legal-entity root |
+> | authentication-session, refresh-token, JWT-issuance | **FP-002** — `AuthenticationSession`, `RefreshTokenRecord` and RS256 access tokens all ship |
+> | subscription | **`DEC-L-004`, `DEC-L-006` and ratified FP-014** — the owner ruled the commercial plane `E + C`; T-035 built plans, subscriptions and entitlement grants |
+> | branding, configuration, notification, tenant endpoint, Angular, immutable-audit-store | **not superseded** — still deferred, and no package claims them |
+>
+> **The architecture guard that enforced this criterion is retired**, not trimmed. It scanned for four declaration spellings — `TenantController`, `Subscription`, `Billing`, `CompanyProvision` — against a criterion listing eleven concerns, so it kept passing while three of them shipped: it looked for `CompanyProvision` rather than `Company`, and never named the session or refresh-token types at all. `TenantController` could not fire in a codebase that maps minimal-API endpoints and declares no controllers.
+>
+> **What survived it is a separate test.** The retired guard also asserted that `SSAS.Platform.API` does not reach into `SSAS.Platform.Application.Tenants` — unrelated to the four spellings, still live, and still true, since no tenant endpoint is mapped anywhere in the product. It now stands on its own as `Tenant_endpoints_remain_deferred_and_the_platform_api_does_not_reach_tenant_application`.
+>
+> **The `Billing` deferral is now unguarded.** It is real but was unmoored from any live authority here; if it is worth asserting it belongs with `ADR-029` and `REQ-SUB-0025`/`REQ-SUB-0026`, not with this criterion.
+
 ## Platform-plane authorization (ADR-015, DEC-TEN-0018)
 
 The following criteria apply to the future Tenant HTTP transport and its platform-plane authorization foundation. They are deferred with the endpoints; no HTTP behavior is implemented in the first backend milestone.

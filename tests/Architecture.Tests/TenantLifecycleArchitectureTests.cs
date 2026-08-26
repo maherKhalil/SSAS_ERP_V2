@@ -110,18 +110,46 @@ public sealed class TenantLifecycleArchitectureTests
     Assert.Empty(unsafeProperties);
   }
 
+  // ==================================================================================================
+  // THE FOUR-SPELLING MILESTONE GUARD IS RETIRED (`DEC-L-030`). WHAT REPLACED IT, AND WHAT DID NOT.
+  // ==================================================================================================
+  //
+  // ---- WHAT WAS HERE, AND WHY IT WENT.
+  //
+  // `Milestone_contains_no_deferred_tenant_endpoint_or_post_session_implementation` scanned Platform source
+  // for four declaration spellings -- TenantController, Subscription, Billing, CompanyProvision -- on the
+  // authority of `AC-TEN-0020`, FP-003's first-milestone scope statement, which lists ELEVEN deferred
+  // concerns.
+  //
+  // **It checked four spellings of a rule that had already expired three times over.** `Company` shipped in
+  // FP-005; `AuthenticationSession` and `RefreshToken` in FP-002. The guard went on passing only because it
+  // looked for `CompanyProvision` rather than `Company`, and never named the other two. `TenantController`
+  // could not have fired at all -- this codebase maps minimal-API endpoints and declares no controllers.
+  //
+  // Subscription was simply the first term whose spelling it caught, when `DEC-L-004` and `DEC-L-006` ruled
+  // the commercial plane in scope and ratified FP-014 was built (T-035).
+  //
+  // **Retired rather than trimmed.** Dropping `Subscription` alone would have left a guard passing for the
+  // wrong reason -- still appearing to protect a boundary three shipped features had already crossed, with
+  // its clearest counter-example quietly removed. `AC-TEN-0020` now records which package superseded which
+  // concern.
+  //
+  // ---- WHAT SURVIVED, AND WHY IT IS ITS OWN TEST.
+  //
+  // The retired test carried a SECOND assertion unrelated to the four spellings: that `SSAS.Platform.API`
+  // does not reach into `SSAS.Platform.Application.Tenants`. **That one is still live and still true** --
+  // no tenant endpoint is mapped anywhere in this product, verified before retiring. Retiring the whole
+  // test would have dropped it silently, so it stands here on its own.
   [Fact]
   [Trait("Acceptance", "AC-TEN-0020")]
-  [Trait("Scenario", "TS-TEN-0032")]
   [Trait("Scenario", "TS-TEN-0034")]
-  public void Milestone_contains_no_deferred_tenant_endpoint_or_post_session_implementation()
+  public void Tenant_endpoints_remain_deferred_and_the_platform_api_does_not_reach_tenant_application()
   {
     var files = PlatformSourceFiles().ToArray();
-    var deferredDeclaration = new Regex(
-      @"\b(?:class|record|interface)\s+\w*(?:TenantController|Subscription|Billing|CompanyProvision)\w*\b",
-      RegexOptions.CultureInvariant);
 
-    Assert.Empty(files.Where(path => deferredDeclaration.IsMatch(File.ReadAllText(path))));
+    // The scan must find something, or everything below asserts nothing at all.
+    Assert.NotEmpty(files);
+
     Assert.Empty(files.Where(path =>
       path.Contains($"{Path.DirectorySeparatorChar}SSAS.Platform.API{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
       File.ReadAllText(path).Contains("SSAS.Platform.Application.Tenants", StringComparison.Ordinal)));

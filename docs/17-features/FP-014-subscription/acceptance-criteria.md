@@ -94,8 +94,30 @@ as an acceptance criterion and evaporates as prose.
 | `AC-SUB-0044` | **`PlatformDbContext` refuses `Modified` and `Deleted` for `IAppendOnlyEntity`**, by the same mechanism `TenantDbContext.PreventAppendOnlyMutation` uses and called from its own `SaveChangesAsync`. **No FP-014 entity may carry `IAppendOnlyEntity` until this exists** — the interface without the guard is the appearance of immutability with none of it | `REQ-SUB-0001` |
 | `AC-SUB-0045` | **Every permission name in the platform-plane set** — `Platform.Support.*` included, not only this package's six — is used **only** with `RequirePlatformPermission` and never with `RequirePermission`, and every tenant-plane name is used only with `RequirePermission`. The `Platform.` prefix does not distinguish the planes: `Platform.Users.View` is tenant-plane and `Platform.Support.Administer` is platform-plane. So `REQ-SUB-0004` is enforced by this guard or by careful reading, and careful reading is not a control. **Widened from this package's four prefixes to the whole set by `DEC-L-010`** — guarding only the new names would have left the ambiguity that already shipped unasserted | `REQ-SUB-0004` |
 | `AC-SUB-0046` | The migration that creates these tables **inserts no subscription row and seeds no plan.** Immediately after it runs every existing tenant is unentitled, which is correct under `CON-0001` and is exactly why `AC-SUB-0047` exists | `REQ-SUB-0007` |
-| `AC-SUB-0047` | **RELEASE CONDITION.** The enablement gate is not active in the release that introduces the migration. Every existing tenant has a subscription record before any route is gated — otherwise the first deployment locks out the entire estate | `REQ-SUB-0011` |
+| `AC-SUB-0047` | **RELEASE CONDITION.** No release leaves a tenant reachable by a gated route with no subscription record — otherwise that deployment locks out the entire estate. **The gate (T-040) and the trial seed (T-041) ship in the SAME release, and the seed must not precede the gate within it.** *(Amended 2026-08-26 — the original clause read "the enablement gate is not active in the release that introduces the migration", which held the gate back from the migration's release. The order actually taken inverts that: the gate shipped first and the seed follows. **The condition is unchanged and the ordering clause is not** — see the note below, which records what the original required and why the substance survives.)* | `REQ-SUB-0011` |
 | `AC-SUB-0048` | **No request body accepted, no response body returned, and no log statement written by this package carries a primary account number, card verification value, cardholder name or expiry date.** Asserted over the transport contract types by reflection, so a field added later fails a test rather than a review | `REQ-SUB-0025` |
+
+### What the ordering clause required, and why amending it does not weaken the condition
+
+**The original clause was written when the resolver did not exist.** With nothing reading the tables, the
+only safe sequence visible from where it was written was: create the tables, populate them, and *then*
+switch the gate on. It said so, and `AddSubscriptionCommercialPlane`'s own `THROW` message repeats it.
+
+**The sequence actually taken is the mirror image.** T-040 switched the resolver first, with the interim
+state — a tenant holding no record reaches no gated module — asserted as the ruled outcome rather than
+left implicit; T-041 then seeded. Nothing deployed in between, so **the merge order was sound and the
+release order is the thing that matters**.
+
+**What the condition has always been about is the deployment, not the branch.** Either sequence satisfies
+it, because the seed migration runs at deploy time and therefore before any request reaches a gated route.
+**Shipping the two apart does not satisfy it in either direction**, and that is now the binding half:
+T-040 without T-041 locks every tenant out of every module, and T-041 without T-040 writes commercial
+records that nothing reads.
+
+**Its verification is still a human one and its tests cell is still a declared gap** — see
+[`test-scenarios.md`](test-scenarios.md). What T-041 added is not a test of *this* criterion but of its
+outcome: `AC-SUB-0052`–`AC-SUB-0054` below assert that after the migrations run, no tenant is left
+without a record.
 
 ## Seat admission — the cap is enforced at the grant, never at login
 
@@ -131,7 +153,28 @@ the *only* place the cap bites.
 is no criterion asserting a grace period and none asserting its absence beyond `AC-SUB-0050`, which
 already forbids the behaviour a grace period would soften.
 
-Fifty-one criteria, `AC-SUB-0001` through `AC-SUB-0051`, contiguous.
+## The trial — a plan with a short term, and one rule for every tenant
+
+**`DEC-L-034`**, ruled 2026-08-26, using `OD-SUB-0014`. These criteria are the positive content of
+`REQ-SUB-0020`; `AC-SUB-0033` is its negative half and the two are meant to be read together — **what the
+trial *is*, and what the model must never grow to say it is.**
+
+| ID | Criterion | Req |
+|---|---|---|
+| `AC-SUB-0052` | Every tenant existing when the seed migration runs holds the **all-module plan on a `Fixed` 14-day term**. **No status filter** — suspended and archived tenants are seeded like any other, because `OD-SUB-0010` made subscription state and `TenantStatus` orthogonal and a filter here is that coupling. **No history is reconstructed**: `EffectiveFromUtc` is the instant the seed ran, never the tenant's creation date | `REQ-SUB-0020` |
+| `AC-SUB-0053` | Tenant creation issues **the same plan and the same term**, in the tenant's **own transaction**. One rule for existing and new tenants (`DEC-L-034`), so there is one thing to explain to a customer — and a single transaction makes *"tenant exists, trial does not"* unrepresentable rather than merely unlikely | `REQ-SUB-0020` |
+| `AC-SUB-0054` | **Re-running the seed issues nothing further.** A tenant already holding **any** subscription record is left untouched, plan and effective instant unchanged. The failure this prevents is not a duplicate row: the record in force is the one with the greatest `EffectiveFromUtc`, so a trial appended after a purchased plan **silently becomes the plan that tenant is on** | `REQ-SUB-0020` |
+
+**Why the third one is stated as "any record" rather than "any trial".** A guard checking for an existing
+*trial* would re-issue to a tenant that had moved onto something else, which is the expensive case. The
+cheap case — a duplicate trial — is the one a narrower guard would have caught.
+
+**And why there is no grace period in any of the three.** `DEC-L-009` ruled none, and `DEC-L-033` bounds
+what expiry costs: gated modules stop resolving and **login is untouched**, so a lapsed tenant can still
+reach the surface it converts from. Fourteen days is short for an ERP and is the owner's ruling, not an
+oversight.
+
+Fifty-four criteria, `AC-SUB-0001` through `AC-SUB-0054`, contiguous.
 
 ---
 

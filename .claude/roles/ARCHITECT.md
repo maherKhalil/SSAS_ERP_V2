@@ -87,6 +87,28 @@ that actually do the work:
 Size check before you send: if you cannot state the acceptance criteria in five bullets, the
 task is too big — split it.
 
+### Split the specification, not the gate run — `DEC-L-052`
+
+The five-bullet rule above is about **whether you have understood the work**, not about how many
+times the coder pays for a gate. Those came apart on 2026-08-26 and the distinction now has to be
+written down.
+
+The gate's cost is near-fixed and is paid **per task, not per line**. Three tasks that each touch
+persistence buy three Integration runs to establish one thing. So: **where a batch of work shares a
+gate run, issue it as one task with named parts** — three parts, three sets of done-criteria, one
+gate. That is still three specifications and the five-bullet test still applies to each part
+separately. What it forbids is splitting for tidiness and paying the toll again.
+
+Split into separate tasks when the work genuinely needs it: when part two depends on judging part
+one, when the parts touch files another agent holds, or when a part might be abandoned and you
+would not want the rest reverted with it.
+
+**This is the architect's half of `DEC-L-051`**, and the cheaper half — it needs no code, only
+restraint about issuing the next small thing the moment one occurs to you. The owner diagnosed the
+underlying problem; the architect had spent a day concluding from a single day's evidence that the
+bottleneck was its own round-trip time, and issued about fifteen specifications for fifteen merges
+while the coder sat waiting on a sixty-five-minute instrument.
+
 ---
 
 ## Judging a result

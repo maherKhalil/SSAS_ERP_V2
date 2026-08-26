@@ -107,6 +107,13 @@ cannot connect, that is not a pass — report `PARTIAL` and say exactly which su
 
 ### Which gate, and when — `DEC-L-051`
 
+> **NOT YET IMPLEMENTED — `GATE_SCOPE` does not exist until T-055 lands.** Setting it today does
+> nothing: the shell ignores an unread variable and you get the full both-configuration run,
+> silently. **This section describes the rule, not the current behaviour.** If you are reading it
+> before T-055 is merged, run the gate as it is, and treat `T-055` as the task that makes this page
+> true. Delete this note when it lands.
+
+
 `scripts/gate.sh` calls itself **THE PHASE-EXIT GATE** on its own first line, and it means it: every
 suite, Debug *and* Release. Its measured cost is in its own header — **Integration Debug 32 m 21 s,
 Integration Release 32 m 35 s**. Roughly 65 of its ~75 minutes are those two legs.

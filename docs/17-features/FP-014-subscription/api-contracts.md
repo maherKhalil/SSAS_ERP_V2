@@ -163,18 +163,25 @@ one name.
 |---|---|---|
 | tenant does not have the module | `403` | `module-not-enabled` |
 | tenant has the module, user lacks the permission | `403` | the existing permission-denied type |
-| subscription term expired | login is refused; see below | — |
+| subscription term expired | `403` | `module-not-enabled` |
 
 Both are `403`, and they answer different questions — *the tenant has not bought this* versus *you
 may not do this*. Collapsing them would make the first unanswerable from the response, which is the
 whole benefit `OD-SUB-0006` bought by accepting the disclosure.
 
-### Expiry is refused at login, not per route
+### Expiry is refused per route, not at login — amended 2026-08-26
 
-`OD-SUB-0009` ruled expiry blocks login (`REQ-SUB-0018`). The refusal is at the authentication
-surface and is **distinct from a tenant-status refusal** (`REQ-SUB-0019`, `OD-SUB-0010`) —
-`Authentication.md` already lists "Expired Subscription" and "Inactive Tenant" as separate failure
-scenarios, so the two-outcome shape is what the authored document expects.
+**`DEC-L-033` amended `OD-SUB-0009`.** It previously ruled that expiry blocks login, and this section
+described the refusal at the authentication surface. **It now gates modules and never blocks login**:
+an expired tenant authenticates, reaches the platform plane, and is refused every gated route with the
+same `403 module-not-enabled` any unentitled module produces.
+
+**That is why the table above no longer has a third shape.** Expiry needed a special case only while
+it acted somewhere else; acting through the enablement gate, it is the first row.
+
+**A tenant-status refusal is still distinct and still at authentication** (`REQ-SUB-0019`,
+`OD-SUB-0010`). The two remain separate outcomes — one commercial and resolvable by the customer,
+the other administrative — and `OD-SUB-0010`'s orthogonality is untouched.
 
 Public authentication failures remain generic in the response body, per `FP-002`'s existing rule.
 The distinction is in the modelled outcome and the logs, not in what an unauthenticated caller is

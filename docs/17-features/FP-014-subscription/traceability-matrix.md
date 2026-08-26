@@ -55,7 +55,7 @@ so `BUILD BLOCKED` is the honest state of the package until it happens.
 | `REQ-SUB-0015` permissions of a disabled module | `BR-SUB-0009` | `AC-SUB-0024`, `AC-SUB-0025` | `TS-SUB-0030`, `TS-SUB-0031` | `OD-SUB-0012` |
 | `REQ-SUB-0016` data retained untouched | `BR-SUB-0010` | `AC-SUB-0026` | `TS-SUB-0037` | `OD-SUB-0012` |
 | `REQ-SUB-0017` a dated term | `BR-SUB-0001` | `AC-SUB-0027`, `AC-SUB-0028` | `TS-SUB-0001`, `TS-SUB-0008` | `OD-SUB-0009` |
-| `REQ-SUB-0018` expiry blocks login | `BR-SUB-0013` | `AC-SUB-0029`, `AC-SUB-0032` | `TS-SUB-0009`, `TS-SUB-0029` | `OD-SUB-0009` |
+| `REQ-SUB-0018` expiry gates modules, never login | `BR-SUB-0013` | `AC-SUB-0029`, `AC-SUB-0032` | `TS-SUB-0009`, `TS-SUB-0029` | `OD-SUB-0009` |
 | `REQ-SUB-0019` orthogonal to `TenantStatus` | `BR-SUB-0014` | `AC-SUB-0030`, `AC-SUB-0031` | `TS-SUB-0041`, `TS-SUB-0045` | `OD-SUB-0010` |
 | `REQ-SUB-0020` no trial concept | — | `AC-SUB-0033` | `TS-SUB-0046` | `OD-SUB-0014` |
 | `REQ-SUB-0021` tenant reads modules, not terms | `BR-SUB-0019` | `AC-SUB-0022`, `AC-SUB-0035` | `TS-SUB-0021`, `TS-SUB-0024` | `DEC-SUB-0002` |

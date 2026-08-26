@@ -139,11 +139,15 @@ authors intended a subscription to exist — nothing more. `Requirement-Numberin
 *Database Tables* section lists `TBL-PLT-Tenant` and `TBL-PLT-Company` and **does not list
 `TBL-PLT-Subscription`.**
 
-**`docs/02-Functional/Platform/Authentication.md`** states "Expired subscriptions cannot login" (`:123`)
-and lists "Expired Subscription" as a failure scenario (`:141`). **That document's status is `Draft`**
-(`:7`–`:9`). It describes a login refusal for a state the product cannot represent, and it is the
-sharpest illustration of the gap: an authored authentication rule with no data behind it. Whether it
-becomes binding is `OD-SUB-0009`, not an assumption this package may make.
+**`docs/02-Functional/Platform/Authentication.md`** stated "Expired subscriptions cannot login" and
+listed "Expired Subscription" as a failure scenario, in a document whose status is `Draft`. It
+described a login refusal for a state the product could not represent, and it was the sharpest
+illustration of the gap: an authored authentication rule with no data behind it.
+
+**Both halves are resolved.** T-012 replaced the restatement with a **pointer** to `REQ-SUB-0018`, so
+the rule lives in one place; and `DEC-L-033` (2026-08-26) then changed that rule — expiry gates
+modules and never blocks login. **The pointer needed no edit for the change**, which is the argument
+for pointing rather than restating, demonstrated rather than asserted.
 
 **`ADR-005`, § Platform Administration** lists "Subscription management" and "License management" among platform-administrator
 capabilities. It names them; it does not model them.

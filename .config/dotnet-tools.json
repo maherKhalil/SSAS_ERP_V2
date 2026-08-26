@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "why": [
+    "The SDK is pinned in global.json (8.0.423) and the EF Core packages in Directory.Packages.props are",
+    "8.0.0. Without this manifest 'dotnet ef' resolves to whatever is installed GLOBALLY on the machine —",
+    "10.0.2 where this was written, two majors ahead of the model it was reading. The tool is now resolved",
+    "by the repository, so every machine and CI agent runs the same one.",
+    "",
+    "PIN TO THE RUNTIME'S MAJOR VERSION. A patch bump inside 8 is routine maintenance; a major bump is the",
+    "defect this file exists to prevent, and it must follow an EF Core upgrade rather than lead one.",
+    "",
+    "WHAT THIS DOES NOT FIX, stated because the task that created this file was raised believing it would:",
+    "scaffolding any migration in this repository emits six foreign-key operations against SubscriptionPlan's",
+    "owned collections — three DropForeignKey and three AddForeignKey, restoring Restrict in Up and setting",
+    "CASCADE in Down. That was diagnosed as tool-version skew and IT IS NOT. Pinning the tool was",
+    "demonstrated to produce a byte-identical diff. The cause is that PersistenceDbContext.OnModelCreating",
+    "sets DeleteBehavior.Restrict on every foreign key including ownership FKs, and the migrations snapshot",
+    "format cannot serialise a delete behaviour for an owned relationship — so rehydration implies Cascade",
+    "and the differ is correct. It is unrelated to this manifest and still open: see T-047.",
+    "",
+    "'why' is not part of the tool-manifest schema; the reader ignores unknown properties, and JSON comments",
+    "are rejected outright. Verified by running 'dotnet tool restore' against both forms."
+  ],
+  "tools": {
+    "dotnet-ef": {
+      "version": "8.0.0",
+      "commands": [
+        "dotnet-ef"
+      ],
+      "rollForward": false
+    }
+  }
+}

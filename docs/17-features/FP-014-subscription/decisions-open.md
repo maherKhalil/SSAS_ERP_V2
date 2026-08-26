@@ -1,16 +1,37 @@
 # FP-014 — Decisions
 
+> ## ALL SEVENTEEN `OD-SUB` ARE RULED. NOTHING HERE BLOCKS THE BUILD.
+>
+> **Ratified 2026-08-25 and 2026-08-26.** Every `OD-SUB` below carries a **`RULED:`** line under its
+> heading stating the answer, and **[`decisions-ratified.md`](decisions-ratified.md) is the authority
+> for all of them** — a marker states what was decided; it does not restate why.
+>
+> **The questions, the options and the analysis are kept deliberately.** A ruling whose rejected
+> alternatives have been erased reads as the only thing anyone considered, and the reasoning below is
+> why each answer is the one it is. Read the marker for the decision and the section for its cost.
+>
+> *Amended 2026-08-26 by T-045.* The paragraphs beneath this note described a register in which
+> nothing had been decided. That was true when they were written and had been false since
+> ratification; `trace-check` check 8 measured it — sixteen decisions ruled in one file and still
+> presented as open in this one — and it is the defect this note closes. **The convention is
+> FP-013's**, which has carried it since its own ratification.
+
 Two registers. **`DEC-SUB-####`** are settled — by inheritance from an in-force document, or by
 mechanical proof against the code — and are recorded so nobody re-derives them.
-**`OD-SUB-####`** are **OWNER-DECISION-REQUIRED** and each one blocks the build prompt.
+**`OD-SUB-####`** were **OWNER-DECISION-REQUIRED**, and each one blocked the build prompt **until it
+was ruled**. All seventeen now are.
 
-**Nothing in the `OD` register has a default.** Where this package holds an opinion it says so and
-says why, but **an opinion is not a ruling**, and the build prompt must not be written until every
-`OD-SUB` carries one. Where this package has no opinion worth offering, it says that too rather than
-manufacturing one to fill the space.
+**Nothing in the `OD` register had a default, and that is why the rulings were needed rather than
+assumed.** Where this package held an opinion it says so and says why, but **an opinion is not a
+ruling** — the build prompt could not be written until every `OD-SUB` carried one, and the markers
+below are where each of them arrived. Where this package had no opinion worth offering, it says that
+too rather than manufacturing one to fill the space.
 
-**`OD-SUB-0001` is decided first.** Sixteen of the seventeen open decisions are conditional on it,
-and [`requirements.md`](requirements.md) is written in conditional voice for that reason.
+**`OD-SUB-0001` was decided first**, and sixteen of the seventeen were conditional on it. That is why
+[`requirements.md`](requirements.md) is written in conditional voice — and **four rows there still
+carry it**: `REQ-SUB-0025`, `REQ-SUB-0026`, `REQ-SUB-0027` and `REQ-SUB-0028` remain marked
+*CONDITIONAL ON* decisions that are ruled, with authority **UNAUTHORED**. That file is outside this
+task's scope and the rows are reported rather than amended here.
 
 ---
 
@@ -193,6 +214,8 @@ word Workflow and FP-013 refused to read it as a requirement. Same discipline, l
 
 ### `OD-SUB-0001` — **SCOPE: enablement, the commercial record, or the whole plane?** ← decide this first
 
+**RULED: E + C — THE WHOLE PLANE.** Enablement and the commercial record together. All 28 `REQ-SUB` in force; no `OD-SUB` collapses.
+
 **Everything else is conditional on this answer.**
 
 | | **E — enablement only** | **C — commercial only** | **E + C — the whole plane** |
@@ -230,6 +253,8 @@ commercial need is real, E-then-C means touching the same tenant record twice.
 ---
 
 ### `OD-SUB-0002` — **the identifier space: a new `REQ-SUB`, or an extension of `REQ-PLT`?** *(all scopes)*
+
+**RULED: A NEW `REQ-SUB` PREFIX**, added to `Requirement-Numbering.md` at ratification — the `REQ-ATT` precedent from FP-013.
 
 `Requirement-Numbering.md` lists **ten** functional prefixes — PLT, HR, GL, INV, CRM, PRJ, PAY, ATT,
 PRC, MFG — and **`SUB` is not among them**. `REQ-SUB-####` is used throughout this package as a working
@@ -293,6 +318,8 @@ precedent, where `REQ-ATT` was created by the ratification and not by the analys
 
 ### `OD-SUB-0003` — **does the enablement gate ship before the next module?** *(scope E, E+C)*
 
+**RULED: YES — the enablement gate ships before the next module.** The `BR-PLT-0008` violation grows monotonically and the retrofit is never cheaper later.
+
 | Option | Consequence |
 |---|---|
 | **Gate first** | The next module is the first ever built behind the gate. Seventeen existing route groups are retrofitted once, against a known inventory. Delays whatever the next module is. |
@@ -305,6 +332,8 @@ current one: a mandatory constraint that is documented, unimplemented, and unack
 ---
 
 ### `OD-SUB-0004` — **where does the per-tenant assignment live, and is entitlement projected?** *(all scopes)*
+
+**RULED: ASSIGNMENT LIVES IN THE PLATFORM DATABASE**, resolved per request behind a cache invalidated on subscription change — never a TTL refresh.
 
 `DEC-SUB-0003` settles the plan **catalog**: Platform database. What `ADR-017` does not say is where
 the **assignment** — this tenant, this plan, from this date, with these overrides — lives, nor whether
@@ -324,6 +353,8 @@ silently.**
 
 ### `OD-SUB-0005` — **what, exactly, is a "module"?** *(scope E, E+C)*
 
+**RULED: THE UNIT CARRYING ONE `IPermissionCatalogContributor` AND ONE `Add*Module()`** — HR, Finance/GL, Payroll, Attendance. Not the route group, not the assembly.
+
 `BR-PLT-0008` says "modules" without defining the word, and `Glossary.md` has no entry for it.
 `REQ-SUB-0007`, `REQ-SUB-0011` and `REQ-SUB-0015` all depend on the answer.
 
@@ -341,6 +372,8 @@ an architectural one — and each candidate is defensible on its own terms.
 
 ### `OD-SUB-0006` — **what does a request to a disabled module receive?** *(scope E, E+C)*
 
+**RULED: 403 FORBIDDEN.** The route exists; this tenant may not reach it. The enumeration cost was accepted knowingly, in exchange for support being able to answer from the response.
+
 `BR-PLT-0008` says a disabled module "shall not **appear** in … APIs". *Appear* is a disclosure word,
 and it admits two readings.
 
@@ -357,6 +390,8 @@ Whatever is ruled, it must apply **uniformly** (`REQ-SUB-0012`) and must reach
 
 ### `OD-SUB-0007` — **what does "shall not appear in menus" bind to?** *(scope E, E+C)*
 
+**RULED: `REQ-SUB-0014`'s SERVER-PROVIDED ENABLED-MODULE SET, and nothing client-side.** The product publishes the set truthfully; rendering is the client's.
+
 **This repository contains no UI.** There is no menu, no navigation model and no client. The clause
 is half-unenforceable in the codebase it governs, and pretending otherwise would produce an
 untestable requirement.
@@ -370,6 +405,8 @@ untestable requirement.
 ---
 
 ### `OD-SUB-0008` — **one subscription, or a history?** *(all scopes)*
+
+**RULED: APPEND-ONLY HISTORY, exactly one in force at a time.** A plan change appends; nothing is edited, so a past entitlement is a query rather than an audit-trail reading exercise.
 
 `REQ-SUB-0001` says one is in force at a time. Whether superseded subscriptions are retained is
 separate.
@@ -385,6 +422,8 @@ record that must be correctable before it is final and immutable after is **two 
 ---
 
 ### `OD-SUB-0009` — **does a term exist, and is `Authentication.md`'s expiry rule made binding?** *(all scopes)*
+
+**RULED: A TERM EXISTS**, with a start and an end or an explicit perpetual marker. **AMENDED 2026-08-26 by `DEC-L-033`: expiry GATES MODULES and never blocks login.**
 
 `Authentication.md:123` — "Expired subscriptions cannot login" — is in a `Draft` document, describes a
 state the product cannot represent, and is carried as `REQ-SUB-0018` **conditional on this ruling**.
@@ -402,6 +441,8 @@ a separate task, since that file is outside this package.
 
 ### `OD-SUB-0010` — **how does subscription state relate to `TenantStatus`?** *(all scopes)*
 
+**RULED: ORTHOGONAL** — independent dimensions. Expiry never touches `TenantStatus`, and no commercial reason joins `TenantStatusChangeReason`. **Mechanism corrected by `DEC-L-033`:** status at authentication, commercial state at the enablement gate.
+
 `TenantStatus` is `Provisioning`/`Active`/`Suspended`/`Archived`, and none of the
 `TenantStatusChangeReason` values is commercial. `FP-002` already enforces "live FP-003 status …
 permits only Active" on every tenant-scoped business request, so a second live check would be a
@@ -416,6 +457,8 @@ second dimension on the same path.
 
 ### `OD-SUB-0011` — **may a single tenant be granted more or less than its plan?** *(scope E, E+C)*
 
+**RULED: ADDITIVE GRANTS ONLY.** A tenant may be granted a module or a raised cap above its plan, never below. Entitlement resolves as plan ∪ grants.
+
 | Option | Consequence |
 |---|---|
 | **No overrides — plan is the sole authority** | Entitlement is a pure function of the plan; trivially auditable. Every bespoke arrangement needs a bespoke plan, and plan proliferation is the usual result. |
@@ -424,6 +467,8 @@ second dimension on the same path.
 ---
 
 ### `OD-SUB-0012` — **what happens to data and permissions when a module is disabled?** *(scope E, E+C)*
+
+**RULED: DATA RETAINED UNTOUCHED, PERMISSIONS INEFFECTIVE.** A disabled module's permissions are neither grantable nor effective, and nothing is deleted on a commercial event.
 
 `REQ-SUB-0016` states the data survives. The reachable consequences still need ruling.
 
@@ -440,6 +485,8 @@ whose enablement states can disagree.
 
 ### `OD-SUB-0013` — **who administers a subscription?** *(all scopes)*
 
+**RULED: PLATFORM PLANE ONLY.** No tenant-plane actor may administer a subscription, whatever permissions it holds. Recorded rather than re-decided.
+
 `DEC-SUB-0010` settles that it is the platform plane. Within that:
 
 | Option | Consequence |
@@ -450,12 +497,13 @@ whose enablement states can disagree.
 
 ---
 
-### `OD-SUB-0014` — **does a trial exist?** *(all scopes)* — **RULED**
+### `OD-SUB-0014` — **does a trial exist?** *(all scopes)*
 
-> **RULED 2026-08-26 by `DEC-L-034`: a trial is an ordinary plan with a short term.** The second option
-> below was taken. A tenant without a subscription gets an **all-module plan with a 14-day term** —
-> seeded by migration for the existing estate and issued on tenant creation thereafter. The ruling and
-> its reasoning are in
+**RULED: NO TRIAL CONCEPT** — a trial is a plan with a short term, not a state and not a flag. **USED, not overturned, by `DEC-L-034` (2026-08-26):** an all-module plan on a 14-day term, so `REQ-SUB-0020` does **not** fall away.
+
+> **The second option below was taken.** A tenant without a subscription gets an all-module plan with
+> a 14-day term — seeded by migration for the existing estate and issued on tenant creation
+> thereafter. The ruling and its reasoning are in
 > [`decisions-ratified.md`](decisions-ratified.md#the-trial-is-a-plan-with-a-term-and-that-is-od-sub-0014-being-used-dec-l-034);
 > `REQ-SUB-0020`, `AC-SUB-0033` and `AC-SUB-0052`–`AC-SUB-0054` carry it, and it is built by T-041.
 >
@@ -478,6 +526,8 @@ survey now describes the moment the question was asked rather than the present.
 
 ### `OD-SUB-0015` — **pricing, currency and proration** *(scope C, E+C)*
 
+**RULED: MULTI-CURRENCY, PRORATED.** A plan carries a price per supported currency; a mid-term change is adjusted for the unused portion. Money is `ADR-027` `decimal(19,4)`, inherited rather than re-decided.
+
 **No authored document names a price, a currency, a billing period or a tax position.** Every part of
 this is unruled, and this package proposes nothing.
 
@@ -492,6 +542,8 @@ this is unruled, and this package proposes nothing.
 
 ### `OD-SUB-0016` — **invoicing authority and payment capture** *(scope C, E+C)*
 
+**RULED: THE PRODUCT ISSUES INVOICES AND CAPTURES PAYMENT ITSELF.** Both in-product — and `ADR-029` rules the mechanism rather than the commitment: capture is tokenized and no cardholder datum enters SSAS.
+
 | Option | Consequence |
 |---|---|
 | **Neither — the vendor invoices outside the product** | Nothing to build; the subscription record is entitlement plus a term. `CON-0001` is satisfied in substance without the product handling money. |
@@ -501,6 +553,8 @@ this is unruled, and this package proposes nothing.
 ---
 
 ### `OD-SUB-0017` — **is anything metered?** *(scope C, E+C)*
+
+**RULED: SEATS PLUS LIMITS.** Seats are metered for billing; the plan additionally sets hard caps. `DEC-L-009` ruled the residue — a cap is enforced at admission, never at login.
 
 | Option | Consequence |
 |---|---|

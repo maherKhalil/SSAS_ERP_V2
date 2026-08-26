@@ -71,7 +71,7 @@ Run through `scripts/gate.sh`, which holds the memory preconditions and the cata
 | `TS-SUB-0035` | After a second record is appended, the first is re-read and compared **field by field** with what was written | `AC-SUB-0001` |
 | `TS-SUB-0036` | With the tenant ERP database unreachable, the subscription surface answers and a gated ERP route returns `TenantDatabaseUnavailable`. **The failure this catches is an entitlement read that touches the tenant database** — which would take the tenant's whole API down rather than one page | `AC-SUB-0009` |
 | `TS-SUB-0037` | Row counts in a module's tables taken before entitlement is removed and after; identical. Every record is then read back after entitlement is restored | `AC-SUB-0026` |
-| `TS-SUB-0038` | After the migration runs against an empty database, `TenantSubscriptions` and `SubscriptionPlans` are **both empty**. **A seeded default plan would pass every other test in this package and silently entitle the estate** | `AC-SUB-0046` |
+| `TS-SUB-0038` | After **`AddSubscriptionCommercialPlane` specifically** — the chain migrated to that migration and stopped there — `TenantSubscriptions` and `SubscriptionPlans` are **both empty**. **A seeded default plan would pass every other test in this package and silently entitle the estate.** *(Amended 2026-08-26 by `DEC-L-041`. It formerly migrated the whole chain and observed the end state, which asserted the claim only while no successor wrote anything; `AddTrialSubscriptionSeed` deliberately does. Pinning it to one migration makes the claim true however many follow — see `TS-SUB-0057`, its other half.)* | `AC-SUB-0046` |
 | `TS-SUB-0039` | Every monetary column in the package's tables reports precision 19 scale 4 from the schema, and a value with four decimal places round-trips unchanged. **Read from the schema, not from a sample row** | `AC-SUB-0037` |
 | `TS-SUB-0040` | The plan tables carry no `TenantId` column, asserted from the schema | `AC-SUB-0006` |
 | `TS-SUB-0041` | The `Tenant` row is read before and after the expiry boundary is crossed and its `RowVersion` is **unchanged** — nothing wrote to it | `AC-SUB-0030` |
@@ -98,7 +98,26 @@ the tenant-user surface; one is domain.
 | `TS-SUB-0049` | **`API.Tests`.** A tenant standing **at** its cap and a tenant standing **over** it: every existing user authenticates normally in both. Asserted additionally by the entitlement resolver recording no seat lookup on the authentication path — **the cap must not merely permit the login, it must not be consulted** | `AC-SUB-0050` |
 | `TS-SUB-0050` | **`Platform.Tests`.** A tenant with more users than its new plan allows after a downgrade: no user is deactivated, no user is flagged, the excess is reported as a billable quantity, and the count of active users is unchanged before and after the plan change | `AC-SUB-0051` |
 
-Fifty scenarios, `TS-SUB-0001` through `TS-SUB-0050`, contiguous.
+## The trial — `DEC-L-034`
+
+Ruled 2026-08-26 and built by T-041. `TS-SUB-0046` already asserts the **absence** the trial must never
+grow into; these assert what it **is**.
+
+**Every scenario here corresponds to a test that already exists.** They were written after the code, which
+is the inverse of this file's usual direction and is the defect they close: the behaviour was covered and
+the register did not know it.
+
+| ID | Scenario | AC |
+|---|---|---|
+| `TS-SUB-0051` | **`Integration.Tests`.** After the seed migration, a tenant that existed beforehand holds the **trial plan** on a **`Fixed` term of exactly fourteen days**, and its `EffectiveFromUtc` equals the term start — **the instant the seed ran, not the tenant's creation date.** The last assertion is the one that matters: a seed that dated the record from the tenant's creation would be **fabricating a commercial agreement for a period nobody agreed to one** | `AC-SUB-0052` |
+| `TS-SUB-0052` | **`Integration.Tests`.** An **archived** tenant is seeded exactly like an active one, with its `TenantStatus` asserted unchanged. **The failure this catches lands a year later** — on the tenant that is reactivated and found to be the only one in the estate holding nothing | `AC-SUB-0052` |
+| `TS-SUB-0053` | **`Platform.Tests`.** Creating a tenant issues the trial for **that tenant id**, with the plan, the fourteen days, the billing currency and the reason code asserted field by field, and **exactly one commit** covering both. Two commits would mean a window in which the tenant exists entitled to nothing, and a failure inside it leaves the tenant there permanently | `AC-SUB-0053` |
+| `TS-SUB-0054` | **`Integration.Tests`.** Two concurrent creations racing for one normalized code: the winner holds **exactly one** subscription naming the trial plan, and the loser leaves **none**. A trial issued outside the tenant's transaction would strand the loser's record with no tenant to belong to | `AC-SUB-0053` |
+| `TS-SUB-0055` | **`Integration.Tests`.** The **same statement the migration ships** is executed twice against real SQL over three tenants: one subscription each, and **every `EffectiveFromUtc` unchanged**. The second assertion is the load-bearing one — a duplicate need not change the count to do damage, because the record in force is the one with the greatest `EffectiveFromUtc` | `AC-SUB-0054` |
+| `TS-SUB-0056` | **`Platform.Tests`.** Issuance run twice for one tenant **with the clock advanced between the runs**, asserting one record. **The clock is what makes this a real test:** frozen, the second append is refused by the monotonic-append rule — the right outcome for a reason that has nothing to do with double-issuing, and it would have looked green forever. Its sibling asserts the expensive case: a tenant already on a **purchased** plan is untouched, because a trial appended afterwards would silently become the plan they are on | `AC-SUB-0054` |
+| `TS-SUB-0057` | **`Integration.Tests`.** The other half of `TS-SUB-0038`: after the **full** chain, the trial plan exists with its four module grants and the predecessor's `THROW` did not fire. **The pair is the ordering** — one migration creates the plane empty and proves it, the next fills it — and it asserts that the `THROW` constrains its own migration's effect rather than standing over the tables | `AC-SUB-0046` |
+
+Fifty-seven scenarios, `TS-SUB-0001` through `TS-SUB-0057`, contiguous.
 
 ---
 
@@ -119,10 +138,24 @@ Writing a capture scenario would imply this package specified capture, and it di
 
 ## What `AC-SUB-0047` needs, and why no scenario carries it
 
-`AC-SUB-0047` is a **release condition**: the enablement gate must not be active in the release that
-introduces the migration, because every existing tenant is unentitled the moment it runs.
+`AC-SUB-0047` is a **release condition**: no release may leave a tenant reachable by a gated route with
+no subscription record, so **the gate and the trial seed ship in the same release**.
 
-**No automated suite can observe a release boundary.** A test asserting "the gate is off" would pass
-trivially before the gate is built and fail permanently after it is switched on — it would assert the
-opposite of the intent. The criterion is verified by whoever schedules the release, and the matrix
-marks it as a declared gap rather than pretending a scenario covers it.
+*Amended 2026-08-26.* This section formerly said the condition was that *the enablement gate must not be
+active in the release that introduces the migration*. **That ordering was inverted by the work actually
+done** — T-040 switched the gate on and T-041 seeded afterwards — and the paragraph is corrected rather
+than dated because it describes a standing obligation on future releases, not a record of a past change
+(`DEC-L-039`).
+
+**No automated suite can observe a release boundary, and that has not changed.** A test asserting "the
+gate is off" would pass trivially before the gate is built and fail permanently after it is switched on —
+it would assert the opposite of the intent. **The same is true of the amended form**: "these two things
+ship together" is a fact about a deployment, and a suite runs inside one build with no view of what was
+released beside it. The criterion is verified by whoever schedules the release, and the matrix marks it as
+a declared gap rather than pretending a scenario covers it.
+
+**What T-041 added is coverage of the OUTCOME, not of the condition.** `TS-SUB-0051` through
+`TS-SUB-0056` assert that once the migrations have run, no tenant is left without a record — which is what
+the release condition exists to guarantee, verified one layer below where it is scheduled. **The gap is
+narrower than it was and it is not closed**, and saying which half is covered is worth more than moving
+the row out of the gap list.

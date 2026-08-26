@@ -278,8 +278,13 @@ a closed set, and an **opaque provider reference**.
   `OD-SUB-0016` with **no requirement covering them today** — `REQ-SUB-0025` and `REQ-SUB-0026` are
   one line each. Modelling them here would invent scope. Named as absences so the gap is visible at
   acceptance rather than discovered at build.
-- **No trial.** `OD-SUB-0014` ruled a trial is a plan with a short term — not a state, not a flag.
-  `REQ-SUB-0020` falls away, and there is deliberately nothing in this model to represent it.
+- **No trial *concept*, and a trial that is nevertheless real.** `OD-SUB-0014` ruled a trial is a plan
+  with a short term — not a state, not a flag — and `DEC-L-034` (2026-08-26) **used** that ruling: a
+  tenant without a subscription holds an all-module plan on a 14-day term. **So there is still nothing
+  in this model representing a trial, and that is now a stronger statement than it was**: the trial is
+  an ordinary `SubscriptionPlan` and an ordinary `SubscriptionTerm`, and every mechanism already here
+  handles it unchanged. *(Amended 2026-08-26 — this bullet said `REQ-SUB-0020` "falls away". It does
+  not: it is unconditional and carries `AC-SUB-0033` plus `AC-SUB-0052`–`AC-SUB-0054`.)*
 - **No commercial state on `Tenant`.** `OD-SUB-0010` ruled the two dimensions orthogonal. `Tenant`
   gains no field, and `TenantStatusChangeReason` gains no member — see
   [`lifecycle-model.md`](lifecycle-model.md).

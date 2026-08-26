@@ -450,15 +450,28 @@ whose enablement states can disagree.
 
 ---
 
-### `OD-SUB-0014` — **does a trial exist?** *(all scopes)*
+### `OD-SUB-0014` — **does a trial exist?** *(all scopes)* — **RULED**
 
-The word appears nowhere in any authored document; the only "trial" in the repository is GL's trial
-balance.
+> **RULED 2026-08-26 by `DEC-L-034`: a trial is an ordinary plan with a short term.** The second option
+> below was taken. A tenant without a subscription gets an **all-module plan with a 14-day term** —
+> seeded by migration for the existing estate and issued on tenant creation thereafter. The ruling and
+> its reasoning are in
+> [`decisions-ratified.md`](decisions-ratified.md#the-trial-is-a-plan-with-a-term-and-that-is-od-sub-0014-being-used-dec-l-034);
+> `REQ-SUB-0020`, `AC-SUB-0033` and `AC-SUB-0052`–`AC-SUB-0054` carry it, and it is built by T-041.
+>
+> **This entry is kept rather than deleted, and its survey is dated rather than corrected**
+> (`DEC-L-039`). The options below are why the answer is what it is; deleting them would leave the
+> ruling with no visible alternatives, and a ruling whose rejected options have been erased reads as
+> the only thing anyone considered.
+
+**Surveyed 2026-08-25, and true on that date:** the word appears nowhere in any authored document; the
+only "trial" in the repository is GL's trial balance. **`DEC-L-034` authored it on 2026-08-26**, so that
+survey now describes the moment the question was asked rather than the present.
 
 | Option | Consequence |
 |---|---|
 | **No trial** | Nothing to build. If sales later need one, it is a change to whatever `OD-SUB-0008` and `OD-SUB-0009` produce. |
-| **A trial is an ordinary plan with a term** | No new concept — it falls out of `OD-SUB-0009`'s term plus a plan. Cannot express "trial" as a distinguishable state for reporting. |
+| **A trial is an ordinary plan with a term** — **RULED** | No new concept — it falls out of `OD-SUB-0009`'s term plus a plan. Cannot express "trial" as a distinguishable state for reporting. **That cost was accepted knowingly:** the alternative adds a second way to be entitled beside the one entitlement resolution already answers, and reporting can derive a trial from the plan a record names. |
 | **A trial is a subscription state** | Reportable and can drive conversion behaviour. Adds a state machine to a record that may otherwise not need one. |
 
 ---

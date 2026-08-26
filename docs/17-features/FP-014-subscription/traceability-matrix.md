@@ -19,17 +19,21 @@ reports resolvable citations as unresolved. That is a fault in the invocation, n
 |---|---|---|---|
 | `REQ-SUB` | **28** | 0001 to 0028, contiguous | none |
 | `BR-SUB` | **21** | 0001 to 0021, contiguous | none |
-| `AC-SUB` | **51** | 0001 to 0051, contiguous | none |
-| `TS-SUB` | **50** | 0001 to 0050, contiguous | none |
+| `AC-SUB` | **54** | 0001 to 0054, contiguous | none |
+| `TS-SUB` | **57** | 0001 to 0057, contiguous | none |
 | `DEC-SUB` | **12** | 0001 to 0012, contiguous | none |
 | `OD-SUB` | **17** | 0001 to 0017, contiguous | none |
 
 "Orphan" means an identifier cited somewhere in the package that is not defined in its home file.
 
-**`OD-SUB` reports 17 defined and 17 unruled, and that is correct.** The rulings exist — they are in
-the architect's note of 2026-08-25 and this whole slice is written from them — but
-`decisions-ratified.md` is not this task's to write. Ratification is a separate act with the owner,
-so `BUILD BLOCKED` is the honest state of the package until it happens.
+**`OD-SUB` reports 17 defined and 0 unruled: the package is ratified and the build may proceed.**
+
+*Amended 2026-08-26.* This paragraph read *"17 defined and **17 unruled**, and that is correct … so
+`BUILD BLOCKED` is the honest state of the package until it happens"*, and it was correct when written:
+the rulings existed in the architect's note of 2026-08-25 and `decisions-ratified.md` had not yet been
+written. **It has been.** Every `OD-SUB` now carries a ruling recorded there, `trace-check` reports
+`0 unruled`, and the sentence is corrected rather than dated because an inventory describes the package
+as it stands, not the moment it was surveyed (`DEC-L-039`).
 
 ---
 
@@ -43,12 +47,12 @@ so `BUILD BLOCKED` is the honest state of the package until it happens.
 | `REQ-SUB-0004` no tenant-plane amendment | `BR-SUB-0004` | `AC-SUB-0007`, `AC-SUB-0008`, `AC-SUB-0045` | `TS-SUB-0023`, `TS-SUB-0042`, `TS-SUB-0043` | `OD-SUB-0013` |
 | `REQ-SUB-0005` survives a tenant-database outage | `BR-SUB-0008` | `AC-SUB-0009` | `TS-SUB-0036` | `DEC-SUB-0004` |
 | `REQ-SUB-0006` attributable and dated | — | `AC-SUB-0010` | `TS-SUB-0032` | `DEC-SUB-0007` |
-| `REQ-SUB-0007` answers enabled per module | `BR-SUB-0015` | `AC-SUB-0011`, `AC-SUB-0012`, `AC-SUB-0046` | `TS-SUB-0004`, `TS-SUB-0007`, `TS-SUB-0038` | `OD-SUB-0005` |
+| `REQ-SUB-0007` answers enabled per module | `BR-SUB-0015` | `AC-SUB-0011`, `AC-SUB-0012`, `AC-SUB-0046` | `TS-SUB-0004`, `TS-SUB-0007`, `TS-SUB-0038`, `TS-SUB-0057` | `OD-SUB-0005` |
 | `REQ-SUB-0008` resolved server-side, never in the token | `BR-SUB-0011` | `AC-SUB-0013` | `TS-SUB-0026` | `DEC-SUB-0005` |
 | `REQ-SUB-0009` takes effect without re-issuing a token | `BR-SUB-0012` | `AC-SUB-0014`, `AC-SUB-0015` | `TS-SUB-0027`, `TS-SUB-0028` | `OD-SUB-0004` |
 | `REQ-SUB-0010` additive grants only | `BR-SUB-0005` | `AC-SUB-0016`, `AC-SUB-0017` | `TS-SUB-0005`, `TS-SUB-0006` | `OD-SUB-0011` |
 | `REQ-SUB-0011` unentitled route refused | `BR-SUB-0007` | `AC-SUB-0018` | `TS-SUB-0018` | `OD-SUB-0006` |
-| `REQ-SUB-0011` release condition — gate held back from the migration's release | — | `AC-SUB-0047` | — | `OD-SUB-0003` |
+| `REQ-SUB-0011` release condition — the gate and the trial seed ship together | — | `AC-SUB-0047` | — | `OD-SUB-0003` |
 | `REQ-SUB-0012` one mechanism, every module | `BR-SUB-0007` | `AC-SUB-0019`, `AC-SUB-0020` | `TS-SUB-0019`, `TS-SUB-0044` | `DEC-SUB-0006` |
 | `REQ-SUB-0013` platform plane never gated | `BR-SUB-0008` | `AC-SUB-0021` | `TS-SUB-0020` | `DEC-SUB-0010` |
 | `REQ-SUB-0014` the enabled-module set | `BR-SUB-0019` | `AC-SUB-0022`, `AC-SUB-0023` | `TS-SUB-0021`, `TS-SUB-0022` | `OD-SUB-0007` |
@@ -57,7 +61,7 @@ so `BUILD BLOCKED` is the honest state of the package until it happens.
 | `REQ-SUB-0017` a dated term | `BR-SUB-0001` | `AC-SUB-0027`, `AC-SUB-0028` | `TS-SUB-0001`, `TS-SUB-0008` | `OD-SUB-0009` |
 | `REQ-SUB-0018` expiry gates modules, never login | `BR-SUB-0013` | `AC-SUB-0029`, `AC-SUB-0032` | `TS-SUB-0009`, `TS-SUB-0029` | `OD-SUB-0009` |
 | `REQ-SUB-0019` orthogonal to `TenantStatus` | `BR-SUB-0014` | `AC-SUB-0030`, `AC-SUB-0031` | `TS-SUB-0041`, `TS-SUB-0045` | `OD-SUB-0010` |
-| `REQ-SUB-0020` no trial concept | — | `AC-SUB-0033` | `TS-SUB-0046` | `OD-SUB-0014` |
+| `REQ-SUB-0020` the trial is a plan with a short term | — | `AC-SUB-0033`, `AC-SUB-0052`, `AC-SUB-0053`, `AC-SUB-0054` | `TS-SUB-0046`, `TS-SUB-0051`, `TS-SUB-0052`, `TS-SUB-0053`, `TS-SUB-0054`, `TS-SUB-0055`, `TS-SUB-0056` | `OD-SUB-0014` |
 | `REQ-SUB-0021` tenant reads modules, not terms | `BR-SUB-0019` | `AC-SUB-0022`, `AC-SUB-0035` | `TS-SUB-0021`, `TS-SUB-0024` | `DEC-SUB-0002` |
 | `REQ-SUB-0022` platform reads across tenants | — | `AC-SUB-0034` | `TS-SUB-0025` | `DEC-SUB-0010` |
 | `REQ-SUB-0023` price per currency | — | `AC-SUB-0036` | `TS-SUB-0015` | `OD-SUB-0015` |
@@ -84,7 +88,7 @@ evaporates as prose.
 |---|---|---|---|
 | `PlatformDbContext` has no `PreventAppendOnlyMutation`; `OD-SUB-0008` rests on a guard that exists only on `TenantDbContext` | `AC-SUB-0044` | `TS-SUB-0033` | T-006, reading `TenantDbContext.cs:484` against `PlatformDbContext.cs:107` |
 | The `Platform.` prefix does not distinguish the two authorization planes, so the no-tenant-plane-amendment requirement needs a guard rather than careful reading | `AC-SUB-0045` | `TS-SUB-0043` | T-007, writing the permission set |
-| No backfill and no default plan, and the gate held out of the migration's release | `AC-SUB-0046`, `AC-SUB-0047` | `TS-SUB-0038` | T-006, reading the migration path |
+| No backfill and no default plan, and no release in which the gate is active with the estate unseeded | `AC-SUB-0046`, `AC-SUB-0047` | `TS-SUB-0038`, `TS-SUB-0057` | T-006, reading the migration path |
 
 **`TS-SUB-0033` fails today**, and that is the point: it is the executable form of the first
 obligation, and it stays red until `PlatformDbContext` gains the guard. No FP-014 entity may carry
@@ -121,14 +125,28 @@ have**, and would read to a future implementer as though capture had been specif
 
 ### `AC-SUB-0047` — a release condition no suite can observe
 
-The enablement gate must not be active in the release that introduces the migration, because
-`AC-SUB-0046` requires the migration to seed nothing and every existing tenant is therefore
-unentitled the moment it runs.
+No release may leave a tenant reachable by a gated route with no subscription record. `AC-SUB-0046`
+requires the migration to seed nothing, so every existing tenant is unentitled the moment it runs, and
+`AC-SUB-0052`–`AC-SUB-0054` are what puts a record in front of them. **The gate and the trial seed
+therefore ship in the same release.**
 
-**No automated suite can assert a release boundary.** A test asserting "the gate is off" passes
-trivially before the gate exists and fails permanently once it is switched on — it would assert the
-opposite of the intent. The criterion is real and is verified by whoever schedules the release; the
-tests cell is a declared gap rather than a scenario pretending to cover it.
+*Amended 2026-08-26.* This section formerly stated the condition as *the enablement gate must not be
+active in the release that introduces the migration*. **The work inverted that ordering** — T-040
+switched the gate on and T-041 seeded afterwards — and the condition's substance is unaffected, because
+a seed migration runs at deploy time and therefore before any request reaches a gated route. What is
+**not** satisfied by either ordering is shipping the two apart: T-040 alone locks every tenant out of
+every module, and T-041 alone writes commercial records nothing reads.
+
+**No automated suite can assert a release boundary, in either form.** A test asserting "the gate is off"
+passes trivially before the gate exists and fails permanently once it is switched on; a test asserting
+"these two shipped together" is a claim about a deployment, and a suite runs inside one build with no
+view of what was released beside it. The criterion is real and is verified by whoever schedules the
+release; the tests cell is a declared gap rather than a scenario pretending to cover it.
+
+**The gap is narrower than it was and it is not closed.** `TS-SUB-0051`–`TS-SUB-0056` assert the
+**outcome** — that once the migrations have run no tenant is left without a record — which is what the
+condition exists to guarantee, verified one layer below where it is scheduled. Naming which half is
+covered is worth more than moving the row out of the gap list.
 
 ---
 
@@ -136,13 +154,13 @@ tests cell is a declared gap rather than a scenario pretending to cover it.
 
 - **Every one of the 28 requirements appears in the chain.** Twenty-seven carry criteria; one —
   `REQ-SUB-0026` — is a declared gap owned by `T-010`.
-- **Every one of the 51 criteria appears in the chain.** Fifty reach a test scenario; one —
+- **Every one of the 54 criteria appears in the chain.** Fifty-three reach a test scenario; one —
   `AC-SUB-0047` — is a declared gap because no suite can observe a release boundary.
   `trace-check` reports it as *"1 criterion carried by prose with no owning requirement"*. **It does
   have an owning requirement** — `REQ-SUB-0011`, second row — and the wording is the script
   describing the section it found the criterion discussed in. The substance is right and is the
   substance that matters: `AC-SUB-0047` is the one criterion no scenario covers.
-- **Every one of the 50 scenarios is reached from a criterion.** None is orphaned, and none exists
+- **Every one of the 57 scenarios is reached from a criterion.** None is orphaned, and none exists
   only to make a count look complete.
 - **No en-dash ranges.** Every identifier in every cell is written out. An abbreviated span reads as
   several identifiers to a human and as one to a string search, and ten identifiers hid behind such

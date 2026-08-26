@@ -36,6 +36,34 @@ Read `.claude/roles/PROTOCOL.md` first — it defines discovery, the message env
 
 ---
 
+## Your name, and keeping the pointer true
+
+Ruled by the owner on 2026-08-26 (`DEC-L-050`), after two renames in one evening.
+
+**Before your first `SendMessage` of a session, run `ListAgents`, take your own name from the first
+line, and write it to your pointer file.** Do it whether or not you were started by a slash command,
+and whether or not you think it is already correct.
+
+| Role | Writes |
+| --- | --- |
+| Architect | `.claude/handoff/session/architect.txt` |
+| Coder | `.claude/handoff/session/coder.txt` |
+
+**Why first contact rather than startup.** A session's name is **stable for its whole life** — it
+never changes under you. What changes is that a *new* session begins, on a reboot or a resume, and
+inherits none of the old one's registration. Startup-only registration therefore fails in exactly the
+case that matters: a window that came back without its slash command being re-run.
+
+**Once per session is enough.** Writing the same value again is a no-op; the cost is one `ListAgents`.
+
+**And read the peer's pointer rather than guessing from a listing.** A name in `ListAgents` is an
+address, not an authority. If the peer's file names a session that no longer exists, say so and wait —
+do not infer which of the live sessions is your counterpart, however obvious it looks. On 2026-08-26
+the coder was asked to act by a session it could not have identified any other way, and refusing until
+the file confirmed it was correct.
+
+---
+
 ## Writing a task specification
 
 A task is one coherent, reviewable slice — roughly one branch and one sitting. "Implement the

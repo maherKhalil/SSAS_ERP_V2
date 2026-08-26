@@ -13,8 +13,9 @@ window being closed, compacted, or restarted.
 
 ## 1. Discovery — how the windows find each other
 
-`ListAgents` tells a session its own name and lists its peers. On startup each role writes its
-own name to a pointer file, then reads the other's:
+`ListAgents` tells a session its own name and lists its peers. **Before its first `SendMessage` of a
+session** — not only at slash-command startup — each role writes its own name to a pointer file, then
+reads the other's:
 
 | Role      | Writes                                  | Reads                                    |
 | --------- | --------------------------------------- | ---------------------------------------- |

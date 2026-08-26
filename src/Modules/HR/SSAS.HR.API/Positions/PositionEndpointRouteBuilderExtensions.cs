@@ -12,6 +12,7 @@ using SSAS.HR.Application.Permissions;
 using SSAS.HR.Application.Positions;
 using SSAS.HR.Application.Positions.Reads;
 using SSAS.HR.Domain.Positions;
+using SSAS.BuildingBlocks.Api.Authorization;
 
 namespace SSAS.HR.API.Positions;
 
@@ -826,6 +827,12 @@ public static class PositionEndpointRouteBuilderExtensions
     IEndpointRouteBuilder endpoints, string prefix, string tag) =>
     endpoints.MapGroup(prefix)
       .WithTags(tag)
+      // ---- THE MODULE ENABLEMENT GATE, ON THE GROUP (FP-014, `OD-SUB-0003`).
+      //
+      // On the GROUP rather than each route, for the same reason the filters below are: a route
+      // added later cannot forget it. Entitlement does not differ per operation, so it belongs one
+      // level up from `RequirePermission`.
+      .RequireModule(HrModuleEnablement.Key)
       // ONE FILTER, EVERY ROUTE. On the group rather than each endpoint so a route added later cannot
       // forget it. Every position-family operation is company-owned, so establishing is never optional.
       .AddEndpointFilter<CompanyContextEndpointFilter>()

@@ -163,6 +163,16 @@ public sealed class PositionApiTestHost : IAsyncLifetime
       .AddHostProblemDetails();
 
     builder.Services.AddSingleton<ITenantAuthenticationEligibilityReadService>(new ActiveTenant());
+    // ---- A HOST THAT MOUNTS MODULE ROUTES MUST CONFIGURE ENABLEMENT (FP-014).
+    //
+    // Every module route group passes through `RequireModule`, and the filter resolves this contract as a
+    // REQUIRED service. Without this line every route below answers 500 -- which is the correct failure:
+    // a host that maps a gated surface and cannot say whether the tenant is entitled is misconfigured,
+    // and a filter that silently admitted the request instead would be a gate that does nothing.
+    //
+    // The transitional resolver grants everything, so this restores exactly the pre-gate behaviour these
+    // suites were written against and asserts nothing new about entitlement.
+    builder.Services.AddScoped<ITenantModuleEntitlement, TransitionalGrantsEveryModuleEntitlement>();
     builder.Services.AddSingleton<IDateTimeProvider>(new FixedClock());
     builder.Services.AddScoped<IRequestTenantEligibility, RequestTenantEligibility>();
 

@@ -208,8 +208,34 @@ public sealed class ProjectDependencyArchitectureTests
 
     Assert.Equal(
       [
+        // ---- FP-014. THE MODULE ENABLEMENT SEAM, AND THE CASE FOR IT BEING HERE.
+        //
+        // This guard exists to force exactly this conversation, so: the whole set names no module, no route,
+        // no permission and no business concept. `ITenantModuleEntitlement` takes a module KEY — a string
+        // the caller supplies, exactly as `RequirePermission` takes a permission name — and answers a
+        // question. It does not know which modules exist, how many there are, or what a tenant is.
+        //
+        // It is here for the same reason `PermissionPolicyNames` is, and it could not be anywhere else: this
+        // project references NOTHING, so a contract the convention resolves at request time has to be
+        // declared alongside the convention. Putting it in a module would make one module's vocabulary a
+        // dependency of every other module's transport — the failure this list exists to prevent.
+        //
+        // The DESCRIPTOR and the METADATA are exported deliberately, on the `MaxRequestBodySizeMetadata`
+        // precedent. The descriptor is how a module DECLARES its key so an architecture test can enumerate
+        // the four and refuse a fifth; the metadata is how a route publishes the key it was gated on, which
+        // is what lets the coverage guard read the mapped surface without issuing 110 requests.
+        //
+        // The TRANSITIONAL RESOLVER is the one entry here that is not permanent, and it says so in its name.
+        // It grants every module to every tenant because no subscription data exists yet; the commercial
+        // plane's schema task REPLACES it, and an architecture test asserts it is the only implementation so
+        // that replacement cannot quietly become an addition.
+        "SSAS.BuildingBlocks.Api.Authorization.IModuleEnablementDescriptor",
+        "SSAS.BuildingBlocks.Api.Authorization.ITenantModuleEntitlement",
+        "SSAS.BuildingBlocks.Api.Authorization.ModuleEnablementEndpointConventions",
+        "SSAS.BuildingBlocks.Api.Authorization.ModuleEnablementMetadata",
         // The canonical policy-name spelling, shared by the Host that reads it and the endpoints that emit it.
         "SSAS.BuildingBlocks.Api.Authorization.PermissionPolicyNames",
+        "SSAS.BuildingBlocks.Api.Authorization.TransitionalGrantsEveryModuleEntitlement",
         // A (status, code) pair, and the five generic transport failures every module hits.
         "SSAS.BuildingBlocks.Api.Transport.ApiError",
         "SSAS.BuildingBlocks.Api.Transport.ApiErrors",

@@ -14,6 +14,7 @@ using SSAS.Attendance.Infrastructure;
 using SSAS.Payroll.Infrastructure;
 using SSAS.Host.API.Authentication;
 using SSAS.Host.API.Authorization;
+using SSAS.BuildingBlocks.Api.Authorization;
 using SSAS.Host.API.Configuration;
 using SSAS.Host.API.Diagnostics;
 using SSAS.Host.API.Errors;
@@ -99,6 +100,26 @@ try
   // caller -- FP-006P's incident, where HR's constants existed, no catalog defined them, and no role could
   // hold one.
   builder.Services.AddSingleton<IPermissionCatalogContributor, AttendancePermissionCatalogContributor>();
+
+  // ---- MODULE ENABLEMENT: THE SEAM IS MOUNTED, THE DATA IS NOT YET THERE (FP-014, OD-SUB-0003).
+  //
+  // Every module route group passes through `RequireModule`, and an architecture guard asserts that no
+  // module group can be added without it. What the gate ASKS is this contract; what answers it today is
+  // deliberately a resolver that grants every module to every tenant.
+  //
+  // **This does not satisfy `BR-PLT-0008` and is not meant to.** There is no plan, no per-tenant
+  // assignment and no entitlement grant in this product yet; `OD-SUB-0004` places that data in the
+  // Platform database and the build obligation is no backfill and no default plan. Until it exists the
+  // only honest answer is "yes", and answering anything else would be inventing a commercial state.
+  //
+  // The commercial plane's schema task REPLACES this registration -- it does not add a second one beside
+  // it. An architecture test asserts exactly one implementation of the contract exists, so a second one
+  // fails the build rather than silently competing in the container.
+  //
+  // Scoped, not singleton: the real resolver reads per-request tenant state behind a cache invalidated on
+  // subscription change, and registering the transitional one at a longer lifetime now would make that
+  // replacement a lifetime change as well as a type change.
+  builder.Services.AddScoped<ITenantModuleEntitlement, TransitionalGrantsEveryModuleEntitlement>();
 
   var app = builder.Build();
 

@@ -50,6 +50,12 @@ public static class AttendanceEndpointRouteBuilderExtensions
 
     var group = endpoints.MapGroup(RoutePrefix)
       .WithTags("Attendance")
+      // ---- THE MODULE ENABLEMENT GATE, ON THE GROUP (FP-014, `OD-SUB-0003`).
+      //
+      // On the GROUP rather than each route, for the same reason the filters below are: a route
+      // added later cannot forget it. Entitlement does not differ per operation, so it belongs one
+      // level up from `RequirePermission`.
+      .RequireModule(AttendanceModuleEnablement.Key)
       .AddEndpointFilter<AttendanceCompanyContextEndpointFilter>()
       .AddEndpointFilter(async (context, next) =>
       {

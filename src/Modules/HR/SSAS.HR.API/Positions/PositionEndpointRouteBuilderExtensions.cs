@@ -65,6 +65,10 @@ public static class PositionEndpointRouteBuilderExtensions
   {
     ArgumentNullException.ThrowIfNull(endpoints);
 
+    // The gate's dependency, asserted HERE so a host that mounts these routes without it fails at
+    // startup rather than answering 500 per request (T-034).
+    endpoints.RequireModuleEnablementServices(HrModuleEnablement.Key);
+
     var group = Group(endpoints, PositionRoutePrefix, "HR Positions");
 
     group.MapPost("", CreatePositionAsync)
@@ -97,6 +101,10 @@ public static class PositionEndpointRouteBuilderExtensions
   public static IEndpointRouteBuilder MapHrJobGradeEndpoints(this IEndpointRouteBuilder endpoints)
   {
     ArgumentNullException.ThrowIfNull(endpoints);
+
+    // The gate's dependency, asserted HERE so a host that mounts these routes without it fails at
+    // startup rather than answering 500 per request (T-034).
+    endpoints.RequireModuleEnablementServices(HrModuleEnablement.Key);
 
     var group = Group(endpoints, JobGradeRoutePrefix, "HR Job Grades");
 
@@ -133,6 +141,10 @@ public static class PositionEndpointRouteBuilderExtensions
   public static IEndpointRouteBuilder MapHrSalaryGradeEndpoints(this IEndpointRouteBuilder endpoints)
   {
     ArgumentNullException.ThrowIfNull(endpoints);
+
+    // The gate's dependency, asserted HERE so a host that mounts these routes without it fails at
+    // startup rather than answering 500 per request (T-034).
+    endpoints.RequireModuleEnablementServices(HrModuleEnablement.Key);
 
     var group = Group(endpoints, SalaryGradeRoutePrefix, "HR Salary Grades");
 
@@ -172,6 +184,10 @@ public static class PositionEndpointRouteBuilderExtensions
   public static IEndpointRouteBuilder MapHrEmployeePositionEndpoints(this IEndpointRouteBuilder endpoints)
   {
     ArgumentNullException.ThrowIfNull(endpoints);
+
+    // The gate's dependency, asserted HERE so a host that mounts these routes without it fails at
+    // startup rather than answering 500 per request (T-034).
+    endpoints.RequireModuleEnablementServices(HrModuleEnablement.Key);
 
     var group = Group(endpoints, EmployeeRoutePrefix, "HR Employees");
 

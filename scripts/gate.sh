@@ -88,6 +88,86 @@ set -u
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
 #
+#  7u. AM I THE MERGED GATE? WARN, NAME THE DISTANCE, PROCEED. T-058.
+#
+#     THE TREE IS STALE BY DEFAULT, AND THE MERGE THAT MAKES IT STALE IS THE ONE THAT JUST SUCCEEDED.
+#     This happened THREE TIMES on 2026-08-27, in one shared tree, to both windows -- the third to the
+#     window that had just recorded the second as a High finding. Nothing makes a working tree notice
+#     that its integration branch moved, and `scripts/gate.sh` is one of the files that goes stale.
+#     **A gate that is not the merged gate presents identically to a normal green run.**
+#
+#     It is live elsewhere too: `SSAS_ERP_V2-chain-test` carries a `gate.sh` from 2026-08-25 with ZERO
+#     occurrences of `GATE_SCOPE`. That tree would run the pre-scope gate and report exactly what it
+#     has always reported.
+#
+#     ---- WHY THIS WARNS WHERE NOTE 7x REFUSES. The two are deliberately opposite.
+#
+#     **Fail-closed requires a signal you can trust, and this signal is self-admittedly stale.** The
+#     lock's evidence is authoritative -- `sys.dm_tran_locks` IS the truth -- and proceeding wrongly
+#     destroys a 69-minute run. Here the evidence is a remote-tracking ref that is only as good as the
+#     last fetch, and the failure is a WRONG GREEN rather than a destroyed run. A warning surfaces a
+#     wrong green. A refusal on a possibly-stale signal lets a stale ref block every run on the box --
+#     which is note 7x's own strand-the-instance failure, relocated.
+#
+#     ---- WHY IT DOES NOT FETCH. Measured on this box:
+#
+#       git fetch origin ClaudeBranch     1338 ms
+#       clean offline (DNS fails)          140 ms
+#       HALF-OPEN NETWORK               22 201 ms   <- thirty per cent of a 72-second gate
+#
+#     And a credential prompt would hang a gate forever with no output. `DEC-L-051` bought back 68
+#     minutes; spending 22 seconds per run policing it would be self-defeating. **Offline is a normal
+#     condition. A colliding gate is not.** The cost of not fetching is stated in the message itself --
+#     "as of your last fetch, <when>" -- rather than left for the reader to remember.
+#
+#     ---- ANCESTRY, NOT A HASH, AND THAT IS THE HALF THAT MAKES IT USABLE.
+#
+#     A hash comparison says "different" and conflates two states with opposite meanings: a tree that
+#     is BEHIND, and a tree that is DEVELOPING this file. Every task that has ever edited the gate
+#     looks like the second. **A check that cries wolf at the developer gets disabled long before it
+#     ever catches the stale tree.** So: is the last commit touching `scripts/gate.sh` on the
+#     integration ref an ancestor of HEAD? Three states, and the distance reported in commits.
+#
+#     NO SUPPRESSION FLAG. If it becomes noisy the fix is a sharper check, not a way to silence it.
+#
+#  7v. THE BUILD IS A CONDITION, NOT A PREAMBLE. T-058.
+#
+#     ---- A FAILING BUILD USED TO REPORT GREEN. Demonstrated 2026-08-27, not argued:
+#
+#       Build FAILED.  1 Error(s)   (a deliberate CS0029)
+#       Passed! 509 · 1032 · 326 · 724 · 46 · 56 · 59      <- the PREVIOUS build's assemblies
+#       [GATE GREEN -- TASK scope]    exit 0
+#
+#     `dotnet build`'s status was computed and discarded: `grep` ran next, so `$?` was grep's, and
+#     `GATE_FAILED=1` was set only inside the suite loop. The suites then ran `--no-build` against
+#     whatever was last built successfully. **`DEC-L-007` makes this exit code merge authority, so the
+#     gate was prepared to merge code that does not compile.** That is note 3's defect exactly, moved
+#     from the verdict to the build -- found the day after the same shape was found in the sampler.
+#
+#     A failed build now SKIPS THE SUITES for that configuration and sets the flag. Running them would
+#     produce a green that describes a build nobody performed.
+#
+#     ---- AND `--no-incremental` IS WHY THE WARNING BAR CAN BE ENFORCED AT ALL.
+#
+#     MSBuild skips up-to-date projects, so the compiler never re-runs and NEVER RE-EMITS THEIR
+#     WARNINGS. Measured:
+#
+#       plant one CS0219, build   ->  1 Warning(s)
+#       build again, no changes   ->  0 Warning(s)      <- the warning is still in the code
+#       --no-incremental          ->  1 Warning(s)      16 s against 3 s
+#
+#     So a warning check over an incremental build reports on what it happened to recompile rather
+#     than on the code, and **anyone who builds in an IDE first makes the gate's build a no-op.** That
+#     is a coincidence with a log line, in the same sense that omitting `-d` in note 7x was a
+#     coincidence with a login setting. Baseline when this landed: 0 warnings, Debug AND Release, so
+#     enforcement cost nothing to adopt.
+#
+#     `DEC-L-008` condition 1 -- "the build succeeds at zero warnings" -- is now the gate's condition
+#     rather than the coder's habit. Of the four merge conditions, 2 and 3 are suite runs and 4 is the
+#     count comparison; **1 was held entirely by the person the rule applies to, under a rule that
+#     merges on green without review.** It had never been violated, which is precisely what made it
+#     read as a property of the instrument.
+#
 #  7x. ONE GATE AT A TIME, ENFORCED ON THE INSTANCE. T-056.
 #
 #     `reap_to_zero` drops every SSAS[_]% catalog on the box, under EVERY scope. Until T-056 the only
@@ -639,6 +719,55 @@ esac
 # The label was written by the holder itself, in the acquiring batch. Nothing to write here.
 echo "########## instance lock: HELD by pid $GATE_WINPID ($ROOT)"
 
+# ---- AM I THE MERGED GATE? See note 7u in the header. T-058.
+#
+# WARNS AND PROCEEDS. IT NEVER REFUSES, AND THAT IS THE OPPOSITE OF THE LOCK ABOVE ON PURPOSE:
+# fail-closed requires a signal you can trust, and this signal is SELF-ADMITTEDLY STALE -- a
+# remote-tracking ref is only as good as the last fetch. Refusing on it would let a stale ref block
+# every run on the box, which is the strand-the-instance failure the lock exists to avoid, relocated.
+# The lock's evidence is authoritative (the DMV is the truth) and proceeding wrongly destroys a
+# 69-minute run; here the failure is a WRONG GREEN, and a warning surfaces a wrong green.
+#
+# IT DOES NOT FETCH. Measured: 1338 ms online, 140 ms to fail on clean DNS -- but 22 SECONDS on a
+# half-open network, which is thirty per cent of a 72-second gate, and a credential prompt would hang
+# a gate forever with no output at all. `DEC-L-051` bought back 68 minutes; spending 22 s per run
+# policing it would be self-defeating. Offline is a NORMAL condition. A colliding gate is not.
+#
+# ANCESTRY, NOT A HASH. A hash says "different" and conflates two states with opposite meanings: a
+# tree that is BEHIND, and a tree that is DEVELOPING this file -- which is what every task that has
+# ever edited the gate looks like. A check that cries wolf at the second gets disabled before it ever
+# catches the first.
+GATE_STALE_NOTE=""
+gate_check_staleness () {
+  local REF=${GATE_INTEGRATION_REF:-origin/ClaudeBranch} C BEHIND FETCH_FILE LAST_FETCH
+  command -v git >/dev/null 2>&1 || { GATE_STALE_NOTE="unchecked: no git on PATH"; return; }
+  git rev-parse --verify -q "$REF" >/dev/null 2>&1 || {
+    GATE_STALE_NOTE="unchecked: '$REF' does not resolve in this repository"; return; }
+  C=$(git rev-list -1 "$REF" -- scripts/gate.sh 2>/dev/null)
+  [ -n "$C" ] || { GATE_STALE_NOTE="unchecked: no history for scripts/gate.sh on $REF"; return; }
+
+  FETCH_FILE="$(git rev-parse --git-common-dir 2>/dev/null)/FETCH_HEAD"
+  if [ -f "$FETCH_FILE" ]; then LAST_FETCH=$(date -r "$FETCH_FILE" '+%Y-%m-%d %H:%M' 2>/dev/null); fi
+  LAST_FETCH=${LAST_FETCH:-never}
+
+  if git merge-base --is-ancestor "$C" HEAD 2>/dev/null; then
+    # Contains the merged commit. A local edit here is deliberate -- someone is working ON the gate.
+    if [ "$(git hash-object -- scripts/gate.sh 2>/dev/null)" \
+         != "$(git ls-tree HEAD -- scripts/gate.sh 2>/dev/null | awk '{print $3}')" ]; then
+      GATE_STALE_NOTE="MODIFIED locally (not stale) -- this tree contains $REF's gate and edits it"
+    fi
+    return
+  fi
+
+  BEHIND=$(git rev-list --count "$C" --not HEAD -- scripts/gate.sh 2>/dev/null)
+  GATE_STALE_NOTE="STALE -- ${BEHIND:-?} commit(s) behind $REF on scripts/gate.sh, as of your last fetch ($LAST_FETCH)"
+}
+
+gate_check_staleness
+if [ -n "$GATE_STALE_NOTE" ]; then
+  echo "########## !!! GATE SCRIPT: $GATE_STALE_NOTE"
+fi
+
 reap_to_zero () {
   local CFG="$1"
 
@@ -723,9 +852,50 @@ for CFG in $GATE_CONFIGS; do
   echo "########## $CFG ##########"
   reap_to_zero "$CFG"
 
+  # ---- THE BUILD IS A CONDITION, NOT A PREAMBLE. See note 7v. T-058.
+  #
+  # `--no-incremental` IS LOAD-BEARING AND IS NOT A PERFORMANCE CHOICE. MSBuild skips up-to-date
+  # projects, so the compiler never re-runs and NEVER RE-EMITS THEIR WARNINGS: a planted CS0219
+  # reported `1 Warning(s)` on the build that introduced it and `0 Warning(s)` on the very next build
+  # with nothing changed (measured, T-058). Anyone who builds in an IDE before running the gate makes
+  # the gate's build a no-op, and the gate then prints a clean bill over code that is not clean.
+  # Measured cost of honesty: 16 s against 3 s, on a 72-second TASK gate.
   echo "=== BUILD ($CFG) ==="
-  dotnet build SSAS.ERP.sln -c "$CFG" --nologo -v m > "$LOGS/build-$CFG.log" 2>&1
+  dotnet build SSAS.ERP.sln -c "$CFG" --nologo -v m --no-incremental > "$LOGS/build-$CFG.log" 2>&1
+  BUILD_STATUS=$?
   grep -E "Warning\(s\)|Error\(s\)|Build succeeded|Build FAILED|error" "$LOGS/build-$CFG.log" | head -20
+
+  # A FAILING BUILD MUST REACH THE VERDICT. Until T-058 this status was computed and discarded -- the
+  # `grep` above ran next, so `$?` was grep's, and `GATE_FAILED=1` was set only inside the suite loop.
+  # DEMONSTRATED 2026-08-27: a deliberate CS0029 produced `Build FAILED`, `1 Error(s)`, then 2752
+  # PASSING TESTS against the previous build's assemblies, and `[GATE GREEN]` with exit 0. `DEC-L-007`
+  # makes that exit code merge authority, so the gate was prepared to merge code that does not compile.
+  # This is note 3's defect exactly, moved from the verdict to the build.
+  if [ $BUILD_STATUS -ne 0 ]; then
+    echo "!!! BUILD FAILED ($CFG) -- dotnet build exited $BUILD_STATUS."
+    echo "!!! Suites SKIPPED for this configuration: --no-build would run the PREVIOUS build's"
+    echo "!!! assemblies and, if those were green, report green for code that does not compile."
+    GATE_FAILED=1
+    continue
+  fi
+
+  # ---- `DEC-L-008` CONDITION 1, ENFORCED RATHER THAN PRINTED. T-058.
+  #
+  # "The build succeeds at zero warnings; a warning you introduced is a failure." Nothing enforced it:
+  # `Directory.Build.props` sets TreatWarningsAsErrors false, and this script grepped the count and
+  # printed it. Of the four merge conditions, 2 and 3 are suite runs and 4 is the count comparison --
+  # condition 1 was held entirely by the coder choosing to honour it under a rule that merges on green
+  # without review. It had never been violated, which is what made it read as a property of the
+  # instrument rather than of a person.
+  #
+  # The suites still run: a warning does not invalidate a test result, and stopping here would trade
+  # one true report for another. It is RED, and the run still says everything it knows.
+  BUILD_WARNINGS=$(grep -m1 -oE '[0-9]+ Warning\(s\)' "$LOGS/build-$CFG.log" | awk '{print $1}')
+  if [ "${BUILD_WARNINGS:-0}" != "0" ]; then
+    echo "!!! WARNINGS ($CFG): $BUILD_WARNINGS -- DEC-L-008 condition 1 is zero. This gate is RED."
+    grep -E ": warning [A-Z]+[0-9]+" "$LOGS/build-$CFG.log" | sort -u | head -20
+    GATE_FAILED=1
+  fi
 
   for P in $GATE_SUITES; do
     case $P in
@@ -819,6 +989,12 @@ if [ $GATE_FAILED -ne 0 ]; then
   echo "[GATE RED -- $GATE_SCOPE scope: $SCOPE_NOTE]"
 else
   echo "[GATE GREEN -- $GATE_SCOPE scope: $SCOPE_NOTE]"
+fi
+# REPEATED AT THE VERDICT, NOT ONLY AT THE START. A warning printed at second 3 of a 4095-second run
+# is not a warning anyone reads; the verdict is the one line guaranteed to be looked at. That is the
+# argument that put the scope into `[GATE GREEN -- <scope>]`, and it applies here unchanged.
+if [ -n "$GATE_STALE_NOTE" ]; then
+  echo "[GATE SCRIPT: $GATE_STALE_NOTE]"
 fi
 echo "[GATE COMPLETE -- $GATE_SCOPE scope: $SCOPE_NOTE -- full logs and TRX in $LOGS]"
 

@@ -72,6 +72,13 @@ public sealed class TenantModelResidencyTests(HostWebApplicationFactory factory)
   [
     typeof(TenantUser),
     typeof(TenantUserRoleAssignment),
+
+    // ADR-030's identity-to-employee mapping (T-082). It declines `ITenantOwnedEntity`, so the proxy guard
+    // in `SubscriptionResidencyArchitectureTests` happens to cover it — but the property that keeps it out
+    // of the tenant database is THIS one, and it is the reason the type declines the interface at all: the
+    // interface's only effect would be to make the mapping travel if anything ever added it to the tenant
+    // model, which is exactly what `ADR-030` Decision 1 forbids.
+    typeof(UserEmployeeLink),
     typeof(Identity),
     typeof(Role),
     typeof(RolePermissionAssignment),
@@ -90,7 +97,7 @@ public sealed class TenantModelResidencyTests(HostWebApplicationFactory factory)
     // NOT VACUOUS. An empty list would make the loop below a check that cannot fail, and the counts are
     // stated so a plane emptied by a bad merge fails here rather than passing quietly.
     Assert.Equal(7, CommercialPlane.Length);
-    Assert.Equal(8, IdentityAndAccessPlane.Length);
+    Assert.Equal(9, IdentityAndAccessPlane.Length);
 
     var travelling = declared
       .Where(type => model.FindEntityType(type) is not null)

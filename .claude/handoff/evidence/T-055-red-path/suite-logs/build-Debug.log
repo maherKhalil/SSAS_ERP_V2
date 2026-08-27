@@ -1,0 +1,99 @@
+  Determining projects to restore...
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Api\SSAS.BuildingBlocks.Api.csproj (in 73 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Payroll\SSAS.Payroll.Domain\SSAS.Payroll.Domain.csproj (in 96 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.Contracts\SSAS.Platform.Contracts.csproj (in 73 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.Contracts\SSAS.GL.Contracts.csproj (in 73 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\SSAS.BuildingBlocks.SharedKernel.csproj (in 73 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.Application\SSAS.GL.Application.csproj (in 98 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Contracts\SSAS.BuildingBlocks.Contracts.csproj (in 73 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.Application\SSAS.Platform.Application.csproj (in 98 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.API\SSAS.Platform.API.csproj (in 98 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.API\SSAS.GL.API.csproj (in 98 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj (in 1 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.Contracts\SSAS.HR.Contracts.csproj (in 0.8 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.API\SSAS.Attendance.API.csproj (in 3 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Localization\SSAS.BuildingBlocks.Localization.csproj (in 1 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.Contracts\SSAS.Attendance.Contracts.csproj (in 1 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.Application\SSAS.Attendance.Application.csproj (in 3 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.Application\SSAS.HR.Application.csproj (in 3 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.Domain\SSAS.HR.Domain.csproj (in 1 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Tenancy\SSAS.BuildingBlocks.Tenancy.csproj (in 2 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Application\SSAS.BuildingBlocks.Application.csproj (in 2 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.Domain\SSAS.Platform.Domain.csproj (in 1 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.API\SSAS.HR.API.csproj (in 5 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tools\SSAS.Localization.CatalogTool\SSAS.Localization.CatalogTool.csproj (in 1.27 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Infrastructure\SSAS.BuildingBlocks.Infrastructure.csproj (in 1.3 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj (in 1.14 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.Infrastructure\SSAS.HR.Infrastructure.csproj (in 1.16 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Payroll\SSAS.Payroll.Infrastructure\SSAS.Payroll.Infrastructure.csproj (in 1.18 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.Domain\SSAS.GL.Domain.csproj (in 2 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.Domain\SSAS.Attendance.Domain.csproj (in 1 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj (in 5 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Payroll\SSAS.Payroll.Application\SSAS.Payroll.Application.csproj (in 3 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Payroll\SSAS.Payroll.API\SSAS.Payroll.API.csproj (in 3 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\TestSupport\SSAS.TestSupport.VerificationHost\SSAS.TestSupport.VerificationHost.csproj (in 1.25 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Host\SSAS.Host.API\SSAS.Host.API.csproj (in 1.41 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj (in 1.28 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tools\SSAS.Tenant.MigrationTool\SSAS.Tenant.MigrationTool.csproj (in 1.42 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\UI.Tests\SSAS.UI.Tests.csproj (in 1.59 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Performance.Tests\SSAS.Performance.Tests.csproj (in 1.62 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\HR.Tests\SSAS.HR.Tests.csproj (in 1.75 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Payroll.Tests\SSAS.Payroll.Tests.csproj (in 1.58 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Finance.Tests\SSAS.Finance.Tests.csproj (in 1.75 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Attendance.Tests\SSAS.Attendance.Tests.csproj (in 437 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Platform.Tests\SSAS.Platform.Tests.csproj (in 1.63 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\API.Tests\SSAS.API.Tests.csproj (in 1.62 sec).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Integration.Tests\SSAS.Integration.Tests.csproj (in 481 ms).
+  Restored C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Architecture.Tests\SSAS.Architecture.Tests.csproj (in 435 ms).
+  SSAS.GL.Contracts -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.Contracts\bin\Debug\net8.0\SSAS.GL.Contracts.dll
+  SSAS.Platform.Contracts -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.Contracts\bin\Debug\net8.0\SSAS.Platform.Contracts.dll
+  SSAS.HR.Contracts -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.Contracts\bin\Debug\net8.0\SSAS.HR.Contracts.dll
+  SSAS.BuildingBlocks.SharedKernel -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\bin\Debug\net8.0\SSAS.BuildingBlocks.SharedKernel.dll
+  SSAS.BuildingBlocks.Contracts -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Contracts\bin\Debug\net8.0\SSAS.BuildingBlocks.Contracts.dll
+  SSAS.Attendance.Contracts -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.Contracts\bin\Debug\net8.0\SSAS.Attendance.Contracts.dll
+  SSAS.BuildingBlocks.Api -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Api\bin\Debug\net8.0\SSAS.BuildingBlocks.Api.dll
+  SSAS.UI.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\UI.Tests\bin\Debug\net8.0\SSAS.UI.Tests.dll
+  SSAS.Performance.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Performance.Tests\bin\Debug\net8.0\SSAS.Performance.Tests.dll
+  SSAS.BuildingBlocks.Domain -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Domain\bin\Debug\net8.0\SSAS.BuildingBlocks.Domain.dll
+  SSAS.HR.Domain -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.Domain\bin\Debug\net8.0\SSAS.HR.Domain.dll
+  SSAS.Payroll.Domain -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Payroll\SSAS.Payroll.Domain\bin\Debug\net8.0\SSAS.Payroll.Domain.dll
+  SSAS.GL.Domain -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.Domain\bin\Debug\net8.0\SSAS.GL.Domain.dll
+  SSAS.Attendance.Domain -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.Domain\bin\Debug\net8.0\SSAS.Attendance.Domain.dll
+  SSAS.BuildingBlocks.Localization -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Localization\bin\Debug\net8.0\SSAS.BuildingBlocks.Localization.dll
+  SSAS.BuildingBlocks.Application -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Application\bin\Debug\net8.0\SSAS.BuildingBlocks.Application.dll
+  SSAS.BuildingBlocks.Infrastructure -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Infrastructure\bin\Debug\net8.0\SSAS.BuildingBlocks.Infrastructure.dll
+  SSAS.BuildingBlocks.Tenancy -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\BuildingBlocks\SSAS.BuildingBlocks.Tenancy\bin\Debug\net8.0\SSAS.BuildingBlocks.Tenancy.dll
+  SSAS.Platform.Domain -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.Domain\bin\Debug\net8.0\SSAS.Platform.Domain.dll
+  SSAS.GL.Application -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.Application\bin\Debug\net8.0\SSAS.GL.Application.dll
+  SSAS.Payroll.Application -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Payroll\SSAS.Payroll.Application\bin\Debug\net8.0\SSAS.Payroll.Application.dll
+  SSAS.GL.Infrastructure -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.Infrastructure\bin\Debug\net8.0\SSAS.GL.Infrastructure.dll
+  SSAS.Localization.CatalogTool -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tools\SSAS.Localization.CatalogTool\bin\Debug\net8.0\SSAS.Localization.CatalogTool.dll
+  SSAS.Attendance.Application -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.Application\bin\Debug\net8.0\SSAS.Attendance.Application.dll
+  SSAS.Payroll.API -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Payroll\SSAS.Payroll.API\bin\Debug\net8.0\SSAS.Payroll.API.dll
+  SSAS.HR.Application -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.Application\bin\Debug\net8.0\SSAS.HR.Application.dll
+  SSAS.GL.API -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Finance\SSAS.GL.API\bin\Debug\net8.0\SSAS.GL.API.dll
+  SSAS.Attendance.Infrastructure -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.Infrastructure\bin\Debug\net8.0\SSAS.Attendance.Infrastructure.dll
+  SSAS.Payroll.Infrastructure -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Payroll\SSAS.Payroll.Infrastructure\bin\Debug\net8.0\SSAS.Payroll.Infrastructure.dll
+  SSAS.Attendance.API -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\Attendance\SSAS.Attendance.API\bin\Debug\net8.0\SSAS.Attendance.API.dll
+  SSAS.Platform.Application -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.Application\bin\Debug\net8.0\SSAS.Platform.Application.dll
+  SSAS.HR.Infrastructure -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.Infrastructure\bin\Debug\net8.0\SSAS.HR.Infrastructure.dll
+  SSAS.HR.API -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Modules\HR\SSAS.HR.API\bin\Debug\net8.0\SSAS.HR.API.dll
+  SSAS.HR.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\HR.Tests\bin\Debug\net8.0\SSAS.HR.Tests.dll
+  SSAS.Payroll.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Payroll.Tests\bin\Debug\net8.0\SSAS.Payroll.Tests.dll
+  SSAS.Platform.API -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.API\bin\Debug\net8.0\SSAS.Platform.API.dll
+  SSAS.Finance.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Finance.Tests\bin\Debug\net8.0\SSAS.Finance.Tests.dll
+  SSAS.Attendance.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Attendance.Tests\bin\Debug\net8.0\SSAS.Attendance.Tests.dll
+  SSAS.Platform.Infrastructure -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Platform\SSAS.Platform.Infrastructure\bin\Debug\net8.0\SSAS.Platform.Infrastructure.dll
+  SSAS.TestSupport.VerificationHost -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\TestSupport\SSAS.TestSupport.VerificationHost\bin\Debug\net8.0\SSAS.TestSupport.VerificationHost.dll
+  SSAS.Tenant.MigrationTool -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tools\SSAS.Tenant.MigrationTool\bin\Debug\net8.0\SSAS.Tenant.MigrationTool.dll
+  SSAS.Platform.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Platform.Tests\bin\Debug\net8.0\SSAS.Platform.Tests.dll
+  SSAS.Host.API -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\src\Host\SSAS.Host.API\bin\Debug\net8.0\SSAS.Host.API.dll
+  SSAS.Architecture.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Architecture.Tests\bin\Debug\net8.0\SSAS.Architecture.Tests.dll
+  SSAS.API.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\API.Tests\bin\Debug\net8.0\SSAS.API.Tests.dll
+  SSAS.Integration.Tests -> C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Integration.Tests\bin\Debug\net8.0\SSAS.Integration.Tests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:19.97

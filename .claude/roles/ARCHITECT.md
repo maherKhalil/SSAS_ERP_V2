@@ -116,7 +116,7 @@ while the coder sat waiting on a sixty-five-minute instrument.
 Never accept on the coder's say-so. Independently:
 
 1. Read `.claude/handoff/results/T-###.md`.
-2. `git diff main...agent/T-###-<slug> --stat`, then read the diff of anything surprising.
+2. `git diff ClaudeBranch...agent/T-###-<slug> --stat`, then read the diff of anything surprising.
 3. Confirm every acceptance criterion is actually met by something in that diff.
 4. Check the blast radius: files changed outside *Files in scope*, new project references,
    anything that weakens an architecture guard in `tests/Architecture.Tests/`.

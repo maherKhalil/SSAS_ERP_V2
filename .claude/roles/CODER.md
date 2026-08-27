@@ -107,23 +107,18 @@ cannot connect, that is not a pass — report `PARTIAL` and say exactly which su
 
 ### Which gate, and when — `DEC-L-051`
 
-> **NOT YET IMPLEMENTED — `GATE_SCOPE` does not exist until T-055 lands.** Setting it today does
-> nothing: the shell ignores an unread variable and you get the full both-configuration run,
-> silently. **This section describes the rule, not the current behaviour.** If you are reading it
-> before T-055 is merged, run the gate as it is, and treat `T-055` as the task that makes this page
-> true. Delete this note when it lands.
-
 
 `scripts/gate.sh` calls itself **THE PHASE-EXIT GATE** on its own first line, and it means it: every
-suite, Debug *and* Release. Its measured cost is in its own header — **Integration Debug 32 m 21 s,
-Integration Release 32 m 35 s**. Roughly 65 of its ~75 minutes are those two legs.
+suite, Debug *and* Release. **Measured on this build, 2026-08-27: `TASK` 72 seconds, `PHASE` 4095
+seconds — a factor of fifty-seven.** Almost all of `PHASE` is its two Integration legs (32 m 48 s
+and 32 m 55 s); the seven other suites across both configurations are minutes.
 
 That instrument was being run per task, because it was the only way to get Integration with its
 memory preconditions and catalog reaping intact. **That is the defect, not the test suite.**
 
 | | What runs | When |
 |---|---|---|
-| **`GATE_SCOPE=TASK`** (default) | Build Debug at zero warnings; Architecture, Platform, HR, API, plus your module's suite. Integration **in one configuration**, and only if condition 3 applies. | Every task, before `DONE`. |
+| **`GATE_SCOPE=TASK`** (default) | Builds Debug; runs **all seven** non-Integration suites — Architecture, Platform, HR, API, Finance, Payroll, Attendance. **No selection by diff.** Integration only when you ask: `GATE_INTEGRATION=1`, and then in **one** configuration. | Every task, before `DONE`. **72 seconds**, measured. |
 | **`GATE_SCOPE=PHASE`** | Everything, both configurations. | Phase exit. **And before anything lands that touches a migration, the model snapshot, or the cutover inventory** — those are exactly where a Release-only or ordering-dependent failure hides, and they are the failures that are unrecoverable rather than merely red. |
 
 **Do not economise below `TASK`.** The tiering buys back the ~65 minutes that were being spent to
@@ -230,8 +225,13 @@ Tightened by the owner on 2026-08-25 (`DEC-L-008`) after the first three merges.
 3. **`Integration.Tests` ran and passed** if the task touched persistence, a migration, an EF
    configuration, or the Shared→Dedicated cutover inventory. Run it through
    `GATE_SCOPE=TASK scripts/gate.sh`, which holds the memory preconditions and the catalog reaping
-   — do not invoke that leg by hand. **`GATE_SCOPE=TASK` runs Integration in ONE configuration**
-   (`DEC-L-051`); the both-configuration run is a phase-exit instrument, not a per-task one.
+   — do not invoke that leg by hand. **Integration does NOT run under `TASK` unless you ask for
+   it:** `GATE_INTEGRATION=1 GATE_SCOPE=TASK scripts/gate.sh`, and it then runs in **one**
+   configuration (`DEC-L-051`). The script cannot evaluate condition 3 and you can, which is why it
+   is opt-in rather than inferred from the diff. Under `PHASE` Integration always runs and
+   `GATE_INTEGRATION` is reported as **ignored** rather than silently obeyed or silently dropped.
+   **Do not export `MSYS_NO_PATHCONV` in the shell you launch the gate from** (`DEC-L-056`) — it
+   kills the memory sampler and the gate still reports green.
 4. **The tests the task required exist in this diff and pass.** This is the one that is easy to miss
    and it is why the rule was tightened: *a suite that is green because nothing exercises your new
    code is not green.* If you added an aggregate, a handler, an endpoint or an invariant and the

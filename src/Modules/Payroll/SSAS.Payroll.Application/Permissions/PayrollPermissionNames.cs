@@ -65,9 +65,15 @@ public static class PayrollPermissionNames
   // Deliberately NOT folded into `ViewRuns`: a run's existence, status and totals are operational, but the
   // lines beneath them are an individual's pay.
   //
-  // **Self-service is NOT here, and its absence is deliberate.** `OD-PAY-0016` deferred it because it would
-  // depend on a mapping from the authenticated identity to an employee record, and this build does not
-  // assert such a mapping exists. Adding a `Payroll.Payslips.ViewOwn` on an unverified assumption is exactly
-  // the shape of the FP-011 near-miss.
+  // **Self-service is NOT here, and its absence is still deliberate — but the reason has changed (T-083).**
+  //
+  // `OD-PAY-0016` deferred it because it would depend on a mapping from the authenticated identity to an
+  // employee record, and this build did not assert such a mapping exists. **It does now:**
+  // `UserEmployeeLink` (`ADR-030`, T-082), asserted against a real database.
+  //
+  // **So the dependency is satisfied and the absence is now a SCOPE decision rather than a blocked one.**
+  // A `Payroll.Payslips.ViewOwn` would no longer rest on an unverified assumption — which is what made
+  // adding one *"exactly the shape of the FP-011 near-miss"* — but it is FP-015's to add, with the endpoint
+  // and the acceptance criteria that go with it. **Nothing here is waiting on an input any more.**
   public const string ViewPayslips = "Payroll.Payslips.View";
 }

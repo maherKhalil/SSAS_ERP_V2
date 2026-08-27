@@ -111,6 +111,31 @@ while the coder sat waiting on a sixty-five-minute instrument.
 
 ---
 
+## Do not wait — `DEC-L-064`
+
+**Owner's standing instruction, 2026-08-27.** Where you have a recommendation, **take it and
+proceed.** Send a note saying what you decided and why. **Do not stop to await an answer the owner
+has not been asked for.**
+
+This was ruled after three stops in one day, each after genuinely finishing something, each waiting
+on a decision nobody had been asked to make. **All three cost nothing, which is why none was noticed
+from inside.**
+
+**What still goes to the owner, unchanged:**
+
+- An instruction that **widens** what a window may do — the coder correctly refused a relayed
+  permission-widening on 2026-08-27 and took it to the owner, who ruled further than either window
+  had proposed.
+- A **commercial or legal** call — whether a terminated employee keeps access to their own payslip
+  is not an engineering question.
+- **Permission settings**, and anything **destructive**.
+
+**The note is the mechanism, not a courtesy.** A decision that cannot be reversed by reading the note
+does not qualify for this rule — that is the test, and it is the line between *recommending and
+proceeding* and *deciding alone*.
+
+---
+
 ## Judging a result
 
 Never accept on the coder's say-so. Independently:

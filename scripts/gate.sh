@@ -88,6 +88,62 @@ set -u
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
 #
+#  7t. CONDITION 4, PARTIALLY MECHANISED -- AND THE PARTIAL IS THE POINT. T-059.
+#
+#     `DEC-L-008` condition 4 was the last of the four held by nothing. The gate printed per-suite
+#     counts and compared them to NOTHING; there was no baseline anywhere in this file. It was the most
+#     dangerous of the four precisely BECAUSE the other three are now enforced -- someone who has
+#     watched the gate go red on a warning and on a failed build reasonably assumes the count line is
+#     checked too.
+#
+#     ---- WHAT IS CHECKED, AND WHAT CANNOT BE. DO NOT BLUR THESE.
+#
+#       CHECKED : did any suite total move, when non-comment lines under src/ changed?
+#       NOT     : do the tests the task required exist? do the tests that moved cover what was written?
+#
+#     **The gate cannot know what a task required.** Wording that implies it does would be worse than
+#     the silence this replaces, because it converts an honest convention into a false enforcement --
+#     and this repository has now recorded four instruments that reported on a domain narrower than
+#     their wording implied. Every line this prints is worded to claim only the first.
+#
+#     ---- MEASURE IT PER MERGED PR. PER COMMIT YOU WILL CONCLUDE IT IS UNSHIPPABLE.
+#
+#       per merged PR (200):  45 touched src/ -- 44 added a new [Fact]/[Theory], 1 did not
+#       per commit    (300): 126 touched src/ -- 19 added no test
+#
+#     The gate runs once per task, and a task is several commits: intermediate ones legitimately land
+#     code before their tests. **The granularity is the finding**, and the next person to evaluate this
+#     will reach for commits first.
+#
+#     And the ONE spurious fire in 200 merges was `#66 T-018`: nineteen added lines under src/, all of
+#     them a comment block, zero non-comment lines. **That is why the diff filters comments** -- with
+#     the filter that false positive disappears, and it is exactly the "a docs task, a rename" case.
+#
+#     ---- THE DIFF INCLUDES THE WORKING TREE, AND AN UNREADABLE ONE SAYS SO.
+#
+#     `git diff <merge-base> -- src/` with no second commit compares against the WORKING TREE, so
+#     uncommitted work counts. A merge-base-to-HEAD diff would see nothing before the first commit and
+#     skip the check IN SILENCE -- permissive, which is the `DEC-L-051` hole rather than a smaller
+#     version of it. Every path that cannot compare prints WHY it could not, rather than nothing.
+#
+#     ---- IT WARNS. IT NEVER FAILS THE GATE. AND THE REASON TRAVELS WITH THE LABEL.
+#
+#     Not because it is noisy -- it is not; zero spurious fires in 200 merges. **That number is
+#     evidence about this repository's past, not about the check**, and "it has never happened" is the
+#     same reasoning that made condition 1 look enforced when nothing enforced it.
+#
+#     The reason is the REMEDY ASYMMETRY. Conditions 0, 1 and 2 go red with an unambiguous fix: fix the
+#     warning, fix the build, fix the test. **This one's wrong-fire remedies are to write a test you do
+#     not believe in, or to route around the gate.** A red answerable by manufacturing a test produces
+#     exactly the tests that make a suite worthless, and a legitimate refactor covered by existing
+#     tests is CORRECT WORK the gate would be asking to fake something for. That reason will still be
+#     true when the 200-merge number is stale.
+#
+#     **A tier without its reason is a ranking; with it, it is a distinction.** Condition 4 is a
+#     different KIND of signal, not a less important one, and no assertion variable exists to argue
+#     with it -- the honest reason would be "I refactored and existing tests cover it", which is
+#     precisely what a warning already permits without teaching anyone the bar is negotiable.
+#
 #  7u. AM I THE MERGED GATE? WARN, NAME THE DISTANCE, PROCEED. T-058.
 #
 #     THE TREE IS STALE BY DEFAULT, AND THE MERGE THAT MAKES IT STALE IS THE ONE THAT JUST SUCCEEDED.
@@ -429,6 +485,19 @@ export MSBUILDDISABLENODEREUSE=1
 LOGS="${GATE_LOGS:-$ROOT/TestResults/gate}"
 mkdir -p "$LOGS"
 GATE_FAILED=0
+
+# ---- CONDITION 4's BASELINE. See note 7t. T-059.
+#
+# TRACKED, ON PURPOSE, AND THIS IS THE ONE TRACKED FILE THE GATE WRITES. Everything else it produces
+# goes to gitignored TestResults. A baseline a person maintains is a baseline nobody maintains, so the
+# instrument writes it and the coder commits it with the work -- which also puts the delta in the diff,
+# where review sees a count change as a reviewable line rather than as a number in a log.
+#
+# **It can be hand-edited, and the defence is visibility rather than prevention.** Anyone can change a
+# number in it; the change lands in the diff next to the code it excuses. That is the design, not a
+# hole in it.
+GATE_BASELINE_FILE="${GATE_BASELINE:-$ROOT/.claude/handoff/test-baseline.txt}"
+rm -f "$LOGS/counts.txt"
 
 reap_count () {
   sqlcmd -S localhost -E -C -h -1 -W -Q \
@@ -975,6 +1044,12 @@ for CFG in $GATE_CONFIGS; do
     grep -E "Passed!|Failed!|Test Run Aborted|host process crashed" "$LOGS/$P-$CFG.log" | head -6
     grep -E "\[FAIL\]|Error Message|Assert\." "$LOGS/$P-$CFG.log" | head -40
     grep -A 4 "The test running when the crash occurred" "$LOGS/$P-$CFG.log" | head -8
+
+    # `Total:` rather than `Passed:` -- a skipped test still EXISTS, and condition 4 asks whether the
+    # tests moved, not whether they ran. A suite the build failure skipped writes nothing here, which
+    # is why the comparison below reports what it compared rather than assuming it saw everything.
+    SUITE_TOTAL=$(grep -m1 -oE 'Total:[[:space:]]+[0-9]+' "$LOGS/$P-$CFG.log" 2>/dev/null | awk '{print $2}')
+    echo "$P|$CFG|${SUITE_TOTAL:-?}" >> "$LOGS/counts.txt"
   done
 
   echo "=== catalogs after $CFG: $(reap_count)"
@@ -985,17 +1060,125 @@ done
 # `[GATE GREEN]` alone was unambiguous while there was one gate. With two, a log that does not say what
 # it covered is read a week later as if it covered everything -- and the cheap scope is the one that
 # will be read that way, because it is the one that gets run.
+# ---- CONDITION 4, PARTIALLY MECHANISED AND SAYING SO. See note 7t in the header. T-059.
+#
+# WHAT IS COMPARED: the per-suite totals this run produced, against the baseline this gate wrote on
+# its last green run. WHAT IS NOT: whether the tests a task required exist, or whether the tests that
+# moved cover what was written. **The gate cannot know what a task required.** Everything printed here
+# is worded to claim only the first.
+GATE_C4_NOTE=""
+gate_condition_4 () {
+  local REF=${GATE_INTEGRATION_REF:-origin/ClaudeBranch} BASE CHANGED MOVED=0 COMPARED=0 KEY OLD NEW
+  [ -s "$LOGS/counts.txt" ] || { GATE_C4_NOTE="not compared: no suite totals were captured"; return; }
+  command -v git >/dev/null 2>&1 || { GATE_C4_NOTE="not compared: no git on PATH"; return; }
+  BASE=$(git merge-base HEAD "$REF" 2>/dev/null) || true
+  [ -n "$BASE" ] || { GATE_C4_NOTE="not compared: no merge-base with '$REF'"; return; }
+
+  # THE WORKING TREE IS INCLUDED, DELIBERATELY. `git diff <base> -- src/` with no second commit
+  # compares base to the WORKING TREE, so uncommitted work counts. A merge-base-to-HEAD diff would see
+  # nothing before the first commit and skip the check IN SILENCE -- permissive, which is the
+  # `DEC-L-051` hole rather than a smaller version of it.
+  #
+  # NON-COMMENT LINES ONLY, AND THAT IS WHAT MAKES THIS SHIPPABLE. Measured over 200 merges: 45
+  # touched src/, 44 added a new [Fact]/[Theory], and the ONE that did not was 19 added lines that
+  # were entirely a comment block. With this filter that false positive disappears.
+  CHANGED=$(git diff "$BASE" -- src/ 2>/dev/null \
+    | grep -E '^[+-]' | grep -vE '^[+-]{3}' \
+    | grep -vE '^[+-][[:space:]]*(//|\*|/\*|$)' | wc -l | tr -d '[:space:]')
+  CHANGED=${CHANGED:-0}
+
+  # UNTRACKED FILES ARE INVISIBLE TO `git diff`, AND A NEW SOURCE FILE IS THE COMMONEST NEW CODE.
+  # This was found by planting one: the check reported "no non-comment change under src/" over a new
+  # .cs file full of executable code. That is the permissive, silent-skip failure this check exists to
+  # avoid, inside the check itself -- and reading the code would not have found it, because the line
+  # that was wrong is the line that looks right.
+  local UNTRACKED
+  UNTRACKED=$(git ls-files --others --exclude-standard -- src/ 2>/dev/null \
+    | while IFS= read -r f; do
+        [ -f "$f" ] && grep -vE '^[[:space:]]*(//|\*|/\*|$)' "$f" 2>/dev/null
+      done | wc -l | tr -d '[:space:]')
+  CHANGED=$(( CHANGED + ${UNTRACKED:-0} ))
+
+  if [ ! -f "$GATE_BASELINE_FILE" ]; then
+    GATE_C4_NOTE="not compared: no baseline yet at ${GATE_BASELINE_FILE#$ROOT/} (it is written on the first green run)"
+    return
+  fi
+
+  while IFS='|' read -r P C N; do
+    [ -n "$P" ] || continue
+    KEY="$P|$C"
+    OLD=$(grep -m1 "^$KEY|" "$GATE_BASELINE_FILE" 2>/dev/null | cut -d'|' -f3)
+    [ -n "$OLD" ] || continue          # a suite with no baseline row cannot be compared, only recorded
+    COMPARED=$((COMPARED+1))
+    NEW="$N"
+    [ "$OLD" = "$NEW" ] || MOVED=$((MOVED+1))
+  done < "$LOGS/counts.txt"
+
+  if [ "$COMPARED" = "0" ]; then
+    GATE_C4_NOTE="not compared: no suite in this run has a baseline row yet"
+  elif [ "$CHANGED" = "0" ]; then
+    GATE_C4_NOTE="ok: no non-comment change under src/; $COMPARED suite total(s) checked"
+  elif [ "$MOVED" -gt 0 ]; then
+    GATE_C4_NOTE="ok: $MOVED of $COMPARED suite total(s) moved, with $CHANGED non-comment line(s) changed under src/"
+  else
+    GATE_C4_NOTE="ATTENTION: totals unchanged in all $COMPARED suite(s) while $CHANGED non-comment line(s) under src/ changed -- condition 4 is yours to judge"
+  fi
+}
+gate_condition_4
+echo "--- condition 4: $GATE_C4_NOTE"
+
 if [ $GATE_FAILED -ne 0 ]; then
   echo "[GATE RED -- $GATE_SCOPE scope: $SCOPE_NOTE]"
 else
   echo "[GATE GREEN -- $GATE_SCOPE scope: $SCOPE_NOTE]"
 fi
+# IT WARNS AND NEVER FAILS THE GATE, AND THE REASON TRAVELS WITH THE LABEL. See note 7t: the only
+# remedy for a wrong fire is to write a test you do not believe in, and a red answerable that way
+# manufactures exactly the tests that make a suite worthless. A tier without its reason is a ranking.
+case "$GATE_C4_NOTE" in
+  ATTENTION:*) echo "[CONDITION 4: $GATE_C4_NOTE]";;
+  "not compared:"*|not\ compared*) echo "[CONDITION 4: $GATE_C4_NOTE]";;
+esac
 # REPEATED AT THE VERDICT, NOT ONLY AT THE START. A warning printed at second 3 of a 4095-second run
 # is not a warning anyone reads; the verdict is the one line guaranteed to be looked at. That is the
 # argument that put the scope into `[GATE GREEN -- <scope>]`, and it applies here unchanged.
 if [ -n "$GATE_STALE_NOTE" ]; then
   echo "[GATE SCRIPT: $GATE_STALE_NOTE]"
 fi
+# ---- THE BASELINE IS WRITTEN BY THE INSTRUMENT, ONCE, HERE. See note 7t.
+#
+# ONCE, AFTER THE LAST CONFIGURATION, AFTER THE VERDICT IS COMPUTED -- not "after the suites". Under
+# PHASE that phrase is ambiguous: Debug's suites finish and then Release runs, and a write between
+# them dirties the tree MID-RUN while Release is reading it. That is `DEC-L-013` with the gate doing
+# it to itself.
+#
+# A RED RUN WRITES NOTHING, AND SAYS SO. A red run that silently leaves the baseline alone is
+# indistinguishable from one that updated it -- the same absence problem as the sampler, one layer
+# down. Nothing partial either: a half-written baseline is a wrong baseline that looks maintained.
+if [ $GATE_FAILED -ne 0 ]; then
+  echo "--- baseline: NOT updated (gate is red). ${GATE_BASELINE_FILE#$ROOT/} still holds the last green run's totals."
+elif [ ! -s "$LOGS/counts.txt" ]; then
+  echo "--- baseline: NOT updated -- no suite totals were captured this run."
+else
+  mkdir -p "$(dirname "$GATE_BASELINE_FILE")"
+  # Rows this run did not produce are CARRIED FORWARD, not dropped. A TASK run covers seven suites in
+  # Debug; dropping the rest would report Integration as having vanished on the next PHASE.
+  {
+    echo "# Written by scripts/gate.sh on a green run. Do not hand-edit -- see note 7t."
+    echo "# suite|configuration|total"
+    {
+      if [ -f "$GATE_BASELINE_FILE" ]; then
+        grep -v '^#' "$GATE_BASELINE_FILE" 2>/dev/null | while IFS='|' read -r P C N; do
+          [ -n "$P" ] || continue
+          grep -q "^$P|$C|" "$LOGS/counts.txt" || echo "$P|$C|$N"
+        done
+      fi
+      cat "$LOGS/counts.txt"
+    } | sort -u
+  } > "$GATE_BASELINE_FILE.tmp" && mv "$GATE_BASELINE_FILE.tmp" "$GATE_BASELINE_FILE"
+  echo "--- baseline: updated ${GATE_BASELINE_FILE#$ROOT/} from this green run ($(grep -vc '^#' "$GATE_BASELINE_FILE") row(s)). COMMIT IT WITH YOUR WORK."
+fi
+
 echo "[GATE COMPLETE -- $GATE_SCOPE scope: $SCOPE_NOTE -- full logs and TRX in $LOGS]"
 
 # ---- AND THE VERDICT REACHES `$?`. Do not remove this line. Paid for 2026-08-25.

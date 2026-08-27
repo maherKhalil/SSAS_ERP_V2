@@ -628,6 +628,11 @@ fi
 echo "########## GATE MODE: $GATE_MODE (floor ${MEMORY_FLOOR_MB} MB, ceiling: ${RUNSETTINGS_ARGS:-none})"
 echo "########## GATE SCOPE: $GATE_SCOPE -- $SCOPE_NOTE"
 echo "########## suites: $GATE_SUITES"
+# Derived from the SUITE LIST rather than from the scope name, so `GATE_INTEGRATION=1` under
+# TASK keeps the floor and a future scope inherits the right answer without another edit.
+GATE_INTEGRATION_IN_SCOPE=0
+case " $GATE_SUITES " in *" Integration "*) GATE_INTEGRATION_IN_SCOPE=1;; esac
+
 echo "########## configurations: $GATE_CONFIGS"
 
 # ---- THE CONCURRENCY GUARD. See note 7x in the header. T-056.
@@ -880,9 +885,35 @@ reap_to_zero () {
   FREE_MB=$(powershell.exe -NoProfile -Command     "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB,0)"     2>/dev/null | tr -d '[:space:]')
   FREE_MB=${FREE_MB:-0}
 
-  echo "--- free physical memory before $CFG: ${FREE_MB} MB (floor ${MEMORY_FLOOR_MB} MB)"
+  # ---- THE FLOOR APPLIES WHERE ITS EVIDENCE CAME FROM: RUNS THAT INCLUDE INTEGRATION.
+  #
+  # Owner instruction, 2026-08-27, and it corrects an over-application rather than relaxing a
+  # guard. **Every number that calibrated this floor is an Integration number:**
+  #
+  #   the deaths it exists to prevent   14 MB and 92 MB free   BOTH Integration legs
+  #   the four healthy measurements     551-1510 MB min_free   all Integration legs
+  #   peak testhost working set         564-641 MB             Integration
+  #   the sampler that produced them    runs ONLY for Integration -- see the suite loop
+  #
+  # **So no TASK run's memory has ever been measured, because the only instrument that
+  # measures it does not run for one.** The floor was calibrated on the heaviest leg and
+  # enforced on the lightest run -- a constraint whose domain was established on one thing
+  # and applied to another, which is the shape this file has removed six times elsewhere.
+  #
+  # A TASK run is seven unit suites in Debug, 72 seconds, no database fixtures, no Integration.
+  # It aborted at 1072 MB free on a box whose own browsers held 1.4 GB, and nothing about that
+  # run would have been at risk.
+  #
+  # **The free figure is still PRINTED for every leg.** Observation without assertion: the
+  # number stays visible so a future TASK death has a reading beside it, which is exactly what
+  # the 2026-08-24 Integration deaths did not have until the sampler existed.
+  if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ]; then
+    echo "--- free physical memory before $CFG: ${FREE_MB} MB (floor ${MEMORY_FLOOR_MB} MB, Integration in scope)"
+  else
+    echo "--- free physical memory before $CFG: ${FREE_MB} MB (no floor: Integration is not in scope)"
+  fi
 
-  if [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then
+  if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ] && [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then
     echo "!!! ABORT ($CFG): PRECONDITION FAILURE -- only ${FREE_MB} MB free, floor is ${MEMORY_FLOOR_MB} MB."
     echo "!!! This is NOT a suite failure. Quiet the box (editors, browsers) and run again."
     echo "!!! On 2026-08-24 both Integration legs died with no TRX at 14 MB and 92 MB free."

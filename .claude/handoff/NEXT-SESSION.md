@@ -72,8 +72,8 @@ rather than as a lookup. Rewrite your own line on resume - do not trust the one 
 
 | Role | Session name | Last written |
 |---|---|---|
-| Architect | `ssas-erp-v2-88` | 2026-08-26 23:05 |
-| Coder | `ssas-erp-v2-37` | 2026-08-26 23:05, by the architect - **coder to confirm or correct** |
+| Architect | `ssas-erp-v2-b4` | 2026-08-27, rewritten after a restart |
+| Coder | **UNKNOWN - no coder session running** | 2026-08-27. The name `ssas-erp-v2-37` recorded yesterday is **dead**; do not send to it. |
 
 The coder's line is second-hand: read from `ListAgents`, not written by the coder itself.
 It is recorded because an unverified pointer that can be checked beats no pointer at all -
@@ -84,3 +84,44 @@ but the coder owns that row, and should overwrite it on resume rather than assum
 Owner's instruction, both windows. Nothing is queued and nothing is running. `main` is at
 `92961bb`; T-050 is merged. The work that was *not* scheduled to tomorrow by either window's
 own initiative is listed under the open items above, in the order it was left.
+
+---
+
+# CURRENT ASSIGNMENT — read this first
+
+**Coder: your task is `T-055`.** Full specification in `.claude/handoff/tasks/T-055.md`. Read it
+there, not from this summary.
+
+**One-line version:** `scripts/gate.sh` calls itself `THE PHASE-EXIT GATE` and has been run per
+task. Its own header measures why that hurts — Integration Debug 32 m 21 s, Release 32 m 35 s,
+against a whole-run figure of 69 minutes. **The two Integration legs are 64 m 56 s of a 69-minute
+gate.** Add `GATE_SCOPE` so a per-task run does not buy a phase-exit answer.
+
+**It is a NON-GATED task by the letter of the rule** — nothing under `src/` or `tests/` is in
+scope, only `scripts/`. So: **push, and wait for `MERGE T-055`.** Do not self-merge. That is not
+ceremony; it is a change to the instrument that decides whether everything else may merge, and it
+is the one file where a plausible-looking edit has already twice produced a gate that reported
+success on a failing run.
+
+**Verify, do not assume, that a red suite still exits non-zero under both scopes.** T-016 found that
+hole in a script that looked correct, and `DEC-L-029` found the same defect class again hours later
+by the same person who had just diagnosed it.
+
+Before starting: rewrite your own row in the pointer table above (`DEC-L-050`). Yesterday's coder
+name is dead — the architect's changed too, within hours of being written down. **Do not trust a
+name you did not write this session.**
+
+## Rules issued 2026-08-26 that did not exist when you last worked
+
+- **`DEC-L-051`** — the gate is tiered. This task implements it. **`GATE_SCOPE` does not work yet**;
+  `CODER.md` carries a not-yet-implemented banner that you delete when this lands.
+- **`DEC-L-052`** — the architect sizes tasks to amortise the gate. Its half, not yours.
+- **`DEC-L-053`** — you may write code while a gate runs, in a **second worktree**
+  (`git worktree add ../SSAS_gate <branch>`), never in the tree under test. One gate at a time;
+  build sparingly during a run.
+
+## Queued behind T-055
+
+`T-051`→`T-054` are a written four-task partition for parallel module work (Assets and Sales), and
+`T-049` (a `settings.json` deny-list gap) is **the owner's to decide, not ours** — do not touch
+permission settings.

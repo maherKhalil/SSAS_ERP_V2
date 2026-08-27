@@ -64,6 +64,24 @@ attempt — **an ordinary answer the caller acts on, not a fault discovered in a
 the example. **The owner rejected it: an accountant who is paid is an employee.** The unmapped
 population is platform support and users created before their employee record exists.
 
+### ⚠ The MECHANISM in this requirement was wrong. The behaviour it asks for was not.
+
+**As drafted, `REQ-SS-0005` reads as though the absence is a null identity.** T-076 measured it:
+`CurrentAuthenticationSessionAccessor.cs:16-36` returns null only when there is **no tenant session at
+all** — unauthenticated, platform plane, or a background composition. **A tenant-authenticated caller
+always has a `TenantUserId`.**
+
+**So there are two refusals with two causes, and only the second is this package's:**
+
+| Cause | Answered where | Whose |
+|---|---|---|
+| no tenant session | never reaches a handler | the authentication layer's |
+| a tenant user with **no linked employee** | the handler, as an ordinary result | **FP-015's** |
+
+**The unmapped case is a lookup miss in `UserEmployeeLink`, not a null accessor.** The requirement's
+behaviour is unchanged and correct; only the mechanism behind it was wrong. **Corrected here rather
+than left for whoever implements it to discover** — see `api-contracts.md` §3.
+
 ## `REQ-SS-0008` — and the consequence stated plainly
 
 Under `DEC-L-033` an expired subscription **gates modules and does not block login.** A self-service

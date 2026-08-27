@@ -212,7 +212,8 @@ public sealed class SubmitLeaveRequestCommandHandler(
     ArgumentNullException.ThrowIfNull(command);
 
     // `Attendance.Leave.Manage`, not a self-service permission. Under `OD-ATT-0013` this route is an
-    // ADMINISTRATOR submitting on an employee's behalf, because no identity-to-employee mapping exists —
+    // ADMINISTRATOR submitting on an employee's behalf. The mapping exists (`UserEmployeeLink`, T-082) but
+    // no submission path reads it —
     // which is why `EmployeeId` is mandatory in the command rather than inferred from the caller.
     var authorized = await scope.AuthorizeAsync(
       AttendancePermissionNames.ManageLeave, command.CompanyId, cancellationToken);

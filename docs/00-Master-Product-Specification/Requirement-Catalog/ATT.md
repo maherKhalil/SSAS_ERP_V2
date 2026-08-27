@@ -22,7 +22,7 @@ Overtime is RECORDED with a tier label. Every rate stays in Payroll (OD-ATT-0008
 
 No hardware, biometric or geofenced device capture (OD-ATT-0016).
 
-No self-service. The identity-to-employee mapping does not exist and nothing here assumes one (OD-ATT-0013).
+No self-service. The identity-to-employee mapping now exists (`UserEmployeeLink`, ADR-030) but nothing here reads it, and no self-service permission or route exists (OD-ATT-0013).
 
 ---
 
@@ -134,7 +134,7 @@ Reading
 
 REQ-ATT-0023
 
-Defer self-service until an identity-to-employee mapping exists
+Defer self-service — the identity-to-employee mapping it waited on now exists (ADR-030); the permission and route do not
 
 REQ-ATT-0024
 

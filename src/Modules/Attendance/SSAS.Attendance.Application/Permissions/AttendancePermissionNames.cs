@@ -83,10 +83,15 @@ public static class AttendancePermissionNames
   // **There is no `ViewOwn` of any kind.** No `Attendance.Records.ViewOwn`, no
   // `Attendance.Leave.RequestOwn`.
   //
-  // `OD-ATT-0013` deferred self-service because it depends on a mapping from the authenticated identity to
-  // an employee record, and **this build does not assert such a mapping exists** — verified, not assumed:
-  // `Employee` carries no user or tenant-user identifier, and neither HR's domain nor its contracts expose
-  // one.
+  // `OD-ATT-0013` deferred self-service because it depended on a mapping from the authenticated identity to
+  // an employee record. **That mapping exists** — `UserEmployeeLink` (`ADR-030`, T-082).
+  //
+  // **So what keeps the absence true is no longer a missing input; it is that FP-015's permission and
+  // endpoint have not been built.** The absence is asserted rather than merely intended by
+  // `AC-ATT-0032`, enforced in
+  // `AttendanceArchitectureTests.No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved`
+  // — **which is the one thing that fails the day a `ViewOwn` is added here.** Cited rather than restated,
+  // because restating it in a third file is exactly how this sentence went stale in nine at once.
   //
   // `OD-PAY-0016` deferred payroll self-service for the same reason, and `PayrollPermissionNames` records
   // the refusal in these words:

@@ -12,10 +12,17 @@ namespace SSAS.Attendance.Domain.Leave;
 //
 // ---- WHO SUBMITS IT, AND WHY THAT IS NOT THE EMPLOYEE.
 //
-// `OD-ATT-0013` deferred self-service because **no identity-to-employee mapping exists** — verified, not
-// assumed: `Employee` carries no user identifier, and neither HR's domain nor its contracts expose one.
-// `OD-PAY-0016` deferred payroll self-service for exactly this reason and `PayrollPermissionNames` records
-// the refusal in code.
+// `OD-ATT-0013` deferred self-service because no identity-to-employee mapping existed. **It exists now** —
+// `UserEmployeeLink` (`ADR-030`, T-082) — so what defers self-service today is the absent PERMISSION and
+// ENDPOINT, not an absent input. `AC-ATT-0032`, enforced by `AttendanceArchitectureTests.No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved` is
+// what fails the day that changes.
+//
+// ---- AND A NOTE ON THE WORDS THAT USED TO BE HERE, MADE ONCE FOR THE WHOLE MODULE.
+//
+// Every one of these comments said *"verified, not assumed"*, and none of them verified anything: the word
+// described work a person did once by hand. **An existence claim is checkable by opening a file; a
+// NON-existence claim is not**, which is why the assurance was doing load-bearing work it could not do and
+// why nine files went stale together without one of them noticing (`DEC-L-072`, T-083).
 //
 // So `EmployeeId` is supplied by an administrator holding `Attendance.Leave.Manage`, and it is MANDATORY
 // rather than inferred. This is the third consecutive feature to meet the same missing input, and it is now
@@ -208,21 +215,28 @@ public sealed class LeaveRequest
   // manager the requester, or the chain exhausted at the top. `Attendance.Leave.ApproveAtRoot` is what
   // permits it, and `LeaveApprovalRouter` is what establishes that the ordinary path was genuinely absent.
   //
-  // **`ApproverEmployeeId` stays NULL here, and that is a statement rather than a gap.** The holder is
-  // authenticated as a USER, and no identity-to-employee mapping exists (`OD-ATT-0013`, verified). There is
-  // no employee to record, so nothing is recorded — as opposed to recording `Guid.Empty` and letting a
-  // reader mistake it for an employee.
+  // **`ApproverEmployeeId` stays NULL here, and that is a statement rather than a gap.** The decision is not
+  // attributed to an employee seat, so nothing is recorded there — as opposed to recording `Guid.Empty` and
+  // letting a reader mistake it for an employee.
   //
-  // ---- AND THE HONEST LIMITATION, STATED RATHER THAN PAPERED OVER.
+  // **It stays null even when the acting user IS resolvable (T-084).** Recording it would give the column
+  // two meanings — *the root path was used* and *the user could not be resolved* — and would silently
+  // reinterpret every row already written.
   //
-  // **The self-approval bar cannot be enforced on this path.** `Approve` compares an approver EMPLOYEE to
-  // the requester; here the actor is a user whose employee identity is unknowable. If the root-fallback
-  // holder happens to be the requesting employee, nothing here can tell.
+  // ---- THE LIMITATION THIS BLOCK USED TO RECORD IS CLOSED (BR-ATT-0007, T-084).
   //
-  // That is a real consequence of the missing mapping and not a design choice. It is bounded by making
-  // `ApproveAtRoot` a separate, strictly wider grant that an administrator gives deliberately, and it is
-  // recorded in `DecidedBy` plus the null approver so the path is auditable after the fact. **When the
-  // identity-to-employee mapping is built, this is the first thing that should be tightened.**
+  // It read: *"the self-approval bar cannot be enforced on this path... if the root-fallback holder happens
+  // to be the requesting employee, nothing here can tell"*, and it named the mapping as the unblocking
+  // condition — *"when the identity-to-employee mapping is built, this is the first thing that should be
+  // tightened."*
+  //
+  // **The mapping was built (`UserEmployeeLink`, `ADR-030`, T-082) and this was tightened.**
+  // `GuardNotSelfAtRoot` below applies the bar, the handler resolves the actor, and
+  // `LeaveApprovalHandlerTests` asserts the resolution happens — because this aggregate cannot tell an
+  // unresolvable user from a caller that never asked.
+  //
+  // **The wider grant is still the bounding control it always was**, and `DecidedBy` plus the null approver
+  // still make the path auditable. What has changed is that the bar no longer depends on either.
   public Result ApproveAtRoot(ActingEmployee acting, string? decidedBy, DateTimeOffset decidedUtc, string? note)
   {
     var guard = GuardDecision(decidedBy, note);

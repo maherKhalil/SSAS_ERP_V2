@@ -64,7 +64,7 @@ that reason.
 
 | ID | Requirement | Scope | Authority | Decisions |
 |---|---|---|---|---|
-| `REQ-ATT-0023` | An employee may read **their own** attendance and leave records. **BLOCKED — NOT IMPLEMENTABLE TODAY:** it needs a mapping from the authenticated identity to an employee record, and **no such mapping exists** (verified; `Employee` carries no user identifier). `OD-PAY-0016` deferred payroll self-service for exactly this reason. **This is `DEC-PAY-0002`'s shape — a missing input, not a scoping preference** | `*` | **UNAUTHORED** | `OD-ATT-0013` |
+| `REQ-ATT-0023` | An employee may read **their own** attendance and leave records. **BLOCKED — NOT IMPLEMENTABLE TODAY:** it needs a self-service permission and an endpoint, neither of which exists. **The mapping it originally waited on now exists** (`ADR-030`, `UserEmployeeLink`, T-082), so this is no longer `DEC-PAY-0002`'s shape: the missing input arrived and what remains is unbuilt scope. `AC-ATT-0032` is the live assertion | `*` | **UNAUTHORED** | `OD-ATT-0013` |
 | `REQ-ATT-0024` | An authorized user reads records for the employees within their authority, bounded by company and — **if `OD-ATT-0011` so rules** — branch | `*` | `ADR-025` | `OD-ATT-0011`, `OD-ATT-0013` |
 | `REQ-ATT-0025` | Leave **type** is separable from leave **occurrence** in the permission model, because a type may disclose health information | `B` | Permission grammar's sensitivity convention | `OD-ATT-0013` |
 

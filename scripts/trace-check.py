@@ -137,7 +137,104 @@ HOME_FILES: dict[str, tuple[str, ...]] = {
     "OD": ("decisions-approved.md", "decisions-open.md", "decisions-ratified.md"),
 }
 
-SPACES = tuple(HOME_FILES)
+# --------------------------------------------------------------------------------------
+# PER-PACKAGE CONVENTIONS (T-060)
+#
+# THIS REPOSITORY HAS TWO IDENTIFIER CONVENTIONS AND BOTH ARE LIVE. `FP-001..010` define
+# their business rules as `BRULE-XX-NNNN` in `business-rules.md` and carry a SEPARATE
+# `BR-XX-NNNN` space in `requirements.md`. `FP-011..014` define `BR-XX-NNNN` in
+# `business-rules.md` and have no `BRULE-` at all.
+#
+# ---- THEY ARE DIFFERENT RULES, NOT A SPELLING CHANGE. ESTABLISHED BY COMPARING TITLES:
+#
+#     BRULE-IAM-0001  Tenant ownership is immutable      business-rules.md
+#     BR-IAM-0001     Tenant isolation                   requirements.md
+#
+# Nine for nine in FP-001, twelve for twelve in FP-006. **A `BRULE- -> BR-` rename would
+# have collapsed nine rules onto nine others and turned this checker GREEN by destroying
+# content** -- and `BRULE-` is cited in 86 files under `src/` and `tests/`, so it is a
+# live, load-bearing space rather than legacy residue.
+#
+# ---- WHY THE INSTRUMENT CHANGED AND NOT THE CORPUS, WHICH IS THE OPPOSITE OF THE GATE.
+#
+# `scripts/gate.sh` was WRONG ABOUT A FACT -- a failing build is a failing build under any
+# convention -- so the instrument had to change to match reality. Here **the corpus is
+# coherent and the checker did not know one of its conventions.** Those get opposite
+# treatment, and arguing both is not inconsistency.
+#
+# ---- THE DIVERGENCE IS DECLARED AND LOUD, NEVER ABSORBED.
+#
+# A checker that quietly accepted both would become a RECORD of the inconsistency rather
+# than a force against it, and someone reading `BR-` in FP-001 and `BR-` in FP-014 would be
+# reading two different things with no warning. So:
+#
+#   * the convention is DECLARED PER PACKAGE, in the table below -- never inferred, and
+#     never a fallback that searches the other home when a lookup misses. **A fallback that
+#     quietly finds the identifier elsewhere is the silent-permissive failure** removed from
+#     four instruments on 2026-08-27.
+#   * every run PRINTS each package's convention, whether or not anything fails.
+#   * a package in NO table entry FAILS. Unknown must not mean tolerated.
+#   * a package that does not CONFORM to what it declares FAILS.
+CONVENTIONS: dict[str, dict[str, tuple[str, ...]]] = {
+    # FP-011 onward. `BR-` is the business rule and lives in business-rules.md.
+    "modern": {
+        "REQ": ("requirements.md",),
+        "BR": ("business-rules.md",),
+        "BRULE": (),
+        "AC": ("acceptance-criteria.md",),
+        "TS": ("test-scenarios.md",),
+        "DEC": ("decisions-approved.md", "decisions-open.md", "decisions-ratified.md"),
+        "OD": ("decisions-approved.md", "decisions-open.md", "decisions-ratified.md"),
+    },
+    # FP-001..010. `BRULE-` is the business rule; `BR-` is a separate space in requirements.
+    "legacy": {
+        "REQ": ("requirements.md",),
+        "BR": ("requirements.md",),
+        "BRULE": ("business-rules.md",),
+        "AC": ("acceptance-criteria.md",),
+        "TS": ("test-scenarios.md",),
+        "DEC": ("decisions-approved.md", "decisions-open.md", "decisions-ratified.md"),
+        "OD": ("decisions-approved.md", "decisions-open.md", "decisions-ratified.md"),
+    },
+}
+
+PACKAGE_CONVENTION: dict[str, str] = {
+    "FP-001-identity-access": "legacy",
+    "FP-002-authentication-token-lifecycle": "legacy",
+    "FP-003-tenant-lifecycle": "legacy",
+    "FP-004-localization": "legacy",
+    "FP-005-company-legal-entity": "legacy",
+    "FP-006-hr-employee": "legacy",
+    "FP-007-hr-department": "legacy",
+    "FP-008-hr-position": "legacy",
+    "FP-009-hr-employee-import-export": "legacy",
+    "FP-010-hr-employee-documents": "legacy",
+    "FP-011-gl-foundation": "modern",
+    "FP-012-payroll": "modern",
+    "FP-013-attendance": "modern",
+    "FP-014-subscription": "modern",
+}
+
+# BRULE must precede BR in the alternation. `BR-` cannot match inside `BRULE-` because the
+# hyphen is required, but ordering longest-first removes the question rather than answering
+# it -- and the next space added may not be so safely distinguishable.
+HOME_FILES["BRULE"] = ("business-rules.md",)
+SPACES = ("REQ", "BRULE", "BR", "AC", "TS", "DEC", "OD")
+
+
+def convention_of(package: str) -> str | None:
+    return PACKAGE_CONVENTION.get(package)
+
+
+def homes_for(package: str) -> dict[str, tuple[str, ...]]:
+    """The per-space home files this package's declared convention specifies."""
+    name = convention_of(package)
+    if name is None:
+        # Undeclared packages FAIL rather than falling back. The caller raises that; this
+        # returns the union so the run can still produce a useful inventory alongside it.
+        return {s: tuple(sorted(set(CONVENTIONS["modern"].get(s, ()))
+                                | set(CONVENTIONS["legacy"].get(s, ())))) for s in SPACES}
+    return CONVENTIONS[name]
 
 ID_RE = re.compile(r"\b(" + "|".join(SPACES) + r")-([A-Z]{2,4})-(\d{4})\b")
 
@@ -303,7 +400,7 @@ def build_global_index(features: Path, repo_root: Path) -> dict[str, set[str]]:
         for pkg in features.iterdir():
             if not pkg.is_dir():
                 continue
-            for space, homes in HOME_FILES.items():
+            for space, homes in homes_for(pkg.name).items():
                 for home in homes:
                     f = pkg / home
                     if f.is_file():
@@ -348,6 +445,16 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
     }
     global_index = global_index or {}
 
+    # The convention is DECLARED, never inferred. An undeclared package fails: a checker
+    # that guessed would be back to absorbing the divergence it exists to surface.
+    result["convention"] = convention_of(pkg_dir.name)
+    homes_map = homes_for(pkg_dir.name)
+    if result["convention"] is None:
+        result["failures"].append(
+            f"UNDECLARED CONVENTION — {pkg_dir.name} appears in no PACKAGE_CONVENTION "
+            f"entry. Unknown must not mean tolerated; add it to the table."
+        )
+
     md_files = sorted(p for p in pkg_dir.glob("*.md"))
     if not md_files:
         result["failures"].append("no markdown files in package directory")
@@ -367,8 +474,25 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
         for ident in scan_ids(text):
             cited[ident.space].add(ident.key)
             cited_in[ident.key].add(fname)
-            if fname in HOME_FILES[ident.space]:
+            if fname in homes_map.get(ident.space, ()):
                 defined[ident.space].add(ident.key)
+
+    # ---- 0. THE PACKAGE MUST CONFORM TO WHAT IT DECLARES.
+    # Declaring a convention and not following it is worse than declaring none, because the
+    # declaration is what every other check now trusts. `legacy` must actually define BRULE-
+    # rules; `modern` must contain no BRULE- identifier at all.
+    if (result["convention"] == "legacy" and "business-rules.md" in texts
+            and not defined.get("BRULE")):
+        result["failures"].append(
+            "CONVENTION MISMATCH — declared `legacy`, which homes BRULE- in "
+            "business-rules.md, but no BRULE- identifier is defined there"
+        )
+    if result["convention"] == "modern" and (cited.get("BRULE") or defined.get("BRULE")):
+        n = len(cited.get("BRULE", set()) | defined.get("BRULE", set()))
+        result["failures"].append(
+            f"CONVENTION MISMATCH — declared `modern`, which has no BRULE- space, but "
+            f"{n} BRULE- identifier(s) appear in this package"
+        )
 
     mine = own_modules(texts)
     result["own_modules"] = sorted(mine)
@@ -385,7 +509,7 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
     # Only the package's OWN identifiers are judged against its home files. A citation of
     # a neighbour's identifier is resolved against the repository-wide index instead.
     for space in SPACES:
-        homes = HOME_FILES[space]
+        homes = homes_map.get(space, ())
         present_homes = [h for h in homes if h in texts]
         for key in sorted(cited[space] - defined[space]):
             where = ", ".join(sorted(cited_in[key]))
@@ -430,12 +554,23 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
                 "contiguous": not missing,
                 "missing": [f"{n:04d}" for n in missing],
             }
+            # BRULE- IS EXEMPT FROM CONTIGUITY, AND THIS IS NOT A WEAKENING.
+            # Contiguity was never asserted for BRULE- because the space did not exist in
+            # this checker until T-060 added it. Asserting it NOW would be inventing a rule
+            # nobody wrote -- and FP-009 numbers its document rules in an 0600 BLOCK
+            # (`BRULE-DOC-0601`, `0602`, `0604`, `0606`...), so the first run demanded 600
+            # missing identifiers that were never meant to exist. Reported as a warning so
+            # the numbering stays visible, and it fails nothing until someone establishes
+            # what BRULE- numbering means.
+            sink = result["warnings"] if space == "BRULE" else result["failures"]
             if lo != 1:
-                result["failures"].append(
+                sink.append(
                     f"CONTIGUITY {space}-{module} starts at {lo:04d}, not 0001"
+                    + ("  (BRULE- numbering is unestablished; reported, not failed)"
+                       if space == "BRULE" else "")
                 )
             if missing:
-                result["failures"].append(
+                sink.append(
                     f"CONTIGUITY {space}-{module} missing "
                     + ", ".join(f"{space}-{module}-{n:04d}" for n in missing)
                 )
@@ -1328,6 +1463,18 @@ def report(results: list[dict]) -> int:
         print(f"{r['package']}  [{status}]  "
               f"{len(fails)} failure(s), {len(warns)} warning(s), {len(gaps)} declared gap(s)")
         print("=" * 86)
+
+        # PRINTED EVERY RUN, PASS OR FAIL. The divergence between the two conventions must
+        # be visible rather than absorbed: a reader who sees `BR-` in FP-001 and `BR-` in
+        # FP-014 is reading two different things, and nothing else in this output says so.
+        conv = r.get("convention")
+        if conv == "legacy":
+            print("\n  Convention: LEGACY — BRULE- homed in business-rules.md, "
+                  "BR- in requirements.md (a SEPARATE space, not a renaming)")
+        elif conv == "modern":
+            print("\n  Convention: MODERN — BR- homed in business-rules.md, no BRULE- space")
+        else:
+            print("\n  Convention: UNDECLARED — this package is in no PACKAGE_CONVENTION entry")
 
         if r.get("own_modules"):
             print(f"\n  Owns: {', '.join(r['own_modules'])}"

@@ -66,8 +66,8 @@ the file confirmed it was correct.
 
 1. **Read the whole spec** at `.claude/handoff/tasks/T-###.md` before touching anything.
    Ambiguity that changes the design is a `QUESTION` now, not a guess you defend later.
-2. **Branch** from an up-to-date `main`:
-   `git checkout main && git pull --ff-only && git checkout -b agent/T-###-<slug>`
+2. **Branch** from an up-to-date `ClaudeBranch` (`DEC-L-058` — **not `main`**):
+   `git checkout ClaudeBranch && git pull --ff-only && git checkout -b agent/T-###-<slug>`
    (If the branch exists from a revision round, check it out instead of recreating it.)
 3. **Find the existing pattern first.** This codebase has settled conventions for aggregates,
    handlers, EF configurations, permission contributors and tenant scoping. Read the nearest
@@ -204,7 +204,7 @@ the task had a gate at all**, not on how confident you feel.
 **Green gate → merge immediately. Do not wait for the architect.**
 
 ```bash
-gh pr create --base main --head agent/T-###-<slug> --title "..." --body "..."
+gh pr create --base ClaudeBranch --head agent/T-###-<slug> --title "..." --body "..."
 gh pr merge --merge --delete-branch
 ```
 
@@ -212,7 +212,7 @@ Merge commits, not squash — it is what every prior package used (PRs #40 … #
 `START-HERE.md` point at them.
 
 The architect reviews **after** the merge and raises a follow-up task if something is wrong. That is
-the owner's accepted trade: a faster loop, with correction happening on `main` rather than on a branch.
+the owner's accepted trade: a faster loop, with correction happening on `ClaudeBranch` rather than on a branch.
 
 ### What "green" means — all four, not the first one
 
@@ -239,13 +239,13 @@ Tightened by the owner on 2026-08-25 (`DEC-L-008`) after the first three merges.
    you did not change. That is not evidence and it is not a merge.
 
 **Report the counts, before and after.** `Failed: 0, Passed: N` for each suite, and say what N was
-on `main` before your change. The baseline is recorded on the board. A code task whose totals are
+on `ClaudeBranch` before your change. The baseline is recorded on the board. A code task whose totals are
 unchanged is one I will ask about.
 
 If any of the four fails — a suite did not run, `API.Tests` could not reach SQL Server, a leg timed
 out, you ran out of time — **the gate is not green**, you do not merge, and you report `PARTIAL`
 naming exactly which suites ran and which did not. A gate you did not finish is not a gate you
-passed, and under this rule that mistake lands on `main` instead of costing a review cycle.
+passed, and under this rule that mistake lands on `ClaudeBranch` instead of costing a review cycle.
 
 ### A non-gated task — no file under `src/` or `tests/` in scope
 
@@ -261,7 +261,7 @@ returned a real finding.
 - Merge with a red, partial, or unrun gate.
 - Merge with `--admin`, or with any flag that bypasses a check.
 - Merge a branch that is not the one this task named.
-- Push directly to `main`. It is denied in `.claude/settings.json` and it stays denied — merging is
+- Push directly to `ClaudeBranch`, and **never touch `main` at all** (`DEC-L-058`). Merging is
   something GitHub does on your behalf, through a PR that leaves a record.
 
 ### Reporting a merge

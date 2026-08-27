@@ -223,7 +223,7 @@ public sealed class LeaveRequest
   // `ApproveAtRoot` a separate, strictly wider grant that an administrator gives deliberately, and it is
   // recorded in `DecidedBy` plus the null approver so the path is auditable after the fact. **When the
   // identity-to-employee mapping is built, this is the first thing that should be tightened.**
-  public Result ApproveAtRoot(Guid? actingEmployeeId, string? decidedBy, DateTimeOffset decidedUtc, string? note)
+  public Result ApproveAtRoot(ActingEmployee acting, string? decidedBy, DateTimeOffset decidedUtc, string? note)
   {
     var guard = GuardDecision(decidedBy, note);
     if (guard.IsFailure)
@@ -231,7 +231,7 @@ public sealed class LeaveRequest
       return guard;
     }
 
-    var self = GuardNotSelfAtRoot(actingEmployeeId);
+    var self = GuardNotSelfAtRoot(acting);
     if (self.IsFailure)
     {
       return self;
@@ -245,7 +245,7 @@ public sealed class LeaveRequest
     return Result.Success();
   }
 
-  public Result RejectAtRoot(Guid? actingEmployeeId, string? decidedBy, DateTimeOffset decidedUtc, string? note)
+  public Result RejectAtRoot(ActingEmployee acting, string? decidedBy, DateTimeOffset decidedUtc, string? note)
   {
     var guard = GuardDecision(decidedBy, note);
     if (guard.IsFailure)
@@ -253,7 +253,7 @@ public sealed class LeaveRequest
       return guard;
     }
 
-    var self = GuardNotSelfAtRoot(actingEmployeeId);
+    var self = GuardNotSelfAtRoot(acting);
     if (self.IsFailure)
     {
       return self;
@@ -290,15 +290,18 @@ public sealed class LeaveRequest
   // the requester, so the bar does not apply to them.** Refusing on absence would break the root fallback
   // for precisely the operator it exists for.
   //
-  // ---- AND THE PARAMETER IS REQUIRED SO THE OMISSION CANNOT BE SILENT.
+  // ---- AND THE ACTOR ARRIVES AS A NAMED TYPE SO THE SKIP CANNOT BE A FORGOTTEN LINE (T-085).
   //
-  // The aggregate cannot tell *the user was unresolvable* from *the caller never asked*: both arrive as
-  // `null`. What it can do is make the second a written statement rather than a forgotten line — the
-  // parameter has no default, so every call site must say something. **That is weaker than making the
-  // mistake unrepresentable, and `LeaveApprovalHandlerTests` asserts the resolution actually happens
-  // because this guard cannot.**
-  private Result GuardNotSelfAtRoot(Guid? actingEmployeeId) =>
-    actingEmployeeId is { } acting && acting != Guid.Empty && acting == EmployeeId
+  // The aggregate still cannot tell *the user was unresolvable* from *the caller never asked* — both are
+  // an unresolved actor and both correctly approve. What `ActingEmployee` changes is that the second must
+  // now be WRITTEN: `ActingEmployee.Unresolved()` is a named, greppable act, `null` is CS8625 under the
+  // tree's nullable setting and the gate fails on any warning, and `null!` is a visible suppression.
+  //
+  // **Declared rather than unrepresentable**, and the distance between those is the honest description of
+  // what a reference type can buy here. `LeaveApprovalHandlerTests` still asserts the resolution happens,
+  // because no signature can.
+  private Result GuardNotSelfAtRoot(ActingEmployee acting) =>
+    acting.Matches(EmployeeId)
       ? Result.Failure(LeaveErrors.SelfApprovalBarred)
       : Result.Success();
   // ---- CANCELLATION, AND WHY THE DATES MATTER (REQ-ATT-0016, AC-ATT-0042).

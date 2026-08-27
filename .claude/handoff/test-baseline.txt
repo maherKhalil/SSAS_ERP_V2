@@ -2,7 +2,7 @@
 # suite|configuration|total
 API|Debug|735
 Architecture|Debug|521
-Attendance|Debug|67
+Attendance|Debug|71
 Finance|Debug|46
 HR|Debug|326
 Payroll|Debug|56

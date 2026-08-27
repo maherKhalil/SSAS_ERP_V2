@@ -243,12 +243,23 @@ labelled as unenforced.
    obeyed or dropped. **Do not export `MSYS_NO_PATHCONV` in the launching shell** (`DEC-L-056`) — it
    kills the memory sampler, and the gate says so rather than going quiet.
 
-4. **The tests the task required exist in this diff — CONVENTION, NOT ENFORCED.** The gate prints the
-   counts. **It does not compare them to anything.** There is no baseline in the script. *A suite that
-   is green because nothing exercises your new code is not green* — if you added an aggregate, a
-   handler, an endpoint or an invariant and the count did not move, you have proved that the code you
-   did not test did not break the code you did not change. **That is the condition most likely to be
-   believed because the others are enforced.**
+4. **The tests the task required exist in this diff and pass — PARTIALLY ENFORCED, and the part that
+   is not enforced is the part that matters.**
+
+   **What the gate checks:** whether any suite total moved, when non-comment lines under `src/`
+   changed against the merge-base with `ClaudeBranch` — your uncommitted **and untracked** work
+   included. It compares against a baseline it wrote itself on its last green run.
+
+   **What it cannot check:** whether the tests your task required exist, or whether the tests that
+   moved cover what you wrote. **The gate does not know what your task required.** It can tell that
+   you changed code and no count moved. **It cannot tell you the count that moved was the right one.**
+
+   **It warns; it never goes red** — not because it matters less, but because the only remedy for a
+   wrong fire (a refactor existing tests already cover) would be to write a test you do not believe
+   in, and a red answerable that way manufactures exactly the tests that make a suite worthless.
+
+   **Commit `.claude/handoff/test-baseline.txt` with your work.** The gate rewrites it on every green
+   run so it cannot go stale, which also puts your count delta in the diff where review sees it.
 
 **Report the counts, before and after.** `Failed: 0, Passed: N` for each suite, and say what N was
 on `ClaudeBranch` before your change. The baseline is recorded on the board. A code task whose totals are

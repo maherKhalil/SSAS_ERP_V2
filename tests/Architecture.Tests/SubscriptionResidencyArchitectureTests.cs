@@ -36,7 +36,29 @@ public sealed class SubscriptionResidencyArchitectureTests
     typeof(TenantEntitlementGrant),
   ];
 
-  // ---- NONE OF THEM IS TENANT-OWNED, WHICH IS WHAT KEEPS THEM OUT OF THE MANIFEST.
+  // ---- WHAT THIS FILE PROVES AND WHAT IT DOES NOT (T-074, T-075).
+  //
+  // The comment above says the interface is what keeps these types out of the manifest. **That is half
+  // true and the missing half matters.** `TenantCutoverCopyPlan.Build` selects `ITenantOwnedEntity`
+  // WITHIN THE MODEL IT IS HANDED, and it is handed `ITenantModelSource.Model`. So the interface decides
+  // which of the tenant model's entities are copied; **membership of that model decides which entities are
+  // candidates at all.**
+  //
+  // Both directions have a counter-example in this tree:
+  //
+  //   TenantUser  carries ITenantOwnedEntity and does NOT travel — it is not in the tenant model
+  //   Branch      is a Platform.Domain type that DOES travel — TenantDbContext maps it deliberately
+  //
+  // **So these assertions are true, cheap, and not the property that decides residency.** They pass today
+  // because the commercial types happen to satisfy both. A Platform type that entered the tenant model
+  // WITHOUT the interface would be invisible here — proved by planting `SubscriptionPlanConfiguration`
+  // into the tenant model, which left this file green and `TenantModelResidencyTests` red.
+  //
+  // Keep them. They assert something worth asserting: a commercial type that ACQUIRED the interface would
+  // be swept in the moment anything put it in the model, and this is the cheaper of the two guards to
+  // notice. The residency itself is asserted in `TenantModelResidencyTests`.
+
+  // ---- NONE OF THEM IS TENANT-OWNED, WHICH IS ONE OF THE TWO THINGS KEEPING THEM OUT OF THE MANIFEST.
   //
   // `TenantSubscription` and `TenantEntitlementGrant` both carry a `TenantId`, and that is exactly why this
   // is worth asserting: they LOOK tenant-owned. The tenant is the **subject** of the agreement, never its

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using SSAS.Host.API.Authorization;
 using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.Domain.Enums;
 
 namespace SSAS.API.Tests.Infrastructure;
 
@@ -67,6 +68,86 @@ public sealed class EndpointPermissionCatalogJoinTests(HostWebApplicationFactory
       "no role can be granted it, because a role may only hold a permission the catalog defines. Either " +
       "the permission is missing from its module's contributor, or the endpoint names one that does not " +
       $"exist:{Environment.NewLine}{string.Join(Environment.NewLine, undefined)}");
+  }
+
+  // ================================================================================================
+  // THE SECOND WAY A CORRECT-LOOKING ROUTE REFUSES EVERYONE: THE PLANE AND THE SCOPE DISAGREE.
+  // ================================================================================================
+  //
+  // The join above asks whether the name EXISTS. This asks whether the caller the route is mapped for can
+  // ever HOLD it. Both failures look identical from outside — a route that refuses every caller while every
+  // line of it reads correctly — and the two facts needed to tell them apart were both already present and
+  // never compared:
+  //
+  //   PermissionAuthorizationPolicyProvider.cs:14,19   the prefix chooses the plane
+  //   TenantPermissionClaimFilter.cs:27-28             a non-Tenant permission never becomes a tenant claim
+  //
+  // ---- TENANT PREFIX ON A PlatformSupport PERMISSION.
+  //
+  // The catalog defines the name, so the join is satisfied. But `TenantPermissionClaimFilter` drops it from
+  // every tenant token before it becomes a claim, and `PermissionAuthorizationHandler` matches on claims —
+  // so no tenant caller can ever satisfy the requirement. **Not a theoretical hole: the filter exists
+  // precisely to make it impossible**, which means a route asking for it is asking for something the system
+  // guarantees will not arrive.
+  //
+  // ---- PLATFORM PREFIX ON A Tenant PERMISSION.
+  //
+  // `PlatformPermissionAuthorizationHandler.cs:28` checks `permission.Scope == PermissionScope.PlatformSupport`
+  // explicitly, so the requirement fails for a Tenant-scoped name however the token is composed.
+  //
+  // **Both directions are asserted, and the second has no violating instance today.** A direction asserted
+  // with no current instance is the one that catches the future mistake — the same reason a clean-tree
+  // report is printed rather than omitted. If it is ever removed for looking redundant, that is the removal
+  // this comment exists to argue with.
+  [Fact]
+  public void Every_route_is_mapped_on_the_plane_its_permission_is_scoped_to()
+  {
+    var catalog = factory.Services.GetRequiredService<IPermissionCatalog>();
+
+    var known = RequiredPermissions()
+      .Select(entry => (
+        entry.Route,
+        entry.DeclaredScope,
+        Defined: catalog.TryGet(entry.Permission, out var definition) ? definition : null,
+        entry.Permission))
+      .Where(entry => entry.Defined is not null)
+      .ToArray();
+
+    // NOT VACUOUS, AND PER DIRECTION. A single non-empty check would pass while one whole plane went
+    // unexamined, which is the failure mode this file has already found twice in other guards.
+    var tenantPlane = known.Where(entry => entry.DeclaredScope == PermissionScope.Tenant).ToArray();
+    var platformPlane = known.Where(entry => entry.DeclaredScope == PermissionScope.PlatformSupport).ToArray();
+
+    Assert.NotEmpty(tenantPlane);
+    Assert.NotEmpty(platformPlane);
+
+    var tenantPlaneHoldingPlatformPermission = tenantPlane
+      .Where(entry => entry.Defined!.Scope != PermissionScope.Tenant)
+      .Select(entry =>
+        $"{entry.Route} is mapped on the TENANT plane but '{entry.Permission}' is scoped " +
+        $"{entry.Defined!.Scope}; TenantPermissionClaimFilter drops it from every tenant token")
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    var platformPlaneHoldingTenantPermission = platformPlane
+      .Where(entry => entry.Defined!.Scope != PermissionScope.PlatformSupport)
+      .Select(entry =>
+        $"{entry.Route} is mapped on the PLATFORM plane but '{entry.Permission}' is scoped " +
+        $"{entry.Defined!.Scope}; PlatformPermissionAuthorizationHandler requires PlatformSupport")
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    // The message names the disagreement and not a remedy. Which of the two is wrong — the plane the route
+    // was mapped on, or the scope the permission carries — is an authorization decision, and a test that
+    // asserted one of them was the correct half would be claiming a cause it cannot know.
+    Assert.True(
+      tenantPlaneHoldingPlatformPermission.Length == 0 && platformPlaneHoldingTenantPermission.Length == 0,
+      "A route's plane and its permission's scope disagree, so no caller on that plane can ever hold it. " +
+      "The route refuses everyone while reading correctly. Either the permission's scope or the plane the " +
+      $"route is mapped on is wrong, and which one is an authorization decision:{Environment.NewLine}" +
+      string.Join(
+        Environment.NewLine,
+        tenantPlaneHoldingPlatformPermission.Concat(platformPlaneHoldingTenantPermission)));
   }
 
   // ================================================================================================
@@ -159,7 +240,16 @@ public sealed class EndpointPermissionCatalogJoinTests(HostWebApplicationFactory
       anonymous.Length + withPolicies.Length + authenticatedOnly.Length);
   }
 
-  private (string Route, string Permission)[] RequiredPermissions() =>
+  // ---- ONE ENUMERATION, READ BY BOTH GUARDS.
+  //
+  // The join asks *does this name exist?* and the scope guard asks *can the caller this route is for ever
+  // hold it?* Two enumerations would be two things that can drift, which is the shape this pair of guards
+  // exists to remove — so the plane travels with the name from the single place that recovers it.
+  //
+  // `DeclaredScope` is the scope the POLICY PREFIX declares, not one read from the catalog: the prefix is
+  // how the plane is chosen (`PermissionAuthorizationPolicyProvider.cs:14,19` dispatches on exactly this),
+  // so it is the endpoint author's stated intent and the thing the catalog is then checked against.
+  private (string Route, PermissionScope DeclaredScope, string Permission)[] RequiredPermissions() =>
   [
     .. RouteEndpoints()
       .SelectMany(endpoint => endpoint.Metadata
@@ -169,17 +259,34 @@ public sealed class EndpointPermissionCatalogJoinTests(HostWebApplicationFactory
         .Select(policy => (Route: Describe(endpoint), Policy: policy!)))
       .Select(entry => (
         entry.Route,
-        Permission: TryRecoverPermission(entry.Policy, out var permission) ? permission : null))
-      .Where(entry => entry.Permission is not null)
-      .Select(entry => (entry.Route, entry.Permission!))
+        Recovered: TryRecoverPermission(entry.Policy, out var permission, out var scope)
+          ? (Scope: scope, Permission: permission)
+          : ((PermissionScope Scope, string Permission)?)null))
+      .Where(entry => entry.Recovered is not null)
+      .Select(entry => (entry.Route, entry.Recovered!.Value.Scope, entry.Recovered!.Value.Permission))
       .Distinct()
   ];
 
   // BOTH PLANES. A platform-support permission is catalog-defined exactly as a tenant one is, so a route on
-  // either plane requiring an undefined name is the same defect and is caught by the same pass.
-  private static bool TryRecoverPermission(string policy, out string permission) =>
-    PermissionAuthorizationDefaults.TryGetPermissionName(policy, out permission) ||
-    PlatformPermissionAuthorizationDefaults.TryGetPermissionName(policy, out permission);
+  // either plane requiring an undefined name is the same defect and is caught by the same pass — and the
+  // prefix that resolved it is the plane that route was mapped on.
+  private static bool TryRecoverPermission(string policy, out string permission, out PermissionScope scope)
+  {
+    if (PermissionAuthorizationDefaults.TryGetPermissionName(policy, out permission))
+    {
+      scope = PermissionScope.Tenant;
+      return true;
+    }
+
+    if (PlatformPermissionAuthorizationDefaults.TryGetPermissionName(policy, out permission))
+    {
+      scope = PermissionScope.PlatformSupport;
+      return true;
+    }
+
+    scope = default;
+    return false;
+  }
 
   private RouteEndpoint[] RouteEndpoints() =>
   [

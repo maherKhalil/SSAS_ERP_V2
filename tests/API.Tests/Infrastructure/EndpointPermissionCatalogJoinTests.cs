@@ -171,6 +171,40 @@ public sealed class EndpointPermissionCatalogJoinTests(HostWebApplicationFactory
       .Where(endpoint => endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Count == 0)
       .ToArray();
 
+    // ---- THE ANONYMOUS BUCKET IS PINNED BY NAME TOO, AND IT WAS LEFT AS ARITHMETIC BY MISTAKE (T-077).
+    //
+    // The authenticated-only four below were named on the argument that "a count passes when one is
+    // removed and another added". **That argument applies here identically and this bucket was left as a
+    // count anyway** — so a route with no authorization metadata at all simply raised `anonymous` by one,
+    // the three-bucket identity still balanced, and this test stayed green.
+    //
+    // **Measured, not reasoned:** T-077 planted a permission-less Attendance route and read the buckets
+    // out of the running Host — `total=148 anonymous=10 policy=134 authOnly=4`. The identity held, and
+    // the planted route sat in this list between `/` and the login routes.
+    //
+    // These nine are each deliberately reachable without a token: the SPA root, three health probes, and
+    // the five authentication entry points, which cannot require the credential they exist to issue.
+    // **A tenth has to be written down here by whoever adds it**, which is the only point at which a
+    // decision to open a route to the public is forced through a person.
+    //
+    // `?` is not a wildcard: the health endpoints carry no `HttpMethodMetadata`, so they answer any verb.
+    string[] expectedAnonymous =
+    [
+      "? /health",
+      "? /health/live",
+      "? /health/ready",
+      "GET /",
+      "POST /api/platform/auth/login",
+      "POST /api/platform/auth/refresh",
+      "POST /api/platform/auth/select-tenant",
+      "POST /api/platform/support/auth/login",
+      "POST /api/platform/support/auth/refresh"
+    ];
+
+    Assert.Equal(
+      expectedAnonymous,
+      anonymous.Select(Describe).OrderBy(line => line, StringComparer.Ordinal));
+
     var withPolicies = endpoints
       .Select(endpoint => (
         Route: Describe(endpoint),

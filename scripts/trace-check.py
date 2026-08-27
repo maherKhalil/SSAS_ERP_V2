@@ -231,6 +231,53 @@ SPACES = ("REQ", "BRULE", "BR", "AC", "TS", "DEC", "OD")
 CHAIN_ANCHORS = ("REQ", "BR", "BRULE", "DEC")
 
 
+# --------------------------------------------------------------------------------------
+# WHO OWNS AN IDENTIFIER SPACE (T-064)
+#
+# DECLARED, NEVER COUNTED. This replaced a majority heuristic: a module was "owned" by a
+# package if that package held at least a quarter of the identifiers carrying its token.
+# `DOC` therefore belonged to FP-009 because FP-009 has 96 DOC identifiers and FP-010 has 25
+# -- so FP-010's own scenarios read as somebody else's, and FP-009's citation of them read as
+# an internal orphan. **A majority count deciding who owns a namespace is an answer over a
+# domain nobody established**, which is what `DEC-L-061` removed for conventions.
+#
+# `DOC` HAS TWO OWNERS, BY A RECORDED AGREEMENT. FP-009's matrix carries a handover table
+# above the sentence "Every one kept its number. Neither package will reallocate an
+# identifier the other used." The register says so; the checker now says so too.
+#
+# MINIMAL BY CONSTRUCTION. This answers one question -- WHO MAY DEFINE AN IDENTIFIER IN THIS
+# SPACE -- and nothing else. It is not an ontology, and a space in no entry FAILS rather than
+# falling back to a guess.
+SPACE_OWNERS: dict[str, tuple[str, ...]] = {
+    "IAM": ("FP-001-identity-access",),
+    "AUTH": ("FP-002-authentication-token-lifecycle",),
+    "TEN": ("FP-003-tenant-lifecycle",),
+    "LOC": ("FP-004-localization",),
+    "CMP": ("FP-005-company-legal-entity",),
+    "EMP": ("FP-006-hr-employee",),
+    "DEP": ("FP-007-hr-department",),
+    "POS": ("FP-008-hr-position",),
+    # The one shared space, and the reason this table exists rather than a count.
+    "DOC": ("FP-009-hr-employee-import-export", "FP-010-hr-employee-documents"),
+    "GL": ("FP-011-gl-foundation",),
+    "PAY": ("FP-012-payroll",),
+    "ATT": ("FP-013-attendance",),
+    "SUB": ("FP-014-subscription",),
+    "SS": ("FP-015-self-service",),
+}
+
+# Extra home files a SINGLE package declares, never added globally. FP-010 defines its test
+# scenarios in `carried-analysis.md` -- legitimately, it is a carried-forward analysis package
+# with no `test-scenarios.md` -- and no other package should inherit that.
+HOME_OVERRIDES: dict[str, dict[str, tuple[str, ...]]] = {
+    "FP-010-hr-employee-documents": {"TS": ("test-scenarios.md", "carried-analysis.md")},
+}
+
+
+def owners_of(module: str) -> tuple[str, ...]:
+    return SPACE_OWNERS.get(module, ())
+
+
 def convention_of(package: str) -> str | None:
     return PACKAGE_CONVENTION.get(package)
 
@@ -243,7 +290,9 @@ def homes_for(package: str) -> dict[str, tuple[str, ...]]:
         # returns the union so the run can still produce a useful inventory alongside it.
         return {s: tuple(sorted(set(CONVENTIONS["modern"].get(s, ()))
                                 | set(CONVENTIONS["legacy"].get(s, ())))) for s in SPACES}
-    return CONVENTIONS[name]
+    homes = dict(CONVENTIONS[name])
+    homes.update(HOME_OVERRIDES.get(package, {}))
+    return homes
 
 ID_RE = re.compile(r"\b(" + "|".join(SPACES) + r")-([A-Z]{2,4})-(\d{4})\b")
 
@@ -361,7 +410,17 @@ def parse_chain(matrix_text: str) -> list[dict]:
         # no REQ- identifier anywhere. Measured in T-061: eight of fourteen packages had NO
         # parseable chain, so coverage rules 3 and 4 had never run on them.
         anchor = [i for i in scan_ids(cells[0]) if i.space in CHAIN_ANCHORS]
-        if not anchor:
+        # A PROSE CAPABILITY NAME IS A LEGITIMATE ANCHOR. T-064, from T-063's measurement.
+        # FP-011's coverage rows read `| Administer grants no functional permission |
+        # ADR-025 d8 | AC-GL-0017 | TS-GL-0022 |` -- criteria and scenario present, first
+        # cell a capability name carrying no identifier. FP-002, FP-005 and FP-006 lead their
+        # chain tables the same way. Five criteria read as untraced while being traced on the
+        # row that names them, and the five were CONSECUTIVE, which looked systematic and was:
+        # **the systematic thing was the authoring order of the criteria file, not coverage.**
+        # Measured: 33 failures to 25, nothing worse.
+        criteria_probe = next((c for c in cells[1:] if cell_ids(c, "AC")), "")
+        tests_probe = next((c for c in cells[1:] if cell_ids(c, "TS")), "")
+        if not anchor and not (criteria_probe and tests_probe):
             continue
         # CRITERIA AND TESTS ARE FOUND BY CONTENT, NOT BY COLUMN OFFSET. The shipped parser
         # read criteria from cell 2 and tests from cell 3; the real tables put them in
@@ -391,7 +450,9 @@ def parse_chain(matrix_text: str) -> list[dict]:
                           cells[1])
         rows.append(
             {
-                "requirements": sorted(i.key for i in anchor),
+                # An unanchored row still needs a label for the coverage messages; the
+                # first cell is what a reader would call it.
+                "requirements": sorted(i.key for i in anchor) or [f"(row: {cells[0][:40]})"],
                 "rules": rules_cell,
                 "criteria": criteria_cell,
                 "tests": tests_cell,
@@ -483,25 +544,30 @@ def build_global_index(features: Path, repo_root: Path) -> dict[str, set[str]]:
     return index
 
 
-def own_modules(texts: dict[str, str]) -> set[str]:
+def declared_modules(package: str) -> set[str]:
+    """The identifier spaces this package is DECLARED to own. No counting, no fallback."""
+    return {module for module, owners in SPACE_OWNERS.items() if package in owners}
+
+
+def master_register_modules(repo_root: Path) -> set[str]:
+    """Module tokens the MASTER registers define -- `PLT`, `HR` and the like.
+
+    Kept separate from the global index on purpose: the global index absorbs every package's
+    own home files, so testing a module against it answers "did anyone write this down",
+    which is true of a planted identifier the moment it is planted. The first version of the
+    undeclared-space check did exactly that and never fired.
     """
-    The module token(s) this package OWNS, derived from its own requirements.md rather
-    than from the directory name — FP-008-hr-position owns POS, not HR.
-    """
-    counts: dict[str, int] = defaultdict(int)
-    for home in ("requirements.md", "acceptance-criteria.md", "test-scenarios.md"):
-        for ident in scan_ids(texts.get(home, "")):
-            if ident.space in ("REQ", "AC", "TS"):
-                counts[ident.module] += 1
-    if not counts:
+    catalog = repo_root / "docs" / "00-Master-Product-Specification"
+    if not catalog.is_dir():
         return set()
-    top = max(counts.values())
-    # A module is "owned" if it holds a substantial share, so a package spanning two
-    # prefixes is handled without letting a single cross-reference qualify.
-    return {m for m, n in counts.items() if n >= max(3, top * 0.25)}
+    modules: set[str] = set()
+    for f in catalog.rglob("*.md"):
+        modules.update(i.module for i in scan_ids(f.read_text(encoding="utf-8", errors="replace")))
+    return modules
 
 
-def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None) -> dict:
+def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None,
+                  master_modules: set[str] | None = None) -> dict:
     result: dict = {
         "package": pkg_dir.name,
         "failures": [],       # red
@@ -562,12 +628,33 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
             f"{n} BRULE- identifier(s) appear in this package"
         )
 
-    mine = own_modules(texts)
+    mine = declared_modules(pkg_dir.name)
     result["own_modules"] = sorted(mine)
+
+    # A SPACE THIS PACKAGE DEFINES BUT NOBODY DECLARED IS A FAILURE, not a fallback. The
+    # same rule as an undeclared convention: unknown must not mean tolerated.
+    defined_modules = {
+        ident.module
+        for fname, text in texts.items()
+        if fname in {h for homes in homes_map.values() for h in homes}
+        for ident in scan_ids(text)
+        if ident.space in ("REQ", "AC", "TS", "BR", "BRULE")
+    }
+    for module in sorted(defined_modules - mine):
+        # A CITATION IS NOT A DEFINITION. `BR-PLT-0001` and `REQ-HR-0100` live in the master
+        # registers under docs/00-Master-Product-Specification and are cited by packages in
+        # their own home files; the first version of this check called seventeen of those
+        # undeclared spaces. If the global index resolves the space, somebody owns it and it
+        # is not this package's to declare.
+        if not owners_of(module) and module not in (master_modules or set()):
+            result["failures"].append(
+                f"UNDECLARED SPACE — {module}- identifiers are defined in this package's "
+                f"home files and {module} appears in no SPACE_OWNERS entry"
+            )
     if not mine:
         result["warnings"].append(
-            "could not derive an owning module from requirements/criteria/scenarios — "
-            "numbering and orphan rules skipped; coverage still checked"
+            "this package is declared to own no identifier space — numbering and orphan "
+            "rules are skipped for it; coverage still checked"
         )
 
     def is_mine(key: str) -> bool:
@@ -581,6 +668,13 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
         present_homes = [h for h in homes if h in texts]
         for key in sorted(cited[space] - defined[space]):
             where = ", ".join(sorted(cited_in[key]))
+            # A SHARED SPACE RESOLVES AGAINST ITS CO-OWNERS. `DOC` belongs to FP-009 AND
+            # FP-010 by a recorded agreement, so FP-009 citing a scenario FP-010 defines is
+            # an external reference, not an orphan -- even though the space is "mine".
+            co_owned = len(owners_of(key.split("-")[1])) > 1
+            if co_owned and key in global_index.get(space, set()):
+                result["external_refs"].append(f"{key} (cited in {where}, co-owned space)")
+                continue
             if not is_mine(key):
                 if key in global_index.get(space, set()):
                     result["external_refs"].append(f"{key} (cited in {where})")
@@ -630,12 +724,23 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
             # missing identifiers that were never meant to exist. Reported as a warning so
             # the numbering stays visible, and it fails nothing until someone establishes
             # what BRULE- numbering means.
-            sink = result["warnings"] if space == "BRULE" else result["failures"]
+            # CONTIGUITY IS NOT ASSERTABLE PER PACKAGE FOR A CO-OWNED SPACE. FP-009 holds
+            # the lower `DOC` numbers and FP-010 the upper ones, by the same recorded
+            # agreement that neither reallocates the other's -- so each package alone looks
+            # full of holes and the two together are contiguous. Asserting it per package
+            # would fail both for honouring the agreement. Same reasoning as BRULE- above:
+            # a rule whose domain was never established is not asserted, it is reported.
+            co_owned_space = len(owners_of(module)) > 1
+            sink = (result["warnings"]
+                    if space == "BRULE" or co_owned_space
+                    else result["failures"])
+            span_note = ("  (co-owned space; contiguity spans its owners, not this package)"
+                         if co_owned_space else "")
             if lo != 1:
                 sink.append(
                     f"CONTIGUITY {space}-{module} starts at {lo:04d}, not 0001"
                     + ("  (BRULE- numbering is unestablished; reported, not failed)"
-                       if space == "BRULE" else "")
+                       if space == "BRULE" else span_note)
                 )
             if missing:
                 sink.append(
@@ -1686,7 +1791,8 @@ def main() -> int:
         return 2
 
     global_index = build_global_index(features, root)
-    results = [check_package(d, global_index) for d in dirs]
+    master_modules = master_register_modules(root)
+    results = [check_package(d, global_index, master_modules) for d in dirs]
 
     # Check 7 reads the master specification, not the packages, so it is unaffected by
     # which packages were named on the command line and runs identically either way.

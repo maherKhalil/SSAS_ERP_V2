@@ -95,13 +95,23 @@ set -u
 #     remaining seven suites in both configurations cost roughly four. A per-task change that touches no
 #     persistence was buying an hour to be told what four minutes already said.
 #
-#     MEASURED ON THIS BOX UNDER LEAN, 2026-08-27 -- estimate a TASK run from these, not from note 7z:
-#       TASK, no Integration, incremental build:   72 SECONDS  (build 18 s; 2752 tests over seven suites)
-#       PHASE, both configurations:                 see note 7z -- 69 minutes
-#     **Seventy-two seconds against sixty-nine minutes**, and that ratio is the whole argument for the
-#     scope split. The build is the largest single component of a TASK run, so the figure is for an
-#     INCREMENTAL build -- the normal per-task case. A cold build costs more and is not what this
-#     measures.
+#     MEASURED ON THIS BOX UNDER LEAN, 2026-08-27. BOTH FIGURES ARE FROM RUNS OF THIS BUILD -- neither
+#     is inherited, because note 7z exists precisely because someone estimated one shape from another
+#     and was forty minutes wrong:
+#       TASK, no Integration, incremental build:      72 SECONDS   (build 18 s; 2752 tests, seven suites)
+#       PHASE, both configurations:                 4095 SECONDS   (68 m 15 s; Integration 32 m 48 s
+#                                                                  Debug and 32 m 55 s Release)
+#
+#     **Seventy-two seconds against sixty-eight minutes -- a factor of fifty-seven** -- and that ratio is
+#     the whole argument for the scope split.
+#
+#     **PHASE cost nothing.** 68 m 15 s measured here against the 69 minutes note 7z recorded before
+#     GATE_SCOPE existed: a difference of forty-five seconds, which is inside the run-to-run spread of
+#     the two Integration legs themselves (they differ by seven seconds in this very run). The scope
+#     machinery is two variables read once, and the measurement says so.
+#
+#     The build is the largest single component of a TASK run, so that figure is for an INCREMENTAL
+#     build -- the normal per-task case. A cold build costs more and is not what this measures.
 #
 #     Use the measured TASK figure rather than deriving one from the FULL or PHASE shapes. Note 7z
 #     records what deriving from the wrong shape cost: a 90-110 minute projection revised down mid-run.

@@ -1,13 +1,13 @@
 # Written by scripts/trace-check.py --baseline --update-baseline on a clean run.
 # package|failures
-FP-001-identity-access|1
-FP-002-authentication-token-lifecycle|1
-FP-003-tenant-lifecycle|12
+FP-001-identity-access|0
+FP-002-authentication-token-lifecycle|0
+FP-003-tenant-lifecycle|11
 FP-004-localization|0
-FP-005-company-legal-entity|1
-FP-006-hr-employee|1
+FP-005-company-legal-entity|0
+FP-006-hr-employee|0
 FP-007-hr-department|0
-FP-008-hr-position|1
+FP-008-hr-position|0
 FP-009-hr-employee-import-export|0
 FP-010-hr-employee-documents|0
 FP-011-gl-foundation|0

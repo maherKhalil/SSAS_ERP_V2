@@ -274,6 +274,47 @@ HOME_OVERRIDES: dict[str, dict[str, tuple[str, ...]]] = {
 }
 
 
+# --------------------------------------------------------------------------------------
+# HOW A PACKAGE ALLOCATES ITS NUMBERS (T-066)
+#
+# `sequential` -- 0001 upward with no gaps. `block` -- themed blocks opening at round
+# boundaries, whose tails are never filled.
+#
+# ESTABLISHED, NOT ASSUMED. `git log -S` over fourteen identifiers across the six packages
+# that failed contiguity found **zero commits** that ever added or removed one: they were
+# never deleted and never lost, they were **never allocated**. And 115 of 115 gaps end at a
+# round-number boundary while every sequential package has none.
+#
+#     FP-001   Domain 0001-0015 | Tenant selection 0020-0024 | API 0030-0036 | Persistence 0040-0048
+#
+# THIS IS NOT A BLANKET DOWNGRADE OF CONTIGUITY. A sequential package that grows a gap must
+# still fail -- dropping the assertion everywhere would trade a false positive for a real
+# hole. Contiguity is ASSERTED where the declaration says sequential and REPORTED where it
+# says block, and **a package with no entry FAILS**, exactly as an undeclared convention and
+# an undeclared space do.
+ALLOCATION: dict[str, str] = {
+    "FP-001-identity-access": "block",
+    "FP-002-authentication-token-lifecycle": "block",
+    "FP-003-tenant-lifecycle": "block",
+    "FP-004-localization": "block",
+    "FP-005-company-legal-entity": "block",
+    "FP-006-hr-employee": "block",
+    "FP-007-hr-department": "block",
+    "FP-008-hr-position": "block",
+    "FP-009-hr-employee-import-export": "block",
+    "FP-010-hr-employee-documents": "block",
+    "FP-011-gl-foundation": "sequential",
+    "FP-012-payroll": "sequential",
+    "FP-013-attendance": "sequential",
+    "FP-014-subscription": "sequential",
+    "FP-015-self-service": "sequential",
+}
+
+
+def allocation_of(package: str) -> str | None:
+    return ALLOCATION.get(package)
+
+
 def owners_of(module: str) -> tuple[str, ...]:
     return SPACE_OWNERS.get(module, ())
 
@@ -582,6 +623,13 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
     # The convention is DECLARED, never inferred. An undeclared package fails: a checker
     # that guessed would be back to absorbing the divergence it exists to surface.
     result["convention"] = convention_of(pkg_dir.name)
+    result["allocation"] = allocation_of(pkg_dir.name)
+    if result["allocation"] is None:
+        result["failures"].append(
+            f"UNDECLARED ALLOCATION — {pkg_dir.name} appears in no ALLOCATION entry. "
+            f"Contiguity cannot be judged without knowing whether numbers run sequentially "
+            f"or open in blocks; unknown must not mean tolerated."
+        )
     homes_map = homes_for(pkg_dir.name)
     if result["convention"] is None:
         result["failures"].append(
@@ -731,8 +779,13 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
             # would fail both for honouring the agreement. Same reasoning as BRULE- above:
             # a rule whose domain was never established is not asserted, it is reported.
             co_owned_space = len(owners_of(module)) > 1
+            # ASSERTED WHERE THE DECLARATION SAYS SEQUENTIAL, REPORTED WHERE IT SAYS BLOCK.
+            # A block-allocated package's unused tails are not gaps; a sequential package
+            # that grows one still fails, which is why this is a per-package declaration
+            # rather than switching the rule off.
+            block_allocated = result.get("allocation") == "block"
             sink = (result["warnings"]
-                    if space == "BRULE" or co_owned_space
+                    if space == "BRULE" or co_owned_space or block_allocated
                     else result["failures"])
             span_note = ("  (co-owned space; contiguity spans its owners, not this package)"
                          if co_owned_space else "")
@@ -1684,6 +1737,15 @@ def report(results: list[dict]) -> int:
         # be visible rather than absorbed: a reader who sees `BR-` in FP-001 and `BR-` in
         # FP-014 is reading two different things, and nothing else in this output says so.
         conv = r.get("convention")
+        alloc = r.get("allocation")
+        if alloc == "block":
+            print("  Allocation: BLOCK — themed blocks at round boundaries; unused tails are "
+                  "not gaps, so contiguity is REPORTED, not asserted")
+        elif alloc == "sequential":
+            print("  Allocation: SEQUENTIAL — 0001 upward with no gaps; contiguity is ASSERTED")
+        else:
+            print("  Allocation: UNDECLARED — this package is in no ALLOCATION entry")
+
         if conv == "legacy":
             print("\n  Convention: LEGACY — BRULE- homed in business-rules.md, "
                   "BR- in requirements.md (a SEPARATE space, not a renaming)")

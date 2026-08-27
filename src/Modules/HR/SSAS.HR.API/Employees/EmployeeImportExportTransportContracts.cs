@@ -168,6 +168,51 @@ internal static class EmployeeImportRowErrorMapper
       "Employee.PositionRequired" => PositionNotFound,
       "Employee.PositionInactive" => PositionInactive,
 
+      // ---- THE RUN AGGREGATES' OWN GUARDS (T-080). RULED FROM THE RAISE SITE, NOT FROM THE NAME.
+      //
+      // These reach the wire: `ImportEmployeesCommandHandler.cs:624-626` returns the factory's failure
+      // directly and `ExportEmployeesQueryHandler.cs:174-177` does the same, so before these arms existed
+      // a bad import key or file name answered `500 request.failed`.
+      //
+      // The split is by WHO SUPPLIED THE VALUE, which is the only question that decides whether a caller
+      // can act on the answer.
+      //
+      // CALLER-SUPPLIED, so the caller can fix them by sending something else:
+      "EmployeeImportRun.InvalidImportKey" => ApiErrors.RequestInvalid,
+      "EmployeeImportRun.InvalidFileName" => ApiErrors.RequestInvalid,
+
+      // ---- SERVER-COMPUTED, SO A 500 IS THE HONEST ANSWER. EXPLICIT DESPITE MATCHING THE DEFAULT.
+      //
+      // `InvalidCounts` guards `byteCount`, `rowCount`, `acceptedCount` and `rejectedCount`. Every one is
+      // computed here, not sent: `byteCount` is `Encoding.UTF8.GetByteCount(content)`
+      // (`EmployeeEndpointRouteBuilderExtensions.cs:716`) and the rest come from the parser. A negative
+      // count is this pipeline's arithmetic error and there is nothing a caller could send differently.
+      //
+      // `InvalidColumnSet` guards `ExportEmployeesQueryHandler.Columns`, a `public static readonly` list
+      // (`:95`), and `ExportEmployeesQuery` carries no column input at all — the caller cannot choose the
+      // column set, so they cannot get it wrong.
+      //
+      // **Both are written out although the fallthrough already produces a 500.** The status is the same;
+      // the difference is that it becomes a decision with a reason instead of an accident that happens to
+      // read correctly.
+      "EmployeeImportRun.InvalidCounts" => ApiErrors.WriteFailure,
+      "EmployeeExportRun.InvalidColumnSet" => ApiErrors.WriteFailure,
+
+      // ---- AND THIS ONE IS 500 FOR A REASON THAT RESTS ON TWO CONSTANTS AGREEING ACROSS A BOUNDARY.
+      //
+      // `EmployeeImportRun.IsValidActor` (`:218`) requires a non-blank actor of at most
+      // `ActorMaximumLength` (256). The handler's own guard (`ImportEmployeesCommandHandler.cs:90-94`)
+      // enforces only the non-blank half and answers `EmployeeErrors.InvalidActor` -> `Forbidden`, so it
+      // does NOT subsume this one. The length half holds only because `AuthenticationSubject.Create`
+      // caps a subject at 256 as well — a different module, an equal constant, and nothing asserting they
+      // stay equal.
+      //
+      // So it is unreachable today and a 500 is right: the actor is issued by the platform, never chosen
+      // by the caller, and a caller cannot act on the answer whatever it says. **If the subject limit ever
+      // rises above 256 this becomes reachable and stays a 500 for the same reason** — which is why the
+      // arm is worth writing even though nothing can currently hit it.
+      "EmployeeImportRun.InvalidActor" => ApiErrors.WriteFailure,
+
       // ---- VALUE FAILURES. The row's own cells, each named so the operator knows which to fix.
       "Employee.InvalidEmployeeNumber" => ApiErrors.RequestInvalid,
       "Employee.InvalidNationalId" => ApiErrors.RequestInvalid,

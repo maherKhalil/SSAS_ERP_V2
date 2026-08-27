@@ -96,11 +96,7 @@ public sealed class ModuleErrorMappingArchitectureTests
     // A status code is a contract decision owned by the surface, not by the test that noticed.
     new("PayrollApiErrorMapper", PayrollAssemblies,
       Path.Combine("src", "Modules", "Payroll", "SSAS.Payroll.API", "PayrollApiErrorMapper.cs"),
-      ["Payroll"],
-      [
-        "Payroll.PayElementOvertimeTierInvalid",
-        "Payroll.PayElementOvertimeTierNotApplicable"
-      ]),
+      ["Payroll"], []),
 
     new("DepartmentApiErrorMapper", HrAssemblies,
       Path.Combine("src", "Modules", "HR", "SSAS.HR.API", "Departments", "DepartmentApiErrorMapper.cs"),
@@ -122,15 +118,7 @@ public sealed class ModuleErrorMappingArchitectureTests
     // collapse exists to prevent. **Ruling three of six would be worse than ruling none.**
     new("EmployeeApiErrorMapper", HrAssemblies,
       Path.Combine("src", "Modules", "HR", "SSAS.HR.API", "Employees", "EmployeeApiErrorMapper.cs"),
-      ["Employee"],
-      [
-        "Employee.PositionHistoryImmutable",
-        "Employee.PositionInDifferentCompany",
-        "Employee.PositionInactive",
-        "Employee.PositionNotFound",
-        "Employee.PositionRequired",
-        "Employee.PositionUnchanged"
-      ]),
+      ["Employee"], []),
 
     // ---- FIVE MORE, FOUND ONLY BY SPLITTING THE SITES. ALL REACHABLE, ALL VERIFIED.
     //
@@ -143,14 +131,7 @@ public sealed class ModuleErrorMappingArchitectureTests
     // evidence when the name searched for is the right one.
     new("EmployeeImportExportTransportContracts", HrAssemblies,
       Path.Combine("src", "Modules", "HR", "SSAS.HR.API", "Employees", "EmployeeImportExportTransportContracts.cs"),
-      ["EmployeeImport", "EmployeeImportRun", "EmployeeExportRun"],
-      [
-        "EmployeeExportRun.InvalidColumnSet",
-        "EmployeeImportRun.InvalidActor",
-        "EmployeeImportRun.InvalidCounts",
-        "EmployeeImportRun.InvalidFileName",
-        "EmployeeImportRun.InvalidImportKey"
-      ])
+      ["EmployeeImport", "EmployeeImportRun", "EmployeeExportRun"], [])
   ];
 
   // ---- THE REGISTER IS AN EXACT SET, NOT A CEILING.

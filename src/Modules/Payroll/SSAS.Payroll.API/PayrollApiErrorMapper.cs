@@ -41,6 +41,20 @@ public static class PayrollApiErrorMapper
       "Payroll.PayElementCalculationOrderInvalid" => ApiErrors.RequestInvalid,
       "Payroll.PayElementCompanyRequired" => ApiErrors.RequestInvalid,
       "Payroll.PayElementAccountRequired" => ApiErrors.RequestInvalid,
+
+      // ---- OVERTIME TIER (T-080). BOTH 400, AND THE SECOND IS NOT A CONFLICT.
+      //
+      // `OvertimeTierInvalid` is a length-and-control-character check on a caller-sent string, and
+      // `Attendance.OvertimeTierInvalid` — the identical concept in another module — is already 400
+      // (`AttendanceApiErrorMapper.cs:67`).
+      //
+      // `OvertimeTierNotApplicable` refuses a tier on an element whose behaviour is not `OvertimeHourly`.
+      // That is NOT `PayElementInactive`'s shape, which is 409 because inactivity is a state that changes
+      // over time and the caller could not have known. Behaviour is intrinsic and visible: the domain calls
+      // this *"a caller who has misunderstood the model, not a harmless extra"* at `PayElement.cs:346`,
+      // the same phrase `PayElementErrors` uses for the negative-amount case, which is 400.
+      "Payroll.PayElementOvertimeTierInvalid" => ApiErrors.RequestInvalid,
+      "Payroll.PayElementOvertimeTierNotApplicable" => ApiErrors.RequestInvalid,
       "Payroll.CompensationCompanyRequired" => ApiErrors.RequestInvalid,
       "Payroll.CompensationEmployeeRequired" => ApiErrors.RequestInvalid,
       "Payroll.CompensationBaseAmountNegative" => ApiErrors.RequestInvalid,

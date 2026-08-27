@@ -1,3 +1,4 @@
+using System.Reflection;
 using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Leave;
 using SSAS.BuildingBlocks.Domain;
@@ -295,7 +296,7 @@ public sealed class LeaveRequestTests
     var request = Request();
 
     Assert.True(request.ApproveAtRoot(
-      Guid.NewGuid(), "root-admin", DateTimeOffset.UtcNow, "No manager above this employee").IsSuccess);
+      ActingEmployee.Resolved(Guid.NewGuid()), "root-admin", DateTimeOffset.UtcNow, "No manager above this employee").IsSuccess);
 
     Assert.Equal(LeaveRequestStatus.Approved, request.Status);
     Assert.Equal("root-admin", request.DecidedBy);
@@ -317,8 +318,8 @@ public sealed class LeaveRequestTests
     var approving = Request();
     var rejecting = Request();
 
-    var approved = approving.ApproveAtRoot(Employee, "root-admin", DateTimeOffset.UtcNow, "note");
-    var rejected = rejecting.RejectAtRoot(Employee, "root-admin", DateTimeOffset.UtcNow, "note");
+    var approved = approving.ApproveAtRoot(ActingEmployee.Resolved(Employee), "root-admin", DateTimeOffset.UtcNow, "note");
+    var rejected = rejecting.RejectAtRoot(ActingEmployee.Resolved(Employee), "root-admin", DateTimeOffset.UtcNow, "note");
 
     Assert.Equal(LeaveErrors.SelfApprovalBarred.Code, approved.Error.Code);
     Assert.Equal(LeaveErrors.SelfApprovalBarred.Code, rejected.Error.Code);
@@ -339,8 +340,8 @@ public sealed class LeaveRequestTests
     var rejecting = Request();
     var someoneElse = Guid.NewGuid();
 
-    Assert.True(approving.ApproveAtRoot(someoneElse, "root-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
-    Assert.True(rejecting.RejectAtRoot(someoneElse, "root-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+    Assert.True(approving.ApproveAtRoot(ActingEmployee.Resolved(someoneElse), "root-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+    Assert.True(rejecting.RejectAtRoot(ActingEmployee.Resolved(someoneElse), "root-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
 
     Assert.Equal(LeaveRequestStatus.Approved, approving.Status);
     Assert.Equal(LeaveRequestStatus.Rejected, rejecting.Status);
@@ -361,8 +362,8 @@ public sealed class LeaveRequestTests
     var approving = Request();
     var rejecting = Request();
 
-    Assert.True(approving.ApproveAtRoot(null, "support-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
-    Assert.True(rejecting.RejectAtRoot(null, "support-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+    Assert.True(approving.ApproveAtRoot(ActingEmployee.Unresolved(), "support-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+    Assert.True(rejecting.RejectAtRoot(ActingEmployee.Unresolved(), "support-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
 
     Assert.Equal(LeaveRequestStatus.Approved, approving.Status);
     Assert.Equal(LeaveRequestStatus.Rejected, rejecting.Status);
@@ -443,5 +444,72 @@ public sealed class LeaveRequestTests
 
     Assert.True(request.IsFailure);
     Assert.Equal(LeaveErrors.InvalidRequestRange.Code, request.Error.Code);
+  }
+}
+
+// ==================================================================================================
+// THE ACTING-EMPLOYEE WRAPPER'S OWN INVARIANTS (T-085).
+// ==================================================================================================
+//
+// The type exists to make "we do not know who this is" a NAMED act rather than a bare `null`. These pin
+// the properties that claim rests on — **if any of them stops holding, the type is a name over the same
+// silent skip** and the ruling behind it is void.
+public sealed class ActingEmployeeTests
+{
+  // ---- THE CONSTRAINT THE WHOLE TYPE RESTS ON.
+  //
+  // If an unresolved instance can be obtained without writing `Unresolved()`, the wrapper has reintroduced
+  // the defect wearing a type name. A struct could not satisfy this — C# guarantees a reachable
+  // `default(T)` for every one — which is why this is a class, and this asserts the class keeps the
+  // property the struct could never have had.
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void There_is_no_way_to_construct_one_without_naming_which_kind_it_is()
+  {
+    var constructors = typeof(ActingEmployee)
+      .GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+
+    Assert.Empty(constructors);
+
+    // And no back door that would amount to one: an `Empty`-style static, or a conversion from the raw
+    // identifier, would each let a caller obtain an actor without saying which kind they meant.
+    Assert.Empty(typeof(ActingEmployee)
+      .GetMethods(BindingFlags.Public | BindingFlags.Static)
+      .Where(method => method.Name is "op_Implicit" or "op_Explicit"));
+
+    Assert.Empty(typeof(ActingEmployee)
+      .GetFields(BindingFlags.Public | BindingFlags.Static)
+      .Where(field => field.FieldType == typeof(ActingEmployee)));
+  }
+
+  // An unresolved actor matches nobody. The comparison lives inside the type precisely so this cannot be
+  // got wrong at a call site — the operator case must never read as "this is the requester".
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void An_unresolved_actor_matches_nobody()
+  {
+    Assert.False(ActingEmployee.Unresolved().Matches(Guid.NewGuid()));
+    Assert.False(ActingEmployee.Unresolved().Matches(Guid.Empty));
+  }
+
+  // The control: a resolved actor matches exactly one employee and no other. Without it the test above
+  // passes against a `Matches` that always returns false, which would silently disable the bar.
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void A_resolved_actor_matches_that_employee_and_no_other()
+  {
+    var employee = Guid.NewGuid();
+
+    Assert.True(ActingEmployee.Resolved(employee).Matches(employee));
+    Assert.False(ActingEmployee.Resolved(employee).Matches(Guid.NewGuid()));
+  }
+
+  // An empty identifier is refused rather than coerced. Accepting one would produce an actor that looks
+  // resolved and matches nothing — which is the unresolved case, arrived at by accident.
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void An_empty_identifier_is_not_a_resolved_actor()
+  {
+    Assert.Throws<ArgumentException>(() => ActingEmployee.Resolved(Guid.Empty));
   }
 }

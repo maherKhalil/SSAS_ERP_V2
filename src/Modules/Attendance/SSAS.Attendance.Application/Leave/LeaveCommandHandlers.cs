@@ -355,10 +355,10 @@ public sealed class ApproveLeaveRequestCommandHandler(
     // Resolution happens HERE because this is the only layer permitted to call a cross-module contract;
     // the comparison happens in the aggregate for the reason stated one line above. `null` is an ordinary
     // answer and not a refusal — see `LeaveRequest.GuardNotSelfAtRoot`.
-    var actingEmployeeId = await ResolveActingEmployeeAsync(cancellationToken);
+    var acting = await ResolveActingEmployeeAsync(cancellationToken);
 
     var decided = route.Value.UsedRootFallback
-      ? request.ApproveAtRoot(actingEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
+      ? request.ApproveAtRoot(acting, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
       : request.Approve(route.Value.ApproverEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote);
     if (decided.IsFailure)
     {
@@ -403,10 +403,20 @@ public sealed class ApproveLeaveRequestCommandHandler(
   // No tenant session means no linked employee by definition — the operator case the root fallback exists
   // for — so it is `null` rather than a refusal, and the aggregate treats it as "the bar does not apply"
   // rather than "the caller failed to identify themselves".
-  private async Task<Guid?> ResolveActingEmployeeAsync(CancellationToken cancellationToken) =>
-    currentTenantUser.TenantUserId is { } tenantUserId
-      ? await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken)
-      : null;
+  // THE ONE PLACE THE ANSWER BECOMES AN ActingEmployee. A value is `Resolved`, an absence is `Unresolved`,
+  // and no other site performs that translation — so "who decided this was unresolved" has exactly two
+  // answers in this file and both are named.
+  private async Task<ActingEmployee> ResolveActingEmployeeAsync(CancellationToken cancellationToken)
+  {
+    if (currentTenantUser.TenantUserId is not { } tenantUserId)
+    {
+      return ActingEmployee.Unresolved();
+    }
+
+    var employeeId = await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken);
+
+    return employeeId is { } resolved ? ActingEmployee.Resolved(resolved) : ActingEmployee.Unresolved();
+  }
 }
 
 public sealed class RejectLeaveRequestCommandHandler(
@@ -447,10 +457,10 @@ public sealed class RejectLeaveRequestCommandHandler(
 
     // The same bar as approve, on the same path, for the same reason: `RejectAtRoot` reached the root
     // fallback through the identical router branch and had the identical hole (T-084).
-    var actingEmployeeId = await ResolveActingEmployeeAsync(cancellationToken);
+    var acting = await ResolveActingEmployeeAsync(cancellationToken);
 
     var decided = route.Value.UsedRootFallback
-      ? request.RejectAtRoot(actingEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
+      ? request.RejectAtRoot(acting, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
       : request.Reject(route.Value.ApproverEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote);
 
     // No balance movement. Rejection never consumed anything, because the balance moves at APPROVAL.
@@ -462,10 +472,20 @@ public sealed class RejectLeaveRequestCommandHandler(
   // No tenant session means no linked employee by definition — the operator case the root fallback exists
   // for — so it is `null` rather than a refusal, and the aggregate treats it as "the bar does not apply"
   // rather than "the caller failed to identify themselves".
-  private async Task<Guid?> ResolveActingEmployeeAsync(CancellationToken cancellationToken) =>
-    currentTenantUser.TenantUserId is { } tenantUserId
-      ? await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken)
-      : null;
+  // THE ONE PLACE THE ANSWER BECOMES AN ActingEmployee. A value is `Resolved`, an absence is `Unresolved`,
+  // and no other site performs that translation — so "who decided this was unresolved" has exactly two
+  // answers in this file and both are named.
+  private async Task<ActingEmployee> ResolveActingEmployeeAsync(CancellationToken cancellationToken)
+  {
+    if (currentTenantUser.TenantUserId is not { } tenantUserId)
+    {
+      return ActingEmployee.Unresolved();
+    }
+
+    var employeeId = await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken);
+
+    return employeeId is { } resolved ? ActingEmployee.Resolved(resolved) : ActingEmployee.Unresolved();
+  }
 }
 
 public sealed class CancelLeaveRequestCommandHandler(

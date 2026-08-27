@@ -73,7 +73,7 @@ rather than as a lookup. Rewrite your own line on resume - do not trust the one 
 | Role | Session name | Last written |
 |---|---|---|
 | Architect | `ssas-erp-v2-b4` | 2026-08-27, rewritten after a restart |
-| Coder | **UNKNOWN - no coder session running** | 2026-08-27. The name `ssas-erp-v2-37` recorded yesterday is **dead**; do not send to it. |
+| Coder | `ssas-erp-v2-aa [a7865a]` | 2026-08-27, written from `ListAgents` this session. The `ssas-erp-v2-37` recorded yesterday was indeed **dead**. |
 
 The coder's line is second-hand: read from `ListAgents`, not written by the coder itself.
 It is recorded because an unverified pointer that can be checked beats no pointer at all -

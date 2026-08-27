@@ -459,6 +459,8 @@ echo "########## configurations: $GATE_CONFIGS"
 GATE_LOCK_DB=tempdb
 GATE_LOCK_RESOURCE=SSAS_GATE_EXCLUSIVE
 GATE_HOLDER_PID=""
+GATE_LOCK_STATE=""
+GATE_ROOT_SQL=${ROOT//\'/\'\'}
 
 # -d IS NOT OPTIONAL AND IS NOT COSMETIC. Application locks are DATABASE-SCOPED: a holder in master and
 # a challenger in tempdb take the same lock name without seeing each other (measured, T-056). Omitting
@@ -490,17 +492,12 @@ GATE_STARTED=$(gate_probe_pid "$GATE_WINPID"); GATE_STARTED=${GATE_STARTED#ALIVE
 # `sys.dm_exec_sessions` gives login_time and host_name for free but never the path, and its
 # host_process_id is the HOLDER sqlcmd -- which is alive in precisely the orphan case, so it cannot
 # answer the only question that matters. A stale label is harmless because the lock is the truth.
-gate_label_write () {
-  sqlq "SET NOCOUNT ON;
-    IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NULL
-      CREATE TABLE dbo.ssas_gate_holder (pin int NOT NULL PRIMARY KEY, root_path nvarchar(400) NOT NULL,
-        gate_winpid int NOT NULL, gate_started nvarchar(19) NOT NULL, gate_scope nvarchar(10) NOT NULL,
-        written_at datetime2(0) NOT NULL);
-    DELETE FROM dbo.ssas_gate_holder;
-    INSERT INTO dbo.ssas_gate_holder VALUES (1, N'${ROOT//\'/\'\'}', ${GATE_WINPID:-0},
-      N'$GATE_STARTED', N'$GATE_SCOPE', SYSDATETIME());" >/dev/null 2>&1
-}
-
+#
+# IT IS WRITTEN BY THE HOLDER ITSELF, in the same batch that takes the lock, and that is not a
+# stylistic choice. Writing it from the gate afterwards leaves a window in which the lock is held and
+# the label still names the PREVIOUS holder -- and a challenger arriving in that window would probe a
+# dead pid and reclaim a lock that a live gate had just legitimately taken. Same session, same batch,
+# no window.
 gate_label_read () {
   sqlq "SET NOCOUNT ON; IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL
     SELECT CONCAT(gate_winpid,'|',gate_started,'|',gate_scope,'|',
@@ -508,38 +505,67 @@ gate_label_read () {
     | head -1 | sed 's/[[:space:]]*$//'
 }
 
+gate_label_pid () {
+  sqlq "SET NOCOUNT ON; IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL
+    SELECT gate_winpid FROM dbo.ssas_gate_holder WHERE pin=1;" | head -1 | tr -d '[:space:]'
+}
+
 # A HOLDER MUST BE A LIVE PROCESS, NOT A CALL. A session-scoped applock taken by a one-shot `sqlcmd -Q`
 # is released the instant sqlcmd exits -- and BOTH the take and the release return 0, so a gate built
 # that way would announce an exclusive lock, guard nothing, and look correct at every step (measured,
 # T-056). WAITFOR caps the holder's life at just under 24 h so a catastrophically orphaned holder is
 # bounded rather than eternal; the takeover path below is what actually recovers one.
+#
+# IT SETS A GLOBAL AND ECHOES NOTHING, AND IT MUST STAY THAT WAY. Called as `$(gate_lock_acquire)` the
+# whole thing runs in a subshell: the holder is started there, `GATE_HOLDER_PID` never reaches the
+# parent, and the EXIT trap below then has nothing to kill -- so every abort path leaks a holder that
+# blocks the next run. That is not hypothetical; it is what the first version of this function did, and
+# it is the same hazard note 3 records for `reap_to_zero`. **Never wrap this call in `$( )` or a pipe.**
+#
+# ACQUISITION IS DETECTED FROM THE LABEL TABLE, NOT FROM THE HOLDER'S OUTPUT. sqlcmd's stdout is
+# block-buffered when redirected to a file, so a sentinel printed before a 24-hour WAITFOR never
+# reaches the file while the holder lives -- the first version polled for it and timed out on a lock it
+# had successfully taken. The table is written by the same batch and is visible immediately.
 gate_lock_acquire () {
-  local OUT="$LOGS/gate-lock.out" i
-  : > "$OUT"
+  local i
+  GATE_LOCK_STATE=UNKNOWN
   sqlcmd -S localhost -E -C -d "$GATE_LOCK_DB" -h -1 -W -Q \
     "SET NOCOUNT ON; DECLARE @r int;
      EXEC @r = sp_getapplock @Resource=N'$GATE_LOCK_RESOURCE', @LockMode=N'Exclusive',
        @LockOwner=N'Session', @LockTimeout=0;
-     IF @r < 0 BEGIN PRINT 'GATE_LOCK_DENIED'; RETURN; END;
-     PRINT 'GATE_LOCK_HELD'; WAITFOR DELAY '23:59:00';" > "$OUT" 2>&1 &
+     IF @r < 0 RETURN;
+     IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NULL
+       CREATE TABLE dbo.ssas_gate_holder (pin int NOT NULL PRIMARY KEY, root_path nvarchar(400) NOT NULL,
+         gate_winpid int NOT NULL, gate_started nvarchar(19) NOT NULL, gate_scope nvarchar(10) NOT NULL,
+         written_at datetime2(0) NOT NULL);
+     DELETE FROM dbo.ssas_gate_holder;
+     INSERT INTO dbo.ssas_gate_holder VALUES (1, N'$GATE_ROOT_SQL', $GATE_WINPID,
+       N'$GATE_STARTED', N'$GATE_SCOPE', SYSDATETIME());
+     WAITFOR DELAY '23:59:00';" > "$LOGS/gate-lock.out" 2>&1 &
   GATE_HOLDER_PID=$!
   # Bounded wait, paced by the server rather than by `sleep`, so the pause costs a round trip we are
   # already able to make and proves the instance is answering while we wait for it.
   for i in 1 2 3 4 5 6 7 8 9 10; do
-    grep -q 'GATE_LOCK_HELD'   "$OUT" 2>/dev/null && { echo HELD;   return; }
-    grep -q 'GATE_LOCK_DENIED' "$OUT" 2>/dev/null && { echo DENIED; return; }
+    if [ "$(gate_label_pid)" = "$GATE_WINPID" ]; then GATE_LOCK_STATE=HELD; return; fi
+    # The holder exits immediately when denied. A dead holder plus no label of ours is a refusal.
+    if ! kill -0 "$GATE_HOLDER_PID" 2>/dev/null; then GATE_LOCK_STATE=DENIED; return; fi
     sqlq "WAITFOR DELAY '00:00:01';" >/dev/null 2>&1
   done
-  echo UNKNOWN
 }
 
 # Kill the session holding OUR resource and nothing else. Reached only after the holder's gate has been
 # shown to be dead.
+#
+# THE STALE LABEL IS DELETED IN THE SAME BATCH. If it were left, a third gate arriving between this
+# reclaim and the next acquisition would read the dead holder's row, probe the same dead pid, and
+# reclaim the lock a moment after we legitimately took it. With the row gone that gate reads nothing,
+# which it treats as undeterminable and refuses -- the safe direction.
 gate_lock_steal () {
   sqlq "SET NOCOUNT ON; DECLARE @spid int, @s nvarchar(50);
     SELECT TOP 1 @spid = request_session_id FROM sys.dm_tran_locks
       WHERE resource_type='APPLICATION' AND resource_database_id = DB_ID()
         AND resource_description LIKE '%$GATE_LOCK_RESOURCE%';
+    IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL DELETE FROM dbo.ssas_gate_holder;
     IF @spid IS NOT NULL AND @spid <> @@SPID
     BEGIN SET @s = N'KILL ' + CONVERT(nvarchar(10), @spid); EXEC sp_executesql @s; END" >/dev/null 2>&1
 }
@@ -567,7 +593,8 @@ if [ -z "$GATE_WINPID" ] || [ "$GATE_STARTED" = "UNKNOWN" ] || [ "$GATE_STARTED"
   exit 7
 fi
 
-case "$(gate_lock_acquire)" in
+gate_lock_acquire                       # sets GATE_LOCK_STATE; NEVER call this inside $( ) -- see above
+case "$GATE_LOCK_STATE" in
   HELD) ;;
   DENIED)
     GATE_HOLDER_LABEL=$(gate_label_read)
@@ -592,11 +619,12 @@ case "$(gate_lock_acquire)" in
         echo "---             The pid was REUSED; the gate that took this lock is dead."
       fi
       gate_lock_steal
-      if [ "$(gate_lock_acquire)" != "HELD" ]; then
-        echo "!!! ABORT: reclaim did not free the lock."
+      gate_lock_acquire
+      if [ "$GATE_LOCK_STATE" != "HELD" ]; then
+        echo "!!! ABORT: reclaim did not free the lock (state: $GATE_LOCK_STATE)."
         exit 7
       fi
-      echo "--- reclaimed. Proceeding."
+      echo "--- RECLAIMED. Proceeding."
     else
       echo "!!! ABORT: cannot determine whether that gate is alive."
       echo "!!! Not proceeding: an unreadable holder is treated as a live one. Fail closed."
@@ -608,7 +636,7 @@ case "$(gate_lock_acquire)" in
     echo "!!! already here -- and that guard is what T-056 exists to replace."
     exit 7;;
 esac
-gate_label_write
+# The label was written by the holder itself, in the acquiring batch. Nothing to write here.
 echo "########## instance lock: HELD by pid $GATE_WINPID ($ROOT)"
 
 reap_to_zero () {

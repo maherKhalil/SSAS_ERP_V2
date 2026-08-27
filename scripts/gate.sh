@@ -43,6 +43,14 @@ set -u
 #       4  the reap left catalogs behind; CatalogLeakGuardTests would fail on them
 #       5  the box is below the memory floor for this mode
 #
+#     And two more, outside `reap_to_zero`, which abort before any leg starts:
+#
+#       6  GATE_SCOPE or GATE_INTEGRATION holds a value this script does not recognise (note 7y)
+#       7  another gate holds the instance lock, or its state could not be read at all (note 7x)
+#
+#     6 AND 7 REFUSE RATHER THAN DEFAULT, for the same reason: both would otherwise run a DIFFERENT
+#     gate from the one the caller asked for and report it under the requested name.
+#
 #     A merge rule was built on this file's exit code (`DEC-L-007`: a green gate is merge authority for
 #     code), so a precondition abort that returned 0 would let untested code merge. It does not, and the
 #     reason it does not is that `exit` inside `reap_to_zero` terminates the script rather than the
@@ -79,6 +87,69 @@ set -u
 #     while FIFTEEN tests had silently vanished from the total. A summary line whose total quietly
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
+#
+#  7x. ONE GATE AT A TIME, ENFORCED ON THE INSTANCE. T-056.
+#
+#     `reap_to_zero` drops every SSAS[_]% catalog on the box, under EVERY scope. Until T-056 the only
+#     guard was the sibling-testhost check, which matches on `basename "$ROOT"` -- so two worktrees with
+#     DIFFERENT DIRECTORY NAMES each concluded the other's testhost belonged to someone unrelated and
+#     proceeded. A 72-second TASK gate would reap the catalogs a 69-minute PHASE run was using, mid-leg,
+#     and the PHASE run would then fail in a way that looks exactly like a test failure.
+#
+#     `DEC-L-051` made this materially more likely: something that costs 72 seconds does not feel like
+#     an action that needs checking first.
+#
+#     THE SHARED RESOURCE IS THE SQL SERVER INSTANCE, NOT THE REPOSITORY. `git rev-parse
+#     --git-common-dir` would close the two-worktree case and nothing else -- a second clone, or a
+#     colleague's checkout, reaps the same catalogs while repo identity correctly reports them
+#     unrelated. So the lock lives where the damage lands.
+#
+#     ---- FOUR THINGS ESTABLISHED BY TEST, EACH OF WHICH RULES OUT AN OBVIOUS DESIGN.
+#
+#     A ONE-SHOT LOCK IS NOT A LOCK. `sp_getapplock @LockOwner='Session'` taken by `sqlcmd -Q` is
+#     released the instant sqlcmd exits, because the lock is scoped to the session and a one-shot
+#     sqlcmd IS the session. Two consecutive acquires both returned 0 with nothing held in between.
+#     The take AND the release both succeed, so that gate announces an exclusive lock and guards
+#     nothing -- the same shape as the defect this note exists to prevent.
+#
+#     THE NAMESPACE IS PER-DATABASE. A holder in `master` and a challenger in `tempdb` took the same
+#     lock name without seeing each other. A gate that omits `-d` inherits the login's default
+#     database and therefore works BY ACCIDENT OF A LOGIN SETTING. `-d` is not optional here.
+#
+#     A KILLED GATE DOES NOT RELEASE -- IT ORPHANS. `kill -9` on the gate left the holder sqlcmd alive
+#     and still holding five seconds later; only killing the sqlcmd itself released it, within four.
+#
+#     AND `trap` DOES NOT FIX THAT. Tested twice, both negative: bash defers a trap while a foreground
+#     child runs -- a gate is inside `dotnet test` for up to 33 minutes at a stretch -- and sqlcmd is a
+#     native Windows process MSYS signals do not reach. The EXIT trap here is real and useful for
+#     normal exit and for this script's own aborts; NOTHING DEPENDS ON IT.
+#
+#     ---- WHY LIVENESS AND NEVER AGE.
+#
+#     A legitimate PHASE run is 69 minutes and a single Integration leg is 33 minutes of one process.
+#     NO THRESHOLD SEPARATES "hung" FROM "working correctly" HERE. Any age would either strand real
+#     runs or license stealing them, and it would be a number nobody could defend. So the question
+#     asked is never "how old" but "is that gate's process still alive":
+#
+#       lock held, holder's gate pid alive        -> REFUSE, naming root, pid, scope and start time
+#       lock held, holder's gate pid provably dead -> RECLAIM, and say so loudly in the log
+#       liveness undeterminable                    -> REFUSE. Fail closed.
+#
+#     PID ALONE IS INSUFFICIENT: a reused pid reads as alive. The pid must still be held by a process
+#     whose START TIME matches the one recorded in the label. Get this wrong and the failure direction
+#     is REFUSING WHEN WE COULD HAVE PROCEEDED -- the safe side, and it is not traded for convenience.
+#
+#     ---- THE LABEL IS NOT THE LOCK, AND THAT SEPARATION IS DELIBERATE.
+#
+#     The applock is the truth: it cannot be forgotten and it dies with its connection. But it carries
+#     no payload, and `sys.dm_exec_sessions` gives login_time and host_name while never giving the
+#     WORKTREE PATH -- and its host_process_id is the holder sqlcmd, which is alive in precisely the
+#     orphan case. So a one-row label carries root path, gate pid, start time and scope, purely so the
+#     refusal can name a holder instead of refusing bare. A guard that refuses without naming who holds
+#     it gets disabled by the next person. A stale label is harmless BECAUSE THE LOCK IS THE TRUTH.
+#
+#     It lives in `tempdb` and not in any `SSAS[_]%` catalog, which `reap_to_zero` would drop -- the
+#     guard's own state must not be reapable by the thing it guards.
 #
 #  7y. TWO SCOPES, ORTHOGONAL TO THE TWO MODES. `DEC-L-051`, implemented by T-055.
 #
@@ -378,6 +449,168 @@ echo "########## GATE SCOPE: $GATE_SCOPE -- $SCOPE_NOTE"
 echo "########## suites: $GATE_SUITES"
 echo "########## configurations: $GATE_CONFIGS"
 
+# ---- THE CONCURRENCY GUARD. See note 7x in the header. T-056.
+#
+# Two gates on this box destroy each other: `reap_to_zero` drops every SSAS[_]% catalog under every
+# scope, and the only previous guard matched on `basename "$ROOT"`, so two differently-named worktrees
+# each concluded the other's testhost belonged to someone unrelated.
+#
+# THE SHARED RESOURCE IS THE SQL SERVER INSTANCE, NOT THE REPOSITORY, so the lock lives on the instance.
+GATE_LOCK_DB=tempdb
+GATE_LOCK_RESOURCE=SSAS_GATE_EXCLUSIVE
+GATE_HOLDER_PID=""
+
+# -d IS NOT OPTIONAL AND IS NOT COSMETIC. Application locks are DATABASE-SCOPED: a holder in master and
+# a challenger in tempdb take the same lock name without seeing each other (measured, T-056). Omitting
+# -d inherits the login's default database, so the guard would work by accident of one login's settings
+# and silently stop working for another. tempdb rather than master: no persistent object in a system
+# database, and an instance restart clears any stale label for free.
+sqlq () { sqlcmd -S localhost -E -C -d "$GATE_LOCK_DB" -h -1 -W -Q "$1" 2>/dev/null; }
+
+# The gate's own WINDOWS pid. `$$` is the MSYS pid and means nothing to Get-Process; column 4 of
+# `ps -W` is the Windows one. Both are needed: the label records the Windows pid so any later
+# challenger -- a different shell, a different worktree -- can ask the OS whether we are still alive.
+GATE_WINPID=$(ps -W -p $$ 2>/dev/null | awk 'NR>1{print $4}' | head -1)
+
+# ALIVE <start> | DEAD | UNKNOWN. Anything unparsed is UNKNOWN, never DEAD: mistaking a live gate for a
+# dead one is the failure that reaps a running gate's catalogs.
+gate_probe_pid () {
+  local P="$1" OUT
+  case "$P" in ''|*[!0-9]*) echo UNKNOWN; return;; esac
+  OUT=$(powershell.exe -NoProfile -Command '$p = Get-Process -Id '"$P"' -ErrorAction SilentlyContinue; if ($null -eq $p) { "DEAD" } elseif ($null -eq $p.StartTime) { "UNKNOWN" } else { "ALIVE " + $p.StartTime.ToString("yyyy-MM-dd HH:mm:ss") }' 2>/dev/null | tr -d '\r' | head -1)
+  case "$OUT" in
+    DEAD|ALIVE\ ????-??-??\ ??:??:??) echo "$OUT";;
+    *) echo UNKNOWN;;
+  esac
+}
+
+GATE_STARTED=$(gate_probe_pid "$GATE_WINPID"); GATE_STARTED=${GATE_STARTED#ALIVE }
+
+# THE LABEL IS NOT THE LOCK. It carries what the lock cannot: which worktree, which pid, started when.
+# `sys.dm_exec_sessions` gives login_time and host_name for free but never the path, and its
+# host_process_id is the HOLDER sqlcmd -- which is alive in precisely the orphan case, so it cannot
+# answer the only question that matters. A stale label is harmless because the lock is the truth.
+gate_label_write () {
+  sqlq "SET NOCOUNT ON;
+    IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NULL
+      CREATE TABLE dbo.ssas_gate_holder (pin int NOT NULL PRIMARY KEY, root_path nvarchar(400) NOT NULL,
+        gate_winpid int NOT NULL, gate_started nvarchar(19) NOT NULL, gate_scope nvarchar(10) NOT NULL,
+        written_at datetime2(0) NOT NULL);
+    DELETE FROM dbo.ssas_gate_holder;
+    INSERT INTO dbo.ssas_gate_holder VALUES (1, N'${ROOT//\'/\'\'}', ${GATE_WINPID:-0},
+      N'$GATE_STARTED', N'$GATE_SCOPE', SYSDATETIME());" >/dev/null 2>&1
+}
+
+gate_label_read () {
+  sqlq "SET NOCOUNT ON; IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL
+    SELECT CONCAT(gate_winpid,'|',gate_started,'|',gate_scope,'|',
+      CONVERT(varchar(19), written_at, 120),'|',root_path) FROM dbo.ssas_gate_holder WHERE pin=1;" \
+    | head -1 | sed 's/[[:space:]]*$//'
+}
+
+# A HOLDER MUST BE A LIVE PROCESS, NOT A CALL. A session-scoped applock taken by a one-shot `sqlcmd -Q`
+# is released the instant sqlcmd exits -- and BOTH the take and the release return 0, so a gate built
+# that way would announce an exclusive lock, guard nothing, and look correct at every step (measured,
+# T-056). WAITFOR caps the holder's life at just under 24 h so a catastrophically orphaned holder is
+# bounded rather than eternal; the takeover path below is what actually recovers one.
+gate_lock_acquire () {
+  local OUT="$LOGS/gate-lock.out" i
+  : > "$OUT"
+  sqlcmd -S localhost -E -C -d "$GATE_LOCK_DB" -h -1 -W -Q \
+    "SET NOCOUNT ON; DECLARE @r int;
+     EXEC @r = sp_getapplock @Resource=N'$GATE_LOCK_RESOURCE', @LockMode=N'Exclusive',
+       @LockOwner=N'Session', @LockTimeout=0;
+     IF @r < 0 BEGIN PRINT 'GATE_LOCK_DENIED'; RETURN; END;
+     PRINT 'GATE_LOCK_HELD'; WAITFOR DELAY '23:59:00';" > "$OUT" 2>&1 &
+  GATE_HOLDER_PID=$!
+  # Bounded wait, paced by the server rather than by `sleep`, so the pause costs a round trip we are
+  # already able to make and proves the instance is answering while we wait for it.
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    grep -q 'GATE_LOCK_HELD'   "$OUT" 2>/dev/null && { echo HELD;   return; }
+    grep -q 'GATE_LOCK_DENIED' "$OUT" 2>/dev/null && { echo DENIED; return; }
+    sqlq "WAITFOR DELAY '00:00:01';" >/dev/null 2>&1
+  done
+  echo UNKNOWN
+}
+
+# Kill the session holding OUR resource and nothing else. Reached only after the holder's gate has been
+# shown to be dead.
+gate_lock_steal () {
+  sqlq "SET NOCOUNT ON; DECLARE @spid int, @s nvarchar(50);
+    SELECT TOP 1 @spid = request_session_id FROM sys.dm_tran_locks
+      WHERE resource_type='APPLICATION' AND resource_database_id = DB_ID()
+        AND resource_description LIKE '%$GATE_LOCK_RESOURCE%';
+    IF @spid IS NOT NULL AND @spid <> @@SPID
+    BEGIN SET @s = N'KILL ' + CONVERT(nvarchar(10), @spid); EXEC sp_executesql @s; END" >/dev/null 2>&1
+}
+
+# Covers normal exit AND every `exit` in this script -- including the precondition aborts. It does NOT
+# cover an external kill: a trap does not fire while bash is inside a foreground child, and a gate is
+# inside `dotnet test` for up to 33 minutes at a stretch (measured, T-056; both the TERM and the
+# process-group INT case were tested and neither released). That is why the takeover path exists and
+# why nothing here depends on this trap running.
+gate_lock_release () {
+  [ -n "$GATE_HOLDER_PID" ] || return 0
+  kill "$GATE_HOLDER_PID" 2>/dev/null
+  kill -9 "$GATE_HOLDER_PID" 2>/dev/null
+  wait "$GATE_HOLDER_PID" 2>/dev/null
+  sqlq "SET NOCOUNT ON; IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL
+    DELETE FROM dbo.ssas_gate_holder WHERE gate_winpid = ${GATE_WINPID:-0};" >/dev/null 2>&1
+}
+trap 'gate_lock_release' EXIT
+
+# A gate that cannot establish its own identity must not take a lock, because every later challenger
+# would read UNKNOWN and refuse -- stranding the instance behind a holder nobody can name.
+if [ -z "$GATE_WINPID" ] || [ "$GATE_STARTED" = "UNKNOWN" ] || [ "$GATE_STARTED" = "DEAD" ]; then
+  echo "!!! ABORT: cannot establish this gate's own Windows pid and start time."
+  echo "!!! Not proceeding: a lock held by a gate that cannot be identified is one no later run can clear."
+  exit 7
+fi
+
+case "$(gate_lock_acquire)" in
+  HELD) ;;
+  DENIED)
+    GATE_HOLDER_LABEL=$(gate_label_read)
+    IFS='|' read -r H_PID H_START H_SCOPE H_WRITTEN H_ROOT <<< "$GATE_HOLDER_LABEL"
+    H_LIVE=$(gate_probe_pid "$H_PID")
+    echo "--- another gate holds the instance lock."
+    echo "---   root       : ${H_ROOT:-<no label row>}"
+    echo "---   gate pid   : ${H_PID:-?}   scope: ${H_SCOPE:-?}"
+    echo "---   started    : ${H_START:-?}   (label written ${H_WRITTEN:-?})"
+    # PID ALONE IS INSUFFICIENT: a reused pid reads as alive. The pid must still be occupied by a
+    # process that started at the recorded time. The failure direction of getting this wrong is
+    # REFUSING WHEN WE COULD HAVE PROCEEDED, which is the safe side, and it is not traded away.
+    if [ "$H_LIVE" = "ALIVE $H_START" ]; then
+      echo "!!! ABORT: that gate is RUNNING. Wait for it, or run in the tree that owns it."
+      echo "!!! Not proceeding: reaping now would drop the catalogs it is using, mid-leg, silently."
+      exit 7
+    elif [ "$H_LIVE" = "DEAD" ] || [ "${H_LIVE%% *}" = "ALIVE" ]; then
+      if [ "$H_LIVE" = "DEAD" ]; then
+        echo "--- RECLAIMING: pid ${H_PID} is gone. The holder is an ORPHAN -- its sqlcmd outlived the gate."
+      else
+        echo "--- RECLAIMING: pid ${H_PID} is alive but started ${H_LIVE#ALIVE }, not ${H_START}."
+        echo "---             The pid was REUSED; the gate that took this lock is dead."
+      fi
+      gate_lock_steal
+      if [ "$(gate_lock_acquire)" != "HELD" ]; then
+        echo "!!! ABORT: reclaim did not free the lock."
+        exit 7
+      fi
+      echo "--- reclaimed. Proceeding."
+    else
+      echo "!!! ABORT: cannot determine whether that gate is alive."
+      echo "!!! Not proceeding: an unreadable holder is treated as a live one. Fail closed."
+      exit 7
+    fi;;
+  *)
+    echo "!!! ABORT: could not determine whether another gate is running."
+    echo "!!! Not proceeding: a lock that is skipped when it cannot be read is the guard that was"
+    echo "!!! already here -- and that guard is what T-056 exists to replace."
+    exit 7;;
+esac
+gate_label_write
+echo "########## instance lock: HELD by pid $GATE_WINPID ($ROOT)"
+
 reap_to_zero () {
   local CFG="$1"
 
@@ -512,12 +745,28 @@ for CFG in $GATE_CONFIGS; do
       > "$LOGS/$P-$CFG.log" 2>&1
     STATUS=$?
 
-    if [ -n "$SAMPLER" ]; then
-      kill "$SAMPLER" 2>/dev/null
-      wait "$SAMPLER" 2>/dev/null
-      awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ { if ($3+0 > pk) pk = $3+0; if (mn == 0 || $5+0 < mn) mn = $5+0; n++ }
-               END { printf "--- memory: samples=%d peak_testhost_ws=%d MB min_free=%d MB\n", n, pk, mn }' \
-        "$LOGS/mem-Integration-$CFG.csv"
+    # A DEAD INSTRUMENT MUST NOT READ AS A NOT-APPLICABLE ONE. Until T-056 this block printed a
+    # `--- memory:` line when the sampler worked and NOTHING when it died, so a leg with no memory line
+    # was indistinguishable from a leg that never sampled -- and on 2026-08-27 both PHASE legs printed
+    # two errors, set no failure flag, and reported green with nobody the wiser. Sampling still cannot
+    # fail a gate; that argument is about a sampler that RUNS AND REPORTS, and this line is what makes
+    # the difference visible. It costs nothing and asserts nothing.
+    if [ "$P" = "Integration" ]; then
+      if [ -n "$SAMPLER" ]; then
+        kill "$SAMPLER" 2>/dev/null
+        wait "$SAMPLER" 2>/dev/null
+      fi
+      if [ -f "$LOGS/mem-Integration-$CFG.csv" ]; then
+        awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ { if ($3+0 > pk) pk = $3+0; if (mn == 0 || $5+0 < mn) mn = $5+0; n++ }
+                 END { if (n == 0) print "--- memory: SAMPLER PRODUCED NO SAMPLES -- the file exists and is empty of data."
+                       else printf "--- memory: samples=%d peak_testhost_ws=%d MB min_free=%d MB\n", n, pk, mn }' \
+          "$LOGS/mem-Integration-$CFG.csv"
+      elif [ -n "$SAMPLER" ]; then
+        echo "--- memory: SAMPLER DID NOT RUN -- launched but wrote no file. See DEC-L-056:"
+        echo "---         MSYS_NO_PATHCONV=1 in the launching shell breaks powershell.exe -File."
+      else
+        echo "--- memory: SAMPLER NOT PRESENT -- scripts/sample-mem.ps1 is missing; no curve for this leg."
+      fi
     fi
 
     if [ $STATUS -ne 0 ]; then

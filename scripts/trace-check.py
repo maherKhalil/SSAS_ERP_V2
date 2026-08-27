@@ -221,6 +221,10 @@ PACKAGE_CONVENTION: dict[str, str] = {
 HOME_FILES["BRULE"] = ("business-rules.md",)
 SPACES = ("REQ", "BRULE", "BR", "AC", "TS", "DEC", "OD")
 
+# What may LEAD a chain row. The modern convention leads with REQ-; the legacy one
+# leads with DEC- or BR-, and FP-001 carries no REQ- identifier at all.
+CHAIN_ANCHORS = ("REQ", "BR", "BRULE", "DEC")
+
 
 def convention_of(package: str) -> str | None:
     return PACKAGE_CONVENTION.get(package)
@@ -345,17 +349,47 @@ def parse_chain(matrix_text: str) -> list[dict]:
         if not line.startswith("|"):
             continue
         cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) < 4:
+        if len(cells) < 3:
             continue
-        req_in_first = [i for i in scan_ids(cells[0]) if i.space == "REQ"]
-        if not req_in_first:
+        # ANCHORED BY ANY CHAIN-LEADING SPACE, NOT BY REQ- ALONE. T-062, piece 3.
+        # Under the legacy convention the chain is led by DEC- or BR-; FP-001's matrix has
+        # no REQ- identifier anywhere. Measured in T-061: eight of fourteen packages had NO
+        # parseable chain, so coverage rules 3 and 4 had never run on them.
+        anchor = [i for i in scan_ids(cells[0]) if i.space in CHAIN_ANCHORS]
+        if not anchor:
             continue
+        # CRITERIA AND TESTS ARE FOUND BY CONTENT, NOT BY COLUMN OFFSET. The shipped parser
+        # read criteria from cell 2 and tests from cell 3; the real tables put them in
+        # columns 3 through 6 -- FP-003's chain table has seven columns. Reading by offset
+        # is why a table could match the anchor and still yield nothing.
+        criteria_cell = next((c for c in cells[1:] if cell_ids(c, "AC")), "")
+        tests_cell = next((c for c in cells[1:] if cell_ids(c, "TS")), "")
+        # A ROW THAT CARRIES NEITHER IS NOT A CHAIN ROW. Every matrix file here holds
+        # several tables, and some map requirements to CODE SYMBOLS and test class names --
+        # a legitimate different mapping. Falling back to fixed column offsets for those
+        # rows makes rule 3 fire on every one of them: it took 29 failures to 76 instead of
+        # the 35 the T-061 dry run measured, because the dry run had no such fallback and
+        # the shipped version did. **The measured behaviour is the specification.**
+        # ...UNLESS IT DECLARES A GAP. `REQ-SUB-0026`'s row carries an em-dash in both the
+        # criteria and the tests cell -- a DECLARED absence, which the matrices insist on
+        # and which this check reports rather than fails. Dropping such a row made the
+        # requirement "absent from the chain table" and turned FP-014 red, which is a
+        # package saying honestly that it has a gap being failed for saying so.
+        # NO POSITIONAL FALLBACK AND NO SKIPPING. A row that names neither a criterion nor a
+        # scenario yields EMPTY cells, and `is_declared_gap("")` is true -- so it is reported
+        # as a declared gap rather than failed, which is how the matrices already treat an
+        # em-dash. That is exactly what the T-061 dry run did, and reproducing the measured
+        # behaviour is the point: three attempts to be cleverer than it (a positional
+        # fallback, then a row skip, then a narrowed fallback) gave 76, 34 and 56 failures
+        # against its 35, and each looked reasonable while I wrote it.
+        rules_cell = next((c for c in cells[1:] if cell_ids(c, "BR") or cell_ids(c, "BRULE")),
+                          cells[1])
         rows.append(
             {
-                "requirements": sorted(i.key for i in req_in_first),
-                "rules": cells[1],
-                "criteria": cells[2],
-                "tests": cells[3],
+                "requirements": sorted(i.key for i in anchor),
+                "rules": rules_cell,
+                "criteria": criteria_cell,
+                "tests": tests_cell,
                 "decisions": cells[4] if len(cells) > 4 else "",
                 "line": raw.rstrip(),
             }
@@ -365,6 +399,35 @@ def parse_chain(matrix_text: str) -> list[dict]:
 
 def cell_ids(cell: str, space: str) -> list[str]:
     return sorted({i.key for i in scan_ids(cell) if i.space == space})
+
+
+# T-062, piece 2. Both range spellings the corpus actually uses:
+#   AC-IAM-0013-0015           bare upper bound
+#   AC-IAM-0013-AC-IAM-0015    fully qualified upper bound   <- FP-001 writes this one
+SPAN_RE = re.compile(
+    r"\b(" + "|".join(SPACES) + r")-([A-Z]{2,4})-(\d{4})`?\s*[–—-]\s*"
+    r"`?(?:(?:" + "|".join(SPACES) + r")-[A-Z]{2,4}-)?(\d{4})\b"
+)
+
+
+def cell_ids_expanded(cell: str, space: str) -> list[str]:
+    """`cell_ids` plus the identifiers a RANGE implies but never spells.
+
+    `AC-IAM-0013`-`AC-IAM-0015` on a row with two scenarios covers three criteria; only
+    two of them appear as literal text, so the middle one read as untraced. Check 5
+    already objects to ranges standing in for citations -- this stops rule 4 producing a
+    SECOND, different complaint about the same notation.
+    """
+    keys = set(cell_ids(cell, space))
+    for sp, module, lo, hi in SPAN_RE.findall(cell):
+        if sp != space:
+            continue
+        a, b = int(lo), int(hi)
+        # A malformed or reversed span expands to nothing rather than to a guess, and an
+        # absurd one is refused: a typo must not silently mark two hundred criteria covered.
+        if a <= b and (b - a) <= 200:
+            keys.update(f"{sp}-{module}-{n:04d}" for n in range(a, b + 1))
+    return sorted(keys)
 
 
 def is_declared_gap(cell: str) -> bool:
@@ -643,18 +706,30 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
     identifier_chain = any(cell_ids(r["criteria"], "AC") or cell_ids(r["tests"], "TS")
                            for r in chain)
     if chain and not identifier_chain:
+        # CORRECTED T-062. This said the MATRIX maps to code symbols rather than to AC-/TS-
+        # identifiers. It described the rows the parser MATCHED, not the file: FP-007's
+        # matrix holds four chain-bearing tables and 24 rows pairing an AC- with a TS-, and
+        # the claim was true of its first table only.
+        #
+        # **A declaration that is wrong about the corpus is harder to doubt than a check**,
+        # because it reads as something a person established. This one was also buying
+        # FP-007's green until rule 4 learned to read `test-scenarios.md`; it no longer buys
+        # anything, and it is corrected because the next person to widen the parser would
+        # have read it and believed it.
         result["warnings"].append(
-            f"{matrix_name} maps requirements to code symbols and test class names rather "
-            f"than to AC-/TS- identifiers ({len(chain)} rows) — coverage rules 3 and 4 are "
-            f"not applicable to this package; orphan and contiguity rules still applied"
+            f"the {len(chain)} chain row(s) the parser matched in {matrix_name} carry no "
+            f"AC-/TS- identifiers — they map to code symbols and test class names, so "
+            f"coverage rules 3 and 4 are not applied to THOSE ROWS. The file may pair "
+            f"criteria with scenarios in tables this parser does not match; orphan and "
+            f"contiguity rules still applied"
         )
         chain = []
 
     for row in chain:
         req_label = ", ".join(row["requirements"])
         req_in_chain.update(row["requirements"])
-        criteria = cell_ids(row["criteria"], "AC")
-        tests = cell_ids(row["tests"], "TS")
+        criteria = cell_ids_expanded(row["criteria"], "AC")
+        tests = cell_ids_expanded(row["tests"], "TS")
 
         if not criteria:
             if is_declared_gap(row["criteria"]):
@@ -711,6 +786,37 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
                     f"{len(newly)} criteri{'on' if len(newly) == 1 else 'a'} carried by "
                     f"prose with no owning requirement: {', '.join(newly)}"
                 )
+
+    # ---- RULE 4 LOOKS WHERE COVERAGE IS ACTUALLY RECORDED. T-062, piece 1.
+    #
+    # Rule 4 was WRONG ABOUT A FACT: it assumed `AC -> TS` is recorded only in the matrix.
+    # FP-007 and FP-008 record it in `test-scenarios.md`, where every scenario row names
+    # the criterion it covers:
+    #
+    #     | TS-DEP-0037 | S | Clearing a manager leaves ... | AC-DEP-0022 |
+    #
+    # Measured before this changed (T-061): widening the chain parser alone would have
+    # failed **55 criteria that are fully covered**, across two correctly-specified
+    # packages, against 13 real gaps. **A checker that cries wolf at correct work gets
+    # switched off, and then the 13 are invisible for a different reason.**
+    #
+    # This is a RULE fix, not a parser fix, and the distinction is `DEC-L-061`: the rule
+    # was wrong about where coverage lives, so the rule changes.
+    #
+    # THE PAIRING MUST BE ON ONE ROW. A file-wide "this AC and some TS both appear
+    # somewhere" test would make rule 4 unfalsifiable -- every criterion co-occurs with
+    # some scenario in a file that lists both.
+    ts_name = "test-scenarios.md"
+    ac_via_scenarios: set[str] = set()
+    if ts_name in texts:
+        for line in texts[ts_name].split("\n"):
+            if not line.lstrip().startswith("|"):
+                continue
+            acs = set(cell_ids_expanded(line, "AC"))
+            if acs and cell_ids_expanded(line, "TS"):
+                ac_via_scenarios.update(acs)
+        ac_with_test.update(ac_via_scenarios)
+    result["ac_via_scenarios"] = len(ac_via_scenarios)
 
     # every DEFINED requirement must appear in the chain at all
     for key in sorted(k for k in defined["REQ"] - req_in_chain if is_mine(k)):

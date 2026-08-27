@@ -367,6 +367,35 @@ def cell_ids(cell: str, space: str) -> list[str]:
     return sorted({i.key for i in scan_ids(cell) if i.space == space})
 
 
+# T-062, piece 2. Both range spellings the corpus actually uses:
+#   AC-IAM-0013-0015           bare upper bound
+#   AC-IAM-0013-AC-IAM-0015    fully qualified upper bound   <- FP-001 writes this one
+SPAN_RE = re.compile(
+    r"\b(" + "|".join(SPACES) + r")-([A-Z]{2,4})-(\d{4})`?\s*[–—-]\s*"
+    r"`?(?:(?:" + "|".join(SPACES) + r")-[A-Z]{2,4}-)?(\d{4})\b"
+)
+
+
+def cell_ids_expanded(cell: str, space: str) -> list[str]:
+    """`cell_ids` plus the identifiers a RANGE implies but never spells.
+
+    `AC-IAM-0013`-`AC-IAM-0015` on a row with two scenarios covers three criteria; only
+    two of them appear as literal text, so the middle one read as untraced. Check 5
+    already objects to ranges standing in for citations -- this stops rule 4 producing a
+    SECOND, different complaint about the same notation.
+    """
+    keys = set(cell_ids(cell, space))
+    for sp, module, lo, hi in SPAN_RE.findall(cell):
+        if sp != space:
+            continue
+        a, b = int(lo), int(hi)
+        # A malformed or reversed span expands to nothing rather than to a guess, and an
+        # absurd one is refused: a typo must not silently mark two hundred criteria covered.
+        if a <= b and (b - a) <= 200:
+            keys.update(f"{sp}-{module}-{n:04d}" for n in range(a, b + 1))
+    return sorted(keys)
+
+
 def is_declared_gap(cell: str) -> bool:
     """An em/en dash alone is a deliberate 'no link exists', not an omission."""
     return bool(DASH_ONLY.match(cell))
@@ -653,8 +682,8 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
     for row in chain:
         req_label = ", ".join(row["requirements"])
         req_in_chain.update(row["requirements"])
-        criteria = cell_ids(row["criteria"], "AC")
-        tests = cell_ids(row["tests"], "TS")
+        criteria = cell_ids_expanded(row["criteria"], "AC")
+        tests = cell_ids_expanded(row["tests"], "TS")
 
         if not criteria:
             if is_declared_gap(row["criteria"]):
@@ -711,6 +740,37 @@ def check_package(pkg_dir: Path, global_index: dict[str, set[str]] | None = None
                     f"{len(newly)} criteri{'on' if len(newly) == 1 else 'a'} carried by "
                     f"prose with no owning requirement: {', '.join(newly)}"
                 )
+
+    # ---- RULE 4 LOOKS WHERE COVERAGE IS ACTUALLY RECORDED. T-062, piece 1.
+    #
+    # Rule 4 was WRONG ABOUT A FACT: it assumed `AC -> TS` is recorded only in the matrix.
+    # FP-007 and FP-008 record it in `test-scenarios.md`, where every scenario row names
+    # the criterion it covers:
+    #
+    #     | TS-DEP-0037 | S | Clearing a manager leaves ... | AC-DEP-0022 |
+    #
+    # Measured before this changed (T-061): widening the chain parser alone would have
+    # failed **55 criteria that are fully covered**, across two correctly-specified
+    # packages, against 13 real gaps. **A checker that cries wolf at correct work gets
+    # switched off, and then the 13 are invisible for a different reason.**
+    #
+    # This is a RULE fix, not a parser fix, and the distinction is `DEC-L-061`: the rule
+    # was wrong about where coverage lives, so the rule changes.
+    #
+    # THE PAIRING MUST BE ON ONE ROW. A file-wide "this AC and some TS both appear
+    # somewhere" test would make rule 4 unfalsifiable -- every criterion co-occurs with
+    # some scenario in a file that lists both.
+    ts_name = "test-scenarios.md"
+    ac_via_scenarios: set[str] = set()
+    if ts_name in texts:
+        for line in texts[ts_name].split("\n"):
+            if not line.lstrip().startswith("|"):
+                continue
+            acs = set(cell_ids_expanded(line, "AC"))
+            if acs and cell_ids_expanded(line, "TS"):
+                ac_via_scenarios.update(acs)
+        ac_with_test.update(ac_via_scenarios)
+    result["ac_via_scenarios"] = len(ac_via_scenarios)
 
     # every DEFINED requirement must appear in the chain at all
     for key in sorted(k for k in defined["REQ"] - req_in_chain if is_mine(k)):

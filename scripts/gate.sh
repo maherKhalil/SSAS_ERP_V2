@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 set -u
 # ==================================================================================================
-# THE PHASE-EXIT GATE. FULL SUITE, BOTH CONFIGURATIONS.
+# THE GATE. TWO SCOPES: `TASK` (default, minutes) AND `PHASE` (the full run, ~69 minutes).
 # ==================================================================================================
 #
-# The gate is the full Integration suite PLUS EVERY OTHER TEST PROJECT IN FULL, in Debug AND Release
-# (2026-08-21 ruling). Debug-clean is not evidence of Release-clean: the analyzer sets differ, and the
-# first Release run exposed CA1826 warnings and an allocation assertion that had never worked.
+# **`GATE_SCOPE=PHASE` is the phase-exit gate and is unchanged**: the full Integration suite PLUS EVERY
+# OTHER TEST PROJECT IN FULL, in Debug AND Release (2026-08-21 ruling). Debug-clean is not evidence of
+# Release-clean: the analyzer sets differ, and the first Release run exposed CA1826 warnings and an
+# allocation assertion that had never worked.
+#
+# **`GATE_SCOPE=TASK` is the default** and answers a narrower question -- see note 7y. It exists because
+# `DEC-L-008` condition 3 has ALWAYS scoped Integration to tasks that touch persistence, while this
+# script offered no way to honour that without also buying every other suite twice. The rule was already
+# tiered; the instrument was not.
 #
 # --------------------------------------------------------------------------------------------------
 # EIGHT BEHAVIOURS HERE ARE NOT PREFERENCES. EACH WAS PAID FOR BY AN INCIDENT.
@@ -73,6 +79,66 @@ set -u
 #     while FIFTEEN tests had silently vanished from the total. A summary line whose total quietly
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
+#
+#  7y. TWO SCOPES, ORTHOGONAL TO THE TWO MODES. `DEC-L-051`, implemented by T-055.
+#
+#     GATE_SCOPE=TASK (DEFAULT) -- seven suites, Debug only, NO Integration unless asked.
+#     GATE_SCOPE=PHASE          -- all eight suites, Debug and Release. The gate as it was.
+#     GATE_INTEGRATION=1        -- under TASK, adds the Integration leg. Ignored under PHASE.
+#
+#     **MODE is about what this box can afford; SCOPE is about what question is being asked.** Folding
+#     them together would make the cheap answer unavailable on a build box and the thorough one
+#     unavailable here, which is backwards for both.
+#
+#     WHY THIS EXISTS, IN ONE MEASUREMENT. Note 7z records 32 m 21 s and 32 m 35 s for the two
+#     Integration legs of a 69-minute run: **about 65 of the 69 minutes are those two legs**, and the
+#     remaining seven suites in both configurations cost roughly four. A per-task change that touches no
+#     persistence was buying an hour to be told what four minutes already said.
+#
+#     MEASURED ON THIS BOX UNDER LEAN, 2026-08-27 -- estimate a TASK run from these, not from note 7z:
+#       TASK, no Integration, incremental build:   72 SECONDS  (build 18 s; 2752 tests over seven suites)
+#       PHASE, both configurations:                 see note 7z -- 69 minutes
+#     **Seventy-two seconds against sixty-nine minutes**, and that ratio is the whole argument for the
+#     scope split. The build is the largest single component of a TASK run, so the figure is for an
+#     INCREMENTAL build -- the normal per-task case. A cold build costs more and is not what this
+#     measures.
+#
+#     Use the measured TASK figure rather than deriving one from the FULL or PHASE shapes. Note 7z
+#     records what deriving from the wrong shape cost: a 90-110 minute projection revised down mid-run.
+#
+#     ---- THE RED PATH IS VERIFIED BY RUN, NOT BY READING. 2026-08-27, T-055.
+#
+#     A gate that reports success on a failing run is note 3's subject and T-016's finding, and the
+#     specific shape is `GATE_FAILED=$?` per suite instead of a latch -- under which a red suite followed
+#     by a green one reports green. Verified deliberately, in a throwaway worktree, with the failure in
+#     the FIRST suite so it had to survive six subsequent passes:
+#
+#       Architecture 1 failed of 510  ->  six suites green  ->  [GATE RED -- TASK scope]  ->  exit 1
+#
+#     A red LAST suite would have proved almost nothing. The structural half is `GATE_FAILED=0` appearing
+#     exactly once, 181 lines above the configuration loop, which makes a per-configuration reset
+#     unrepresentable without adding a line.
+#
+#     ---- INTEGRATION IS OPT-IN UNDER `TASK`, AND IS NEVER INFERRED FROM THE DIFF.
+#
+#     The coder knows whether `DEC-L-008` condition 3 applies -- persistence, a migration, an EF
+#     configuration, the cutover inventory. A script reading the diff would be guessing, and **a guess
+#     that is wrong in the permissive direction is a silent hole in the merge bar**: the suite that
+#     should have run simply does not, and the log is green either way. This repository has recorded
+#     that shape of defect four times.
+#
+#     ---- WHAT SCOPE DOES NOT CHANGE.
+#
+#     All four preconditions, both memory floors, the sibling-testhost refusal and the SSAS_% reaping run
+#     for BOTH scopes. A fast gate that skipped the floor would reproduce 2026-08-24 exactly: both legs
+#     dead with no TRX at 14 MB and 92 MB free. The terminal `exit $GATE_FAILED` and its distinct codes
+#     are likewise shared -- a narrow gate that reports success on a red run is worse than the wide one
+#     it replaced, which is note 3's whole subject.
+#
+#     ---- AND THE VERDICT SAYS WHICH SCOPE RAN.
+#
+#     `[GATE GREEN]` was unambiguous while there was one gate. With two it is not, and the cheap scope is
+#     the one that will be read as the thorough one, because it is the one that gets run.
 #
 #  7z. TWO MODES, AND THE PAIRING IS THE POINT.
 #
@@ -220,6 +286,73 @@ reap_count () {
 # configuration, where an explicit value belongs.
 GATE_MODE=${GATE_MODE:-LEAN}
 
+# ---- SCOPE. See note 7y in the header. ORTHOGONAL TO MODE, AND THAT SEPARATION IS THE POINT.
+#
+# `GATE_MODE` answers "what can this box afford". `GATE_SCOPE` answers "what question is being asked".
+# Folding them together would make the cheap answer unavailable on a build box and the thorough one
+# unavailable here, which is the opposite of what each is for.
+GATE_SCOPE=${GATE_SCOPE:-TASK}
+
+# Recorded BEFORE the default is applied, because afterwards there is no way to tell "the caller asked
+# for 0" from "nobody said". PHASE needs that distinction to warn about an instruction it will not obey.
+GATE_INTEGRATION_SET=${GATE_INTEGRATION+set}
+GATE_INTEGRATION=${GATE_INTEGRATION:-0}
+
+# AN UNRECOGNISED VALUE ABORTS RATHER THAN FALLING THROUGH TO THE DEFAULT.
+#
+# `DEC-L-045`: a misspelled `GATE_SCOPE=PAHSE` that quietly ran the TASK scope would report a per-task
+# result under the name of a phase-exit one, and the log would look right. A shell variable nobody reads
+# is ignored in silence -- so both of these are read, and a value neither branch understands stops the
+# run before it can be mistaken for the other.
+case "$GATE_SCOPE" in
+  TASK|PHASE) ;;
+  *) echo "!!! ABORT: GATE_SCOPE='$GATE_SCOPE' is neither TASK nor PHASE."
+     echo "!!! Not defaulting: a scope that fell through would report one gate under the other's name."
+     exit 6;;
+esac
+
+case "$GATE_INTEGRATION" in
+  0|1) ;;
+  *) echo "!!! ABORT: GATE_INTEGRATION='$GATE_INTEGRATION' is neither 0 nor 1."
+     echo "!!! Not defaulting: a typo here silently drops the one suite it exists to add."
+     exit 6;;
+esac
+
+if [ "$GATE_SCOPE" = "PHASE" ]; then
+  GATE_CONFIGS="Debug Release"
+  GATE_SUITES="Architecture Platform HR API Finance Payroll Attendance Integration"
+  SCOPE_NOTE="all eight suites, Debug and Release"
+  # Stated rather than silently overridden: someone reaching for GATE_INTEGRATION=0 to shorten a phase
+  # exit is asking for a thing this scope does not offer, and should be told so rather than obeyed.
+  if [ "$GATE_INTEGRATION_SET" = "set" ]; then
+    echo "--- note: GATE_SCOPE=PHASE always runs Integration; GATE_INTEGRATION is ignored here."
+  fi
+else
+  # DEBUG ONLY, AND THE ASYMMETRY WITH PHASE IS DELIBERATE. Note 7 argues the Debug/Release pairing for
+  # a phase exit and that argument is untouched; what this scope changes is HOW OFTEN the pair is bought,
+  # never what the pair contains.
+  GATE_CONFIGS="Debug"
+
+  # ALL SEVEN NON-INTEGRATION SUITES, NOT A SUBSET CHOSEN FROM THE DIFF.
+  #
+  # T-055 specified "Architecture, Platform, HR, API, plus the changed module's suite". The three module
+  # suites it would have selected between cost 23, 24 and 25 MILLISECONDS -- measured, in this file's own
+  # note 7z lineage -- against a build that costs minutes. Selecting among them would buy back under a
+  # tenth of a second in exchange for an inference over the diff, and an inference that is wrong in the
+  # permissive direction is a suite nobody runs that looks exactly like a suite that passed.
+  #
+  # That is the same trade the task refuses for Integration, at a hundredth of the saving. Running all
+  # seven costs nothing measurable and removes the inference entirely.
+  GATE_SUITES="Architecture Platform HR API Finance Payroll Attendance"
+
+  if [ "$GATE_INTEGRATION" = "1" ]; then
+    GATE_SUITES="$GATE_SUITES Integration"
+    SCOPE_NOTE="seven suites plus Integration (requested), Debug only"
+  else
+    SCOPE_NOTE="seven suites, NO Integration, Debug only"
+  fi
+fi
+
 if [ "$GATE_MODE" = "LEAN" ]; then
   # The ceiling travels as a RunSettings argument rather than an xunit.runner.json, so the repository holds
   # no file asserting a parallelism policy that is true of only one machine.
@@ -231,6 +364,9 @@ else
 fi
 
 echo "########## GATE MODE: $GATE_MODE (floor ${MEMORY_FLOOR_MB} MB, ceiling: ${RUNSETTINGS_ARGS:-none})"
+echo "########## GATE SCOPE: $GATE_SCOPE -- $SCOPE_NOTE"
+echo "########## suites: $GATE_SUITES"
+echo "########## configurations: $GATE_CONFIGS"
 
 reap_to_zero () {
   local CFG="$1"
@@ -306,7 +442,13 @@ reap_to_zero () {
   fi
 }
 
-for CFG in Debug Release; do
+# THE TWO LISTS ARE THE ONLY THING SCOPE CHANGES. Everything below -- preconditions, reaping, build,
+# blame collection, sampling, status capture, the greps and the verdict -- runs identically for both
+# scopes, which is what makes PHASE the gate that existed before GATE_SCOPE was added rather than a
+# reimplementation of it.
+#
+# Unquoted deliberately: these are space-separated word lists and must split.
+for CFG in $GATE_CONFIGS; do
   echo "########## $CFG ##########"
   reap_to_zero "$CFG"
 
@@ -314,7 +456,7 @@ for CFG in Debug Release; do
   dotnet build SSAS.ERP.sln -c "$CFG" --nologo -v m > "$LOGS/build-$CFG.log" 2>&1
   grep -E "Warning\(s\)|Error\(s\)|Build succeeded|Build FAILED|error" "$LOGS/build-$CFG.log" | head -20
 
-  for P in Architecture Platform HR API Finance Payroll Attendance Integration; do
+  for P in $GATE_SUITES; do
     case $P in
       Architecture) F=tests/Architecture.Tests/SSAS.Architecture.Tests.csproj;;
       Platform)     F=tests/Platform.Tests/SSAS.Platform.Tests.csproj;;
@@ -381,8 +523,17 @@ for CFG in Debug Release; do
   echo "=== catalogs after $CFG: $(reap_count)"
 done
 
-if [ $GATE_FAILED -ne 0 ]; then echo "[GATE RED]"; else echo "[GATE GREEN]"; fi
-echo "[GATE COMPLETE -- full logs and TRX in $LOGS]"
+# ---- THE VERDICT NAMES ITS SCOPE. `DEC-L-045`.
+#
+# `[GATE GREEN]` alone was unambiguous while there was one gate. With two, a log that does not say what
+# it covered is read a week later as if it covered everything -- and the cheap scope is the one that
+# will be read that way, because it is the one that gets run.
+if [ $GATE_FAILED -ne 0 ]; then
+  echo "[GATE RED -- $GATE_SCOPE scope: $SCOPE_NOTE]"
+else
+  echo "[GATE GREEN -- $GATE_SCOPE scope: $SCOPE_NOTE]"
+fi
+echo "[GATE COMPLETE -- $GATE_SCOPE scope: $SCOPE_NOTE -- full logs and TRX in $LOGS]"
 
 # ---- AND THE VERDICT REACHES `$?`. Do not remove this line. Paid for 2026-08-25.
 #

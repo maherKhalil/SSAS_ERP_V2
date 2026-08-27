@@ -139,8 +139,25 @@ the working tree; edit it mid-run and the result describes a tree that no longer
 Use a second worktree: `git worktree add ../SSAS_gate <branch>`. Run the gate in one directory, write
 code in the other. Two constraints, both real:
 
-- **One gate at a time.** `gate.sh` already refuses when a sibling `testhost` from this repo is live,
-  and it reaps `SSAS_%` catalogs — two concurrent runs would take each other's databases out.
+- **ONE GATE AT A TIME, AND NO GUARD WILL STOP YOU.** This is the constraint that bites, and the
+  first version of this rule described it wrongly — corrected 2026-08-27 by the coder, before it
+  cost a run.
+
+  `reap_to_zero` drops **every** `SSAS[_]%` catalog on the box before each leg, under **every**
+  scope including `TASK`. So a 72-second `TASK` gate started in a worktree **destroys the catalogs
+  a 69-minute `PHASE` run is using, mid-leg.**
+
+  The sibling-`testhost` precondition does **not** catch it: it matches on `basename "$ROOT"`, so a
+  worktree named `SSAS_gate` and a tree named `SSAS_ERP_V2` each judge the other's testhost to
+  belong to someone else and proceed. The guard is deliberately narrow for the reason in note 1, and
+  **a second worktree is exactly the case it does not cover.**
+
+  The shared resource is the **SQL Server instance**, not the repository — so a second clone or
+  anyone else's checkout on this box collides the same way. Until T-056 closes it, this is a rule
+  you keep by hand and nothing will warn you.
+
+  **Note the interaction, because it is the whole trap:** `DEC-L-051` made a per-task gate cost 72
+  seconds. Something that cheap does not feel like an action that needs checking first. It is.
 - **Build sparingly during a run.** The LEAN floor is 2048 MB and note 7 records that this box
   *"hosts resident agent sessions alongside the suite"*. Writing code is nearly free; a second
   `--no-incremental` build is not, and dropping below the floor aborts the gate you were waiting for.

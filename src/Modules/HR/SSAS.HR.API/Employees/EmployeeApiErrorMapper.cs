@@ -112,6 +112,43 @@ public static class EmployeeApiErrorMapper
       "Employee.DepartmentInactive" => ApiErrors.RequestInvalid,
       "Employee.DepartmentUnchanged" => ApiErrors.RequestInvalid,
       "Employee.DepartmentHistoryImmutable" => ApiErrors.WriteFailure,
+
+      // ---- POSITION (T-080). THE SAME FIVE-AND-ONE SHAPE AS DEPARTMENT ABOVE, AND FOR THE SAME REASONS.
+      //
+      // These were declared and unmapped, so every one answered `500 request.failed` — on
+      // `POST /api/hr/employees` and on `POST /{employeeId}/change-position`, both of which reach this
+      // mapper. The comment at `PositionEndpointRouteBuilderExtensions.cs:806` already said *"its
+      // `Employee.Position*` arms are the ones that describe an unusable destination here"*. There were
+      // none. **The route was right about what should exist and wrong about what did.**
+      //
+      // ---- THREE OF THE FIVE 400s ARE DISCLOSURE-SENSITIVE; TWO ARE NOT, AND THE DISTINCTION IS REAL.
+      //
+      // `NotFound`, `Inactive` and `InDifferentCompany` are the three a caller could otherwise use to probe
+      // for a position outside their company (`BR-PLT-0002`), so they must be indistinguishable on the
+      // wire. `Unchanged` names a position the caller can already read, and `Required` names none at all —
+      // neither discloses anything. **They are 400 because they describe the request, which is the same
+      // reason the department four are**, and the collapse the other three need falls out of that rather
+      // than being imposed on them.
+      "Employee.PositionRequired" => ApiErrors.RequestInvalid,
+      "Employee.PositionNotFound" => ApiErrors.RequestInvalid,
+      "Employee.PositionInactive" => ApiErrors.RequestInvalid,
+      "Employee.PositionUnchanged" => ApiErrors.RequestInvalid,
+      "Employee.PositionInDifferentCompany" => ApiErrors.RequestInvalid,
+
+      // ---- EXPLICIT DESPITE MATCHING THE DEFAULT, AND THIS ARM IS NOT REDUNDANT.
+      //
+      // History immutability is a violated invariant, not a caller error: nothing the caller sends can
+      // cause it and nothing they send differently would avoid it. A 500 is the honest answer, exactly as
+      // `Employee.DepartmentHistoryImmutable` above answers it.
+      //
+      // **It is written out because the fallthrough producing the same status is a coincidence, not a
+      // decision.** Delete this line and the wire behaviour is identical — which is precisely why it must
+      // stay: `DepartmentHistoryImmutable` has no such comment, and its 500 had to be read as an inference
+      // from the arm existing rather than as a recorded reason. That ambiguity is the thing being avoided
+      // here, and the guard in `ModuleErrorMappingArchitectureTests` sees this arm only because it reads
+      // the source text rather than calling `Map`.
+      "Employee.PositionHistoryImmutable" => ApiErrors.WriteFailure,
+
       "Employee.InvalidActor" => ApiErrors.Forbidden,
       "Authorization.Unauthorized" => ApiErrors.Forbidden,
 

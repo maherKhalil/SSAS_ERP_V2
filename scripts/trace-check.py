@@ -968,6 +968,249 @@ def check_decision_registers(pkg_dir: Path) -> dict:
     return result
 
 
+# --------------------------------------------------------------------------------------
+# CHECK 9 — ADR DEPENDENCY EDGES, AND CHECK 10 — DECISION MECHANISMS (T-025)
+#
+# WHY THESE ARE ONE SECTION. Both answer the same question about two registers: what does
+# this thing depend on, and is the thing it depends on still true? The ADR register carried
+# `depends_on` for 28 of its 29 files and NOTHING read it. The decision register had no way
+# to say so at all, and that cost three hours on 2026-08-27 when `DEC-L-054` prescribed
+# `git rev-parse <ref>:<path>` in the morning and `DEC-L-056` restricted the environment
+# variable that form silently requires at midday. Both windows had read both rules.
+#
+# WHAT CHECK 9 FAILS ON, and it is deliberately only two things:
+#   * a `depends_on` target that does not exist and is not declared a reservation
+#   * a `depends_on` target whose status is Superseded
+#
+# WHAT IT REPORTS AND NEVER FAILS ON:
+#   * an Accepted ADR depending on one that is Proposed
+#
+# THAT THIRD CLASS IS NOT A DEFECT UNTIL SOMEONE DEFINES `depends_on`. Nobody has written
+# down whether the edge asserts "requires this to be true" or "relates to this". Under the
+# first reading those edges are broken; under the second they are an Accepted decision
+# correctly pointing at future work. **Failing on them would enforce a semantic nobody
+# wrote**, which is the exact failure this repository has recorded four times in other
+# instruments. It is reported as its own named class so the definition can be written.
+#
+# RESERVATIONS. `ADR-028` is reserved for V5 by `OD-DOC-009` and does not exist as a file.
+# Nothing depends_on it today, so this syntax has nothing to express yet -- it is INSURANCE,
+# recorded as insurance: the first person to write that edge will be a stranger, and the
+# false positive they get would be a mechanical reproduction of one this board carried for
+# nine tasks. The syntax is a YAML comment on the edge itself:
+#
+#     depends_on:
+#       - ADR-028  # reserved: OD-DOC-009
+#
+# A reservation whose target DOES exist is reported too: it means the reservation was filled
+# and the annotation was never removed, which is a stale claim rather than a missing file.
+#
+# CHECK 10's REGISTER FORMAT IS FREE TEXT ON PURPOSE. Two optional keys, inline in the
+# decision's own row, matched by one regular expression:
+#
+#     **prescribes:** `git ls-tree`
+#     **restricts:**  `MSYS_NO_PATHCONV`
+#
+# A controlled vocabulary would need maintaining, and a rule whose mechanism is not in the
+# list would get NO key rather than a new term. Free text spelled wrong fails to join in
+# silence -- so the report prints the DISTINCT set of mechanism strings it saw, and a typo
+# shows up as a near-duplicate to anyone reading it. That is one `sorted(set())` and needs
+# no vocabulary.
+#
+# LIVENESS IS THE PRESENCE OF THE KEY. A decision whose mechanism has been replaced loses
+# its `prescribes:` key -- that is how retirement is expressed, and it is why there is no
+# supersedes graph here. `DEC-L-054` carries no key because `DEC-L-054b` replaced it.
+# --------------------------------------------------------------------------------------
+
+ADR_ID_RE = re.compile(r"^id:\s*(ADR-\d+)\s*$", re.M)
+ADR_STATUS_RE = re.compile(r"^status:\s*(\S+)", re.M)
+ADR_EDGE_RE = re.compile(r"^\s*-\s*(ADR-\d+)\s*(?:#\s*(.*))?$")
+RESERVED_RE = re.compile(r"\breserved:\s*(\S+)", re.I)
+MECHANISM_RE = re.compile(r"\*\*(prescribes|restricts):\*\*\s*`([^`]+)`", re.I)
+DEC_ID_RE = re.compile(r"`(DEC-L-\d+[a-z]?)`")
+
+
+def _adr_front_matter(text: str) -> tuple[str, str, list[tuple[str, str]]]:
+    """(id, status, [(target, annotation)]) from an ADR's YAML front matter."""
+    end = text.find("\n---", 3)
+    fm = text[:end] if end > 0 else text[:2000]
+    ident = ADR_ID_RE.search(fm)
+    status = ADR_STATUS_RE.search(fm)
+    edges: list[tuple[str, str]] = []
+    in_block = False
+    for line in fm.splitlines():
+        if line.startswith("depends_on:"):
+            in_block = True
+            continue
+        if in_block:
+            m = ADR_EDGE_RE.match(line)
+            if m:
+                edges.append((m.group(1), (m.group(2) or "").strip()))
+                continue
+            if line.strip() and not line.startswith(" "):
+                in_block = False
+    return (ident.group(1) if ident else "",
+            status.group(1) if status else "",
+            edges)
+
+
+def check_adr_edges(adr_dir: Path) -> dict:
+    out: dict = {"applicable": False, "reason": "", "adrs": 0, "edges": 0,
+                 "missing_key": [], "dangling": [], "superseded": [],
+                 "reserved": [], "stale_reservation": [], "accepted_on_unratified": []}
+    if not adr_dir.is_dir():
+        out["reason"] = f"no ADR directory at {adr_dir}"
+        return out
+    files = sorted(p for p in adr_dir.glob("ADR-0*.md"))
+    if not files:
+        out["reason"] = f"no ADR-0*.md under {adr_dir}"
+        return out
+
+    out["applicable"] = True
+    index: dict[str, str] = {}
+    parsed: list[tuple[str, str, list[tuple[str, str]]]] = []
+    for p in files:
+        ident, status, edges = _adr_front_matter(
+            p.read_text(encoding="utf-8", errors="replace"))
+        if not ident:
+            continue
+        index[ident] = status
+        parsed.append((ident, status, edges))
+    out["adrs"] = len(parsed)
+
+    for ident, status, edges in parsed:
+        if not edges and not _has_depends_key(files, ident):
+            out["missing_key"].append(ident)
+        for target, note in edges:
+            out["edges"] += 1
+            reservation = RESERVED_RE.search(note)
+            if target not in index:
+                if reservation:
+                    out["reserved"].append(
+                        f"{ident} -> {target}  (reserved by {reservation.group(1)})")
+                else:
+                    out["dangling"].append(f"{ident} -> {target}  (no such ADR)")
+                continue
+            if reservation:
+                out["stale_reservation"].append(
+                    f"{ident} -> {target}  marked reserved, but {target} exists")
+            tstatus = index[target]
+            if tstatus.lower().startswith("supersed"):
+                out["superseded"].append(f"{ident} -> {target}  (target is {tstatus})")
+            elif status == "Accepted" and tstatus != "Accepted":
+                out["accepted_on_unratified"].append(
+                    f"{ident} (Accepted) -> {target} ({tstatus})")
+    return out
+
+
+def _has_depends_key(files: list[Path], ident: str) -> bool:
+    for p in files:
+        if p.name.startswith(ident + "-"):
+            return "depends_on:" in p.read_text(encoding="utf-8", errors="replace")[:2000]
+    return False
+
+
+def check_decision_mechanisms(board: Path) -> dict:
+    out: dict = {"applicable": False, "reason": "", "decisions": 0,
+                 "prescribes": {}, "restricts": {}, "collisions": [], "mechanisms": []}
+    if not board.is_file():
+        out["reason"] = f"no decision register at {board}"
+        return out
+    out["applicable"] = True
+
+    # errors="replace" ON PURPOSE: this file has carried literal NUL bytes, written where
+    # someone meant the TEXT `\0` while describing git's blob header. `grep` then reports
+    # "Binary file matches" and prints no lines at all -- so a register whose whole design
+    # is "the grep must be a grep" was unreadable by grep. Reading it here must not care.
+    # READ BYTES AND DECODE, NEVER `read_text()`. This register contains FIVE lone CRs,
+    # written where the TEXT `\r` was meant while quoting a mangled Windows path
+    # (`.claude\roles\CODER.md`). `read_text()` opens in text mode with UNIVERSAL NEWLINE
+    # TRANSLATION, which turns a bare CR into a newline -- so the row for `DEC-L-054b` was
+    # split in two before any splitting of ours, and its mechanism key was attributed to
+    # `DEC-L-054`: the id appearing in the second fragment, and the one whose mechanism was
+    # REPLACED. **The wrong answer was the plausible one**, which is why it survived a first
+    # fix aimed at `str.splitlines()` -- also true about lone CRs, and not what was doing it.
+    #
+    # Same family as the NUL bytes: a control character written where its escape sequence was
+    # meant. Found by running against the real register, and only by attributing an edge to
+    # the wrong decision in a way a reader would have believed.
+    text = board.read_bytes().decode("utf-8", errors="replace")
+    for line in text.split("\n"):
+        ids = DEC_ID_RE.findall(line)
+        hits = MECHANISM_RE.findall(line)
+        if not hits:
+            continue
+        owner = ids[0] if ids else "<unattributed>"
+        out["decisions"] += 1
+        for kind, mech in hits:
+            bucket = out["prescribes"] if kind.lower() == "prescribes" else out["restricts"]
+            bucket.setdefault(mech.strip(), []).append(owner)
+
+    for mech, restricting in sorted(out["restricts"].items()):
+        prescribing = out["prescribes"].get(mech)
+        if prescribing:
+            out["collisions"].append(
+                f"`{mech}` — restricted by {', '.join(restricting)}; "
+                f"still prescribed by {', '.join(prescribing)}")
+
+    out["mechanisms"] = sorted(set(out["prescribes"]) | set(out["restricts"]))
+    return out
+
+
+def report_edges(adr: dict, dec: dict) -> int:
+    """Its own section and its own verdict. Returns the number of FAILING findings."""
+    print()
+    print("=" * 86)
+    print("CHECK 9/10 — ADR DEPENDENCY EDGES AND DECISION MECHANISMS")
+    print("=" * 86)
+
+    failures = 0
+    if not adr["applicable"]:
+        print(f"  check 9 not applicable — {adr['reason']}")
+    else:
+        print(f"  {adr['adrs']} ADR(s), {adr['edges']} dependency edge(s)")
+        for label, key in (("DANGLING", "dangling"), ("SUPERSEDED TARGET", "superseded")):
+            for row in adr[key]:
+                print(f"    {label}: {row}")
+                failures += 1
+        for row in adr["missing_key"]:
+            print(f"    NO depends_on KEY: {row} — an absent list and an empty one must "
+                  f"not look alike")
+            failures += 1
+        for row in adr["stale_reservation"]:
+            print(f"    STALE RESERVATION: {row}")
+        for row in adr["reserved"]:
+            print(f"    reserved (not a defect): {row}")
+        # REPORTED, NEVER FAILED. See the section note: `depends_on` has no written meaning,
+        # and an edge cannot be called invalid before the edge is defined.
+        for row in adr["accepted_on_unratified"]:
+            print(f"    ACCEPTED-ON-UNRATIFIED (reported, not failed): {row}")
+
+    print()
+    if not dec["applicable"]:
+        print(f"  check 10 not applicable — {dec['reason']}")
+    else:
+        print(f"  {dec['decisions']} decision(s) declare a mechanism")
+        if dec["mechanisms"]:
+            # The architect's mitigation for free text: a typo cannot fail to join loudly,
+            # but it CAN show up as a near-duplicate in a list somebody reads.
+            print("    mechanism strings seen (a near-duplicate here is a typo):")
+            for m in dec["mechanisms"]:
+                who = []
+                if m in dec["prescribes"]:
+                    who.append("prescribed by " + ", ".join(dec["prescribes"][m]))
+                if m in dec["restricts"]:
+                    who.append("restricted by " + ", ".join(dec["restricts"][m]))
+                print(f"      `{m}` — {'; '.join(who)}")
+        for row in dec["collisions"]:
+            print(f"    COLLISION: {row}")
+            failures += 1
+
+    print()
+    print(f"  {'edges: FINDINGS' if failures else 'edges: clean'} "
+          f"({failures} failing finding(s))")
+    return failures
+
+
 def report_registers(rows: list[dict]) -> int:
     """
     Its own section, its own verdict, and deliberately NOT the RED/GREEN words the package
@@ -1135,11 +1378,37 @@ def main() -> int:
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--no-master", action="store_true",
                     help="skip check 7 (the master register) and run checks 1-6 only")
+    ap.add_argument("--adr-dir", default="docs/14-Engineering/ADR",
+                    help="directory holding ADR-0*.md (check 9)")
+    ap.add_argument("--board", default=".claude/handoff/BOARD.md",
+                    help="decision register read by check 10")
+    # WHY THIS FLAG EXISTS: checks 1-6 are RED on this repository today (9 of 14 packages),
+    # and `package_red` wins the exit code. Without a way to run 9 and 10 alone, their
+    # verdict is unobservable through `$?` -- which is the defect this script's own header
+    # spends three notes on. This is the observable path, not a convenience.
+    ap.add_argument("--edges-only", action="store_true",
+                    help="run only checks 9 and 10 (ADR edges, decision mechanisms)")
     args = ap.parse_args()
 
     root = Path(__file__).resolve().parent.parent
     features = (root / args.features_dir) if not Path(args.features_dir).is_absolute() \
         else Path(args.features_dir)
+
+    adr_dir = (root / args.adr_dir) if not Path(args.adr_dir).is_absolute() \
+        else Path(args.adr_dir)
+    board = (root / args.board) if not Path(args.board).is_absolute() \
+        else Path(args.board)
+
+    if args.edges_only:
+        adr = check_adr_edges(adr_dir)
+        dec = check_decision_mechanisms(board)
+        if args.json:
+            print(json.dumps({"adr_edges": adr, "decision_mechanisms": dec}, indent=2))
+            edge_findings = (len(adr["dangling"]) + len(adr["superseded"])
+                             + len(adr["missing_key"]) + len(dec["collisions"]))
+        else:
+            edge_findings = report_edges(adr, dec)
+        return 5 if edge_findings else 0
 
     if not features.is_dir():
         print(f"trace-check: no such directory: {features}", file=sys.stderr)
@@ -1168,6 +1437,11 @@ def main() -> int:
     # Check 8 reads the packages named, like checks 1-6.
     registers = [check_decision_registers(d) for d in dirs]
 
+    # Checks 9 and 10 read two registers OUTSIDE docs/17-features and are unaffected by
+    # which packages were named, exactly as check 7 is.
+    adr = check_adr_edges(adr_dir)
+    dec = check_decision_mechanisms(board)
+
     package_red = any(r["failures"] for r in results)
     master_findings = bool(master and master.get("total"))
 
@@ -1176,12 +1450,17 @@ def main() -> int:
         if master is not None:
             payload["master_register"] = master
         payload["decision_registers"] = registers
+        payload["adr_edges"] = adr
+        payload["decision_mechanisms"] = dec
         print(json.dumps(payload, indent=2))
         register_findings = sum(len(r["diverged"]) for r in registers)
+        edge_findings = (len(adr["dangling"]) + len(adr["superseded"])
+                         + len(adr["missing_key"]) + len(dec["collisions"]))
     else:
         if master is not None:
             report_master(master)
         register_findings = report_registers(registers)
+        edge_findings = report_edges(adr, dec)
         report(results)
 
     # 1 keeps its original meaning — a package failed — so a caller testing `== 1` is
@@ -1192,11 +1471,17 @@ def main() -> int:
     # findings may ALSO be present and are not visible in the exit code. The section above is
     # where to look. A caller that cares specifically about register divergence should read
     # `--json`, not the exit status.
+    # 5 is checks 9 and 10, added LAST so every existing meaning is untouched. It inherits
+    # the same consequence the note above states, and worse: with checks 1-6 red on this
+    # repository today, 1 always wins and 5 is never visible in a full run. `--edges-only`
+    # exists so the new checks have an observable exit code of their own -- see the flag.
     if package_red:
         return 1
     if master_findings:
         return 3
-    return 4 if register_findings else 0
+    if register_findings:
+        return 4
+    return 5 if edge_findings else 0
 
 
 if __name__ == "__main__":

@@ -88,6 +88,40 @@ set -u
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
 #
+#  7r. THE VERDICT SAYS WHAT TREE IT MEASURED. T-070.
+#
+#     `DEC-L-007` makes a green gate merge authority for code, and this repository runs TWO WINDOWS
+#     AGAINST ONE WORKING TREE. On 2026-08-27 a gate run from a branch that predated FP-015 entirely
+#     went RED on eight of that package's requirements: **the failures came from the other window's
+#     UNCOMMITTED files, sitting on disk.** The verdict was correct about the disk and said nothing
+#     about whose disk it was.
+#
+#     **A merge-authorising green can therefore be bought or lost by what the other window happens to
+#     have open**, and until this note nothing in the output said which tree produced it.
+#
+#     ---- IT REPORTS AND NEVER FAILS.
+#
+#     A dirty tree is the NORMAL state of a window mid-task. A gate that refused one would be disabled
+#     by its user within a day, and a disabled gate is the failure this file has spent a week removing.
+#     **The defect was never the dirty tree; it was a verdict that did not say what it measured.**
+#
+#     ---- IT NAMES FILES AND ATTRIBUTES NOTHING.
+#
+#     Two windows, one tree, no reliable way to tell whose edit is whose. Naming the files lets the
+#     reader conclude. **Asserting an owner would be a guard claiming a cause it cannot know** -- the
+#     defect recorded eight times on this board, and the reason every message here states a question.
+#
+#     `.claude/` IS DELIBERATELY NOT EXCLUDED. The incident that prompted this was documentation, and
+#     excluding it would have made that exact case invisible.
+#
+#     ---- THE CLEAN CASE IS PRINTED AS A RESULT.
+#
+#     `[TREE: 0 modified, 0 untracked; HEAD matches origin/ClaudeBranch]` appears on a clean run too. A
+#     line that shows up only when something is wrong teaches a reader that its absence means nothing
+#     was checked -- the absence-versus-not-applicable confusion already removed from the sampler, the
+#     build status and the trace check. Demonstrated across three states before it was trusted: clean,
+#     one-modified-one-untracked, and a detached HEAD four commits behind.
+#
 #  7s. THE TRACEABILITY CHECK, WIRED AT LAST, AND NOT TO A HARD ZERO. T-065.
 #
 #     `scripts/trace-check.py` existed for weeks and was in NEITHER this script NOR
@@ -874,6 +908,70 @@ if [ -n "$GATE_STALE_NOTE" ]; then
   echo "########## !!! GATE SCRIPT: $GATE_STALE_NOTE"
 fi
 
+# ---- WHAT TREE DID THIS GATE ACTUALLY MEASURE? See note 7r in the header. T-070.
+#
+# `DEC-L-007` makes a green gate merge authority for code, and this repository runs **two windows
+# against one working tree**. On 2026-08-27 a gate run from a branch that predated FP-015 entirely
+# went RED on eight of its requirements: the failures came from the OTHER window's UNCOMMITTED files,
+# sitting on disk. The verdict was correct about the disk and said nothing about whose disk it was.
+#
+# **So a merge-authorising green can be bought or lost by what the other window happens to have open**,
+# and nothing in the output said which tree produced it.
+#
+# ---- IT REPORTS AND NEVER FAILS, AND THAT IS NOT TIMIDITY.
+#
+# A dirty tree is the NORMAL state of a window mid-task. A gate that refused one would be a gate its
+# user disabled within a day, and the disabled gate is the failure this file has spent a week
+# removing. **The defect was never the dirty tree -- it was a verdict that did not say what it
+# measured.**
+#
+# ---- IT NAMES FILES AND ATTRIBUTES NOTHING.
+#
+# Two windows, one tree, and no reliable way to tell whose edit is whose. **Naming the files lets the
+# reader conclude; asserting an owner would be a guard claiming a cause it cannot know**, which is the
+# defect recorded eight times on this board. `.claude/` is deliberately NOT excluded: the incident
+# that prompted this was documentation, and excluding it would have made that exact case invisible.
+GATE_TREE_NOTE=""
+GATE_TREE_DETAIL=""
+gate_report_tree () {
+  command -v git >/dev/null 2>&1 || { GATE_TREE_NOTE="unchecked: no git on PATH"; return; }
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    GATE_TREE_NOTE="unchecked: not a git working tree"; return; }
+
+  local status modified untracked nmod nunt head_desc ref
+  status=$(git status --porcelain 2>/dev/null)
+  modified=$(printf '%s\n' "$status" | grep -v '^??' | grep -v '^$' | sed 's/^...//')
+  untracked=$(printf '%s\n' "$status" | grep '^??' | sed 's/^?? //')
+  nmod=$(printf '%s\n' "$modified" | grep -c . )
+  nunt=$(printf '%s\n' "$untracked" | grep -c . )
+
+  ref=${GATE_INTEGRATION_REF:-origin/ClaudeBranch}
+  if git rev-parse --verify -q "$ref" >/dev/null 2>&1; then
+    local ahead behind
+    ahead=$(git rev-list --count "$ref"..HEAD 2>/dev/null)
+    behind=$(git rev-list --count HEAD.."$ref" 2>/dev/null)
+    if [ "${ahead:-0}" = "0" ] && [ "${behind:-0}" = "0" ]; then
+      head_desc="HEAD matches $ref"
+    else
+      head_desc="HEAD is ${ahead:-?} ahead / ${behind:-?} behind $ref"
+    fi
+  else
+    head_desc="HEAD not comparable: '$ref' does not resolve"
+  fi
+
+  GATE_TREE_NOTE="$nmod modified, $nunt untracked; $head_desc"
+  if [ "$nmod" != "0" ] || [ "$nunt" != "0" ]; then
+    GATE_TREE_DETAIL=$(
+      [ "$nmod" != "0" ] && printf '%s\n' "$modified" | sed 's/^/##########   modified:  /'
+      [ "$nunt" != "0" ] && printf '%s\n' "$untracked" | sed 's/^/##########   untracked: /'
+    )
+  fi
+}
+
+gate_report_tree
+echo "########## tree measured: $GATE_TREE_NOTE"
+[ -n "$GATE_TREE_DETAIL" ] && printf '%s\n' "$GATE_TREE_DETAIL"
+
 reap_to_zero () {
   local CFG="$1"
 
@@ -1255,6 +1353,11 @@ esac
 if [ -n "$GATE_STALE_NOTE" ]; then
   echo "[GATE SCRIPT: $GATE_STALE_NOTE]"
 fi
+# AT THE VERDICT TOO, AND ALWAYS -- including when the tree is clean. A line that appears only when
+# something is wrong teaches a reader that its absence means nothing was checked, which is the
+# absence-versus-not-applicable confusion this file has removed from the sampler, the build status and
+# the trace check. **The clean case is a result and it is printed as one.**
+echo "[TREE: $GATE_TREE_NOTE]"
 # ---- THE BASELINE IS WRITTEN BY THE INSTRUMENT, ONCE, HERE. See note 7t.
 #
 # ONCE, AFTER THE LAST CONFIGURATION, AFTER THE VERDICT IS COMPUTED -- not "after the suites". Under

@@ -204,6 +204,17 @@ public sealed class ModuleTenantContractArchitectureTests
         // ADR-level change `DEC-POS-0015` reserved for a multi-currency requirement).
         nameof(ITenantCompanyCurrencyLookup),
         nameof(ITenantUnitOfWork),
+        // ADR-030's identity-to-employee mapping, needed so a module can answer "is the acting user this
+        // employee" (T-084). It sits beside ICurrentTenantUser because it is the same seam and the second
+        // half of the same question: a module asks WHO is acting, then WHICH employee that is.
+        //
+        // Deliberately NOT in SSAS.Platform.Contracts. That project exists, is empty, and no module
+        // references it — adopting it would open the first module-to-Platform project reference in the
+        // product, which is a structural precedent rather than a defect fix.
+        //
+        // Its surface is one method taking the tenant user EXPLICITLY. Not an identity service: a contract
+        // that read its subject from ambient state could not be asked about anyone else and would grow.
+        nameof(IUserEmployeeResolver),
         // The data half of the permission contribution: a name and the description a tenant administrator
         // reads. Deliberately carries NO scope -- the composer stamps Tenant, so a module cannot mint
         // cross-tenant PlatformSupport authority (ADR-012 r1.2).

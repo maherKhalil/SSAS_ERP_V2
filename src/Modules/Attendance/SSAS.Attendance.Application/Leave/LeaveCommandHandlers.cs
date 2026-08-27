@@ -6,6 +6,7 @@ using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Leave;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.HR.Contracts.Employment;
 
@@ -318,6 +319,8 @@ public sealed class ApproveLeaveRequestCommandHandler(
   ILeaveApprovalRouter router,
   IAttendanceScopeResolver scope,
   ICurrentUser currentUser,
+  ICurrentTenantUser currentTenantUser,
+  IUserEmployeeResolver userEmployees,
   ITenantUnitOfWork unitOfWork)
 {
   public async Task<Result> HandleAsync(
@@ -346,8 +349,16 @@ public sealed class ApproveLeaveRequestCommandHandler(
 
     // The aggregate applies the self-approval bar again on the employee-identified path. Not redundant:
     // the router decides ROUTING, the aggregate holds the INVARIANT, and removing either leaves a hole.
+    //
+    // ---- AND THE ROOT PATH NOW CARRIES THE SAME INVARIANT (BR-ATT-0007, T-084).
+    //
+    // Resolution happens HERE because this is the only layer permitted to call a cross-module contract;
+    // the comparison happens in the aggregate for the reason stated one line above. `null` is an ordinary
+    // answer and not a refusal — see `LeaveRequest.GuardNotSelfAtRoot`.
+    var actingEmployeeId = await ResolveActingEmployeeAsync(cancellationToken);
+
     var decided = route.Value.UsedRootFallback
-      ? request.ApproveAtRoot(currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
+      ? request.ApproveAtRoot(actingEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
       : request.Approve(route.Value.ApproverEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote);
     if (decided.IsFailure)
     {
@@ -386,6 +397,16 @@ public sealed class ApproveLeaveRequestCommandHandler(
 
     return await unitOfWork.SaveChangesAsync(cancellationToken);
   }
+
+  // ---- THE ACTING USER'S EMPLOYEE, OR null (ADR-030 Decision 5).
+  //
+  // No tenant session means no linked employee by definition — the operator case the root fallback exists
+  // for — so it is `null` rather than a refusal, and the aggregate treats it as "the bar does not apply"
+  // rather than "the caller failed to identify themselves".
+  private async Task<Guid?> ResolveActingEmployeeAsync(CancellationToken cancellationToken) =>
+    currentTenantUser.TenantUserId is { } tenantUserId
+      ? await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken)
+      : null;
 }
 
 public sealed class RejectLeaveRequestCommandHandler(
@@ -393,6 +414,8 @@ public sealed class RejectLeaveRequestCommandHandler(
   ILeaveApprovalRouter router,
   IAttendanceScopeResolver scope,
   ICurrentUser currentUser,
+  ICurrentTenantUser currentTenantUser,
+  IUserEmployeeResolver userEmployees,
   ITenantUnitOfWork unitOfWork)
 {
   public async Task<Result> HandleAsync(
@@ -422,13 +445,27 @@ public sealed class RejectLeaveRequestCommandHandler(
       return Result.Failure(route.Error);
     }
 
+    // The same bar as approve, on the same path, for the same reason: `RejectAtRoot` reached the root
+    // fallback through the identical router branch and had the identical hole (T-084).
+    var actingEmployeeId = await ResolveActingEmployeeAsync(cancellationToken);
+
     var decided = route.Value.UsedRootFallback
-      ? request.RejectAtRoot(currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
+      ? request.RejectAtRoot(actingEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
       : request.Reject(route.Value.ApproverEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote);
 
     // No balance movement. Rejection never consumed anything, because the balance moves at APPROVAL.
     return decided.IsFailure ? decided : await unitOfWork.SaveChangesAsync(cancellationToken);
   }
+
+  // ---- THE ACTING USER'S EMPLOYEE, OR null (ADR-030 Decision 5).
+  //
+  // No tenant session means no linked employee by definition — the operator case the root fallback exists
+  // for — so it is `null` rather than a refusal, and the aggregate treats it as "the bar does not apply"
+  // rather than "the caller failed to identify themselves".
+  private async Task<Guid?> ResolveActingEmployeeAsync(CancellationToken cancellationToken) =>
+    currentTenantUser.TenantUserId is { } tenantUserId
+      ? await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken)
+      : null;
 }
 
 public sealed class CancelLeaveRequestCommandHandler(

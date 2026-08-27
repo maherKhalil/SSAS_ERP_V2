@@ -213,6 +213,11 @@ PACKAGE_CONVENTION: dict[str, str] = {
     "FP-012-payroll": "modern",
     "FP-013-attendance": "modern",
     "FP-014-subscription": "modern",
+    # Declared from what the package CONTAINS, not from what it will contain: zero BRULE-
+    # identifiers and an FP-014-shaped skeleton. It is two files deep -- README and open
+    # decisions -- and `DEC-L-061` failed it as UNDECLARED within an hour of its creation,
+    # which is the rule working on the newest package in the repository.
+    "FP-015-self-service": "modern",
 }
 
 # BRULE must precede BR in the alternation. `BR-` cannot match inside `BRULE-` because the

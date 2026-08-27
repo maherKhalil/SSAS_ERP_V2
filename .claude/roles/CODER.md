@@ -214,24 +214,41 @@ the owner's accepted trade: a faster loop, with correction happening on `ClaudeB
 Tightened by the owner on 2026-08-25 (`DEC-L-008`) after the first three merges. **Green is not
 "the build succeeded".** It is all four of these, and a merge on anything less is a defect:
 
-1. **The build succeeds at zero warnings.** A warning you introduced is a failure.
-2. **Every suite in the gate ran in this session and passed** — Architecture, Platform, HR, API, plus
-   the suite for the module you changed. Not "the ones I thought were relevant".
-3. **`Integration.Tests` ran and passed** if the task touched persistence, a migration, an EF
-   configuration, or the Shared→Dedicated cutover inventory. Run it through
-   `GATE_SCOPE=TASK scripts/gate.sh`, which holds the memory preconditions and the catalog reaping
-   — do not invoke that leg by hand. **Integration does NOT run under `TASK` unless you ask for
-   it:** `GATE_INTEGRATION=1 GATE_SCOPE=TASK scripts/gate.sh`, and it then runs in **one**
-   configuration (`DEC-L-051`). The script cannot evaluate condition 3 and you can, which is why it
-   is opt-in rather than inferred from the diff. Under `PHASE` Integration always runs and
-   `GATE_INTEGRATION` is reported as **ignored** rather than silently obeyed or silently dropped.
-   **Do not export `MSYS_NO_PATHCONV` in the shell you launch the gate from** (`DEC-L-056`) — it
-   kills the memory sampler and the gate still reports green.
-4. **The tests the task required exist in this diff and pass.** This is the one that is easy to miss
-   and it is why the rule was tightened: *a suite that is green because nothing exercises your new
-   code is not green.* If you added an aggregate, a handler, an endpoint or an invariant and the
-   test count did not move, you have proved that the code you did not test did not break the code
-   you did not change. That is not evidence and it is not a merge.
+**Each condition below says whether the GATE enforces it or whether it rests on you.** That
+distinction was invisible until 2026-08-27, and two of these turned out to be neither enforced nor
+labelled as unenforced.
+
+0. **The build succeeds — ENFORCED.** A failing build skips that configuration's suites and goes RED.
+   **Until 2026-08-27 it did neither:** the exit status was discarded and the suites ran `--no-build`
+   against the previous build's assemblies, so a run whose build failed with `1 Error(s)` reported
+   2752 passing tests and `[GATE GREEN]`. It was never listed as a condition at all.
+
+1. **Zero warnings — ENFORCED.** The gate builds `--no-incremental` and goes RED on any warning.
+   **`--no-incremental` is not a performance setting.** MSBuild skips up-to-date projects, so the
+   compiler never re-runs and never re-emits their warnings: a planted `CS0219` reported `1 Warning(s)`
+   on the build that introduced it and `0 Warning(s)` on the very next build. A gate run after an IDE
+   build would otherwise report clean over code that is not. It costs about 13 seconds. Do not remove
+   it to save them.
+
+2. **Every suite in the gate ran and passed — ENFORCED.** All seven non-Integration suites run under
+   `TASK`, all eight under `PHASE`, and any failure sets the verdict RED. **There is no selection by
+   diff**: Finance, Payroll and Attendance cost 23, 24 and 25 milliseconds, and choosing between them
+   would trade an inference over the diff for under a tenth of a second.
+
+3. **`Integration.Tests` when the task touched persistence — CONVENTION, NOT ENFORCED.** The gate
+   cannot evaluate this and you can. **Nothing will stop you merging without it.** Persistence, a
+   migration, an EF configuration or the Shared→Dedicated cutover inventory: run
+   `GATE_INTEGRATION=1 GATE_SCOPE=TASK scripts/gate.sh`, one configuration (`DEC-L-051`). Under
+   `PHASE` it always runs and `GATE_INTEGRATION` is reported as **ignored** rather than silently
+   obeyed or dropped. **Do not export `MSYS_NO_PATHCONV` in the launching shell** (`DEC-L-056`) — it
+   kills the memory sampler, and the gate says so rather than going quiet.
+
+4. **The tests the task required exist in this diff — CONVENTION, NOT ENFORCED.** The gate prints the
+   counts. **It does not compare them to anything.** There is no baseline in the script. *A suite that
+   is green because nothing exercises your new code is not green* — if you added an aggregate, a
+   handler, an endpoint or an invariant and the count did not move, you have proved that the code you
+   did not test did not break the code you did not change. **That is the condition most likely to be
+   believed because the others are enforced.**
 
 **Report the counts, before and after.** `Failed: 0, Passed: N` for each suite, and say what N was
 on `ClaudeBranch` before your change. The baseline is recorded on the board. A code task whose totals are

@@ -223,12 +223,18 @@ public sealed class LeaveRequest
   // `ApproveAtRoot` a separate, strictly wider grant that an administrator gives deliberately, and it is
   // recorded in `DecidedBy` plus the null approver so the path is auditable after the fact. **When the
   // identity-to-employee mapping is built, this is the first thing that should be tightened.**
-  public Result ApproveAtRoot(string? decidedBy, DateTimeOffset decidedUtc, string? note)
+  public Result ApproveAtRoot(Guid? actingEmployeeId, string? decidedBy, DateTimeOffset decidedUtc, string? note)
   {
     var guard = GuardDecision(decidedBy, note);
     if (guard.IsFailure)
     {
       return guard;
+    }
+
+    var self = GuardNotSelfAtRoot(actingEmployeeId);
+    if (self.IsFailure)
+    {
+      return self;
     }
 
     Status = LeaveRequestStatus.Approved;
@@ -239,12 +245,18 @@ public sealed class LeaveRequest
     return Result.Success();
   }
 
-  public Result RejectAtRoot(string? decidedBy, DateTimeOffset decidedUtc, string? note)
+  public Result RejectAtRoot(Guid? actingEmployeeId, string? decidedBy, DateTimeOffset decidedUtc, string? note)
   {
     var guard = GuardDecision(decidedBy, note);
     if (guard.IsFailure)
     {
       return guard;
+    }
+
+    var self = GuardNotSelfAtRoot(actingEmployeeId);
+    if (self.IsFailure)
+    {
+      return self;
     }
 
     Status = LeaveRequestStatus.Rejected;
@@ -254,6 +266,41 @@ public sealed class LeaveRequest
     DecisionNote = Trim(note);
     return Result.Success();
   }
+
+  // ================================================================================================
+  // THE SELF-APPROVAL BAR ON THE ROOT PATH (BR-ATT-0007, ADR-030, T-084).
+  // ================================================================================================
+  //
+  // ---- WHAT THIS CLOSES, AND WHY IT COULD NOT BE CLOSED BEFORE.
+  //
+  // `Approve` and `Reject` compare an approver EMPLOYEE to the requester. On the root path the actor is a
+  // USER, and until `UserEmployeeLink` (`ADR-030`, T-082) nothing could turn one into the other — so the
+  // comment above `ApproveAtRoot` recorded the hole and named the mapping as the unblocking condition.
+  //
+  // **The router is the branch that creates the situation, not a layer that prevents it.** Its case 2 is
+  // *"every manager in the chain is the requester (a one-department company run by its manager)"* — it
+  // skips the requester when choosing a chain approver, falls through, and returns the root fallback. In
+  // that tenant shape the person who requested the leave is the person who approves it, and the bounding
+  // control the file names — a separate deliberate grant — **is weakest in exactly that shape.**
+  //
+  // ---- `null` IS NOT A REFUSAL, AND THAT IS THE POINT RATHER THAN A CONCESSION.
+  //
+  // `ADR-030` Decision 5 makes the link optional on both sides. An acting user with no linked employee is a
+  // normal caller — platform support, or a user created before their employee record — and **they cannot be
+  // the requester, so the bar does not apply to them.** Refusing on absence would break the root fallback
+  // for precisely the operator it exists for.
+  //
+  // ---- AND THE PARAMETER IS REQUIRED SO THE OMISSION CANNOT BE SILENT.
+  //
+  // The aggregate cannot tell *the user was unresolvable* from *the caller never asked*: both arrive as
+  // `null`. What it can do is make the second a written statement rather than a forgotten line — the
+  // parameter has no default, so every call site must say something. **That is weaker than making the
+  // mistake unrepresentable, and `LeaveApprovalHandlerTests` asserts the resolution actually happens
+  // because this guard cannot.**
+  private Result GuardNotSelfAtRoot(Guid? actingEmployeeId) =>
+    actingEmployeeId is { } acting && acting != Guid.Empty && acting == EmployeeId
+      ? Result.Failure(LeaveErrors.SelfApprovalBarred)
+      : Result.Success();
   // ---- CANCELLATION, AND WHY THE DATES MATTER (REQ-ATT-0016, AC-ATT-0042).
   //
   // Before the dates pass, cancelling is ordinary: the leave has not happened.

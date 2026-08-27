@@ -328,6 +328,11 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // Both delegate to the contracts Platform already owns rather than resolving anything themselves, so a
     // module and Platform cannot disagree about who is acting or which branch is current.
     services.AddScoped<SSAS.BuildingBlocks.Tenancy.ICurrentTenantUser, RequestContext.CurrentTenantUser>();
+
+    // ADR-030's mapping, answered by Platform because the table is Platform's (T-084). Registered beside
+    // ICurrentTenantUser because it is the same seam: a module asks who is acting, then asks which employee
+    // that is, and both answers come from the catalog only Platform can read.
+    services.AddScoped<SSAS.BuildingBlocks.Tenancy.IUserEmployeeResolver, Persistence.Queries.UserEmployeeResolver>();
     services.AddScoped<ICurrentBranchResolver, CurrentBranchResolver>();
     services.AddScoped<BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor, TenantDbContextAccessor>();
     services.AddScoped<IBranchTransferAuthorizer>(provider => new BranchTransferAuthorizer(

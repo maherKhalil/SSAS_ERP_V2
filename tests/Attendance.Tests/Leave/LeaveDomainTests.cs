@@ -282,20 +282,90 @@ public sealed class LeaveRequestTests
 
   // ---- THE ROOT-FALLBACK PATH RECORDS A NULL APPROVER, AND THE NULL IS A STATEMENT.
   //
-  // The holder is authenticated as a USER, and no identity-to-employee mapping exists (`OD-ATT-0013`). There
-  // is no employee to record, so nothing is recorded — as opposed to writing `Guid.Empty` and letting a
-  // reader mistake it for an employee.
+  // The holder is authenticated as a USER and the decision is not attributed to an employee, so nothing is
+  // recorded there — as opposed to writing `Guid.Empty` and letting a reader mistake it for an employee.
+  //
+  // **`ApproverEmployeeId` stays null even when the acting user IS resolvable (T-084).** Recording it would
+  // give the column two meanings — *the root path was used* and *the user could not be resolved* — and
+  // would silently reinterpret every row already written.
   [Fact]
   [Trait("Decision", "OD-ATT-0007")]
   public void A_root_fallback_decision_records_the_user_and_no_approver_employee()
   {
     var request = Request();
 
-    Assert.True(request.ApproveAtRoot("root-admin", DateTimeOffset.UtcNow, "No manager above this employee").IsSuccess);
+    Assert.True(request.ApproveAtRoot(
+      Guid.NewGuid(), "root-admin", DateTimeOffset.UtcNow, "No manager above this employee").IsSuccess);
 
     Assert.Equal(LeaveRequestStatus.Approved, request.Status);
     Assert.Equal("root-admin", request.DecidedBy);
     Assert.Null(request.ApproverEmployeeId);
+  }
+
+  // ================================================================================================
+  // THE SELF-APPROVAL BAR ON THE ROOT PATH (BR-ATT-0007, T-084).
+  // ================================================================================================
+  //
+  // Until `UserEmployeeLink` existed, this could not be checked: the actor on this path is a user and
+  // nothing could turn one into an employee. **The router's case 2 — "every manager in the chain is the
+  // requester (a one-department company run by its manager)" — is the branch that produces exactly the
+  // situation the bar exists to refuse.**
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void A_root_fallback_holder_who_is_the_requester_is_refused_on_both_verbs()
+  {
+    var approving = Request();
+    var rejecting = Request();
+
+    var approved = approving.ApproveAtRoot(Employee, "root-admin", DateTimeOffset.UtcNow, "note");
+    var rejected = rejecting.RejectAtRoot(Employee, "root-admin", DateTimeOffset.UtcNow, "note");
+
+    Assert.Equal(LeaveErrors.SelfApprovalBarred.Code, approved.Error.Code);
+    Assert.Equal(LeaveErrors.SelfApprovalBarred.Code, rejected.Error.Code);
+
+    // AND NEITHER REQUEST MOVED. A refusal that had already mutated the aggregate would leave a decided
+    // request behind a failed Result, which the caller would never see.
+    Assert.Equal(LeaveRequestStatus.Submitted, approving.Status);
+    Assert.Equal(LeaveRequestStatus.Submitted, rejecting.Status);
+  }
+
+  // THE CONTROL. Without it the test above passes against a bar that refuses EVERY root decision, which
+  // would break the fallback for the one holder it exists for.
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void A_root_fallback_holder_who_is_a_different_employee_is_accepted_on_both_verbs()
+  {
+    var approving = Request();
+    var rejecting = Request();
+    var someoneElse = Guid.NewGuid();
+
+    Assert.True(approving.ApproveAtRoot(someoneElse, "root-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+    Assert.True(rejecting.RejectAtRoot(someoneElse, "root-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+
+    Assert.Equal(LeaveRequestStatus.Approved, approving.Status);
+    Assert.Equal(LeaveRequestStatus.Rejected, rejecting.Status);
+  }
+
+  // ---- AN UNRESOLVABLE USER IS NOT A REFUSAL, AND THIS IS THE ASSERTION THAT KEEPS IT THAT WAY.
+  //
+  // `ADR-030` Decision 5: the link is optional on both sides. A platform-support holder with no employee
+  // record is a normal caller — *"a support administrator opening a self-service page is not a fault
+  // condition; it is Tuesday"* — and **they cannot be the requester, so the bar does not apply.**
+  //
+  // Refusing on absence would break the root fallback for precisely the operator it exists for, and it
+  // would turn the bar into a mapping requirement. **That is what this test forbids.**
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void An_unresolvable_acting_user_is_not_refused_on_either_verb()
+  {
+    var approving = Request();
+    var rejecting = Request();
+
+    Assert.True(approving.ApproveAtRoot(null, "support-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+    Assert.True(rejecting.RejectAtRoot(null, "support-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+
+    Assert.Equal(LeaveRequestStatus.Approved, approving.Status);
+    Assert.Equal(LeaveRequestStatus.Rejected, rejecting.Status);
   }
 
   // An employee-identified approval REFUSES an empty approver, which is what keeps the root path from being

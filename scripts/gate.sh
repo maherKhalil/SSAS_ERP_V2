@@ -88,6 +88,38 @@ set -u
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
 #
+#  7s. THE TRACEABILITY CHECK, WIRED AT LAST, AND NOT TO A HARD ZERO. T-065.
+#
+#     `scripts/trace-check.py` existed for weeks and was in NEITHER this script NOR
+#     `.github/workflows/ci.yml`. **Nine packages were red and nobody remarked on it, because
+#     nothing ran it.** That is the last instance of the shape this file spent a day removing:
+#     an instrument whose output nobody sees is indistinguishable from an instrument that
+#     passes.
+#
+#     ---- RED ON A RISE. NEVER ON THE STANDING COUNT.
+#
+#     Eleven failures stand today and **every one is work a package has already declared
+#     pending** -- FP-003's `AC-TEN-0078`..`0093`, marked "implementation pending" in its own
+#     acceptance-criteria file. A gate permanently red on declared work **is a gate people
+#     switch off**, and switching it off is how the nine went unnoticed in the first place.
+#
+#     So the comparison is per package against a committed baseline, and only a RISE is red.
+#     **Improvement ratchets**: a package that gets better lowers its own baseline on the next
+#     clean run and cannot raise it again, so the first person to fix something does not hand
+#     the next person room to break it.
+#
+#     ---- THE COST IS MEASURED, NOT ASSUMED.
+#
+#     730 ms over three runs, against a 72-second TASK gate: **one per cent.** It therefore
+#     runs in BOTH scopes. `DEC-L-051` bought back 68 minutes and this does not spend it --
+#     had the number been material it would have belonged in PHASE only, and that is the
+#     answer I was prepared to give.
+#
+#     ---- AND IT SAYS WHEN IT DID NOT RUN.
+#
+#     No `py`, or no script, prints `NOT RUN` rather than nothing. The memory sampler needed
+#     that rule and did not have it for a day.
+#
 #  7t. CONDITION 4, PARTIALLY MECHANISED -- AND THE PARTIAL IS THE POINT. T-059.
 #
 #     `DEC-L-008` condition 4 was the last of the four held by nothing. The gate printed per-suite
@@ -1126,6 +1158,44 @@ gate_condition_4 () {
 }
 gate_condition_4
 echo "--- condition 4: $GATE_C4_NOTE"
+
+# ---- THE TRACEABILITY CHECK, AGAINST A BASELINE. See note 7s in the header. T-065.
+#
+# RED ON A RISE, NEVER ON THE STANDING COUNT. Eleven failures stand today and every one is
+# work a package has already declared pending. **A gate permanently red on declared work is
+# a gate switched off by the second week** -- which is how nine red packages went unremarked
+# for weeks while `trace-check.py` was in neither this script nor `ci.yml`.
+#
+# IT RUNS IN BOTH SCOPES, and the reason is measured rather than assumed: **730 ms** over
+# three runs, against a 72-second TASK gate. That is one per cent, and `DEC-L-051` bought
+# back 68 minutes -- spending three-quarters of a second to close the last unwired instrument
+# is not the trade that undoes it. Had it been material it would belong in PHASE only.
+#
+# The interpreter is `py`, not `python`: on this box `python` resolves through a per-user
+# app-execution alias that can be switched off, and `py` is the launcher.
+GATE_TRACE_BASELINE="${GATE_TRACE_BASELINE:-$ROOT/.claude/handoff/trace-baseline.txt}"
+if command -v py >/dev/null 2>&1 && [ -f "$ROOT/scripts/trace-check.py" ]; then
+  # `--baseline` returns 6 on a RISE and 0 otherwise. It deliberately does not return the
+  # standing-count code, which is the whole point: see the note above `--baseline` in
+  # trace-check.py.
+  py "$ROOT/scripts/trace-check.py" --baseline "$GATE_TRACE_BASELINE" --update-baseline \
+    > "$LOGS/trace-check.log" 2>&1
+  TRACE_STATUS=$?
+  sed -n '/TRACE BASELINE/,$p' "$LOGS/trace-check.log" | head -12
+  if [ "$TRACE_STATUS" = "6" ]; then
+    echo "!!! TRACEABILITY REGRESSION -- a package has MORE failures than its committed baseline."
+    echo "!!! This gate is RED. Full report: $LOGS/trace-check.log"
+    GATE_FAILED=1
+  elif [ "$TRACE_STATUS" != "0" ]; then
+    # Any other code means the checker did not answer the question. Reported, not failed:
+    # a documentation checker that cannot start must not block code that compiles and passes.
+    echo "--- trace-check: did not complete (exit $TRACE_STATUS) -- see $LOGS/trace-check.log"
+  fi
+else
+  # ABSENCE IS STATED. A missing interpreter or script must not read as a clean run, which
+  # is the same rule the memory sampler needed and did not have.
+  echo "--- trace-check: NOT RUN -- no 'py' on PATH or scripts/trace-check.py missing."
+fi
 
 if [ $GATE_FAILED -ne 0 ]; then
   echo "[GATE RED -- $GATE_SCOPE scope: $SCOPE_NOTE]"

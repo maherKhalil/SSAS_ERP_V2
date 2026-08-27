@@ -1732,6 +1732,89 @@ def report(results: list[dict]) -> int:
     return 1 if red else 0
 
 
+# --------------------------------------------------------------------------------------
+# THE BASELINE GATE (T-065)
+#
+# NOT A HARD ZERO, AND THAT IS THE WHOLE DESIGN. Eleven failures stand today and every one
+# is work a package has already declared pending. **A gate permanently red on declared work
+# is a gate switched off by the second week** -- which is exactly how nine red packages went
+# unremarked for weeks before anyone looked.
+#
+# So: red when a package's count RISES above its committed baseline. Silent when it holds.
+# **Improvement ratchets** -- a package that improves lowers its own baseline on the next
+# green run, or the first person to fix something hands the next person room to break it.
+#
+# The instrument writes the file and the coder commits it, for the reasons condition 4's
+# baseline already established: it cannot drift while runs happen, and the delta lands in
+# the diff where review sees it.
+NL = chr(10)
+BASELINE_HEADER = (
+    "# Written by scripts/trace-check.py --baseline --update-baseline on a clean run." + NL
+    + "# package|failures" + NL
+)
+
+
+def read_baseline(path: Path) -> dict[str, int]:
+    if not path.is_file():
+        return {}
+    out: dict[str, int] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").split(NL):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, _, count = line.partition("|")
+        if count.strip().isdigit():
+            out[name.strip()] = int(count.strip())
+    return out
+
+
+def report_baseline(results: list[dict], path: Path, update: bool) -> int:
+    """Prints the comparison and returns the number of packages that REGRESSED."""
+    base = read_baseline(path)
+    current = {r["package"]: len(r["failures"]) for r in results}
+    regressed, improved, new = [], [], []
+    for pkg in sorted(current):
+        now = current[pkg]
+        was = base.get(pkg)
+        if was is None:
+            new.append((pkg, now))
+        elif now > was:
+            regressed.append((pkg, was, now))
+        elif now < was:
+            improved.append((pkg, was, now))
+
+    print()
+    print("=" * 86)
+    print("TRACE BASELINE — red on a RISE, never on the standing count")
+    print("=" * 86)
+    if not base:
+        print(f"  no baseline at {path} — it is written by the first non-regressing run")
+    for pkg, was, now in regressed:
+        print(f"  !!! REGRESSION: {pkg} {was} -> {now}")
+    for pkg, was, now in improved:
+        print(f"  improved: {pkg} {was} -> {now}  (baseline lowers; it does not rise again)")
+    for pkg, now in new:
+        print(f"  new package: {pkg} at {now}")
+    held = len(current) - len(regressed) - len(improved) - len(new)
+    print(f"  {held} package(s) unchanged, {sum(current.values())} failure(s) standing")
+
+    if regressed:
+        print("  baseline NOT updated: a regression must not become the new normal.")
+        return len(regressed)
+    if update:
+        # RATCHET: never write a number higher than the one already committed. A package
+        # that got worse is caught above; a package that got better lowers its own bar.
+        merged = dict(base)
+        for pkg, now in current.items():
+            merged[pkg] = min(now, base.get(pkg, now))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(BASELINE_HEADER + "".join(
+            f"{k}|{v}" + NL for k, v in sorted(merged.items())),
+            encoding="utf-8", newline="")
+        print(f"  baseline updated at {path} — COMMIT IT WITH YOUR WORK.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1749,6 +1832,10 @@ def main() -> int:
     # and `package_red` wins the exit code. Without a way to run 9 and 10 alone, their
     # verdict is unobservable through `$?` -- which is the defect this script's own header
     # spends three notes on. This is the observable path, not a convenience.
+    ap.add_argument("--baseline", metavar="FILE",
+                    help="compare per-package failure counts against FILE and fail on a RISE")
+    ap.add_argument("--update-baseline", action="store_true",
+                    help="with --baseline: rewrite it when nothing regressed (ratchets down only)")
     ap.add_argument("--edges-only", action="store_true",
                     help="run only checks 9 and 10 (ADR edges, decision mechanisms)")
     args = ap.parse_args()
@@ -1839,6 +1926,18 @@ def main() -> int:
     # the same consequence the note above states, and worse: with checks 1-6 red on this
     # repository today, 1 always wins and 5 is never visible in a full run. `--edges-only`
     # exists so the new checks have an observable exit code of their own -- see the flag.
+    # `--baseline` ASKS A DIFFERENT QUESTION AND GETS A DIFFERENT ANSWER: 6 on a rise, 0
+    # otherwise, deliberately overriding the 1/3/4/5 codes below.
+    #
+    # Without the override the gate would go red on the STANDING count -- eleven
+    # declared-pending items today -- which is the hard zero the ruling rejects and the exact
+    # shape that gets a gate switched off by the second week. A caller that wants the
+    # standing count runs WITHOUT `--baseline` and reads 1; a caller that wants "did anything
+    # get worse" passes it and reads 6.
+    if args.baseline:
+        base_path = (root / args.baseline) if not Path(args.baseline).is_absolute() else Path(args.baseline)
+        return 6 if report_baseline(results, base_path, args.update_baseline) else 0
+
     if package_red:
         return 1
     if master_findings:

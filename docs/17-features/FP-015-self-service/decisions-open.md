@@ -12,12 +12,62 @@ date: 2026-08-27
 
 **RULED, owner, 2026-08-27: a DISTINCT PERMISSION, not a scope.**
 
-`payroll.payslip.view` reads any employee's payslip. `payroll.payslip.view.self` reads only the
+`Payroll.Payslips.View` reads any employee's payslip. `Payroll.Payslips.ViewOwn` reads only the
 caller's own. **The self-service endpoint has no parameter for another person's record and therefore
 no other mode.** A scope applied at the handler would rely on every handler remembering, and the
 ninety-five architecture guards assert *permissions*, not scopes — nothing would catch an omission.
 
 **This is what creates the `ViewOwn` permission `REQ-ATT-0023` asserts does not exist.**
+
+### ⚠ THE RULING'S SPELLING WAS CORRECTED BY MEASUREMENT. ITS SUBSTANCE WAS NOT TOUCHED.
+
+**As first written this ruling said `payroll.payslip.view.self`. That string cannot exist in this
+product.** T-071 measured it and the architect verified it independently:
+
+```
+PermissionName.cs:36                     segments.Length == 3        — an equality, not a convention
+ComposedPermissionCatalog.cs:106-112     a failed name refuses the WHOLE composition — the app does not start
+ComposedPermissionCatalogTests.cs:143    [InlineData("Far.Too.Many.Segments")]  — already a test case
+```
+
+**What the owner ruled — a distinct permission rather than a scope — stands entirely.** Only the way
+this document spelled it was wrong, and it was wrong **here and nowhere else in the repository**:
+
+- `PayrollPermissionNames.cs:68-72`, written before this package existed, already names
+  `Payroll.Payslips.ViewOwn` as the thing being deferred.
+- `REQ-ATT-0023` asserts that **`ViewOwn`** does not exist. The requirement used the same word.
+
+**The product and the requirement were already speaking one vocabulary. The four-segment form was
+invented in this file.** It is recorded rather than quietly edited because a ruling whose text changes
+without a note is a ruling nobody can trust the text of.
+
+**The spelling throughout FP-015 is now `Payroll.Payslips.ViewOwn`, `Attendance.Records.ViewOwn` and
+`Attendance.Leave.ViewOwn`.** See `authorization-model.md`.
+
+---
+
+## `OD-SS-0006` — does self-service expose an employee's OWN sensitive leave?
+
+**OPEN. Recommended default recorded; not blocking; owner may overturn cheaply.**
+
+`Attendance.Leave.ViewSensitive` (`AttendancePermissionNames.cs:77`) exists as a permission separate
+from `Attendance.Leave.View`, so the product already treats some leave as needing a second grant to
+read — medical and similar.
+
+**The question this package cannot answer for the owner:** does an employee reading **their own**
+leave see their own sensitive leave?
+
+- **Recommended — yes, with no extra permission.** The sensitivity dimension exists to protect an
+  employee's leave from **third parties**. The employee is not a third party to their own medical
+  leave, and they submitted it. A self surface that hides a record from the person it is about is a
+  surface that will be worked around.
+- **Against:** if the tenant's own policy is that certain categories are recorded by HR and not
+  surfaced back, this would breach it. **That is a policy question about a customer's HR practice, not
+  a technical one.**
+
+**Recorded as open rather than ruled** because it is exactly the kind of default that reads as an
+oversight later. **It does not block the package**: `Attendance.Leave.ViewOwn` is defined either way,
+and the ruling changes only what it returns.
 
 ---
 

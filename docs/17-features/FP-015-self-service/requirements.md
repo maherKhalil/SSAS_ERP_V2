@@ -30,7 +30,7 @@ that never ratifies is a reserved number nobody can reuse.
 
 ## `REQ-SS-0003` and `REQ-SS-0004` are one requirement stated twice, deliberately
 
-`payroll.payslip.view` reads any employee's payslip. `payroll.payslip.view.self` reads only the
+`Payroll.Payslips.View` reads any employee's payslip. `Payroll.Payslips.ViewOwn` reads only the
 caller's own.
 
 **`REQ-SS-0004` is what makes `REQ-SS-0003` more than a naming convention.** A distinct permission on

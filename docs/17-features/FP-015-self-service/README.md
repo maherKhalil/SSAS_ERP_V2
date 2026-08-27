@@ -55,7 +55,7 @@ package authors them.**
 
 **RULED BY THE OWNER, 2026-08-27: a DISTINCT PERMISSION, not a scope on the existing one.**
 
-`payroll.payslip.view` reads any employee's payslip. `payroll.payslip.view.self` reads only the
+`Payroll.Payslips.View` reads any employee's payslip. `Payroll.Payslips.ViewOwn` reads only the
 caller's own, resolving the employee from `ADR-030`'s mapping. **The self-service endpoint has no
 parameter for another person's record and therefore no other mode.**
 

@@ -13,7 +13,7 @@ cell four. `trace-check.py` parses this without a convention exception.
 
 | Requirement | Ruling | Criteria | Scenarios |
 |---|---|---|---|
-| `REQ-SS-0001` | `OD-SS-0002` | `AC-SS-0001`, `AC-SS-0002` | `TS-SS-0001`, `TS-SS-0003` |
+| `REQ-SS-0001` | `OD-SS-0002` | `AC-SS-0001`, `AC-SS-0002`, `AC-SS-0015` | `TS-SS-0001`, `TS-SS-0003`, `TS-SS-0013` |
 | `REQ-SS-0002` | `OD-SS-0002` | `AC-SS-0003`, `AC-SS-0004` | `TS-SS-0002`, `TS-SS-0003` |
 | `REQ-SS-0003` | `OD-SS-0001` | `AC-SS-0005`, `AC-SS-0006` | `TS-SS-0004`, `TS-SS-0005` |
 | `REQ-SS-0004` | `OD-SS-0001` | `AC-SS-0007` | `TS-SS-0003` |
@@ -46,4 +46,4 @@ closure is recorded in `README.md`.
 
 ## Declared gaps
 
-**None.** Eight requirements, fourteen criteria, twelve scenarios, every cell populated.
+**None.** Eight requirements, fifteen criteria, thirteen scenarios, every cell populated.

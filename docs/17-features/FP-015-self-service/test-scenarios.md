@@ -16,11 +16,11 @@ convention, so `trace-check.py` asserts contiguity here rather than reporting it
 ## Reading own records
 
 ### TS-SS-0001 — Mapped identity reads own attendance
-Given an identity mapped to employee E holding `attendance.record.view.self`, when the self-service
+Given an identity mapped to employee E holding `Attendance.Records.ViewOwn`, when the self-service
 attendance endpoint is called, then E's records are returned. — `AC-SS-0001`
 
 ### TS-SS-0002 — Mapped identity reads own payslips
-As above for `payroll.payslip.view.self`. — `AC-SS-0003`
+As above for `Payroll.Payslips.ViewOwn`. — `AC-SS-0003`
 
 ### TS-SS-0003 — The route exposes no employee identifier
 Given the self-service transport contract, when its members are enumerated, then **none names an
@@ -32,11 +32,11 @@ employee**. Asserted on the contract, so it cannot be satisfied by a handler tha
 ## The two permissions are independent
 
 ### TS-SS-0004 — Administrative permission alone is refused at the self endpoint
-Given an identity holding `payroll.payslip.view` only, when the self-service endpoint is called,
+Given an identity holding `Payroll.Payslips.View` only, when the self-service endpoint is called,
 then the call is refused. — `AC-SS-0005`
 
 ### TS-SS-0005 — Self permission alone is refused at the administrative endpoint
-Given an identity holding `payroll.payslip.view.self` only, when the administrative payslip endpoint
+Given an identity holding `Payroll.Payslips.ViewOwn` only, when the administrative payslip endpoint
 is called, then the call is refused. **The direction that matters commercially.** — `AC-SS-0006`
 
 ---
@@ -72,12 +72,24 @@ call is refused. — `AC-SS-0012`
 ## Module gating
 
 ### TS-SS-0011 — Self-service is closed without the module entitlement
-Given a tenant without the payroll entitlement, when `payroll.payslip.view.self` is called, then the
+Given a tenant without the payroll entitlement, when `Payroll.Payslips.ViewOwn` is called, then the
 route is gated exactly as every other payroll route. — `AC-SS-0013`
 
 ### TS-SS-0012 — An expired subscription closes self-service and leaves login working
 Given a tenant whose subscription has expired, when an employee authenticates, then authentication
 succeeds and every self-service surface is closed. — `AC-SS-0014`
+
+---
+
+---
+
+## The attendance self surface is two permissions
+
+### TS-SS-0013 — Own records does not grant own leave
+Given an identity mapped to employee E holding `Attendance.Records.ViewOwn` only, when the
+self-service **leave** endpoint is called, then the call is refused. **The same independence as
+`TS-SS-0004`/`TS-SS-0005`, one plane down** — and the scenario that fails if anyone implements the
+attendance half with a single permission. — `AC-SS-0015`
 
 ---
 

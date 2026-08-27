@@ -276,12 +276,25 @@ public sealed class AttendanceArchitectureTests
   // NO ViewOwn PERMISSION EXISTS (AC-ATT-0032, OD-ATT-0013).
   // ================================================================================================
   //
-  // Self-service is deferred because it depends on a mapping from the authenticated identity to an employee
-  // record, and **this build does not assert such a mapping exists** — verified, not assumed.
+  // ---- THE REASON THIS GUARD WAS WRITTEN FOR HAS EXPIRED. THE ASSERTION HAS NOT (T-083).
   //
-  // `PayrollPermissionNames` recorded the same refusal: *"Adding a `Payroll.Payslips.ViewOwn` on an
-  // unverified assumption is exactly the shape of the FP-011 near-miss."* This is the third consecutive
-  // feature shaped by that missing input, so the absence is asserted rather than merely intended.
+  // It used to read: *"self-service is deferred because it depends on a mapping from the authenticated
+  // identity to an employee record, and this build does not assert such a mapping exists."*
+  //
+  // **The mapping now exists** — `UserEmployeeLink`, `ADR-030`, built in T-082 and asserted by
+  // `UserEmployeeLinkSqlServerTests`. What is still absent is FP-015's permission and its endpoint, so
+  // **this assertion stands and the input it was waiting for has arrived.**
+  //
+  // `PayrollPermissionNames` recorded the same refusal in the same words, and for the same reason: *"Adding
+  // a `Payroll.Payslips.ViewOwn` on an unverified assumption is exactly the shape of the FP-011 near-miss."*
+  // Three consecutive features were shaped by that missing input; the absence of the PERMISSION is still
+  // asserted here rather than merely intended, and that is now the only thing this guard is about.
+  //
+  // ---- AND THE OLD REASON EXPIRED IN SILENCE, WHICH IS THE PART WORTH KEEPING.
+  //
+  // It was prose, so nothing failed when it stopped being true. **Had it been an assertion — one test that
+  // no Platform-Domain type pairs a user identifier with an employee identifier — T-082 would have
+  // reddened it on the day the mapping landed**, and no sweep would have been needed to find it.
   [Fact]
   [Trait("Decision", "OD-ATT-0013")]
   public void No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved()

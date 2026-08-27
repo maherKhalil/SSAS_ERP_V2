@@ -1087,6 +1087,18 @@ gate_condition_4 () {
     | grep -vE '^[+-][[:space:]]*(//|\*|/\*|$)' | wc -l | tr -d '[:space:]')
   CHANGED=${CHANGED:-0}
 
+  # UNTRACKED FILES ARE INVISIBLE TO `git diff`, AND A NEW SOURCE FILE IS THE COMMONEST NEW CODE.
+  # This was found by planting one: the check reported "no non-comment change under src/" over a new
+  # .cs file full of executable code. That is the permissive, silent-skip failure this check exists to
+  # avoid, inside the check itself -- and reading the code would not have found it, because the line
+  # that was wrong is the line that looks right.
+  local UNTRACKED
+  UNTRACKED=$(git ls-files --others --exclude-standard -- src/ 2>/dev/null \
+    | while IFS= read -r f; do
+        [ -f "$f" ] && grep -vE '^[[:space:]]*(//|\*|/\*|$)' "$f" 2>/dev/null
+      done | wc -l | tr -d '[:space:]')
+  CHANGED=$(( CHANGED + ${UNTRACKED:-0} ))
+
   if [ ! -f "$GATE_BASELINE_FILE" ]; then
     GATE_C4_NOTE="not compared: no baseline yet at ${GATE_BASELINE_FILE#$ROOT/} (it is written on the first green run)"
     return

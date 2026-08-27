@@ -1204,12 +1204,21 @@ echo "--- condition 4: $GATE_C4_NOTE"
 #
 # The interpreter is `py`, not `python`: on this box `python` resolves through a per-user
 # app-execution alias that can be switched off, and `py` is the launcher.
-GATE_TRACE_BASELINE="${GATE_TRACE_BASELINE:-$ROOT/.claude/handoff/trace-baseline.txt}"
+# RELATIVE, NOT "$ROOT/...". `py` is a NATIVE Windows launcher and cannot open an MSYS path:
+# `$ROOT` is `/c/Users/...`, which Python resolves to a `C:` drive with a `c` folder under it
+# and fails with "No such file or directory". The gate `cd`s to $ROOT at the top, so relative
+# paths are both correct and immune to the conversion.
+#
+# **This is `DEC-L-056` from the other direction.** That rule is about a variable that DISABLES
+# path conversion and breaks `powershell.exe -File`; this is a shell-native path handed to a
+# Windows program with no conversion at all. Same class, opposite cause — and the first run
+# caught it only because the block below REPORTS when it does not complete.
+GATE_TRACE_BASELINE="${GATE_TRACE_BASELINE:-.claude/handoff/trace-baseline.txt}"
 if command -v py >/dev/null 2>&1 && [ -f "$ROOT/scripts/trace-check.py" ]; then
   # `--baseline` returns 6 on a RISE and 0 otherwise. It deliberately does not return the
   # standing-count code, which is the whole point: see the note above `--baseline` in
   # trace-check.py.
-  py "$ROOT/scripts/trace-check.py" --baseline "$GATE_TRACE_BASELINE" --update-baseline \
+  py scripts/trace-check.py --baseline "$GATE_TRACE_BASELINE" --update-baseline \
     > "$LOGS/trace-check.log" 2>&1
   TRACE_STATUS=$?
   sed -n '/TRACE BASELINE/,$p' "$LOGS/trace-check.log" | head -12

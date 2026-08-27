@@ -36,8 +36,8 @@ namespace SSAS.API.Tests.Infrastructure;
 //
 // `TryGetPermissionName` is the inverse of the `CreatePolicyName` that built these policies, so the recovery
 // is the production one rather than a second parser (`PermissionAuthorizationDefaults:20-37`).
+[Collection(HostIntegrationTestGroup.Name)]
 public sealed class EndpointPermissionCatalogJoinTests(HostWebApplicationFactory factory)
-  : IClassFixture<HostWebApplicationFactory>
 {
   // ================================================================================================
   // THE JOIN.

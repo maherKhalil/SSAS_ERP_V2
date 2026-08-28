@@ -1,6 +1,7 @@
 using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.HR.Domain.Departments;
+using SSAS.HR.API.Employees;
 
 namespace SSAS.HR.API.Departments;
 
@@ -67,6 +68,33 @@ public static class DepartmentApiErrorMapper
       "Company.SelectionRequired" => ApiErrors.RequestInvalid,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
       "Company.ContextRequired" => ApiErrors.Forbidden,
+
+      // ================================================================================================
+      // TEN `Employee.*` CODES THIS SITE CAN RECEIVE (T-095, `DEC-L-079`).
+      // ================================================================================================
+      //
+      // T-094's derived register found them: this site's routes invoke `ChangeEmployeeDepartmentCommandHandler`, which returns
+      // `Employee.*` refusals directly. **Until now every one of them answered `500 request.failed`.**
+      //
+      // ---- THE STATUSES ARE COPIED FROM `EmployeeApiErrorMapper`, NOT CHOSEN HERE.
+      //
+      // `DEC-L-079`: a status is a property of the CODE, not of the SITE. **`Employee.NotFound` answering
+      // 404 on an employee route and 500 here is a disclosure and an inconsistency at once** — a caller
+      // could learn which surface refused them from the status alone.
+      //
+      // The CODE STRINGS are reused too, and deliberately: `employee.not_found` on a department route is
+      // accurate, because what was not found is the employee. `Cross_site_agreement` asserts the statuses.
+      "Employee.NotFound" => EmployeeApiErrorMapper.NotFound,
+      "Employee.InvalidTransition" => EmployeeApiErrorMapper.TransitionInvalid,
+      "Employee.CompanyScopeDenied" => EmployeeApiErrorMapper.CompanyScopeDenied,
+      "Employee.BranchScopeDenied" => EmployeeApiErrorMapper.BranchScopeDenied,
+      "Employee.ConcurrencyConflict" => ApiErrors.ConcurrencyConflict,
+      "Employee.InvalidActor" => ApiErrors.Forbidden,
+      "Employee.ReadPermissionDenied" => ApiErrors.Forbidden,
+      "Employee.WritePermissionDenied" => ApiErrors.Forbidden,
+      "Employee.InvalidReadScope" => ApiErrors.RequestInvalid,
+      "Employee.DepartmentUnchanged" => ApiErrors.RequestInvalid,
+
 
       // ---- UNIQUENESS. The database had the last word, and it agrees with the pre-check.
       //

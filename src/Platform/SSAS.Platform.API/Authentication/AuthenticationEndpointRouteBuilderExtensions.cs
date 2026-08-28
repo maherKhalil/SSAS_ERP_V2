@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Domain;
+using SSAS.BuildingBlocks.Domain;
 
 namespace SSAS.Platform.API.Authentication;
 
@@ -52,13 +53,13 @@ public static class AuthenticationEndpointRouteBuilderExtensions
     var verified = await credentials.HandleAsync(new VerifyPasswordCredentialsCommand(request.LoginEmail, request.Password), cancellationToken);
     if (verified.IsFailure) return verified.Error == AuthenticationErrors.GenericCredentialFailure
       ? Problem(context, 401, "authentication.failed")
-      : Problem(context, 503, "service.unavailable");
+      : Unexpected(context, verified.Error);
     var clientId = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
     var tenantAccess = context.RequestServices.GetRequiredService<BeginTenantAccessCommandHandler>();
     var begun = await tenantAccess.HandleAsync(new BeginTenantAccessCommand(verified.Value.VerifiedIdentity, clientId), cancellationToken);
     if (begun.IsFailure) return begun.Error == AuthenticationErrors.GenericCredentialFailure
       ? Problem(context, 401, "authentication.failed")
-      : Problem(context, 503, "service.unavailable");
+      : Unexpected(context, begun.Error);
     return begun.Value switch
     {
       TenantSelectedAutomatically automatic => Authenticate(context, automatic.Session,
@@ -90,7 +91,7 @@ public static class AuthenticationEndpointRouteBuilderExtensions
       new SensitiveAuthenticationTokenInput(request.SelectionProof), clientId, request.TenantUserId, request.TenantId), cancellationToken);
     if (result.IsFailure) return result.Error == AuthenticationErrors.GenericTenantSelectionFailure
       ? Problem(context, 401, "authentication.selection_failed")
-      : Problem(context, 503, "service.unavailable");
+      : Unexpected(context, result.Error);
     return Authenticate(context, result.Value, context.RequestServices.GetRequiredService<AuthenticationCsrfService>());
   }
 
@@ -116,7 +117,7 @@ public static class AuthenticationEndpointRouteBuilderExtensions
     var result = await handler.HandleAsync(new RefreshAuthenticationSessionCommand(
       new SensitiveAuthenticationTokenInput(refreshToken), clientId), cancellationToken);
     if (result.IsFailure && result.Error != AuthenticationErrors.GenericRefreshFailure)
-      return Problem(context, 503, "service.unavailable");
+      return Unexpected(context, result.Error);
     if (result.IsFailure)
     {
       ClearCookies(context);
@@ -147,7 +148,7 @@ public static class AuthenticationEndpointRouteBuilderExtensions
     var result = await handler.HandleAsync(new RevokeCurrentAuthenticationSessionCommand(), cancellationToken);
     ClearCookies(context);
     return result.IsFailure && result.Error != AuthenticationErrors.InvalidAuthenticationSession
-      ? Problem(context, 503, "service.unavailable")
+      ? Unexpected(context, result.Error)
       : Results.NoContent();
   }
 
@@ -238,6 +239,30 @@ public static class AuthenticationEndpointRouteBuilderExtensions
     context.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(result.RetryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
     return Problem(context, 429, "rate_limit.exceeded");
   }
+
+  // ================================================================================================
+  // THE "ANYTHING ELSE" BUCKET, AND ONE THING THAT MUST NOT BE IN IT (T-096).
+  // ================================================================================================
+  //
+  // These routes carry NO mapper by design. Each branches on the EXPECTED error — a bad credential, a
+  // failed selection, an invalid session — answers 401 or 204, and sends everything else to
+  // `503 service.unavailable`. **The collapse is deliberate: distinguishing "no such account" from "wrong
+  // password" is the disclosure it exists to prevent.**
+  //
+  // ---- BUT A CONCURRENT WRITE IS NOT AN OUTAGE.
+  //
+  // `PlatformUnitOfWork` returns `Persistence.ConcurrencyConflict` when a save loses a row-version race,
+  // and it reached this bucket. **503 tells the caller the service is down when the fix is to retry** —
+  // it points an operator at an availability incident that is not happening, and tells a client to back
+  // off rather than repeat the request.
+  //
+  // 409 says exactly what happened and is the answer every other surface in the product already gives it.
+  // **Nothing else moves:** `Authentication.AccessTokenUnavailable` genuinely IS an availability failure
+  // and stays 503.
+  private static IResult Unexpected(HttpContext context, Error error) =>
+    error.Code == "Persistence.ConcurrencyConflict"
+      ? Problem(context, 409, "concurrency.conflict")
+      : Problem(context, 503, "service.unavailable");
 
   private static IResult Problem(HttpContext context, int status, string code) => Results.Problem(
     statusCode: status,

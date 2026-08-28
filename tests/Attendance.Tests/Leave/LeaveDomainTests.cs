@@ -1,3 +1,4 @@
+using System.Reflection;
 using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Leave;
 using SSAS.BuildingBlocks.Domain;
@@ -282,20 +283,90 @@ public sealed class LeaveRequestTests
 
   // ---- THE ROOT-FALLBACK PATH RECORDS A NULL APPROVER, AND THE NULL IS A STATEMENT.
   //
-  // The holder is authenticated as a USER, and no identity-to-employee mapping exists (`OD-ATT-0013`). There
-  // is no employee to record, so nothing is recorded — as opposed to writing `Guid.Empty` and letting a
-  // reader mistake it for an employee.
+  // The holder is authenticated as a USER and the decision is not attributed to an employee, so nothing is
+  // recorded there — as opposed to writing `Guid.Empty` and letting a reader mistake it for an employee.
+  //
+  // **`ApproverEmployeeId` stays null even when the acting user IS resolvable (T-084).** Recording it would
+  // give the column two meanings — *the root path was used* and *the user could not be resolved* — and
+  // would silently reinterpret every row already written.
   [Fact]
   [Trait("Decision", "OD-ATT-0007")]
   public void A_root_fallback_decision_records_the_user_and_no_approver_employee()
   {
     var request = Request();
 
-    Assert.True(request.ApproveAtRoot("root-admin", DateTimeOffset.UtcNow, "No manager above this employee").IsSuccess);
+    Assert.True(request.ApproveAtRoot(
+      ActingEmployee.Resolved(Guid.NewGuid()), "root-admin", DateTimeOffset.UtcNow, "No manager above this employee").IsSuccess);
 
     Assert.Equal(LeaveRequestStatus.Approved, request.Status);
     Assert.Equal("root-admin", request.DecidedBy);
     Assert.Null(request.ApproverEmployeeId);
+  }
+
+  // ================================================================================================
+  // THE SELF-APPROVAL BAR ON THE ROOT PATH (BR-ATT-0007, T-084).
+  // ================================================================================================
+  //
+  // Until `UserEmployeeLink` existed, this could not be checked: the actor on this path is a user and
+  // nothing could turn one into an employee. **The router's case 2 — "every manager in the chain is the
+  // requester (a one-department company run by its manager)" — is the branch that produces exactly the
+  // situation the bar exists to refuse.**
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void A_root_fallback_holder_who_is_the_requester_is_refused_on_both_verbs()
+  {
+    var approving = Request();
+    var rejecting = Request();
+
+    var approved = approving.ApproveAtRoot(ActingEmployee.Resolved(Employee), "root-admin", DateTimeOffset.UtcNow, "note");
+    var rejected = rejecting.RejectAtRoot(ActingEmployee.Resolved(Employee), "root-admin", DateTimeOffset.UtcNow, "note");
+
+    Assert.Equal(LeaveErrors.SelfApprovalBarred.Code, approved.Error.Code);
+    Assert.Equal(LeaveErrors.SelfApprovalBarred.Code, rejected.Error.Code);
+
+    // AND NEITHER REQUEST MOVED. A refusal that had already mutated the aggregate would leave a decided
+    // request behind a failed Result, which the caller would never see.
+    Assert.Equal(LeaveRequestStatus.Submitted, approving.Status);
+    Assert.Equal(LeaveRequestStatus.Submitted, rejecting.Status);
+  }
+
+  // THE CONTROL. Without it the test above passes against a bar that refuses EVERY root decision, which
+  // would break the fallback for the one holder it exists for.
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void A_root_fallback_holder_who_is_a_different_employee_is_accepted_on_both_verbs()
+  {
+    var approving = Request();
+    var rejecting = Request();
+    var someoneElse = Guid.NewGuid();
+
+    Assert.True(approving.ApproveAtRoot(ActingEmployee.Resolved(someoneElse), "root-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+    Assert.True(rejecting.RejectAtRoot(ActingEmployee.Resolved(someoneElse), "root-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+
+    Assert.Equal(LeaveRequestStatus.Approved, approving.Status);
+    Assert.Equal(LeaveRequestStatus.Rejected, rejecting.Status);
+  }
+
+  // ---- AN UNRESOLVABLE USER IS NOT A REFUSAL, AND THIS IS THE ASSERTION THAT KEEPS IT THAT WAY.
+  //
+  // `ADR-030` Decision 5: the link is optional on both sides. A platform-support holder with no employee
+  // record is a normal caller — *"a support administrator opening a self-service page is not a fault
+  // condition; it is Tuesday"* — and **they cannot be the requester, so the bar does not apply.**
+  //
+  // Refusing on absence would break the root fallback for precisely the operator it exists for, and it
+  // would turn the bar into a mapping requirement. **That is what this test forbids.**
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void An_unresolvable_acting_user_is_not_refused_on_either_verb()
+  {
+    var approving = Request();
+    var rejecting = Request();
+
+    Assert.True(approving.ApproveAtRoot(ActingEmployee.Unresolved(), "support-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+    Assert.True(rejecting.RejectAtRoot(ActingEmployee.Unresolved(), "support-admin", DateTimeOffset.UtcNow, "note").IsSuccess);
+
+    Assert.Equal(LeaveRequestStatus.Approved, approving.Status);
+    Assert.Equal(LeaveRequestStatus.Rejected, rejecting.Status);
   }
 
   // An employee-identified approval REFUSES an empty approver, which is what keeps the root path from being
@@ -373,5 +444,72 @@ public sealed class LeaveRequestTests
 
     Assert.True(request.IsFailure);
     Assert.Equal(LeaveErrors.InvalidRequestRange.Code, request.Error.Code);
+  }
+}
+
+// ==================================================================================================
+// THE ACTING-EMPLOYEE WRAPPER'S OWN INVARIANTS (T-085).
+// ==================================================================================================
+//
+// The type exists to make "we do not know who this is" a NAMED act rather than a bare `null`. These pin
+// the properties that claim rests on — **if any of them stops holding, the type is a name over the same
+// silent skip** and the ruling behind it is void.
+public sealed class ActingEmployeeTests
+{
+  // ---- THE CONSTRAINT THE WHOLE TYPE RESTS ON.
+  //
+  // If an unresolved instance can be obtained without writing `Unresolved()`, the wrapper has reintroduced
+  // the defect wearing a type name. A struct could not satisfy this — C# guarantees a reachable
+  // `default(T)` for every one — which is why this is a class, and this asserts the class keeps the
+  // property the struct could never have had.
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void There_is_no_way_to_construct_one_without_naming_which_kind_it_is()
+  {
+    var constructors = typeof(ActingEmployee)
+      .GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+
+    Assert.Empty(constructors);
+
+    // And no back door that would amount to one: an `Empty`-style static, or a conversion from the raw
+    // identifier, would each let a caller obtain an actor without saying which kind they meant.
+    Assert.Empty(typeof(ActingEmployee)
+      .GetMethods(BindingFlags.Public | BindingFlags.Static)
+      .Where(method => method.Name is "op_Implicit" or "op_Explicit"));
+
+    Assert.Empty(typeof(ActingEmployee)
+      .GetFields(BindingFlags.Public | BindingFlags.Static)
+      .Where(field => field.FieldType == typeof(ActingEmployee)));
+  }
+
+  // An unresolved actor matches nobody. The comparison lives inside the type precisely so this cannot be
+  // got wrong at a call site — the operator case must never read as "this is the requester".
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void An_unresolved_actor_matches_nobody()
+  {
+    Assert.False(ActingEmployee.Unresolved().Matches(Guid.NewGuid()));
+    Assert.False(ActingEmployee.Unresolved().Matches(Guid.Empty));
+  }
+
+  // The control: a resolved actor matches exactly one employee and no other. Without it the test above
+  // passes against a `Matches` that always returns false, which would silently disable the bar.
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void A_resolved_actor_matches_that_employee_and_no_other()
+  {
+    var employee = Guid.NewGuid();
+
+    Assert.True(ActingEmployee.Resolved(employee).Matches(employee));
+    Assert.False(ActingEmployee.Resolved(employee).Matches(Guid.NewGuid()));
+  }
+
+  // An empty identifier is refused rather than coerced. Accepting one would produce an actor that looks
+  // resolved and matches nothing — which is the unresolved case, arrived at by accident.
+  [Fact]
+  [Trait("Decision", "BR-ATT-0007")]
+  public void An_empty_identifier_is_not_a_resolved_actor()
+  {
+    Assert.Throws<ArgumentException>(() => ActingEmployee.Resolved(Guid.Empty));
   }
 }

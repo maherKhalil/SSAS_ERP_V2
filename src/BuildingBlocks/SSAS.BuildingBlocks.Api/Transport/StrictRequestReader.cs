@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Http;
 
 namespace SSAS.BuildingBlocks.Api.Transport;
 
-// Neutral strict-request parsing for admin route groups (and future Company API).
-// Mirrors the established localization strict-parsing convention: JSON bodies must be an
+// Neutral strict-request parsing. **Every route group in the product now binds through this**, Localization
+// included as of T-127 — it was the convention's ORIGIN and the last holdout, having kept a private copy that
+// was token-identical to this one for five routes.
+// The convention: JSON bodies must be an
 // object with only the declared members (no unknown/duplicate members, allowed value-kinds,
 // required members enforced); query strings reject unknown or multi-valued keys.
 // Strict binding remains contract/route-group specific — global JsonSerializerOptions are not changed.

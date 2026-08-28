@@ -11,6 +11,24 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
   // A count alone passes when one route is removed and another added. Naming every route means a change to
   // the surface has to be acknowledged here, which is where a reviewer will see it — and `api-contracts.md`
   // is the document it has to agree with.
+  // ================================================================================================
+  // ⚠ WHAT THIS INVENTORY CANNOT SEE, AND IT LET FIVE WRONG ROWS STAND FOR MONTHS (T-136).
+  // ================================================================================================
+  //
+  // **This file compares code to code.** It pins all 21 routes and their permissions against the running
+  // endpoint table, and it has been green throughout — **while `FP-011`'s `api-contracts.md` documented
+  // three of them under `GL.Accounts.Manage`, a permission that has never existed**, named
+  // `GL.Periods.Manage` where closing carries `GL.Periods.Close`, listed `POST /api/gl/journals` which is
+  // not a route, and omitted three that are.
+  //
+  // **An inventory would have caught the omissions if the specification were its other side. It is not.**
+  // The comparison is against the ENDPOINT TABLE, so a specification saying something different is invisible
+  // to it — **and `DEC-L-002` is why: nothing mechanical reads prose.**
+  //
+  // **So the green here is not evidence the documentation is right, and it never was.** Stated because an
+  // inventory's presence reads as though the surface is fully accounted for, and half of "accounted for"
+  // lives in a document no test opens.
+
   private static readonly (string Method, string Pattern, string Permission)[] Expected =
   [
     ("POST", "/api/gl/accounts", GlPermissionNames.CreateAccounts),
@@ -26,6 +44,16 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
     ("POST", "/api/gl/fiscal-periods/{fiscalPeriodId:guid}/closure", GlPermissionNames.ClosePeriods),
     ("POST", "/api/gl/fiscal-periods/{fiscalPeriodId:guid}/reopening", GlPermissionNames.ClosePeriods),
 
+    // ---- THE TWO READS, ADDED IN T-098. THE HALF FP-011 NEVER BUILT.
+    //
+    // Create, update, discard and post shipped and **nothing could read a draft** — the create route
+    // returns a `Location` header and an id for a resource no route could fetch.
+    //
+    // `GL.Drafts.View` and nothing else: neither `ManageDrafts` above nor `PostJournals` below grants it.
+    // **This inventory is where that pairing is visible at a glance**, which is why the permission column
+    // exists — a reader can see that the four writes and the two reads are gated differently on purpose.
+    ("GET", "/api/gl/journal-drafts", GlPermissionNames.ViewDrafts),
+    ("GET", "/api/gl/journal-drafts/{journalDraftId:guid}", GlPermissionNames.ViewDrafts),
     ("POST", "/api/gl/journal-drafts", GlPermissionNames.ManageDrafts),
     ("PUT", "/api/gl/journal-drafts/{journalDraftId:guid}", GlPermissionNames.ManageDrafts),
     ("POST", "/api/gl/journal-drafts/{journalDraftId:guid}/discard", GlPermissionNames.ManageDrafts),

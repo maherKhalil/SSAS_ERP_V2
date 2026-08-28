@@ -37,6 +37,11 @@ public sealed class PlatformDbContext(
   // rows themselves live in the tenant database (ADR-025 decision 5).
   public DbSet<UserCompanyAccess> UserCompanyAccess => Set<UserCompanyAccess>();
 
+  // Which employee a tenant user IS (ADR-030). Platform-plane, and unlike the two above it is not a
+  // capability grant: it is an identity fact, which is why it is a Link rather than an Access. The employee
+  // rows live in the tenant database, so there is no foreign key on that side and none is possible.
+  public DbSet<UserEmployeeLink> UserEmployeeLinks => Set<UserEmployeeLink>();
+
   public DbSet<Role> Roles => Set<Role>();
 
   public DbSet<TenantUserRoleAssignment> TenantUserRoleAssignments => Set<TenantUserRoleAssignment>();

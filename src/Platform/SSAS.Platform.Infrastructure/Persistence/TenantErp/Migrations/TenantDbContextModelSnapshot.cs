@@ -1815,6 +1815,9 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.Property<DateTimeOffset>("ModifiedUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int>("SalaryType")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1829,6 +1832,59 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         .IsDescending(false, false, false, true);
 
                     b.ToTable("PayrollEmployeeCompensation", "tenant");
+                });
+
+            modelBuilder.Entity("SSAS.Payroll.Domain.Compensation.OneOffPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ConsumedByPayrollRunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("PayElementId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PayrollPeriodId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CompanyId", "PayrollPeriodId", "ConsumedByPayrollRunId");
+
+                    b.ToTable("PayrollOneOffPayments", "tenant");
                 });
 
             modelBuilder.Entity("SSAS.Payroll.Domain.Compensation.PayElementAssignment", b =>
@@ -2049,6 +2105,9 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.Property<DateTimeOffset?>("PostedUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("ReversedUtc")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -2067,7 +2126,8 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.HasIndex("PayrollPeriodId");
 
                     b.HasIndex("TenantId", "CompanyId", "PayrollPeriodId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[ReversedUtc] IS NULL");
 
                     b.ToTable("PayrollRuns", "tenant");
                 });

@@ -177,6 +177,83 @@ public sealed class PayrollRunLifecycleTests
     Assert.Empty(constructors);
   }
 
+  // ================================================================================================
+  // REVERSAL, AND THE FACT THE RUN NOW RECORDS ABOUT ITSELF (T-112).
+  // ================================================================================================
+  //
+  // Until T-112 a reversal wrote nothing here, so a reversed period and a live posted period were
+  // indistinguishable in `PayrollRuns` — and the unique index refused the *rerun* half of
+  // `OD-PAY-0011`'s reverse-and-rerun. These pin the fact that makes the filtered index possible.
+
+  // ---- ONLY A POSTED RUN CAN BE REVERSED, AND THE ORDER IS THE POINT.
+  //
+  // The run records what the LEDGER did. A run that never posted has no journal to reverse, so stamping one
+  // would be a claim about an entry that does not exist.
+  [Fact]
+  public void A_run_that_never_posted_cannot_be_marked_reversed()
+  {
+    var calculated = Calculated();
+    var approved = Approved();
+
+    Assert.Equal(PayrollErrors.RunNotReversible.Code, calculated.MarkReversed().Error.Code);
+    Assert.Equal(PayrollErrors.RunNotReversible.Code, approved.MarkReversed().Error.Code);
+
+    Assert.False(calculated.IsReversed);
+    Assert.False(approved.IsReversed);
+  }
+
+  // ---- IT KEEPS ITS STATUS AND ITS JOURNAL, AND GAINS ONE FACT.
+  //
+  // `Status` stays `Posted` and `JournalEntryId` still names the original entry — **nothing here restates
+  // what GL holds.** The run records only what Payroll's own uniqueness rule needs.
+  [Fact]
+  public void A_reversed_run_stays_posted_and_keeps_naming_its_journal()
+  {
+    var run = Posted(out var journalId);
+
+    Assert.True(run.MarkReversed().IsSuccess);
+
+    Assert.True(run.IsReversed);
+    Assert.NotNull(run.ReversedUtc);
+    Assert.Equal(PayrollRunStatus.Posted, run.Status);
+    Assert.Equal(journalId, run.JournalEntryId);
+  }
+
+  // ---- A SECOND REVERSAL IS REFUSED RATHER THAN RESTAMPED.
+  //
+  // Two reversing entries for one posting, and the second timestamp would silently overwrite the record of
+  // when the first happened — which is the one thing a lifecycle timestamp exists to preserve.
+  [Fact]
+  public void A_run_cannot_be_reversed_twice_and_the_first_timestamp_survives()
+  {
+    var run = Posted(out _);
+    Assert.True(run.MarkReversed().IsSuccess);
+    var first = run.ReversedUtc;
+
+    var second = run.MarkReversed();
+
+    Assert.Equal(PayrollErrors.RunAlreadyReversed.Code, second.Error.Code);
+    Assert.Equal(first, run.ReversedUtc);
+  }
+
+  // ---- AND AN UNREVERSED RUN SAYS SO, WHICH IS WHAT THE INDEX FILTERS ON.
+  [Fact]
+  public void A_posted_run_is_not_reversed_until_it_is()
+  {
+    var run = Posted(out _);
+
+    Assert.False(run.IsReversed);
+    Assert.Null(run.ReversedUtc);
+  }
+
+  private static PayrollRun Posted(out Guid journalEntryId)
+  {
+    journalEntryId = Guid.NewGuid();
+    var run = Approved();
+    Assert.True(run.MarkPosted(journalEntryId, "poster").IsSuccess);
+    return run;
+  }
+
   private static PayrollRunDraftLine DraftLine(Guid runId, decimal amount) =>
     new(Guid.NewGuid(), runId, Employee, Guid.NewGuid(), PayElementKind.Earning, amount, 0, Account);
 

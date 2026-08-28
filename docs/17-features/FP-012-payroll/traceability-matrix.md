@@ -140,8 +140,8 @@ organisation could actually run**, and it belongs in front of the owner before t
 
 **Attendance-derived elements are absent by necessity** (`DEC-PAY-0002`), not by choice.
 
-**Self-service payslip access assumes an identity → employee mapping this package does not assert exists.**
-It must be verified in the repository before any requirement depends on it.
+**Self-service payslip access assumed an identity → employee mapping this package did not assert exists.**
+The mapping exists (`ADR-030`, T-082) and the access shipped under FP-015 — `Payroll.Payslips.ViewOwn`, `GET /me/payslips`.
 
 **`GlReadScope`'s promotion trigger fires here.** FP-011 recorded "a third consumer" as the condition for
 promoting the company-scope type into `SSAS.BuildingBlocks`, written where the type lives because drift in

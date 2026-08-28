@@ -1,4 +1,4 @@
-# FP-013 — Proposed requirements
+# FP-013 — Requirements
 
 > **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
 > [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
@@ -64,7 +64,7 @@ that reason.
 
 | ID | Requirement | Scope | Authority | Decisions |
 |---|---|---|---|---|
-| `REQ-ATT-0023` | An employee may read **their own** attendance and leave records. **BLOCKED — NOT IMPLEMENTABLE TODAY:** it needs a mapping from the authenticated identity to an employee record, and **no such mapping exists** (verified; `Employee` carries no user identifier). `OD-PAY-0016` deferred payroll self-service for exactly this reason. **This is `DEC-PAY-0002`'s shape — a missing input, not a scoping preference** | `*` | **UNAUTHORED** | `OD-ATT-0013` |
+| `REQ-ATT-0023` | An employee holding `Attendance.Records.ViewOwn` may read their own attendance records, scoped to their own company and their own branch. An employee holding `Attendance.Leave.ViewOwn` may read their own leave requests, scoped to their own company. In both cases **the subject is resolved from the authenticated identity via `UserEmployeeLink` and never from the request**. A caller with no linked employee is answered `404 attendance.no_linked_employee`. **Access ends at termination — see FP-015 `REQ-SS-0007`**, cited rather than restated because the rule is FP-015's and a copy is the thing that goes stale | `*` | **FP-015 `REQ-SS-0004`** — delivered T-089 | `OD-ATT-0013` |
 | `REQ-ATT-0024` | An authorized user reads records for the employees within their authority, bounded by company and — **if `OD-ATT-0011` so rules** — branch | `*` | `ADR-025` | `OD-ATT-0011`, `OD-ATT-0013` |
 | `REQ-ATT-0025` | Leave **type** is separable from leave **occurrence** in the permission model, because a type may disclose health information | `B` | Permission grammar's sensitivity convention | `OD-ATT-0013` |
 

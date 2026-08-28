@@ -196,6 +196,100 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
       .FirstOrDefaultAsync(cancellationToken);
   }
 
+  // ================================================================================================
+  // THE DRAFT READS (T-098). SAME PREDICATES AS THE JOURNAL READS, AND THAT IS THE POINT.
+  // ================================================================================================
+  //
+  // Tenant and company come from the scope, never from the caller, exactly as `SearchJournalsAsync` does.
+  // A draft is scratch space rather than a ledger entry, **and that changes nothing about who may see it**:
+  // it belongs to a company and is readable only by someone the scope admits to that company.
+  public async Task<IReadOnlyList<JournalDraftListItem>> SearchJournalDraftsAsync(
+    GlReadScope scope,
+    Guid? companyId,
+    DateTimeOffset? fromUtc,
+    DateTimeOffset? toUtc,
+    string? reference,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    var query = context.Set<JournalDraft>().AsNoTracking()
+      .Where(draft => draft.TenantId == scope.TenantId && scope.CompanyIds.Contains(draft.CompanyId));
+
+    if (companyId is { } requested)
+    {
+      query = query.Where(draft => draft.CompanyId == requested);
+    }
+
+    if (fromUtc is { } from)
+    {
+      query = query.Where(draft => draft.EntryDateUtc >= from);
+    }
+
+    if (toUtc is { } to)
+    {
+      query = query.Where(draft => draft.EntryDateUtc < to);
+    }
+
+    if (!string.IsNullOrWhiteSpace(reference))
+    {
+      var trimmed = reference.Trim();
+      query = query.Where(draft => draft.Reference == trimmed);
+    }
+
+    // ---- ORDERED BY DATE THEN ID, NOT BY NUMBER.
+    //
+    // `SearchJournalsAsync` breaks ties on `JournalNumber`. **A draft has no number** — it is assigned at
+    // posting — so the id is the only stable tiebreak, and a stable one is required or two calls can
+    // return the same rows in a different order.
+    return await query
+      .OrderByDescending(draft => draft.EntryDateUtc)
+      .ThenBy(draft => draft.Id)
+      .Select(draft => new JournalDraftListItem(
+        draft.Id,
+        draft.CompanyId,
+        draft.EntryDateUtc,
+        draft.Description,
+        draft.Reference,
+        draft.Lines.Sum(line => line.Debit)))
+      .ToListAsync(cancellationToken);
+  }
+
+  public async Task<JournalDraftDetail?> GetJournalDraftAsync(
+    GlReadScope scope, Guid journalDraftId, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    var accounts = context.Set<Account>().AsNoTracking();
+
+    return await context.Set<JournalDraft>().AsNoTracking()
+      .Where(draft => draft.TenantId == scope.TenantId
+        && scope.CompanyIds.Contains(draft.CompanyId)
+        && draft.Id == journalDraftId)
+      .Select(draft => new JournalDraftDetail(
+        draft.Id,
+        draft.CompanyId,
+        draft.EntryDateUtc,
+        draft.Description,
+        draft.Reference,
+        draft.Lines
+          .OrderBy(line => line.LineNumber)
+          .Select(line => new JournalLineDetail(
+            line.LineNumber,
+            line.AccountId,
+            accounts.Where(account => account.Id == line.AccountId).Select(account => account.Code.Value).First(),
+            accounts.Where(account => account.Id == line.AccountId).Select(account => account.Name.Value).First(),
+            line.Debit,
+            line.Credit,
+            line.Description))
+          .ToList()))
+      .FirstOrDefaultAsync(cancellationToken);
+  }
+
   public async Task<AccountBalance?> GetAccountBalanceAsync(
     GlReadScope scope,
     Guid accountId,

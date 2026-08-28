@@ -5,7 +5,9 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Branches;
+using SSAS.HR.Contracts.Employment;
 using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
@@ -499,6 +501,119 @@ public sealed class EmployeeReadScopeArchitectureTests
   }
 
   // ================================================================================================
+  // 18. THE STANDING DIRECTORY HAS EXACTLY ONE CALLER, AND IT IS THE SEAM (T-090, AC-SS-0012).
+  // ================================================================================================
+  //
+  // `IEmploymentStandingDirectory` is answered by the SAME class as the placement directory, so it opens no
+  // new door in the employee-set list. What it does open is a second question that can be asked ABOUT an
+  // employee from outside HR, and the value of the answer is that ONE place acts on it.
+  //
+  // **The ruling that put the refusal at the resolver rather than in each self-service read only holds
+  // while there is one caller.** A second injection site would be a second place deciding what a terminated
+  // employee may reach — which is the per-handler shape `REQ-SS-0003` rejected, arriving through a caller
+  // instead of through a handler.
+  //
+  // So: an exact inventory of one, the same shape as its neighbour. **A second requires a person.**
+  [Fact]
+  [Trait("Criterion", "AC-SS-0012")]
+  public void Only_the_user_employee_resolver_injects_the_standing_directory()
+  {
+    // Every assembly that references SSAS.BuildingBlocks.Tenancy and could therefore ask for this contract.
+    var candidates = new[]
+    {
+      typeof(SSAS.Platform.Infrastructure.Persistence.Queries.UserEmployeeResolver).Assembly,
+      typeof(SSAS.Platform.Application.Permissions.PlatformPermissionNames).Assembly,
+      typeof(SSAS.Payroll.Application.Reads.PayrollSelfServiceScopeResolver).Assembly,
+      typeof(SSAS.Attendance.Application.Approval.LeaveApprovalRouter).Assembly,
+      HrApplicationAssembly,
+      typeof(SSAS.HR.Infrastructure.ServiceCollectionExtensions).Assembly
+    };
+
+    var injecting = candidates
+      .Distinct()
+      .SelectMany(assembly => assembly.GetTypes())
+      .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+        .Any(constructor => constructor.GetParameters()
+          .Any(parameter => parameter.ParameterType == typeof(IEmploymentStandingDirectory))))
+      .Select(type => type.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // NOT VACUOUS. An empty result would mean the sweep stopped finding anything — and this assertion
+    // would then pass forever while the caller set grew unwatched.
+    Assert.NotEmpty(injecting);
+
+    // ---- TWO, AS OF T-092, AND THE SECOND WAS APPROVED RATHER THAN ADMITTED.
+    //
+    // `LinkEmployeeToTenantUserCommandHandler` asks the same question for the opposite reason: the resolver
+    // asks *may this employee still be reached*, the link handler asks *does this employee exist and is
+    // their employment current* before writing a row that cannot have a foreign key.
+    //
+    // **The two act on the answer DIFFERENTLY and that is the point of them both being listed.** The
+    // resolver collapses `Unknown` and `Ended` into one refusal, because its caller is an end user and
+    // telling them apart would disclose that a record exists. The link handler distinguishes them, because
+    // its caller is an administrator acting on an employee they named and can already read.
+    //
+    // A third injector still requires a person — and would have to state which of those two it is.
+    Assert.Equal(
+      ["LinkEmployeeToTenantUserCommandHandler", "UserEmployeeResolver"],
+      injecting);
+  }
+
+  // ================================================================================================
+  // 17. AND ONLY ONE TYPE MAY INJECT THE UNAUTHORIZED DOOR (FP-015, T-088).
+  // ================================================================================================
+  //
+  // `EmployeeCompanyDirectoryService` is the one employee read that applies NO company authorization. Its
+  // safety rests on two things, and only the first is structural:
+  //
+  //   1. tenant isolation, enforced by the tenant database's global filter;
+  //   2. **the identifier never being caller-supplied** — it arrives from `UserEmployeeLink`, keyed by
+  //      tenant and tenant-user, so the only reachable value is the caller's own employee.
+  //
+  // **The second lives entirely in who calls it.** A second injection site could pass any employee
+  // identifier it liked and would face no company check — which is the property the door list polices,
+  // arriving through a caller instead of through a file.
+  //
+  // So the caller set is an exact inventory, the same shape as the door list. **A second injection site
+  // requires a person, exactly as a fourth door did.**
+  [Fact]
+  [Trait("Decision", "DEC-PAY-0017")]
+  public void Only_the_self_service_scope_resolvers_inject_the_placement_directory()
+  {
+    // Every assembly that references SSAS.HR.Contracts and could therefore ask for this contract.
+    var candidates = new[]
+    {
+      typeof(SSAS.Payroll.Application.Reads.PayrollSelfServiceScopeResolver).Assembly,
+      typeof(SSAS.Attendance.Application.Approval.LeaveApprovalRouter).Assembly,
+      HrApplicationAssembly,
+      typeof(SSAS.HR.Infrastructure.ServiceCollectionExtensions).Assembly
+    };
+
+    var injecting = candidates
+      .Distinct()
+      .SelectMany(assembly => assembly.GetTypes())
+      .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+        .Any(constructor => constructor.GetParameters()
+          .Any(parameter => parameter.ParameterType == typeof(IEmployeePlacementDirectory))))
+      .Select(type => type.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // NOT VACUOUS. An empty result would mean the sweep stopped finding anything — and this assertion
+    // would then pass forever while the caller set grew unwatched.
+    Assert.NotEmpty(injecting);
+
+    // TWO, AS OF T-089. `AttendanceSelfServiceScopeResolver` joined by the same route the first one did:
+    // it asks *which employee am I*, derives its scope from that employee's own placement, and never takes
+    // an employee identifier from a caller. **A third still needs a person** — that is the entire point of
+    // an exact set rather than a `.Any()`.
+    Assert.Equal(
+      ["AttendanceSelfServiceScopeResolver", "PayrollSelfServiceScopeResolver"],
+      injecting);
+  }
+
+  // ================================================================================================
   // 16. ONLY TWO FILES MAY TOUCH THE EMPLOYEE ENTITY SET AT ALL.
   // ================================================================================================
   //
@@ -522,7 +637,26 @@ public sealed class EmployeeReadScopeArchitectureTests
       .OrderBy(name => name, StringComparer.Ordinal)
       .ToArray();
 
-    // ---- THREE FILES, BECAUSE THERE ARE NOW TWO SANCTIONED READ SHAPES (RULED 2026-08-24, DEC-PAY-0017).
+    // ---- AND A FOURTH FILE, RULED 2026-08-28 (FP-015, T-088). ITS LOCK IS DIFFERENT AND THAT IS THE RULING.
+  //
+  // `EmployeeCompanyDirectoryService` serves FP-015's self-service read: given an employee, which company.
+  // **It applies NO company authorization, unlike the three above** — and that is not a lost check, it is
+  // the ruling. The caller it exists for is an ordinary employee reading their own record, and an employee
+  // is not necessarily granted authority to administer the company they work for. Requiring one would
+  // refuse exactly the caller the door was opened for.
+  //
+  // **A second door with a good lock is a sanctioned shape. This door's lock has two parts:**
+  //
+  //   1. TENANT ISOLATION — the tenant database's global filter, so another tenant's employee is not found.
+  //   2. A SINGLE ASSERTED CALLER — the identifier is never caller-supplied. It arrives from
+  //      `UserEmployeeLink`, keyed by tenant and tenant-user, so the only reachable value is the caller's
+  //      own employee.
+  //
+  // **Part 2 lives entirely in WHO CALLS IT, which is prose, and prose expires (`DEC-L-072`).** So it is
+  // asserted rather than described — see `Only_the_self_service_scope_resolvers_inject_the_placement_directory`
+  // below. A second injection site then requires a person, exactly as a fourth door did.
+
+  // ---- THREE FILES, BECAUSE THERE ARE NOW TWO SANCTIONED READ SHAPES (RULED 2026-08-24, DEC-PAY-0017).
     //
     // `EmployeeRosterService.cs` joined this list by a RULING, not by growing an exception. The distinction
     // is the whole reason the list is exact:
@@ -558,6 +692,7 @@ public sealed class EmployeeReadScopeArchitectureTests
     Assert.Equal(
       [
         "EmployeeApproverDirectoryService.cs",
+        "EmployeePlacementDirectoryService.cs",
         "EmployeeReadService.cs",
         "EmployeeRepository.cs",
         "EmployeeRosterService.cs"

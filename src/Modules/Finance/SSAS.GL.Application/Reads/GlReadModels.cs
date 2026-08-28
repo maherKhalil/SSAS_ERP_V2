@@ -50,6 +50,34 @@ public sealed record JournalLineDetail(
   decimal Credit,
   string? Description);
 
+// ==================================================================================================
+// THE DRAFT READ MODELS (T-098) — THE JOURNAL ONES MINUS WHAT A DRAFT DOES NOT HAVE.
+// ==================================================================================================
+//
+// **No `JournalNumber`:** a number is assigned when a draft is POSTED, so a draft has none. Carrying the
+// field as a null would invite a reader to populate it and a caller to render it.
+//
+// **No `ReversesJournalEntryId`, no `IsReversed`:** reversal is a posted-journal concept — `OD-GL-0007`
+// made the draft a distinct aggregate precisely because the two have different lifecycles.
+//
+// **The LINE model is reused unchanged.** `JournalDraftLine` matches `JournalLine` field for field, so a
+// second record would be two names for one shape and they would drift the first time one gained a column.
+public sealed record JournalDraftListItem(
+  Guid JournalDraftId,
+  Guid CompanyId,
+  DateTimeOffset EntryDateUtc,
+  string Description,
+  string? Reference,
+  decimal TotalDebits);
+
+public sealed record JournalDraftDetail(
+  Guid JournalDraftId,
+  Guid CompanyId,
+  DateTimeOffset EntryDateUtc,
+  string Description,
+  string? Reference,
+  IReadOnlyList<JournalLineDetail> Lines);
+
 public sealed record JournalDetail(
   Guid JournalEntryId,
   Guid CompanyId,

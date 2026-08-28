@@ -15,6 +15,13 @@ public sealed class PayrollRouteInventoryTests(PayrollApiTestHost host) : IClass
     ("POST", "/api/payroll/employees/{employeeId:guid}/compensation", PayrollPermissionNames.ManageCompensation),
     ("GET", "/api/payroll/employees/{employeeId:guid}/compensation", PayrollPermissionNames.ViewCompensation),
     ("GET", "/api/payroll/employees/{employeeId:guid}/compensation/current", PayrollPermissionNames.ViewCompensation),
+
+    // ---- A ONE-OFF PAY INSTRUCTION (T-110). `ManageCompensation`, and that is the whole reasoning.
+    //
+    // Deciding somebody is paid an amount is the same authority whether it recurs or happens once. A
+    // permission of its own would let the two be granted apart, which nobody has ruled — and inventing a
+    // distinction is what `AC-SS-0005`'s reasoning warns against.
+    ("POST", "/api/payroll/employees/{employeeId:guid}/one-off-payments", PayrollPermissionNames.ManageCompensation),
     ("GET", "/api/payroll/employees/{employeeId:guid}/payslips", PayrollPermissionNames.ViewPayslips),
 
     ("POST", "/api/payroll/elements", PayrollPermissionNames.ManageElements),
@@ -35,7 +42,16 @@ public sealed class PayrollRouteInventoryTests(PayrollApiTestHost host) : IClass
     ("POST", "/api/payroll/runs/{payrollRunId:guid}/posting", PayrollPermissionNames.PostRuns),
     ("POST", "/api/payroll/runs/{payrollRunId:guid}/reversals", PayrollPermissionNames.PostRuns),
 
-    ("GET", "/api/payroll/runs/{payrollRunId:guid}/payslips/{employeeId:guid}", PayrollPermissionNames.ViewPayslips)
+    ("GET", "/api/payroll/runs/{payrollRunId:guid}/payslips/{employeeId:guid}", PayrollPermissionNames.ViewPayslips),
+
+    // ---- SELF-SERVICE (FP-015, T-088). THE ONLY ROUTE HERE THAT NAMES NO SUBJECT.
+    //
+    // Every other payslip route takes the employee on its path. This one takes none: the subject is
+    // resolved from the caller's own identity, which is `REQ-SS-0004` and is asserted against the contract
+    // by `PayrollSelfServiceTests.The_self_route_contract_names_no_employee_on_any_surface`.
+    //
+    // It carries the SELF permission, not the administrative one — the two share a prefix and nothing else.
+    ("GET", "/api/payroll/me/payslips", PayrollPermissionNames.ViewOwnPayslips)
   ];
 
   [Fact]

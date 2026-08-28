@@ -1,4 +1,4 @@
-# FP-012 — Acceptance Criteria (RATIFIED)
+# FP-012 — Acceptance Criteria
 
 `AC-PAY-####`, traced to the requirement each verifies. Criteria marked **conditional** exist only under a
 particular ruling and are labelled with it, so that a ruling which removes them removes them cleanly rather

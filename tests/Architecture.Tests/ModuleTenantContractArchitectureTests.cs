@@ -176,6 +176,9 @@ public sealed class ModuleTenantContractArchitectureTests
         // The company scope of the acting user, needed so a module can constrain a company-owned read or
         // write to the companies that user may reach (FP-006C4). Platform owns the answer; HR must ask it.
         nameof(CompanyAccessSummary),
+        // T-090's standing answer. A three-valued enum rather than a bool, so `default` is the CLOSED
+        // answer and no caller has to decide what "I could not find that employee" means.
+        nameof(EmploymentStanding),
         nameof(IBranchTransferAuthorizer),
         nameof(IBranchTransferScope),
         // The trusted execution branch, needed so a module can record which branch an operation happened in
@@ -184,6 +187,16 @@ public sealed class ModuleTenantContractArchitectureTests
         // The acting tenant user, needed so a module can name WHO is asking when resolving scope. It carries
         // no roles, permissions, session or claims: what they may DO stays with the permission pipeline.
         nameof(ICurrentTenantUser),
+        // ---- ADDED BY T-090, AND THE FIRST ON THIS SEAM POINTING PLATFORM -> MODULE.
+        //
+        // `IUserEmployeeResolver` answers which employee a tenant user is, from the PLATFORM database.
+        // Whether that employment has ended lives on `Employee` in the TENANT database and `ADR-030`
+        // Decision 4 forbids the foreign key that would let the seam read it — so it has to ask, and HR is
+        // the authority. A status copy on the Platform side would be a second source of truth.
+        //
+        // It cannot live in `SSAS.HR.Contracts`: no Platform project references any module, and keeping
+        // that true is exactly what `ADR-012` is for. Same edge as its neighbour, opposite direction.
+        nameof(IEmploymentStandingDirectory),
         // A module's own permission definitions, offered to the one composed catalog. Platform composes and
         // validates; the module owns the names. Without it a module's permissions cannot be granted to any
         // role, which is the FP-006 release blocker this contract closes (ADR-012 r1.2).
@@ -204,6 +217,26 @@ public sealed class ModuleTenantContractArchitectureTests
         // ADR-level change `DEC-POS-0015` reserved for a multi-currency requirement).
         nameof(ITenantCompanyCurrencyLookup),
         nameof(ITenantUnitOfWork),
+        // ---- ADDED BY T-091. THE SECOND OF TWO GUARDS ON A TERMINATED EMPLOYEE.
+        //
+        // HR terminates an employee and Platform owns the account, so HR has to ask. Called synchronously
+        // from the handler rather than raised as an event: the domain-event road has no outbox, so a
+        // failing consumer would leave a terminated employee with a live account and an operator who
+        // reasonably believes nothing happened.
+        //
+        // Points module -> Platform, like `IUserEmployeeResolver` and unlike `IEmploymentStandingDirectory`.
+        nameof(ITenantUserDeactivator),
+        // ADR-030's identity-to-employee mapping, needed so a module can answer "is the acting user this
+        // employee" (T-084). It sits beside ICurrentTenantUser because it is the same seam and the second
+        // half of the same question: a module asks WHO is acting, then WHICH employee that is.
+        //
+        // Deliberately NOT in SSAS.Platform.Contracts. That project exists, is empty, and no module
+        // references it — adopting it would open the first module-to-Platform project reference in the
+        // product, which is a structural precedent rather than a defect fix.
+        //
+        // Its surface is one method taking the tenant user EXPLICITLY. Not an identity service: a contract
+        // that read its subject from ambient state could not be asked about anyone else and would grow.
+        nameof(IUserEmployeeResolver),
         // The data half of the permission contribution: a name and the description a tenant administrator
         // reads. Deliberately carries NO scope -- the composer stamps Tenant, so a module cannot mint
         // cross-tenant PlatformSupport authority (ADR-012 r1.2).

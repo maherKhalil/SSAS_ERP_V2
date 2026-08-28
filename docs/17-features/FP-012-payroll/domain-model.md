@@ -1,4 +1,4 @@
-# FP-012 — Domain Model (RATIFIED)
+# FP-012 — Domain Model
 
 Shapes below are proposals. Several cannot be fixed until `decisions-approved.md` is ruled, and where that is
 true it is said rather than papered over with a plausible default.

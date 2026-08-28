@@ -39,6 +39,16 @@ services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeRoster, EmployeeRosterS
     // chain through this rather than reaching HR.Domain, on the same terms as the roster above.
     services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeApproverDirectory, EmployeeApproverDirectoryService>();
 
+    // The FOURTH (FP-015, T-088). Employee-first, and deliberately the only one of the four that applies no
+    // company authorization — the caller is an employee reading their own record, and requiring a
+    // company-access grant would refuse exactly the caller it exists for.
+    services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeePlacementDirectory, EmployeePlacementDirectoryService>();
+
+    // T-090. HR owns employment status, so HR answers the Platform seam's question about it. Registered
+    // beside its sibling because it is the same class; a second registration rather than a shared one
+    // because the two contracts have different callers and are guarded separately.
+    services.AddScoped<SSAS.BuildingBlocks.Tenancy.IEmploymentStandingDirectory, EmployeePlacementDirectoryService>();
+
 
 services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 

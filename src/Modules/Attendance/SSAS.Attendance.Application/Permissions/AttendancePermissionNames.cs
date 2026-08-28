@@ -77,25 +77,52 @@ public static class AttendancePermissionNames
   public const string ViewSensitiveLeave = "Attendance.Leave.ViewSensitive";
 
   // ================================================================================================
+  // SELF-SERVICE (FP-015, T-089). TWO PERMISSIONS, AND THE SECOND ONE IS THE POINT.
+  // ================================================================================================
+  //
+  // **The self plane inherits the administrative plane's divisions.** `ViewRecords` and `ViewLeave` are
+  // separate above for a reason — a timesheet and a leave history disclose different things about a person
+  // — and **a single self permission would grant leave visibility to everyone granted timesheet
+  // visibility.**
+  //
+  // A coarser self permission is a WIDENING wearing the costume of a simplification, and it is the failure
+  // FP-015 was written to prevent: this package's own drafts wrote one permission, and the split was found
+  // by reading the administrative constants rather than the drafts.
+  //
+  // `TS-SS-0013` asserts the consequence directly: records-self does NOT grant leave-self.
+  public const string ViewOwnRecords = "Attendance.Records.ViewOwn";
+
+  public const string ViewOwnLeave = "Attendance.Leave.ViewOwn";
+
+  // ================================================================================================
   // WHAT IS DELIBERATELY ABSENT, AND IT IS NOT AN OVERSIGHT.
   // ================================================================================================
   //
-  // **There is no `ViewOwn` of any kind.** No `Attendance.Records.ViewOwn`, no
-  // `Attendance.Leave.RequestOwn`.
+  // **Reading one's own records shipped; REQUESTING one's own leave did not.** `ViewOwnRecords` and
+  // `ViewOwnLeave` are declared above. There is no `Attendance.Leave.RequestOwn`.
   //
-  // `OD-ATT-0013` deferred self-service because it depends on a mapping from the authenticated identity to
-  // an employee record, and **this build does not assert such a mapping exists** — verified, not assumed:
-  // `Employee` carries no user or tenant-user identifier, and neither HR's domain nor its contracts expose
-  // one.
+  // `OD-ATT-0013` deferred self-service because it depended on a mapping from the authenticated identity to
+  // an employee record. **That mapping exists** — `UserEmployeeLink` (`ADR-030`, T-082).
   //
-  // `OD-PAY-0016` deferred payroll self-service for the same reason, and `PayrollPermissionNames` records
-  // the refusal in these words:
+  // **FP-015 then built the permission and the endpoint (T-089), so what was an absence is now an
+  // inventory of exactly two.** The inventory is asserted rather than merely intended by
+  // **`AC-ATT-0032`** — which is what fails the day a THIRD self permission is added here. The criterion
+  // is the handle rather than the guard's method name: grep it and both this file and the guard answer,
+  // because the guard cites it too (T-087). Cited rather than restated,
+  // because restating it in a third file is exactly how this sentence went stale in nine at once.
+  //
+  // **That sentence is right about restatement and went stale anyway.** `AC-ATT-0032` stopped asserting an
+  // absence in T-102 and every citer kept reading it as one, this comment included — `DEC-L-082`, T-104.
+  //
+  // `OD-PAY-0016` deferred payroll self-service for the same reason. **It shipped too** —
+  // `Payroll.Payslips.ViewOwn`, routed at `GET /me/payslips`. `PayrollPermissionNames` recorded the
+  // original refusal in these words:
   //
   //   > Adding a `Payroll.Payslips.ViewOwn` on an unverified assumption is exactly the shape of the FP-011
   //   > near-miss.
   //
-  // **A permission whose subject cannot be resolved must not be declared.** This is the third consecutive
-  // feature to meet the same missing input, which is where a coincidence becomes a recorded future package.
+  // **A permission whose subject cannot be resolved must not be declared.** Three consecutive features met
+  // the same missing input; the recorded future package was FP-015, and it landed.
   //
   // **And there is no permission for the summary contract.** It is consumed in-process by Payroll, whose own
   // `Payroll.Runs.Manage` already gates the calculation that reads it. A second permission would mean a

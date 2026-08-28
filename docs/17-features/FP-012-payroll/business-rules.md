@@ -1,4 +1,4 @@
-# FP-012 — Business Rules (RATIFIED)
+# FP-012 — Business Rules
 
 **No `BR-PAY-####` rule exists anywhere in the product today.** `Business-Rules.md` lists Payroll under
 *"Future Modules — Business Rules for the following modules will be added in future releases."*

@@ -1,4 +1,4 @@
-# FP-014 — Test scenarios (proposed)
+# FP-014 — Test scenarios
 
 Written from the ruling set of 2026-08-25. Pairs with
 [`acceptance-criteria.md`](acceptance-criteria.md).

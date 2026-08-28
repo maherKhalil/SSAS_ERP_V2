@@ -143,13 +143,50 @@ internal sealed class JournalDraftRepository(ITenantDbContextAccessor contextAcc
     await context.Set<JournalDraft>().AddAsync(draft, cancellationToken);
   }
 
-  // Synchronous because it only marks the tracked graph; the cascade configured on the draft's lines
-  // removes them with it. The context is resolved by the caller's other operations in the same unit of work.
+  // See the port: the platform sets every foreign key to `Restrict` AFTER the module contributors run, so
+  // `JournalDraftConfiguration`'s configured cascade never takes effect and an orphaned line is a row
+  // nothing deletes.
+  //
+  // Marked Deleted BEFORE `ReplaceLines` clears the collection — afterwards, EF's navigation fixer has
+  // already seen the severance and already tried to null a non-nullable foreign key.
+  public async Task RemoveLinesAsync(JournalDraft draft, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(draft);
+
+    if (draft.Lines.Count == 0)
+    {
+      return;
+    }
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // Materialized before RemoveRange: the navigation and the tracker hold the same objects, and removing
+    // from one while enumerating the other is how this becomes intermittent rather than fixed.
+    context.Set<JournalDraftLine>().RemoveRange([.. draft.Lines]);
+  }
+
+  // Synchronous because it only marks the tracked graph. The context is resolved by the caller's other
+  // operations in the same unit of work.
+  //
+  // ---- THE LINES ARE REMOVED EXPLICITLY, AND THIS COMMENT USED TO SAY OTHERWISE.
+  //
+  // It previously read "the cascade configured on the draft's lines removes them with it". That cascade is
+  // configured and then overwritten: `PersistenceDbContext.OnModelCreating` sets every foreign key in the
+  // composed model to `Restrict` after the contributors run. **Discarding a draft that had lines would
+  // therefore have failed**, on a delete the module believed the database would handle for it.
+  //
+  // The comment described the intent; the model described the truth; nothing tested which one shipped.
   public void Remove(JournalDraft draft)
   {
     ArgumentNullException.ThrowIfNull(draft);
 
     var context = contextAccessor.GetRequiredAsync().GetAwaiter().GetResult();
+
+    if (draft.Lines.Count > 0)
+    {
+      context.Set<JournalDraftLine>().RemoveRange([.. draft.Lines]);
+    }
+
     context.Set<JournalDraft>().Remove(draft);
   }
 }

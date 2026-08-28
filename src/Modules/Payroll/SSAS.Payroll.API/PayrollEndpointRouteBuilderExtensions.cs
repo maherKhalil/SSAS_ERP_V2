@@ -7,6 +7,7 @@ using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.Payroll.Application.Compensation;
+using SSAS.Payroll.Domain.Compensation;
 using SSAS.Payroll.Application.Elements;
 using SSAS.Payroll.Application.Permissions;
 using SSAS.Payroll.Application.Reads;
@@ -64,6 +65,14 @@ public static class PayrollEndpointRouteBuilderExtensions
     // ---- COMPENSATION. The personal-data surface (BR-PAY-0010, OD-PAY-0016).
     group.MapPost("/employees/{employeeId:guid}/compensation", RecordCompensationAsync)
       .RequirePermission(PayrollPermissionNames.ManageCompensation).WithName("PayrollCompensationRecord");
+
+    // ---- ONE-OFF PAY INSTRUCTIONS (T-110). POST ONLY, like compensation and for a different reason.
+    //
+    // Deciding someone is paid an amount is the same authority whether it recurs or happens once, so this
+    // takes `ManageCompensation` rather than a permission of its own — a second one would let the two be
+    // granted apart, which nobody has ruled.
+    group.MapPost("/employees/{employeeId:guid}/one-off-payments", RecordOneOffPaymentAsync)
+      .RequirePermission(PayrollPermissionNames.ManageCompensation).WithName("PayrollOneOffPaymentRecord");
     group.MapGet("/employees/{employeeId:guid}/compensation", GetCompensationHistoryAsync)
       .RequirePermission(PayrollPermissionNames.ViewCompensation).WithName("PayrollCompensationHistory");
     group.MapGet("/employees/{employeeId:guid}/compensation/current", GetCompensationCurrentAsync)
@@ -111,6 +120,17 @@ public static class PayrollEndpointRouteBuilderExtensions
     // ---- PAYSLIPS. A projection over approved lines only (OD-PAY-0015).
     group.MapGet("/runs/{payrollRunId:guid}/payslips/{employeeId:guid}", GetPayslipAsync)
       .RequirePermission(PayrollPermissionNames.ViewPayslips).WithName("PayrollPayslipsGet");
+    // ---- SELF-SERVICE (FP-015, `REQ-SS-0004`, T-088). NO EMPLOYEE ANYWHERE IN THE CONTRACT.
+    //
+    // The route names no employee on its path, and the handler takes none from query, header or body: the
+    // subject is resolved from the caller's own identity. **That is `AC-SS-0007`, and it is asserted against
+    // the contract rather than the handler by `PayrollSelfServiceContractTests`.**
+    //
+    // It sits in the same group as everything above, so `RequireModule` and the `BR-PLT-0008` gate come
+    // free — `REQ-SS-0008` costs nothing to satisfy and cannot be forgotten.
+    group.MapGet("/me/payslips", GetOwnPayslipsAsync)
+      .RequirePermission(PayrollPermissionNames.ViewOwnPayslips).WithName("PayrollOwnPayslipsList");
+
     group.MapGet("/employees/{employeeId:guid}/payslips", GetPayslipsAsync)
       .RequirePermission(PayrollPermissionNames.ViewPayslips).WithName("PayrollPayslipsForEmployee");
 
@@ -121,6 +141,40 @@ public static class PayrollEndpointRouteBuilderExtensions
     ApiProblems.Problem(context, error, ResourceKey);
 
   // ---- COMPENSATION.
+
+  private static async Task<IResult> RecordOneOffPaymentAsync(
+    HttpContext context, Guid employeeId, RecordOneOffPaymentCommandHandler handler,
+    CancellationToken cancellationToken)
+  {
+    var request = await StrictRequestReader.ReadStrictJsonAsync<RecordOneOffPaymentRequest>(
+      context,
+      new Dictionary<string, JsonValueKind[]>
+      {
+        ["companyId"] = [JsonValueKind.String],
+        ["payrollPeriodId"] = [JsonValueKind.String],
+        ["payElementId"] = [JsonValueKind.String],
+        ["amount"] = [JsonValueKind.Number],
+        ["reason"] = [JsonValueKind.String, JsonValueKind.Null]
+      },
+      cancellationToken,
+      requiredFields: ["companyId", "payrollPeriodId", "payElementId", "amount"]);
+    if (request is null)
+    {
+      return Results.Empty;
+    }
+
+    var created = await handler.HandleAsync(
+      new RecordOneOffPaymentCommand(
+        request.CompanyId, employeeId, request.PayrollPeriodId, request.PayElementId,
+        request.Amount, request.Reason),
+      cancellationToken);
+
+    return created.IsFailure
+      ? Problem(context, PayrollApiErrorMapper.Map(created.Error))
+      : Results.Created(
+        $"{RoutePrefix}/employees/{employeeId}/one-off-payments",
+        new { oneOffPaymentId = created.Value });
+  }
 
   private static async Task<IResult> RecordCompensationAsync(
     HttpContext context, Guid employeeId, RecordCompensationCommandHandler handler,
@@ -133,6 +187,19 @@ public static class PayrollEndpointRouteBuilderExtensions
         ["companyId"] = [JsonValueKind.String],
         ["effectiveFromUtc"] = [JsonValueKind.String],
         ["baseAmount"] = [JsonValueKind.Number],
+
+        // ---- ADDED T-110, AND IT IS A T-107 DEFECT RATHER THAN A T-110 FEATURE.
+        //
+        // T-107 added `salaryType` to `RecordCompensationRequest` and NOT to this dictionary.
+        // `StrictRequestReader` rejects any member it does not declare (`:39`), so **a client sending a
+        // salary type got a 400 and a client omitting it got Monthly** — hourly and daily were unreachable
+        // through the API from the moment they shipped. The domain, the calculator, the persistence and the
+        // migration were all correct; the door was never opened.
+        // `Null` added T-112. T-111's sweep found this was the only optional member in the product that
+        // refused an explicit null, and the rule the other sites follow is that an optional member accepts
+        // one — `StrictRequestReader:45`, `requiredFields ?? fields.Keys`.
+        ["salaryType"] = [JsonValueKind.String, JsonValueKind.Number, JsonValueKind.Null],
+
         ["assignments"] = [JsonValueKind.Array, JsonValueKind.Null],
         ["wasOutsideGradeBand"] = [JsonValueKind.True, JsonValueKind.False],
         ["gradeBandObservation"] = [JsonValueKind.String, JsonValueKind.Null]
@@ -152,6 +219,7 @@ public static class PayrollEndpointRouteBuilderExtensions
     var created = await handler.HandleAsync(
       new RecordCompensationCommand(
         request.CompanyId, employeeId, request.EffectiveFromUtc, request.BaseAmount,
+        request.SalaryType ?? SalaryType.Monthly,
         assignments, request.WasOutsideGradeBand, request.GradeBandObservation),
       cancellationToken);
 
@@ -513,6 +581,33 @@ public static class PayrollEndpointRouteBuilderExtensions
 
     var payslip = await reads.GetPayslipAsync(scope.Value, payrollRunId, employeeId, cancellationToken);
     return payslip is null ? Problem(context, PayrollApiErrorMapper.NotFound) : Results.Ok(payslip);
+  }
+
+  // ---- THE SELF READ. IT REUSES THE ADMINISTRATIVE READ AND DIFFERS ONLY IN WHERE THE EMPLOYEE COMES FROM.
+  //
+  // `GetPayslipsForEmployeeAsync` is the same method the administrative route calls. The employee is a
+  // method ARGUMENT to it, never a member of any contract, which is what lets a self route reuse the read
+  // without carrying an identifier a caller could change.
+  //
+  // The scope comes from `ResolveForOwnEmployeeAsync`, derived from the resolved employee's company rather
+  // than the caller's administrative grants — see that method for why.
+  private static async Task<IResult> GetOwnPayslipsAsync(
+    HttpContext context, IPayrollSelfServiceScopeResolver resolver, IPayrollReadService reads,
+    CancellationToken cancellationToken)
+  {
+    var own = await resolver.ResolveForOwnEmployeeAsync(
+      PayrollPermissionNames.ViewOwnPayslips, cancellationToken);
+
+    // An unlinked caller lands here as `Payroll.NoLinkedEmployee` and the mapper answers
+    // `404 payroll.no_linked_employee` — an ordinary refusal naming the condition, with nothing thrown and
+    // nothing logged (`AC-SS-0008`, `AC-SS-0009`).
+    if (own.IsFailure)
+    {
+      return Problem(context, PayrollApiErrorMapper.Map(own.Error));
+    }
+
+    return Results.Ok(await reads.GetPayslipsForEmployeeAsync(
+      own.Value.Scope, own.Value.EmployeeId, cancellationToken));
   }
 
   private static async Task<IResult> GetPayslipsAsync(

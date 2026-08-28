@@ -4,6 +4,19 @@ namespace SSAS.Payroll.Domain.Runs;
 
 public static class PayrollErrors
 {
+  // The caller is a tenant user with no linked employee (`ADR-030` Decision 5, FP-015). **An ordinary state
+  // rather than a fault** — platform-support staff, and users created before their employee record exists.
+  // `ADR-030` puts it plainly: *"a support administrator opening a self-service page is not a fault
+  // condition; it is Tuesday."*
+  //
+  // Mapped to `404 payroll.no_linked_employee` and deliberately NOT to `payroll.not_found`: that code says
+  // *the thing you named does not exist*, and this one is about the CALLER. Telling an employee their
+  // payslips were not found, when the truth is that nobody linked their record, points them at the wrong
+  // remedy and the wrong person to ask.
+  public static readonly Error NoLinkedEmployee = new(
+    "Payroll.NoLinkedEmployee",
+    "No employee record is linked to this user.");
+
   // ---- PERIODS.
   public static readonly Error PeriodCompanyRequired = new(
     "Payroll.PeriodCompanyRequired",
@@ -113,6 +126,60 @@ public static class PayrollErrors
   public static readonly Error NoIncludedEmployees = new(
     "Payroll.NoIncludedEmployees",
     "No employee was employed during this period, so there is nothing to calculate.");
+
+  // ---- A DAILY SALARY WITH NO WORKING DAYS TO PRICE (T-108).
+  //
+  // `SalaryType.Daily` is `rate x standard working days - unpaid absent days`, and the standard working
+  // days arrive on the attendance summary. Zero of them means there is nothing to multiply.
+  //
+  // **RENAMED FROM `DailySalaryHasNoWorkedDayCount` (T-107).** That name described a MISSING FIELD, and the
+  // field now exists — keeping it would have left a constant named after a condition that can no longer
+  // occur, which is this loop's stale comment in another costume.
+  //
+  // **IT NAMES WHAT WAS OBSERVED, NEVER THE CAUSE**, on the same discipline `EmploymentTypeAssumptionTests`
+  // states for its own messages. Zero working days has at least three causes — the company has no working
+  // calendar, the summary was unavailable, or the period genuinely contains no working day — and an error
+  // asserting which one would be an instrument reporting on something it did not check.
+  //
+  // It fails the whole run rather than the employee, deliberately. A run that silently omitted one person's
+  // pay would be discovered on payday.
+  public static readonly Error DailySalaryHasNoWorkingDays = new(
+    "Payroll.DailySalaryHasNoWorkingDays",
+    "An employee is on a daily salary and this period reports no standard working days for the company, "
+    + "so there is nothing to price a daily rate against.");
+
+  // ---- A ONE-OFF NAMING AN ELEMENT THE RUN IS NOT PRICING (T-110).
+  //
+  // The run prices ACTIVE elements and never `NetPayPayable`. A one-off naming anything else would produce
+  // no line — **an instruction somebody wrote, a person expecting money, and nothing anywhere.** That is the
+  // exact defect T-110 exists to close, so the fix refuses rather than reproducing it one level in.
+  //
+  // It fails the RUN rather than the employee, like the daily refusal: a run that silently omitted one
+  // person's pay would be discovered on payday.
+  public static readonly Error OneOffPaymentElementNotPayable = new(
+    "Payroll.OneOffPaymentElementNotPayable",
+    "A one-off payment names a pay element this run is not pricing — it is inactive, or it is the net-pay "
+    + "element, which is derived rather than configured.");
+
+  // ---- A SECOND REVERSAL OF ONE POSTING (T-112).
+  //
+  // Two reversing entries for one posting, and the second timestamp would overwrite the record of when the
+  // first happened. Refused rather than restamped.
+  public static readonly Error RunAlreadyReversed = new(
+    "Payroll.RunAlreadyReversed",
+    "This payroll run has already been reversed.");
+
+  // ---- AN EMPLOYEE'S ATTENDANCE DISAGREES WITH THEIR EMPLOYMENT DATES (T-121).
+  //
+  // Work recorded on days they were not employed. **Either they worked and the termination date is wrong,
+  // or they did not and the record is** — and neither module can tell which, so neither chooses.
+  //
+  // It fails the RUN rather than the employee, on the same reasoning as `DailySalaryHasNoWorkingDays`: a
+  // run that silently omitted or inflated one person's pay would be discovered on payday.
+  public static readonly Error AttendanceContradictsEmployment = new(
+    "Payroll.AttendanceContradictsEmployment",
+    "An employee has attendance recorded on days they were not employed. Correct the attendance records or "
+    + "the employment dates before calculating this run.");
 
   public static readonly Error UnbalancedPosting = new(
     "Payroll.UnbalancedPosting",

@@ -1335,6 +1335,34 @@ else
   echo "--- trace-check: NOT RUN -- no 'py' on PATH or scripts/trace-check.py missing."
 fi
 
+# ---- THE `DEC-L-082` ADVISORY (T-106). REPORTS, NEVER FAILS.
+#
+# `DEC-L-082`: a citation RESOLVES; it does not VALIDATE. When a cited identifier's meaning
+# changes, every citation of it becomes a claim nobody re-checked -- and nothing notices, because
+# the reference still resolves. T-102 changed what `AC-ATT-0032` asserts; three citers kept
+# reading it the old way and it took T-103, T-104 and T-105 to find them. Run against T-102's own
+# commit, this lists all of them at once.
+#
+# THE DIFF SOURCE IS CONDITION 4's, AND DELIBERATELY SO. `git diff <merge-base>` with no second
+# commit compares against the WORKING TREE -- see note at line 190 -- so this fires while an
+# amendment is still being written rather than after it is committed. That is what makes it an
+# advisory instead of a post-mortem.
+#
+# IT NEVER SETS GATE_FAILED. Judgement -- whether a citer still MEANS what it cites -- is a
+# person's, and a guard that pretends otherwise is one somebody switches off.
+if command -v py >/dev/null 2>&1 && [ -f "$ROOT/scripts/trace-check.py" ]; then
+  CITER_BASE=$(git merge-base HEAD "${GATE_INTEGRATION_REF:-origin/ClaudeBranch}" 2>/dev/null) || true
+  if [ -n "$CITER_BASE" ]; then
+    py scripts/trace-check.py --citers "$CITER_BASE" 2>&1 | tee "$LOGS/citer-advisory.log"
+  else
+    # ABSENCE IS STATED, as everywhere else in this script. A missing merge-base must not read
+    # as "nothing changed".
+    echo "--- DEC-L-082 advisory: NOT RUN -- no merge-base with '${GATE_INTEGRATION_REF:-origin/ClaudeBranch}'"
+  fi
+else
+  echo "--- DEC-L-082 advisory: NOT RUN -- no 'py' on PATH or scripts/trace-check.py missing."
+fi
+
 if [ $GATE_FAILED -ne 0 ]; then
   echo "[GATE RED -- $GATE_SCOPE scope: $SCOPE_NOTE]"
 else

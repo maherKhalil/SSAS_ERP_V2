@@ -29,6 +29,14 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
 
     builder.HasKey(account => account.Id);
 
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(account => account.Id).ValueGeneratedNever();
+
     builder.Property(account => account.TenantId).IsRequired();
 
     // The display value, casing preserved. Value-converted, so it is projectable but NOT usable in a

@@ -1,4 +1,4 @@
-# FP-013 — Test scenarios (proposed)
+# FP-013 — Test scenarios
 
 > **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
 > [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
@@ -66,7 +66,7 @@ module under scope C should land in the same range; under scope A or B, roughly 
 | `TS-ATT-0033` | The read scope has a private constructor and an internal factory, and the sanctioned-read-shape file lists Attendance's query with its reasoning inline | `AC-ATT-0030` |
 | `TS-ATT-0034` | Every Attendance entity carries an explicit `IBranchOwnedEntity` assertion — **positive or negative** | `AC-ATT-0036` |
 | `TS-ATT-0035` | The E3 manifest, **derived by reflection over `ITenantOwnedEntity`**, contains every Attendance tenant entity | `AC-ATT-0035` |
-| `TS-ATT-0036` | The permission catalog contains no `ViewOwn` of any kind | `AC-ATT-0032` |
+| `TS-ATT-0036` | The permission catalog contains no `ViewOwn` of any kind — **SUPERSEDED by FP-015 (T-089).** The catalog now contains exactly two, asserted by `The_self_service_permissions_are_exactly_the_two_that_were_decided` | `AC-ATT-0032` |
 | `TS-ATT-0037` | The summary contract exposes no member returning per-event or time-of-day data | `AC-ATT-0023` |
 
 ---

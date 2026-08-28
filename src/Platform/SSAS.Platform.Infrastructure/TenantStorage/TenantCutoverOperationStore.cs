@@ -153,10 +153,85 @@ public sealed class TenantCutoverOperationStore(
   // NARROWLY, THOUGH. The conflict is only absorbed after RE-READING and confirming the observation is
   // genuinely now recorded. A concurrency failure for any other reason still surfaces, because a blanket
   // catch here would hide real contention on this row.
+  //
+  // ---- THE LOSER IS NOT ALWAYS ANOTHER WRITER (post-Phase-E hardening H1, Phase E final review LOW-1).
+  //
+  // The row has a second writer that is not recording an observation at all: the orchestrator's Complete().
+  // It can win the RowVersion race and leave the timestamp exactly as it was, so the re-read finds NULL and
+  // the call fails — through no fault of the write it was fencing.
+  //
+  // ⚠ THE BRANCH THIS CAME FROM DESCRIBED THAT AS A FALSE NEGATIVE — *"the tenant's write, whose result
+  // was previously discarded, committed anyway"*. **That was true when the fence discarded this result.
+  // T-135 stopped it doing so, so the write no longer commits and the platform cannot believe none did.**
+  //
+  // What is left is the opposite failure: a FALSE REFUSAL. The write is turned away for a bookkeeping race
+  // the caller cannot see and could not have avoided — it receives `CutoverConcurrencyConflict` with no way
+  // to tell the platform losing a race with itself from another writer genuinely contending.
+  //
+  // So a re-read showing NULL now means "nobody has recorded it and this attempt was displaced", which is
+  // a reason to try once more against fresh state — not a reason to give up. ONE retry, because the only
+  // competing non-observation writer is Complete() and it runs once; a loop here would turn a bookkeeping
+  // race into an unbounded wait on the tenant's write path.
   public async Task<Result> RecordPostCutoverWriteAsync(
     long cutoverOperationId,
+    long tenantDatabaseId,
     string actor,
     CancellationToken cancellationToken = default)
+  {
+    var first = await TryRecordPostCutoverWriteAsync(cutoverOperationId, actor, cancellationToken);
+    if (first.IsSuccess || first.Error.Code != TenantStorageErrors.CutoverConcurrencyConflict.Code)
+    {
+      // Anything that is not the displacement race — the operation vanished, the status no longer admits an
+      // observation, a genuine persistence failure — is the caller's to see, unchanged.
+      return first;
+    }
+
+    var refreshed = await ReadWriteGateByOperationAsync(cutoverOperationId, cancellationToken);
+    if (refreshed is null)
+    {
+      return Result.Failure(TenantStorageErrors.CutoverOperationNotFound);
+    }
+
+    // Another writer got there first: what this call wanted is true.
+    if (refreshed.PostCutoverWriteObservedUtc is not null)
+    {
+      return Result.Success();
+    }
+
+    // ---- STILL THE SAME WRITE? Retrying on "the timestamp is null" alone would record an observation for a
+    // write the fence would no longer admit: THIS operation may have moved on — rolled back or failed —
+    // between admission and here. Revalidated against the row just read, not the one the caller decided on.
+    //
+    // ⚠ IT DOES NOT CATCH A FURTHER CUTOVER, and an earlier draft of this comment said it did (T-138). A
+    // second cutover is a DIFFERENT ROW with a different Id, and the read above is BY Id. That case is caught
+    // at admission instead: `FindActiveWriteGateAsync` orders by `Id` descending and hands the fence the
+    // NEWEST operation for the tenant. The protection is real and it lives there — stated because the wrong
+    // attribution reads as the reason a by-Id seek is sufficient here.
+    if (!refreshed.PermitsWriteTo(tenantDatabaseId))
+    {
+      return Result.Failure(TenantStorageErrors.TenantWritesFrozen);
+    }
+
+    var second = await TryRecordPostCutoverWriteAsync(cutoverOperationId, actor, cancellationToken);
+    if (second.IsSuccess || second.Error.Code != TenantStorageErrors.CutoverConcurrencyConflict.Code)
+    {
+      return second;
+    }
+
+    // Displaced again — only a true first-write recorder can have done it this time, so the one question
+    // left is whether the observation now exists. If it still does not, the caller must refuse the write.
+    var settled = await ReadWriteGateByOperationAsync(cutoverOperationId, cancellationToken);
+    return settled?.PostCutoverWriteObservedUtc is not null
+      ? Result.Success()
+      : Result.Failure(TenantStorageErrors.CutoverConcurrencyConflict);
+  }
+
+
+  // above can tell displacement apart from a real failure without catching exceptions to do it.
+  private async Task<Result> TryRecordPostCutoverWriteAsync(
+    long cutoverOperationId,
+    string actor,
+    CancellationToken cancellationToken)
   {
     try
     {
@@ -167,24 +242,32 @@ public sealed class TenantCutoverOperationStore(
     }
     catch (DbUpdateConcurrencyException)
     {
-      // Detach so the re-read observes the database rather than the failed attempt still in the tracker.
+      // Detach so the next read observes the database rather than the failed attempt still in the tracker.
       foreach (var entry in dbContext.ChangeTracker.Entries<TenantCutoverOperation>().ToArray())
       {
         entry.State = EntityState.Detached;
       }
 
-      var observed = await dbContext.TenantCutoverOperations
-        .AsNoTracking()
-        .Where(operation => operation.Id == cutoverOperationId)
-        .Select(operation => operation.PostCutoverWriteObservedUtc)
-        .SingleOrDefaultAsync(cancellationToken);
-
-      // Someone else recorded it: what this call wanted is true, so the write it fences may proceed.
-      return observed is not null
-        ? Result.Success()
-        : Result.Failure(TenantStorageErrors.CutoverConcurrencyConflict);
+      return Result.Failure(TenantStorageErrors.CutoverConcurrencyConflict);
     }
   }
+
+  // The same projection the tenant-facing gate uses, keyed by the operation this call already holds — a
+  // primary-key seek, so it introduces no access path the existing indexes do not already serve.
+  private Task<TenantCutoverWriteGate?> ReadWriteGateByOperationAsync(
+    long cutoverOperationId,
+    CancellationToken cancellationToken) =>
+    dbContext.TenantCutoverOperations
+      .AsNoTracking()
+      .Where(operation => operation.Id == cutoverOperationId)
+      .Select(operation => new TenantCutoverWriteGate(
+        operation.Id,
+        operation.TenantId,
+        operation.SourceTenantDatabaseId,
+        operation.TargetTenantDatabaseId,
+        operation.Status,
+        operation.PostCutoverWriteObservedUtc))
+      .SingleOrDefaultAsync(cancellationToken);
 
   public Task<Result> CompleteAsync(
     long cutoverOperationId,

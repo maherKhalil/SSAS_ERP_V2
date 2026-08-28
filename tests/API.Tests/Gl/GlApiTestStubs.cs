@@ -29,6 +29,12 @@ public sealed class StubGlReads : IGlReadService
 
   public JournalDetail? Journal { get; set; }
 
+  // T-098's draft reads. Separate collections rather than reusing the journal ones: a test that set
+  // `Journals` and asserted a DRAFT route returned them would be asserting the stub, not the route.
+  public List<JournalDraftListItem> Drafts { get; } = [];
+
+  public JournalDraftDetail? Draft { get; set; }
+
   public AccountBalance? Balance { get; set; }
 
   public TrialBalance TrialBalance { get; set; } = new([]);
@@ -82,6 +88,21 @@ public sealed class StubGlReads : IGlReadService
   {
     ObservedScopes.Add(scope);
     return Task.FromResult(Journal?.JournalEntryId == journalEntryId ? Journal : null);
+  }
+
+  public Task<IReadOnlyList<JournalDraftListItem>> SearchJournalDraftsAsync(
+    GlReadScope scope, Guid? companyId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, string? reference,
+    CancellationToken cancellationToken = default)
+  {
+    ObservedScopes.Add(scope);
+    return Task.FromResult<IReadOnlyList<JournalDraftListItem>>(Drafts);
+  }
+
+  public Task<JournalDraftDetail?> GetJournalDraftAsync(
+    GlReadScope scope, Guid journalDraftId, CancellationToken cancellationToken = default)
+  {
+    ObservedScopes.Add(scope);
+    return Task.FromResult(Draft?.JournalDraftId == journalDraftId ? Draft : null);
   }
 
   public Task<AccountBalance?> GetAccountBalanceAsync(
@@ -184,6 +205,15 @@ public sealed class StubCalendarRepository : IFiscalCalendarRepository
 
 public sealed class StubJournalDraftRepository : IJournalDraftRepository
 {
+  // ---- NOTHING TO DO, AND THE EMPTINESS IS THE POINT.
+  //
+  // An in-memory stub has no change tracker and therefore no orphans. The defect this method exists for is
+  // a PERSISTENCE fact — the platform overriding a module's configured cascade with `Restrict` — and it is
+  // invisible to every stub by construction. That is precisely why it survived until a real-SQL end-to-end
+  // test drove the equivalent Payroll path.
+  public Task RemoveLinesAsync(JournalDraft draft, CancellationToken cancellationToken = default) =>
+    Task.CompletedTask;
+
   public Dictionary<Guid, JournalDraft> Drafts { get; } = [];
 
   public List<JournalDraft> Added { get; } = [];

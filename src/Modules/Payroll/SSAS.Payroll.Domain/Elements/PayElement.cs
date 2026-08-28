@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.SharedKernel;
 
 namespace SSAS.Payroll.Domain.Elements;
 
@@ -26,9 +27,22 @@ public enum PayElementKind
 // This enum is the boundary `OD-PAY-0006` drew. A tenant chooses one; nobody adds one without shipping code
 // to implement it, which is precisely the point.
 //
-// **`DEC-PAY-0002` is why the set stops here.** There is no `PerHour`, no `PerDayAbsent` and no
-// `OvertimeMultiple`, because Attendance is unbuilt and none of them has an input. Adding them later is
-// additive — a new member and its implementation — and no existing element changes shape.
+// **`DEC-PAY-0002` is why the set stopped where it did, and TWO OF ITS THREE NAMED ABSENCES HAVE SINCE
+// ARRIVED.** It read: *"There is no `PerHour`, no `PerDayAbsent` and no `OvertimeMultiple`, because
+// Attendance is unbuilt and none of them has an input."* Attendance shipped (FP-013), and with it:
+//
+//   PerHour        -> `OvertimeHourly` (5), quantity x rate
+//   PerDayAbsent   -> `UnpaidAbsenceDeduction` (6), a derived daily rate
+//   OvertimeMultiple  -- STILL ABSENT. A tier carries an AMOUNT, not a multiple of base.
+//
+// **`DEC-PAY-0002`'s reasoning was right and is what let them in**: each was refused for want of an INPUT,
+// and each arrived the moment its input did. Amended in T-107 (`DEC-L-073`) because the sentence read as
+// though all three were still absent while two were declared sixty lines below it.
+//
+// **T-108 completed the pattern.** `SalaryType.Daily` needed a count of working days, which existed in
+// `WorkingCalendar` and did not cross the module boundary; T-108 put it on `AttendanceSummaryResult` and
+// daily pay followed immediately. **Three refusals, three inputs, and each behaviour arrived the moment its
+// input did** — which is `DEC-PAY-0002` working exactly as written rather than being overtaken.
 //
 // **`DEC-PAY-0016` is why there is no `StatutoryBracket`.** V1 is jurisdiction-neutral. A tenant can express
 // a fixed or proportional deduction; it cannot have the product apply a tax table, because no jurisdiction is
@@ -105,10 +119,28 @@ public enum PayElementBehaviour
   // amount: absent and zero are different facts.
   OvertimeHourly = 5,
 
-  // ---- UNPAID ABSENCE (OD-ATT-0008).
+  // ---- UNPAID ABSENCE (OD-ATT-0008). **MONTHLY SALARIES ONLY** (T-109).
   //
   // A DEDUCTION whose amount is DERIVED rather than configured: the employee's daily rate multiplied by the
   // unpaid days `IAttendanceSummary` reports.
+  //
+  // ---- IT APPLIES TO `SalaryType.Monthly` AND TO NOTHING ELSE, AND THE TWO EXCLUSIONS DIFFER.
+  //
+  // This comment said nothing about salary type from T-107, when the first exclusion was made, until T-109
+  // — a silence that read as "applies to everyone" while it did not (`DEC-L-073`).
+  //
+  //   HOURLY  excluded because an hourly employee is PAID ONLY FOR TIME ATTENDED. The absence never
+  //           entered the pay, so there is nothing to take out.
+  //   DAILY   excluded because its BASE is `working days - unpaid days`, which prices the absence in the
+  //           same unit as the rate — one missed day, one day's rate, exactly. This element would take a
+  //           second and cruder bite.
+  //
+  // **Neither reason implies the other**, and a reader who learned one would guess the other wrong.
+  //
+  // **It survives for MONTHLY because a monthly amount cannot name a day.** This is the only mechanism that
+  // salary has for expressing one, and it is an approximation: `OD-ATT-0015` ruled the calendar-day divisor
+  // and T-068 records that it under-deducts a part-timer. **An approximation is right where nothing exact
+  // is available and wrong where something exact already ran** — which is the whole of T-109.
   //
   // **The daily rate uses the SAME calendar-day divisor as proration**, and that is a decision rather than a
   // convenience. `OD-ATT-0015` asked whether building a working calendar reopened `OD-PAY-0007`, and the
@@ -184,9 +216,11 @@ public sealed class PayElementName : ValueObject
 // write boundary applies — which `Account` deliberately does not.
 public sealed class PayElement : AggregateRoot<Guid>, IAuditableEntity, ITenantOwnedEntity, ICompanyOwnedEntity
 {
-  // Matches `AttendanceRecord.OvertimeTierMaximumLength`. The two sides of the same label must agree, and
-  // the value is duplicated rather than shared because Payroll cannot reference Attendance's domain.
-  public const int OvertimeTierMaximumLength = 32;
+  // Cites `OvertimeTierKey.MaximumLength`, which is where the tier vocabulary now lives (T-131). It was
+  // duplicated here and in `AttendanceRecord` with a comment on each saying the two must agree — and a
+  // fact in two places goes stale in one of them (`DEC-L-080`). Payroll still cannot reference Attendance's
+  // domain; the shared kernel is what both may reference.
+  public const int OvertimeTierMaximumLength = OvertimeTierKey.MaximumLength;
 
   private string normalizedCode = string.Empty;
   private string normalizedName = string.Empty;
@@ -356,7 +390,7 @@ public sealed class PayElement : AggregateRoot<Guid>, IAuditableEntity, ITenantO
       return Result.Failure(PayElementErrors.OvertimeTierInvalid);
     }
 
-    OvertimeTier = string.IsNullOrWhiteSpace(overtimeTier) ? null : overtimeTier.Trim();
+    OvertimeTier = OvertimeTierKey.Normalize(overtimeTier);
     return Result.Success();
   }
   public Result Update(string? name, decimal defaultRateOrAmount, int calculationOrder)

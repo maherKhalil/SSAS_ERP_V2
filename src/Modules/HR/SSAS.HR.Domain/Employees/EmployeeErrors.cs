@@ -28,6 +28,21 @@ public static class EmployeeErrors
   public static readonly Error TerminationBeforeEmployment =
     new("Employee.TerminationBeforeEmployment", "The termination date cannot precede the employment date.");
 
+  // ---- THE ONE HALF-STATE T-091 CAN REACH, NAMED SO THE OPERATOR KNOWS WHICH REPAIR TO RUN.
+  //
+  // Termination and account closure are two databases and no transaction spans them (`ADR-017`). The
+  // handler orders them so the COMMON failure rolls everything back — but if the tenant commit fails AFTER
+  // the account was closed, the employee is unchanged and the account is not.
+  //
+  // **A generic write failure would be true and useless.** It would tell an operator to retry, and a retry
+  // succeeds (the deactivation is idempotent) — but until they do, someone cannot sign in and nothing says
+  // why. **The message names the state and the repair**, which is why `Platform.Users.Reactivate` had to
+  // get transport in the same task.
+  public static readonly Error TerminationIncomplete = new(
+    "Employee.TerminationIncomplete",
+    "The employee was not terminated, but their tenant user account was deactivated. Retry the " +
+    "termination, or reactivate the account if the termination is no longer intended.");
+
   public static readonly Error InvalidTransition =
     new("Employee.InvalidTransition", "The employee lifecycle transition is invalid.");
 

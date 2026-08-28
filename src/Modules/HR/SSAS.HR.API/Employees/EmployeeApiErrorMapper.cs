@@ -37,6 +37,14 @@ public static class EmployeeApiErrorMapper
   public static readonly ApiError BranchScopeDenied = new(403, "branch.scope_denied");
   public static readonly ApiError BranchSelectionRequired = new(409, "branch.selection_required");
 
+  // ---- A SERVER FAILURE, AND A SPECIFIC ONE (T-091).
+  //
+  // 500 because nothing the caller did caused it and no change to their request avoids it — the same
+  // reasoning the default arm gives. **But not the generic `WriteFailure`:** this one leaves state that
+  // needs repairing, and an operator reading `hr.request_failed` in a log has no way to learn that. The
+  // distinct code is what makes the half-state findable.
+  public static readonly ApiError TerminationIncomplete = new(500, "employee.termination_incomplete");
+
   public static ApiError Map(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
@@ -49,6 +57,7 @@ public static class EmployeeApiErrorMapper
       "Employee.InvalidFullName" => ApiErrors.RequestInvalid,
       "Employee.InvalidEmploymentDate" => ApiErrors.RequestInvalid,
       "Employee.TerminationBeforeEmployment" => ApiErrors.RequestInvalid,
+      "Employee.TerminationIncomplete" => TerminationIncomplete,
       "Employee.InvalidTransitionReason" => ApiErrors.RequestInvalid,
       "Employee.InvalidTransferReason" => ApiErrors.RequestInvalid,
       "Employee.TransferDestinationUnchanged" => ApiErrors.RequestInvalid,
@@ -112,6 +121,43 @@ public static class EmployeeApiErrorMapper
       "Employee.DepartmentInactive" => ApiErrors.RequestInvalid,
       "Employee.DepartmentUnchanged" => ApiErrors.RequestInvalid,
       "Employee.DepartmentHistoryImmutable" => ApiErrors.WriteFailure,
+
+      // ---- POSITION (T-080). THE SAME FIVE-AND-ONE SHAPE AS DEPARTMENT ABOVE, AND FOR THE SAME REASONS.
+      //
+      // These were declared and unmapped, so every one answered `500 request.failed` — on
+      // `POST /api/hr/employees` and on `POST /{employeeId}/change-position`, both of which reach this
+      // mapper. The comment at `PositionEndpointRouteBuilderExtensions.cs:806` already said *"its
+      // `Employee.Position*` arms are the ones that describe an unusable destination here"*. There were
+      // none. **The route was right about what should exist and wrong about what did.**
+      //
+      // ---- THREE OF THE FIVE 400s ARE DISCLOSURE-SENSITIVE; TWO ARE NOT, AND THE DISTINCTION IS REAL.
+      //
+      // `NotFound`, `Inactive` and `InDifferentCompany` are the three a caller could otherwise use to probe
+      // for a position outside their company (`BR-PLT-0002`), so they must be indistinguishable on the
+      // wire. `Unchanged` names a position the caller can already read, and `Required` names none at all —
+      // neither discloses anything. **They are 400 because they describe the request, which is the same
+      // reason the department four are**, and the collapse the other three need falls out of that rather
+      // than being imposed on them.
+      "Employee.PositionRequired" => ApiErrors.RequestInvalid,
+      "Employee.PositionNotFound" => ApiErrors.RequestInvalid,
+      "Employee.PositionInactive" => ApiErrors.RequestInvalid,
+      "Employee.PositionUnchanged" => ApiErrors.RequestInvalid,
+      "Employee.PositionInDifferentCompany" => ApiErrors.RequestInvalid,
+
+      // ---- EXPLICIT DESPITE MATCHING THE DEFAULT, AND THIS ARM IS NOT REDUNDANT.
+      //
+      // History immutability is a violated invariant, not a caller error: nothing the caller sends can
+      // cause it and nothing they send differently would avoid it. A 500 is the honest answer, exactly as
+      // `Employee.DepartmentHistoryImmutable` above answers it.
+      //
+      // **It is written out because the fallthrough producing the same status is a coincidence, not a
+      // decision.** Delete this line and the wire behaviour is identical — which is precisely why it must
+      // stay: `DepartmentHistoryImmutable` has no such comment, and its 500 had to be read as an inference
+      // from the arm existing rather than as a recorded reason. That ambiguity is the thing being avoided
+      // here, and the guard in `ModuleErrorMappingArchitectureTests` sees this arm only because it reads
+      // the source text rather than calling `Map`.
+      "Employee.PositionHistoryImmutable" => ApiErrors.WriteFailure,
+
       "Employee.InvalidActor" => ApiErrors.Forbidden,
       "Authorization.Unauthorized" => ApiErrors.Forbidden,
 
@@ -163,7 +209,17 @@ public static class EmployeeApiErrorMapper
       // is answered as one.
       "EmployeeImportRun.InvalidImportKey" => ApiErrors.RequestInvalid,
       "EmployeeImportRun.InvalidFileName" => ApiErrors.RequestInvalid,
-      "EmployeeImportRun.InvalidActor" => ApiErrors.Forbidden,
+      // ---- 500, CORRECTED IN T-096, AND IT BRINGS THIS SITE INTO LINE WITH T-080's RULING.
+      //
+      // T-080 ruled 500 at the import-contracts site and gave the reason: `ImportEmployeesCommandHandler`
+      // already refuses a missing actor with `Employee.InvalidActor` (403), so **reaching the aggregate's
+      // own actor guard means the handler's precondition passed and the aggregate refused anyway** — an
+      // internal inconsistency, not a caller fault. `AuthenticationSubject.Create` caps the subject at the
+      // same length the aggregate checks, so the gap is unreachable.
+      //
+      // **Answering 403 told a caller they lacked authority when the system had reached an impossible
+      // state.** One site was right by that ruling and this one was never brought into line.
+      "EmployeeImportRun.InvalidActor" => ApiErrors.WriteFailure,
       "EmployeeImportRun.InvalidCounts" => ApiErrors.WriteFailure,
       "EmployeeExportRun.InvalidColumnSet" => ApiErrors.WriteFailure,
 

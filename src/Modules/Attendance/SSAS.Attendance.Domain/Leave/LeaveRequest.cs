@@ -12,10 +12,19 @@ namespace SSAS.Attendance.Domain.Leave;
 //
 // ---- WHO SUBMITS IT, AND WHY THAT IS NOT THE EMPLOYEE.
 //
-// `OD-ATT-0013` deferred self-service because **no identity-to-employee mapping exists** — verified, not
-// assumed: `Employee` carries no user identifier, and neither HR's domain nor its contracts expose one.
-// `OD-PAY-0016` deferred payroll self-service for exactly this reason and `PayrollPermissionNames` records
-// the refusal in code.
+// `OD-ATT-0013` deferred self-service because no identity-to-employee mapping existed. **It exists now** —
+// `UserEmployeeLink` (`ADR-030`, T-082) — and FP-015 built the permission and the endpoint (T-089).
+// **Self-service READING shipped; submitting one's own leave request did not**, which is why this
+// aggregate still takes an administrator's submission. **`AC-ATT-0032`** is the inventory of the two that
+// did ship — the criterion rather than the guard's method name, because the name is not durable and the
+// criterion is (T-087).
+//
+// ---- AND A NOTE ON THE WORDS THAT USED TO BE HERE, MADE ONCE FOR THE WHOLE MODULE.
+//
+// Every one of these comments said *"verified, not assumed"*, and none of them verified anything: the word
+// described work a person did once by hand. **An existence claim is checkable by opening a file; a
+// NON-existence claim is not**, which is why the assurance was doing load-bearing work it could not do and
+// why nine files went stale together without one of them noticing (`DEC-L-072`, T-083).
 //
 // So `EmployeeId` is supplied by an administrator holding `Attendance.Leave.Manage`, and it is MANDATORY
 // rather than inferred. This is the third consecutive feature to meet the same missing input, and it is now
@@ -208,27 +217,40 @@ public sealed class LeaveRequest
   // manager the requester, or the chain exhausted at the top. `Attendance.Leave.ApproveAtRoot` is what
   // permits it, and `LeaveApprovalRouter` is what establishes that the ordinary path was genuinely absent.
   //
-  // **`ApproverEmployeeId` stays NULL here, and that is a statement rather than a gap.** The holder is
-  // authenticated as a USER, and no identity-to-employee mapping exists (`OD-ATT-0013`, verified). There is
-  // no employee to record, so nothing is recorded — as opposed to recording `Guid.Empty` and letting a
-  // reader mistake it for an employee.
+  // **`ApproverEmployeeId` stays NULL here, and that is a statement rather than a gap.** The decision is not
+  // attributed to an employee seat, so nothing is recorded there — as opposed to recording `Guid.Empty` and
+  // letting a reader mistake it for an employee.
   //
-  // ---- AND THE HONEST LIMITATION, STATED RATHER THAN PAPERED OVER.
+  // **It stays null even when the acting user IS resolvable (T-084).** Recording it would give the column
+  // two meanings — *the root path was used* and *the user could not be resolved* — and would silently
+  // reinterpret every row already written.
   //
-  // **The self-approval bar cannot be enforced on this path.** `Approve` compares an approver EMPLOYEE to
-  // the requester; here the actor is a user whose employee identity is unknowable. If the root-fallback
-  // holder happens to be the requesting employee, nothing here can tell.
+  // ---- THE LIMITATION THIS BLOCK USED TO RECORD IS CLOSED (BR-ATT-0007, T-084).
   //
-  // That is a real consequence of the missing mapping and not a design choice. It is bounded by making
-  // `ApproveAtRoot` a separate, strictly wider grant that an administrator gives deliberately, and it is
-  // recorded in `DecidedBy` plus the null approver so the path is auditable after the fact. **When the
-  // identity-to-employee mapping is built, this is the first thing that should be tightened.**
-  public Result ApproveAtRoot(string? decidedBy, DateTimeOffset decidedUtc, string? note)
+  // It read: *"the self-approval bar cannot be enforced on this path... if the root-fallback holder happens
+  // to be the requesting employee, nothing here can tell"*, and it named the mapping as the unblocking
+  // condition — *"when the identity-to-employee mapping is built, this is the first thing that should be
+  // tightened."*
+  //
+  // **The mapping was built (`UserEmployeeLink`, `ADR-030`, T-082) and this was tightened.**
+  // `GuardNotSelfAtRoot` below applies the bar, the handler resolves the actor, and
+  // `LeaveApprovalHandlerTests` asserts the resolution happens — because this aggregate cannot tell an
+  // unresolvable user from a caller that never asked.
+  //
+  // **The wider grant is still the bounding control it always was**, and `DecidedBy` plus the null approver
+  // still make the path auditable. What has changed is that the bar no longer depends on either.
+  public Result ApproveAtRoot(ActingEmployee acting, string? decidedBy, DateTimeOffset decidedUtc, string? note)
   {
     var guard = GuardDecision(decidedBy, note);
     if (guard.IsFailure)
     {
       return guard;
+    }
+
+    var self = GuardNotSelfAtRoot(acting);
+    if (self.IsFailure)
+    {
+      return self;
     }
 
     Status = LeaveRequestStatus.Approved;
@@ -239,12 +261,18 @@ public sealed class LeaveRequest
     return Result.Success();
   }
 
-  public Result RejectAtRoot(string? decidedBy, DateTimeOffset decidedUtc, string? note)
+  public Result RejectAtRoot(ActingEmployee acting, string? decidedBy, DateTimeOffset decidedUtc, string? note)
   {
     var guard = GuardDecision(decidedBy, note);
     if (guard.IsFailure)
     {
       return guard;
+    }
+
+    var self = GuardNotSelfAtRoot(acting);
+    if (self.IsFailure)
+    {
+      return self;
     }
 
     Status = LeaveRequestStatus.Rejected;
@@ -254,6 +282,44 @@ public sealed class LeaveRequest
     DecisionNote = Trim(note);
     return Result.Success();
   }
+
+  // ================================================================================================
+  // THE SELF-APPROVAL BAR ON THE ROOT PATH (BR-ATT-0007, ADR-030, T-084).
+  // ================================================================================================
+  //
+  // ---- WHAT THIS CLOSES, AND WHY IT COULD NOT BE CLOSED BEFORE.
+  //
+  // `Approve` and `Reject` compare an approver EMPLOYEE to the requester. On the root path the actor is a
+  // USER, and until `UserEmployeeLink` (`ADR-030`, T-082) nothing could turn one into the other — so the
+  // comment above `ApproveAtRoot` recorded the hole and named the mapping as the unblocking condition.
+  //
+  // **The router is the branch that creates the situation, not a layer that prevents it.** Its case 2 is
+  // *"every manager in the chain is the requester (a one-department company run by its manager)"* — it
+  // skips the requester when choosing a chain approver, falls through, and returns the root fallback. In
+  // that tenant shape the person who requested the leave is the person who approves it, and the bounding
+  // control the file names — a separate deliberate grant — **is weakest in exactly that shape.**
+  //
+  // ---- `null` IS NOT A REFUSAL, AND THAT IS THE POINT RATHER THAN A CONCESSION.
+  //
+  // `ADR-030` Decision 5 makes the link optional on both sides. An acting user with no linked employee is a
+  // normal caller — platform support, or a user created before their employee record — and **they cannot be
+  // the requester, so the bar does not apply to them.** Refusing on absence would break the root fallback
+  // for precisely the operator it exists for.
+  //
+  // ---- AND THE ACTOR ARRIVES AS A NAMED TYPE SO THE SKIP CANNOT BE A FORGOTTEN LINE (T-085).
+  //
+  // The aggregate still cannot tell *the user was unresolvable* from *the caller never asked* — both are
+  // an unresolved actor and both correctly approve. What `ActingEmployee` changes is that the second must
+  // now be WRITTEN: `ActingEmployee.Unresolved()` is a named, greppable act, `null` is CS8625 under the
+  // tree's nullable setting and the gate fails on any warning, and `null!` is a visible suppression.
+  //
+  // **Declared rather than unrepresentable**, and the distance between those is the honest description of
+  // what a reference type can buy here. `LeaveApprovalHandlerTests` still asserts the resolution happens,
+  // because no signature can.
+  private Result GuardNotSelfAtRoot(ActingEmployee acting) =>
+    acting.Matches(EmployeeId)
+      ? Result.Failure(LeaveErrors.SelfApprovalBarred)
+      : Result.Success();
   // ---- CANCELLATION, AND WHY THE DATES MATTER (REQ-ATT-0016, AC-ATT-0042).
   //
   // Before the dates pass, cancelling is ordinary: the leave has not happened.

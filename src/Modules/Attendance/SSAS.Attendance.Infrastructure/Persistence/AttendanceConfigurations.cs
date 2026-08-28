@@ -25,6 +25,10 @@ public sealed class WorkingCalendarConfiguration : IEntityTypeConfiguration<Work
 
     builder.ToTable("AttendanceWorkingCalendars", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(calendar => calendar.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(calendar => calendar.Id).ValueGeneratedNever();
 
     builder.Property(calendar => calendar.TenantId).IsRequired();
     builder.Property(calendar => calendar.CompanyId).IsRequired();
@@ -69,6 +73,21 @@ public sealed class WorkingCalendarConfiguration : IEntityTypeConfiguration<Work
       .FindNavigation(nameof(WorkingCalendar.Holidays))!
       .SetPropertyAccessMode(PropertyAccessMode.Field);
 
+    // ================================================================================================
+    // THE CONFIGURED CASCADE BELOW IS OVERRIDDEN BY THE PLATFORM. READ BEFORE RELYING ON IT.
+    // ================================================================================================
+    //
+    // `PersistenceDbContext.OnModelCreating` ends by setting EVERY foreign key in the composed model to
+    // `DeleteBehavior.Restrict`, and it runs AFTER the module contributors — deliberate platform policy,
+    // no silent cascades anywhere in a multi-tenant model, and `TenantDbContext` names it where the
+    // contributors are applied.
+    //
+    // So this declaration expresses INTENT and does not take effect. It is kept because the intent is real
+    // and a reader should see it; the removal that actually happens is EXPLICIT, in the repository, and the
+    // handler orders it.
+    //
+    // Believing this line cost two shipped defects (FP-013): payroll recalculation and journal-draft
+    // update both failed against a real database on orphans nothing deleted.
     builder.HasMany(calendar => calendar.Holidays)
       .WithOne()
       .HasForeignKey(holiday => holiday.WorkingCalendarId)
@@ -84,6 +103,10 @@ public sealed class CalendarHolidayConfiguration : IEntityTypeConfiguration<Cale
 
     builder.ToTable("AttendanceCalendarHolidays", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(holiday => holiday.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(holiday => holiday.Id).ValueGeneratedNever();
 
     builder.Property(holiday => holiday.TenantId).IsRequired();
     builder.Property(holiday => holiday.WorkingCalendarId).IsRequired();
@@ -109,6 +132,10 @@ public sealed class AttendancePeriodConfiguration : IEntityTypeConfiguration<Att
 
     builder.ToTable("AttendancePeriods", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(period => period.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(period => period.Id).ValueGeneratedNever();
 
     builder.Property(period => period.TenantId).IsRequired();
     builder.Property(period => period.CompanyId).IsRequired();
@@ -165,6 +192,10 @@ public sealed class AttendanceRecordConfiguration : IEntityTypeConfiguration<Att
 
     builder.ToTable("AttendanceRecords", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(record => record.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(record => record.Id).ValueGeneratedNever();
 
     builder.Property(record => record.TenantId).IsRequired();
     builder.Property(record => record.CompanyId).IsRequired();
@@ -237,6 +268,10 @@ public sealed class LeaveTypeConfiguration : IEntityTypeConfiguration<LeaveType>
 
     builder.ToTable("AttendanceLeaveTypes", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(leaveType => leaveType.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(leaveType => leaveType.Id).ValueGeneratedNever();
 
     builder.Property(leaveType => leaveType.TenantId).IsRequired();
     builder.Property(leaveType => leaveType.CompanyId).IsRequired();
@@ -294,6 +329,10 @@ public sealed class LeaveBalanceConfiguration : IEntityTypeConfiguration<LeaveBa
 
     builder.ToTable("AttendanceLeaveBalances", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(balance => balance.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(balance => balance.Id).ValueGeneratedNever();
 
     builder.Property(balance => balance.TenantId).IsRequired();
     builder.Property(balance => balance.CompanyId).IsRequired();
@@ -332,6 +371,10 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
 
     builder.ToTable("AttendanceLeaveRequests", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(request => request.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(request => request.Id).ValueGeneratedNever();
 
     builder.Property(request => request.TenantId).IsRequired();
     builder.Property(request => request.CompanyId).IsRequired();
@@ -360,7 +403,8 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
     builder.Property(request => request.DecisionNote).HasMaxLength(LeaveRequest.DecisionNoteMaximumLength);
 
     // Nullable, and the null is meaningful: a root-fallback decision has no approver EMPLOYEE because the
-    // holder is authenticated as a user and no identity-to-employee mapping exists (`OD-ATT-0013`).
+    // holder is authenticated as a user and this path does not resolve them to an employee. The mapping
+    // exists (`UserEmployeeLink`, `ADR-030`, T-082); nothing here reads it (`OD-ATT-0013`).
     builder.Property(request => request.ApproverEmployeeId);
 
     builder.Property(request => request.CreatedUtc).IsRequired();

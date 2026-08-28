@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.Payroll.Domain.Compensation;
 using SSAS.Payroll.Domain.Elements;
 
@@ -11,7 +12,16 @@ public sealed record PayrollEmployeeInput(
   Guid EmployeeId,
   DateTimeOffset HiredUtc,
   DateTimeOffset? TerminatedUtc,
-  EmployeeCompensation Compensation,
+  // ---- NULLABLE SINCE T-110, AND THE NULL IS THE FEATURE.
+  //
+  // **An employee with a one-off payment and no compensation record was omitted from every run** — no line,
+  // no error, no payslip. That is the owner's case: a contractor paid once for a job has no monthly, daily
+  // or hourly rate, so no compensation record exists to find.
+  //
+  // A null here means exactly that: no base salary, no assignments, no proration, no absence deduction —
+  // **only whatever one-off instructions name this employee.** Every element below produces zero for such an
+  // employee and the zero-line rule then suppresses them, so the null needs no special path.
+  EmployeeCompensation? Compensation,
 
   // ---- THE ATTENDANCE INPUT (FP-013, REQ-ATT-0022) — PLAIN VALUES, NOT THE CONTRACT TYPE.
   //
@@ -25,7 +35,37 @@ public sealed record PayrollEmployeeInput(
   // Both DEFAULT TO EMPTY. An employee with no attendance is the ordinary case for a company that configures
   // no attendance-driven elements, and it must not require every existing call site to say so.
   IReadOnlyDictionary<string, decimal>? OvertimeQuantityByTier = null,
-  decimal UnpaidAbsenceQuantity = 0m);
+
+  // ---- THE UNITS, STATED ONCE AND ASSERTED BY TEST (T-107).
+  //
+  // **`UnpaidAbsenceQuantity` is DAYS. `OvertimeQuantityByTier` and `WorkedQuantity` are HOURS.**
+  //
+  // Two quantities from the SAME attendance record are consumed in DIFFERENT units, and before T-107 both
+  // units lived in prose comments and were asserted nowhere — no validation, no test, no schema constraint.
+  // An hourly rate multiplied by a day count is a payroll defect nobody would see, so
+  // `PayrollCalculatorTests` now asserts each unit through arithmetic that fails if the other is assumed.
+  decimal UnpaidAbsenceQuantity = 0m,
+
+  // HOURS. Read only by `SalaryType.Hourly`; `WorkedQuantity` had NO consumer at all before T-107, which is
+  // why its unit could be established here rather than inherited.
+  decimal WorkedQuantity = 0m,
+
+  // DAYS, and a COMPANY-AND-PERIOD fact rather than an employee one — what the company's calendar says this
+  // period contains, before anything about this employee. Read only by `SalaryType.Daily` (T-108).
+  int StandardWorkingDays = 0,
+
+  // ---- ONE-OFF PAY INSTRUCTIONS FOR THIS PERIOD (T-110).
+  //
+  // A PROJECTION rather than the aggregate, and deliberately: `OneOffPayment` carries
+  // `ConsumedByPayrollRunId`, and **consumption happens at APPROVAL, not here.** Passing the aggregate would
+  // put a field the calculator must never write inside the calculator's reach. It needs the id, the element
+  // and the amount, and nothing else.
+  IReadOnlyList<OneOffPaymentInput>? OneOffPayments = null);
+
+// ---- WHAT THE CALCULATOR NEEDS OF A ONE-OFF, AND NO MORE (T-110).
+//
+// The id travels so the caller can match the line back to the instruction it must consume on approval.
+public sealed record OneOffPaymentInput(Guid OneOffPaymentId, Guid PayElementId, decimal Amount);
 
 // ================================================================================================
 // THE CALCULATION ENGINE (OD-PAY-0007, OD-PAY-0008).
@@ -119,14 +159,69 @@ public static class PayrollCalculator
       // element's line amount and the base every percentage behaviour is computed from. Computing
       // percentages off the unrounded base would produce lines that do not agree with the base line the
       // employee can see — the payslip would be internally inconsistent while every number was defensible.
-      var baseAmount = RoundLine(employee.Compensation.BaseAmount * factor);
+      // ---- WHAT THE BASE AMOUNT MEANS DEPENDS ON THE SALARY TYPE (T-107, OD-PAY-0015).
+      //
+      // **The `Monthly` arm is the pre-T-107 expression VERBATIM**, so every existing calculation is
+      // unchanged by construction rather than by measurement — `SalaryType.Monthly` is `default`, so every
+      // record written before this change takes exactly the path it always took.
+      //
+      // **`Daily` and `Hourly` are NOT prorated, and that is the whole point.** Proration answers "how much
+      // of the period was this employee employed for"; a rate times a worked quantity has ALREADY answered
+      // it. Multiplying again pays a mid-month joiner a fraction of what they actually earned. `OD-PAY-0015`
+      // ruled proration for the monthly model and it must not silently extend to a model it was not about —
+      // which is the same reasoning `OvertimeHourly` already applies two screens below.
+      //
+      // A daily salary with no working days to price cannot be calculated, and the run refuses rather than
+      // paying zero. See `PayrollErrors.DailySalaryHasNoWorkingDays` for why the error names what was
+      // observed rather than which of its three causes occurred.
+      if (employee.Compensation?.SalaryType == SalaryType.Daily && employee.StandardWorkingDays <= 0)
+      {
+        return Result.Failure<IReadOnlyList<PayrollRunDraftLine>>(
+          PayrollErrors.DailySalaryHasNoWorkingDays);
+      }
+
+      // A ONE-OFF-ONLY EMPLOYEE HAS NO BASE. Not zero-because-something-went-wrong: they were never on a
+      // rate, so there is no amount for a period to prorate or a quantity to multiply.
+      var baseAmount = employee.Compensation is null ? 0m : RoundLine(employee.Compensation.SalaryType switch
+      {
+        SalaryType.Hourly => employee.Compensation.BaseAmount * employee.WorkedQuantity,
+
+        // ---- DAILY IS THE DAYS ACTUALLY WORKED, AND THE ELEMENT IS EXCLUDED BECAUSE OF IT (T-109).
+        //
+        // `working days - unpaid days` **IS** days actually worked. That is deliberate, and it is the only
+        // expression in this calculation that prices an absence in the SAME UNIT as the rate: a missed day
+        // costs one day at the employee's own rate, exactly.
+        //
+        // **So `UnpaidAbsenceDeduction` must not also fire, and it does not** — see the arm below. The
+        // absence has already been priced here; a second, cruder bite would charge it twice.
+        //
+        // ---- WHAT T-108 GOT WRONG, RECORDED BECAUSE THE ARITHMETIC LOOKED DEFENSIBLE.
+        //
+        // T-108 built this base AND kept the element, and the comment that stood here rejected
+        // *"rate x days actually worked"* by name while sitting above an expression computing exactly that.
+        // 22 working days, 3 unpaid, at 200: base 3800, deduction 3800/31 x 3 = 367.74, **net 3432.26 for
+        // nineteen days that cost 3800.** Every line was individually defensible.
+        //
+        // **And keeping the element for daily cannot be made correct.** To take exactly the unpaid days it
+        // would have to compute `rate x unpaid days` — this base's own expression, written a second time,
+        // inside a component that exists precisely because a MONTHLY salary cannot name a day. `DEC-L-080`.
+        //
+        // Clamped at zero: more unpaid days than the period holds is bad data, and a NEGATIVE base would
+        // flow into every percentage element and produce a payslip that looks arithmetically consistent
+        // while being nonsense.
+        SalaryType.Daily => employee.Compensation.BaseAmount * Math.Max(
+          0m, employee.StandardWorkingDays - employee.UnpaidAbsenceQuantity),
+
+        // MONTHLY AND `default` TAKE THE SAME ARM, AND IT IS THE PRE-T-107 EXPRESSION VERBATIM.
+        _ => employee.Compensation.BaseAmount * factor
+      });
 
       var sequence = 0;
       var grossToDate = 0m;
 
       foreach (var element in ordered)
       {
-        var assignment = employee.Compensation.Assignments
+        var assignment = employee.Compensation?.Assignments
           .FirstOrDefault(a => a.PayElementId == element.Id);
 
         // ---- BASE SALARY NEEDS NO ASSIGNMENT; EVERYTHING ELSE DOES.
@@ -192,8 +287,31 @@ public static class PayrollCalculator
           // The amount is POSITIVE like every other amount in this module; the element's `Kind` is what makes
           // it deduct. A negative here would encode the distinction as a sign, which `PayElementKind`'s own
           // comment refuses.
+          //
+          // ---- IT IS MONTHLY-ONLY (T-109). THE OTHER TWO ARE EXCLUDED FOR DIFFERENT REASONS.
+          //
+          // **HOURLY** (T-107, owner-ruled): an hourly employee is paid only for the time they attend, so
+          // the worked quantity has already accounted for the absence. And the divisor here is the period's
+          // CALENDAR days, which against an hourly rate is not merely redundant but meaningless.
+          //
+          // **DAILY** (T-109): the base is `working days - unpaid days`, which prices the absence in the
+          // same unit as the rate — one missed day, one day's rate, exactly. This element would take a
+          // second and cruder bite. T-108 applied it to daily and over-deducted by its whole amount.
+          //
+          // **The reasons differ and neither implies the other.** Hourly is excluded because attendance
+          // already IS the pay; daily is excluded because its base already priced the absence.
+          //
+          // **MONTHLY keeps it unchanged**, because a monthly amount cannot name a day and this is the only
+          // way to express one. It is an approximation — `OD-ATT-0015` ruled the calendar-day divisor, and
+          // T-068 records that it under-deducts a part-timer — but it is the only mechanism a monthly
+          // salary has.
+          //
+          // Zero rather than "no line": the element is exempt from requiring an assignment, so a company
+          // that configures it gets a zero contribution which the zero-line rule below then suppresses.
           PayElementBehaviour.UnpaidAbsenceDeduction =>
-            baseAmount / periodDays * employee.UnpaidAbsenceQuantity,
+            employee.Compensation?.SalaryType is SalaryType.Monthly
+              ? baseAmount / periodDays * employee.UnpaidAbsenceQuantity
+              : 0m,
 
           _ => 0m
         };
@@ -219,6 +337,40 @@ public static class PayrollCalculator
           grossToDate += amount;
         }
       }
+
+      // ---- ONE-OFF PAY INSTRUCTIONS, APPENDED AFTER THE ELEMENTS (T-110).
+      //
+      // Each names a `PayElement` for its KIND and its GL ACCOUNT; the instruction supplies the amount. That
+      // is why a one-off needs no new posting path — it produces an ordinary line that posts the ordinary
+      // way.
+      //
+      // ---- IT REFUSES AN ELEMENT THE RUN IS NOT PRICING, RATHER THAN DROPPING THE LINE.
+      //
+      // `ordered` excludes inactive elements and `NetPayPayable`. A one-off naming one of those would
+      // otherwise vanish silently — **an instruction somebody wrote, a person expecting money, and no line
+      // and no error anywhere.** That is the shape of the defect this whole task exists to close, and
+      // reproducing it inside the fix would be worth catching once.
+      //
+      // ---- AND THEY DO NOT FEED `grossToDate`, WHICH IS A CHOICE AND NOT AN OVERSIGHT.
+      //
+      // `PercentageOfGrossToDate` accumulates in element order, and these are appended after every element
+      // has been computed. Feeding them in would make the result depend on where in that order a one-off is
+      // considered — and nothing has ruled where that is. **Stated here so the next reader meets a decision
+      // rather than a behaviour**; if a one-off should raise a percentage-of-gross deduction, that is a
+      // ruling and it changes this line.
+      foreach (var oneOff in employee.OneOffPayments ?? [])
+      {
+        var element = ordered.FirstOrDefault(candidate => candidate.Id == oneOff.PayElementId);
+        if (element is null)
+        {
+          return Result.Failure<IReadOnlyList<PayrollRunDraftLine>>(
+            PayrollErrors.OneOffPaymentElementNotPayable);
+        }
+
+        lines.Add(new PayrollRunDraftLine(
+          Guid.NewGuid(), payrollRunId, employee.EmployeeId, element.Id, element.Kind,
+          RoundLine(oneOff.Amount), sequence++, element.GlAccountId));
+      }
     }
 
     return Result.Success<IReadOnlyList<PayrollRunDraftLine>>(lines);
@@ -229,9 +381,15 @@ public static class PayrollCalculator
   //
   // Ordinal comparison, matching how `AttendanceSummaryService` groups them. A culture-sensitive lookup
   // would make the same tier label match or not depending on the server's locale.
+  //
+  // **The element's tier is normalized HERE as well as on the way in** (`OvertimeTierKey`, T-131). Both
+  // write points already normalize, so this is redundant for anything stored since — **it is what makes
+  // rows written BEFORE T-131 match, without a data migration.** Ordinal stays: normalizing produces the
+  // key, and the comparison of two keys must remain locale-independent.
   private static decimal OvertimeQuantity(PayrollEmployeeInput employee, PayElement element)
   {
-    if (element.OvertimeTier is not { } tier || employee.OvertimeQuantityByTier is not { } quantities)
+    if (OvertimeTierKey.Normalize(element.OvertimeTier) is not { } tier ||
+      employee.OvertimeQuantityByTier is not { } quantities)
     {
       return 0m;
     }

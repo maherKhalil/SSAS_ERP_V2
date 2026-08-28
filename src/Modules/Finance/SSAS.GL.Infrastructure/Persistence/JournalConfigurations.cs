@@ -20,6 +20,14 @@ public sealed class JournalDraftConfiguration : IEntityTypeConfiguration<Journal
 
     builder.HasKey(draft => draft.Id);
 
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(draft => draft.Id).ValueGeneratedNever();
+
     builder.Property(draft => draft.TenantId).IsRequired();
     builder.Property(draft => draft.CompanyId).IsRequired();
     builder.Property(draft => draft.EntryDateUtc).IsRequired();
@@ -40,6 +48,21 @@ public sealed class JournalDraftConfiguration : IEntityTypeConfiguration<Journal
 
     builder.Ignore(draft => draft.DomainEvents);
 
+    // ================================================================================================
+    // THE CONFIGURED CASCADE BELOW IS OVERRIDDEN BY THE PLATFORM. READ BEFORE RELYING ON IT.
+    // ================================================================================================
+    //
+    // `PersistenceDbContext.OnModelCreating` ends by setting EVERY foreign key in the composed model to
+    // `DeleteBehavior.Restrict`, and it runs AFTER the module contributors — deliberate platform policy,
+    // no silent cascades anywhere in a multi-tenant model, and `TenantDbContext` names it where the
+    // contributors are applied.
+    //
+    // So this declaration expresses INTENT and does not take effect. It is kept because the intent is real
+    // and a reader should see it; the removal that actually happens is EXPLICIT, in the repository, and the
+    // handler orders it.
+    //
+    // Believing this line cost two shipped defects (FP-013): payroll recalculation and journal-draft
+    // update both failed against a real database on orphans nothing deleted.
     builder.HasMany(draft => draft.Lines)
       .WithOne()
       .HasForeignKey(line => line.JournalDraftId)
@@ -68,6 +91,14 @@ public sealed class JournalDraftLineConfiguration : IEntityTypeConfiguration<Jou
     });
 
     builder.HasKey(line => line.Id);
+
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(line => line.Id).ValueGeneratedNever();
 
     builder.Property(line => line.TenantId).IsRequired();
     builder.Property(line => line.JournalDraftId).IsRequired();
@@ -112,6 +143,14 @@ public sealed class JournalEntryConfiguration : IEntityTypeConfiguration<Journal
     builder.ToTable("GlJournalEntries", GlPersistenceConstants.TenantSchema);
 
     builder.HasKey(entry => entry.Id);
+
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(entry => entry.Id).ValueGeneratedNever();
 
     builder.Property(entry => entry.TenantId).IsRequired();
     builder.Property(entry => entry.CompanyId).IsRequired();
@@ -191,6 +230,14 @@ public sealed class JournalLineConfiguration : IEntityTypeConfiguration<JournalL
     });
 
     builder.HasKey(line => line.Id);
+
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(line => line.Id).ValueGeneratedNever();
 
     builder.Property(line => line.TenantId).IsRequired();
     builder.Property(line => line.JournalEntryId).IsRequired();

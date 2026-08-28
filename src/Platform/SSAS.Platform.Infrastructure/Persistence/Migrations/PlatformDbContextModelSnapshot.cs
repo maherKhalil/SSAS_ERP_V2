@@ -2325,6 +2325,51 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantUserRoleAssignments", "platform");
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.TenantUsers.UserEmployeeLink", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("UserEmployeeLinkId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("TenantUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_UserEmployeeLink_TenantId_EmployeeId");
+
+                    b.HasIndex("TenantId", "TenantUserId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_UserEmployeeLink_TenantId_TenantUserId");
+
+                    b.ToTable("UserEmployeeLink", "platform");
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Tenants.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2820,6 +2865,16 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
 
                     b.HasOne("SSAS.Platform.Domain.TenantUsers.TenantUser", null)
                         .WithMany("RoleAssignments")
+                        .HasForeignKey("TenantId", "TenantUserId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.TenantUsers.UserEmployeeLink", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.TenantUsers.TenantUser", null)
+                        .WithMany()
                         .HasForeignKey("TenantId", "TenantUserId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)

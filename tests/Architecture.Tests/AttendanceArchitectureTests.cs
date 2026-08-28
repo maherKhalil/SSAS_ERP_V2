@@ -273,18 +273,42 @@ public sealed class AttendanceArchitectureTests
   }
 
   // ================================================================================================
-  // NO ViewOwn PERMISSION EXISTS (AC-ATT-0032, OD-ATT-0013).
+  // THE SELF-SERVICE PERMISSIONS ARE EXACTLY TWO (AC-ATT-0032, OD-ATT-0013).
   // ================================================================================================
   //
-  // Self-service is deferred because it depends on a mapping from the authenticated identity to an employee
-  // record, and **this build does not assert such a mapping exists** — verified, not assumed.
+  // ---- WHAT THIS GUARD USED TO ASSERT, AND WHY IT DID NOT SIMPLY GET DELETED (T-089).
   //
-  // `PayrollPermissionNames` recorded the same refusal: *"Adding a `Payroll.Payslips.ViewOwn` on an
-  // unverified assumption is exactly the shape of the FP-011 near-miss."* This is the third consecutive
-  // feature shaped by that missing input, so the absence is asserted rather than merely intended.
+  // It asserted that NO permission name contained `Own`, `Self` or `Mine`. That absence was correct for as
+  // long as self-service was deferred — first because the identity-to-employee mapping did not exist, then,
+  // after T-082 built it, because FP-015's endpoint did not.
+  //
+  // **FP-015 has now landed, so the absence is false. The question the guard answers is not.** It was never
+  // really *"is there a self permission"*; it was *"has a self-service surface appeared without a person
+  // deciding its shape"*. **An absence check answers that only until the first one is added, and then it is
+  // deleted and answers nothing ever again.** An exact inventory keeps answering it: the THIRD one still
+  // needs a person, exactly as the first two did.
+  //
+  // `DEC-L-072`, applied on the day the door opened — the same move T-088 made for the placement directory's
+  // injection set, and for the same reason.
+  //
+  // ---- AND WHY THE INVENTORY IS TWO RATHER THAN ONE.
+  //
+  // The administrative plane permissions records and leave separately (`Attendance.Records.View` versus
+  // `Attendance.Leave.View`) because a timesheet and a leave history disclose different things. **A single
+  // `Attendance.ViewOwn` would be a WIDENING wearing the costume of a simplification:** granting one's own
+  // attendance would silently grant one's own leave.
+  //
+  // **Pinning both names is what makes a later collapse into one a visible decision** rather than a
+  // simplification nobody reviewed. `TS-SS-0013` asserts the runtime half — that neither substitutes for
+  // the other at an endpoint — and this asserts the catalog half.
+  //
+  // **The durable handle is `AC-ATT-0032`, not this method name.** `AC-` identifiers survive refactors and
+  // are what the traceability matrix and specification prose cite; a test name changes whenever the thing
+  // it describes does, which is exactly what happened here, twice.
   [Fact]
+  [Trait("Criterion", "AC-ATT-0032")]
   [Trait("Decision", "OD-ATT-0013")]
-  public void No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved()
+  public void The_self_service_permissions_are_exactly_the_two_that_were_decided()
   {
     var constants = typeof(SSAS.Attendance.Application.Permissions.AttendancePermissionNames)
       .GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -292,10 +316,17 @@ public sealed class AttendanceArchitectureTests
       .Select(field => (string)field.GetRawConstantValue()!)
       .ToArray();
 
-    Assert.DoesNotContain(constants, name =>
-      name.Contains("Own", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("Self", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("Mine", StringComparison.OrdinalIgnoreCase));
+    string[] expectedSelfService = ["Attendance.Leave.ViewOwn", "Attendance.Records.ViewOwn"];
+
+    var actualSelfService = constants
+      .Where(name =>
+        name.Contains("Own", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Self", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Mine", StringComparison.OrdinalIgnoreCase))
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Equal(expectedSelfService, actualSelfService);
 
     // And the catalog contributor defines exactly the constants that exist — no more, no fewer. A
     // permission an endpoint requires but the catalog omits refuses every caller, which is FP-006P's

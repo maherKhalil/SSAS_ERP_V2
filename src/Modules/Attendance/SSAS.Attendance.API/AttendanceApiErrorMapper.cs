@@ -34,6 +34,11 @@ namespace SSAS.Attendance.API;
 public static class AttendanceApiErrorMapper
 {
   public static readonly ApiError NotFound = new(404, "attendance.not_found");
+
+  // FP-015 (T-089), Payroll's precedent exactly. 404 because the route exists, the caller is authenticated
+  // and permitted, and what is absent is the SUBJECT of the read. A distinct code from `attendance.not_found`,
+  // which answers about a thing the caller named; this one answers about the caller.
+  public static readonly ApiError NoLinkedEmployee = new(404, "attendance.no_linked_employee");
   public static readonly ApiError Conflict = new(409, "attendance.conflict");
   public static readonly ApiError PeriodClosed = new(409, "attendance.period_closed");
   public static readonly ApiError PeriodStateInvalid = new(409, "attendance.period_state_invalid");
@@ -140,6 +145,7 @@ public static class AttendanceApiErrorMapper
       "Attendance.BranchScopeDenied" => BranchScopeDenied,
       "Attendance.ReadPermissionDenied" => ApiErrors.Forbidden,
       "Attendance.WritePermissionDenied" => ApiErrors.Forbidden,
+      "Attendance.NoLinkedEmployee" => NoLinkedEmployee,
       "Attendance.InvalidActor" => ApiErrors.Forbidden,
 
       // 422 rather than 409: the request is well-formed and the state is not conflicting — the company is

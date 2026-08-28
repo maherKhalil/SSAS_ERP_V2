@@ -1,4 +1,4 @@
-# FP-013 — Acceptance criteria (proposed)
+# FP-013 — Acceptance criteria
 
 > **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
 > [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
@@ -71,7 +71,7 @@ Scope column: `A` attendance, `B` leave, `*` both.
 | `AC-ATT-0029` | Authority is resolved **live** at scope construction; a caller whose access was revoked after their session began is refused | `*` | `REQ-ATT-0005` |
 | `AC-ATT-0030` | The read scope cannot be constructed outside its factory — private constructor, internal factory, asserted by an architecture test | `*` | `REQ-ATT-0005` |
 | `AC-ATT-0031` | **RULED: THE SPLIT.** A caller sees only their authorized, active branches on record reads, resolved live from `ITenantBranchAccessResolver`; **and the Payroll summary contract applies no branch predicate at all** — company-complete by design, guard-asserted | `*` | `REQ-ATT-0024` |
-| `AC-ATT-0032` | **No `ViewOwn` permission exists in the catalog**, because no identity→employee mapping exists to resolve its subject | `*` | `REQ-ATT-0023` |
+| `AC-ATT-0032` | **The module declares exactly two self-service permissions**, `Attendance.Records.ViewOwn` and `Attendance.Leave.ViewOwn`. Neither grants the other, and neither is granted by any administrative Attendance permission. **A third self-service permission requires a recorded decision.** *(Amended T-102. It read "no `ViewOwn` permission exists" — an absence criterion, which answers its question exactly once and then has to be deleted. An exact inventory keeps answering it.)* | `*` | `REQ-ATT-0023` |
 
 ## Persistence and platform
 
@@ -117,5 +117,5 @@ code will otherwise handle by accident.
 **Close preconditions.** Whether close refuses when employees have no records, or when leave requests are
 pending, is unruled. `AC-ATT-0013` covers only the mechanics.
 
-**Anything self-service.** Blocked on the missing identity→employee mapping. `AC-ATT-0032` asserts the
-*absence* rather than the behaviour, which is the only honest thing to assert today.
+**Anything self-service.** Delivered under FP-015 in T-089: `Attendance.Records.ViewOwn` and `Attendance.Leave.ViewOwn`, read by `GET /me/records` and `GET /me/leave-requests`. `AC-ATT-0032` is
+now an exact inventory of those two rather than an assertion of absence.

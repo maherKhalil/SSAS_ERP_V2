@@ -144,6 +144,7 @@ public sealed class CalculatePayrollRunCommandHandler(
   IPayrollPeriodRepository periods,
   IPayElementRepository elements,
   IEmployeeCompensationRepository compensation,
+  IOneOffPaymentRepository oneOffPayments,
   IEmployeeRoster roster,
   IAttendanceSummary attendanceSummary,
   IPayrollScopeResolver scope,
@@ -182,20 +183,46 @@ public sealed class CalculatePayrollRunCommandHandler(
     var byEmployee = history.GroupBy(record => record.EmployeeId)
       .ToDictionary(group => group.Key, group => group.ToList());
 
+    // ---- ONE-OFF PAY INSTRUCTIONS FOR THIS PERIOD (T-110). UNCONSUMED ONLY.
+    //
+    // Loaded before the loop and grouped, because an employee may hold several and the run must not query
+    // per employee.
+    var oneOffs = await oneOffPayments.GetUnconsumedForPeriodAsync(
+      run.CompanyId, run.PayrollPeriodId, cancellationToken);
+    var oneOffsByEmployee = oneOffs.GroupBy(payment => payment.EmployeeId)
+      .ToDictionary(
+        group => group.Key,
+        group => (IReadOnlyList<OneOffPaymentInput>)[.. group.Select(payment =>
+          new OneOffPaymentInput(payment.Id, payment.PayElementId, payment.Amount))]);
+
     var inputs = new List<PayrollEmployeeInput>();
     foreach (var record in employment)
     {
-      if (!byEmployee.TryGetValue(record.EmployeeId, out var employeeHistory))
+      oneOffsByEmployee.TryGetValue(record.EmployeeId, out var employeeOneOffs);
+
+      // ---- THE RECORD IN FORCE ON THE PAY DATE, OR NONE (`OD-PAY-0003`).
+      //
+      // Derived, never a stored "current" flag.
+      EmployeeCompensation? inForce = null;
+      if (byEmployee.TryGetValue(record.EmployeeId, out var employeeHistory))
       {
-        // An employee with no compensation on file is SKIPPED, not defaulted to zero. A zero-pay line would
-        // look like a decision somebody made; an absence is the truth, and it surfaces as a missing payslip
-        // rather than as a payslip for nothing.
-        continue;
+        inForce = EmployeeCompensation.InForceOn(employeeHistory, period.PayDateUtc);
       }
 
-      // The record IN FORCE on the pay date, derived — never a stored "current" flag (`OD-PAY-0003`).
-      var inForce = EmployeeCompensation.InForceOn(employeeHistory, period.PayDateUtc);
-      if (inForce is null)
+      // ---- AN EMPLOYEE WITH NEITHER IS SKIPPED. ONE WITH A ONE-OFF IS NOT (T-110).
+      //
+      // The original rule was right and was right about ONE case: *"an employee with no compensation on file
+      // is SKIPPED, not defaulted to zero — a zero-pay line would look like a decision somebody made, and an
+      // absence is the truth."* That holds for a salaried employee whose record is missing.
+      //
+      // **It was silently wrong for someone who was never meant to have one.** A contractor paid once for a
+      // job has no monthly, daily or hourly rate, so no compensation record exists to find, so they were
+      // omitted from every run — no line, no error, no payslip. `OD-SS-0003` says such a person IS an
+      // employee, so the roster carries them and only the compensation lookup failed them.
+      //
+      // **Now the two are distinguishable:** no compensation AND no one-off is still an absence and still
+      // skipped; no compensation WITH a one-off is a person to be paid.
+      if (inForce is null && (employeeOneOffs is null || employeeOneOffs.Count == 0))
       {
         continue;
       }
@@ -222,6 +249,16 @@ public sealed class CalculatePayrollRunCommandHandler(
       var attendance = await attendanceSummary.GetForPeriodAsync(
         run.CompanyId, record.EmployeeId, period.PayDateUtc, cancellationToken);
 
+      // ---- CONTRADICTORY DATA REFUSES THE RUN BEFORE ANY QUANTITY IS READ (T-121).
+      //
+      // Placed before the four reads below, because every one of them would otherwise turn a contradiction
+      // into a number — zero, in each case, which is indistinguishable from an employee who simply did
+      // nothing. **A refusal names the employee; a zero does not.**
+      if (attendance.Status == AttendanceSummaryStatus.EmploymentDataContradictory)
+      {
+        return Result.Failure(PayrollErrors.AttendanceContradictsEmployment);
+      }
+
       var overtimeByTier = attendance.Status == AttendanceSummaryStatus.Available
         ? attendance.OvertimeQuantityByTier
         : null;
@@ -230,9 +267,55 @@ public sealed class CalculatePayrollRunCommandHandler(
         ? attendance.UnpaidAbsenceQuantity
         : 0m;
 
+      // ---- WORKED HOURS (T-107). Read by `SalaryType.Hourly` and by nothing else.
+      //
+      // Absent attendance yields ZERO on the same rule as the two above, and for an hourly employee zero
+      // hours means zero base pay — which is the correct answer, not a failure. An hourly employee with no
+      // attendance recorded worked no hours; inventing a fallback would pay them for time nobody reported.
+      var workedQuantity = attendance.Status == AttendanceSummaryStatus.Available
+        ? attendance.WorkedQuantity
+        : 0m;
+
+      // ---- THE WORKING DAYS THIS EMPLOYEE WAS EMPLOYED FOR (T-115). Read by `SalaryType.Daily` alone.
+      //
+      // **Bounded to the employment window, not the period.** A daily employee is paid for working days they
+      // were EMPLOYED for: before T-115 this was the period's total, so a joiner hired on the 16th of a
+      // 21-working-day month was paid all 21 — and a leaver was paid through the end of the period after
+      // termination. The daily arm consults no dates itself, so the clamp has to happen here.
+      //
+      // The window is the same one `PayrollCalculator.ProrationFactor` computes for the monthly path:
+      // start at the later of hire and period start, end at the earlier of termination and period end.
+      //
+      // ---- AND IT STAYS ON THE `Available` BRANCH, WHICH IS LOAD-BEARING RATHER THAN TIDY.
+      //
+      // `GetWorkingDaysAsync` reads the COMPANY's calendar. It knows nothing about whether this employee's
+      // attendance arrived, and would happily answer 21 for someone whose summary was unavailable — while
+      // `UnpaidAbsenceQuantity` stayed 0. **A daily employee would go from REFUSED to PAID IN FULL with no
+      // absence deduction, silently**, which is the same failure class T-115 exists to remove.
+      //
+      // Zero here keeps the refusal: `PayrollCalculator` fails the run with
+      // `PayrollErrors.DailySalaryHasNoWorkingDays` rather than paying nobody's idea of a number. **A
+      // daily-salaried employee reported as zero days is VISIBLY wrong on a payslip; any other placeholder
+      // is invisibly wrong.** That reasoning was written on `AttendanceSummaryResult.StandardWorkingDays`,
+      // which T-115 removed, so it lives here now — the behaviour outlived the field it was written on.
+      var employedFrom = record.EmploymentDateUtc.ToUniversalTime().Date > period.StartUtc.Date
+        ? record.EmploymentDateUtc.ToUniversalTime().Date
+        : period.StartUtc.Date;
+
+      var employedTo = record.TerminationDateUtc is { } terminated
+        && terminated.ToUniversalTime().Date < period.EndUtc.Date
+        ? terminated.ToUniversalTime().Date
+        : period.EndUtc.Date;
+
+      var standardWorkingDays = attendance.Status == AttendanceSummaryStatus.Available
+        ? await attendanceSummary.GetWorkingDaysAsync(
+            run.CompanyId, DateOnly.FromDateTime(employedFrom), DateOnly.FromDateTime(employedTo),
+            cancellationToken)
+        : 0;
+
       inputs.Add(new PayrollEmployeeInput(
         record.EmployeeId, record.EmploymentDateUtc, record.TerminationDateUtc, inForce,
-        overtimeByTier, unpaidAbsence));
+        overtimeByTier, unpaidAbsence, workedQuantity, standardWorkingDays, employeeOneOffs));
     }
 
     var active = await elements.GetActiveForCompanyAsync(run.CompanyId, cancellationToken);
@@ -242,6 +325,19 @@ public sealed class CalculatePayrollRunCommandHandler(
     {
       return Result.Failure(calculated.Error);
     }
+
+    // ---- THE PREVIOUS DRAFT LINES ARE DELETED EXPLICITLY, BEFORE THE NEW SET REPLACES THEM.
+    //
+    // `SetCalculation` clears the collection, and the platform forbids cascades: `PersistenceDbContext`
+    // sets EVERY foreign key to `Restrict` after the module contributors run. So an orphan is a row nothing
+    // deletes and a non-nullable foreign key EF cannot null — the save fails outright.
+    //
+    // **Recalculation was broken on main because of this**, on the ordinary path an operator takes when a
+    // preview is wrong: fix the element, calculate again.
+    //
+    // It runs before `SetCalculation` rather than after, because the fixer reacts to the severance the
+    // moment the collection is cleared.
+    await runs.RemoveDraftLinesAsync(run, cancellationToken);
 
     var set = run.SetCalculation(calculated.Value, currentUser.UserId);
     if (set.IsFailure)
@@ -263,6 +359,7 @@ public sealed class ApprovePayrollRunCommandHandler(
   IPayrollRunRepository runs,
   IPayrollPeriodRepository periods,
   IPayElementRepository elements,
+  IOneOffPaymentRepository oneOffPayments,
   IJournalPoster ledger,
   IAttendanceSummary attendanceSummary,
   IPayrollScopeResolver scope,
@@ -387,6 +484,34 @@ public sealed class ApprovePayrollRunCommandHandler(
     if (approved.IsFailure)
     {
       return approved;
+    }
+
+    // ---- APPROVAL IS WHAT CONSUMES A ONE-OFF PAY INSTRUCTION (T-110).
+    //
+    // **Not calculation.** `SetCalculation` refuses only `Approved` and `Posted`, so a draft may be
+    // recalculated any number of times or abandoned entirely — an instruction consumed there would be
+    // consumed by something that might never pay anybody. **Re-running before approval therefore re-includes
+    // it and produces the same line: idempotence for free, with no flag to reset.**
+    //
+    // Consumed in the SAME transaction as the approval. The `Approve` above and these writes commit
+    // together or not at all, so there is no window in which a run is approved and its instructions still
+    // look payable.
+    //
+    // ---- IT REFUSES RATHER THAN SKIPPING, AND THE AGGREGATE IS WHAT REFUSES.
+    //
+    // `MarkConsumedBy` fails if the instruction already names a run. Reaching that would mean this run's
+    // lines contain an instruction another run already paid, and continuing would pay it twice. Failing here
+    // aborts the approval with nothing written.
+    var payableOneOffs = await oneOffPayments.GetUnconsumedForPeriodAsync(
+      run.CompanyId, run.PayrollPeriodId, cancellationToken);
+
+    foreach (var payment in payableOneOffs)
+    {
+      var consumed = payment.MarkConsumedBy(run.Id, run.PayrollPeriodId);
+      if (consumed.IsFailure)
+      {
+        return consumed;
+      }
     }
 
     return await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -532,7 +657,13 @@ public sealed class PostPayrollRunCommandHandler(
 public sealed class ReversePayrollRunCommandHandler(
   IPayrollRunRepository runs,
   IJournalPoster ledger,
-  IPayrollScopeResolver scope)
+  IPayrollScopeResolver scope,
+  // ---- NEW IN T-112, AND ITS ABSENCE UNTIL NOW WAS THE TELL.
+  //
+  // This handler took no unit of work because it wrote nothing: it called the ledger and returned. **A
+  // command handler that persists nothing was the visible shape of the run never recording its own
+  // reversal**, and the comment below claimed a correction workflow that the database refused.
+  ITenantUnitOfWork unitOfWork)
 {
   public async Task<Result<Guid>> HandleAsync(
     ReversePayrollRunCommand command, CancellationToken cancellationToken = default)
@@ -570,13 +701,29 @@ public sealed class ReversePayrollRunCommandHandler(
         : Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal);
     }
 
-    // ---- THE RUN IS NOT MUTATED, AND THAT IS DELIBERATE.
+    // ---- THE RUN KEEPS ITS STATUS AND ITS JOURNAL, AND GAINS ONE FACT (T-112).
     //
-    // The run stays `Posted` and keeps naming its original journal. Marking it "reversed" would be a claim
-    // the ledger already makes better — GL derives reversal from the reversing entry's existence rather than
-    // writing a flag onto the original, because writing one would be mutating an append-only row. Payroll
-    // follows the same discipline: the correction is a NEW run for the same period, and the reversal makes
-    // the ledger truthful in the meantime.
-    return Result.Success(outcome.JournalEntryId!.Value);
+    // **This block used to write nothing**, reasoning that marking the run reversed would duplicate a claim
+    // GL makes better — and that reasoning was right for GL's purposes. It still is: `Status` stays
+    // `Posted`, `JournalEntryId` still names the original, and nothing here restates what the ledger holds.
+    //
+    // **What changed is that PAYROLL needs the fact for a purpose of its own.** One run per period is
+    // enforced by a unique index, and until T-112 that index could not tell a reversed period from a live
+    // one — so *"the correction is a NEW run for the same period"*, which this comment asserted, **was
+    // refused by the database from the day it was written.** `ExistsForPeriodAsync` matched any run in any
+    // state, and no second run for the period could ever be created.
+    //
+    // **A filtered unique index cannot read GL's tables**, so the fact is stamped here and the index filters
+    // on it. The correction really is a new run for the same period now.
+    var reversed = run.MarkReversed();
+    if (reversed.IsFailure)
+    {
+      return Result.Failure<Guid>(reversed.Error);
+    }
+
+    var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
+    return saved.IsFailure
+      ? Result.Failure<Guid>(saved.Error)
+      : Result.Success(outcome.JournalEntryId!.Value);
   }
 }

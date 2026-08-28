@@ -1,4 +1,4 @@
-# FP-014 — Proposed requirements
+# FP-014 — Requirements
 
 **Status: DRAFT — analysis only. Every identifier below is a PROPOSAL.**
 

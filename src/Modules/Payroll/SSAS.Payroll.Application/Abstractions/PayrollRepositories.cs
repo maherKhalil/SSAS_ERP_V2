@@ -30,6 +30,24 @@ public interface IPayElementRepository
   Task AddAsync(PayElement payElement, CancellationToken cancellationToken = default);
 }
 
+// ---- ONE-OFF PAY INSTRUCTIONS (T-110).
+//
+// Read by PERIOD rather than by pay date — see `OneOffPayment.PayrollPeriodId` for why a new construct does
+// not inherit the run's period/pay-date asymmetry.
+public interface IOneOffPaymentRepository
+{
+  // ---- UNCONSUMED ONLY, AND THE FILTER BELONGS HERE RATHER THAN IN THE HANDLER.
+  //
+  // A handler that loaded everything and filtered would be a second place the consumption rule is written,
+  // and the two would eventually disagree about what "already paid" means.
+  Task<IReadOnlyList<OneOffPayment>> GetUnconsumedForPeriodAsync(
+    Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default);
+
+  Task<OneOffPayment?> GetByIdAsync(Guid oneOffPaymentId, CancellationToken cancellationToken = default);
+
+  Task AddAsync(OneOffPayment payment, CancellationToken cancellationToken = default);
+}
+
 public interface IEmployeeCompensationRepository
 {
   // ---- THE WHOLE HISTORY, NOT "THE CURRENT ONE".
@@ -80,6 +98,28 @@ public interface IPayrollRunRepository
     Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default);
 
   Task AddAsync(PayrollRun run, CancellationToken cancellationToken = default);
+
+  // ================================================================================================
+  // RECALCULATION DELETES THE OLD DRAFT LINES EXPLICITLY, BECAUSE THE PLATFORM FORBIDS CASCADES.
+  // ================================================================================================
+  //
+  // `PayrollRunConfiguration` asks for `DeleteBehavior.Cascade` on this relationship and does not get it.
+  // `PersistenceDbContext.OnModelCreating` ends by setting EVERY foreign key in the composed model to
+  // `DeleteBehavior.Restrict`, and it runs AFTER the module contributors — deliberate platform policy, no
+  // silent cascades anywhere in a multi-tenant model, named by `TenantDbContext` where the contributors are
+  // applied.
+  //
+  // So `SetCalculation`'s `draftLines.Clear()` orphans rows the database will not delete and EF cannot null
+  // (the foreign key is non-nullable), and the save fails with "the association ... has been severed".
+  // **Recalculating a payroll run was broken on main**, and nothing saw it because nothing had ever
+  // recalculated a run loaded from a database.
+  //
+  // Explicit removal rather than an exception carved out of the platform's stance: visible at the call
+  // site, testable, and it leaves the foreign key `Restrict` — now truthfully so rather than as a
+  // configuration quietly overruled.
+  //
+  // The domain stays EF-ignorant. `PayrollRun` knows nothing about this; the handler orders it.
+  Task RemoveDraftLinesAsync(PayrollRun run, CancellationToken cancellationToken = default);
 
   // ---- THE THREE LOADERS ARE SEPARATE ON PURPOSE.
   //

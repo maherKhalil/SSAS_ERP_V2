@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Attendance.Contracts.Summaries;
 using SSAS.GL.Contracts.Posting;
@@ -131,6 +132,34 @@ public sealed class StubCompensationRepository : IEmployeeCompensationRepository
   }
 }
 
+// ---- ONE-OFF PAY INSTRUCTIONS (T-110).
+//
+// `GetUnconsumedForPeriodAsync` filters on the reference exactly as the real repository does, so a test that
+// approves a run and re-reads sees the same thing production would.
+public sealed class StubOneOffPaymentRepository : IOneOffPaymentRepository
+{
+  public List<OneOffPayment> Stored { get; } = [];
+
+  public void Reset() => Stored.Clear();
+
+  public Task<IReadOnlyList<OneOffPayment>> GetUnconsumedForPeriodAsync(
+    Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<OneOffPayment>>(
+      [.. Stored.Where(payment => payment.CompanyId == companyId
+        && payment.PayrollPeriodId == payrollPeriodId
+        && !payment.IsConsumed)]);
+
+  public Task<OneOffPayment?> GetByIdAsync(
+    Guid oneOffPaymentId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Stored.FirstOrDefault(payment => payment.Id == oneOffPaymentId));
+
+  public Task AddAsync(OneOffPayment payment, CancellationToken cancellationToken = default)
+  {
+    Stored.Add(payment);
+    return Task.CompletedTask;
+  }
+}
+
 public sealed class StubPayrollPeriodRepository : IPayrollPeriodRepository
 {
   public List<PayrollPeriod> Stored { get; } = [];
@@ -159,6 +188,15 @@ public sealed class StubPayrollPeriodRepository : IPayrollPeriodRepository
 
 public sealed class StubPayrollRunRepository : IPayrollRunRepository
 {
+  // ---- NOTHING TO DO HERE, AND THE EMPTINESS IS THE POINT.
+  //
+  // An in-memory stub has no change tracker, so it has no orphans for an explicit delete to remove. The
+  // defect this method exists for is a PERSISTENCE fact — a platform-wide `Restrict` overriding a module's
+  // configured cascade — and it is invisible to every stub by construction. That is why it took a real-SQL
+  // end-to-end test to find, and why this override can be honestly empty.
+  public Task RemoveDraftLinesAsync(PayrollRun run, CancellationToken cancellationToken = default) =>
+    Task.CompletedTask;
+
   public List<PayrollRun> Stored { get; } = [];
 
   public bool Exists { get; set; }
@@ -281,6 +319,16 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
     UnpaidAbsenceQuantity = 0m;
   }
 
+  // ---- WORKING DAYS (T-115). Configurable, defaulting to the fixtures' 21.
+  //
+  // A STUB answers what the test asks it to; the real service reads the company's calendar. Zero is the
+  // fail-closed answer, and a test that needs it sets it explicitly.
+  public int WorkingDays { get; set; } = 21;
+
+  public Task<int> GetWorkingDaysAsync(
+    Guid companyId, DateOnly fromDate, DateOnly toDate, CancellationToken cancellationToken = default) =>
+    Task.FromResult(toDate < fromDate ? 0 : WorkingDays);
+
   public Task<AttendanceSummaryResult> GetForPeriodAsync(
     Guid companyId, Guid employeeId, DateTimeOffset anyDateInPeriodUtc,
     CancellationToken cancellationToken = default) =>
@@ -290,7 +338,7 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
       WorkedQuantity: 0m,
       new Dictionary<string, decimal>(OvertimeByTier, StringComparer.Ordinal),
       PaidAbsenceQuantity: 0m,
-      UnpaidAbsenceQuantity));
+      UnpaidAbsenceQuantity: UnpaidAbsenceQuantity));
 
   public Task<AttendancePeriodInspection> InspectPeriodAsync(
     Guid companyId, DateTimeOffset anyDateInPeriodUtc, CancellationToken cancellationToken = default) =>
@@ -298,4 +346,41 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
       InspectionStatus, Guid.NewGuid(), "Stub period",
       anyDateInPeriodUtc, anyDateInPeriodUtc,
       IsClosed: InspectionStatus == AttendanceSummaryStatus.Available));
+}
+
+// ==================================================================================================
+// FP-015's TWO PLATFORM-AND-HR FACTS, IN ONE OBJECT (T-088).
+// ==================================================================================================
+//
+// One class implementing both contracts, because the two answers are a chain: a test that set the link
+// and forgot the company would produce a DANGLING LINK — a real state, but one that should arrive by
+// intent rather than by omission. Here it takes one deliberate line.
+//
+// Defaults are the ordinary case: the caller is linked to `PayrollApiTestHost.EmployeeId`, who works at
+// `CompanyA`. A test wanting the unmapped refusal sets `LinkedEmployee` to null and says so.
+public sealed class StubSelfServiceDirectory : IUserEmployeeResolver, IEmployeePlacementDirectory
+{
+  public Guid? LinkedEmployee { get; set; } = PayrollApiTestHost.EmployeeId;
+
+  public EmployeePlacement? EmployeePlacement { get; set; } =
+    new(PayrollApiTestHost.CompanyA, Guid.NewGuid());
+
+  public List<long> AskedForUser { get; } = [];
+
+  public Task<Guid?> ResolveEmployeeIdAsync(long tenantUserId, CancellationToken cancellationToken = default)
+  {
+    AskedForUser.Add(tenantUserId);
+    return Task.FromResult(LinkedEmployee);
+  }
+
+  public Task<EmployeePlacement?> GetPlacementAsync(
+    Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(employeeId == LinkedEmployee ? EmployeePlacement : null);
+
+  public void Reset()
+  {
+    LinkedEmployee = PayrollApiTestHost.EmployeeId;
+    EmployeePlacement = new(PayrollApiTestHost.CompanyA, Guid.NewGuid());
+    AskedForUser.Clear();
+  }
 }

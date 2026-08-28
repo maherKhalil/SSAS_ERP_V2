@@ -38,21 +38,71 @@ These came out of FP-006 through FP-009 at real cost, and they are not GL's to r
 
 `/api/gl/...`, consistent with `/api/hr/...`.
 
+> **The five `journal-drafts` rows below were added in T-098, and four of them document routes that were
+> already live.** `OD-GL-0007` ruled two aggregates and this document recorded that ruling in prose only —
+> *"a draft surface DOES exist"* — while the table stayed at nineteen rows and never gained the family.
+> The four write routes shipped from that sentence and went unspecified; the read was never built at all,
+> which is how `GL.Drafts.View` came to be catalogued and required by nothing.
+>
+> **A route table that omits four live routes asserts something false by omission**, so they are documented
+> after the fact rather than left out, and the omission is named here rather than buried in the addition.
+
 | Method | Route | Operation | Permission |
 |---|---|---|---|
-| `POST` | `/api/gl/journals` | Post a journal | `GL.Journals.Post` |
+| `POST` | `/api/gl/journal-drafts` | Create a draft | `GL.Drafts.Manage` |
+| `PUT` | `/api/gl/journal-drafts/{id}` | Replace a draft's header and lines | `GL.Drafts.Manage` |
+| `POST` | `/api/gl/journal-drafts/{id}/discard` | Discard a draft | `GL.Drafts.Manage` |
+| `POST` | `/api/gl/journal-drafts/{id}/posting` | Promote a draft into a journal | `GL.Journals.Post` |
+| `GET` | `/api/gl/journal-drafts` | Search drafts | `GL.Drafts.View` |
+| `GET` | `/api/gl/journal-drafts/{id}` | Read one draft with its lines | `GL.Drafts.View` |
 | `POST` | `/api/gl/journals/{id}/reversals` | Post a reversing journal | `GL.Journals.Reverse` |
 | `GET` | `/api/gl/journals` | Search journals | `GL.Journals.View` |
 | `GET` | `/api/gl/journals/{id}` | Read one journal with its lines | `GL.Journals.View` |
-| `POST` | `/api/gl/accounts` | Create an account | `GL.Accounts.Manage` |
-| `PUT` | `/api/gl/accounts/{id}` | Update an account | `GL.Accounts.Manage` |
-| `POST` | `/api/gl/accounts/{id}/deactivation` | Deactivate an account | `GL.Accounts.Manage` |
+| `POST` | `/api/gl/accounts` | Create an account | `GL.Accounts.Create` |
+| `PUT` | `/api/gl/accounts/{id}` | Update an account | `GL.Accounts.Update` |
+| `POST` | `/api/gl/accounts/{id}/deactivation` | Deactivate an account | `GL.Accounts.Deactivate` |
+| `POST` | `/api/gl/accounts/{id}/activation` | Reactivate an account | `GL.Accounts.Deactivate` |
 | `GET` | `/api/gl/accounts` | Search the chart | `GL.Accounts.View` |
+| `GET` | `/api/gl/accounts/{id}` | Read one account | `GL.Accounts.View` |
 | `POST` | `/api/gl/fiscal-years` | Define a year and its periods | `GL.Periods.Manage` |
-| `POST` | `/api/gl/fiscal-periods/{id}/closure` | Close a period | `GL.Periods.Manage` |
+| `POST` | `/api/gl/fiscal-periods/{id}/closure` | Close a period | `GL.Periods.Close` |
+| `POST` | `/api/gl/fiscal-periods/{id}/reopening` | Reopen a period | `GL.Periods.Close` |
 | `GET` | `/api/gl/fiscal-periods` | Read the calendar | `GL.Periods.View` |
 | `GET` | `/api/gl/reports/trial-balance` | Trial balance | see `OD-GL` note below |
 | `GET` | `/api/gl/accounts/{id}/balance` | Balance enquiry | see note |
+
+> ---- ⚠ CORRECTED 2026-08-28 (T-136). THIS TABLE HAD DISAGREED WITH THE CODE SINCE THE ROUTES SHIPPED.
+>
+> **Five rows were wrong and three were missing**, and none of it was detectable by anything that runs:
+>
+> - **`GL.Accounts.Manage` never existed.** Three rows named it. The code has `GL.Accounts.Create`,
+>   `GL.Accounts.Update` and `GL.Accounts.Deactivate` — **three grants documented as one that was never
+>   declared.**
+> - **`POST /api/gl/journals` does not exist.** A journal is posted by posting a DRAFT, at
+>   `POST /api/gl/journal-drafts/{id}/posting`, which has its own row. The phantom row is removed.
+> - **Closing a period is `GL.Periods.Close`, not `GL.Periods.Manage`.** `Manage` defines a fiscal year;
+>   closing carries its own grant.
+> - **`GET /accounts/{id}`, `POST /accounts/{id}/activation` and `POST /fiscal-periods/{id}/reopening` were
+>   live and absent here** — and the two undo routes made this document say that deactivating an account and
+>   closing a period are one-way.
+>
+> **Reactivation carries `GL.Accounts.Deactivate` and reopening carries `GL.Periods.Close` deliberately:**
+> one grant governs a state transition in both directions, which is the same shape as Attendance's
+> `ClosePeriods` governing close and reopen. **A separate reactivate grant would let someone undo a decision
+> they could not make.**
+>
+> **`GlRouteInventoryTests` pins all 21 routes and was green throughout** — it compares code to code, so it
+> could never have seen any of this. **Nothing mechanical reads prose** (`DEC-L-002`).
+>
+> **And it is sharper than that.** That file carries a test named
+> `Posting_lives_under_the_draft_because_the_journal_does_not_exist_yet`, reasoning that *"placing it
+> under `/journals` would suggest a journal exists before it does"*. **The guard was arguing the very
+> principle this table violated, in a test name, green, for five days.**
+>
+> Precisely: that test asserts no `/journals/posting` route exists, while this table claimed
+> `POST /api/gl/journals`. **Different strings, same ruling** — so it would not have failed on this row
+> even had it read the document. **The point is not that a guard nearly caught it. It is that the
+> reasoning was written down, twice, and the specification still said otherwise.**
 
 **Why state changes are `POST` to a sub-resource** (`/deactivation`, `/closure`, `/reversals`) rather than
 `PATCH` on the parent: each is an event with its own permission and its own refusals, and for the reversal it
@@ -81,7 +131,17 @@ POST /api/gl/journals
 * **`OD-GL-0005` declined the branch dimension**, so no line carries a `branchId`.
 * **`OD-GL-0007` ruled two aggregates**, so a draft surface DOES exist — a mutable
   `/api/gl/journal-drafts` family plus a posting route that promotes a draft into a `JournalEntry`. The
-  journal-posting route above therefore posts *a draft*, not a body of lines.
+  journal-posting route above therefore posts *a draft*, not a body of lines. **The family is now in the
+  table above; this bullet was its only specification for the whole of FP-011.**
+
+* **The draft READ carries no journal number and no reversal fields.** A number is assigned at posting, and
+  reversal is a posted-journal concept — `OD-GL-0007`'s two aggregates have different lifecycles, and a
+  response carrying nulls for both would invite a client to render them.
+
+* **`GL.Drafts.View` is required explicitly and nothing implies it.** Neither `GL.Drafts.Manage` nor
+  `GL.Journals.Post` grants it: an implied permission makes the explicit one optional and its absence
+  unenforceable (`AC-SS-0005`). **That is what makes the separation of duties expressible** — a reviewer can
+  be given sight of a draft without the ability to edit it, and a preparer without the ability to post.
 
 **The response never echoes a currency the request supplied**, because the request cannot supply one. It
 echoes the owning Company's `BaseCurrencyCode`, read through `ITenantCompanyCurrencyLookup` — `ADR-027`

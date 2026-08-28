@@ -36,8 +36,38 @@ public static class CompanyApiErrorMapper
       // Trusted-context denials (unreachable on an authorized request; mapped defensively).
       "Company.InvalidActor" => ProblemResults.Forbidden,
       "Authorization.Unauthorized" => ProblemResults.Forbidden,
-      // Persistence write failure and any unexpected/unmapped error -> safe internal failure,
-      // never masked as client validation.
+      // ---- T-093. `ApplicationExecutionContext.GetTenantActor` RETURNS THIS, AND EVERY TENANT-PLANE
+      // ---- HANDLER FUNNELS THROUGH IT. Unmapped it fell to the default and answered 500 — an
+      // authorization refusal reported as a server error, which tells the caller to retry something that
+      // will never succeed and pages an operator for a working system.
+      "Tenant.Unauthorized" => ProblemResults.Forbidden,
+
+      // ---- THE FIVE `CompanyAccessErrors` (T-093b). RAISED BY THE COMPANY-CONTEXT ESTABLISHER.
+      //
+      // All five reached this site through an INJECTED SERVICE, which is why the static reachability walk
+      // missed them and the register found them. Each takes the answer `EmployeeApiErrorMapper` already
+      // gives the same condition, so one refusal does not read differently depending on which surface
+      // answered.
+      //
+      // `Company.InvalidSelection` is 403 and NOT 404, because the resolver collapses four conditions into
+      // it on purpose — `TenantCompanyAccessResolver.cs:93` says so: *"'No such company', 'another
+      // tenant's company' and 'not Active' are answered identically so a caller cannot probe for the
+      // existence of companies it may not see."* A 404 here would undo that collapse from the wire.
+      "Company.ContextRequired" => ProblemResults.Forbidden,
+      "Company.InvalidSelection" => ProblemResults.Forbidden,
+
+      // Request-shaped: a malformed or absent selection is something the caller can fix.
+      // `Company.AssignmentInvalid` refuses a caller-supplied company list at `UserCompanyAccess.cs:61`.
+      "Company.SelectionRequired" => ProblemResults.RequestInvalid,
+      "Company.InvalidSelectionFormat" => ProblemResults.RequestInvalid,
+      "Company.AssignmentInvalid" => ProblemResults.RequestInvalid,
+      // ---- EXPLICIT, THOUGH IT MATCHES THE DEFAULT (T-093, T-080's precedent).
+      //
+      // An arm that agrees with the default is a DECISION; the absence of one is an accident, and the two
+      // are indistinguishable from the wire. Do not delete this as redundant: deleting it removes the
+      // record that someone checked.
+      "Persistence.WriteFailure" => ProblemResults.WriteFailure,
+      // Any unexpected/unmapped error -> safe internal failure, never masked as client validation.
       _ => ProblemResults.WriteFailure
     };
   }

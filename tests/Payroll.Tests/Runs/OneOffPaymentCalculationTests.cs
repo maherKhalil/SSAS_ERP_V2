@@ -17,6 +17,10 @@ namespace SSAS.Payroll.Tests.Runs;
 public sealed class OneOffPaymentCalculationTests
 {
   private static readonly Guid Employee = Guid.NewGuid();
+
+  // T-124: a stable period, because `MarkConsumedBy` now compares the consuming run's period against the
+  // instruction's own.
+  private static readonly Guid Period = Guid.NewGuid();
   private static readonly Guid SalaryAccount = Guid.NewGuid();
   private static readonly Guid BonusAccount = Guid.NewGuid();
 
@@ -103,10 +107,10 @@ public sealed class OneOffPaymentCalculationTests
     var payment = Instruction(500m);
     var run = Guid.NewGuid();
 
-    Assert.True(payment.MarkConsumedBy(run).IsSuccess);
+    Assert.True(payment.MarkConsumedBy(run, Period).IsSuccess);
     Assert.True(payment.IsConsumed);
 
-    var again = payment.MarkConsumedBy(run);
+    var again = payment.MarkConsumedBy(run, Period);
 
     Assert.True(again.IsFailure);
     Assert.Equal(OneOffPaymentErrors.AlreadyConsumed.Code, again.Error.Code);
@@ -132,9 +136,9 @@ public sealed class OneOffPaymentCalculationTests
     var reversedRun = Guid.NewGuid();
     var correctingRun = Guid.NewGuid();
 
-    Assert.True(payment.MarkConsumedBy(reversedRun).IsSuccess);
+    Assert.True(payment.MarkConsumedBy(reversedRun, Period).IsSuccess);
 
-    var taken = payment.MarkConsumedBy(correctingRun);
+    var taken = payment.MarkConsumedBy(correctingRun, Period);
 
     Assert.True(taken.IsSuccess, taken.IsFailure ? taken.Error.Message : string.Empty);
     Assert.Equal(correctingRun, payment.ConsumedByPayrollRunId);
@@ -169,10 +173,33 @@ public sealed class OneOffPaymentCalculationTests
     Assert.Null(payment.ConsumedByPayrollRunId);
   }
 
+  // ---- A RUN FOR ANOTHER PERIOD CANNOT PAY IT (T-124).
+  //
+  // T-123 moved the double-payment invariant out of this aggregate for a reason that holds — it cannot see
+  // a run's REVERSAL STATUS — **and took a different rule out with it that it can see perfectly well.**
+  //
+  // **The instruction knows its own period.** It was simply not being given the run's, so nothing here
+  // compared them, and the only enforcement left was one repository filter. **A rule with one enforcement
+  // point is one refactor from having none.**
+  [Fact]
+  public void A_run_for_another_period_cannot_pay_a_one_off()
+  {
+    var payment = Instruction(500m);
+
+    var wrongPeriod = payment.MarkConsumedBy(Guid.NewGuid(), Guid.NewGuid());
+
+    Assert.True(wrongPeriod.IsFailure);
+    Assert.Equal(OneOffPaymentErrors.ConsumingRunIsForAnotherPeriod.Code, wrongPeriod.Error.Code);
+
+    // AND IT IS UNTOUCHED. A refused consumption must not leave the instruction pointing anywhere.
+    Assert.False(payment.IsConsumed);
+    Assert.Null(payment.ConsumedByPayrollRunId);
+  }
+
   private static OneOffPayment Instruction(decimal amount)
   {
     var created = OneOffPayment.Create(
-      Guid.NewGuid(), Employee, Guid.NewGuid(), Guid.NewGuid(), amount, "settlement for the audit");
+      Guid.NewGuid(), Employee, Period, Guid.NewGuid(), amount, "settlement for the audit");
 
     Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : string.Empty);
     return created.Value;

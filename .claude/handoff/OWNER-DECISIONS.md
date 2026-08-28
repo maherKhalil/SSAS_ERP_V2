@@ -230,6 +230,52 @@ altered by the change that found it.
 
 ---
 
+## 10. Overlapping leave requests are possible under concurrency — added 2026-08-29 (T-146, T-148)
+
+**What it is.** Two leave requests for the same employee covering the same days can both be accepted, if
+they are submitted close enough together. Overlapping approved leave becomes **double-counted unpaid
+absence**, and unpaid absence is a line on a payslip.
+
+**The measured facts.**
+
+```
+SubmitLeaveRequest        reads the overlap check, decides, saves — nothing held in between
+transaction               none, and correctly so: every Attendance handler mutates one repository
+isolation level           not set anywhere in src/ — SQL Server default, READ COMMITTED
+idempotency on the route  none; the product has no general request-idempotency mechanism
+RowVersion on the request does not help — it guards an UPDATE, and these are two INSERTs
+database constraint       impossible: no index can express "these ranges must not overlap"
+```
+
+**A double-clicked submit button is sufficient.** It needs no adversary and no unusual timing.
+
+**Why this is not the same as the other two range-overlap guards.** Fiscal years and attendance periods
+have the identical weakness, and `CalendarCommandHandlers.cs:73` records a deliberate decision to accept it:
+*"the exposure is small (defining a fiscal year is rare and deliberate) and the alternative is a lock held
+across a human-scale operation."* **That reasoning is sound and it is about frequency.** A fiscal year is
+defined once a year by an accountant; an attendance period monthly by an operator. **A leave request is
+self-service, submitted by an employee whenever they like.** The exposure was weighed for a different
+operation.
+
+**The options, and what each does not do.**
+
+- **Add a transaction** — **does not fix it.** At READ COMMITTED a transaction takes no range locks, and the
+  competing rows do not exist yet, so both submissions still pass. Recorded because it is the fix a
+  reasonable engineer reaches for and would then believe was done.
+- **Serializable isolation or an explicit range lock** — closes it, and is exactly the "lock held across a
+  human-scale operation" that was weighed and declined for fiscal years. The question is whether that
+  judgement survives a self-service operation.
+- **An application-level lock** — closes it, same cost, different mechanism.
+- **A unique constraint on (employee, start date, end date)** — cheap, and catches the **double-click case
+  only**: identical repeated submissions. It does nothing for a genuine partial overlap. The likeliest case,
+  not the general one.
+- **Accept it, as fiscal years did** — with the frequency difference stated, so the acceptance is about
+  leave rather than inherited from a decision about something else.
+
+**What is already true.** The guard itself is tested against a real database (T-146), so it works when
+requests arrive one at a time. **Tested is not enforced:** the test proves the check runs, not that
+concurrency cannot defeat it.
+
 ## What is NOT on this list
 
 **Engineering-owned items are excluded** — guard coverage, test shape, the register's floor, inventory

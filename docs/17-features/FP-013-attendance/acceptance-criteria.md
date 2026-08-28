@@ -117,5 +117,5 @@ code will otherwise handle by accident.
 **Close preconditions.** Whether close refuses when employees have no records, or when leave requests are
 pending, is unruled. `AC-ATT-0013` covers only the mechanics.
 
-**Anything self-service.** Delivered under FP-015 in T-089: `Attendance.Self.ViewOwnRecords` and `Attendance.Self.ViewOwnLeave`, read by `GET /me/records` and `GET /me/leave-requests`. `AC-ATT-0032` is
+**Anything self-service.** Delivered under FP-015 in T-089: `Attendance.Records.ViewOwn` and `Attendance.Leave.ViewOwn`, read by `GET /me/records` and `GET /me/leave-requests`. `AC-ATT-0032` is
 now an exact inventory of those two rather than an assertion of absence.

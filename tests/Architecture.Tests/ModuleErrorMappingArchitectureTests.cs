@@ -776,6 +776,31 @@ public sealed class ModuleErrorMappingArchitectureTests
   // This does not check mapping. It checks that **every static class returning an error is named by some
   // site**, so the maintenance is visible when it is missed rather than silent.
   //
+  // ---- ⚠ AND IT COVERS ONE OF AT LEAST THREE INVISIBLE SHAPES (T-126). READ THIS BEFORE TRUSTING IT.
+  //
+  // **T-120 stated this floor as "static classes are invisible". That was too narrow, and a floor stated
+  // too narrowly is worse than no floor because it reads as complete.** Three shapes the closure cannot
+  // reach, found one at a time and each by accident:
+  //
+  //   STATIC CLASSES     no constructors, never a parameter          T-117, covered by the test below
+  //   HANDLERS           simply never added to a site's seeds        T-125, NOT covered
+  //   RETURN-ONLY TYPES  a repository RETURNS an aggregate, and the
+  //                      walk follows parameter types, not returns   T-125, NOT covered
+  //
+  // ---- WHY THE TEST BELOW IS NOT WIDENED TO ALL THREE, MEASURED IN T-126.
+  //
+  // **265 files in `src/` return an error. 195 of them declare no seeded type. The seed list holds 128.**
+  // **A guard asserting the list is complete would start red at 195 entries or need a 195-entry exemption
+  // list**, which is `UnroutedFamilies`' shape at ten times the scale.
+  //
+  // **The static-class rule works because that shape is SMALL — twenty-three — and structurally invisible.**
+  // The other two are neither.
+  //
+  // ---- SO WHAT DOES THIS REGISTER ACTUALLY ASSERT?
+  //
+  // **A property of the SEEDED sites, not of the product.** *For the closures named here, every error they
+  // reach is mapped.* It has never asserted that the seeds are complete, and after T-126 it says so.
+  //
   // ---- IT IS DELIBERATELY NOT A WIDER WALK.
   //
   // T-120 measured that alternative: following statically-called types by name was transitively unbounded

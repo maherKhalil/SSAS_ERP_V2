@@ -71,7 +71,7 @@ Scope column: `A` attendance, `B` leave, `*` both.
 | `AC-ATT-0029` | Authority is resolved **live** at scope construction; a caller whose access was revoked after their session began is refused | `*` | `REQ-ATT-0005` |
 | `AC-ATT-0030` | The read scope cannot be constructed outside its factory — private constructor, internal factory, asserted by an architecture test | `*` | `REQ-ATT-0005` |
 | `AC-ATT-0031` | **RULED: THE SPLIT.** A caller sees only their authorized, active branches on record reads, resolved live from `ITenantBranchAccessResolver`; **and the Payroll summary contract applies no branch predicate at all** — company-complete by design, guard-asserted | `*` | `REQ-ATT-0024` |
-| `AC-ATT-0032` | **No `ViewOwn` permission exists in the catalog**, because FP-015's self-service permission has not been built. *(It originally read "because no identity→employee mapping exists to resolve its subject"; that mapping exists as of `ADR-030` / `UserEmployeeLink`. The assertion is unchanged and still true.)* | `*` | `REQ-ATT-0023` |
+| `AC-ATT-0032` | **The module declares exactly two self-service permissions**, `Attendance.Records.ViewOwn` and `Attendance.Leave.ViewOwn`. Neither grants the other, and neither is granted by any administrative Attendance permission. **A third self-service permission requires a recorded decision.** *(Amended T-102. It read "no `ViewOwn` permission exists" — an absence criterion, which answers its question exactly once and then has to be deleted. An exact inventory keeps answering it.)* | `*` | `REQ-ATT-0023` |
 
 ## Persistence and platform
 

@@ -161,6 +161,30 @@ public sealed class ModuleErrorMappingArchitectureTests
         typeof(SSAS.Payroll.Application.Runs.PostPayrollRunCommandHandler),
         typeof(SSAS.Payroll.Application.Runs.ReversePayrollRunCommandHandler),
         typeof(SSAS.Payroll.Application.Reads.PayrollSelfServiceScopeResolver),
+
+        // ---- A STATIC CLASS MUST BE SEEDED, BECAUSE THE WALK CANNOT REACH ONE (T-120).
+        //
+        // `Closure` follows CONSTRUCTOR PARAMETERS. A `static` class has no constructors and is nobody's
+        // parameter, so `PayrollCalculator` — where every payroll refusal is returned — had never entered
+        // this closure in any run. **`Payroll.OneOffPaymentElementNotPayable` was a 500 for three tasks
+        // while this test reported twelve green** (T-117, T-118).
+        //
+        // ---- WHY A SEED RATHER THAN A WIDER WALK, AND THE ALTERNATIVE WAS MEASURED.
+        //
+        // T-120 first tried following statically-called types by name from each closure member's source.
+        // **Transitively it was unbounded** — `CompanyApiErrorMapper` claimed 97 codes across eight
+        // modules, because a name in source is not a call and everything reaches everything within three
+        // hops. **Bounded to one hop and to `Name.` member-access syntax it still failed nine of twelve
+        // sites**, because shared scope resolvers are called by every module and name errors from all of
+        // them.
+        //
+        // **A seed is exact.** It says which static class this site answers for, in the same list that
+        // already says which handlers it answers for, and it over-reports nothing.
+        //
+        // **The cost is that it is a list somebody must maintain** — a new static class returning errors is
+        // invisible until it is added here. That is the floor, and it is stated rather than hidden:
+        // `The_register_seeds_every_static_class_that_returns_an_error` holds it.
+        typeof(SSAS.Payroll.Domain.Runs.PayrollCalculator),
       ],
       // ---- ONE CODE, AND IT CROSSES A MODULE BOUNDARY.
       //
@@ -718,6 +742,90 @@ public sealed class ModuleErrorMappingArchitectureTests
   // **A source-text walk that under-resolves does not report an error. It reports a SMALLER CLOSURE, and
   // every miss looks like a clean stop.** `IsAssignableFrom` cannot do that, and
   // `GetConstructors().GetParameters()` cannot miss a parameter a regex could not parse.
+  // ================================================================================================
+  // THE FLOOR THE SEED LIST CREATES, HELD BY A TEST RATHER THAN BY A COMMENT (T-120).
+  // ================================================================================================
+  //
+  // `Closure` follows constructor parameters, so a `static` class can never be reached and must be SEEDED.
+  // **That makes the seed list a thing somebody has to maintain, and an unmaintained list is how
+  // `Payroll.OneOffPaymentElementNotPayable` was a 500 for three tasks while this file reported green.**
+  //
+  // This does not check mapping. It checks that **every static class returning an error is named by some
+  // site**, so the maintenance is visible when it is missed rather than silent.
+  //
+  // ---- IT IS DELIBERATELY NOT A WIDER WALK.
+  //
+  // T-120 measured that alternative: following statically-called types by name was transitively unbounded
+  // (`CompanyApiErrorMapper` claiming 97 codes across eight modules), and bounding it to one hop and
+  // `Name.` syntax still failed nine of twelve sites. **A list that fails loudly beats a walk that
+  // over-reports quietly.**
+  // ---- THE TWENTY-THREE THAT ARE NOT SEEDED TODAY, NAMED RATHER THAN SILENT.
+  //
+  // **Each needs a judgement this task cannot make: which mapping site's surface does it answer behind?**
+  // `EmployeeImportCsvParser` sits behind the import route; `PositionSearchCriteria` behind a read; the
+  // `*ScopeErrors` helpers behind every route of their module. **Seeding one to the wrong site would make
+  // that site responsible for codes it does not map, and the fix for a false red is a wrong `KnownUnmapped`
+  // entry — which is how a register stops meaning anything.**
+  //
+  // **This list is the blind spot's measured size.** It is here so a NEW static class returning an error
+  // fires immediately, and so the twenty-three are a backlog somebody can see rather than a silence.
+  private static readonly string[] KnownUnseeded =
+  [
+    "SSAS.Attendance.Application.Reads.AttendanceScopeErrors",
+    "SSAS.Attendance.Application.Records.EmploymentWindow",
+    "SSAS.BuildingBlocks.Localization.LocalizationPlaceholderFormatter",
+    "SSAS.BuildingBlocks.Localization.LocalizationPlaceholderParser",
+    "SSAS.GL.Application.Reads.GlScopeErrors",
+    "SSAS.HR.Application.Departments.DepartmentWriteContext",
+    "SSAS.HR.Application.Departments.Reads.DepartmentSearchCriteria",
+    "SSAS.HR.Application.Employees.EmployeeStatusTransition",
+    "SSAS.HR.Application.ImportExport.EmployeeImportColumns",
+    "SSAS.HR.Application.ImportExport.EmployeeImportCsvParser",
+    "SSAS.HR.Application.Positions.JobGradeWriteContext",
+    "SSAS.HR.Application.Positions.PositionGradeReference",
+    "SSAS.HR.Application.Positions.PositionWriteContext",
+    "SSAS.HR.Application.Positions.Reads.PositionPagination",
+    "SSAS.HR.Application.Positions.Reads.PositionSearchCriteria",
+    "SSAS.HR.Application.Positions.SalaryGradeWriteContext",
+    "SSAS.Payroll.Application.Reads.PayrollScopeErrors",
+    "SSAS.Platform.Application.Common.ApplicationExecutionContext",
+    "SSAS.Platform.Application.Localization.LocalizationApplicationValidation",
+    "SSAS.Platform.Application.Localization.LocalizationManagementAuditGuard",
+    "SSAS.Platform.Application.Localization.LocalizationManagementErrors",
+    "SSAS.Platform.Domain.Localization.LocalizationUndoLineage",
+    "SSAS.Platform.Domain.TenantStorage.TenantDatabaseBackupChainSelector",
+  ];
+
+  [Fact]
+  public void Every_static_class_that_returns_an_error_is_seeded_by_some_site()
+  {
+    var seeded = Sites().SelectMany(site => site.Seeds).ToHashSet();
+
+    var unseeded = ProductTypes()
+      .Where(type => type.IsClass && type.IsAbstract && type.IsSealed)   // C# `static class`
+      .Where(type => !seeded.Contains(type))
+      .Where(type => !KnownUnseeded.Contains(type.FullName, StringComparer.Ordinal))
+      .Where(type => SourceByTypeName().TryGetValue(type.Name, out var path)
+        && ReturnsAnError(File.ReadAllText(path)))
+      .Select(type => type.FullName!)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(
+      unseeded.Length == 0,
+      "A static class returns an error and no mapping site seeds it. `Closure` follows CONSTRUCTOR " +
+      "PARAMETERS, so a static class is unreachable and its errors are invisible to this register — which " +
+      "is how a 500 stood for three tasks while twelve sites reported green. Add it to the seeds of the " +
+      $"site whose surface it answers behind:{Environment.NewLine}" +
+      string.Join(Environment.NewLine, unseeded));
+  }
+
+  // A source that both names an error symbol and fails with one. Either alone is not enough: a mapper names
+  // dozens and returns none, and a helper may fail with an error it was handed.
+  private static bool ReturnsAnError(string source) =>
+    ErrorFieldsBySymbol().Keys.Any(symbol => source.Contains(symbol, StringComparison.Ordinal))
+    && source.Contains("Result.Failure", StringComparison.Ordinal);
+
   private static Type[] Closure(MappingSite site)
   {
     var seen = new HashSet<Type>(site.Seeds);

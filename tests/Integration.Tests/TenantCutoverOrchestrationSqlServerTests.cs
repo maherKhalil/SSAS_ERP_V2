@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using SSAS.BuildingBlocks.Domain;
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -541,6 +542,132 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     return Convert.ToString(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
   }
 
+  // ================================================================================================
+  // TWO PROPERTIES OF THE POST-CUTOVER OBSERVATION, TAKEN FROM `codex/post-phase-e-hardening-h1` (T-137).
+  // ================================================================================================
+  //
+  // **TWO of that branch's four tests are deliberately NOT here**, and one of them was intended to be —
+  // it was taken, run, and removed when it failed:
+  //
+  //   A_first_target_write_records_its_observation_even_when_complete_wins_the_row   FAILED, conflict
+  //   A_displaced_observation_is_refused_when_the_route_no_longer_permits_that_write not attempted
+  //
+  // **Both assert a RETRY inside the store** — re-read, re-validate, try again — **which this branch does
+  // not do.** The first fails with `TenantStorage.CutoverConcurrencyConflict`, which is precisely the answer
+  // the retry would absorb. **They are the acceptance tests for that change and land with it or not at
+  // all**; a test kept green by an exemption, or red by a missing change, is worse than no test.
+  //
+  // **The first of these supersedes a test written in T-135.** That one called the fence directly and proved it
+  // REFUSES; this one performs a real `SaveChangesAsync` and proves the refusal is EFFECTIVE — the row never
+  // lands, and the observation is genuinely absent rather than incidentally so. **The T-135 test was removed
+  // rather than kept beside it.**
+
+  // ---- H1. AN UNRECORDABLE OBSERVATION REFUSES THE WRITE, and the business row does not land. This is the
+  // half the fence previously threw away: the store says the observation is known NOT to be recorded, and
+  // the only safe answer is to refuse rather than commit onto a database the platform believes is untouched.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task A_write_whose_observation_cannot_be_recorded_is_refused_and_commits_nothing()
+  {
+    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1FAIL");
+    var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
+    Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Code : null);
+
+    var before = await OrchestrationFixture.CompanyCountAsync(fixture.TargetCatalog, fixture.TenantA);
+
+    await using var context = await fixture.CreateRoutedContextAsync(
+      fixture.TenantA, new ObservationRefusingStore(fixture.Store()));
+    context.Companies.Add(OrchestrationFixture.NewCompany(fixture.TenantA, "H1FAILW"));
+
+    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+
+    // NOT COMMITTED. The fence refuses inside the transaction it opened, so the row never reaches the table.
+    Assert.Equal(before, await OrchestrationFixture.CompanyCountAsync(fixture.TargetCatalog, fixture.TenantA));
+    Assert.Null((await fixture.ReadOperationAsync(started.Value.CutoverOperationId))
+      .PostCutoverWriteObservedUtc);
+  }
+
+  // ---- H1. WRITE-ONCE STILL HOLDS: later target writes do not move the recorded moment forward.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task The_first_write_observation_is_not_moved_by_later_writes()
+  {
+    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1ONCE");
+    var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
+    Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Code : null);
+
+    await using (var first = await fixture.CreateRoutedContextAsync(fixture.TenantA))
+    {
+      first.Companies.Add(OrchestrationFixture.NewCompany(fixture.TenantA, "H1ONCE1"));
+      Assert.Equal(1, await first.SaveChangesAsync());
+    }
+
+    var recorded = (await fixture.ReadOperationAsync(started.Value.CutoverOperationId))
+      .PostCutoverWriteObservedUtc;
+    Assert.NotNull(recorded);
+
+    await using (var second = await fixture.CreateRoutedContextAsync(fixture.TenantA))
+    {
+      second.Companies.Add(OrchestrationFixture.NewCompany(fixture.TenantA, "H1ONCE2"));
+      Assert.Equal(1, await second.SaveChangesAsync());
+    }
+
+    Assert.Equal(
+      recorded,
+      (await fixture.ReadOperationAsync(started.Value.CutoverOperationId)).PostCutoverWriteObservedUtc);
+  }
+
+  private sealed class ObservationRefusingStore(ITenantCutoverOperationStore inner)
+    : ITenantCutoverOperationStore
+  {
+    // Adapted to THIS branch's signature (T-137). The branch it came from also added a
+    // `tenantDatabaseId` parameter for a store-side retry; that change is not here, so neither is the
+    // parameter. **The displacement being tested does not depend on it.**
+    public Task<Result> RecordPostCutoverWriteAsync(
+      long cutoverOperationId, string actor, CancellationToken cancellationToken = default) =>
+      Task.FromResult(Result.Failure(TenantStorageErrors.CutoverConcurrencyConflict));
+
+    public Task<Result<long>> BeginAsync(
+      TenantCutoverBeginRequest request, CancellationToken cancellationToken = default) =>
+      inner.BeginAsync(request, cancellationToken);
+
+    public Task<TenantCutoverOperationRecord?> FindAsync(
+      long cutoverOperationId, CancellationToken cancellationToken = default) =>
+      inner.FindAsync(cutoverOperationId, cancellationToken);
+
+    public Task<TenantCutoverWriteGate?> FindActiveWriteGateAsync(
+      Guid tenantId, CancellationToken cancellationToken = default) =>
+      inner.FindActiveWriteGateAsync(tenantId, cancellationToken);
+
+    public Task<Result> CompleteAsync(
+      long cutoverOperationId, string actor, CancellationToken cancellationToken = default) =>
+      inner.CompleteAsync(cutoverOperationId, actor, cancellationToken);
+
+    public Task<TenantCutoverOperationRecord?> FindActiveForTenantAsync(
+      Guid tenantId, CancellationToken cancellationToken = default) =>
+      inner.FindActiveForTenantAsync(tenantId, cancellationToken);
+
+    public Task<Result> RequestFreezeAsync(
+      long cutoverOperationId, string actor, CancellationToken cancellationToken = default) =>
+      inner.RequestFreezeAsync(cutoverOperationId, actor, cancellationToken);
+
+    public Task<Result> FreezeAsync(
+      long cutoverOperationId, string actor, CancellationToken cancellationToken = default) =>
+      inner.FreezeAsync(cutoverOperationId, actor, cancellationToken);
+
+    public Task<Result> FailFreezeAsync(
+      long cutoverOperationId, string? failureSummary, string actor,
+      CancellationToken cancellationToken = default) =>
+      inner.FailFreezeAsync(cutoverOperationId, failureSummary, actor, cancellationToken);
+
+    public Task<Result> ReleaseFreezeAsync(
+      long cutoverOperationId, string? failureSummary, string actor,
+      CancellationToken cancellationToken = default) =>
+      inner.ReleaseFreezeAsync(cutoverOperationId, failureSummary, actor, cancellationToken);
+  }
+
   private sealed class ThrowingInvalidator : ITenantRoutingCacheInvalidator
   {
     public void Invalidate(Guid tenantId) =>
@@ -861,7 +988,9 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
         new TenantRoutingCacheOptions { Lifetime = TimeSpan.FromMinutes(10) }, new TestClock()));
     }
 
-    public async Task<TenantDbContext> CreateRoutedContextAsync(Guid tenantId)
+    public async Task<TenantDbContext> CreateRoutedContextAsync(
+      Guid tenantId,
+      ITenantCutoverOperationStore? store = null)
     {
       var platform = PlatformContext();
       var factory = new TenantDbContextFactory(
@@ -869,7 +998,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
         ConnectionFactory(),
         new TenantDatabaseTrafficGate(TenantDatabaseHealthFreshness.Default),
         new TestUser(), new TestTenant(tenantId), new TestClock(),
-        new TenantCutoverWriteFence(Store(), Options.Create(freeze)));
+        new TenantCutoverWriteFence(store ?? Store(), Options.Create(freeze)));
 
       var created = await factory.CreateAsync(tenantId);
       Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);

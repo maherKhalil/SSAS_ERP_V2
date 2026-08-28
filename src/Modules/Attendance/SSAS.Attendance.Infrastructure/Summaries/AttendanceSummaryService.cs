@@ -178,6 +178,31 @@ internal sealed class AttendanceSummaryService(
       .Where(record => record.AttendanceDate >= employedFrom && record.AttendanceDate <= employedTo)
       .Sum(record => record.UnpaidAbsenceQuantity);
 
+    // ---- WORK OUTSIDE THE EMPLOYMENT WINDOW REFUSES, RATHER THAN BEING COUNTED OR DROPPED (T-121).
+    //
+    // **The absence filter above and this refusal are the same window applied to opposite kinds of fact.**
+    // Absence outside employment is NOISE and is dropped; **work outside employment is a CONTRADICTION and
+    // is reported**, because either the employee worked — so the termination date is wrong — or they did
+    // not, so the record is, and nothing here can tell which.
+    //
+    // **Counting overpays if the record is wrong; dropping underpays if the date is wrong.** Both would be
+    // decided by whichever number happened to be typed. **A refusal is found by an operator with the
+    // employee named; both silent answers are found by somebody reading their own payslip.**
+    var workOutsideEmployment = records.Any(record =>
+      (record.AttendanceDate < employedFrom || record.AttendanceDate > employedTo)
+      && (record.WorkedQuantity != 0m || record.OvertimeQuantity != 0m));
+
+    if (workOutsideEmployment)
+    {
+      return AttendanceSummaryResult.NotAvailable(
+        AttendanceSummaryStatus.EmploymentDataContradictory, employeeId, companyId) with
+      {
+        AttendancePeriodId = period.Id,
+        PeriodStartUtc = ToInstant(period.StartDate),
+        PeriodEndUtc = ToInstant(period.EndDate)
+      };
+    }
+
     if (records.Count == 0)
     {
       // Not an error. `EmployeeNotInScope` is kept distinct from `Available`-with-zeroes so a caller can

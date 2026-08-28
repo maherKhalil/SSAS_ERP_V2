@@ -70,7 +70,31 @@ public enum AttendanceSummaryStatus
 
   // The employee has no attendance in the period. NOT an error — a valid answer with zero quantities, kept
   // separate from `Available` so a caller can tell "nothing recorded" from "recorded as zero".
-  EmployeeNotInScope = 3
+  EmployeeNotInScope = 3,
+
+  // ---- WORK IS RECORDED ON DAYS THE EMPLOYEE WAS NOT EMPLOYED (T-121).
+  //
+  // **A CONTRADICTION, not an absence, and the distinction is why this is a status rather than a filter.**
+  // T-119 excluded unpaid absence outside the employment window because absence outside employment is
+  // NOISE — a stale record for somebody who had left, meaning nothing. **Work outside employment means one
+  // of two facts is wrong: either they worked, so the termination date is wrong, or they did not, so the
+  // record is.**
+  //
+  // **Neither Attendance nor Payroll can tell which, and a system that cannot tell must not choose.**
+  // Counting the hours overpays if the record is wrong; excluding them underpays if the date is wrong, and
+  // **both are decided by whichever number happened to be typed, which is not a decision at all.**
+  //
+  // ---- IT IS A STATUS BECAUSE IT IS A STATEMENT ABOUT THE DATA, NOT A QUANTITY.
+  //
+  // This is the first time an EMPLOYEE dimension enters this contract, and it enters as a STATUS rather
+  // than as a number — which is what keeps it legitimate under the rule
+  // `EmploymentTypeAssumptionTests` guard 3 enforces. **A status cannot encode a ratio, a schedule or a
+  // policy; it says only that this employee's data disagrees with itself.**
+  //
+  // Payroll refuses the RUN on it, on the precedent `DailySalaryHasNoWorkingDays` set: a refusal is found
+  // by an operator immediately, with the employee named. **Both silent answers are found by a person
+  // reading their own payslip.**
+  EmploymentDataContradictory = 4
 }
 
 // ---- THE TOTALS.

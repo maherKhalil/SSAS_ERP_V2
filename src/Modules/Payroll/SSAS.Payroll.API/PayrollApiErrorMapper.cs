@@ -152,6 +152,13 @@ public static class PayrollApiErrorMapper
       // no exception anybody reads, no log entry, and a handler that reads correctly.
       "Payroll.OneOffPaymentElementNotPayable" => NothingToCalculate,
 
+      // ---- CONTRADICTORY ATTENDANCE (T-121). 409, like the attendance-period gate and unlike the one above.
+      //
+      // **Waiting does not help, but neither does changing the request** — somebody must correct the
+      // attendance records or the employment dates. It is `AttendancePeriodOpen`'s shape: the request is
+      // well-formed and the world is inconsistent.
+      "Payroll.AttendanceContradictsEmployment" => RunStateInvalid,
+
       // FP-013, OD-ATT-0010. A 409 rather than a 422: the request is well-formed and the world is not ready
       // — somebody has to close the attendance period, which is the same shape as `PeriodClosed` above.
       "Payroll.AttendancePeriodOpen" => AttendancePeriodOpen,

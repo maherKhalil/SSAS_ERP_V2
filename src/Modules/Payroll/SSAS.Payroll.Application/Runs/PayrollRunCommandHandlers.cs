@@ -249,6 +249,16 @@ public sealed class CalculatePayrollRunCommandHandler(
       var attendance = await attendanceSummary.GetForPeriodAsync(
         run.CompanyId, record.EmployeeId, period.PayDateUtc, cancellationToken);
 
+      // ---- CONTRADICTORY DATA REFUSES THE RUN BEFORE ANY QUANTITY IS READ (T-121).
+      //
+      // Placed before the four reads below, because every one of them would otherwise turn a contradiction
+      // into a number — zero, in each case, which is indistinguishable from an employee who simply did
+      // nothing. **A refusal names the employee; a zero does not.**
+      if (attendance.Status == AttendanceSummaryStatus.EmploymentDataContradictory)
+      {
+        return Result.Failure(PayrollErrors.AttendanceContradictsEmployment);
+      }
+
       var overtimeByTier = attendance.Status == AttendanceSummaryStatus.Available
         ? attendance.OvertimeQuantityByTier
         : null;

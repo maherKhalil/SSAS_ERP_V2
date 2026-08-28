@@ -104,7 +104,10 @@ public sealed class PayrollChainSqlServerTests
     await chain.SeedEmployeeAsync("2026-01-16T00:00:00+00:00");
     await chain.SeedLedgerAsync();
     await chain.SeedPayrollConfigurationAsync(SalaryType.Daily, DailySalaryRate);
-    await chain.SeedAttendanceAsync();
+
+    // T-121: the 19th rather than the 14th. Hired on the 16th, so work on the 14th is a CONTRADICTION and
+    // the run would refuse — which is the rule working, and it found this fixture's own inconsistency.
+    await chain.SeedAttendanceAsync(workedOn: new DateOnly(2026, 1, 19));
     await chain.CloseAttendancePeriodAsync();
 
     var runId = await chain.CreateAndCalculateRunAsync();
@@ -115,6 +118,38 @@ public sealed class PayrollChainSqlServerTests
 
     Assert.Equal(800m, lines.Single(line => line.GlAccountId == chain.SalaryAccountId).Amount);
     Assert.DoesNotContain(lines, line => line.GlAccountId == chain.AbsenceAccountId);
+  }
+
+  // ================================================================================================
+  // WORK RECORDED AFTER TERMINATION REFUSES THE RUN (T-121).
+  // ================================================================================================
+  //
+  // **T-119 dropped ABSENCE outside the employment window and this refuses WORK outside it, and the
+  // asymmetry is the whole point.** Absence outside employment is noise — a stale record for somebody who
+  // had left. **Work outside employment means one of two facts is wrong**: either they worked, so the
+  // termination date is wrong, or they did not, so the record is.
+  //
+  // **Counting overpays if the record is wrong; dropping underpays if the date is wrong.** Neither module
+  // can tell which, so neither chooses. **A refusal is found by an operator with the employee named; both
+  // silent answers are found by somebody reading their own payslip.**
+  [Fact]
+  [Trait("Decision", "OD-PAY-0010")]
+  public async Task Work_recorded_after_termination_refuses_the_run_rather_than_guessing()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync(terminationDate: "2026-01-15T00:00:00+00:00");
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync();
+    await chain.SeedAttendanceAsync(workAfterTermination: true);
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateRunAsync();
+
+    var calculated = await chain.TryCalculateAsync(runId);
+
+    Assert.True(calculated.IsFailure);
+    Assert.Equal(PayrollErrors.AttendanceContradictsEmployment.Code, calculated.Error.Code);
   }
 
   // ================================================================================================
@@ -750,7 +785,19 @@ public sealed class PayrollChainSqlServerTests
     }
 
     // ---- ATTENDANCE. A calendar, an open period, and the two facts the chain carries.
-    public async Task SeedAttendanceAsync()
+    // ---- AN OPTIONAL RECORD OF WORK ON THE 20th (T-121), DEFAULTED OFF.
+    //
+    // The fixture's existing 20th-of-January record is an ABSENCE — zero worked, zero overtime — which is
+    // why the leaver case is noise rather than contradiction. **This adds WORK on the same day**, which for
+    // an employee terminated on the 15th is the contradiction the run must refuse.
+    // ---- AND THE WORKED DAY IS A PARAMETER (T-121), DEFAULTED TO THE 14th.
+    //
+    // **T-121's refusal found this: the joiner test hired on the 16th and the fixture recorded work on the
+    // 14th — two days before they existed to the company.** Nobody noticed, because until T-121 nothing
+    // compared the two. A joiner's attendance has to fall inside their employment or the run now refuses,
+    // correctly.
+    public async Task SeedAttendanceAsync(
+      bool workAfterTermination = false, DateOnly? workedOn = null)
     {
       await using var context = CreateContext();
 
@@ -765,7 +812,7 @@ public sealed class PayrollChainSqlServerTests
       // Two separate observations, exactly as a supervisor would enter them: a day with overtime, and a
       // day of unpaid absence.
       var worked = AttendanceRecord.Observe(
-        Company, period.Id, Employee, new DateOnly(2026, 1, 14),
+        Company, period.Id, Employee, workedOn ?? new DateOnly(2026, 1, 14),
         workedQuantity: 8m, overtimeQuantity: OvertimeHours, overtimeTier: "NIGHT",
         paidAbsenceQuantity: 0m, unpaidAbsenceQuantity: 0m, note: null).Value;
 
@@ -774,7 +821,17 @@ public sealed class PayrollChainSqlServerTests
         workedQuantity: 0m, overtimeQuantity: 0m, overtimeTier: null,
         paidAbsenceQuantity: 0m, unpaidAbsenceQuantity: UnpaidAbsenceDays, note: "Unpaid leave").Value;
 
-      foreach (var record in new[] { worked, absent })
+      var records = new List<AttendanceRecord> { worked, absent };
+
+      if (workAfterTermination)
+      {
+        records.Add(AttendanceRecord.Observe(
+          Company, period.Id, Employee, new DateOnly(2026, 1, 22),
+          workedQuantity: 8m, overtimeQuantity: 0m, overtimeTier: null,
+          paidAbsenceQuantity: 0m, unpaidAbsenceQuantity: 0m, note: "worked after termination").Value);
+      }
+
+      foreach (var record in records)
       {
         // The write boundary stamps this in production, from the execution context. The fixture supplies it
         // because no branch context exists here — stated so nobody reads it as the application's path.

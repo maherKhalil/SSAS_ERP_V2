@@ -116,9 +116,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from collections import defaultdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 # --------------------------------------------------------------------------------------
 # Identifier model
@@ -1877,6 +1878,168 @@ def report_baseline(results: list[dict], path: Path, update: bool) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------------------
+# THE `DEC-L-082` ADVISORY (T-106)
+# --------------------------------------------------------------------------------------
+#
+# `DEC-L-082`: **a citation resolves; it does not validate.** When a cited identifier's MEANING
+# changes, every citation of it becomes a claim nobody re-checked -- and nothing notices, because
+# the reference still resolves.
+#
+# T-102 changed `AC-ATT-0032` from an absence criterion to an exact inventory. Eight files cited
+# it. Three of them were still reading it as an absence, and finding those three took T-103,
+# T-104 and T-105. **Run against T-102's own commit, this advisory lists all eight.**
+#
+# ---- WHAT IT KNOWS, AND THE LIMIT IS THE DESIGN RATHER THAN A SHORTFALL.
+#
+# **The definition/citation discrimination in this script is by FILE, not by line.** `check_package`
+# marks an identifier defined when it appears ANYWHERE in a home file; there is no line-level
+# notion of a definition here, and no reuse creates one.
+#
+# So this reports what it actually saw -- *a line in a home file changed and names this
+# identifier* -- and NEVER *"the definition changed"*. **A prose CITATION sitting inside a home
+# file is indistinguishable from a definition** (`FP-013/acceptance-criteria.md:120` cites
+# `AC-ATT-0032` inside `AC`'s own home file), so this over-reports. For something that reports and
+# never fails, over-reporting is the correct direction to be wrong -- but the WORDING is what
+# keeps it honest, which is why the output states the reason rather than leaving it to be deduced.
+#
+# **`DEC-L-074`, one layer down: the sweep cannot tell a claim from a quotation of a claim.**
+#
+# ---- WHY IT KEYS ON HOME FILES, AND NOT ON EVERY MENTION.
+#
+# An advisory that fired on every identifier anywhere would fire on every commit and be switched
+# off in a week. **A change in a home file is the only signal available that an identifier's
+# meaning may have moved**; a change anywhere else is a citer being edited, which is the reader's
+# own business.
+
+FLOOR_LINE = ("this advisory keys on IDENTIFIERS -- it sees a fact duplicated ACROSS a citation "
+              "and is blind to a fact duplicated WITHOUT one")
+
+
+def _git_stdout(argv: list[str], cwd: Path) -> list[str] | None:
+    """`None` on any failure. An advisory that crashes a gate is worse than one that is quiet."""
+    try:
+        done = subprocess.run(["git", *argv], cwd=str(cwd), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.splitlines() if done.returncode == 0 else None
+
+
+def changed_home_identifiers(base: str, features: Path,
+                             repo_root: Path) -> list[tuple[str, str, str]] | None:
+    """`(package, filename, identifier)` for ADDED lines in a home file naming an OWNED identifier.
+
+    `git diff <base> -- <path>` with no second commit compares base to the WORKING TREE, which is
+    deliberate and is what makes this an advisory rather than a post-mortem: it fires while the
+    amendment is still being written, not after it is committed. `gate.sh` uses the same source
+    for condition 4 and says so at its line 190.
+    """
+    try:
+        rel = features.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return None
+
+    diff = _git_stdout(["diff", "--unified=0", base, "--", rel], repo_root)
+    if diff is None:
+        return None
+
+    hits: set[tuple[str, str, str]] = set()
+    package = filename = None
+
+    for line in diff:
+        if line.startswith("+++ "):
+            path = line[4:].strip()
+            if path == "/dev/null":
+                package = filename = None
+                continue
+            parts = PurePosixPath(path[2:] if path.startswith("b/") else path).parts
+            package, filename = (parts[-2], parts[-1]) if len(parts) >= 2 else (None, None)
+            continue
+        if not line.startswith("+") or line.startswith("+++") or package is None:
+            continue
+
+        homes = homes_for(package)
+        owned = declared_modules(package)
+        for ident in scan_ids(line[1:]):
+            # BOTH conditions, and the second is not decoration. A package's home file may cite a
+            # NEIGHBOUR's identifier -- FP-013's acceptance-criteria.md names `AC-SS-0005` -- and
+            # that is a citation however it is spelled, because FP-013 cannot define an `SS` one.
+            if filename in homes.get(ident.space, ()) and ident.module in owned:
+                hits.add((package, filename, ident.key))
+
+    return sorted(hits)
+
+
+def citer_index(repo_root: Path) -> dict[str, set[str]]:
+    """Every identifier to every file naming it, in ONE walk.
+
+    One pass, not one grep per identifier: a full walk is ~1s against a ~90s gate, while grepping
+    per identifier is what makes an advisory somebody switches off.
+
+    `CITATION_ROOTS` is reused rather than reinvented, and it earns something for free here:
+    `.claude/` is outside it, so handoff result files -- dated records, `DEC-L-071` -- drop off
+    every list without a special case.
+    """
+    index: dict[str, set[str]] = defaultdict(set)
+    for root_name in CITATION_ROOTS:
+        base = repo_root / root_name
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if path.suffix not in CITATION_SUFFIXES or not path.is_file():
+                continue
+            if SKIP_PARTS.intersection(path.parts):
+                continue
+            for ident in scan_ids(path.read_text(encoding="utf-8", errors="replace")):
+                index[ident.key].add(path.relative_to(repo_root).as_posix())
+    return index
+
+
+def report_citers(base: str, features: Path, repo_root: Path) -> int:
+    """Always 0. This reports and never fails -- see the header note and `DEC-L-082`."""
+    hits = changed_home_identifiers(base, features, repo_root)
+
+    if hits is None:
+        print(f"--- DEC-L-082 advisory: NOT RUN -- no diff against '{base}'")
+        print(f"    ({FLOOR_LINE})")
+        return 0
+
+    # AN EXPLICIT LINE, NEVER SILENCE. Absence must not read as not-applicable, which is the
+    # failure this loop has recorded more than any other.
+    if not hits:
+        print("--- DEC-L-082 advisory: no identifier-bearing line changed in any home file")
+        print(f"    ({FLOOR_LINE})")
+        return 0
+
+    index = citer_index(repo_root)
+    try:
+        features_rel = features.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        features_rel = features.as_posix()
+
+    print(f"--- DEC-L-082 advisory: {len(hits)} identifier(s) named on a changed line in a home file")
+    print("    A LINE CHANGED AND NAMES THESE. Whether the MEANING moved is yours to judge.")
+
+    for package, filename, key in hits:
+        home = f"{features_rel}/{package}/{filename}"
+        citers = sorted(index.get(key, set()) - {home})
+        print(f"    {key} -- changed in {filename} ({package}) -- {len(citers)} citer(s)")
+        for citer in citers:
+            print(f"      {citer}")
+
+    print("    WHAT THIS DOES NOT KNOW:")
+    print("      * The discrimination is by FILE, not by line -- an identifier counts as defined")
+    print("        when it appears anywhere in a home file. A prose CITATION inside a home file is")
+    print("        indistinguishable from a DEFINITION, so this OVER-REPORTS. DEC-L-074, one layer")
+    print("        down, in the instrument.")
+    print(f"      * THIS {FLOOR_LINE[5:]}.")
+    print("        A document and a comment holding one fact with no identifier between them are")
+    print("        invisible here and always will be -- that is the boundary, not a gap to close.")
+    print("      * It reports. It never fails the gate.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1900,6 +2063,11 @@ def main() -> int:
                     help="with --baseline: rewrite it when nothing regressed (ratchets down only)")
     ap.add_argument("--edges-only", action="store_true",
                     help="run only checks 9 and 10 (ADR edges, decision mechanisms)")
+    # THE `DEC-L-082` ADVISORY (T-106). Reports and never fails, so it takes the earliest
+    # return in main and cannot reach any exit code but 0.
+    ap.add_argument("--citers", metavar="BASE",
+                    help="advisory: list citers of every identifier named on a changed line in a "
+                         "home file, diffed against BASE (a commit-ish). Reports, never fails.")
     args = ap.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -1910,6 +2078,11 @@ def main() -> int:
         else Path(args.adr_dir)
     board = (root / args.board) if not Path(args.board).is_absolute() \
         else Path(args.board)
+
+    # FIRST, and deliberately: this answers a different question from every check below and
+    # must never inherit their exit codes. See `DEC-L-082` and the section above `report_citers`.
+    if args.citers:
+        return report_citers(args.citers, features, root)
 
     if args.edges_only:
         adr = check_adr_edges(adr_dir)

@@ -76,6 +76,17 @@ public sealed class EmploymentTypeAssumptionTests
   // unpaid days` at their own rate, so no human encodes a ratio for them either. **`Monthly` is the only
   // type the paragraph above still describes, and it describes it exactly.**
   //
+  // ---- AND AGAIN IN T-110, WITH `OneOffPayments` — AND `Compensation` BECOMING NULLABLE.
+  //
+  // **A one-off pay instruction is an amount, an element and an identifier.** It carries no rate, no
+  // schedule and no policy: two employees with identical instructions are paid identically. **Nothing about
+  // it can encode how much of a full week somebody works.**
+  //
+  // **The nullable `Compensation` is the more interesting half, and it does NOT widen this guard's risk.**
+  // A null means the employee is on no rate at all — no base, no proration, no absence deduction — and
+  // `ProrationFactor` never touches their pay. **The paragraph above is about an employee whose ratio was
+  // hand-encoded into `BaseAmount`; an employee with no `BaseAmount` has nowhere to hide one.**
+  //
   // The assertion stays EXACT-EQUALITY. Relaxing it to "contains" would answer this question once and
   // never ask it again, which is the whole value of a tripwire that fires on any shape change.
   // ================================================================================================
@@ -86,7 +97,7 @@ public sealed class EmploymentTypeAssumptionTests
     [
       "EmployeeId", "HiredUtc", "TerminatedUtc",
       "Compensation", "OvertimeQuantityByTier", "UnpaidAbsenceQuantity", "WorkedQuantity",
-      "StandardWorkingDays"
+      "StandardWorkingDays", "OneOffPayments"
     ];
 
     Assert.Equal(expected, ComponentsOf(typeof(PayrollEmployeeInput)));

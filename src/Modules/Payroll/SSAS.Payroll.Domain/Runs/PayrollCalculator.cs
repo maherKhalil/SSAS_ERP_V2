@@ -11,7 +11,16 @@ public sealed record PayrollEmployeeInput(
   Guid EmployeeId,
   DateTimeOffset HiredUtc,
   DateTimeOffset? TerminatedUtc,
-  EmployeeCompensation Compensation,
+  // ---- NULLABLE SINCE T-110, AND THE NULL IS THE FEATURE.
+  //
+  // **An employee with a one-off payment and no compensation record was omitted from every run** — no line,
+  // no error, no payslip. That is the owner's case: a contractor paid once for a job has no monthly, daily
+  // or hourly rate, so no compensation record exists to find.
+  //
+  // A null here means exactly that: no base salary, no assignments, no proration, no absence deduction —
+  // **only whatever one-off instructions name this employee.** Every element below produces zero for such an
+  // employee and the zero-line rule then suppresses them, so the null needs no special path.
+  EmployeeCompensation? Compensation,
 
   // ---- THE ATTENDANCE INPUT (FP-013, REQ-ATT-0022) — PLAIN VALUES, NOT THE CONTRACT TYPE.
   //
@@ -42,7 +51,20 @@ public sealed record PayrollEmployeeInput(
 
   // DAYS, and a COMPANY-AND-PERIOD fact rather than an employee one — what the company's calendar says this
   // period contains, before anything about this employee. Read only by `SalaryType.Daily` (T-108).
-  int StandardWorkingDays = 0);
+  int StandardWorkingDays = 0,
+
+  // ---- ONE-OFF PAY INSTRUCTIONS FOR THIS PERIOD (T-110).
+  //
+  // A PROJECTION rather than the aggregate, and deliberately: `OneOffPayment` carries
+  // `ConsumedByPayrollRunId`, and **consumption happens at APPROVAL, not here.** Passing the aggregate would
+  // put a field the calculator must never write inside the calculator's reach. It needs the id, the element
+  // and the amount, and nothing else.
+  IReadOnlyList<OneOffPaymentInput>? OneOffPayments = null);
+
+// ---- WHAT THE CALCULATOR NEEDS OF A ONE-OFF, AND NO MORE (T-110).
+//
+// The id travels so the caller can match the line back to the instruction it must consume on approval.
+public sealed record OneOffPaymentInput(Guid OneOffPaymentId, Guid PayElementId, decimal Amount);
 
 // ================================================================================================
 // THE CALCULATION ENGINE (OD-PAY-0007, OD-PAY-0008).
@@ -151,13 +173,15 @@ public static class PayrollCalculator
       // A daily salary with no working days to price cannot be calculated, and the run refuses rather than
       // paying zero. See `PayrollErrors.DailySalaryHasNoWorkingDays` for why the error names what was
       // observed rather than which of its three causes occurred.
-      if (employee.Compensation.SalaryType == SalaryType.Daily && employee.StandardWorkingDays <= 0)
+      if (employee.Compensation?.SalaryType == SalaryType.Daily && employee.StandardWorkingDays <= 0)
       {
         return Result.Failure<IReadOnlyList<PayrollRunDraftLine>>(
           PayrollErrors.DailySalaryHasNoWorkingDays);
       }
 
-      var baseAmount = RoundLine(employee.Compensation.SalaryType switch
+      // A ONE-OFF-ONLY EMPLOYEE HAS NO BASE. Not zero-because-something-went-wrong: they were never on a
+      // rate, so there is no amount for a period to prorate or a quantity to multiply.
+      var baseAmount = employee.Compensation is null ? 0m : RoundLine(employee.Compensation.SalaryType switch
       {
         SalaryType.Hourly => employee.Compensation.BaseAmount * employee.WorkedQuantity,
 
@@ -196,7 +220,7 @@ public static class PayrollCalculator
 
       foreach (var element in ordered)
       {
-        var assignment = employee.Compensation.Assignments
+        var assignment = employee.Compensation?.Assignments
           .FirstOrDefault(a => a.PayElementId == element.Id);
 
         // ---- BASE SALARY NEEDS NO ASSIGNMENT; EVERYTHING ELSE DOES.
@@ -284,7 +308,7 @@ public static class PayrollCalculator
           // Zero rather than "no line": the element is exempt from requiring an assignment, so a company
           // that configures it gets a zero contribution which the zero-line rule below then suppresses.
           PayElementBehaviour.UnpaidAbsenceDeduction =>
-            employee.Compensation.SalaryType is SalaryType.Monthly
+            employee.Compensation?.SalaryType is SalaryType.Monthly
               ? baseAmount / periodDays * employee.UnpaidAbsenceQuantity
               : 0m,
 
@@ -311,6 +335,40 @@ public static class PayrollCalculator
         {
           grossToDate += amount;
         }
+      }
+
+      // ---- ONE-OFF PAY INSTRUCTIONS, APPENDED AFTER THE ELEMENTS (T-110).
+      //
+      // Each names a `PayElement` for its KIND and its GL ACCOUNT; the instruction supplies the amount. That
+      // is why a one-off needs no new posting path — it produces an ordinary line that posts the ordinary
+      // way.
+      //
+      // ---- IT REFUSES AN ELEMENT THE RUN IS NOT PRICING, RATHER THAN DROPPING THE LINE.
+      //
+      // `ordered` excludes inactive elements and `NetPayPayable`. A one-off naming one of those would
+      // otherwise vanish silently — **an instruction somebody wrote, a person expecting money, and no line
+      // and no error anywhere.** That is the shape of the defect this whole task exists to close, and
+      // reproducing it inside the fix would be worth catching once.
+      //
+      // ---- AND THEY DO NOT FEED `grossToDate`, WHICH IS A CHOICE AND NOT AN OVERSIGHT.
+      //
+      // `PercentageOfGrossToDate` accumulates in element order, and these are appended after every element
+      // has been computed. Feeding them in would make the result depend on where in that order a one-off is
+      // considered — and nothing has ruled where that is. **Stated here so the next reader meets a decision
+      // rather than a behaviour**; if a one-off should raise a percentage-of-gross deduction, that is a
+      // ruling and it changes this line.
+      foreach (var oneOff in employee.OneOffPayments ?? [])
+      {
+        var element = ordered.FirstOrDefault(candidate => candidate.Id == oneOff.PayElementId);
+        if (element is null)
+        {
+          return Result.Failure<IReadOnlyList<PayrollRunDraftLine>>(
+            PayrollErrors.OneOffPaymentElementNotPayable);
+        }
+
+        lines.Add(new PayrollRunDraftLine(
+          Guid.NewGuid(), payrollRunId, employee.EmployeeId, element.Id, element.Kind,
+          RoundLine(oneOff.Amount), sequence++, element.GlAccountId));
       }
     }
 

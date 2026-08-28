@@ -15,6 +15,13 @@ public sealed class PayrollRouteInventoryTests(PayrollApiTestHost host) : IClass
     ("POST", "/api/payroll/employees/{employeeId:guid}/compensation", PayrollPermissionNames.ManageCompensation),
     ("GET", "/api/payroll/employees/{employeeId:guid}/compensation", PayrollPermissionNames.ViewCompensation),
     ("GET", "/api/payroll/employees/{employeeId:guid}/compensation/current", PayrollPermissionNames.ViewCompensation),
+
+    // ---- A ONE-OFF PAY INSTRUCTION (T-110). `ManageCompensation`, and that is the whole reasoning.
+    //
+    // Deciding somebody is paid an amount is the same authority whether it recurs or happens once. A
+    // permission of its own would let the two be granted apart, which nobody has ruled — and inventing a
+    // distinction is what `AC-SS-0005`'s reasoning warns against.
+    ("POST", "/api/payroll/employees/{employeeId:guid}/one-off-payments", PayrollPermissionNames.ManageCompensation),
     ("GET", "/api/payroll/employees/{employeeId:guid}/payslips", PayrollPermissionNames.ViewPayslips),
 
     ("POST", "/api/payroll/elements", PayrollPermissionNames.ManageElements),

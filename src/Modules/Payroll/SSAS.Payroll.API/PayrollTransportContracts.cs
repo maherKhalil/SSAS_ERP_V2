@@ -99,10 +99,25 @@ public sealed record RecordCompensationRequest(
   // The route is strict-JSON, so an unknown value is refused rather than silently read as monthly — which
   // matters more here than usual: a typo that fell back to monthly would pay an hourly employee a month's
   // wage per hour.
-  [property: JsonPropertyName("salaryType")] SalaryType? SalaryType,
+  [property: JsonPropertyName("salaryType")]
+  [property: JsonConverter(typeof(JsonStringEnumConverter))] SalaryType? SalaryType,
   [property: JsonPropertyName("assignments")] IReadOnlyList<CompensationAssignmentRequest>? Assignments,
   [property: JsonPropertyName("wasOutsideGradeBand")] bool WasOutsideGradeBand,
   [property: JsonPropertyName("gradeBandObservation")] string? GradeBandObservation);
+
+// ---- A ONE-OFF PAY INSTRUCTION (T-110).
+//
+// `payrollPeriodId` rather than a date: the instruction binds to the PERIOD an operator names. The run
+// includes employees by period and selects compensation by pay date, and a new construct must not inherit
+// the side of that asymmetry nobody has ruled on.
+public sealed record RecordOneOffPaymentRequest(
+  [property: JsonPropertyName("companyId")] Guid CompanyId,
+  [property: JsonPropertyName("payrollPeriodId")] Guid PayrollPeriodId,
+
+  // The element supplies the line's KIND and its GL account; this request supplies the amount.
+  [property: JsonPropertyName("payElementId")] Guid PayElementId,
+  [property: JsonPropertyName("amount")] decimal Amount,
+  [property: JsonPropertyName("reason")] string? Reason);
 
 public sealed record CompensationResponse(
   Guid EmployeeCompensationId, Guid CompanyId, Guid EmployeeId, DateTimeOffset EffectiveFromUtc,

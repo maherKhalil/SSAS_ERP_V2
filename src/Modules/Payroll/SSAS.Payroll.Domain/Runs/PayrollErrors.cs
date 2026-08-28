@@ -148,6 +148,19 @@ public static class PayrollErrors
     "An employee is on a daily salary and this period reports no standard working days for the company, "
     + "so there is nothing to price a daily rate against.");
 
+  // ---- A ONE-OFF NAMING AN ELEMENT THE RUN IS NOT PRICING (T-110).
+  //
+  // The run prices ACTIVE elements and never `NetPayPayable`. A one-off naming anything else would produce
+  // no line — **an instruction somebody wrote, a person expecting money, and nothing anywhere.** That is the
+  // exact defect T-110 exists to close, so the fix refuses rather than reproducing it one level in.
+  //
+  // It fails the RUN rather than the employee, like the daily refusal: a run that silently omitted one
+  // person's pay would be discovered on payday.
+  public static readonly Error OneOffPaymentElementNotPayable = new(
+    "Payroll.OneOffPaymentElementNotPayable",
+    "A one-off payment names a pay element this run is not pricing — it is inactive, or it is the net-pay "
+    + "element, which is derived rather than configured.");
+
   public static readonly Error UnbalancedPosting = new(
     "Payroll.UnbalancedPosting",
     "The calculated run does not produce a balanced journal, which is a calculation defect rather than a user error.");

@@ -40,6 +40,7 @@ public sealed class PayrollTenantModelContributor : ITenantModelContributor
     modelBuilder.ApplyConfiguration(new PayElementConfiguration());
     modelBuilder.ApplyConfiguration(new EmployeeCompensationConfiguration());
     modelBuilder.ApplyConfiguration(new PayElementAssignmentConfiguration());
+    modelBuilder.ApplyConfiguration(new OneOffPaymentConfiguration());
     modelBuilder.ApplyConfiguration(new PayrollPeriodConfiguration());
     modelBuilder.ApplyConfiguration(new PayrollRunConfiguration());
     modelBuilder.ApplyConfiguration(new PayrollRunDraftLineConfiguration());

@@ -63,11 +63,19 @@ for st in sites:
     keys=set(st['kinds'])
     for miss in sorted(declared-keys): k1.append((st,miss))
     for dead in sorted(keys-declared): k2.append((st,dead))
+    # KIND 3 APPLIES ONLY TO AN OPTIONAL MEMBER, AND THAT JOIN IS THE WHOLE CHECK.
+    #
+    # `StrictRequestReader:45` is `var required = requiredFields ?? fields.Keys` -- so a site passing NO
+    # requiredFields makes EVERY declared key required. A required member refusing explicit null is the rule
+    # working, not a divergence. The first version of this script flagged 71 of them because it compared the
+    # dictionary window and never joined the argument list it had already parsed for kind 4.
+    req = set(st['required']) if st['required'] is not None else set(st['kinds'])
     for m in rec['members']:
         kinds=st['kinds'].get(m['json'])
         if not kinds: continue
+        if m['json'] in req: continue
         nullable=m['type'].rstrip().endswith('?')
-        if nullable and 'Null' not in kinds: k3.append((st,m['json'],m['type'],kinds,'nullable without Null'))
+        if nullable and 'Null' not in kinds: k3.append((st,m['json'],m['type'],kinds,'optional, nullable, no Null'))
     for m in rec['members']:
         if st['required'] and m['json'] in st['required'] and m['type'].rstrip().endswith('?'):
             k4.append((st,m['json'],m['type']))

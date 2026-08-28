@@ -98,7 +98,12 @@ FP-011 proved is a live failure mode rather than a theoretical one; and codes ar
 
 Posted journals are append-only, and a payroll posting is a journal. Correcting a paid run therefore means
 **reversing and re-posting**, never editing. This constrains `OD-PAY-0011` rather than answering it: the
-GL-side behaviour is fixed, but what the *payroll* run record does about it is still open.
+GL-side behaviour is fixed, but what the *payroll* run record does about it was left open here.
+
+**CLOSED IN T-112 by `OD-PAY-0011`'s own option table**, not by a new ruling. The run records `ReversedUtc`,
+and one *unreversed* run per period is the uniqueness rule — which is the *"which is authoritative in every
+read"* rule whose absence is why option 3 was rejected. See `PayrollRunConfiguration`'s index for why the
+previous constraint enforced the rejected option's prohibition instead.
 
 ### `DEC-PAY-0013` — A payslip cannot be a stored document. **SETTLED-BY-ABSENCE.**
 

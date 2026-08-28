@@ -161,6 +161,14 @@ public static class PayrollErrors
     "A one-off payment names a pay element this run is not pricing — it is inactive, or it is the net-pay "
     + "element, which is derived rather than configured.");
 
+  // ---- A SECOND REVERSAL OF ONE POSTING (T-112).
+  //
+  // Two reversing entries for one posting, and the second timestamp would overwrite the record of when the
+  // first happened. Refused rather than restamped.
+  public static readonly Error RunAlreadyReversed = new(
+    "Payroll.RunAlreadyReversed",
+    "This payroll run has already been reversed.");
+
   public static readonly Error UnbalancedPosting = new(
     "Payroll.UnbalancedPosting",
     "The calculated run does not produce a balanced journal, which is a calculation defect rather than a user error.");

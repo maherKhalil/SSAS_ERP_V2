@@ -195,7 +195,10 @@ public static class PayrollEndpointRouteBuilderExtensions
         // salary type got a 400 and a client omitting it got Monthly** — hourly and daily were unreachable
         // through the API from the moment they shipped. The domain, the calculator, the persistence and the
         // migration were all correct; the door was never opened.
-        ["salaryType"] = [JsonValueKind.String, JsonValueKind.Number],
+        // `Null` added T-112. T-111's sweep found this was the only optional member in the product that
+        // refused an explicit null, and the rule the other sites follow is that an optional member accepts
+        // one — `StrictRequestReader:45`, `requiredFields ?? fields.Keys`.
+        ["salaryType"] = [JsonValueKind.String, JsonValueKind.Number, JsonValueKind.Null],
 
         ["assignments"] = [JsonValueKind.Array, JsonValueKind.Null],
         ["wasOutsideGradeBand"] = [JsonValueKind.True, JsonValueKind.False],

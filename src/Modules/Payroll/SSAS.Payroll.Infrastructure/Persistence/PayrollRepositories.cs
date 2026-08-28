@@ -225,9 +225,14 @@ internal sealed class PayrollRunRepository(ITenantDbContextAccessor contextAcces
   {
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
 
+    // UNREVERSED ONLY (T-112). A reversed run no longer claims the period — that is what `OD-PAY-0011`'s
+    // option 1 means, and until now this matched any run in any state and refused the rerun half of
+    // reverse-and-rerun. The filtered unique index states the same rule to SQL Server.
     return await context.Set<PayrollRun>()
       .AnyAsync(
-        run => run.CompanyId == companyId && run.PayrollPeriodId == payrollPeriodId,
+        run => run.CompanyId == companyId
+          && run.PayrollPeriodId == payrollPeriodId
+          && run.ReversedUtc == null,
         cancellationToken);
   }
 

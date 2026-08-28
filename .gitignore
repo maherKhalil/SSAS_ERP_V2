@@ -14,3 +14,7 @@ coverage/
 
 # Architect/Coder loop: session pointers are machine-local, the task history is not.
 .claude/handoff/session/
+
+# Transfer artefacts. Untracked by the owner all week; swept in by a broad `git add -A` in T-089
+# (b2289e8) and untracked again. Ignored so a broad add cannot sweep it a second time.
+*.bundle

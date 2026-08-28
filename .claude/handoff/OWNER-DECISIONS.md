@@ -1,6 +1,6 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-Eight items that engineering cannot settle on its own. Each carries **what it is**, **the measured facts**,
+Nine items that engineering cannot settle on its own. Each carries **what it is**, **the measured facts**,
 **what it blocks**, and **the options**. Where the call is genuinely the owner's there is no recommendation.
 
 **Every number here was re-verified against the tree today.** Three items had moved since they were
@@ -200,6 +200,33 @@ from the same days does not.
 
 **The options.** Confirm it; or change one side, which is a payroll-semantics decision with back-dating
 consequences.
+
+---
+
+## 9. `Company.BaseCurrencyCode` is stored non-Unicode — added 2026-08-28 (T-134)
+
+**What it is.** Currency codes are persisted as **`char(3)` under an ordinal collation**, not Unicode. Every
+other column holding ERP data is Unicode.
+
+**The measured facts.** The product has **five** non-Unicode string columns. Four are localization plumbing —
+culture codes (`varchar(2)`), a text-format token, a change-type token. **`Company.BaseCurrencyCode` is the
+only one in the ERP's own data.**
+
+**Why it is defensible today.** ISO 4217 defines currency codes as three uppercase ASCII letters, so `char(3)`
+holds every legal value. **The engineer who flagged it wrote the caveat themselves:** *"it is always ASCII" is
+an argument that ages badly, and this one is nearer the ERP's own data than a culture code is.*
+
+**What it blocks.** Nothing today. It matters if the product ever stores something in that column that is not
+an ISO 4217 code — a local or historical currency designation, or a symbol.
+
+**What it costs to change.** **A tenant migration**, which is why it was recorded for a decision rather than
+altered by the change that found it.
+
+**The options.**
+- **Leave it** — ISO 4217 is a real standard and the column holds a code, not a name.
+- **Widen it to `nvarchar(3)`** — a tenant migration now, while the data is small.
+- **Decide when a non-ISO currency is actually needed** — cheapest today, most expensive if it arrives with
+  live data behind it.
 
 ---
 

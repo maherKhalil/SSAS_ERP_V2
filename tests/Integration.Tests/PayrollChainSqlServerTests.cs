@@ -76,6 +76,50 @@ public sealed class PayrollChainSqlServerTests
   // days less two unpaid is 19, so 1900.
   private const decimal DailySalaryRate = 100m;
 
+  // An hourly employee's rate PER HOUR (T-114). The fixture's supervisor recorded 8 worked hours, so 8 x 25
+  // = 200 — and the SAME 25 is the overtime rate, which is what makes the two lines distinguishable only by
+  // the quantity each is priced against.
+  private const decimal HourlySalaryRate = 25m;
+
+  // ================================================================================================
+  // AN HOURLY SALARY (T-114). THE QUANTITY IS THE ADJUSTMENT.
+  // ================================================================================================
+  //
+  // Rate times hours attended, with **no proration and no absence deduction** — the owner's ruling being
+  // that an hourly employee is paid only for the time they attend, so the worked quantity has already
+  // accounted for everything the other two adjustments would apply.
+  //
+  // **The fixture records two unpaid absence days, and that is what makes this test worth running.** A
+  // deduction line appearing here would be the double-count T-107 excluded hourly from, priced against a
+  // CALENDAR-day divisor that means nothing at all against an hourly rate.
+  [Fact]
+  [Trait("Decision", "OD-PAY-0011")]
+  public async Task An_hourly_salary_is_the_rate_times_hours_attended_and_takes_no_absence_deduction()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync(SalaryType.Hourly, HourlySalaryRate);
+    await chain.SeedAttendanceAsync();
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(runId)).IsSuccess);
+    Assert.True((await chain.PostAsync(runId)).IsSuccess);
+
+    var lines = (await chain.RunAsync(runId)).Lines.ToList();
+
+    // 8 hours attended at 25.
+    Assert.Equal(200m, lines.Single(line => line.GlAccountId == chain.SalaryAccountId).Amount);
+
+    // Overtime is priced on its own quantity: 6 hours at the same 25.
+    Assert.Equal(150m, lines.Single(line => line.GlAccountId == chain.OvertimeAccountId).Amount);
+
+    // ---- TWO UNPAID DAYS RECORDED, AND NO DEDUCTION LINE.
+    Assert.DoesNotContain(lines, line => line.GlAccountId == chain.AbsenceAccountId);
+  }
+
   // ================================================================================================
   // REVERSE AND RERUN (T-114). T-112's FILTERED UNIQUE INDEX, AGAINST A REAL SERVER.
   // ================================================================================================

@@ -128,9 +128,18 @@ public sealed class PayrollChainSqlServerTests
   // **"Correct by construction" is also what `StandardWorkingDays` was**, two tasks before it turned out to
   // be the wrong quantity. The reasoning was sound each time.
   //
-  // **Terminated on 15 January:** 11 working days from the 1st to the 15th, less two unpaid, so **9 x 100 =
-  // 900.** Before T-115 this employee was paid the whole period's 19 days: **1900, an overpayment of 1000
-  // for days after they left.**
+  // **Terminated on 15 January: 11 working days from the 1st to the 15th, at 100 = 1100.**
+  //
+  // ---- AND THE TWO UNPAID DAYS DO NOT DEDUCT, WHICH IS T-119 AND WAS T-116's FINDING.
+  //
+  // They are recorded on the 20th — five days after this employee left. **T-116 asserted 900 and passed**,
+  // because T-115 clamped the working-day count and left the absence quantity unbounded, so a leaver was
+  // deducted for absence on days they were not employed.
+  //
+  // **That assertion failing against T-119 is the proof the old behaviour deducted**: `Expected: 900,
+  // Actual: 1100.0000`. The plant for this fix is the previous version of this line.
+  //
+  // Before T-115 the same employee was paid the whole period: **1900.**
   [Fact]
   [Trait("Decision", "OD-PAY-0010")]
   public async Task A_daily_rate_leaver_is_paid_only_to_their_termination()
@@ -149,7 +158,7 @@ public sealed class PayrollChainSqlServerTests
 
     var lines = (await chain.RunAsync(runId)).Lines.ToList();
 
-    Assert.Equal(900m, lines.Single(line => line.GlAccountId == chain.SalaryAccountId).Amount);
+    Assert.Equal(1100m, lines.Single(line => line.GlAccountId == chain.SalaryAccountId).Amount);
     Assert.DoesNotContain(lines, line => line.GlAccountId == chain.AbsenceAccountId);
   }
 
@@ -936,9 +945,11 @@ public sealed class PayrollChainSqlServerTests
 
         // T-113: `IWorkingCalendarRepository` is T-108's addition — the summary carries the period's
         // standard working days, which a daily salary is priced against.
+        // T-119: the summary resolves the employment window itself, so the deduction excludes absence
+        // recorded on days the employee was not employed.
         IAttendanceSummary attendance = new AttendanceSummaryService(
           accessor, companyAccess, currentTenant, currentTenantUser,
-          new WorkingCalendarRepository(accessor));
+          new WorkingCalendarRepository(accessor), roster);
 
         var ledger = new GlJournalPoster(
           new JournalEntryRepository(accessor), new AccountRepository(accessor),

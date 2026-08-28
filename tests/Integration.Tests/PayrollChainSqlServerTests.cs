@@ -273,6 +273,50 @@ public sealed class PayrollChainSqlServerTests
   }
 
   // ================================================================================================
+  // A ONE-OFF SURVIVES THE REVERSAL OF THE RUN THAT PAID IT (T-123).
+  // ================================================================================================
+  //
+  // **T-110 ruled this predicate and could not implement it.** A reversal wrote nothing on the run, so
+  // *"an APPROVED, UNREVERSED run holds this"* was not a question Payroll's data could answer, and the
+  // instruction was recorded as consumed unconditionally — **stranding an unpaid obligation the moment its
+  // run was reversed, which is extinguishing a debt by an accounting action.**
+  //
+  // **T-112 added `ReversedUtc` and T-123 made the predicate expressible.** This is the ruling arriving,
+  // three tasks after it was made, and it is the first end-to-end proof of it.
+  [Fact]
+  [Trait("Decision", "OD-PAY-0011")]
+  public async Task A_one_off_is_payable_again_after_the_run_that_paid_it_is_reversed()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync();
+    await chain.SeedAttendanceAsync();
+    await chain.SeedOneOffPayeeAsync(4000m);
+    await chain.CloseAttendancePeriodAsync();
+
+    // ---- THE FIRST RUN PAYS IT.
+    var first = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(first)).IsSuccess);
+    Assert.True((await chain.PostAsync(first)).IsSuccess);
+
+    Assert.Equal(4000m, (await chain.RunAsync(first)).Lines
+      .Single(line => line.EmployeeId == chain.OneOffPayee).Amount);
+
+    // ---- REVERSED, THROUGH THE REAL HANDLER AND THE REAL LEDGER.
+    Assert.True((await chain.ReverseAsync(first)).IsSuccess);
+
+    // ---- AND THE CORRECTION PAYS IT AGAIN. The obligation was never discharged.
+    var second = await chain.CreateRunAsync();
+    Assert.True((await chain.TryCalculateAsync(second)).IsSuccess);
+    Assert.True((await chain.ApproveAsync(second)).IsSuccess);
+
+    Assert.Equal(4000m, (await chain.RunAsync(second)).Lines
+      .Single(line => line.EmployeeId == chain.OneOffPayee).Amount);
+  }
+
+  // ================================================================================================
   // REVERSE AND RERUN (T-114). T-112's FILTERED UNIQUE INDEX, AGAINST A REAL SERVER.
   // ================================================================================================
   //

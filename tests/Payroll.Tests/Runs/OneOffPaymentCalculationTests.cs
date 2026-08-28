@@ -88,28 +88,56 @@ public sealed class OneOffPaymentCalculationTests
     Assert.Equal(PayrollErrors.OneOffPaymentElementNotPayable.Code, result.Error.Code);
   }
 
-  // ---- CONSUMPTION IS ONCE, AND A SECOND ATTEMPT FAILS RATHER THAN PASSING QUIETLY.
+  // ---- THE SAME RUN CANNOT CONSUME IT TWICE (T-123, narrowed from T-110).
   //
-  // A no-op would let a defect in the approval path pay one instruction through two runs and report success
-  // both times. The aggregate refusing is what makes double payment structurally impossible instead of
-  // guarded by whoever remembers to check.
+  // **T-110 refused ANY second consumption and this test asserted that.** It was right while it stood: a
+  // reversal wrote nothing on the run, so *"paid, then unpaid"* was not a state Payroll could express, and
+  // refusing outright was the only way to stop a double payment.
+  //
+  // **T-112 gave the run a `ReversedUtc` and T-123 made the ruled predicate expressible**, so what is
+  // refused now is one run repeating itself — a defect in the approval path — rather than a correcting run
+  // taking over an instruction whose first run was reversed.
   [Fact]
-  public void A_one_off_is_consumed_once_and_a_second_run_is_refused()
+  public void The_same_run_cannot_consume_a_one_off_twice()
   {
     var payment = Instruction(500m);
-    var firstRun = Guid.NewGuid();
+    var run = Guid.NewGuid();
 
-    Assert.True(payment.MarkConsumedBy(firstRun).IsSuccess);
-    Assert.Equal(firstRun, payment.ConsumedByPayrollRunId);
+    Assert.True(payment.MarkConsumedBy(run).IsSuccess);
     Assert.True(payment.IsConsumed);
 
-    var second = payment.MarkConsumedBy(Guid.NewGuid());
+    var again = payment.MarkConsumedBy(run);
 
-    Assert.True(second.IsFailure);
-    Assert.Equal(OneOffPaymentErrors.AlreadyConsumed.Code, second.Error.Code);
+    Assert.True(again.IsFailure);
+    Assert.Equal(OneOffPaymentErrors.AlreadyConsumed.Code, again.Error.Code);
+    Assert.Equal(run, payment.ConsumedByPayrollRunId);
+  }
 
-    // AND THE FIRST RUN STILL OWNS IT. A failed second attempt must not repoint the reference.
-    Assert.Equal(firstRun, payment.ConsumedByPayrollRunId);
+  // ---- AND A CORRECTING RUN TAKES IT OVER, WHICH IS THE WHOLE OF T-110's RULING.
+  //
+  // **Refusing this would strand an unpaid obligation** — extinguishing a debt by an accounting action,
+  // which the ruling rejected in terms.
+  //
+  // **The reference moves rather than being cleared.** It answers *"which run paid it"*, and after a
+  // correction the honest answer is the correcting run. **A cleared reference would answer "nobody", which
+  // was true of neither run.**
+  //
+  // **What stops this being a double payment is not this method.** The repository offers an instruction
+  // only while it is unconsumed or its run is reversed, and the filtered unique index permits one
+  // unreversed run per period — so two LIVE runs can never both reach it.
+  [Fact]
+  public void A_correcting_run_takes_over_a_one_off_whose_run_was_reversed()
+  {
+    var payment = Instruction(500m);
+    var reversedRun = Guid.NewGuid();
+    var correctingRun = Guid.NewGuid();
+
+    Assert.True(payment.MarkConsumedBy(reversedRun).IsSuccess);
+
+    var taken = payment.MarkConsumedBy(correctingRun);
+
+    Assert.True(taken.IsSuccess, taken.IsFailure ? taken.Error.Message : string.Empty);
+    Assert.Equal(correctingRun, payment.ConsumedByPayrollRunId);
   }
 
   // ---- ZERO IS REFUSED, NOT ONLY NEGATIVE.

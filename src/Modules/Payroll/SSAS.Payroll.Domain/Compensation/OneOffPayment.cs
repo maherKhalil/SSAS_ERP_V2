@@ -177,11 +177,32 @@ public sealed class OneOffPayment
       string.IsNullOrWhiteSpace(reason) ? null : reason.Trim()));
   }
 
-  // ---- CONSUMED ONCE, AND A SECOND ATTEMPT IS AN ERROR RATHER THAN A NO-OP.
+  // ---- IT NAMES THE RUN THAT PAID IT, AND A REVERSED RUN DID NOT PAY IT (T-123).
   //
-  // Silently ignoring it would let a defect in the approval path pay the same instruction through two runs
-  // and report success both times. The aggregate refusing is what makes double payment structurally
-  // impossible rather than guarded by whoever remembers to check.
+  // **T-110 refused any second consumption outright, and that was right while it stood** — a reversal wrote
+  // nothing on the run, so "paid, then unpaid" was not a state Payroll could express, and refusing was the
+  // only way to prevent a double payment.
+  //
+  // **T-112 gave the run a `ReversedUtc`, so the ruled predicate is now expressible:** *consumed = an
+  // APPROVED, UNREVERSED run holds this*. A correcting run legitimately takes over an instruction whose
+  // first run was reversed, and refusing that would strand an unpaid obligation — **extinguishing a debt by
+  // an accounting action, which the ruling rejected.**
+  //
+  // ---- SO WHERE DOES THE DOUBLE-PAYMENT INVARIANT LIVE NOW? NOT HERE, AND THAT IS DELIBERATE.
+  //
+  // **It is structural, in two places that cannot drift:**
+  //
+  //   1. `IOneOffPaymentRepository.GetUnconsumedForPeriodAsync` returns an instruction only when it is
+  //      unconsumed OR the run naming it is reversed. **A live run's instructions are never offered again.**
+  //   2. `PayrollRunConfiguration`'s filtered unique index permits **one UNREVERSED run per period**, so two
+  //      live runs cannot both reach the same instruction.
+  //
+  // **An aggregate check here would be a third statement of a rule those two already enforce**, and the
+  // failure it guarded against — two live runs consuming one instruction — is now impossible at the
+  // database rather than merely refused in memory.
+  //
+  // **What is still refused is a run consuming an instruction it already holds**, which is not a correction
+  // but a defect in the approval path repeating itself.
   public Result MarkConsumedBy(Guid payrollRunId)
   {
     if (payrollRunId == Guid.Empty)
@@ -189,7 +210,7 @@ public sealed class OneOffPayment
       return Result.Failure(OneOffPaymentErrors.ConsumingRunRequired);
     }
 
-    if (ConsumedByPayrollRunId is not null)
+    if (ConsumedByPayrollRunId == payrollRunId)
     {
       return Result.Failure(OneOffPaymentErrors.AlreadyConsumed);
     }

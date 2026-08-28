@@ -30,13 +30,14 @@ public static class OneOffPaymentErrors
     "Payroll.OneOffPaymentConsumingRunRequired",
     "Consuming a one-off payment must name the run that paid it.");
 
-  // ---- A SECOND CONSUMPTION IS AN ERROR, NOT A NO-OP.
+  // ---- THE SAME RUN CONSUMING IT TWICE (T-123, narrowed from T-110).
   //
-  // Silently ignoring it would let a defect in the approval path pay one instruction through two runs and
-  // report success both times.
+  // **Not "already paid by some run"** — a correcting run legitimately takes over an instruction whose
+  // first run was reversed, which is the T-110 predicate `ReversedUtc` finally made expressible. **This is
+  // one run repeating itself, which is a defect in the approval path rather than a correction.**
   public static readonly Error AlreadyConsumed = new(
     "Payroll.OneOffPaymentAlreadyConsumed",
-    "This one-off payment has already been paid by an approved run.");
+    "This one-off payment has already been paid by this run.");
 
   // ---- THE ELEMENT MUST EXIST AND BE THE COMPANY'S.
   //

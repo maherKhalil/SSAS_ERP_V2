@@ -84,10 +84,30 @@ internal sealed class OneOffPaymentRepository(ITenantDbContextAccessor contextAc
   {
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
 
+    // ---- CONSUMED MEANS AN APPROVED, **UNREVERSED** RUN HOLDS IT (T-123).
+    //
+    // T-110 ruled this predicate and could not implement it: a reversal wrote nothing on the run, so
+    // "unreversed" was not a question Payroll's own data could answer. **T-112 added `ReversedUtc`, and this
+    // is the ruling becoming implementable rather than a new decision.**
+    //
+    // ---- IT IS A JOIN, NOT A RESET, AND THAT IS THE WHOLE DESIGN.
+    //
+    // The alternative was clearing `ConsumedByPayrollRunId` when a run is reversed. **That destroys the
+    // record of which run paid it** — the reason T-110 chose a reference over a boolean was that *"every
+    // payroll question about a payment is which run"* — **and it is a second write that can fail after the
+    // reversal has already posted to the ledger.**
+    //
+    // **Derived, so there is no state to get out of step.** A reversed run stops satisfying the predicate on
+    // its own, exactly as the ruling described.
+    var reversedRuns = context.Set<PayrollRun>()
+      .Where(run => run.ReversedUtc != null)
+      .Select(run => (Guid?)run.Id);
+
     return await context.Set<OneOffPayment>()
       .Where(payment => payment.CompanyId == companyId
         && payment.PayrollPeriodId == payrollPeriodId
-        && payment.ConsumedByPayrollRunId == null)
+        && (payment.ConsumedByPayrollRunId == null
+          || reversedRuns.Contains(payment.ConsumedByPayrollRunId)))
       .OrderBy(payment => payment.EmployeeId)
       .ThenBy(payment => payment.Id)
       .ToListAsync(cancellationToken);

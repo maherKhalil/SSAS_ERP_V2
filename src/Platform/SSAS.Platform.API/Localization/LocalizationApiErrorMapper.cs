@@ -66,6 +66,16 @@ public static class LocalizationApiErrorMapper
       "Tenant.Unauthorized" => Forbidden,
       "Persistence.UniqueConstraint" => UniqueConstraint,
 
+      // ---- TWO FROM THE MANAGEMENT AUDIT GUARD (T-093b).
+      //
+      // An untrusted actor is a statement about who is asking — 403, the answer `Employee.InvalidActor`
+      // already gets. A malformed module-and-group name is something the caller can fix — 400.
+      //
+      // Both reuse this site's own `LocalizationApiError` type, as established: the shape stays, only the
+      // code strings are shared so one refusal reads the same across surfaces.
+      "localization.actor_invalid" => Forbidden,
+      "localization.group_invalid" => InvalidRequest,
+
       // A database write failure, which under the old fallback answered 400 — the caller told to fix a
       // request that was never the problem.
       "Persistence.WriteFailure" => WriteFailure,

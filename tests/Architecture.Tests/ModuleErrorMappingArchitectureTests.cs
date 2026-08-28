@@ -44,6 +44,17 @@ namespace SSAS.Architecture.Tests;
 // So responsibility is DECLARED by code family. A wrong derivation accuses innocents; a declaration is
 // reviewable, and a new family has to be added by a person — H9's argument for its exact inventory.
 //
+// ---- A SYMBOL SEARCH IS NOT A CODE SEARCH (T-093b).
+//
+// The CODES in this register are unique. **The C# member names that carry them are not.**
+// `CompanyAccessErrors.AssignmentInvalid` and `BranchErrors.AssignmentInvalid` are different errors with
+// the same member name, and a search for `AssignmentInvalid` returns both — with the branch sites, which
+// validate a branch-id list, outnumbering the company one.
+//
+// **Ruling a status from those hits would have put a branch-list validation's answer onto a company-access
+// code, and every hit would have looked confirming.** Qualify by class when you go looking for a code's
+// raise sites. `DEC-L-069`'s family, and the third instance of it this week.
+//
 // ---- THE RESPONSIBLE SET IS A STATIC FLOOR, NOT A TOTAL (T-093). T-094 CLOSES IT.
 //
 // Responsibility is declared by code FAMILY, and the families were chosen by reading the handlers each
@@ -176,21 +187,15 @@ public sealed class ModuleErrorMappingArchitectureTests
     new("CompanyApiErrorMapper", PlatformAssemblies,
       Path.Combine("src", "Platform", "SSAS.Platform.API", "Companies", "CompanyApiErrorMapper.cs"),
       ["Company"],
-      // ---- FIVE, AND THEY ARE THE EVIDENCE FOR THE FLOOR WARNING ABOVE.
+      // ---- FIVE `CompanyAccessErrors` WERE THE EVIDENCE FOR THE FLOOR WARNING ABOVE, AND ARE NOW MAPPED.
       //
-      // All five are `CompanyAccessErrors`, raised by the company-context establisher — an INJECTED
-      // SERVICE, exactly the class of source the static reachability walk does not see. The manual
-      // estimate that preceded this register put Company at one wrong code; the register found five more.
+      // All five are raised by the company-context establisher — an INJECTED SERVICE, exactly the class of
+      // source the static reachability walk does not see. The manual estimate that preceded this register
+      // put Company at one wrong code; **the register found five more, and T-093b ruled and mapped them.**
       //
-      // **Not mapped here because a status is a contract decision owned by the surface**, and nobody has
-      // ruled these. Recorded as debt so paying it down is something someone writes down.
-      [
-        "Company.AssignmentInvalid",
-        "Company.ContextRequired",
-        "Company.InvalidSelection",
-        "Company.InvalidSelectionFormat",
-        "Company.SelectionRequired"
-      ]),
+      // The debt is empty, and that is a measurement rather than a default: it means every declared
+      // `Company.*` code has an arm someone chose.
+      []),
 
     // ---- THE SITE T-091 SHIPPED A DEFECT ONTO.
     //
@@ -244,14 +249,14 @@ public sealed class ModuleErrorMappingArchitectureTests
     new("LocalizationApiErrorMapper", PlatformAssemblies,
       Path.Combine("src", "Platform", "SSAS.Platform.API", "Localization", "LocalizationApiErrorMapper.cs"),
       ["localization"],
-      // Two, both raised by the management audit guard. Unruled, so recorded rather than guessed at.
-      ["localization.actor_invalid", "localization.group_invalid"]),
+      // Both were raised by the management audit guard and unruled; ruled and mapped in T-093b.
+      []),
 
     new("PlatformSupportAuthorityApiErrorMapper", PlatformAssemblies,
       Path.Combine("src", "Platform", "SSAS.Platform.API", "PlatformSupport", "PlatformSupportAuthorityApiErrorMapper.cs"),
       ["PlatformSupport"],
-      // Two more the static walk missed and the register found. Unruled; recorded.
-      ["PlatformSupport.AccountIneligible", "PlatformSupport.NoUsablePlatformAuthority"]),
+      // Two more the static walk missed and the register found; ruled and mapped in T-093b.
+      []),
 
     // ================================================================================================
     // AUTHENTICATION HAS NO MAPPER, AND THAT IS A RULING RATHER THAN A HOLE.

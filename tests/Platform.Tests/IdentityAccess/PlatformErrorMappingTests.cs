@@ -90,10 +90,41 @@ public sealed class PlatformErrorMappingTests
     Assert.Equal(500, localization.StatusCode);
   }
 
+  // ================================================================================================
+  // THE NINE RULED IN T-093b — THE CODES THE REGISTER FOUND AND THE STATIC WALK DID NOT.
+  // ================================================================================================
+  //
+  // Five of them are `CompanyAccessErrors`, raised by the company-context establisher. **An injected
+  // service is exactly what the static reachability walk cannot see**, so these were found by the register
+  // and ruled afterwards — the sequence the floor warning predicts.
+  //
+  // `Company.InvalidSelection` is 403 and NOT 404 on purpose: `TenantCompanyAccessResolver` collapses "no
+  // such company", "another tenant's company", "not active" and "not assigned" into it deliberately, so a
+  // caller cannot probe for companies it may not see. **A 404 would undo that collapse from the wire**,
+  // which is why the status is asserted rather than left to read as an oversight.
+  [Theory]
+  [InlineData("Company.ContextRequired", 403)]
+  [InlineData("Company.InvalidSelection", 403)]
+  [InlineData("Company.SelectionRequired", 400)]
+  [InlineData("Company.InvalidSelectionFormat", 400)]
+  [InlineData("Company.AssignmentInvalid", 400)]
+  public void The_company_site_answers_as_ruled(string code, int status) =>
+    Assert.Equal(status, CompanyApiErrorMapper.Map(new Error(code, "x")).StatusCode);
+
+  // Two authority refusals: statements about WHO is asking, not about what they sent. Under the site's
+  // default they answered 500, telling an operator a working system had failed.
+  [Theory]
+  [InlineData("PlatformSupport.AccountIneligible", 403)]
+  [InlineData("PlatformSupport.NoUsablePlatformAuthority", 403)]
+  public void The_platform_support_site_answers_as_ruled(string code, int status) =>
+    Assert.Equal(status, PlatformSupportAuthorityApiErrorMapper.Map(new Error(code, "x")).StatusCode);
+
   // ---- LOCALIZATION'S OTHER TWO RULED CODES.
   [Theory]
   [InlineData("Authorization.Unauthorized", 403)]
   [InlineData("Persistence.UniqueConstraint", 409)]
+  [InlineData("localization.actor_invalid", 403)]
+  [InlineData("localization.group_invalid", 400)]
   public void The_localization_site_answers_as_ruled(string code, int status)
   {
     Assert.True(LocalizationApiErrorMapper.TryMap(code, out var mapped));

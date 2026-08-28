@@ -4,6 +4,16 @@ namespace SSAS.Attendance.Domain.Leave;
 
 public static class LeaveErrors
 {
+  // The caller is a tenant user with no linked employee (`ADR-030` Decision 5, FP-015). An ordinary state
+  // rather than a fault — platform-support staff, and users created before their employee record exists.
+  //
+  // Mapped to `404 attendance.no_linked_employee`: a distinct per-module code, because the caller sees an
+  // answer about THEMSELVES. Collapsing it into an existing not-found would tell them their records were
+  // not found when the truth is that nobody linked their employee record.
+  public static readonly Error NoLinkedEmployee = new(
+    "Attendance.NoLinkedEmployee",
+    "No employee record is linked to this user.");
+
   public static readonly Error CompanyRequired = new(
     "Attendance.LeaveCompanyRequired",
     "Leave records must belong to a company.");

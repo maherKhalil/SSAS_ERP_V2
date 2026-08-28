@@ -63,6 +63,17 @@ public sealed class AttendancePermissionCatalogContributor : IPermissionCatalogC
       "the organisation. Strictly wider than ordinary approval: it reaches employees whose management " +
       "chain does not reach the holder at all"),
 
+    // ---- SELF-SERVICE (FP-015). TWO, MIRRORING THE ADMINISTRATIVE SPLIT.
+    //
+    // The descriptions say what the holder can see AND what they still cannot, because an administrator
+    // granting these to every employee needs to know that neither one discloses anybody else.
+    new(AttendancePermissionNames.ViewOwnRecords,
+      "View one's OWN attendance records and no one else's. Grants no sight of any other employee's " +
+      "attendance, and does NOT grant sight of one's own leave"),
+    new(AttendancePermissionNames.ViewOwnLeave,
+      "View one's OWN leave requests and balances, and no one else's. Separate from the records " +
+      "permission: a timesheet and a leave history disclose different things"),
+
     new(AttendancePermissionNames.ViewSensitiveLeave,
       "Reveal the TYPE of leave on requests the holder can already see. Leave type can disclose health " +
       "information — sick leave is a medical fact about an identified person — so it is granted separately " +

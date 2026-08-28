@@ -95,6 +95,27 @@ public interface IAttendanceReadService
     Guid? companyId, Guid? employeeId, DateOnly? fromDate, DateOnly? toDate,
     CancellationToken cancellationToken = default);
 
+  // ---- THE TWO SELF-SERVICE ENTRIES (FP-015, T-089).
+  //
+  // They take an `AttendanceReadScope` instead of resolving one, because the administrative entries resolve
+  // ADMINISTRATIVE permissions (`Attendance.Records.View`, `Attendance.Leave.View`) that a self-service
+  // caller must not need. The scope arrives from `IAttendanceSelfServiceScopeResolver`, built from the
+  // caller's own employee record.
+  //
+  // **Handing a scope in is not a hole:** the factory is `internal` to this assembly, so a scope is still
+  // proof that Attendance's own permission and placement resolution ran live. What a caller cannot do is
+  // forge one.
+  //
+  // **`employeeId` is a method argument on both, never a member of any contract** — that is what keeps the
+  // self routes free of an identifier a caller could change. Each shares its query with the administrative
+  // entry, so the branch predicate cannot hold on one path and go missing on the other.
+  Task<Result<IReadOnlyList<AttendanceRecordView>>> GetRecordsForEmployeeAsync(
+    AttendanceReadScope readScope, Guid employeeId, DateOnly? fromDate, DateOnly? toDate,
+    CancellationToken cancellationToken = default);
+
+  Task<Result<IReadOnlyList<LeaveRequestView>>> GetLeaveRequestsForEmployeeAsync(
+    AttendanceReadScope readScope, Guid employeeId, CancellationToken cancellationToken = default);
+
   Task<Result<IReadOnlyList<LeaveTypeView>>> GetLeaveTypesAsync(
     Guid? companyId, CancellationToken cancellationToken = default);
 

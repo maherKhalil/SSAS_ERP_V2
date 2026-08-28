@@ -1,4 +1,4 @@
-# FP-014 — Authorization model (proposed)
+# FP-014 — Authorization model
 
 **Written from the ruling set of 2026-08-25**, in which all seventeen `OD-SUB` carry rulings and the
 scope is `E + C`. Reads on from [`domain-model.md`](domain-model.md).

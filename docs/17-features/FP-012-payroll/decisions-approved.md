@@ -1,4 +1,4 @@
-# FP-012 — Decisions (APPROVED)
+# FP-012 — Approved decisions
 
 > **All eighteen `OD-PAY` decisions were RULED by the owner on 2026-08-24, and `DEC-PAY-0001`–`0015` were
 > ratified as drafted.** The options tables are kept intact beneath each ruling: a decision is only legible

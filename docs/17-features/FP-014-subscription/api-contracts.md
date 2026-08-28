@@ -1,4 +1,4 @@
-# FP-014 — API contracts (proposed)
+# FP-014 — API contracts
 
 Written from the ruling set of 2026-08-25. Reads on from
 [`authorization-model.md`](authorization-model.md), which carries the permission set and the plane

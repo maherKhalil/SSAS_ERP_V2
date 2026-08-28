@@ -1,4 +1,4 @@
-# FP-013 — Authorization model (proposed)
+# FP-013 — Authorization model
 
 > **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
 > [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the

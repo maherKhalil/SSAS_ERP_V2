@@ -1,4 +1,4 @@
-# FP-014 — Acceptance criteria (proposed)
+# FP-014 — Acceptance criteria
 
 Written from the ruling set of 2026-08-25. Closes the package alongside
 [`test-scenarios.md`](test-scenarios.md) and [`traceability-matrix.md`](traceability-matrix.md).

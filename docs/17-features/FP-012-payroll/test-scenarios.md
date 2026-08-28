@@ -1,4 +1,4 @@
-# FP-012 — Test Scenarios (RATIFIED)
+# FP-012 — Test Scenarios
 
 `TS-PAY-####`, mapped to the acceptance criteria they exercise and to the layer each belongs in.
 

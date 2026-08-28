@@ -8,7 +8,62 @@ recorded, and one had moved enough to change what the decision is about. Those a
 
 ---
 
-## 1. Platform's administration transport — ⚠ CHANGED (it is roughly twice the task it was)
+## 1. Overtime tiers — ⚠ CHANGED, and the decision is a different one than recorded
+
+**What it was recorded as.** *"`PayElement.OvertimeTier` — four layers, a fifth never written."*
+
+**⚠ That is stale. The tier is wired end to end and it does price.**
+
+```
+AttendanceRecord.OvertimeTier          captured, validated, persisted
+AttendanceSummaryResult                summed per tier into OvertimeQuantityByTier
+PayrollRunCommandHandlers              passed to the calculator
+PayrollCalculator.OvertimeQuantity     element.OvertimeTier -> quantities[tier] -> priced at the element rate
+```
+
+**What is missing is not a layer. It is a shared VOCABULARY**, and the gap is a money path:
+
+```
+Attendance groups tiers with   StringComparer.Ordinal        case-sensitive
+AttendanceRecord stores the tier VERBATIM                    no trim
+PayElement.SetOvertimeTier    stores overtimeTier.Trim()     trims
+the match                     quantities.TryGetValue(tier)   ordinal, exact
+```
+
+**Both sides are free strings, and they normalise differently.** A record tagged `"Night"` against an
+element tagged `"NIGHT"`, or a record with a leading space against an element that trimmed one, **does not
+match — and `OvertimeQuantity` returns `0m`.** The employee is paid **no overtime for that tier, silently**:
+no error, no warning, and a payslip that looks complete.
+
+**Every test on both sides uses the literal `"NIGHT"`.** The mismatch case is covered nowhere.
+
+**What it blocks.** Nothing today — one tier spelled consistently works. It is a latent money defect that
+surfaces the first time two people type the same tier differently.
+
+**⚠ THIS IS TWO PROBLEMS AND ONLY ONE OF THEM IS YOURS.**
+
+**The accidental half is being fixed and needs no decision.** One rule — how a tier is normalised — is
+written twice and differently, on the two sides of one contract. **Nobody chose that**, and engineering is
+correcting it so both sides normalise identically. **That removes every mismatch caused by spelling the
+same tier two ways.**
+
+**The half that IS yours: what should happen when a tier genuinely has no matching pay element.** After the
+fix, a record can still carry a tier no element prices — because someone invented a tier, or retired the
+element. **Today that pays zero, silently.**
+
+**The options.**
+- **Refuse the run** — payroll fails and names the unmatched tier. Nobody is underpaid, but a single bad
+  record blocks the whole run until someone fixes it. *This is what the product already does for a
+  comparable contradiction (`AttendanceContradictsEmployment`), which is precedent, not a decision.*
+- **Pay zero and report** — the run completes and lists what it could not price. Nothing is blocked; someone
+  has to read the report for the underpayment to be caught.
+- **A tier catalog** — companies define their tiers once, and records and elements can only reference an
+  existing one. Removes the possibility rather than handling it, at the cost of a setup step.
+- **Keep paying zero silently** — with the hazard recorded and accepted.
+
+---
+
+## 2. Platform's administration transport — ⚠ CHANGED (it is roughly twice the task it was)
 
 **What it is.** Three whole administrative surfaces exist as domain logic and application handlers with no
 HTTP routes: **tenants, roles, and users beyond de/reactivation.**
@@ -45,7 +100,7 @@ engineering.
 
 ---
 
-## 2. Employment type — unchanged, still absent
+## 3. Employment type — unchanged, still absent
 
 **What it is.** There is **no employment-type concept anywhere in HR.** `Employee` has no field for it. Every
 payroll calculation assumes one shape of employment.
@@ -61,48 +116,6 @@ be paid on full-time assumptions with nothing detecting it.
 - **Add it before the first such hire** — it reaches Employee, the calculator, and attendance proration.
 - **Decide the business will not have non-full-time staff**, and the guards become permanent.
 - **Accept the risk knowingly** with a manual check at hiring.
-
----
-
-## 3. Overtime tiers — ⚠ CHANGED, and the decision is a different one than recorded
-
-**What it was recorded as.** *"`PayElement.OvertimeTier` — four layers, a fifth never written."*
-
-**⚠ That is stale. The tier is wired end to end and it does price.**
-
-```
-AttendanceRecord.OvertimeTier          captured, validated, persisted
-AttendanceSummaryResult                summed per tier into OvertimeQuantityByTier
-PayrollRunCommandHandlers              passed to the calculator
-PayrollCalculator.OvertimeQuantity     element.OvertimeTier -> quantities[tier] -> priced at the element rate
-```
-
-**What is missing is not a layer. It is a shared VOCABULARY**, and the gap is a money path:
-
-```
-Attendance groups tiers with   StringComparer.Ordinal        case-sensitive
-AttendanceRecord stores the tier VERBATIM                    no trim
-PayElement.SetOvertimeTier    stores overtimeTier.Trim()     trims
-the match                     quantities.TryGetValue(tier)   ordinal, exact
-```
-
-**Both sides are free strings, and they normalise differently.** A record tagged `"Night"` against an
-element tagged `"NIGHT"`, or a record with a leading space against an element that trimmed one, **does not
-match — and `OvertimeQuantity` returns `0m`.** The employee is paid **no overtime for that tier, silently**:
-no error, no warning, and a payslip that looks complete.
-
-**Every test on both sides uses the literal `"NIGHT"`.** The mismatch case is covered nowhere.
-
-**What it blocks.** Nothing today — one tier spelled consistently works. It is a latent money defect that
-surfaces the first time two people type the same tier differently.
-
-**The options.**
-- **A tier catalog** — companies define tiers once; records and elements reference them. Removes the class.
-- **Normalise on both sides** — trim and upper-case at both write points. Cheap, and does not stop a typo
-  that is not a case difference.
-- **Refuse at run time** — the calculator fails the run when a record's tier matches no element, instead of
-  paying zero. Turns a silent underpayment into a visible refusal.
-- **Leave it** — with the hazard recorded.
 
 ---
 
@@ -194,5 +207,11 @@ consequences.
 **Engineering-owned items are excluded** — guard coverage, test shape, the register's floor, inventory
 migration. Those are being handled in the loop and do not need the owner.
 
-**One item was checked and removed:** the `{companyId}` route constraint. It looked like an inconsistency
-worth ruling on, and measuring it showed the product's convention already answers it. See `T-130.md`.
+**One item was checked and INVERTED rather than removed.** It was recorded as *"Company's `{companyId}`
+route lacks a type constraint"*. Measuring it showed the opposite: **a 400 for a malformed identifier is the
+product's convention, asserted by six tests across three modules and stated as a principle in FP-007** — and
+Company follows it. **Attendance's `:guid` routes answer 404 for the same condition, which contradicts that
+convention and is asserted by no test at all.**
+
+**So the open item is Attendance's, not Company's, and it is engineering's to settle** — recorded here only
+so the earlier framing does not outlive the measurement. See `T-130.md`.

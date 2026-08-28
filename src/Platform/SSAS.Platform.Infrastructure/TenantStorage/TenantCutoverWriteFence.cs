@@ -94,9 +94,29 @@ public sealed class TenantCutoverWriteFence(
     // the tenant write later rolls back, this will have recorded a write that did not land. That direction
     // is the safe one — it can only make the platform MORE reluctant to consider a flipback, never less —
     // whereas recording after commit could miss a write that did land, which is the failure that matters.
+    // ---- ⚠ AND ITS ANSWER DECIDES WHETHER THIS WRITE MAY PROCEED (T-135).
+    //
+    // **The result was previously discarded**, which defeated the paragraph above: the conservative
+    // bias was chosen so the platform can never MISS a write that landed, and an unread failure is
+    // exactly that miss. `RecordPostCutoverWriteAsync` returns `CutoverConcurrencyConflict` when its
+    // write-once update did not take and the re-read finds no observation — **two writers racing during
+    // a cutover, which is the one condition this fence exists for.**
+    //
+    // **Refusing is the conservative direction.** A refused write is retried by its caller; a permitted
+    // write whose observation was never recorded leaves the platform believing the target is untouched,
+    // **so a flipback would look safe and would discard a committed write.**
+    //
+    // Thrown rather than returned because that is how this method refuses everywhere else, and the
+    // error carried is the store's own rather than `TenantWritesFrozen` — nothing is frozen, a write
+    // lost a race (`DEC-L-079`: the status belongs to the condition, not to the site).
     if (gate.IsFirstTargetWrite)
     {
-      await operations.RecordPostCutoverWriteAsync(gate.CutoverOperationId, PostCutoverActor, cancellationToken);
+      var recorded = await operations.RecordPostCutoverWriteAsync(
+        gate.CutoverOperationId, PostCutoverActor, cancellationToken);
+      if (recorded.IsFailure)
+      {
+        throw new Persistence.TenantErp.TenantStorageUnavailableException(recorded.Error);
+      }
     }
   }
 

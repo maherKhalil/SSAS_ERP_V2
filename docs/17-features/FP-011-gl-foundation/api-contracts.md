@@ -38,8 +38,23 @@ These came out of FP-006 through FP-009 at real cost, and they are not GL's to r
 
 `/api/gl/...`, consistent with `/api/hr/...`.
 
+> **The five `journal-drafts` rows below were added in T-098, and four of them document routes that were
+> already live.** `OD-GL-0007` ruled two aggregates and this document recorded that ruling in prose only —
+> *"a draft surface DOES exist"* — while the table stayed at nineteen rows and never gained the family.
+> The four write routes shipped from that sentence and went unspecified; the read was never built at all,
+> which is how `GL.Drafts.View` came to be catalogued and required by nothing.
+>
+> **A route table that omits four live routes asserts something false by omission**, so they are documented
+> after the fact rather than left out, and the omission is named here rather than buried in the addition.
+
 | Method | Route | Operation | Permission |
 |---|---|---|---|
+| `POST` | `/api/gl/journal-drafts` | Create a draft | `GL.Drafts.Manage` |
+| `PUT` | `/api/gl/journal-drafts/{id}` | Replace a draft's header and lines | `GL.Drafts.Manage` |
+| `POST` | `/api/gl/journal-drafts/{id}/discard` | Discard a draft | `GL.Drafts.Manage` |
+| `POST` | `/api/gl/journal-drafts/{id}/posting` | Promote a draft into a journal | `GL.Journals.Post` |
+| `GET` | `/api/gl/journal-drafts` | Search drafts | `GL.Drafts.View` |
+| `GET` | `/api/gl/journal-drafts/{id}` | Read one draft with its lines | `GL.Drafts.View` |
 | `POST` | `/api/gl/journals` | Post a journal | `GL.Journals.Post` |
 | `POST` | `/api/gl/journals/{id}/reversals` | Post a reversing journal | `GL.Journals.Reverse` |
 | `GET` | `/api/gl/journals` | Search journals | `GL.Journals.View` |
@@ -81,7 +96,17 @@ POST /api/gl/journals
 * **`OD-GL-0005` declined the branch dimension**, so no line carries a `branchId`.
 * **`OD-GL-0007` ruled two aggregates**, so a draft surface DOES exist — a mutable
   `/api/gl/journal-drafts` family plus a posting route that promotes a draft into a `JournalEntry`. The
-  journal-posting route above therefore posts *a draft*, not a body of lines.
+  journal-posting route above therefore posts *a draft*, not a body of lines. **The family is now in the
+  table above; this bullet was its only specification for the whole of FP-011.**
+
+* **The draft READ carries no journal number and no reversal fields.** A number is assigned at posting, and
+  reversal is a posted-journal concept — `OD-GL-0007`'s two aggregates have different lifecycles, and a
+  response carrying nulls for both would invite a client to render them.
+
+* **`GL.Drafts.View` is required explicitly and nothing implies it.** Neither `GL.Drafts.Manage` nor
+  `GL.Journals.Post` grants it: an implied permission makes the explicit one optional and its absence
+  unenforceable (`AC-SS-0005`). **That is what makes the separation of duties expressible** — a reviewer can
+  be given sight of a draft without the ability to edit it, and a preparer without the ability to post.
 
 **The response never echoes a currency the request supplied**, because the request cannot supply one. It
 echoes the owning Company's `BaseCurrencyCode`, read through `ITenantCompanyCurrencyLookup` — `ADR-027`

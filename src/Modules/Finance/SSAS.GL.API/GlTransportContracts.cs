@@ -109,6 +109,29 @@ public sealed record JournalResponse(
   bool IsReversed,
   IReadOnlyList<JournalLineResponse> Lines);
 
+// ---- THE DRAFT RESPONSES (T-098). NO NUMBER, NO REVERSAL, AND THE LINE SHAPE IS SHARED.
+//
+// A draft has no `JournalNumber` — one is assigned at posting — and reversal is a posted-journal concept.
+// The currency travels for the same reason it does on a journal: it is the owning company's base currency
+// read through `ITenantCompanyCurrencyLookup`, never something the request supplied (`ADR-027` d2).
+public sealed record JournalDraftResponse(
+  Guid JournalDraftId,
+  Guid CompanyId,
+  DateTimeOffset EntryDateUtc,
+  string Description,
+  string? Reference,
+  string CurrencyCode,
+  IReadOnlyCollection<JournalLineResponse> Lines);
+
+public sealed record JournalDraftSummaryResponse(
+  Guid JournalDraftId,
+  Guid CompanyId,
+  DateTimeOffset EntryDateUtc,
+  string Description,
+  string? Reference,
+  string CurrencyCode,
+  decimal Total);
+
 public sealed record JournalSummaryResponse(
   Guid JournalEntryId,
   Guid CompanyId,

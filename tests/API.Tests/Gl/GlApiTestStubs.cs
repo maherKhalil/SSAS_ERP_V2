@@ -29,6 +29,12 @@ public sealed class StubGlReads : IGlReadService
 
   public JournalDetail? Journal { get; set; }
 
+  // T-098's draft reads. Separate collections rather than reusing the journal ones: a test that set
+  // `Journals` and asserted a DRAFT route returned them would be asserting the stub, not the route.
+  public List<JournalDraftListItem> Drafts { get; } = [];
+
+  public JournalDraftDetail? Draft { get; set; }
+
   public AccountBalance? Balance { get; set; }
 
   public TrialBalance TrialBalance { get; set; } = new([]);
@@ -82,6 +88,21 @@ public sealed class StubGlReads : IGlReadService
   {
     ObservedScopes.Add(scope);
     return Task.FromResult(Journal?.JournalEntryId == journalEntryId ? Journal : null);
+  }
+
+  public Task<IReadOnlyList<JournalDraftListItem>> SearchJournalDraftsAsync(
+    GlReadScope scope, Guid? companyId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, string? reference,
+    CancellationToken cancellationToken = default)
+  {
+    ObservedScopes.Add(scope);
+    return Task.FromResult<IReadOnlyList<JournalDraftListItem>>(Drafts);
+  }
+
+  public Task<JournalDraftDetail?> GetJournalDraftAsync(
+    GlReadScope scope, Guid journalDraftId, CancellationToken cancellationToken = default)
+  {
+    ObservedScopes.Add(scope);
+    return Task.FromResult(Draft?.JournalDraftId == journalDraftId ? Draft : null);
   }
 
   public Task<AccountBalance?> GetAccountBalanceAsync(

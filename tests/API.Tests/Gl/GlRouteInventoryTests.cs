@@ -26,6 +26,16 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
     ("POST", "/api/gl/fiscal-periods/{fiscalPeriodId:guid}/closure", GlPermissionNames.ClosePeriods),
     ("POST", "/api/gl/fiscal-periods/{fiscalPeriodId:guid}/reopening", GlPermissionNames.ClosePeriods),
 
+    // ---- THE TWO READS, ADDED IN T-098. THE HALF FP-011 NEVER BUILT.
+    //
+    // Create, update, discard and post shipped and **nothing could read a draft** — the create route
+    // returns a `Location` header and an id for a resource no route could fetch.
+    //
+    // `GL.Drafts.View` and nothing else: neither `ManageDrafts` above nor `PostJournals` below grants it.
+    // **This inventory is where that pairing is visible at a glance**, which is why the permission column
+    // exists — a reader can see that the four writes and the two reads are gated differently on purpose.
+    ("GET", "/api/gl/journal-drafts", GlPermissionNames.ViewDrafts),
+    ("GET", "/api/gl/journal-drafts/{journalDraftId:guid}", GlPermissionNames.ViewDrafts),
     ("POST", "/api/gl/journal-drafts", GlPermissionNames.ManageDrafts),
     ("PUT", "/api/gl/journal-drafts/{journalDraftId:guid}", GlPermissionNames.ManageDrafts),
     ("POST", "/api/gl/journal-drafts/{journalDraftId:guid}/discard", GlPermissionNames.ManageDrafts),

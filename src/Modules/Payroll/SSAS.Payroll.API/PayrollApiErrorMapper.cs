@@ -134,6 +134,24 @@ public static class PayrollApiErrorMapper
       // register caught it. It had been unmapped since T-107 declared the constant.
       "Payroll.DailySalaryHasNoWorkingDays" => RunStateInvalid,
 
+      // ---- A ONE-OFF NAMING AN ELEMENT THE RUN IS NOT PRICING (T-118). 422, not 409.
+      //
+      // **Different from the line above, and the difference is whether waiting would help.** A daily salary
+      // with no working days is `RunStateInvalid` because the world is not ready — close the attendance
+      // period, or give the company a calendar, and the same request succeeds.
+      //
+      // **This one never succeeds by waiting.** The instruction names an element that is inactive, or the
+      // net-pay element, which is derived rather than configured. **Somebody must change the instruction or
+      // the element** — a semantic refusal of a well-formed request, which is `NothingToCalculate`'s shape.
+      //
+      // ---- IT WAS A 500 FROM T-110 UNTIL T-118, AND THE GUARD DID NOT SAY SO.
+      //
+      // `PayrollCalculator` is a `static` class, and the error-mapping register's closure walks CONSTRUCTOR
+      // PARAMETERS — so the calculator has never been in any site's closure, and every refusal it returns
+      // was invisible to the guard (T-117). This one fell through to a 500 for what is a business refusal:
+      // no exception anybody reads, no log entry, and a handler that reads correctly.
+      "Payroll.OneOffPaymentElementNotPayable" => NothingToCalculate,
+
       // FP-013, OD-ATT-0010. A 409 rather than a 422: the request is well-formed and the world is not ready
       // — somebody has to close the attendance period, which is the same shape as `PeriodClosed` above.
       "Payroll.AttendancePeriodOpen" => AttendancePeriodOpen,

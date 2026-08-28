@@ -88,9 +88,9 @@ public static class AttendancePermissionNames
   //
   // **So what keeps the absence true is no longer a missing input; it is that FP-015's permission and
   // endpoint have not been built.** The absence is asserted rather than merely intended by
-  // `AC-ATT-0032`, enforced in
-  // `AttendanceArchitectureTests.No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved`
-  // — **which is the one thing that fails the day a `ViewOwn` is added here.** Cited rather than restated,
+  // **`AC-ATT-0032`** — which is the one thing that fails the day a `ViewOwn` is added here. The criterion
+  // is the handle rather than the guard's method name: grep it and both this file and the guard answer,
+  // because the guard cites it too (T-087). Cited rather than restated,
   // because restating it in a third file is exactly how this sentence went stale in nine at once.
   //
   // `OD-PAY-0016` deferred payroll self-service for the same reason, and `PayrollPermissionNames` records

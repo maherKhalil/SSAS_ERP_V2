@@ -34,9 +34,9 @@ is precisely `DEC-PAY-0002`'s shape, and the same discipline applies:
 
 **A permission whose subject cannot be resolved must not be declared.** No `Attendance.Records.ViewOwn`, no
 `Attendance.Leave.RequestOwn` — **and the subject IS now resolvable, so what holds the line is FP-015's
-unbuilt permission and endpoint rather than a missing input.** The absence is asserted by `AC-ATT-0032`,
-enforced in
-`AttendanceArchitectureTests.No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved`.
+unbuilt permission and endpoint rather than a missing input.** The absence is asserted by **`AC-ATT-0032`**,
+which the Attendance architecture guard cites — the criterion is the durable handle, not the guard's method
+name (T-087).
 
 **This has real consequences for `OD-ATT-0001` and `OD-ATT-0007`.** A leave module in which employees cannot
 submit their own requests is a leave module operated entirely by administrators on employees' behalf. That

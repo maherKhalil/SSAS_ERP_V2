@@ -14,8 +14,8 @@ namespace SSAS.Attendance.Domain.Leave;
 //
 // `OD-ATT-0013` deferred self-service because no identity-to-employee mapping existed. **It exists now** —
 // `UserEmployeeLink` (`ADR-030`, T-082) — so what defers self-service today is the absent PERMISSION and
-// ENDPOINT, not an absent input. `AC-ATT-0032`, enforced by `AttendanceArchitectureTests.No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved` is
-// what fails the day that changes.
+// ENDPOINT, not an absent input. **`AC-ATT-0032`** is what fails the day that changes — the criterion
+// rather than the guard's method name, because the name is not durable and the criterion is (T-087).
 //
 // ---- AND A NOTE ON THE WORDS THAT USED TO BE HERE, MADE ONCE FOR THE WHOLE MODULE.
 //

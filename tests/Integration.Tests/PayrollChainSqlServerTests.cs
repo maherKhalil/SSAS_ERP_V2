@@ -72,6 +72,187 @@ public sealed class PayrollChainSqlServerTests
   private const decimal UnpaidAbsenceDays = 2m;  // -> 200 deducted
   private const decimal DailyRate = BaseSalary / 31m;
 
+  // A daily-salaried employee's rate PER DAY (T-114). 100 a day keeps the arithmetic legible: 21 working
+  // days less two unpaid is 19, so 1900.
+  private const decimal DailySalaryRate = 100m;
+
+  // An hourly employee's rate PER HOUR (T-114). The fixture's supervisor recorded 8 worked hours, so 8 x 25
+  // = 200 — and the SAME 25 is the overtime rate, which is what makes the two lines distinguishable only by
+  // the quantity each is priced against.
+  private const decimal HourlySalaryRate = 25m;
+
+  // ================================================================================================
+  // AN HOURLY SALARY (T-114). THE QUANTITY IS THE ADJUSTMENT.
+  // ================================================================================================
+  //
+  // Rate times hours attended, with **no proration and no absence deduction** — the owner's ruling being
+  // that an hourly employee is paid only for the time they attend, so the worked quantity has already
+  // accounted for everything the other two adjustments would apply.
+  //
+  // **The fixture records two unpaid absence days, and that is what makes this test worth running.** A
+  // deduction line appearing here would be the double-count T-107 excluded hourly from, priced against a
+  // CALENDAR-day divisor that means nothing at all against an hourly rate.
+  [Fact]
+  [Trait("Decision", "OD-PAY-0011")]
+  public async Task An_hourly_salary_is_the_rate_times_hours_attended_and_takes_no_absence_deduction()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync(SalaryType.Hourly, HourlySalaryRate);
+    await chain.SeedAttendanceAsync();
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(runId)).IsSuccess);
+    Assert.True((await chain.PostAsync(runId)).IsSuccess);
+
+    var lines = (await chain.RunAsync(runId)).Lines.ToList();
+
+    // 8 hours attended at 25.
+    Assert.Equal(200m, lines.Single(line => line.GlAccountId == chain.SalaryAccountId).Amount);
+
+    // Overtime is priced on its own quantity: 6 hours at the same 25.
+    Assert.Equal(150m, lines.Single(line => line.GlAccountId == chain.OvertimeAccountId).Amount);
+
+    // ---- TWO UNPAID DAYS RECORDED, AND NO DEDUCTION LINE.
+    Assert.DoesNotContain(lines, line => line.GlAccountId == chain.AbsenceAccountId);
+  }
+
+  // ================================================================================================
+  // REVERSE AND RERUN (T-114). T-112's FILTERED UNIQUE INDEX, AGAINST A REAL SERVER.
+  // ================================================================================================
+  //
+  // **A filtered unique index is exactly the sort of thing that behaves differently on a real server than
+  // in anyone's head**, and this one has never been exercised. `OD-PAY-0011` ruled reverse-and-rerun; the
+  // constraint refused the rerun half from the day it was written, because it matched any run in any state.
+  //
+  // **Both halves are asserted, and the second is what keeps the fix honest:** a period whose run was
+  // reversed accepts another, and a period with a LIVE run still refuses one. A change that only opened the
+  // first would have re-admitted the two-live-runs case option 3 was rejected for.
+  [Fact]
+  [Trait("Decision", "OD-PAY-0011")]
+  public async Task A_reversed_period_accepts_another_run_and_a_live_one_still_does_not()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync();
+    await chain.SeedAttendanceAsync();
+    await chain.CloseAttendancePeriodAsync();
+
+    var first = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(first)).IsSuccess);
+    Assert.True((await chain.PostAsync(first)).IsSuccess);
+
+    // ---- WHILE THE FIRST RUN IS LIVE, A SECOND IS REFUSED. The half that must not regress.
+    Assert.True((await chain.TryCreateRunAsync()).IsFailure);
+
+    // ---- REVERSE IT, THROUGH THE REAL HANDLER AND THE REAL LEDGER.
+    Assert.True((await chain.ReverseAsync(first)).IsSuccess);
+    Assert.True((await chain.RunAsync(first)).IsReversed);
+
+    // ---- AND NOW THE PERIOD ACCEPTS A CORRECTION. The half that never worked.
+    var second = await chain.TryCreateRunAsync();
+    Assert.True(second.IsSuccess, second.IsFailure ? second.Error.Message : string.Empty);
+
+    // ---- AND THAT SECOND RUN IS ITSELF LIVE, so a THIRD is refused again.
+    Assert.True((await chain.TryCreateRunAsync()).IsFailure);
+  }
+
+  // ================================================================================================
+  // THE PERSON THE RUN USED TO DROP (T-114). T-110's ENTIRE REASON FOR EXISTING.
+  // ================================================================================================
+  //
+  // An employee with a one-off instruction and **no compensation record at all**. Before T-110 the run
+  // skipped them — `!byEmployee.TryGetValue(...) continue` — producing no line, no error and no payslip.
+  // `OD-SS-0003` says such a person IS an employee, so HR's roster always carried them; only the
+  // compensation lookup dropped them.
+  //
+  // **This is also the first time `OneOffPayment` has been saved to a real database.** T-113's guard caught
+  // its key generation being wrong four tasks after it shipped, because nothing had ever persisted one.
+  [Fact]
+  [Trait("Decision", "OD-SS-0003")]
+  public async Task An_employee_with_a_one_off_and_no_compensation_is_paid_rather_than_dropped()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync();
+    await chain.SeedAttendanceAsync();
+    await chain.SeedOneOffPayeeAsync(4000m);
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(runId)).IsSuccess);
+    Assert.True((await chain.PostAsync(runId)).IsSuccess);
+
+    var run = await chain.RunAsync(runId);
+
+    // ---- THE PAYEE IS ON THE RUN AT ALL, WHICH IS THE ASSERTION THAT MATTERS.
+    var theirs = run.Lines.Where(line => line.EmployeeId == chain.OneOffPayee).ToList();
+    var only = Assert.Single(theirs);
+
+    Assert.Equal(4000m, only.Amount);
+    Assert.Equal(chain.BonusElementId, only.PayElementId);
+
+    // ---- AND NOTHING ELSE. No base, no proration, no absence deduction: they are on no rate.
+    Assert.DoesNotContain(theirs, line => line.PayElementId != chain.BonusElementId);
+
+    // ---- THE SALARIED EMPLOYEE IS UNAFFECTED, which is what makes the run's inclusion rule correct
+    // rather than merely wider.
+    Assert.Equal(BaseSalary, run.Lines.Single(
+      line => line.EmployeeId == chain.Employee && line.GlAccountId == chain.SalaryAccountId).Amount);
+  }
+
+  // ================================================================================================
+  // A DAILY SALARY, END TO END (T-114). THE HIGHEST-RISK OF THE FOUR.
+  // ================================================================================================
+  //
+  // **Its base arithmetic changed twice this week** — T-108 built it, and T-109 found it double-deducting
+  // because the base excluded the unpaid days AND the deduction element took them again. Until now that
+  // arithmetic has only ever run in memory.
+  //
+  // ---- THE NUMBERS, AND THEY ARE THE POINT.
+  //
+  // January 2026 with a Friday/Saturday weekend: 31 days less five Fridays and five Saturdays = **21
+  // working days**. Two of them unpaid, so 19 paid at 100 = **1900**.
+  //
+  // **And NO absence deduction line.** T-109 ruled the deduction monthly-only precisely because a daily
+  // base already prices the absence in the same unit as the rate. **A deduction line appearing here is the
+  // T-109 defect returning, and it would be worth 1900/31 x 2 = 122.58 of somebody's money.**
+  [Fact]
+  [Trait("Decision", "OD-PAY-0011")]
+  public async Task A_daily_salary_is_paid_for_the_periods_working_days_less_the_unpaid_ones()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync(SalaryType.Daily, DailySalaryRate);
+    await chain.SeedAttendanceAsync();
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(runId)).IsSuccess);
+    Assert.True((await chain.PostAsync(runId)).IsSuccess);
+
+    var run = await chain.RunAsync(runId);
+    var lines = run.Lines.ToList();
+
+    var basic = lines.Single(line => line.GlAccountId == chain.SalaryAccountId);
+    Assert.Equal(1900m, basic.Amount);
+
+    // Overtime is hours actually worked and is unaffected by the salary type: 6 x 25.
+    Assert.Equal(150m, lines.Single(line => line.GlAccountId == chain.OvertimeAccountId).Amount);
+
+    // ---- THE ONE THAT MATTERS: NO DEDUCTION LINE AT ALL.
+    Assert.DoesNotContain(lines, line => line.GlAccountId == chain.AbsenceAccountId);
+  }
+
   [Fact]
   [Trait("Requirement", "REQ-ATT-0022")]
   [Trait("Decision", "DEC-PAY-0002")]
@@ -215,6 +396,15 @@ public sealed class PayrollChainSqlServerTests
 
     public Guid Employee { get; } = Guid.NewGuid();
 
+    // ---- THE ONE-OFF PAYEE (T-114). A SECOND PERSON, WITH NO COMPENSATION RECORD AT ALL.
+    //
+    // `OD-SS-0003`: an external accountant who is paid IS an employee. This is that person — in HR's
+    // roster, employed through the period, and holding no monthly, daily or hourly rate. **Before T-110 the
+    // run dropped them silently: no line, no error, no payslip.**
+    public Guid OneOffPayee { get; } = Guid.NewGuid();
+
+    public Guid BonusElementId { get; private set; }
+
     public Guid SalaryAccountId { get; private set; }
 
     public Guid OvertimeAccountId { get; private set; }
@@ -226,6 +416,10 @@ public sealed class PayrollChainSqlServerTests
     public Guid PayrollPeriodId { get; private set; }
 
     public Guid AttendancePeriodId { get; private set; }
+
+    private Guid DepartmentId { get; } = Guid.NewGuid();
+
+    private Guid PositionId { get; } = Guid.NewGuid();
 
     public static async Task<ChainFixture> CreateAsync()
     {
@@ -260,8 +454,8 @@ public sealed class PayrollChainSqlServerTests
     // tests, and mixing it in here would make the expected numbers a second calculation to check.
     public Task SeedEmployeeAsync()
     {
-      var department = Guid.NewGuid();
-      var position = Guid.NewGuid();
+      var department = DepartmentId;
+      var position = PositionId;
 
       return ExecuteAsync($"""
         INSERT INTO [tenant].[Departments]
@@ -332,7 +526,13 @@ public sealed class PayrollChainSqlServerTests
     }
 
     // ---- PAYROLL. Four elements mapped to those accounts, plus the employee's compensation.
-    public async Task SeedPayrollConfigurationAsync()
+    // ---- THE SALARY TYPE IS A PARAMETER, DEFAULTED (T-114).
+    //
+    // Defaulted to `Monthly` so the two tests written before T-107 are untouched and their arithmetic is
+    // unchanged — a spine that had to be edited to add a case would not be proving the same thing
+    // afterwards.
+    public async Task SeedPayrollConfigurationAsync(
+      SalaryType salaryType = SalaryType.Monthly, decimal? baseAmount = null)
     {
       await using var context = CreateContext();
 
@@ -348,7 +548,17 @@ public sealed class PayrollChainSqlServerTests
       var netPay = Element(
         "NETPAY", PayElementKind.Deduction, PayElementBehaviour.NetPayPayable, 0m, 99, NetPayAccountId);
 
-      foreach (var element in new[] { basic, overtime, absence, netPay })
+      // ---- A ONE-OFF'S ELEMENT (T-114). `FixedAmount`, and DELIBERATELY ASSIGNED TO NOBODY.
+      //
+      // A `FixedAmount` element with no assignment produces no line for any employee, so seeding it leaves
+      // the two pre-T-107 tests' arithmetic untouched. **A one-off instruction names it, and that is the
+      // only way it ever pays out** — the element supplies the KIND and the GL account, the instruction
+      // supplies the amount.
+      var bonus = Element(
+        "BONUS", PayElementKind.Earning, PayElementBehaviour.FixedAmount, 0m, 20, SalaryAccountId);
+      BonusElementId = bonus.Id;
+
+      foreach (var element in new[] { basic, overtime, absence, netPay, bonus })
       {
         context.Set<PayElement>().Add(element);
       }
@@ -361,7 +571,7 @@ public sealed class PayrollChainSqlServerTests
       // undeducted, and every number on the payslip would still look right.
       var compensation = EmployeeCompensation.Create(
         Company, Employee, new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero),
-        BaseSalary, [(overtime.Id, (decimal?)null)]).Value;
+        baseAmount ?? BaseSalary, [(overtime.Id, (decimal?)null)], salaryType).Value;
       context.Set<EmployeeCompensation>().Add(compensation);
 
       var period = PayrollPeriod.CreateAlignedTo(
@@ -371,6 +581,35 @@ public sealed class PayrollChainSqlServerTests
       await context.SaveChangesAsync();
 
       PayrollPeriodId = period.Id;
+    }
+
+    // ---- A PERSON WITH A ONE-OFF AND NO COMPENSATION (T-114).
+    //
+    // **What this cost to construct is itself the finding.** The employee is one more INSERT reusing the
+    // department and position the first one created; the instruction is one `OneOffPayment.Create`. There is
+    // no compensation row, no salary type, no rate — **because that is the whole point of the person.**
+    public async Task SeedOneOffPayeeAsync(decimal amount)
+    {
+      await ExecuteAsync($"""
+        INSERT INTO [tenant].[Employees]
+          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [PositionId],
+           [EmployeeNumber], [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status],
+           [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy],
+           [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
+        VALUES
+          ('{OneOffPayee}', '{Tenant}', '{Company}', '{BranchId}', '{DepartmentId}', '{PositionId}',
+           N'CHAIN-2', N'CHAIN-2', N'Contract Auditor', '2020-01-01T00:00:00+00:00', N'Active',
+           N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
+           SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+        """);
+
+      await using var context = CreateContext();
+
+      var instruction = OneOffPayment.Create(
+        Company, OneOffPayee, PayrollPeriodId, BonusElementId, amount, "settlement for the audit").Value;
+      context.Set<OneOffPayment>().Add(instruction);
+
+      await context.SaveChangesAsync();
     }
 
     private PayElement Element(
@@ -468,6 +707,38 @@ public sealed class PayrollChainSqlServerTests
       return await graph.Post.HandleAsync(new PostPayrollRunCommand(runId));
     }
 
+    // ---- REVERSAL THROUGH THE REAL HANDLER (T-114).
+    public async Task<Result<Guid>> ReverseAsync(Guid runId)
+    {
+      await using var graph = new ChainGraph(this);
+      return await graph.Reverse.HandleAsync(
+        new ReversePayrollRunCommand(runId, PayDate, "chain reversal"));
+    }
+
+    // ---- A RUN CREATED THE WAY THE DATABASE SEES IT (T-114).
+    //
+    // Straight to the aggregate and the context, which is what puts the filtered unique index in the path.
+    // Returns the save's result rather than throwing, because a REFUSAL is the assertion in half the cases.
+    public async Task<Result<Guid>> TryCreateRunAsync()
+    {
+      await using var context = CreateContext();
+
+      var run = PayrollRun.Create(Company, PayrollPeriodId).Value;
+      context.Set<PayrollRun>().Add(run);
+
+      try
+      {
+        await context.SaveChangesAsync();
+        return Result.Success(run.Id);
+      }
+      catch (DbUpdateException)
+      {
+        // The unique index refused it. Reported as a value rather than an exception, so the test asserts
+        // the REFUSAL rather than catching around it.
+        return Result.Failure<Guid>(PayrollErrors.RunAlreadyExistsForPeriod);
+      }
+    }
+
     public async Task<JournalEntry> PostedJournalAsync(Guid runId)
     {
       await using var context = CreateContext();
@@ -554,6 +825,10 @@ public sealed class PayrollChainSqlServerTests
 
         Post = new PostPayrollRunCommandHandler(
           runs, periods, elements, ledger, scope, unitOfWork, currentUser);
+
+        // T-114: the real reversal path, so the run's `ReversedUtc` is stamped by the handler after the
+        // LEDGER has accepted — not by the test reaching into the aggregate.
+        Reverse = new ReversePayrollRunCommandHandler(runs, ledger, scope, unitOfWork);
       }
 
       public CalculatePayrollRunCommandHandler Calculate { get; }
@@ -561,6 +836,8 @@ public sealed class PayrollChainSqlServerTests
       public ApprovePayrollRunCommandHandler Approve { get; }
 
       public PostPayrollRunCommandHandler Post { get; }
+
+      public ReversePayrollRunCommandHandler Reverse { get; }
 
       public async ValueTask DisposeAsync() => await context.DisposeAsync();
     }

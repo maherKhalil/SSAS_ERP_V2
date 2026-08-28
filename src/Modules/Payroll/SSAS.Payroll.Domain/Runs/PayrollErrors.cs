@@ -127,22 +127,26 @@ public static class PayrollErrors
     "Payroll.NoIncludedEmployees",
     "No employee was employed during this period, so there is nothing to calculate.");
 
-  // ---- A DAILY SALARY HAS NO INPUT YET (T-107).
+  // ---- A DAILY SALARY WITH NO WORKING DAYS TO PRICE (T-108).
   //
-  // `SalaryType.Daily` needs a COUNT OF DAYS WORKED. `AttendanceSummaryResult` reports worked HOURS,
-  // overtime hours by tier, and paid/unpaid absence in DAYS — and no count of days worked at all.
+  // `SalaryType.Daily` is `rate x standard working days - unpaid absent days`, and the standard working
+  // days arrive on the attendance summary. Zero of them means there is nothing to multiply.
   //
-  // **Every way to derive one is a rule nobody has ruled.** Calendar days minus unpaid absence counts
-  // weekends as worked; hours divided by a standard day length requires a standard day the product does not
-  // define. So this REFUSES rather than guessing: `DEC-PAY-0002`'s reasoning — a behaviour whose input does
-  // not exist must not be declared — applied to the one salary type whose input still does not.
+  // **RENAMED FROM `DailySalaryHasNoWorkedDayCount` (T-107).** That name described a MISSING FIELD, and the
+  // field now exists — keeping it would have left a constant named after a condition that can no longer
+  // occur, which is this loop's stale comment in another costume.
+  //
+  // **IT NAMES WHAT WAS OBSERVED, NEVER THE CAUSE**, on the same discipline `EmploymentTypeAssumptionTests`
+  // states for its own messages. Zero working days has at least three causes — the company has no working
+  // calendar, the summary was unavailable, or the period genuinely contains no working day — and an error
+  // asserting which one would be an instrument reporting on something it did not check.
   //
   // It fails the whole run rather than the employee, deliberately. A run that silently omitted one person's
   // pay would be discovered on payday.
-  public static readonly Error DailySalaryHasNoWorkedDayCount = new(
-    "Payroll.DailySalaryHasNoWorkedDayCount",
-    "An employee is on a daily salary, but Attendance reports no count of days worked. "
-    + "Daily salaries cannot be calculated until it does.");
+  public static readonly Error DailySalaryHasNoWorkingDays = new(
+    "Payroll.DailySalaryHasNoWorkingDays",
+    "An employee is on a daily salary and this period reports no standard working days for the company, "
+    + "so there is nothing to price a daily rate against.");
 
   public static readonly Error UnbalancedPosting = new(
     "Payroll.UnbalancedPosting",

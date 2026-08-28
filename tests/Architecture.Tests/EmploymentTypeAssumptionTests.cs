@@ -158,15 +158,21 @@ public sealed class EmploymentTypeAssumptionTests
   // **under-deducted by exactly their unknown ratio, while the payslip still adds up and every line
   // remains defensible.**
   //
-  // ---- THIS GUARD FIRED IN T-108, AND HERE IS THE ANSWER IT ASKED FOR.
+  // ---- THIS GUARD FIRED TWICE, AND THE SECOND TIME IT WAS A REMOVAL (T-108, THEN T-115).
   //
-  // `StandardWorkingDays` was added. **It is a COMPANY-AND-PERIOD fact, not an employee one** — how many
-  // working days the company's calendar says the period contains, computed before anything about this
-  // employee is considered. **Two employees on the same calendar always receive the same number**, which is
-  // precisely what a ratio, a schedule or a policy could not do.
+  // T-108 added `StandardWorkingDays` — a COMPANY-AND-PERIOD fact, the working days the calendar says the
+  // period contains, before anything about the employee — so that a daily salary could be priced. **T-115
+  // removed it, and the removal is the interesting half.**
   //
-  // **`DEC-ATT-0004` is satisfied rather than stretched: it is a quantity.** Attendance says the period
-  // holds 22 working days; Payroll decides what a day is worth.
+  // **It was the wrong quantity for the job.** A daily employee is paid for working days they were
+  // EMPLOYED for, and a period total cannot express a window inside itself — so a joiner hired mid-period
+  // was paid the whole period's working days, and a leaver was paid past their termination.
+  //
+  // **Payroll now asks `IAttendanceSummary.GetWorkingDaysAsync` for the clamped window instead**, supplying
+  // employment dates it already holds. **The employee dimension never enters this contract** — which is the
+  // thing this guard exists to prevent, and the fix is why the field LEFT rather than a reason to make it
+  // employee-aware. **The alternative — clamping inside `GetForPeriodAsync` — was refused for exactly that
+  // reason.**
   //
   // ---- WHICH SALARY TYPES THE PARAGRAPH ABOVE STILL DESCRIBES (T-109).
   //
@@ -193,7 +199,7 @@ public sealed class EmploymentTypeAssumptionTests
     [
       "Status", "EmployeeId", "CompanyId", "AttendancePeriodId",
       "PeriodStartUtc", "PeriodEndUtc", "WorkedQuantity",
-      "OvertimeQuantityByTier", "StandardWorkingDays", "PaidAbsenceQuantity", "UnpaidAbsenceQuantity"
+      "OvertimeQuantityByTier", "PaidAbsenceQuantity", "UnpaidAbsenceQuantity"
     ];
 
     Assert.Equal(expected, ComponentsOf(typeof(AttendanceSummaryResult)));

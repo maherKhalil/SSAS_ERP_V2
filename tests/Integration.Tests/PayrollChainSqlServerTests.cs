@@ -82,6 +82,78 @@ public sealed class PayrollChainSqlServerTests
   private const decimal HourlySalaryRate = 25m;
 
   // ================================================================================================
+  // A DAILY-RATE JOINER (T-115). THE DEFECT THE OTHER FOUR GREENS COULD NOT SEE.
+  // ================================================================================================
+  //
+  // **A daily employee is paid for working days they were EMPLOYED for.** Before T-115 the daily arm read
+  // the PERIOD's working-day total and consulted employment dates nowhere at all — hourly reads observed
+  // hours and monthly prorates, and daily did neither.
+  //
+  // **Hired on the 16th of a 21-working-day month:** 10 working days remain (the 16th and 17th are the
+  // Friday and Saturday weekend), two of them unpaid, so **8 x 100 = 800.** Before T-115 this employee was
+  // paid 21 - 2 = 19 days: **1900, an overpayment of 1100 for days they were not employed.**
+  //
+  // **The four T-114 greens could not have caught this**, because the fixture's employee is hired in 2020
+  // and a full-period employee's clamped window is the whole period.
+  [Fact]
+  [Trait("Decision", "OD-PAY-0011")]
+  public async Task A_daily_rate_joiner_is_paid_only_for_the_working_days_they_were_employed_for()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync("2026-01-16T00:00:00+00:00");
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync(SalaryType.Daily, DailySalaryRate);
+    await chain.SeedAttendanceAsync();
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(runId)).IsSuccess);
+    Assert.True((await chain.PostAsync(runId)).IsSuccess);
+
+    var lines = (await chain.RunAsync(runId)).Lines.ToList();
+
+    Assert.Equal(800m, lines.Single(line => line.GlAccountId == chain.SalaryAccountId).Amount);
+    Assert.DoesNotContain(lines, line => line.GlAccountId == chain.AbsenceAccountId);
+  }
+
+  // ================================================================================================
+  // AND THE REFUSAL THAT HAD TO SURVIVE THE FIX (T-115).
+  // ================================================================================================
+  //
+  // **T-115 moved the working-day count from the attendance summary to a call on the company's calendar,
+  // and those two fail differently.** The summary knows whether THIS EMPLOYEE's attendance arrived; the
+  // calendar does not and would happily answer 21 for someone whose summary was unavailable — while
+  // `UnpaidAbsenceQuantity` stayed zero.
+  //
+  // **A daily employee would have gone from REFUSED to PAID IN FULL with no absence deduction, silently.**
+  // That is the same failure class T-115 exists to remove, moved from the joiner path to the
+  // summary-unavailable path — and it would have converted a deliberate, documented, VISIBLE refusal into
+  // an invisible overpayment.
+  //
+  // Here the attendance period is left OPEN, so the summary reports `PeriodOpen` and never becomes
+  // `Available`.
+  [Fact]
+  [Trait("Decision", "OD-ATT-0010")]
+  public async Task A_daily_salary_is_refused_when_the_attendance_summary_did_not_arrive()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync(SalaryType.Daily, DailySalaryRate);
+    await chain.SeedAttendanceAsync();
+
+    // DELIBERATELY NOT CLOSED.
+    var runId = await chain.CreateRunAsync();
+
+    var calculated = await chain.TryCalculateAsync(runId);
+
+    Assert.True(calculated.IsFailure);
+    Assert.Equal(PayrollErrors.DailySalaryHasNoWorkingDays.Code, calculated.Error.Code);
+  }
+
+  // ================================================================================================
   // AN HOURLY SALARY (T-114). THE QUANTITY IS THE ADJUSTMENT.
   // ================================================================================================
   //
@@ -452,7 +524,11 @@ public sealed class PayrollChainSqlServerTests
     // The chain then reads it through the REAL `IEmployeeRoster`, so what is proved is the contract rather
     // than the insert. `EmploymentDate` predates the period so nothing is prorated — proration has its own
     // tests, and mixing it in here would make the expected numbers a second calculation to check.
-    public Task SeedEmployeeAsync()
+    // ---- THE EMPLOYMENT DATE IS A PARAMETER (T-115), DEFAULTED TO 2020.
+    //
+    // The four cases written before T-115 assert numbers that assume a full-period employee, and a spine
+    // that had to be edited to add a joiner would not be proving the same thing afterwards.
+    public Task SeedEmployeeAsync(string employmentDate = "2020-01-01T00:00:00+00:00")
     {
       var department = DepartmentId;
       var position = PositionId;
@@ -483,7 +559,7 @@ public sealed class PayrollChainSqlServerTests
            [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
           ('{Employee}', '{Tenant}', '{Company}', '{BranchId}', '{department}', '{position}',
-           N'CHAIN-1', N'CHAIN-1', N'Chain Person', '2020-01-01T00:00:00+00:00', N'Active',
+           N'CHAIN-1', N'CHAIN-1', N'Chain Person', '{employmentDate}', N'Active',
            N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
         """);
@@ -693,6 +769,23 @@ public sealed class PayrollChainSqlServerTests
 
       var calculated = await graph.Calculate.HandleAsync(new CalculatePayrollRunCommand(runId));
       Assert.True(calculated.IsSuccess, calculated.IsFailure ? calculated.Error.Message : string.Empty);
+    }
+
+    // ---- CALCULATE, REPORTING THE OUTCOME (T-115). A REFUSAL is the assertion in one case.
+    public async Task<Result> TryCalculateAsync(Guid runId)
+    {
+      await using var graph = new ChainGraph(this);
+      return await graph.Calculate.HandleAsync(new CalculatePayrollRunCommand(runId));
+    }
+
+    public async Task<Guid> CreateRunAsync()
+    {
+      await using var context = CreateContext();
+
+      var run = PayrollRun.Create(Company, PayrollPeriodId).Value;
+      context.Set<PayrollRun>().Add(run);
+      await context.SaveChangesAsync();
+      return run.Id;
     }
 
     public async Task<Result> ApproveAsync(Guid runId)

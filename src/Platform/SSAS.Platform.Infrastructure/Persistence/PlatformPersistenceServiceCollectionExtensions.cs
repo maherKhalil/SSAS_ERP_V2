@@ -333,6 +333,10 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     // ICurrentTenantUser because it is the same seam: a module asks who is acting, then asks which employee
     // that is, and both answers come from the catalog only Platform can read.
     services.AddScoped<SSAS.BuildingBlocks.Tenancy.IUserEmployeeResolver, Persistence.Queries.UserEmployeeResolver>();
+
+    // T-091's half of `REQ-SS-0007`. Registered beside its neighbour because the two read the same table in
+    // opposite directions; this one also WRITES, which is why it takes the repository and the unit of work.
+    services.AddScoped<SSAS.BuildingBlocks.Tenancy.ITenantUserDeactivator, Persistence.Queries.TenantUserDeactivator>();
     services.AddScoped<ICurrentBranchResolver, CurrentBranchResolver>();
     services.AddScoped<BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor, TenantDbContextAccessor>();
     services.AddScoped<IBranchTransferAuthorizer>(provider => new BranchTransferAuthorizer(

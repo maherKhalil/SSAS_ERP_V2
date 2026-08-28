@@ -4574,9 +4574,22 @@ public sealed class EmployeeBoundarySqlServerTests
       new EmployeeRepository(accessor), unitOfWork,
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
 
+    // ---- T-091's DEACTIVATOR IS A NO-OP HERE, AND THAT IS STATED RATHER THAN CONVENIENT.
+    //
+    // These tests are about the TENANT database's boundaries. The account-closure half writes the PLATFORM
+    // database, which this fixture does not stand up at all. A no-op keeps the boundary tests testing the
+    // boundary — **and it means nothing here proves the account closes.** That is asserted where the two
+    // sides both exist: `EmployeeTerminationAccountClosureTests` in the API suite.
     public TerminateEmployeeCommandHandler Terminate() => new(
-      new EmployeeRepository(accessor), unitOfWork,
+      new EmployeeRepository(accessor), unitOfWork, new NoOpTenantUserDeactivator(),
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
+
+    private sealed class NoOpTenantUserDeactivator : SSAS.BuildingBlocks.Tenancy.ITenantUserDeactivator
+    {
+      public Task<Result> DeactivateForEmployeeAsync(
+        Guid employeeId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Result.Success());
+    }
 
     // FP-009. The export's default status set is Active AND Inactive, so a test about what a DEFAULT export
     // carries needs a real inactive employee — produced by the real transition, because a hand-written status

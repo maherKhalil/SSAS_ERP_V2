@@ -37,6 +37,14 @@ public static class EmployeeApiErrorMapper
   public static readonly ApiError BranchScopeDenied = new(403, "branch.scope_denied");
   public static readonly ApiError BranchSelectionRequired = new(409, "branch.selection_required");
 
+  // ---- A SERVER FAILURE, AND A SPECIFIC ONE (T-091).
+  //
+  // 500 because nothing the caller did caused it and no change to their request avoids it — the same
+  // reasoning the default arm gives. **But not the generic `WriteFailure`:** this one leaves state that
+  // needs repairing, and an operator reading `hr.request_failed` in a log has no way to learn that. The
+  // distinct code is what makes the half-state findable.
+  public static readonly ApiError TerminationIncomplete = new(500, "employee.termination_incomplete");
+
   public static ApiError Map(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
@@ -49,6 +57,7 @@ public static class EmployeeApiErrorMapper
       "Employee.InvalidFullName" => ApiErrors.RequestInvalid,
       "Employee.InvalidEmploymentDate" => ApiErrors.RequestInvalid,
       "Employee.TerminationBeforeEmployment" => ApiErrors.RequestInvalid,
+      "Employee.TerminationIncomplete" => TerminationIncomplete,
       "Employee.InvalidTransitionReason" => ApiErrors.RequestInvalid,
       "Employee.InvalidTransferReason" => ApiErrors.RequestInvalid,
       "Employee.TransferDestinationUnchanged" => ApiErrors.RequestInvalid,

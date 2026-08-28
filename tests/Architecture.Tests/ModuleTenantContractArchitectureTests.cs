@@ -217,6 +217,15 @@ public sealed class ModuleTenantContractArchitectureTests
         // ADR-level change `DEC-POS-0015` reserved for a multi-currency requirement).
         nameof(ITenantCompanyCurrencyLookup),
         nameof(ITenantUnitOfWork),
+        // ---- ADDED BY T-091. THE SECOND OF TWO GUARDS ON A TERMINATED EMPLOYEE.
+        //
+        // HR terminates an employee and Platform owns the account, so HR has to ask. Called synchronously
+        // from the handler rather than raised as an event: the domain-event road has no outbox, so a
+        // failing consumer would leave a terminated employee with a live account and an operator who
+        // reasonably believes nothing happened.
+        //
+        // Points module -> Platform, like `IUserEmployeeResolver` and unlike `IEmploymentStandingDirectory`.
+        nameof(ITenantUserDeactivator),
         // ADR-030's identity-to-employee mapping, needed so a module can answer "is the acting user this
         // employee" (T-084). It sits beside ICurrentTenantUser because it is the same seam and the second
         // half of the same question: a module asks WHO is acting, then WHICH employee that is.

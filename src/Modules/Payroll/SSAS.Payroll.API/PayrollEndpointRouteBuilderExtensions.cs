@@ -535,7 +535,7 @@ public static class PayrollEndpointRouteBuilderExtensions
   // The scope comes from `ResolveForOwnEmployeeAsync`, derived from the resolved employee's company rather
   // than the caller's administrative grants — see that method for why.
   private static async Task<IResult> GetOwnPayslipsAsync(
-    HttpContext context, IPayrollScopeResolver resolver, IPayrollReadService reads,
+    HttpContext context, IPayrollSelfServiceScopeResolver resolver, IPayrollReadService reads,
     CancellationToken cancellationToken)
   {
     var own = await resolver.ResolveForOwnEmployeeAsync(

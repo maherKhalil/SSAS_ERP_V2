@@ -28,6 +28,12 @@ public static class ServiceCollectionExtensions
     services.AddScoped<IPayrollRunRepository, PayrollRunRepository>();
 
     services.AddScoped<IPayrollScopeResolver, PayrollScopeResolver>();
+
+    // FP-015's self-service scope (T-088). A SEPARATE registration, not a widening of the one above: every
+    // Payroll command handler takes IPayrollScopeResolver, so adding self-service dependencies to it made
+    // them construction-time dependencies of every payroll write — twenty-five API tests failed DI
+    // validation before this was split out.
+    services.AddScoped<IPayrollSelfServiceScopeResolver, PayrollSelfServiceScopeResolver>();
     services.AddScoped<IPayrollReadService, PayrollReadService>();
 
     services.AddScoped<CreatePayElementCommandHandler>();

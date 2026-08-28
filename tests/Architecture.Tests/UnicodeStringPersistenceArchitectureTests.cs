@@ -1,3 +1,7 @@
+using SSAS.Attendance.Infrastructure.Persistence;
+using SSAS.Payroll.Infrastructure.Persistence;
+using SSAS.GL.Infrastructure.Persistence;
+using SSAS.HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -166,8 +170,19 @@ public sealed class UnicodeStringPersistenceArchitectureTests
     var options = new DbContextOptionsBuilder<TenantDbContext>()
       .UseSqlServer("Server=model;Database=model;Integrated Security=True")
       .Options;
+    // ---- ⚠ THE MODULE CONTRIBUTORS ARE THE POINT (T-133).
+    //
+    // A directly-constructed `TenantDbContext` carries only the entities it configures itself — TWO of
+    // them. Every module's tables arrive through an `ITenantModelContributor` registered in DI, so
+    // without these four this guard inspected 2 entity types and reported on a tenant database that has
+    // dozens. **It passed a planted `varchar(128)` on `Account.Name` twice before this line existed.**
     using var context = new TenantDbContext(
-      options, new ModelUser(), new ModelTenant(Guid.NewGuid()), new ModelClock());
+      options, new ModelUser(), new ModelTenant(Guid.NewGuid()), new ModelClock(),
+      modelContributors:
+      [
+        new HrTenantModelContributor(), new GlTenantModelContributor(),
+        new PayrollTenantModelContributor(), new AttendanceTenantModelContributor()
+      ]);
     return context.Model;
   }
 

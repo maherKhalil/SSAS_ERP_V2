@@ -5,5 +5,5 @@ Architecture|Debug|532
 Attendance|Debug|71
 Finance|Debug|46
 HR|Debug|326
-Payroll|Debug|64
+Payroll|Debug|67
 Platform|Debug|1088

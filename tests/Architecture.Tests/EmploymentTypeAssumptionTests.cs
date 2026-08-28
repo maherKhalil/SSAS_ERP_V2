@@ -66,6 +66,16 @@ public sealed class EmploymentTypeAssumptionTests
   // `rate x hours attended`, so a part-timer is paid correctly BY CONSTRUCTION and no human has to
   // encode a ratio anywhere. `Monthly` is unchanged and the paragraph above still describes it exactly.
   //
+  // ---- AND AGAIN IN T-108, WITH `StandardWorkingDays`.
+  //
+  // **Also not a ratio, a schedule or a policy: it is the COMPANY's working-day count for the period**, the
+  // same number for every employee on that calendar. See guard 3, which asked the same question of the
+  // contract this arrives on.
+  //
+  // **It narrows what is at stake above for `Daily` as well.** A daily employee's base is `working days -
+  // unpaid days` at their own rate, so no human encodes a ratio for them either. **`Monthly` is the only
+  // type the paragraph above still describes, and it describes it exactly.**
+  //
   // The assertion stays EXACT-EQUALITY. Relaxing it to "contains" would answer this question once and
   // never ask it again, which is the whole value of a tripwire that fires on any shape change.
   // ================================================================================================
@@ -75,7 +85,8 @@ public sealed class EmploymentTypeAssumptionTests
     string[] expected =
     [
       "EmployeeId", "HiredUtc", "TerminatedUtc",
-      "Compensation", "OvertimeQuantityByTier", "UnpaidAbsenceQuantity", "WorkedQuantity"
+      "Compensation", "OvertimeQuantityByTier", "UnpaidAbsenceQuantity", "WorkedQuantity",
+      "StandardWorkingDays"
     ];
 
     Assert.Equal(expected, ComponentsOf(typeof(PayrollEmployeeInput)));
@@ -135,6 +146,24 @@ public sealed class EmploymentTypeAssumptionTests
   // three days a week loses 1/30 of a month for missing a day that is 1/13 of their working month:
   // **under-deducted by exactly their unknown ratio, while the payslip still adds up and every line
   // remains defensible.**
+  //
+  // ---- THIS GUARD FIRED IN T-108, AND HERE IS THE ANSWER IT ASKED FOR.
+  //
+  // `StandardWorkingDays` was added. **It is a COMPANY-AND-PERIOD fact, not an employee one** — how many
+  // working days the company's calendar says the period contains, computed before anything about this
+  // employee is considered. **Two employees on the same calendar always receive the same number**, which is
+  // precisely what a ratio, a schedule or a policy could not do.
+  //
+  // **`DEC-ATT-0004` is satisfied rather than stretched: it is a quantity.** Attendance says the period
+  // holds 22 working days; Payroll decides what a day is worth.
+  //
+  // ---- AND IT NARROWS THE PARAGRAPH ABOVE FOR ONE SALARY TYPE, WHILE LEAVING IT EXACT FOR THE OTHERS.
+  //
+  // The under-deduction described above is a MONTHLY problem: it comes from a calendar-day divisor applied
+  // to a monthly amount. A `Daily` employee's base is now `working days - unpaid days`, so a missed day
+  // costs exactly one day of their rate in the base. **The `UnpaidAbsenceDeduction` element still uses the
+  // calendar-day divisor and is still wrong for a part-timer in exactly the way described** — the base is
+  // no longer, and the deduction still is.
   // ================================================================================================
   [Fact]
   public void The_attendance_summary_carries_quantities_and_cannot_carry_a_ratio()
@@ -143,7 +172,7 @@ public sealed class EmploymentTypeAssumptionTests
     [
       "Status", "EmployeeId", "CompanyId", "AttendancePeriodId",
       "PeriodStartUtc", "PeriodEndUtc", "WorkedQuantity",
-      "OvertimeQuantityByTier", "PaidAbsenceQuantity", "UnpaidAbsenceQuantity"
+      "OvertimeQuantityByTier", "StandardWorkingDays", "PaidAbsenceQuantity", "UnpaidAbsenceQuantity"
     ];
 
     Assert.Equal(expected, ComponentsOf(typeof(AttendanceSummaryResult)));

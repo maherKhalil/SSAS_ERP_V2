@@ -97,6 +97,22 @@ public sealed record AttendanceSummaryResult(
   // it into an enum here would put a jurisdictional list into a cross-module contract.
   IReadOnlyDictionary<string, decimal> OvertimeQuantityByTier,
 
+  // ---- THE PERIOD'S STANDARD WORKING DAYS (T-108).
+  //
+  // A COMPANY-AND-PERIOD fact, not an employee one: how many working days the company's calendar says this
+  // period contains, before anything about this employee is considered. It is an `int` rather than a
+  // `decimal` because the calendar counts whole days — the quantities around it are decimal because half a
+  // day can be absent, and half a working day cannot exist.
+  //
+  // **`DEC-ATT-0004` is satisfied, not stretched: this is a quantity.** Attendance says the period holds 22
+  // working days; Payroll decides what a day is worth.
+  //
+  // **Frozen here, exactly as leave freezes its own count.** `AC-ATT-0019` refuses to let a holiday added
+  // later change what a past leave request consumed, and a pay run has the same property for a stronger
+  // reason — the run is computed and stored, so recomputing this would make a payslip disagree with the
+  // figure it was produced from.
+  int StandardWorkingDays,
+
   decimal PaidAbsenceQuantity,
 
   // The quantity Payroll deducts. The single most consequential number in this record.
@@ -106,7 +122,12 @@ public sealed record AttendanceSummaryResult(
     AttendanceSummaryStatus status, Guid employeeId, Guid companyId) =>
     new(status, employeeId, companyId, Guid.Empty,
       DateTimeOffset.MinValue, DateTimeOffset.MinValue, 0m,
-      new Dictionary<string, decimal>(StringComparer.Ordinal), 0m, 0m);
+      new Dictionary<string, decimal>(StringComparer.Ordinal),
+      // ZERO WORKING DAYS ON AN UNAVAILABLE SUMMARY, and it is the fail-closed answer rather than a filler.
+      // A daily-salaried employee whose summary did not arrive is paid for zero days, which is visibly
+      // wrong on a payslip; any other placeholder would be invisibly wrong.
+      0,
+      0m, 0m);
 }
 
 // ---- THE INSPECTION RESULT.

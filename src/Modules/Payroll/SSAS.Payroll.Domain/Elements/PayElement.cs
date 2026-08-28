@@ -38,10 +38,10 @@ public enum PayElementKind
 // and each arrived the moment its input did. Amended in T-107 (`DEC-L-073`) because the sentence read as
 // though all three were still absent while two were declared sixty lines below it.
 //
-// **And the reasoning is still load-bearing for the one input that has NOT arrived.** `SalaryType.Daily`
-// needs a count of days worked; `AttendanceSummaryResult` reports worked HOURS and absence DAYS and no such
-// count, so the calculator refuses a daily salary rather than deriving one — see
-// `PayrollErrors.DailySalaryHasNoWorkedDayCount`. Same rule, still applying, to the last of the three.
+// **T-108 completed the pattern.** `SalaryType.Daily` needed a count of working days, which existed in
+// `WorkingCalendar` and did not cross the module boundary; T-108 put it on `AttendanceSummaryResult` and
+// daily pay followed immediately. **Three refusals, three inputs, and each behaviour arrived the moment its
+// input did** — which is `DEC-PAY-0002` working exactly as written rather than being overtaken.
 //
 // **`DEC-PAY-0016` is why there is no `StatutoryBracket`.** V1 is jurisdiction-neutral. A tenant can express
 // a fixed or proportional deduction; it cannot have the product apply a tax table, because no jurisdiction is

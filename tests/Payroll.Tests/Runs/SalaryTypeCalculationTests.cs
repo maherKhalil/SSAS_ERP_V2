@@ -185,30 +185,94 @@ public sealed class SalaryTypeCalculationTests
     Assert.Equal(320m, long_.Single(line => line.PayElementId == allowance.Id).Amount);
   }
 
-  // ---- A DAILY SALARY REFUSES, BECAUSE ITS INPUT DOES NOT EXIST YET.
+  // ---- DAILY IS THE PERIOD'S WORKING DAYS, NOT THE DAYS ACTUALLY WORKED (T-108, owner-ruled).
   //
-  // `SalaryType.Daily` needs a COUNT OF DAYS WORKED. `AttendanceSummaryResult` reports worked HOURS,
-  // overtime hours by tier, and absence in DAYS — and no count of days worked at all.
+  // **The rejected model is the one the phrase "daily rate" invites**: `rate x days actually worked`. Under
+  // it, absence is already excluded and the `UnpaidAbsenceDeduction` element would take it a second time.
   //
-  // Every available derivation is a rule nobody has ruled: calendar days minus unpaid absence counts
-  // weekends as worked, and hours divided by a standard day needs a standard day the product does not
-  // define. **`DEC-PAY-0002`'s reasoning, still applying to the last of the three inputs it named.**
+  // The owner excluded HOURLY from that deduction because an hourly employee is paid only for the time they
+  // attend, and INCLUDED daily. **That contrast is only meaningful if a daily employee is not paid solely
+  // for time attended** — so the base is the period's standard working days and the deduction takes the
+  // unpaid ones back.
   //
-  // It fails the RUN rather than the employee, deliberately: a run that silently omitted one person's pay
-  // would be discovered on payday.
+  // 22 working days at 200 = 4400.
   [Fact]
-  public void A_daily_salary_refuses_rather_than_guessing_a_day_count()
+  public void A_daily_salary_is_the_rate_times_the_periods_standard_working_days()
+  {
+    var basic = PayrollTestData.Element(
+      "BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+
+    var lines = Calculate(Daily(200m), [basic], standardWorkingDays: 22);
+
+    Assert.Equal(4400m, Assert.Single(lines).Amount);
+  }
+
+  // ---- AND THE UNPAID DAYS COME OFF THE BASE, THEN THE DEDUCTION TAKES THEM AGAIN.
+  //
+  // **Both, and that is the model rather than an oversight.** 22 working days less 3 unpaid is 19 at 200 =
+  // 3800 of base; the deduction then prices those 3 days against the CALENDAR-day rate the element has
+  // always used — 3800 / 31 x 3. The base answers "how many days is this employee owed", the deduction is
+  // the element a company configured, and they are different questions.
+  [Fact]
+  public void A_daily_salary_excludes_unpaid_days_from_the_base()
+  {
+    var basic = PayrollTestData.Element(
+      "BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+
+    var absence = PayrollTestData.Element(
+      "UNPAID", PayElementKind.Deduction, PayElementBehaviour.UnpaidAbsenceDeduction, 0m, 50, AbsenceAccount);
+
+    var lines = Calculate(
+      Daily(200m), [basic, absence], standardWorkingDays: 22, unpaidAbsenceQuantity: 3m);
+
+    // 22 - 3 = 19 days at 200.
+    Assert.Equal(3800m, lines.Single(line => line.PayElementId == basic.Id).Amount);
+
+    // And the deduction fires too: 3800 / 31 calendar days x 3 unpaid = 367.74. **Asserted rather than
+    // described** — the first version of this test named the deduction in its comment and passed only the
+    // base element, which would have let the "both" claim go unchecked.
+    Assert.Equal(367.74m, lines.Single(line => line.PayElementId == absence.Id).Amount);
+  }
+
+  // ---- A DAILY SALARY IS NOT PRORATED EITHER.
+  //
+  // The working-day count is the period's, so a mid-period joiner is paid the same as anyone else on the
+  // same calendar. **That is a consequence of the owner's model worth asserting rather than discovering**:
+  // under `rate x days ACTUALLY worked` a joiner would be paid less, and under this model they are not.
+  [Fact]
+  public void A_daily_salary_is_not_prorated_for_a_mid_period_joiner()
+  {
+    var basic = PayrollTestData.Element(
+      "BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+
+    var period = PayrollTestData.Period();
+    var joiner = Calculate(
+      Daily(200m), [basic], standardWorkingDays: 22, hired: period.StartUtc.AddDays(23));
+
+    Assert.Equal(4400m, Assert.Single(joiner).Amount);
+  }
+
+  // ---- WITH NO WORKING DAYS THE RUN REFUSES RATHER THAN PAYING ZERO.
+  //
+  // Zero working days has at least three causes — no working calendar for the company, an unavailable
+  // summary, or a period genuinely containing none — and `PayrollErrors.DailySalaryHasNoWorkingDays` names
+  // what was OBSERVED rather than which occurred.
+  //
+  // It fails the RUN rather than the employee: a run that silently paid one person zero would be discovered
+  // on payday.
+  [Fact]
+  public void A_daily_salary_with_no_working_days_refuses_the_run()
   {
     var basic = PayrollTestData.Element(
       "BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
 
     var result = PayrollCalculator.Calculate(
       Guid.NewGuid(), PayrollTestData.Period(),
-      [new PayrollEmployeeInput(Employee, LongEmployed, null, Daily(200m), null, 0m, 160m)],
+      [new PayrollEmployeeInput(Employee, LongEmployed, null, Daily(200m), null, 0m, 160m, 0)],
       [basic]);
 
     Assert.True(result.IsFailure);
-    Assert.Equal(PayrollErrors.DailySalaryHasNoWorkedDayCount.Code, result.Error.Code);
+    Assert.Equal(PayrollErrors.DailySalaryHasNoWorkingDays.Code, result.Error.Code);
   }
 
   private static EmployeeCompensation Monthly(
@@ -241,11 +305,12 @@ public sealed class SalaryTypeCalculationTests
     decimal workedQuantity = 0m,
     decimal unpaidAbsenceQuantity = 0m,
     IReadOnlyDictionary<string, decimal>? overtimeByTier = null,
-    DateTimeOffset? hired = null)
+    DateTimeOffset? hired = null,
+    int standardWorkingDays = 0)
   {
     var input = new PayrollEmployeeInput(
       Employee, hired ?? LongEmployed, null, compensation,
-      overtimeByTier, unpaidAbsenceQuantity, workedQuantity);
+      overtimeByTier, unpaidAbsenceQuantity, workedQuantity, standardWorkingDays);
 
     var result = PayrollCalculator.Calculate(
       Guid.NewGuid(), PayrollTestData.Period(), [input], elements);

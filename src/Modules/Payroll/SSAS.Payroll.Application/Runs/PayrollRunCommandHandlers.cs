@@ -239,9 +239,19 @@ public sealed class CalculatePayrollRunCommandHandler(
         ? attendance.WorkedQuantity
         : 0m;
 
+      // ---- THE PERIOD'S STANDARD WORKING DAYS (T-108). Read by `SalaryType.Daily` and by nothing else.
+      //
+      // Zero when the summary is unavailable, on the same rule as the three above — and for a daily-salaried
+      // employee the calculator then REFUSES the run rather than paying zero days. Absent attendance means
+      // "worked no hours" for an hourly employee, which is an answer; it cannot mean "the company's calendar
+      // has no working days", which is not.
+      var standardWorkingDays = attendance.Status == AttendanceSummaryStatus.Available
+        ? attendance.StandardWorkingDays
+        : 0;
+
       inputs.Add(new PayrollEmployeeInput(
         record.EmployeeId, record.EmploymentDateUtc, record.TerminationDateUtc, inForce,
-        overtimeByTier, unpaidAbsence, workedQuantity));
+        overtimeByTier, unpaidAbsence, workedQuantity, standardWorkingDays));
     }
 
     var active = await elements.GetActiveForCompanyAsync(run.CompanyId, cancellationToken);

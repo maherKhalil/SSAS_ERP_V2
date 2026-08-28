@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SSAS.Attendance.Application.Abstractions;
 using SSAS.Attendance.Contracts.Summaries;
 using SSAS.Attendance.Domain.Periods;
 using SSAS.Attendance.Domain.Records;
@@ -67,7 +68,13 @@ internal sealed class AttendanceSummaryService(
   ITenantDbContextAccessor contextAccessor,
   ITenantCompanyAccessResolver companyAccess,
   ICurrentTenant currentTenant,
-  ICurrentTenantUser currentTenantUser) : IAttendanceSummary
+  ICurrentTenantUser currentTenantUser,
+  // ---- THE CALENDAR, THROUGH THE SAME PORT LEAVE USES (T-108).
+  //
+  // Not a query written here. `GetForCompanyAsync` is the ONE resolution of "the company's calendar", and a
+  // second implementation would eventually disagree with the one that decides what leave consumed — which
+  // is the reason `AttendanceReadService` gives for delegating its own day count to the domain.
+  IWorkingCalendarRepository calendars) : IAttendanceSummary
 {
   public async Task<AttendanceSummaryResult> GetForPeriodAsync(
     Guid companyId,
@@ -132,6 +139,25 @@ internal sealed class AttendanceSummaryService(
       .GroupBy(record => record.OvertimeTier!, StringComparer.Ordinal)
       .ToDictionary(group => group.Key, group => group.Sum(record => record.OvertimeQuantity), StringComparer.Ordinal);
 
+    // ---- THE PERIOD'S STANDARD WORKING DAYS, FROZEN HERE (T-108).
+    //
+    // A company-and-period fact, computed once and carried with the quantities it will price. Absent
+    // calendar means ZERO rather than a guess: a daily-salaried employee then reports zero working days,
+    // the calculator refuses the run, and nobody is paid a number derived from a calendar that does not
+    // exist.
+    //
+    // ---- WHICH CALENDAR, AND THIS IS AN INFERENCE THE PRODUCT ALREADY MAKES.
+    //
+    // `GetForCompanyAsync` returns the DEFAULT calendar, falling back to the alphabetically first. A
+    // company with an office calendar and a plant calendar gets one of them — and already does, because
+    // leave freezes its consumed days against exactly this resolution. **The real answer is an
+    // employee-to-calendar assignment and it does not exist anywhere in the product.**
+    //
+    // Daily pay inherits that inference rather than introducing it; refusing it here while leave keeps
+    // doing it would break daily pay for every multi-calendar company and offer nothing better.
+    var calendar = await calendars.GetForCompanyAsync(companyId, cancellationToken);
+    var standardWorkingDays = calendar?.WorkingDaysBetween(period.StartDate, period.EndDate) ?? 0;
+
     return new AttendanceSummaryResult(
       AttendanceSummaryStatus.Available,
       employeeId,
@@ -141,6 +167,7 @@ internal sealed class AttendanceSummaryService(
       ToInstant(period.EndDate),
       records.Sum(record => record.WorkedQuantity),
       overtimeByTier,
+      standardWorkingDays,
       records.Sum(record => record.PaidAbsenceQuantity),
       records.Sum(record => record.UnpaidAbsenceQuantity));
   }

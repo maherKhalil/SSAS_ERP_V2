@@ -38,7 +38,11 @@ public sealed record PayrollEmployeeInput(
 
   // HOURS. Read only by `SalaryType.Hourly`; `WorkedQuantity` had NO consumer at all before T-107, which is
   // why its unit could be established here rather than inherited.
-  decimal WorkedQuantity = 0m);
+  decimal WorkedQuantity = 0m,
+
+  // DAYS, and a COMPANY-AND-PERIOD fact rather than an employee one — what the company's calendar says this
+  // period contains, before anything about this employee. Read only by `SalaryType.Daily` (T-108).
+  int StandardWorkingDays = 0);
 
 // ================================================================================================
 // THE CALCULATION ENGINE (OD-PAY-0007, OD-PAY-0008).
@@ -144,19 +148,36 @@ public static class PayrollCalculator
       // ruled proration for the monthly model and it must not silently extend to a model it was not about —
       // which is the same reasoning `OvertimeHourly` already applies two screens below.
       //
-      // **`Daily` REFUSES.** It needs a count of days worked and `AttendanceSummaryResult` reports no such
-      // field — see `PayrollErrors.DailySalaryHasNoWorkedDayCount`. Deriving one from calendar days or from
-      // hours would each require a rule nobody has ruled, and a wrong divisor here is invisible until
-      // payday.
-      if (employee.Compensation.SalaryType == SalaryType.Daily)
+      // A daily salary with no working days to price cannot be calculated, and the run refuses rather than
+      // paying zero. See `PayrollErrors.DailySalaryHasNoWorkingDays` for why the error names what was
+      // observed rather than which of its three causes occurred.
+      if (employee.Compensation.SalaryType == SalaryType.Daily && employee.StandardWorkingDays <= 0)
       {
         return Result.Failure<IReadOnlyList<PayrollRunDraftLine>>(
-          PayrollErrors.DailySalaryHasNoWorkedDayCount);
+          PayrollErrors.DailySalaryHasNoWorkingDays);
       }
 
       var baseAmount = RoundLine(employee.Compensation.SalaryType switch
       {
         SalaryType.Hourly => employee.Compensation.BaseAmount * employee.WorkedQuantity,
+
+        // ---- DAILY IS THE STANDARD WORKING DAYS, LESS THE UNPAID ONES (T-108, owner-ruled).
+        //
+        // **AND IT IS NOT `rate x days ACTUALLY WORKED`**, which is the reading the phrase *"daily rate"*
+        // invites and the one a reader will assume. Under that model absence is already excluded and the
+        // `UnpaidAbsenceDeduction` element would double-count it — the same error the hourly path avoids by
+        // taking no deduction at all.
+        //
+        // The owner excluded HOURLY from that deduction *because an hourly employee is paid only for the
+        // time they attend*, and included DAILY. **That contrast only means something if a daily employee
+        // is NOT paid solely for time attended** — so a daily employee is paid the period's working days
+        // and the deduction takes the unpaid ones back.
+        //
+        // Clamped at zero: more unpaid days than the period holds is bad data, and a NEGATIVE base would
+        // flow into every percentage element and produce a payslip that looks arithmetically consistent
+        // while being nonsense.
+        SalaryType.Daily => employee.Compensation.BaseAmount * Math.Max(
+          0m, employee.StandardWorkingDays - employee.UnpaidAbsenceQuantity),
 
         // MONTHLY AND `default` TAKE THE SAME ARM, AND IT IS THE PRE-T-107 EXPRESSION VERBATIM.
         _ => employee.Compensation.BaseAmount * factor

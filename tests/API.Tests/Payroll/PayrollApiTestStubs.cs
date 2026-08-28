@@ -290,8 +290,9 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
       anyDateInPeriodUtc, anyDateInPeriodUtc,
       WorkedQuantity: 0m,
       new Dictionary<string, decimal>(OvertimeByTier, StringComparer.Ordinal),
+      StandardWorkingDays: 0,
       PaidAbsenceQuantity: 0m,
-      UnpaidAbsenceQuantity));
+      UnpaidAbsenceQuantity: UnpaidAbsenceQuantity));
 
   public Task<AttendancePeriodInspection> InspectPeriodAsync(
     Guid companyId, DateTimeOffset anyDateInPeriodUtc, CancellationToken cancellationToken = default) =>

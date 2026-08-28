@@ -4,6 +4,8 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Companies;
+using SSAS.HR.Contracts.Employment;
+using SSAS.Payroll.Domain.Runs;
 
 namespace SSAS.Payroll.Application.Reads;
 
@@ -69,6 +71,10 @@ public sealed class PayrollReadScope
   }
 }
 
+// A self-service read's subject and the scope derived from it. One object because they are resolved
+// together and must not be able to disagree.
+public sealed record OwnEmployeeReadScope(PayrollReadScope Scope, Guid EmployeeId);
+
 public interface IPayrollScopeResolver
 {
   // The functional permission is a PARAMETER, not a constant, because Payroll has several read surfaces with
@@ -83,6 +89,21 @@ public interface IPayrollScopeResolver
   // than the one it needs answered.
   Task<Result> AuthorizeAsync(
     string permissionName, Guid companyId, CancellationToken cancellationToken = default);
+
+  // ---- THE SELF-SERVICE READ SCOPE (FP-015, T-088), AND IT ASKS A DIFFERENT QUESTION.
+  //
+  // `ResolveAsync` answers *which companies may this user ADMINISTER*, from their access grants. The self
+  // read asks *which employee am I* — and an employee's own payslips are theirs by virtue of the employee
+  // record, not by virtue of an administrative grant.
+  //
+  // So this derives the scope from the RESOLVED EMPLOYEE's company. **Without it a plain employee holding
+  // the self permission and no `UserCompanyAccess` row would be refused `company.scope_denied`**, which
+  // would make the feature true only for employees an administrator had separately privileged.
+  //
+  // Returns the employee alongside the scope, because the caller needs both and resolving twice would let
+  // them disagree.
+  Task<Result<OwnEmployeeReadScope>> ResolveForOwnEmployeeAsync(
+    string permissionName, CancellationToken cancellationToken = default);
 
   Result RequirePermission(string permissionName);
 }
@@ -101,8 +122,61 @@ public sealed class PayrollScopeResolver(
   ITenantCompanyAccessResolver companyAccess,
   ICurrentTenant currentTenant,
   ICurrentTenantUser currentTenantUser,
-  ICurrentUser currentUser) : IPayrollScopeResolver
+  ICurrentUser currentUser,
+  IUserEmployeeResolver userEmployees,
+  IEmployeeCompanyDirectory employeeCompanies) : IPayrollScopeResolver
 {
+  // ---- THE SELF-SERVICE SCOPE. FOUR STEPS, AND EACH REFUSAL MEANS SOMETHING DIFFERENT.
+  //
+  // 1. a tenant session, 2. the named permission, 3. the caller's employee, 4. that employee's company.
+  //
+  // **Steps 3 and 4 replace the company-access lookup that `ResolveAsync` performs**, and that substitution
+  // is the ruling: company scope answers which companies a user may ADMINISTER, which has nothing to do
+  // with being an employee of one.
+  public async Task<Result<OwnEmployeeReadScope>> ResolveForOwnEmployeeAsync(
+    string permissionName, CancellationToken cancellationToken = default)
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(permissionName);
+
+    if (currentTenant.TenantId is not { } tenantId ||
+      currentTenantUser.TenantUserId is not { } tenantUserId)
+    {
+      return Result.Failure<OwnEmployeeReadScope>(PayrollScopeErrors.InvalidActor);
+    }
+
+    if (!currentUser.Permissions.Contains(permissionName, StringComparer.Ordinal))
+    {
+      return Result.Failure<OwnEmployeeReadScope>(PayrollScopeErrors.ReadPermissionDenied);
+    }
+
+    var employeeId = await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken);
+    if (employeeId is not { } employee)
+    {
+      return Result.Failure<OwnEmployeeReadScope>(PayrollErrors.NoLinkedEmployee);
+    }
+
+    // ---- A LINK POINTING AT AN EMPLOYEE THAT DOES NOT EXIST IS REACHABLE, AND IT ANSWERS THE SAME WAY.
+    //
+    // `ADR-030` Decision 4 makes a cross-database foreign key impossible, so nothing stops a link from
+    // outliving the employee it names. **It collapses into the same refusal deliberately:** the caller did
+    // nothing wrong, cannot act on the difference, and distinguishing them would tell them a link exists
+    // pointing at a record that does not — which is a statement about internal state.
+    //
+    // **The cost is named rather than hidden: a dangling link is invisible from the wire.** Detecting one
+    // is a reconciliation concern and belongs with whoever owns the link's lifecycle, not with a read.
+    var companyId = await employeeCompanies.GetCompanyIdAsync(employee, cancellationToken);
+    if (companyId is not { } company)
+    {
+      return Result.Failure<OwnEmployeeReadScope>(PayrollErrors.NoLinkedEmployee);
+    }
+
+    var scope = PayrollReadScope.Create(tenantId, [company]);
+
+    return scope is null
+      ? Result.Failure<OwnEmployeeReadScope>(PayrollScopeErrors.CompanyScopeDenied)
+      : Result.Success(new OwnEmployeeReadScope(scope, employee));
+  }
+
   public Result RequirePermission(string permissionName)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(permissionName);

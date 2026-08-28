@@ -4,6 +4,19 @@ namespace SSAS.Payroll.Domain.Runs;
 
 public static class PayrollErrors
 {
+  // The caller is a tenant user with no linked employee (`ADR-030` Decision 5, FP-015). **An ordinary state
+  // rather than a fault** — platform-support staff, and users created before their employee record exists.
+  // `ADR-030` puts it plainly: *"a support administrator opening a self-service page is not a fault
+  // condition; it is Tuesday."*
+  //
+  // Mapped to `404 payroll.no_linked_employee` and deliberately NOT to `payroll.not_found`: that code says
+  // *the thing you named does not exist*, and this one is about the CALLER. Telling an employee their
+  // payslips were not found, when the truth is that nobody linked their record, points them at the wrong
+  // remedy and the wrong person to ask.
+  public static readonly Error NoLinkedEmployee = new(
+    "Payroll.NoLinkedEmployee",
+    "No employee record is linked to this user.");
+
   // ---- PERIODS.
   public static readonly Error PeriodCompanyRequired = new(
     "Payroll.PeriodCompanyRequired",

@@ -98,6 +98,10 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
 
   public StubEmployeeRoster Roster { get; } = new();
 
+  // The self-service pair, one object because a test setting one and forgetting the other would produce a
+  // dangling link by accident rather than by intent.
+  public StubSelfServiceDirectory SelfService { get; } = new();
+
   // FP-013's third route out of the module. See the stub for why its absence failed every test here.
   public StubAttendanceSummary Attendance { get; } = new();
 
@@ -109,6 +113,15 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
 
     return methods is { Count: > 0 } ? methods[0] : "?";
   }
+
+  // The mapped endpoint itself, for assertions about a route's CONTRACT rather than its policy — the
+  // handler's MethodInfo lives in its metadata, which is the only way to reach query and header parameters.
+  public RouteEndpoint MappedEndpoint(string pattern) =>
+    ((IEndpointRouteBuilder)(application ??
+      throw new InvalidOperationException("The test host has not started."))).DataSources
+      .SelectMany(source => source.Endpoints)
+      .OfType<RouteEndpoint>()
+      .Single(endpoint => endpoint.RoutePattern.RawText == pattern);
 
   public IReadOnlyList<(string Method, string Pattern, string Policy)> MappedRoutes() =>
   [
@@ -173,6 +186,14 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     builder.Services.AddSingleton<IAttendanceSummary>(Attendance);
 
     builder.Services.AddScoped<IPayrollScopeResolver, PayrollScopeResolver>();
+
+    // ---- FP-015's SELF-SERVICE SCOPE (T-088). A THIRD DOOR OUT OF THE MODULE, STUBBED LIKE THE OTHER TWO.
+    //
+    // `SelfService.LinkedEmployee` decides what the caller resolves to: a value for a linked employee, null
+    // for the unmapped case that must answer 404 rather than 500.
+    builder.Services.AddSingleton<IUserEmployeeResolver>(SelfService);
+    builder.Services.AddSingleton<IEmployeeCompanyDirectory>(SelfService);
+    builder.Services.AddScoped<IPayrollSelfServiceScopeResolver, PayrollSelfServiceScopeResolver>();
     builder.Services.AddScoped<CreatePayElementCommandHandler>();
     builder.Services.AddScoped<UpdatePayElementCommandHandler>();
     builder.Services.AddScoped<SetPayElementActivationCommandHandler>();
@@ -217,6 +238,7 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     Runs.Reset();
     Ledger.Reset();
     Roster.Reset();
+    SelfService.Reset();
     Attendance.Reset();
     UnitOfWork.Failure = null;
   }

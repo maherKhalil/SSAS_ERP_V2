@@ -19,6 +19,11 @@ namespace SSAS.Payroll.API;
 public static class PayrollApiErrorMapper
 {
   public static readonly ApiError NotFound = new(404, "payroll.not_found");
+
+  // FP-015 (T-088). 404 because the route exists, the caller is authenticated and permitted, and what is
+  // absent is the SUBJECT of the read. Not 403 — nothing is forbidden. Not a 4xx-invalid — the request was
+  // well formed. A distinct code from `payroll.not_found`, which answers about a thing the caller named.
+  public static readonly ApiError NoLinkedEmployee = new(404, "payroll.no_linked_employee");
   public static readonly ApiError Conflict = new(409, "payroll.conflict");
   public static readonly ApiError PeriodClosed = new(409, "payroll.period_closed");
   public static readonly ApiError ElementUnmapped = new(409, "payroll.element_unmapped");
@@ -113,6 +118,7 @@ public static class PayrollApiErrorMapper
       "Payroll.AttendancePeriodOpen" => AttendancePeriodOpen,
 
       // ---- AUTHORIZATION. Naming no company, no tenant and no topology.
+      "Payroll.NoLinkedEmployee" => NoLinkedEmployee,
       "Payroll.InvalidActor" => ApiErrors.Forbidden,
       "Payroll.ReadPermissionDenied" => ApiErrors.Forbidden,
       "Payroll.WritePermissionDenied" => ApiErrors.Forbidden,

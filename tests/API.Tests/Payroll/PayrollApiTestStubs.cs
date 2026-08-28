@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Attendance.Contracts.Summaries;
 using SSAS.GL.Contracts.Posting;
@@ -298,4 +299,39 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
       InspectionStatus, Guid.NewGuid(), "Stub period",
       anyDateInPeriodUtc, anyDateInPeriodUtc,
       IsClosed: InspectionStatus == AttendanceSummaryStatus.Available));
+}
+
+// ==================================================================================================
+// FP-015's TWO PLATFORM-AND-HR FACTS, IN ONE OBJECT (T-088).
+// ==================================================================================================
+//
+// One class implementing both contracts, because the two answers are a chain: a test that set the link
+// and forgot the company would produce a DANGLING LINK — a real state, but one that should arrive by
+// intent rather than by omission. Here it takes one deliberate line.
+//
+// Defaults are the ordinary case: the caller is linked to `PayrollApiTestHost.EmployeeId`, who works at
+// `CompanyA`. A test wanting the unmapped refusal sets `LinkedEmployee` to null and says so.
+public sealed class StubSelfServiceDirectory : IUserEmployeeResolver, IEmployeeCompanyDirectory
+{
+  public Guid? LinkedEmployee { get; set; } = PayrollApiTestHost.EmployeeId;
+
+  public Guid? EmployeeCompany { get; set; } = PayrollApiTestHost.CompanyA;
+
+  public List<long> AskedForUser { get; } = [];
+
+  public Task<Guid?> ResolveEmployeeIdAsync(long tenantUserId, CancellationToken cancellationToken = default)
+  {
+    AskedForUser.Add(tenantUserId);
+    return Task.FromResult(LinkedEmployee);
+  }
+
+  public Task<Guid?> GetCompanyIdAsync(Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(employeeId == LinkedEmployee ? EmployeeCompany : null);
+
+  public void Reset()
+  {
+    LinkedEmployee = PayrollApiTestHost.EmployeeId;
+    EmployeeCompany = PayrollApiTestHost.CompanyA;
+    AskedForUser.Clear();
+  }
 }

@@ -35,7 +35,16 @@ public sealed class PayrollRouteInventoryTests(PayrollApiTestHost host) : IClass
     ("POST", "/api/payroll/runs/{payrollRunId:guid}/posting", PayrollPermissionNames.PostRuns),
     ("POST", "/api/payroll/runs/{payrollRunId:guid}/reversals", PayrollPermissionNames.PostRuns),
 
-    ("GET", "/api/payroll/runs/{payrollRunId:guid}/payslips/{employeeId:guid}", PayrollPermissionNames.ViewPayslips)
+    ("GET", "/api/payroll/runs/{payrollRunId:guid}/payslips/{employeeId:guid}", PayrollPermissionNames.ViewPayslips),
+
+    // ---- SELF-SERVICE (FP-015, T-088). THE ONLY ROUTE HERE THAT NAMES NO SUBJECT.
+    //
+    // Every other payslip route takes the employee on its path. This one takes none: the subject is
+    // resolved from the caller's own identity, which is `REQ-SS-0004` and is asserted against the contract
+    // by `PayrollSelfServiceTests.The_self_route_contract_names_no_employee_on_any_surface`.
+    //
+    // It carries the SELF permission, not the administrative one — the two share a prefix and nothing else.
+    ("GET", "/api/payroll/me/payslips", PayrollPermissionNames.ViewOwnPayslips)
   ];
 
   [Fact]

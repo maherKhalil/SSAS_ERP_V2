@@ -76,4 +76,17 @@ public static class PayrollPermissionNames
   // adding one *"exactly the shape of the FP-011 near-miss"* — but it is FP-015's to add, with the endpoint
   // and the acceptance criteria that go with it. **Nothing here is waiting on an input any more.**
   public const string ViewPayslips = "Payroll.Payslips.View";
+
+  // ---- SELF-SERVICE (FP-015, `OD-SS-0001`, T-088). A DISTINCT PERMISSION, NOT A SCOPE.
+  //
+  // `OD-SS-0001` expressed the ruling as `payroll.payslip.view.self`, which cannot exist: a permission name
+  // is exactly three segments (`PermissionName.cs:36`) and that string is four. **The ruling's substance is
+  // untouched** — a distinct permission rather than a scope on the administrative one, because a scope
+  // applied at the handler relies on every handler remembering, and the architecture guards assert
+  // permissions rather than scopes.
+  //
+  // **It shares a prefix with `ViewPayslips` and shares nothing else.** The resemblance is for a human
+  // reading a role screen; the authorization stack compares claim values ordinally and cannot see it
+  // (`AC-SS-0006`). Holding one grants nothing of the other in either direction.
+  public const string ViewOwnPayslips = "Payroll.Payslips.ViewOwn";
 }

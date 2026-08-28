@@ -77,6 +77,52 @@ public sealed class PayrollChainSqlServerTests
   private const decimal DailySalaryRate = 100m;
 
   // ================================================================================================
+  // THE PERSON THE RUN USED TO DROP (T-114). T-110's ENTIRE REASON FOR EXISTING.
+  // ================================================================================================
+  //
+  // An employee with a one-off instruction and **no compensation record at all**. Before T-110 the run
+  // skipped them — `!byEmployee.TryGetValue(...) continue` — producing no line, no error and no payslip.
+  // `OD-SS-0003` says such a person IS an employee, so HR's roster always carried them; only the
+  // compensation lookup dropped them.
+  //
+  // **This is also the first time `OneOffPayment` has been saved to a real database.** T-113's guard caught
+  // its key generation being wrong four tasks after it shipped, because nothing had ever persisted one.
+  [Fact]
+  [Trait("Decision", "OD-SS-0003")]
+  public async Task An_employee_with_a_one_off_and_no_compensation_is_paid_rather_than_dropped()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync();
+    await chain.SeedAttendanceAsync();
+    await chain.SeedOneOffPayeeAsync(4000m);
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(runId)).IsSuccess);
+    Assert.True((await chain.PostAsync(runId)).IsSuccess);
+
+    var run = await chain.RunAsync(runId);
+
+    // ---- THE PAYEE IS ON THE RUN AT ALL, WHICH IS THE ASSERTION THAT MATTERS.
+    var theirs = run.Lines.Where(line => line.EmployeeId == chain.OneOffPayee).ToList();
+    var only = Assert.Single(theirs);
+
+    Assert.Equal(4000m, only.Amount);
+    Assert.Equal(chain.BonusElementId, only.PayElementId);
+
+    // ---- AND NOTHING ELSE. No base, no proration, no absence deduction: they are on no rate.
+    Assert.DoesNotContain(theirs, line => line.PayElementId != chain.BonusElementId);
+
+    // ---- THE SALARIED EMPLOYEE IS UNAFFECTED, which is what makes the run's inclusion rule correct
+    // rather than merely wider.
+    Assert.Equal(BaseSalary, run.Lines.Single(
+      line => line.EmployeeId == chain.Employee && line.GlAccountId == chain.SalaryAccountId).Amount);
+  }
+
+  // ================================================================================================
   // A DAILY SALARY, END TO END (T-114). THE HIGHEST-RISK OF THE FOUR.
   // ================================================================================================
   //
@@ -264,6 +310,15 @@ public sealed class PayrollChainSqlServerTests
 
     public Guid Employee { get; } = Guid.NewGuid();
 
+    // ---- THE ONE-OFF PAYEE (T-114). A SECOND PERSON, WITH NO COMPENSATION RECORD AT ALL.
+    //
+    // `OD-SS-0003`: an external accountant who is paid IS an employee. This is that person — in HR's
+    // roster, employed through the period, and holding no monthly, daily or hourly rate. **Before T-110 the
+    // run dropped them silently: no line, no error, no payslip.**
+    public Guid OneOffPayee { get; } = Guid.NewGuid();
+
+    public Guid BonusElementId { get; private set; }
+
     public Guid SalaryAccountId { get; private set; }
 
     public Guid OvertimeAccountId { get; private set; }
@@ -275,6 +330,10 @@ public sealed class PayrollChainSqlServerTests
     public Guid PayrollPeriodId { get; private set; }
 
     public Guid AttendancePeriodId { get; private set; }
+
+    private Guid DepartmentId { get; } = Guid.NewGuid();
+
+    private Guid PositionId { get; } = Guid.NewGuid();
 
     public static async Task<ChainFixture> CreateAsync()
     {
@@ -309,8 +368,8 @@ public sealed class PayrollChainSqlServerTests
     // tests, and mixing it in here would make the expected numbers a second calculation to check.
     public Task SeedEmployeeAsync()
     {
-      var department = Guid.NewGuid();
-      var position = Guid.NewGuid();
+      var department = DepartmentId;
+      var position = PositionId;
 
       return ExecuteAsync($"""
         INSERT INTO [tenant].[Departments]
@@ -403,7 +462,17 @@ public sealed class PayrollChainSqlServerTests
       var netPay = Element(
         "NETPAY", PayElementKind.Deduction, PayElementBehaviour.NetPayPayable, 0m, 99, NetPayAccountId);
 
-      foreach (var element in new[] { basic, overtime, absence, netPay })
+      // ---- A ONE-OFF'S ELEMENT (T-114). `FixedAmount`, and DELIBERATELY ASSIGNED TO NOBODY.
+      //
+      // A `FixedAmount` element with no assignment produces no line for any employee, so seeding it leaves
+      // the two pre-T-107 tests' arithmetic untouched. **A one-off instruction names it, and that is the
+      // only way it ever pays out** — the element supplies the KIND and the GL account, the instruction
+      // supplies the amount.
+      var bonus = Element(
+        "BONUS", PayElementKind.Earning, PayElementBehaviour.FixedAmount, 0m, 20, SalaryAccountId);
+      BonusElementId = bonus.Id;
+
+      foreach (var element in new[] { basic, overtime, absence, netPay, bonus })
       {
         context.Set<PayElement>().Add(element);
       }
@@ -426,6 +495,35 @@ public sealed class PayrollChainSqlServerTests
       await context.SaveChangesAsync();
 
       PayrollPeriodId = period.Id;
+    }
+
+    // ---- A PERSON WITH A ONE-OFF AND NO COMPENSATION (T-114).
+    //
+    // **What this cost to construct is itself the finding.** The employee is one more INSERT reusing the
+    // department and position the first one created; the instruction is one `OneOffPayment.Create`. There is
+    // no compensation row, no salary type, no rate — **because that is the whole point of the person.**
+    public async Task SeedOneOffPayeeAsync(decimal amount)
+    {
+      await ExecuteAsync($"""
+        INSERT INTO [tenant].[Employees]
+          ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [PositionId],
+           [EmployeeNumber], [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status],
+           [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy],
+           [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
+        VALUES
+          ('{OneOffPayee}', '{Tenant}', '{Company}', '{BranchId}', '{DepartmentId}', '{PositionId}',
+           N'CHAIN-2', N'CHAIN-2', N'Contract Auditor', '2020-01-01T00:00:00+00:00', N'Active',
+           N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
+           SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+        """);
+
+      await using var context = CreateContext();
+
+      var instruction = OneOffPayment.Create(
+        Company, OneOffPayee, PayrollPeriodId, BonusElementId, amount, "settlement for the audit").Value;
+      context.Set<OneOffPayment>().Add(instruction);
+
+      await context.SaveChangesAsync();
     }
 
     private PayElement Element(

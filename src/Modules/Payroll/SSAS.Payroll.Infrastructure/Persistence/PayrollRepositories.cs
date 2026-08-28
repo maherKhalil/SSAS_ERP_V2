@@ -74,6 +74,43 @@ internal sealed class PayElementRepository(ITenantDbContextAccessor contextAcces
   }
 }
 
+internal sealed class OneOffPaymentRepository(ITenantDbContextAccessor contextAccessor)
+  : IOneOffPaymentRepository
+{
+  // UNCONSUMED ONLY. The consumption rule lives here and in the aggregate, and nowhere else — a handler that
+  // loaded everything and filtered would be a third place for it to drift.
+  public async Task<IReadOnlyList<OneOffPayment>> GetUnconsumedForPeriodAsync(
+    Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await context.Set<OneOffPayment>()
+      .Where(payment => payment.CompanyId == companyId
+        && payment.PayrollPeriodId == payrollPeriodId
+        && payment.ConsumedByPayrollRunId == null)
+      .OrderBy(payment => payment.EmployeeId)
+      .ThenBy(payment => payment.Id)
+      .ToListAsync(cancellationToken);
+  }
+
+  public async Task<OneOffPayment?> GetByIdAsync(
+    Guid oneOffPaymentId, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await context.Set<OneOffPayment>()
+      .FirstOrDefaultAsync(payment => payment.Id == oneOffPaymentId, cancellationToken);
+  }
+
+  public async Task AddAsync(OneOffPayment payment, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(payment);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+    await context.Set<OneOffPayment>().AddAsync(payment, cancellationToken);
+  }
+}
+
 internal sealed class EmployeeCompensationRepository(ITenantDbContextAccessor contextAccessor)
   : IEmployeeCompensationRepository
 {

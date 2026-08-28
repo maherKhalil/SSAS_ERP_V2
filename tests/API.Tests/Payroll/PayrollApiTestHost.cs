@@ -90,6 +90,8 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
 
   public StubCompensationRepository Compensation { get; } = new();
 
+  public StubOneOffPaymentRepository OneOffPayments { get; } = new();
+
   public StubPayrollPeriodRepository Periods { get; } = new();
 
   public StubPayrollRunRepository Runs { get; } = new();
@@ -177,6 +179,7 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     builder.Services.AddSingleton<IPayrollReadService>(Reads);
     builder.Services.AddSingleton<IPayElementRepository>(Elements);
     builder.Services.AddSingleton<IEmployeeCompensationRepository>(Compensation);
+    builder.Services.AddSingleton<IOneOffPaymentRepository>(OneOffPayments);
     builder.Services.AddSingleton<IPayrollPeriodRepository>(Periods);
     builder.Services.AddSingleton<IPayrollRunRepository>(Runs);
 

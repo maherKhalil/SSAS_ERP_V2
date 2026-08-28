@@ -30,6 +30,24 @@ public interface IPayElementRepository
   Task AddAsync(PayElement payElement, CancellationToken cancellationToken = default);
 }
 
+// ---- ONE-OFF PAY INSTRUCTIONS (T-110).
+//
+// Read by PERIOD rather than by pay date — see `OneOffPayment.PayrollPeriodId` for why a new construct does
+// not inherit the run's period/pay-date asymmetry.
+public interface IOneOffPaymentRepository
+{
+  // ---- UNCONSUMED ONLY, AND THE FILTER BELONGS HERE RATHER THAN IN THE HANDLER.
+  //
+  // A handler that loaded everything and filtered would be a second place the consumption rule is written,
+  // and the two would eventually disagree about what "already paid" means.
+  Task<IReadOnlyList<OneOffPayment>> GetUnconsumedForPeriodAsync(
+    Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default);
+
+  Task<OneOffPayment?> GetByIdAsync(Guid oneOffPaymentId, CancellationToken cancellationToken = default);
+
+  Task AddAsync(OneOffPayment payment, CancellationToken cancellationToken = default);
+}
+
 public interface IEmployeeCompensationRepository
 {
   // ---- THE WHOLE HISTORY, NOT "THE CURRENT ONE".

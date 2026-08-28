@@ -65,6 +65,14 @@ public static class PayrollEndpointRouteBuilderExtensions
     // ---- COMPENSATION. The personal-data surface (BR-PAY-0010, OD-PAY-0016).
     group.MapPost("/employees/{employeeId:guid}/compensation", RecordCompensationAsync)
       .RequirePermission(PayrollPermissionNames.ManageCompensation).WithName("PayrollCompensationRecord");
+
+    // ---- ONE-OFF PAY INSTRUCTIONS (T-110). POST ONLY, like compensation and for a different reason.
+    //
+    // Deciding someone is paid an amount is the same authority whether it recurs or happens once, so this
+    // takes `ManageCompensation` rather than a permission of its own — a second one would let the two be
+    // granted apart, which nobody has ruled.
+    group.MapPost("/employees/{employeeId:guid}/one-off-payments", RecordOneOffPaymentAsync)
+      .RequirePermission(PayrollPermissionNames.ManageCompensation).WithName("PayrollOneOffPaymentRecord");
     group.MapGet("/employees/{employeeId:guid}/compensation", GetCompensationHistoryAsync)
       .RequirePermission(PayrollPermissionNames.ViewCompensation).WithName("PayrollCompensationHistory");
     group.MapGet("/employees/{employeeId:guid}/compensation/current", GetCompensationCurrentAsync)
@@ -134,6 +142,40 @@ public static class PayrollEndpointRouteBuilderExtensions
 
   // ---- COMPENSATION.
 
+  private static async Task<IResult> RecordOneOffPaymentAsync(
+    HttpContext context, Guid employeeId, RecordOneOffPaymentCommandHandler handler,
+    CancellationToken cancellationToken)
+  {
+    var request = await StrictRequestReader.ReadStrictJsonAsync<RecordOneOffPaymentRequest>(
+      context,
+      new Dictionary<string, JsonValueKind[]>
+      {
+        ["companyId"] = [JsonValueKind.String],
+        ["payrollPeriodId"] = [JsonValueKind.String],
+        ["payElementId"] = [JsonValueKind.String],
+        ["amount"] = [JsonValueKind.Number],
+        ["reason"] = [JsonValueKind.String, JsonValueKind.Null]
+      },
+      cancellationToken,
+      requiredFields: ["companyId", "payrollPeriodId", "payElementId", "amount"]);
+    if (request is null)
+    {
+      return Results.Empty;
+    }
+
+    var created = await handler.HandleAsync(
+      new RecordOneOffPaymentCommand(
+        request.CompanyId, employeeId, request.PayrollPeriodId, request.PayElementId,
+        request.Amount, request.Reason),
+      cancellationToken);
+
+    return created.IsFailure
+      ? Problem(context, PayrollApiErrorMapper.Map(created.Error))
+      : Results.Created(
+        $"{RoutePrefix}/employees/{employeeId}/one-off-payments",
+        new { oneOffPaymentId = created.Value });
+  }
+
   private static async Task<IResult> RecordCompensationAsync(
     HttpContext context, Guid employeeId, RecordCompensationCommandHandler handler,
     CancellationToken cancellationToken)
@@ -145,6 +187,16 @@ public static class PayrollEndpointRouteBuilderExtensions
         ["companyId"] = [JsonValueKind.String],
         ["effectiveFromUtc"] = [JsonValueKind.String],
         ["baseAmount"] = [JsonValueKind.Number],
+
+        // ---- ADDED T-110, AND IT IS A T-107 DEFECT RATHER THAN A T-110 FEATURE.
+        //
+        // T-107 added `salaryType` to `RecordCompensationRequest` and NOT to this dictionary.
+        // `StrictRequestReader` rejects any member it does not declare (`:39`), so **a client sending a
+        // salary type got a 400 and a client omitting it got Monthly** — hourly and daily were unreachable
+        // through the API from the moment they shipped. The domain, the calculator, the persistence and the
+        // migration were all correct; the door was never opened.
+        ["salaryType"] = [JsonValueKind.String, JsonValueKind.Number],
+
         ["assignments"] = [JsonValueKind.Array, JsonValueKind.Null],
         ["wasOutsideGradeBand"] = [JsonValueKind.True, JsonValueKind.False],
         ["gradeBandObservation"] = [JsonValueKind.String, JsonValueKind.Null]

@@ -144,6 +144,7 @@ public sealed class CalculatePayrollRunCommandHandler(
   IPayrollPeriodRepository periods,
   IPayElementRepository elements,
   IEmployeeCompensationRepository compensation,
+  IOneOffPaymentRepository oneOffPayments,
   IEmployeeRoster roster,
   IAttendanceSummary attendanceSummary,
   IPayrollScopeResolver scope,
@@ -182,20 +183,46 @@ public sealed class CalculatePayrollRunCommandHandler(
     var byEmployee = history.GroupBy(record => record.EmployeeId)
       .ToDictionary(group => group.Key, group => group.ToList());
 
+    // ---- ONE-OFF PAY INSTRUCTIONS FOR THIS PERIOD (T-110). UNCONSUMED ONLY.
+    //
+    // Loaded before the loop and grouped, because an employee may hold several and the run must not query
+    // per employee.
+    var oneOffs = await oneOffPayments.GetUnconsumedForPeriodAsync(
+      run.CompanyId, run.PayrollPeriodId, cancellationToken);
+    var oneOffsByEmployee = oneOffs.GroupBy(payment => payment.EmployeeId)
+      .ToDictionary(
+        group => group.Key,
+        group => (IReadOnlyList<OneOffPaymentInput>)[.. group.Select(payment =>
+          new OneOffPaymentInput(payment.Id, payment.PayElementId, payment.Amount))]);
+
     var inputs = new List<PayrollEmployeeInput>();
     foreach (var record in employment)
     {
-      if (!byEmployee.TryGetValue(record.EmployeeId, out var employeeHistory))
+      oneOffsByEmployee.TryGetValue(record.EmployeeId, out var employeeOneOffs);
+
+      // ---- THE RECORD IN FORCE ON THE PAY DATE, OR NONE (`OD-PAY-0003`).
+      //
+      // Derived, never a stored "current" flag.
+      EmployeeCompensation? inForce = null;
+      if (byEmployee.TryGetValue(record.EmployeeId, out var employeeHistory))
       {
-        // An employee with no compensation on file is SKIPPED, not defaulted to zero. A zero-pay line would
-        // look like a decision somebody made; an absence is the truth, and it surfaces as a missing payslip
-        // rather than as a payslip for nothing.
-        continue;
+        inForce = EmployeeCompensation.InForceOn(employeeHistory, period.PayDateUtc);
       }
 
-      // The record IN FORCE on the pay date, derived — never a stored "current" flag (`OD-PAY-0003`).
-      var inForce = EmployeeCompensation.InForceOn(employeeHistory, period.PayDateUtc);
-      if (inForce is null)
+      // ---- AN EMPLOYEE WITH NEITHER IS SKIPPED. ONE WITH A ONE-OFF IS NOT (T-110).
+      //
+      // The original rule was right and was right about ONE case: *"an employee with no compensation on file
+      // is SKIPPED, not defaulted to zero — a zero-pay line would look like a decision somebody made, and an
+      // absence is the truth."* That holds for a salaried employee whose record is missing.
+      //
+      // **It was silently wrong for someone who was never meant to have one.** A contractor paid once for a
+      // job has no monthly, daily or hourly rate, so no compensation record exists to find, so they were
+      // omitted from every run — no line, no error, no payslip. `OD-SS-0003` says such a person IS an
+      // employee, so the roster carries them and only the compensation lookup failed them.
+      //
+      // **Now the two are distinguishable:** no compensation AND no one-off is still an absence and still
+      // skipped; no compensation WITH a one-off is a person to be paid.
+      if (inForce is null && (employeeOneOffs is null || employeeOneOffs.Count == 0))
       {
         continue;
       }
@@ -251,7 +278,7 @@ public sealed class CalculatePayrollRunCommandHandler(
 
       inputs.Add(new PayrollEmployeeInput(
         record.EmployeeId, record.EmploymentDateUtc, record.TerminationDateUtc, inForce,
-        overtimeByTier, unpaidAbsence, workedQuantity, standardWorkingDays));
+        overtimeByTier, unpaidAbsence, workedQuantity, standardWorkingDays, employeeOneOffs));
     }
 
     var active = await elements.GetActiveForCompanyAsync(run.CompanyId, cancellationToken);
@@ -282,6 +309,7 @@ public sealed class ApprovePayrollRunCommandHandler(
   IPayrollRunRepository runs,
   IPayrollPeriodRepository periods,
   IPayElementRepository elements,
+  IOneOffPaymentRepository oneOffPayments,
   IJournalPoster ledger,
   IAttendanceSummary attendanceSummary,
   IPayrollScopeResolver scope,
@@ -406,6 +434,34 @@ public sealed class ApprovePayrollRunCommandHandler(
     if (approved.IsFailure)
     {
       return approved;
+    }
+
+    // ---- APPROVAL IS WHAT CONSUMES A ONE-OFF PAY INSTRUCTION (T-110).
+    //
+    // **Not calculation.** `SetCalculation` refuses only `Approved` and `Posted`, so a draft may be
+    // recalculated any number of times or abandoned entirely — an instruction consumed there would be
+    // consumed by something that might never pay anybody. **Re-running before approval therefore re-includes
+    // it and produces the same line: idempotence for free, with no flag to reset.**
+    //
+    // Consumed in the SAME transaction as the approval. The `Approve` above and these writes commit
+    // together or not at all, so there is no window in which a run is approved and its instructions still
+    // look payable.
+    //
+    // ---- IT REFUSES RATHER THAN SKIPPING, AND THE AGGREGATE IS WHAT REFUSES.
+    //
+    // `MarkConsumedBy` fails if the instruction already names a run. Reaching that would mean this run's
+    // lines contain an instruction another run already paid, and continuing would pay it twice. Failing here
+    // aborts the approval with nothing written.
+    var payableOneOffs = await oneOffPayments.GetUnconsumedForPeriodAsync(
+      run.CompanyId, run.PayrollPeriodId, cancellationToken);
+
+    foreach (var payment in payableOneOffs)
+    {
+      var consumed = payment.MarkConsumedBy(run.Id);
+      if (consumed.IsFailure)
+      {
+        return consumed;
+      }
     }
 
     return await unitOfWork.SaveChangesAsync(cancellationToken);

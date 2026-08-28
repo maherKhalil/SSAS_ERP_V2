@@ -84,6 +84,52 @@ public sealed class PayElementConfiguration : IEntityTypeConfiguration<PayElemen
   }
 }
 
+// ---- ONE-OFF PAY INSTRUCTIONS (T-110).
+public sealed class OneOffPaymentConfiguration : IEntityTypeConfiguration<OneOffPayment>
+{
+  public void Configure(EntityTypeBuilder<OneOffPayment> builder)
+  {
+    ArgumentNullException.ThrowIfNull(builder);
+
+    builder.ToTable("PayrollOneOffPayments", PayrollPersistenceConstants.TenantSchema);
+    builder.HasKey(payment => payment.Id);
+
+    builder.Property(payment => payment.TenantId).IsRequired();
+    builder.Property(payment => payment.CompanyId).IsRequired();
+
+    // The HR employee by identifier only — no foreign key and no navigation, as everywhere else in this
+    // module. `ADR-012` keeps the modules apart and a database-level key would couple their migrations.
+    builder.Property(payment => payment.EmployeeId).IsRequired();
+
+    builder.Property(payment => payment.PayrollPeriodId).IsRequired();
+    builder.Property(payment => payment.PayElementId).IsRequired();
+
+    builder.Property(payment => payment.Amount)
+      .HasPrecision(PayrollPersistenceConstants.MoneyPrecision, PayrollPersistenceConstants.MoneyScale)
+      .IsRequired();
+
+    builder.Property(payment => payment.Reason)
+      .HasMaxLength(PayrollPersistenceConstants.ObservationMaximumLength);
+
+    // ---- NULLABLE, AND THE NULL IS THE UNCONSUMED STATE.
+    //
+    // No separate flag: `IsConsumed` is derived from this being present, so there is exactly one fact and it
+    // names the run. A boolean beside it would be a second answer to the same question.
+    builder.Property(payment => payment.ConsumedByPayrollRunId);
+
+    // The query the run makes: unconsumed instructions for one company and period.
+    builder.HasIndex(payment => new
+    {
+      payment.TenantId, payment.CompanyId, payment.PayrollPeriodId, payment.ConsumedByPayrollRunId
+    });
+
+    builder.Property(payment => payment.CreatedUtc).IsRequired();
+    builder.Property(payment => payment.ModifiedUtc).IsRequired();
+    builder.Property(payment => payment.CreatedBy).HasMaxLength(PayrollPersistenceConstants.ActorMaximumLength);
+    builder.Property(payment => payment.ModifiedBy).HasMaxLength(PayrollPersistenceConstants.ActorMaximumLength);
+  }
+}
+
 public sealed class EmployeeCompensationConfiguration : IEntityTypeConfiguration<EmployeeCompensation>
 {
   public void Configure(EntityTypeBuilder<EmployeeCompensation> builder)

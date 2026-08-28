@@ -132,6 +132,34 @@ public sealed class StubCompensationRepository : IEmployeeCompensationRepository
   }
 }
 
+// ---- ONE-OFF PAY INSTRUCTIONS (T-110).
+//
+// `GetUnconsumedForPeriodAsync` filters on the reference exactly as the real repository does, so a test that
+// approves a run and re-reads sees the same thing production would.
+public sealed class StubOneOffPaymentRepository : IOneOffPaymentRepository
+{
+  public List<OneOffPayment> Stored { get; } = [];
+
+  public void Reset() => Stored.Clear();
+
+  public Task<IReadOnlyList<OneOffPayment>> GetUnconsumedForPeriodAsync(
+    Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<OneOffPayment>>(
+      [.. Stored.Where(payment => payment.CompanyId == companyId
+        && payment.PayrollPeriodId == payrollPeriodId
+        && !payment.IsConsumed)]);
+
+  public Task<OneOffPayment?> GetByIdAsync(
+    Guid oneOffPaymentId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Stored.FirstOrDefault(payment => payment.Id == oneOffPaymentId));
+
+  public Task AddAsync(OneOffPayment payment, CancellationToken cancellationToken = default)
+  {
+    Stored.Add(payment);
+    return Task.CompletedTask;
+  }
+}
+
 public sealed class StubPayrollPeriodRepository : IPayrollPeriodRepository
 {
   public List<PayrollPeriod> Stored { get; } = [];

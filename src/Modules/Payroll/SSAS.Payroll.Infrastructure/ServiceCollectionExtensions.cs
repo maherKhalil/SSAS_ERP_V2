@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
 
     services.AddScoped<IPayElementRepository, PayElementRepository>();
     services.AddScoped<IEmployeeCompensationRepository, EmployeeCompensationRepository>();
+    services.AddScoped<IOneOffPaymentRepository, OneOffPaymentRepository>();
     services.AddScoped<IPayrollPeriodRepository, PayrollPeriodRepository>();
     services.AddScoped<IPayrollRunRepository, PayrollRunRepository>();
 

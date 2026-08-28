@@ -1,4 +1,4 @@
-# FP-012 — API Contracts (RATIFIED)
+# FP-012 — API Contracts
 
 A proposed route surface following the repo's conventions. **Route count is not fixed until
 `decisions-approved.md` is ruled** — several routes exist only under particular options.

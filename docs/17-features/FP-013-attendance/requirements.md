@@ -1,4 +1,4 @@
-# FP-013 — Proposed requirements
+# FP-013 — Requirements
 
 > **RATIFIED 2026-08-25.** All sixteen `OD-ATT` rulings are closed; see
 > [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the

@@ -507,7 +507,7 @@ public sealed class ApprovePayrollRunCommandHandler(
 
     foreach (var payment in payableOneOffs)
     {
-      var consumed = payment.MarkConsumedBy(run.Id);
+      var consumed = payment.MarkConsumedBy(run.Id, run.PayrollPeriodId);
       if (consumed.IsFailure)
       {
         return consumed;

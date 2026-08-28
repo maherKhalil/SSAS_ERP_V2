@@ -188,26 +188,57 @@ public sealed class OneOffPayment
   // first run was reversed, and refusing that would strand an unpaid obligation — **extinguishing a debt by
   // an accounting action, which the ruling rejected.**
   //
-  // ---- SO WHERE DOES THE DOUBLE-PAYMENT INVARIANT LIVE NOW? NOT HERE, AND THAT IS DELIBERATE.
+  // ---- SO WHERE DOES THE DOUBLE-PAYMENT INVARIANT LIVE NOW? NOT HERE, AND IT **CANNOT**.
   //
-  // **It is structural, in two places that cannot drift:**
+  // **The reason is not that two places are enough.** Defence in depth is legitimate where a failure is
+  // expensive, and "two is enough" is an argument a later reader can simply disagree with.
+  //
+  // **The reason is that this aggregate cannot evaluate the predicate at all.** *Consumed* is now *an
+  // APPROVED, UNREVERSED run holds this* — **and `OneOffPayment` holds a run IDENTIFIER, not a run.** It
+  // does not know that run's status and has no way to ask.
+  //
+  // **An aggregate check could only be one of two wrong things:** refuse any second consumption, which
+  // blocks the correction the ruling exists to allow; or be handed the verdict by its caller, **which is
+  // not an invariant, it is a parameter.** There is no third statement available that is not a lie or an
+  // argument.
+  //
+  // **So the invariant is structural, in the two places that CAN see it:**
   //
   //   1. `IOneOffPaymentRepository.GetUnconsumedForPeriodAsync` returns an instruction only when it is
   //      unconsumed OR the run naming it is reversed. **A live run's instructions are never offered again.**
   //   2. `PayrollRunConfiguration`'s filtered unique index permits **one UNREVERSED run per period**, so two
   //      live runs cannot both reach the same instruction.
   //
-  // **An aggregate check here would be a third statement of a rule those two already enforce**, and the
-  // failure it guarded against — two live runs consuming one instruction — is now impossible at the
-  // database rather than merely refused in memory.
+  // ---- ⚠ AND A DIFFERENT RULE **CAN** LIVE HERE, WHICH T-123 GAVE UP BY ACCIDENT (T-124).
+  //
+  // **A one-off is paid by a run for ITS OWN PERIOD, and nothing else.** T-110 bound the instruction to a
+  // period deliberately — *"the instruction binds to the PERIOD an operator names"* — which makes the period
+  // part of its identity rather than an incidental field.
+  //
+  // **After T-123 the only thing enforcing that was `GetUnconsumedForPeriodAsync`'s filter.** One query
+  // away from a double payment, and **the next query somebody writes will not know it was load-bearing.**
+  // The filtered unique index does not help: it forbids two unreversed runs *for one period* and says
+  // nothing about a period-2 run reaching a period-1 instruction.
+  //
+  // ---- AND TAKING THE RUN'S PERIOD IS NOT THE "HANDED THE VERDICT" PROBLEM ABOVE.
+  //
+  // **The distinction is data versus conclusion.** *"Is this run reversed"* is the answer to the predicate,
+  // and an aggregate that accepts it asserts nothing of its own. *"Which period is this run for"* is a FACT
+  // about the run, which this aggregate then **compares against state it already holds** — it has one half
+  // of the comparison and was simply not being given the other.
   //
   // **What is still refused is a run consuming an instruction it already holds**, which is not a correction
   // but a defect in the approval path repeating itself.
-  public Result MarkConsumedBy(Guid payrollRunId)
+  public Result MarkConsumedBy(Guid payrollRunId, Guid payrollRunPeriodId)
   {
     if (payrollRunId == Guid.Empty)
     {
       return Result.Failure(OneOffPaymentErrors.ConsumingRunRequired);
+    }
+
+    if (payrollRunPeriodId != PayrollPeriodId)
+    {
+      return Result.Failure(OneOffPaymentErrors.ConsumingRunIsForAnotherPeriod);
     }
 
     if (ConsumedByPayrollRunId == payrollRunId)

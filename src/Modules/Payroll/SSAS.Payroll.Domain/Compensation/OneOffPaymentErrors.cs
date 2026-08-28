@@ -47,6 +47,19 @@ public static class OneOffPaymentErrors
     "Payroll.OneOffPaymentPayElementNotFound",
     "The pay element this one-off payment names does not exist for this company.");
 
+  // ---- A RUN FOR ANOTHER PERIOD REACHING THIS INSTRUCTION (T-124).
+  //
+  // **The instruction's period is part of its identity** (`OD-SS-0003`-era T-110: *"the instruction binds to
+  // the PERIOD an operator names"*), and a run for a different period paying it would be a payment nobody
+  // scheduled — in a period whose totals nobody expects it in.
+  //
+  // Unreachable through the current call path, whose query filters by period. **It exists because that
+  // filter was the ONLY thing enforcing it**, and a rule with one enforcement point is one refactor from
+  // having none.
+  public static readonly Error ConsumingRunIsForAnotherPeriod = new(
+    "Payroll.OneOffPaymentConsumingRunIsForAnotherPeriod",
+    "A payroll run for a different period cannot pay this one-off payment.");
+
   public static readonly Error NotFound = new(
     "Payroll.OneOffPaymentNotFound",
     "The one-off payment was not found.");

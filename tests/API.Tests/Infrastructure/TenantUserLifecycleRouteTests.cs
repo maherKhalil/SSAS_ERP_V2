@@ -42,6 +42,12 @@ public sealed class TenantUserLifecycleRouteTests(HostWebApplicationFactory fact
   [Trait("Criterion", "REQ-SS-0007")]
   [InlineData("/api/platform/tenant-users/{tenantUserId:long}/deactivation", "Platform.Users.Deactivate")]
   [InlineData("/api/platform/tenant-users/{tenantUserId:long}/reactivation", "Platform.Users.Reactivate")]
+  // ---- T-092. THE LINK PAIR, ASSERTED THE SAME WAY AND FOR THE SAME REASON.
+  //
+  // These two permissions were created WITH their routes, unlike the fifteen still declared and required by
+  // nothing — so this assertion is what keeps them from joining that list if a route is ever removed.
+  [InlineData("/api/platform/tenant-users/{tenantUserId:long}/employee-link", "Platform.EmployeeLinks.Link")]
+  [InlineData("/api/platform/tenant-users/{tenantUserId:long}/employee-link/remove", "Platform.EmployeeLinks.Unlink")]
   public void The_lifecycle_route_is_mounted_and_requires_its_own_permission(string pattern, string permission)
   {
     var endpoint = Routes().SingleOrDefault(route => route.RoutePattern.RawText == pattern);
@@ -69,6 +75,40 @@ public sealed class TenantUserLifecycleRouteTests(HostWebApplicationFactory fact
       PlatformPermissionNames.DeactivateUsers,
       PlatformPermissionNames.ReactivateUsers,
       StringComparer.Ordinal);
+
+  // ---- AND NEITHER DO LINKING AND UNLINKING (T-092).
+  //
+  // Creating an access mapping and destroying one are different decisions with different blast radii. A
+  // single constant on both routes would pass every assertion above and make the separation a fiction.
+  [Fact]
+  public void Linking_and_unlinking_do_not_share_a_permission() =>
+    Assert.NotEqual(
+      PlatformPermissionNames.LinkEmployees,
+      PlatformPermissionNames.UnlinkEmployees,
+      StringComparer.Ordinal);
+
+  // ---- THE REMOVAL ROUTE IS A POST, NOT A DELETE, AND NOTHING IN THE PRODUCT IS.
+  //
+  // Asserted across the WHOLE host rather than on the two link routes: the property is that this product
+  // has no `MapDelete` at all, and T-092 was the obvious place to introduce the first one.
+  [Fact]
+  public void The_host_mounts_no_delete_route_at_all()
+  {
+    var deletes = Routes()
+      .Where(route => route.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods.Contains("DELETE") == true)
+      .Select(route => route.RoutePattern.RawText!)
+      .OrderBy(pattern => pattern, StringComparer.Ordinal)
+      .ToArray();
+
+    // NOT VACUOUS: an empty route set would satisfy this while asserting nothing.
+    Assert.NotEmpty(Routes());
+
+    Assert.True(
+      deletes.Length == 0,
+      "A DELETE route was mounted. Removal in this product is a POST to a named sub-resource — " +
+      $"`/manager/remove`, `/holidays/remove`, `/employee-link/remove`:{Environment.NewLine}" +
+      string.Join(Environment.NewLine, deletes));
+  }
 
   private RouteEndpoint[] Routes() =>
   [

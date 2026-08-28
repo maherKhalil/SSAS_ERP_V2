@@ -522,6 +522,7 @@ public sealed class EmployeeReadScopeArchitectureTests
     var candidates = new[]
     {
       typeof(SSAS.Platform.Infrastructure.Persistence.Queries.UserEmployeeResolver).Assembly,
+      typeof(SSAS.Platform.Application.Permissions.PlatformPermissionNames).Assembly,
       typeof(SSAS.Payroll.Application.Reads.PayrollSelfServiceScopeResolver).Assembly,
       typeof(SSAS.Attendance.Application.Approval.LeaveApprovalRouter).Assembly,
       HrApplicationAssembly,
@@ -542,7 +543,21 @@ public sealed class EmployeeReadScopeArchitectureTests
     // would then pass forever while the caller set grew unwatched.
     Assert.NotEmpty(injecting);
 
-    Assert.Equal(["UserEmployeeResolver"], injecting);
+    // ---- TWO, AS OF T-092, AND THE SECOND WAS APPROVED RATHER THAN ADMITTED.
+    //
+    // `LinkEmployeeToTenantUserCommandHandler` asks the same question for the opposite reason: the resolver
+    // asks *may this employee still be reached*, the link handler asks *does this employee exist and is
+    // their employment current* before writing a row that cannot have a foreign key.
+    //
+    // **The two act on the answer DIFFERENTLY and that is the point of them both being listed.** The
+    // resolver collapses `Unknown` and `Ended` into one refusal, because its caller is an end user and
+    // telling them apart would disclose that a record exists. The link handler distinguishes them, because
+    // its caller is an administrator acting on an employee they named and can already read.
+    //
+    // A third injector still requires a person — and would have to state which of those two it is.
+    Assert.Equal(
+      ["LinkEmployeeToTenantUserCommandHandler", "UserEmployeeResolver"],
+      injecting);
   }
 
   // ================================================================================================

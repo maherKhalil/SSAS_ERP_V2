@@ -537,6 +537,11 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<UpdateTenantUserProfileCommandHandler>();
     services.AddScoped<DeactivateTenantUserCommandHandler>();
     services.AddScoped<ReactivateTenantUserCommandHandler>();
+
+    // T-092. The link's first write path, and the two handlers that use it.
+    services.AddScoped<IUserEmployeeLinkRepository, Persistence.Repositories.UserEmployeeLinkRepository>();
+    services.AddScoped<LinkEmployeeToTenantUserCommandHandler>();
+    services.AddScoped<UnlinkEmployeeFromTenantUserCommandHandler>();
     services.AddScoped<AssignRoleToTenantUserCommandHandler>();
     services.AddScoped<RemoveRoleFromTenantUserCommandHandler>();
     services.AddScoped<GetTenantUserByIdQueryHandler>();

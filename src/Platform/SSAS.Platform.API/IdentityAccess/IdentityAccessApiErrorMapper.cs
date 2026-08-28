@@ -47,6 +47,15 @@ public static class IdentityAccessApiErrorMapper
   // has several, so the code names the condition rather than guessing which rule fired.
   public static readonly ApiError UniqueConstraint = new(409, "platform.unique_conflict");
 
+  // ---- T-092. ONE CODE FOR BOTH COLLISION DIRECTIONS, AND THE MESSAGE CARRIES WHICH.
+  //
+  // The two `Error` values stay separate so the DESCRIPTION names the repair; the wire code is shared
+  // because a client branching on "which side collided" would be making a decision only a human can act
+  // on. Same reasoning `company.code_conflict` uses for folding a unique violation into itself.
+  public static readonly ApiError LinkConflict = new(409, "platform.employee_link_conflict");
+
+  public static readonly ApiError EmploymentEnded = new(409, "platform.employment_ended");
+
   public static ApiError Map(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
@@ -64,6 +73,29 @@ public static class IdentityAccessApiErrorMapper
 
       // ---- 409.
       "Persistence.UniqueConstraint" => UniqueConstraint,
+
+      // ---- T-092's LINK COLLISIONS. BOTH 409, AND BOTH DISTINGUISHABLE FROM EACH OTHER.
+      //
+      // `ADR-030` Decision 3 allows one live link each way and the unique indexes enforce it. These say
+      // WHICH way a collision went — the user is spoken for, or the employee is — because the two need
+      // different repairs and a single conflict code would make an administrator guess.
+      //
+      // **Distinguishing them is safe here for the same reason the handler distinguishes `Unknown` from
+      // `Ended`:** the caller is a tenant administrator acting on a user and an employee they named and can
+      // already read, so neither answer discloses anything they do not have.
+      "UserEmployeeLink.TenantUserAlreadyLinked" => LinkConflict,
+      "UserEmployeeLink.EmployeeAlreadyLinked" => LinkConflict,
+
+      // 409 rather than 400: the request is well formed and the STATE refuses it. A terminated employee is
+      // a fact about the subject, not a mistake in what was sent.
+      "UserEmployeeLink.EmploymentEnded" => EmploymentEnded,
+
+      // 404. Nothing to remove — and deliberately not a silent success, so a typo in the tenant user id
+      // cannot look like a completed correction.
+      "UserEmployeeLink.NotFound" => NotFound,
+
+      // The factory's own refusal: a link needs a tenant, a user and an employee. Caller input.
+      "UserEmployeeLink.Invalid" => ProblemResults.RequestInvalid,
       "Persistence.ConcurrencyConflict" => ProblemResults.ConcurrencyConflict,
 
       // ---- 403, BOTH OF THEM.

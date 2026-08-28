@@ -7,6 +7,16 @@ public static class PlatformPermissionNames
   public const string UpdateUsers = "Platform.Users.Update";
   public const string DeactivateUsers = "Platform.Users.Deactivate";
   public const string ReactivateUsers = "Platform.Users.Reactivate";
+  // ---- T-092. LINKING DECIDES WHOSE PAYSLIPS A LOGIN CAN READ.
+  //
+  // A PAIR rather than one `EmployeeLinks.Manage`, for the reason `Deactivate`/`Reactivate` are a pair:
+  // creating an access mapping and destroying one are different decisions with different blast radii.
+  //
+  // Deliberately NOT `Platform.Users.Update` — under that, anyone who can correct a display name could
+  // reassign an identity to an employee, and those are not the same decision.
+  public const string LinkEmployees = "Platform.EmployeeLinks.Link";
+  public const string UnlinkEmployees = "Platform.EmployeeLinks.Unlink";
+
   public const string AssignUserRoles = "Platform.UserRoles.Assign";
   public const string RemoveUserRoles = "Platform.UserRoles.Remove";
   public const string ViewRoles = "Platform.Roles.View";

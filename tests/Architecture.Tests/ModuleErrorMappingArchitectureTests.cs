@@ -203,7 +203,7 @@ public sealed class ModuleErrorMappingArchitectureTests
     // three codes; five reachable ones fell through to a default of `400 request.invalid`.
     new("IdentityAccessApiErrorMapper", PlatformAssemblies,
       Path.Combine("src", "Platform", "SSAS.Platform.API", "IdentityAccess", "IdentityAccessApiErrorMapper.cs"),
-      ["TenantUser", "Role", "Common", "Persistence", "Authorization", "Identity", "Invitation", "Permission", "Tenant"],
+      ["TenantUser", "Role", "Common", "Persistence", "Authorization", "Identity", "Invitation", "Permission", "Tenant", "UserEmployeeLink"],
       // ---- TWENTY-SIX, AND ALMOST ALL OF THEM ARE DECLARED FOR SURFACES THAT DO NOT EXIST.
       //
       // T-092's Part 1 measured it: **fifteen Platform permissions are declared and required by no route**,
@@ -378,7 +378,20 @@ public sealed class ModuleErrorMappingArchitectureTests
   //   Branch            no branch routes exist; `TenantBranchService` is invoked from other handlers
   //   Subscription      `Subscriptions/` holds one entitlement type and no route file
   //   TenantStorage     117 codes, all operational — backup, cutover, restore verification
-  //   UserEmployeeLink  raised only by `UserEmployeeLink.Create`, which nothing in `src` calls (T-092)
+  //
+  // **`UserEmployeeLink` WAS ON THIS LIST FOR ONE TASK AND HAS LEFT IT.** T-093 recorded it as unrouted
+  // because nothing called `UserEmployeeLink.Create`; T-092 built the routes, and it moved to
+  // `IdentityAccessApiErrorMapper`'s responsible families in the same change.
+  //
+  // ---- AND THAT MOVE WAS MADE BY A PERSON, NOT BY THIS GUARD. THE LIMIT IS WORTH KNOWING.
+  //
+  // The staleness check below catches a family that stops DECLARING errors. **It cannot catch a family that
+  // gains a ROUTE** — that would need the route-to-mapper derivation this file explains is not tractable
+  // here. So an entry that becomes wrong stays green until someone notices, and the one time it happened
+  // the someone was the task that caused it, one task later.
+  //
+  // **T-094's transitive walk is what would make this mechanical.** Until then the list is only as current
+  // as the last person to touch the surface it describes.
   //
   // **This is a DECLARATION, on exactly the same footing as `ResponsibleFamilies`, and for the reason
   // this file already gives:** there is no call graph to walk, so "unrouted" cannot be derived. A wrong
@@ -388,7 +401,7 @@ public sealed class ModuleErrorMappingArchitectureTests
   // **The day one of these gains a route, this list is what has to be edited**, and the edit is where
   // someone decides which site answers for it.
   private static readonly string[] UnroutedFamilies =
-    ["Branch", "Subscription", "TenantStorage", "UserEmployeeLink"];
+    ["Branch", "Subscription", "TenantStorage"];
 
   [Fact]
   public void Every_declared_error_family_is_owned_by_exactly_one_site()

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.Payroll.Domain.Compensation;
 using SSAS.Payroll.Domain.Elements;
 using SSAS.Payroll.Domain.Runs;
@@ -50,6 +51,43 @@ public sealed class AttendanceDrivenCalculationTests
 
     var compensation = Compensation(3100m, (night.Id, null));
     var input = Input(compensation, overtime: new Dictionary<string, decimal>(StringComparer.Ordinal) { ["NIGHT"] = 6m });
+
+    var lines = PayrollCalculator.Calculate(Guid.NewGuid(), Period(), [input], [basic, night]);
+
+    Assert.True(lines.IsSuccess);
+    var overtimeLine = Assert.Single(lines.Value.Where(line => line.PayElementId == night.Id));
+    Assert.Equal(150m, overtimeLine.Amount);
+  }
+
+  // ================================================================================================
+  // THE TIER IS MATCHED ON A NORMALIZED KEY, NOT ON WHAT THE OPERATOR TYPED (T-131).
+  // ================================================================================================
+  //
+  // **Before T-131 this paid nothing and said nothing.** The record's tier and the element's tier are
+  // written in different modules by different people; neither side case-folded, and the lookup is ordinal,
+  // **so `"Night"` against `"NIGHT"` missed and `OvertimeQuantity` returned `0m`** — no error, no warning,
+  // and a payslip that looked complete.
+  //
+  // **The quantity keys here deliberately use the CASE AN OPERATOR WOULD TYPE rather than the normalized
+  // form**, because a test that pre-normalizes its own inputs proves only that the dictionary works.
+  [Theory]
+  [InlineData("NIGHT", "NIGHT")]
+  [InlineData("Night", "NIGHT")]
+  [InlineData("NIGHT", "night")]
+  [InlineData("  Night  ", "night")]
+  public void A_tier_matches_its_element_regardless_of_how_either_side_was_typed(
+    string recordedTier, string elementTier)
+  {
+    var basic = PayrollTestData.Element("BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+    var night = PayrollTestData.Element(
+      "OT-NIGHT", PayElementKind.Earning, PayElementBehaviour.OvertimeHourly, 25m, 10, OvertimeAccount);
+    Assert.True(night.SetOvertimeTier(elementTier).IsSuccess);
+
+    var compensation = Compensation(3100m, (night.Id, null));
+    var input = Input(compensation, overtime: new Dictionary<string, decimal>(StringComparer.Ordinal)
+    {
+      [OvertimeTierKey.Normalize(recordedTier)!] = 6m
+    });
 
     var lines = PayrollCalculator.Calculate(Guid.NewGuid(), Period(), [input], [basic, night]);
 

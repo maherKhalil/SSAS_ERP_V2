@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.Payroll.Domain.Compensation;
 using SSAS.Payroll.Domain.Elements;
 
@@ -380,9 +381,15 @@ public static class PayrollCalculator
   //
   // Ordinal comparison, matching how `AttendanceSummaryService` groups them. A culture-sensitive lookup
   // would make the same tier label match or not depending on the server's locale.
+  //
+  // **The element's tier is normalized HERE as well as on the way in** (`OvertimeTierKey`, T-131). Both
+  // write points already normalize, so this is redundant for anything stored since — **it is what makes
+  // rows written BEFORE T-131 match, without a data migration.** Ordinal stays: normalizing produces the
+  // key, and the comparison of two keys must remain locale-independent.
   private static decimal OvertimeQuantity(PayrollEmployeeInput employee, PayElement element)
   {
-    if (element.OvertimeTier is not { } tier || employee.OvertimeQuantityByTier is not { } quantities)
+    if (OvertimeTierKey.Normalize(element.OvertimeTier) is not { } tier ||
+      employee.OvertimeQuantityByTier is not { } quantities)
     {
       return 0m;
     }

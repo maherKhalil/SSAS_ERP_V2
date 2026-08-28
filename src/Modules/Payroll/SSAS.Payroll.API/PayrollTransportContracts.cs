@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using SSAS.Payroll.Domain.Compensation;
 using SSAS.Payroll.Domain.Elements;
 
 namespace SSAS.Payroll.API;
@@ -91,6 +92,14 @@ public sealed record RecordCompensationRequest(
   [property: JsonPropertyName("companyId")] Guid CompanyId,
   [property: JsonPropertyName("effectiveFromUtc")] DateTimeOffset EffectiveFromUtc,
   [property: JsonPropertyName("baseAmount")] decimal BaseAmount,
+
+  // ---- WHAT `baseAmount` MEANS (T-107).
+  //
+  // OPTIONAL, defaulting to `Monthly`, so every existing caller keeps its meaning without being edited.
+  // The route is strict-JSON, so an unknown value is refused rather than silently read as monthly — which
+  // matters more here than usual: a typo that fell back to monthly would pay an hourly employee a month's
+  // wage per hour.
+  [property: JsonPropertyName("salaryType")] SalaryType? SalaryType,
   [property: JsonPropertyName("assignments")] IReadOnlyList<CompensationAssignmentRequest>? Assignments,
   [property: JsonPropertyName("wasOutsideGradeBand")] bool WasOutsideGradeBand,
   [property: JsonPropertyName("gradeBandObservation")] string? GradeBandObservation);

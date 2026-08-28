@@ -25,7 +25,20 @@ public sealed record PayrollEmployeeInput(
   // Both DEFAULT TO EMPTY. An employee with no attendance is the ordinary case for a company that configures
   // no attendance-driven elements, and it must not require every existing call site to say so.
   IReadOnlyDictionary<string, decimal>? OvertimeQuantityByTier = null,
-  decimal UnpaidAbsenceQuantity = 0m);
+
+  // ---- THE UNITS, STATED ONCE AND ASSERTED BY TEST (T-107).
+  //
+  // **`UnpaidAbsenceQuantity` is DAYS. `OvertimeQuantityByTier` and `WorkedQuantity` are HOURS.**
+  //
+  // Two quantities from the SAME attendance record are consumed in DIFFERENT units, and before T-107 both
+  // units lived in prose comments and were asserted nowhere — no validation, no test, no schema constraint.
+  // An hourly rate multiplied by a day count is a payroll defect nobody would see, so
+  // `PayrollCalculatorTests` now asserts each unit through arithmetic that fails if the other is assumed.
+  decimal UnpaidAbsenceQuantity = 0m,
+
+  // HOURS. Read only by `SalaryType.Hourly`; `WorkedQuantity` had NO consumer at all before T-107, which is
+  // why its unit could be established here rather than inherited.
+  decimal WorkedQuantity = 0m);
 
 // ================================================================================================
 // THE CALCULATION ENGINE (OD-PAY-0007, OD-PAY-0008).
@@ -119,7 +132,35 @@ public static class PayrollCalculator
       // element's line amount and the base every percentage behaviour is computed from. Computing
       // percentages off the unrounded base would produce lines that do not agree with the base line the
       // employee can see — the payslip would be internally inconsistent while every number was defensible.
-      var baseAmount = RoundLine(employee.Compensation.BaseAmount * factor);
+      // ---- WHAT THE BASE AMOUNT MEANS DEPENDS ON THE SALARY TYPE (T-107, OD-PAY-0015).
+      //
+      // **The `Monthly` arm is the pre-T-107 expression VERBATIM**, so every existing calculation is
+      // unchanged by construction rather than by measurement — `SalaryType.Monthly` is `default`, so every
+      // record written before this change takes exactly the path it always took.
+      //
+      // **`Daily` and `Hourly` are NOT prorated, and that is the whole point.** Proration answers "how much
+      // of the period was this employee employed for"; a rate times a worked quantity has ALREADY answered
+      // it. Multiplying again pays a mid-month joiner a fraction of what they actually earned. `OD-PAY-0015`
+      // ruled proration for the monthly model and it must not silently extend to a model it was not about —
+      // which is the same reasoning `OvertimeHourly` already applies two screens below.
+      //
+      // **`Daily` REFUSES.** It needs a count of days worked and `AttendanceSummaryResult` reports no such
+      // field — see `PayrollErrors.DailySalaryHasNoWorkedDayCount`. Deriving one from calendar days or from
+      // hours would each require a rule nobody has ruled, and a wrong divisor here is invisible until
+      // payday.
+      if (employee.Compensation.SalaryType == SalaryType.Daily)
+      {
+        return Result.Failure<IReadOnlyList<PayrollRunDraftLine>>(
+          PayrollErrors.DailySalaryHasNoWorkedDayCount);
+      }
+
+      var baseAmount = RoundLine(employee.Compensation.SalaryType switch
+      {
+        SalaryType.Hourly => employee.Compensation.BaseAmount * employee.WorkedQuantity,
+
+        // MONTHLY AND `default` TAKE THE SAME ARM, AND IT IS THE PRE-T-107 EXPRESSION VERBATIM.
+        _ => employee.Compensation.BaseAmount * factor
+      });
 
       var sequence = 0;
       var grossToDate = 0m;
@@ -192,8 +233,23 @@ public static class PayrollCalculator
           // The amount is POSITIVE like every other amount in this module; the element's `Kind` is what makes
           // it deduct. A negative here would encode the distinction as a sign, which `PayElementKind`'s own
           // comment refuses.
+          //
+          // ---- AND IT NEVER APPLIES TO AN HOURLY SALARY (T-107, owner-ruled).
+          //
+          // **An hourly employee is paid only for the time they attend**, so the worked quantity has ALREADY
+          // accounted for the absence: deducting again charges them twice for one absence. Worse, the
+          // divisor here is the period's CALENDAR days, which against an hourly rate is not merely
+          // redundant but meaningless.
+          //
+          // **`Daily` DOES take it.** A daily rate times days worked and a deduction for unpaid days both
+          // count in DAYS, so the arithmetic is coherent — and the owner ruled it applies.
+          //
+          // Zero rather than "no line": the element is exempt from requiring an assignment, so a company
+          // that configures it gets a zero contribution which the zero-line rule below then suppresses.
           PayElementBehaviour.UnpaidAbsenceDeduction =>
-            baseAmount / periodDays * employee.UnpaidAbsenceQuantity,
+            employee.Compensation.SalaryType is SalaryType.Monthly or SalaryType.Daily
+              ? baseAmount / periodDays * employee.UnpaidAbsenceQuantity
+              : 0m,
 
           _ => 0m
         };

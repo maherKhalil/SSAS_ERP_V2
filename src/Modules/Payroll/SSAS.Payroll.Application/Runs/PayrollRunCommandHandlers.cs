@@ -230,9 +230,18 @@ public sealed class CalculatePayrollRunCommandHandler(
         ? attendance.UnpaidAbsenceQuantity
         : 0m;
 
+      // ---- WORKED HOURS (T-107). Read by `SalaryType.Hourly` and by nothing else.
+      //
+      // Absent attendance yields ZERO on the same rule as the two above, and for an hourly employee zero
+      // hours means zero base pay — which is the correct answer, not a failure. An hourly employee with no
+      // attendance recorded worked no hours; inventing a fallback would pay them for time nobody reported.
+      var workedQuantity = attendance.Status == AttendanceSummaryStatus.Available
+        ? attendance.WorkedQuantity
+        : 0m;
+
       inputs.Add(new PayrollEmployeeInput(
         record.EmployeeId, record.EmploymentDateUtc, record.TerminationDateUtc, inForce,
-        overtimeByTier, unpaidAbsence));
+        overtimeByTier, unpaidAbsence, workedQuantity));
     }
 
     var active = await elements.GetActiveForCompanyAsync(run.CompanyId, cancellationToken);

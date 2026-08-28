@@ -543,19 +543,14 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   }
 
   // ================================================================================================
-  // TWO PROPERTIES OF THE POST-CUTOVER OBSERVATION, TAKEN FROM `codex/post-phase-e-hardening-h1` (T-137).
+  // FOUR PROPERTIES OF THE POST-CUTOVER OBSERVATION, TAKEN FROM `codex/post-phase-e-hardening-h1` (T-137).
   // ================================================================================================
   //
-  // **TWO of that branch's four tests are deliberately NOT here**, and one of them was intended to be —
-  // it was taken, run, and removed when it failed:
-  //
-  //   A_first_target_write_records_its_observation_even_when_complete_wins_the_row   FAILED, conflict
-  //   A_displaced_observation_is_refused_when_the_route_no_longer_permits_that_write not attempted
-  //
-  // **Both assert a RETRY inside the store** — re-read, re-validate, try again — **which this branch does
-  // not do.** The first fails with `TenantStorage.CutoverConcurrencyConflict`, which is precisely the answer
-  // the retry would absorb. **They are the acceptance tests for that change and land with it or not at
-  // all**; a test kept green by an exemption, or red by a missing change, is worse than no test.
+  // **All four of that branch's tests are now here.** Two landed in T-137 against current behaviour;
+  // the two below were taken, run, removed when they failed, and brought back in T-139 with the change
+  // they test. **`..._complete_wins_the_row` failed with `TenantStorage.CutoverConcurrencyConflict`,
+  // which is precisely the answer the retry absorbs** — a red test that goes green, which is the
+  // cleanest justification a change can arrive with.
   //
   // **The first of these supersedes a test written in T-135.** That one called the fence directly and proved it
   // REFUSES; this one performs a real `SaveChangesAsync` and proves the refusal is EFFECTIVE — the row never
@@ -619,14 +614,73 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       (await fixture.ReadOperationAsync(started.Value.CutoverOperationId)).PostCutoverWriteObservedUtc);
   }
 
+  // ---- H1. THE OBSERVATION SURVIVES LOSING THE ROW TO Complete() (Phase E final review LOW-1).
+  //
+  // The previously uncovered case, and the one that made the finding real: the operation row has a second
+  // writer that is not recording an observation at all. Complete() can win the RowVersion race and leave
+  // the timestamp untouched, so the re-read finds NULL — and before H1 the failure that produced was
+  // discarded by the fence, letting a genuine target write commit while the platform recorded that none had.
+  //
+  // Reproduced deterministically rather than by racing tasks: the writer's store reads the operation first,
+  // Complete() then advances the row, and the writer's save is therefore guaranteed to be displaced.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task A_first_target_write_records_its_observation_even_when_complete_wins_the_row()
+  {
+    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1RACE");
+
+    // Flipped but NOT finalised: routing is authoritative and no observation exists yet.
+    var operationId = await fixture.BeginFreezeCopyAndFlipAsync();
+
+    var (racing, platform) = fixture.StoreWithContext();
+    await using var tracked = platform;
+    await tracked.TenantCutoverOperations.FirstAsync(operation => operation.Id == operationId);
+
+    // Complete() advances RowVersion WITHOUT recording the observation — the displacing writer.
+    var completed = await fixture.Store().CompleteAsync(operationId, "orchestrator");
+    Assert.True(completed.IsSuccess, completed.IsFailure ? completed.Error.Code : null);
+
+    var observed = await racing.RecordPostCutoverWriteAsync(
+      operationId, fixture.TargetDatabaseId, "tenant-cutover-post-write");
+
+    Assert.True(observed.IsSuccess, observed.IsFailure ? observed.Error.Code : null);
+
+    var operation = await fixture.ReadOperationAsync(operationId);
+    Assert.Equal(TenantCutoverOperationStatus.Completed, operation.Status);
+    Assert.NotNull(operation.PostCutoverWriteObservedUtc);
+  }
+
+  // ---- H1. THE RETRY IS NOT DECIDED BY THE TIMESTAMP ALONE. After the displacement the store re-reads and
+  // revalidates the write it is fencing; a writer bound to the database the tenant was moved OFF is refused
+  // rather than having an observation recorded on its behalf.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task A_displaced_observation_is_refused_when_the_route_no_longer_permits_that_write()
+  {
+    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1ROUTE");
+    var operationId = await fixture.BeginFreezeCopyAndFlipAsync();
+
+    var (racing, platform) = fixture.StoreWithContext();
+    await using var tracked = platform;
+    await tracked.TenantCutoverOperations.FirstAsync(operation => operation.Id == operationId);
+    Assert.True((await fixture.Store().CompleteAsync(operationId, "orchestrator")).IsSuccess);
+
+    // The SOURCE database — the one the tenant was moved off — must never earn an observation.
+    var observed = await racing.RecordPostCutoverWriteAsync(
+      operationId, fixture.SourceDatabaseId, "tenant-cutover-post-write");
+
+    Assert.True(observed.IsFailure);
+    Assert.Equal(TenantStorageErrors.TenantWritesFrozen.Code, observed.Error.Code);
+    Assert.Null((await fixture.ReadOperationAsync(operationId)).PostCutoverWriteObservedUtc);
+  }
+
   private sealed class ObservationRefusingStore(ITenantCutoverOperationStore inner)
     : ITenantCutoverOperationStore
   {
-    // Adapted to THIS branch's signature (T-137). The branch it came from also added a
-    // `tenantDatabaseId` parameter for a store-side retry; that change is not here, so neither is the
-    // parameter. **The displacement being tested does not depend on it.**
     public Task<Result> RecordPostCutoverWriteAsync(
-      long cutoverOperationId, string actor, CancellationToken cancellationToken = default) =>
+      long cutoverOperationId, long tenantDatabaseId, string actor, CancellationToken cancellationToken = default) =>
       Task.FromResult(Result.Failure(TenantStorageErrors.CutoverConcurrencyConflict));
 
     public Task<Result<long>> BeginAsync(
@@ -986,6 +1040,16 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
         new TenantDatabaseResolver(new TenantDatabaseRegistryReadRepository(platform)),
         new TenantRoutingVersionReader(platform), cache,
         new TenantRoutingCacheOptions { Lifetime = TimeSpan.FromMinutes(10) }, new TestClock()));
+    }
+
+    // A store bound to a SECOND platform context, so a racing operation can advance the row underneath a
+    // writer that has already read it — which is how the Complete-versus-observation race is made
+    // deterministic rather than timing-dependent (T-139).
+    public (TenantCutoverOperationStore Store, PlatformDbContext Platform) StoreWithContext()
+    {
+      var platform = PlatformContext();
+      return (new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout),
+        platform);
     }
 
     public async Task<TenantDbContext> CreateRoutedContextAsync(

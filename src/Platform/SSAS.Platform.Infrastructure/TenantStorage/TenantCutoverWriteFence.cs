@@ -112,7 +112,7 @@ public sealed class TenantCutoverWriteFence(
     if (gate.IsFirstTargetWrite)
     {
       var recorded = await operations.RecordPostCutoverWriteAsync(
-        gate.CutoverOperationId, PostCutoverActor, cancellationToken);
+        gate.CutoverOperationId, tenantDatabaseId, PostCutoverActor, cancellationToken);
       if (recorded.IsFailure)
       {
         throw new Persistence.TenantErp.TenantStorageUnavailableException(recorded.Error);

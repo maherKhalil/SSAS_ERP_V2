@@ -28,11 +28,33 @@ public static class LocalizationApiErrorMapper
   public static readonly LocalizationApiError SecuritySensitive = new(422, "localization.security_sensitive");
   public static readonly LocalizationApiError AuditReadinessUnavailable = new(503, "localization.audit_readiness_unavailable");
 
+  // ---- T-093. THREE SHARED CONDITIONS THAT REACH THIS SITE AND HAD NO ARM.
+  //
+  // This site cannot reuse `ApiErrors.Forbidden` THE OBJECT — it projects its own `LocalizationApiError`
+  // type rather than `ApiError` — so it reuses the CODE STRING instead. `authorization.forbidden` and
+  // `concurrency.conflict` are already this product's spellings for these conditions, and a second
+  // spelling would make the same refusal look like two different ones depending on which route answered.
+  public static readonly LocalizationApiError Forbidden = new(403, "authorization.forbidden");
+  public static readonly LocalizationApiError UniqueConstraint = new(409, "localization.unique_conflict");
+  public static readonly LocalizationApiError WriteFailure = new(500, "request.failed");
+
   public static bool TryMap(string technicalCode, out LocalizationApiError error)
   {
     error = technicalCode switch
     {
       "Persistence.ConcurrencyConflict" => ConcurrencyConflict,
+
+      // ---- T-093. `Tenant.Unauthorized` COMES FROM THE PATH EVERY TENANT-PLANE HANDLER TAKES.
+      //
+      // `ApplicationExecutionContext.GetTenantActor` returns it, and unmapped it reached the fallback at
+      // the CALL SITE and answered 400 — an authorization refusal blamed on the caller's request.
+      "Authorization.Unauthorized" => Forbidden,
+      "Tenant.Unauthorized" => Forbidden,
+      "Persistence.UniqueConstraint" => UniqueConstraint,
+
+      // A database write failure, which under the old fallback answered 400 — the caller told to fix a
+      // request that was never the problem.
+      "Persistence.WriteFailure" => WriteFailure,
       "localization.override_already_exists" => OverrideAlreadyExists,
       "localization.override_missing" => OverrideMissing,
       "localization.undo_not_available" => UndoNotAvailable,

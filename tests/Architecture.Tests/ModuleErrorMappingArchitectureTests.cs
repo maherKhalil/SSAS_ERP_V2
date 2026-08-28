@@ -796,6 +796,28 @@ public sealed class ModuleErrorMappingArchitectureTests
   // **The static-class rule works because that shape is SMALL — twenty-three — and structurally invisible.**
   // The other two are neither.
   //
+  // ---- AND A FOURTH, WHICH IS NOT A SHAPE AT ALL. IT IS THIS TEST'S QUESTION NOT APPLYING EVERYWHERE.
+  //
+  // **"Unmapped" is only meaningful for a route that maps BY CODE.** Some routes answer by SHAPE — they
+  // inspect the result and write the status directly, naming no error code anywhere:
+  //
+  //   PlatformSupportAuthenticationEndpointRouteBuilderExtensions.cs:115
+  //     handler = ...GetRequiredService<RefreshPlatformAuthenticationSessionCommandHandler>()
+  //     -> Problem(context, 503, "service.unavailable")  /  Problem(context, 401, "authentication.refresh_failed")
+  //
+  // **That handler is live, routed, unseeded, and both its codes are unmapped — and none of it is a defect,**
+  // because there is no code-keyed mapper in the path for anything to fall through. **A route with nothing to
+  // fall through cannot have a fall-through bug.**
+  //
+  // **So the register cannot be made complete even in principle** — not because the walk is weak, but because
+  // **the question it asks does not apply uniformly across the product.** Widening the closure would make it
+  // reach routes for which its verdict is meaningless.
+  //
+  // Two notes for whoever tries anyway. **That handler is resolved via `GetRequiredService`, not injected as a
+  // route-delegate parameter**, so neither the closure walk nor a parameter scan can see it — being a handler
+  // is not what hides it. And an unmapped code found near a shape-answering route is **not** evidence of a
+  // 500; check how the route answers before reporting one (T-126 nearly did not).
+  //
   // ---- SO WHAT DOES THIS REGISTER ACTUALLY ASSERT?
   //
   // **A property of the SEEDED sites, not of the product.** *For the closures named here, every error they

@@ -33,6 +33,17 @@ public static class PayrollApiErrorMapper
   public static readonly ApiError AttendancePeriodOpen = new(409, "payroll.attendance_period_open");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
 
+  // ---- T-095. A GL CODE REACHING A PAYROLL MAPPER, AND IT KEEPS GL'S STRING.
+  //
+  // `PostPayrollRunCommandHandler` posts through `IJournalPoster`, which returns `Gl.AccountNotFound` when a
+  // mapped account is gone. `DEC-L-079` fixes the STATUS at GL's 404; the string is `gl.not_found` rather
+  // than `payroll.not_found` because **what was not found is the GL account, and answering `payroll.not_found`
+  // would name the wrong missing thing.**
+  //
+  // The literal is repeated rather than referenced: `SSAS.Payroll.API` does not reference `SSAS.GL.API` and
+  // must not. `Cross_site_agreement` is what keeps the two from drifting.
+  public static readonly ApiError LedgerAccountNotFound = new(404, "gl.not_found");
+
   public static ApiError Map(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
@@ -132,6 +143,8 @@ public static class PayrollApiErrorMapper
       // ---- EXHAUSTIVE BY CONSTRUCTION. A new domain error with no line here becomes a 500 and fails the
       // mapper-arm test, rather than being quietly served as a 400 that tells a caller to fix something
       // they did not get wrong.
+      "Gl.AccountNotFound" => LedgerAccountNotFound,
+
       _ => ApiErrors.WriteFailure
     };
   }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using SSAS.BuildingBlocks.Domain;
 
@@ -200,8 +201,14 @@ public sealed class ModuleErrorMappingArchitectureTests
       // `PostPayrollRunCommandHandler` posts through `IJournalPoster`, whose implementation returns
       // `Gl.AccountNotFound` when the mapped account is gone. **A GL code reaching a Payroll mapper is
       // exactly the cross-module case this file's header already describes** — and the family register,
-      // which gave Payroll the `Payroll` family, could not reach it. Recorded (T-095).
-      ["Gl.AccountNotFound"]
+      // which gave Payroll the `Payroll` family, could not reach it.
+      //
+      // ---- PAID IN T-095, AND IT KEEPS GL'S CODE STRING AS WELL AS GL'S STATUS.
+      //
+      // `DEC-L-079` fixes the status at GL's 404. The string stays `gl.not_found` rather than becoming
+      // `payroll.not_found`, because **what was not found is the ledger account** — naming the wrong
+      // missing thing would be a worse answer than the 500 it replaces.
+      []
       ),
 
     new("DepartmentApiErrorMapper",
@@ -220,27 +227,13 @@ public sealed class ModuleErrorMappingArchitectureTests
         typeof(SSAS.HR.Application.Departments.Reads.SearchDepartmentsQueryHandler),
         typeof(SSAS.HR.Application.Employees.ChangeEmployeeDepartmentCommandHandler),
       ],
-      // ---- TEN `Employee.*` CODES THE FAMILY-BASED REGISTER COULD NOT SEE.
+      // ---- PAID IN T-095. All ten `Employee.*` codes now have arms.
       //
-      // `ChangeEmployeeDepartmentCommandHandler` is invoked by this site's routes and returns `Employee.*`
-      // refusals directly. Under `ResponsibleFamilies` this site owned `Department` and nothing else, so an
-      // employee-shaped refusal on a department route answered **500** and no guard noticed.
-      //
-      // That is T-079's finding — a code mapped for one surface and not for the one that raises it —
-      // recurring ACROSS families rather than within one, which is the class the old register was
-      // structurally blind to. Recorded, not ruled: a status is the surface's decision (T-095).
-      [
-        "Employee.BranchScopeDenied",
-        "Employee.CompanyScopeDenied",
-        "Employee.ConcurrencyConflict",
-        "Employee.DepartmentUnchanged",
-        "Employee.InvalidActor",
-        "Employee.InvalidReadScope",
-        "Employee.InvalidTransition",
-        "Employee.NotFound",
-        "Employee.ReadPermissionDenied",
-        "Employee.WritePermissionDenied"
-      ]
+      // T-094's derived register found them; `DEC-L-079` settled them without a per-code ruling, because a
+      // status is a property of the CODE rather than of the SITE. Each takes `EmployeeApiErrorMapper`'s
+      // existing answer unchanged. **Until then every one answered `500 request.failed` on a department
+      // route** while the same code answered 404, 403 or 400 on an employee route.
+      []
       ),
 
     new("PositionApiErrorMapper",
@@ -267,20 +260,8 @@ public sealed class ModuleErrorMappingArchitectureTests
         typeof(SSAS.HR.Application.Employees.ChangeEmployeePositionCommandHandler),
         typeof(SSAS.HR.Application.Employees.Reads.GetEmployeePositionHistoryQueryHandler),
       ],
-      // Ten more, the same shape: `ChangeEmployeePositionCommandHandler` and the position-history read are
-      // this site's routes, and both return `Employee.*`. Recorded, not ruled (T-095).
-      [
-        "Employee.BranchScopeDenied",
-        "Employee.CompanyScopeDenied",
-        "Employee.ConcurrencyConflict",
-        "Employee.InvalidActor",
-        "Employee.InvalidReadScope",
-        "Employee.InvalidTransition",
-        "Employee.NotFound",
-        "Employee.PositionUnchanged",
-        "Employee.ReadPermissionDenied",
-        "Employee.WritePermissionDenied"
-      ]
+      // Ten more, paid the same way and from the same source of truth (T-095, `DEC-L-079`).
+      []
       ),
 
     new("EmployeeApiErrorMapper",
@@ -305,11 +286,26 @@ public sealed class ModuleErrorMappingArchitectureTests
         typeof(SSAS.HR.Application.ImportExport.SearchImportRunsQueryHandler),
         typeof(SSAS.HR.Application.ImportExport.SearchExportRunsQueryHandler),
       ],
-      // ---- SIX SCOPE AND ACTOR REFUSALS THE IMPORT SURFACE INHERITS.
+      // ================================================================================================
+      // SIX, AND THEY ARE A MIS-DECLARATION RATHER THAN DEBT — CORRECTED IN T-095.
+      // ================================================================================================
       //
-      // The import and export handlers resolve an employee read scope, so a caller with no company or
-      // branch scope is refused with an `Employee.*` code this site has no arm for. The family register
-      // gave this site three `EmployeeImport*` families and could not express that. Recorded (T-095).
+      // T-094 recorded these as *"scope and actor refusals the import surface inherits"*. **That was wrong,
+      // and reading the route before copying an answer into it is what caught it.**
+      //
+      // `EmployeeEndpointRouteBuilderExtensions` answers the import and export ROUTES through
+      // `EmployeeApiErrorMapper.Map(...)`. `EmployeeImportRowErrorMapper` — the switch in this file —
+      // renders PER-ROW errors inside the import report body and never sees a route-level refusal.
+      // **All six are already mapped, at the site that actually answers for them.**
+      //
+      // ---- SO THIS IS A FIFTH FLOOR, AND IT BELONGS WITH THE OTHER FOUR.
+      //
+      // **ONE ROUTE CAN HAVE TWO MAPPERS** — one for the envelope and one for the items inside it — and the
+      // site-to-mapper edge cannot express that. Both sites seed from the same handlers, so this site's
+      // derived set is a superset by construction.
+      //
+      // Adding six arms to a row mapper that never receives them would have been the mechanical answer and
+      // the wrong one: dead arms that read as coverage.
       [
         "Employee.BranchScopeDenied",
         "Employee.CompanyScopeDenied",
@@ -460,6 +456,173 @@ public sealed class ModuleErrorMappingArchitectureTests
       $"{Environment.NewLine}expected unmapped: {Format(site.KnownUnmapped)}" +
       $"{Environment.NewLine}actual unmapped:   {Format(unmapped)}");
   }
+
+  // ================================================================================================
+  // THE SAME CODE ANSWERS THE SAME STATUS AT EVERY SITE THAT MAPS IT (`DEC-L-079`, T-095).
+  // ================================================================================================
+  //
+  // ---- TWO REASONS, AND THE SECOND IS LOAD-BEARING.
+  //
+  // A status is a property of the CODE, not of the SITE. It is already what the product does when it thinks
+  // about it: `Every_platform_site_answers_a_tenant_authorization_refusal_with_403` asserts the single-code
+  // version, and `LocalizationApiErrorMapper` reuses the string `authorization.forbidden` rather than
+  // minting its own, so one refusal does not read as two depending on which route answered.
+  //
+  // **And a caller must not be able to learn WHICH SURFACE refused them from the status code.**
+  // `Employee.NotFound` answering 404 on an employee route and 500 on a department route — which is what
+  // this product did until T-095 — is a disclosure and an inconsistency at once.
+  //
+  // ---- STATUS, NOT SPELLING.
+  //
+  // The code string may follow a site's own convention. `LocalizationApiErrorMapper` projects its own type
+  // and cannot reuse the shared `ApiError` objects at all, and `Company.InvalidSelection` answers 403 as
+  // `company.scope_denied` at three sites and `authorization.forbidden` at a fourth. **Those are the same
+  // answer to the caller's real question** — may I proceed — so only the status is asserted.
+  //
+  // ---- IT READS SOURCE PLUS REFLECTION, WHICH IS WHAT MAKES IT CHEAP.
+  //
+  // Invoking every `Map` would need each site's type and a reference to all of them. The arms are
+  // `"code" => Constant,` and a constant's status is recoverable, so the pairing needs no invocation.
+  [Fact]
+  [Trait("Decision", "DEC-L-079")]
+  public void The_same_code_answers_the_same_status_at_every_site_that_maps_it()
+  {
+    var answers = new Dictionary<string, List<(string Site, int Status)>>(StringComparer.Ordinal);
+
+    foreach (var site in Sites())
+    {
+      foreach (var (code, status) in ArmsIn(site))
+      {
+        if (!answers.TryGetValue(code, out var recorded))
+        {
+          answers[code] = recorded = [];
+        }
+
+        recorded.Add((site.Site, status));
+      }
+    }
+
+    // NOT VACUOUS, TWICE. An arm pattern that stopped matching would leave the first empty; a run where no
+    // code appeared at two sites would leave the second empty and the comparison below would agree with
+    // itself over nothing. `DEC-L-078` applied to this guard rather than to the walk.
+    Assert.NotEmpty(answers);
+
+    var shared = answers
+      .Where(entry => entry.Value.Select(answer => answer.Site).Distinct(StringComparer.Ordinal).Count() > 1)
+      .ToArray();
+
+    Assert.NotEmpty(shared);
+
+    var disagreements = shared
+      .Where(entry => entry.Value.Select(answer => answer.Status).Distinct().Count() > 1)
+      .Select(entry => $"{entry.Key}: " + string.Join(", ", entry.Value
+        .OrderBy(answer => answer.Site, StringComparer.Ordinal)
+        .Select(answer => $"{answer.Site}={answer.Status}")))
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    // AN EXACT SET, like `KnownUnmapped` and for the same reason: resolving one must edit this list, and a
+    // THIRD cannot arrive quietly.
+    Assert.Equal(
+      KnownDisagreements.OrderBy(line => line, StringComparer.Ordinal),
+      disagreements,
+      StringComparer.Ordinal);
+  }
+
+  // ================================================================================================
+  // THE TWO DISAGREEMENTS THIS GUARD FOUND ON ITS FIRST RUN. NEITHER WAS INTRODUCED BY T-095.
+  // ================================================================================================
+  //
+  // **`Company.ContextRequired` — 403 at four sites, 400 at Payroll.** The same missing company context is
+  // an authorization refusal on four surfaces and a malformed request on the fifth.
+  //
+  // **`EmployeeImportRun.InvalidActor` — 403 at the employee mapper, 500 at the import contracts.** A
+  // refusal reported as a server failure is the exact defect `EmployeeApiErrorMapper`'s own header warns
+  // about: *"tells the caller to retry something that will never succeed, and pages an operator for a
+  // working system."*
+  //
+  // **Reported, not ruled.** Copying one site's answer over the other would be choosing a status, which is
+  // the surface's decision — and the wrong choice propagates a defect rather than leaving one.
+  private static readonly string[] KnownDisagreements =
+  [
+    "Company.ContextRequired: CompanyApiErrorMapper=403, DepartmentApiErrorMapper=403, " +
+      "EmployeeApiErrorMapper=403, GlApiErrorMapper=403, PayrollApiErrorMapper=400",
+    "EmployeeImportRun.InvalidActor: EmployeeApiErrorMapper=403, EmployeeImportExportTransportContracts=500"
+  ];
+
+  private static IEnumerable<(string Code, int Status)> ArmsIn(MappingSite site)
+  {
+    var source = ReadRepositoryFile(site.SourcePath);
+
+    foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex
+      .Matches(source, RegexPatterns.MapperArm))
+    {
+      if (StatusOf(site, match.Groups[2].Value) is { } status)
+      {
+        yield return (match.Groups[1].Value, status);
+      }
+    }
+  }
+
+  // ---- A BARE CONSTANT IS RESOLVED IN THE SITE'S OWN FILE FIRST, AND THAT IS NOT A DETAIL.
+  //
+  // The first version resolved a bare `PositionNotFound` by member name across every transport type and
+  // found the WRONG ONE: `EmployeeImportExportTransportContracts` declares it as 400 and
+  // `PositionApiErrorMapper` declares it as 404, both carrying `position.not_found`. **The guard then
+  // reported two disagreements that do not exist.**
+  //
+  // Same family as `DEC-L-069`'s symbol-versus-code collision, inside the guard rather than in a ruling:
+  // the member names are not unique, so an unqualified lookup is not a lookup.
+  private static int? StatusOf(MappingSite site, string constant)
+  {
+    if (!constant.Contains('.', StringComparison.Ordinal))
+    {
+      var declaration = System.Text.RegularExpressions.Regex.Match(
+        ReadRepositoryFile(site.SourcePath),
+        $@"readonly\s+ApiError\s+{System.Text.RegularExpressions.Regex.Escape(constant)}\s*=\s*new\(\s*(\d+)");
+
+      return declaration.Success
+        ? int.Parse(declaration.Groups[1].Value, CultureInfo.InvariantCulture)
+        : null;
+    }
+
+    var member = constant[(constant.LastIndexOf('.') + 1)..];
+    var owner = constant[..constant.LastIndexOf('.')];
+    var ownerName = owner.Contains('.', StringComparison.Ordinal) ? owner[(owner.LastIndexOf('.') + 1)..] : owner;
+
+    var field = MapperTypes()
+      .Where(type => type.Name == ownerName)
+      .SelectMany(type => type.GetFields(BindingFlags.Public | BindingFlags.Static))
+      .FirstOrDefault(candidate => candidate.Name == member && candidate.FieldType.Name == "ApiError");
+
+    return field?.GetValue(null) is { } value
+      ? value.GetType().GetProperty("StatusCode")?.GetValue(value) as int?
+      : null;
+  }
+
+  // ---- THE TRANSPORT LAYER, WHICH `ProductTypes()` DELIBERATELY DOES NOT REACH.
+  //
+  // The closure walks DOWN from the seed handlers, so it never sees an `*.API` assembly — correct for the
+  // walk and useless for reading a mapper's own constants. Anchored on the mapper types themselves so the
+  // set is deterministic rather than whatever the runtime happens to have loaded, which is the bug T-094
+  // shipped and had to fix.
+  private static Type[]? mapperTypes;
+
+  private static Type[] MapperTypes() => mapperTypes ??=
+  [
+    .. new[]
+      {
+        typeof(SSAS.HR.API.Employees.EmployeeApiErrorMapper).Assembly,
+        typeof(SSAS.GL.API.GlApiErrorMapper).Assembly,
+        typeof(SSAS.Payroll.API.PayrollApiErrorMapper).Assembly,
+        typeof(SSAS.Attendance.API.AttendanceApiErrorMapper).Assembly,
+        typeof(SSAS.Platform.API.Companies.CompanyApiErrorMapper).Assembly,
+        typeof(SSAS.BuildingBlocks.Api.Transport.ApiErrors).Assembly
+      }
+      .Distinct()
+      .SelectMany(assembly => assembly.GetTypes())
+      .Distinct()
+  ];
 
   // Named rather than derived from `Sites()`, so a site silently dropping out of that list fails here
   // instead of reducing the theory to six cases nobody counts.
@@ -647,6 +810,9 @@ public sealed class ModuleErrorMappingArchitectureTests
   // to the tool rather than to the product.
   private static class RegexPatterns
   {
+    // `"Some.Code" => Something.Constant,` — the arm shape every mapper in the product uses.
+    public const string MapperArm = @"""([A-Za-z][A-Za-z0-9_.]*)""\s*=>\s*([A-Za-z][A-Za-z0-9_.]*)";
+
     public const string TypeDeclaration = @"\b(?:class|record|interface|struct)\s+([A-Za-z_]\w*)";
   }
 

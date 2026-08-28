@@ -132,7 +132,7 @@ public sealed record LeaveTypeActivationRequest(
 // ---- BALANCES AND REQUESTS.
 //
 // `employeeId` is MANDATORY and never inferred from the caller. `OD-ATT-0013` deferred self-service because
-// no identity-to-employee mapping exists (verified: `Employee` carries no user identifier), so this route is
+// the mapping exists (`UserEmployeeLink`, `ADR-030`, T-082) but NOTHING ON THIS ROUTE READS IT, so this route is
 // an administrator acting on an employee's behalf.
 //
 // **If that mapping is later built, this field becomes optional and the route gains a self-service

@@ -96,7 +96,8 @@ public sealed class LeaveApprovalRouter(
 
     // ---- THE FALLBACK APPROVER HAS NO EMPLOYEE IDENTITY, AND THAT IS NOT A GAP.
     //
-    // The holder is authenticated as a USER, and **no identity-to-employee mapping exists** (`OD-ATT-0013`,
+    // The holder is authenticated as a USER, and **this router does not resolve them to an employee** — the
+    // mapping exists (`UserEmployeeLink`, `ADR-030`) but the router is deliberately identity-free (`OD-ATT-0013`,
     // verified: `Employee` carries no user identifier). So the route carries `Guid.Empty` as the approver
     // employee, and `LeaveRequest.Approve` refuses `Guid.Empty` outright.
     //

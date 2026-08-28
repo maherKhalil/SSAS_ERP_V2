@@ -71,7 +71,7 @@ Scope column: `A` attendance, `B` leave, `*` both.
 | `AC-ATT-0029` | Authority is resolved **live** at scope construction; a caller whose access was revoked after their session began is refused | `*` | `REQ-ATT-0005` |
 | `AC-ATT-0030` | The read scope cannot be constructed outside its factory — private constructor, internal factory, asserted by an architecture test | `*` | `REQ-ATT-0005` |
 | `AC-ATT-0031` | **RULED: THE SPLIT.** A caller sees only their authorized, active branches on record reads, resolved live from `ITenantBranchAccessResolver`; **and the Payroll summary contract applies no branch predicate at all** — company-complete by design, guard-asserted | `*` | `REQ-ATT-0024` |
-| `AC-ATT-0032` | **No `ViewOwn` permission exists in the catalog**, because no identity→employee mapping exists to resolve its subject | `*` | `REQ-ATT-0023` |
+| `AC-ATT-0032` | **No `ViewOwn` permission exists in the catalog**, because FP-015's self-service permission has not been built. *(It originally read "because no identity→employee mapping exists to resolve its subject"; that mapping exists as of `ADR-030` / `UserEmployeeLink`. The assertion is unchanged and still true.)* | `*` | `REQ-ATT-0023` |
 
 ## Persistence and platform
 
@@ -117,5 +117,5 @@ code will otherwise handle by accident.
 **Close preconditions.** Whether close refuses when employees have no records, or when leave requests are
 pending, is unruled. `AC-ATT-0013` covers only the mechanics.
 
-**Anything self-service.** Blocked on the missing identity→employee mapping. `AC-ATT-0032` asserts the
+**Anything self-service.** No longer blocked on the identity→employee mapping, which exists (`ADR-030`, `UserEmployeeLink`); blocked on FP-015's permission and endpoint. `AC-ATT-0032` asserts the
 *absence* rather than the behaviour, which is the only honest thing to assert today.

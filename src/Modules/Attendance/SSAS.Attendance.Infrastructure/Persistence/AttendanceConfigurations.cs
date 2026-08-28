@@ -360,7 +360,8 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
     builder.Property(request => request.DecisionNote).HasMaxLength(LeaveRequest.DecisionNoteMaximumLength);
 
     // Nullable, and the null is meaningful: a root-fallback decision has no approver EMPLOYEE because the
-    // holder is authenticated as a user and no identity-to-employee mapping exists (`OD-ATT-0013`).
+    // holder is authenticated as a user and this path does not resolve them to an employee. The mapping
+    // exists (`UserEmployeeLink`, `ADR-030`, T-082); nothing here reads it (`OD-ATT-0013`).
     builder.Property(request => request.ApproverEmployeeId);
 
     builder.Property(request => request.CreatedUtc).IsRequired();

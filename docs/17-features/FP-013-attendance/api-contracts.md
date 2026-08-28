@@ -109,7 +109,7 @@ requests consumed while leaving their stored rows untouched.
 that would let an approver change what they are approving at the moment of approval.
 
 **Note what these routes assume.** Under the `OD-ATT-0013`(1) finding, `POST /leave-requests` is an
-**administrator** submitting on an employee's behalf, because no identity→employee mapping exists. The
+**administrator** submitting on an employee's behalf. The identity→employee mapping exists (`UserEmployeeLink`, `ADR-030`) but no route reads it. The
 `employeeId` in the body is therefore mandatory, not inferred. **If the mapping is later created, that field
 becomes optional and the route gains a self-service meaning** — a change worth anticipating rather than
 retrofitting.

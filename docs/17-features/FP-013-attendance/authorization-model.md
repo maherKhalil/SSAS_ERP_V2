@@ -21,23 +21,31 @@ obviously desirable requirement in the package, and **it is not implementable to
 > such a mapping exists. Adding a `Payroll.Payslips.ViewOwn` on an unverified assumption is exactly the
 > shape of the FP-011 near-miss.
 
-**Checked, not assumed:** the mapping still does not exist. `Employee` carries no user or tenant-user
-identifier, and neither HR's domain nor its contracts expose one.
+*(T-086: the block above is quoted as it stood when this package was written and is left unaltered so the
+quotation remains accurate. `PayrollPermissionNames` no longer reads that way.)*
+
+**The mapping now exists** — `UserEmployeeLink` (`ADR-030`, T-082), Platform-resident, asserted against a
+real database. `Employee` still carries no user identifier and does not need one: the link is a separate
+Platform table, which is `ADR-030` Decision 2.
 
 So every self-service requirement in this package — an employee viewing their own attendance, submitting
 their own leave request, seeing their own balance — **depends on an input the product does not have.** That
 is precisely `DEC-PAY-0002`'s shape, and the same discipline applies:
 
 **A permission whose subject cannot be resolved must not be declared.** No `Attendance.Records.ViewOwn`, no
-`Attendance.Leave.RequestOwn`, until the mapping exists.
+`Attendance.Leave.RequestOwn` — **and the subject IS now resolvable, so what holds the line is FP-015's
+unbuilt permission and endpoint rather than a missing input.** The absence is asserted by `AC-ATT-0032`,
+enforced in
+`AttendanceArchitectureTests.No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved`.
 
 **This has real consequences for `OD-ATT-0001` and `OD-ATT-0007`.** A leave module in which employees cannot
 submit their own requests is a leave module operated entirely by administrators on employees' behalf. That
 may be acceptable for a first delivery — it is how a great deal of HR software starts — but **the owner
 should rule on it knowingly**, not discover it at acceptance.
 
-**Creating the identity→employee mapping is therefore a candidate prerequisite for FP-013**, and it is a
-Platform/HR change, not an Attendance one. It is raised here because this package is the second consecutive
+**Creating the identity→employee mapping was therefore a candidate prerequisite for FP-013** — and it was
+built as `ADR-030` / `UserEmployeeLink` (T-082), a Platform change exactly as predicted, not an Attendance
+one. It is raised here because this package is the second consecutive
 feature to hit the same wall, and the second hit is when a missing input stops being a coincidence.
 
 ---

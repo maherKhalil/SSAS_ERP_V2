@@ -72,6 +72,55 @@ public sealed class PayrollChainSqlServerTests
   private const decimal UnpaidAbsenceDays = 2m;  // -> 200 deducted
   private const decimal DailyRate = BaseSalary / 31m;
 
+  // A daily-salaried employee's rate PER DAY (T-114). 100 a day keeps the arithmetic legible: 21 working
+  // days less two unpaid is 19, so 1900.
+  private const decimal DailySalaryRate = 100m;
+
+  // ================================================================================================
+  // A DAILY SALARY, END TO END (T-114). THE HIGHEST-RISK OF THE FOUR.
+  // ================================================================================================
+  //
+  // **Its base arithmetic changed twice this week** — T-108 built it, and T-109 found it double-deducting
+  // because the base excluded the unpaid days AND the deduction element took them again. Until now that
+  // arithmetic has only ever run in memory.
+  //
+  // ---- THE NUMBERS, AND THEY ARE THE POINT.
+  //
+  // January 2026 with a Friday/Saturday weekend: 31 days less five Fridays and five Saturdays = **21
+  // working days**. Two of them unpaid, so 19 paid at 100 = **1900**.
+  //
+  // **And NO absence deduction line.** T-109 ruled the deduction monthly-only precisely because a daily
+  // base already prices the absence in the same unit as the rate. **A deduction line appearing here is the
+  // T-109 defect returning, and it would be worth 1900/31 x 2 = 122.58 of somebody's money.**
+  [Fact]
+  [Trait("Decision", "OD-PAY-0011")]
+  public async Task A_daily_salary_is_paid_for_the_periods_working_days_less_the_unpaid_ones()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync(SalaryType.Daily, DailySalaryRate);
+    await chain.SeedAttendanceAsync();
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(runId)).IsSuccess);
+    Assert.True((await chain.PostAsync(runId)).IsSuccess);
+
+    var run = await chain.RunAsync(runId);
+    var lines = run.Lines.ToList();
+
+    var basic = lines.Single(line => line.GlAccountId == chain.SalaryAccountId);
+    Assert.Equal(1900m, basic.Amount);
+
+    // Overtime is hours actually worked and is unaffected by the salary type: 6 x 25.
+    Assert.Equal(150m, lines.Single(line => line.GlAccountId == chain.OvertimeAccountId).Amount);
+
+    // ---- THE ONE THAT MATTERS: NO DEDUCTION LINE AT ALL.
+    Assert.DoesNotContain(lines, line => line.GlAccountId == chain.AbsenceAccountId);
+  }
+
   [Fact]
   [Trait("Requirement", "REQ-ATT-0022")]
   [Trait("Decision", "DEC-PAY-0002")]
@@ -332,7 +381,13 @@ public sealed class PayrollChainSqlServerTests
     }
 
     // ---- PAYROLL. Four elements mapped to those accounts, plus the employee's compensation.
-    public async Task SeedPayrollConfigurationAsync()
+    // ---- THE SALARY TYPE IS A PARAMETER, DEFAULTED (T-114).
+    //
+    // Defaulted to `Monthly` so the two tests written before T-107 are untouched and their arithmetic is
+    // unchanged — a spine that had to be edited to add a case would not be proving the same thing
+    // afterwards.
+    public async Task SeedPayrollConfigurationAsync(
+      SalaryType salaryType = SalaryType.Monthly, decimal? baseAmount = null)
     {
       await using var context = CreateContext();
 
@@ -361,7 +416,7 @@ public sealed class PayrollChainSqlServerTests
       // undeducted, and every number on the payslip would still look right.
       var compensation = EmployeeCompensation.Create(
         Company, Employee, new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero),
-        BaseSalary, [(overtime.Id, (decimal?)null)]).Value;
+        baseAmount ?? BaseSalary, [(overtime.Id, (decimal?)null)], salaryType).Value;
       context.Set<EmployeeCompensation>().Add(compensation);
 
       var period = PayrollPeriod.CreateAlignedTo(

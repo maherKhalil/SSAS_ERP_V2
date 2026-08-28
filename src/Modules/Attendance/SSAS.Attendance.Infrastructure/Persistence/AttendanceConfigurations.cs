@@ -180,6 +180,7 @@ public sealed class AttendancePeriodConfiguration : IEntityTypeConfiguration<Att
 
     // Not unique — a period is identified by its range, and the overlap check in the handler is what keeps
     // the ranges disjoint. An index on the range supports both that check and `GetCoveringAsync`.
+    // Not an oversight: `DEC-L-084`.
     builder.HasIndex(period => new { period.TenantId, period.CompanyId, period.StartDate, period.EndDate });
   }
 }
@@ -413,6 +414,8 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
     builder.Property(request => request.ModifiedBy).HasMaxLength(AttendancePersistenceConstants.ActorMaximumLength);
     builder.Property(request => request.RowVersion).IsRowVersion();
 
+    // Not unique, and for the same reason as the period range above: `SubmitLeaveRequestCommandHandler`'s
+    // overlap check is what keeps one employee's approved requests disjoint. Not an oversight: `DEC-L-084`.
     builder.HasIndex(request => new { request.TenantId, request.EmployeeId, request.StartDate, request.EndDate });
   }
 }

@@ -67,6 +67,13 @@ public sealed class FiscalYearConfiguration : IEntityTypeConfiguration<FiscalYea
     builder.HasIndex(year => new { year.TenantId, year.CompanyId, year.Code })
       .IsUnique()
       .HasDatabaseName("UX_GlFiscalYears_Tenant_Company_Code");
+
+    // ---- AND THERE IS DELIBERATELY NO INDEX ON (StartUtc, EndUtc). THE ABSENCE IS THE DECISION.
+    //
+    // Years must not overlap, and no index can enforce that — `DEC-L-084`. `DefineFiscalYearCommandHandler`
+    // is the only enforcement, and `CalendarCommandHandlers.cs:73` weighs the residual exposure and
+    // accepts it. **Adding a range index here would be reasonable for query support and would still
+    // constrain nothing** — so it must not be read as closing the gap.
   }
 }
 

@@ -161,17 +161,25 @@ public static class PayrollCalculator
       {
         SalaryType.Hourly => employee.Compensation.BaseAmount * employee.WorkedQuantity,
 
-        // ---- DAILY IS THE STANDARD WORKING DAYS, LESS THE UNPAID ONES (T-108, owner-ruled).
+        // ---- DAILY IS THE DAYS ACTUALLY WORKED, AND THE ELEMENT IS EXCLUDED BECAUSE OF IT (T-109).
         //
-        // **AND IT IS NOT `rate x days ACTUALLY WORKED`**, which is the reading the phrase *"daily rate"*
-        // invites and the one a reader will assume. Under that model absence is already excluded and the
-        // `UnpaidAbsenceDeduction` element would double-count it — the same error the hourly path avoids by
-        // taking no deduction at all.
+        // `working days - unpaid days` **IS** days actually worked. That is deliberate, and it is the only
+        // expression in this calculation that prices an absence in the SAME UNIT as the rate: a missed day
+        // costs one day at the employee's own rate, exactly.
         //
-        // The owner excluded HOURLY from that deduction *because an hourly employee is paid only for the
-        // time they attend*, and included DAILY. **That contrast only means something if a daily employee
-        // is NOT paid solely for time attended** — so a daily employee is paid the period's working days
-        // and the deduction takes the unpaid ones back.
+        // **So `UnpaidAbsenceDeduction` must not also fire, and it does not** — see the arm below. The
+        // absence has already been priced here; a second, cruder bite would charge it twice.
+        //
+        // ---- WHAT T-108 GOT WRONG, RECORDED BECAUSE THE ARITHMETIC LOOKED DEFENSIBLE.
+        //
+        // T-108 built this base AND kept the element, and the comment that stood here rejected
+        // *"rate x days actually worked"* by name while sitting above an expression computing exactly that.
+        // 22 working days, 3 unpaid, at 200: base 3800, deduction 3800/31 x 3 = 367.74, **net 3432.26 for
+        // nineteen days that cost 3800.** Every line was individually defensible.
+        //
+        // **And keeping the element for daily cannot be made correct.** To take exactly the unpaid days it
+        // would have to compute `rate x unpaid days` — this base's own expression, written a second time,
+        // inside a component that exists precisely because a MONTHLY salary cannot name a day. `DEC-L-080`.
         //
         // Clamped at zero: more unpaid days than the period holds is bad data, and a NEGATIVE base would
         // flow into every percentage element and produce a payslip that looks arithmetically consistent
@@ -255,20 +263,28 @@ public static class PayrollCalculator
           // it deduct. A negative here would encode the distinction as a sign, which `PayElementKind`'s own
           // comment refuses.
           //
-          // ---- AND IT NEVER APPLIES TO AN HOURLY SALARY (T-107, owner-ruled).
+          // ---- IT IS MONTHLY-ONLY (T-109). THE OTHER TWO ARE EXCLUDED FOR DIFFERENT REASONS.
           //
-          // **An hourly employee is paid only for the time they attend**, so the worked quantity has ALREADY
-          // accounted for the absence: deducting again charges them twice for one absence. Worse, the
-          // divisor here is the period's CALENDAR days, which against an hourly rate is not merely
-          // redundant but meaningless.
+          // **HOURLY** (T-107, owner-ruled): an hourly employee is paid only for the time they attend, so
+          // the worked quantity has already accounted for the absence. And the divisor here is the period's
+          // CALENDAR days, which against an hourly rate is not merely redundant but meaningless.
           //
-          // **`Daily` DOES take it.** A daily rate times days worked and a deduction for unpaid days both
-          // count in DAYS, so the arithmetic is coherent — and the owner ruled it applies.
+          // **DAILY** (T-109): the base is `working days - unpaid days`, which prices the absence in the
+          // same unit as the rate — one missed day, one day's rate, exactly. This element would take a
+          // second and cruder bite. T-108 applied it to daily and over-deducted by its whole amount.
+          //
+          // **The reasons differ and neither implies the other.** Hourly is excluded because attendance
+          // already IS the pay; daily is excluded because its base already priced the absence.
+          //
+          // **MONTHLY keeps it unchanged**, because a monthly amount cannot name a day and this is the only
+          // way to express one. It is an approximation — `OD-ATT-0015` ruled the calendar-day divisor, and
+          // T-068 records that it under-deducts a part-timer — but it is the only mechanism a monthly
+          // salary has.
           //
           // Zero rather than "no line": the element is exempt from requiring an assignment, so a company
           // that configures it gets a zero contribution which the zero-line rule below then suppresses.
           PayElementBehaviour.UnpaidAbsenceDeduction =>
-            employee.Compensation.SalaryType is SalaryType.Monthly or SalaryType.Daily
+            employee.Compensation.SalaryType is SalaryType.Monthly
               ? baseAmount / periodDays * employee.UnpaidAbsenceQuantity
               : 0m,
 

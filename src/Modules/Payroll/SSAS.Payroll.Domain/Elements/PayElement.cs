@@ -118,10 +118,28 @@ public enum PayElementBehaviour
   // amount: absent and zero are different facts.
   OvertimeHourly = 5,
 
-  // ---- UNPAID ABSENCE (OD-ATT-0008).
+  // ---- UNPAID ABSENCE (OD-ATT-0008). **MONTHLY SALARIES ONLY** (T-109).
   //
   // A DEDUCTION whose amount is DERIVED rather than configured: the employee's daily rate multiplied by the
   // unpaid days `IAttendanceSummary` reports.
+  //
+  // ---- IT APPLIES TO `SalaryType.Monthly` AND TO NOTHING ELSE, AND THE TWO EXCLUSIONS DIFFER.
+  //
+  // This comment said nothing about salary type from T-107, when the first exclusion was made, until T-109
+  // — a silence that read as "applies to everyone" while it did not (`DEC-L-073`).
+  //
+  //   HOURLY  excluded because an hourly employee is PAID ONLY FOR TIME ATTENDED. The absence never
+  //           entered the pay, so there is nothing to take out.
+  //   DAILY   excluded because its BASE is `working days - unpaid days`, which prices the absence in the
+  //           same unit as the rate — one missed day, one day's rate, exactly. This element would take a
+  //           second and cruder bite.
+  //
+  // **Neither reason implies the other**, and a reader who learned one would guess the other wrong.
+  //
+  // **It survives for MONTHLY because a monthly amount cannot name a day.** This is the only mechanism that
+  // salary has for expressing one, and it is an approximation: `OD-ATT-0015` ruled the calendar-day divisor
+  // and T-068 records that it under-deducts a part-timer. **An approximation is right where nothing exact
+  // is available and wrong where something exact already ran** — which is the whole of T-109.
   //
   // **The daily rate uses the SAME calendar-day divisor as proration**, and that is a decision rather than a
   // convenience. `OD-ATT-0015` asked whether building a working calendar reopened `OD-PAY-0007`, and the

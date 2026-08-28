@@ -34,6 +34,7 @@ using SSAS.Platform.Infrastructure.RequestContext;
 using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Infrastructure.Subscriptions;
 using SSAS.Platform.API.Subscriptions;
+using SSAS.Platform.API.TenantUsers;
 
 Log.Logger = new LoggerConfiguration()
   .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
@@ -156,6 +157,10 @@ try
   app.MapPlatformSupportAuthenticationEndpoints();
   app.MapPlatformLocalizationEndpoints();
   app.MapPlatformIdentityAccessEndpoints();
+
+  // T-091. Two lifecycle routes over handlers that already existed and were reachable from nothing —
+  // deactivation is what termination now invokes, reactivation is the repair for its one half-state.
+  app.MapPlatformTenantUserEndpoints();
   app.MapPlatformSupportAuthorityEndpoints();
   app.MapPlatformCompanyEndpoints();
   // HR module transport (ADR-012: the Host maps each module's own endpoints; modules never map each other's).

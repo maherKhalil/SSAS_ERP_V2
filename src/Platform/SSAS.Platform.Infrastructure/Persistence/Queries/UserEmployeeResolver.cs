@@ -4,7 +4,11 @@ using SSAS.BuildingBlocks.Tenancy;
 
 namespace SSAS.Platform.Infrastructure.Persistence.Queries;
 
-// THE ONE READ OVER `UserEmployeeLink` (ADR-030, T-084). Platform answers; the module asks.
+// THE USER -> EMPLOYEE READ OVER `UserEmployeeLink` (ADR-030, T-084). Platform answers; the module asks.
+//
+// It said *the one read* until T-091, which added `TenantUserDeactivator` reading the same table in the
+// opposite direction — employee -> user, on the other unique index. **Two readers, both Platform's**, and
+// the second unique index exists precisely so both directions are a seek (`DEC-L-073`).
 //
 // ---- IT SCOPES BY TENANT AND THE TENANT IS NOT THE CALLER'S TO CHOOSE.
 //

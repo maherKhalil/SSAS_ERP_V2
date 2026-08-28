@@ -412,16 +412,88 @@ public sealed class StubUnitOfWork : ITenantUnitOfWork
     return Task.FromResult(Failure is { } error ? Result.Failure<int>(error) : Result.Success(1));
   }
 
-  public Task<ITransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
-    Task.FromResult<ITransaction>(new NoOpTransaction());
+  // ---- THE COMMIT CAN BE MADE TO THROW (T-091).
+  //
+  // `TerminateEmployeeCommandHandler` holds an open tenant transaction across a cross-database call, and the
+  // ONE half-state it can reach is a commit that fails AFTER the account was closed. **A stub whose commit
+  // always succeeds cannot express that**, so the half-state would be reasoned about and never exercised.
+  public Exception? CommitFailure { get; set; }
 
-  private sealed class NoOpTransaction : ITransaction
+  public int Commits { get; private set; }
+
+  public int Rollbacks { get; private set; }
+
+  // Reset with the rest of the host's state. A cumulative counter would make "nothing was committed"
+  // depend on which tests ran first, which is a guard whose result is decided by xUnit's ordering.
+  public void ResetTransactions()
   {
-    public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    CommitFailure = null;
+    Commits = 0;
+    Rollbacks = 0;
+  }
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+  public Task<ITransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+    Task.FromResult<ITransaction>(new RecordingTransaction(this));
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+  // Records rather than no-ops, because "was the termination rolled back" is the assertion that separates a
+  // refusal from a silent half-commit, and it is not visible in the response.
+  private sealed class RecordingTransaction(StubUnitOfWork owner) : ITransaction
+  {
+    private bool completed;
+
+    public Task CommitAsync(CancellationToken cancellationToken = default)
+    {
+      if (owner.CommitFailure is { } failure)
+      {
+        completed = true;
+        owner.Rollbacks++;
+        throw failure;
+      }
+
+      completed = true;
+      owner.Commits++;
+      return Task.CompletedTask;
+    }
+
+    public Task RollbackAsync(CancellationToken cancellationToken = default)
+    {
+      completed = true;
+      owner.Rollbacks++;
+      return Task.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+      if (!completed)
+      {
+        owner.Rollbacks++;
+      }
+
+      return ValueTask.CompletedTask;
+    }
+  }
+}
+
+// T-091's door out of HR. Records what it was asked about, because "did termination actually try to close
+// the account" is not visible in the response of a successful termination.
+public sealed class StubTenantUserDeactivator : SSAS.BuildingBlocks.Tenancy.ITenantUserDeactivator
+{
+  public Error? Failure { get; set; }
+
+  public List<Guid> Asked { get; } = [];
+
+  public Task<Result> DeactivateForEmployeeAsync(
+    Guid employeeId, CancellationToken cancellationToken = default)
+  {
+    Asked.Add(employeeId);
+
+    return Task.FromResult(Failure is { } error ? Result.Failure(error) : Result.Success());
+  }
+
+  public void Reset()
+  {
+    Failure = null;
+    Asked.Clear();
   }
 }
 

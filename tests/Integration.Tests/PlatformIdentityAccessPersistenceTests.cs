@@ -166,7 +166,11 @@ public sealed class PlatformIdentityAccessPersistenceTests
             "UserBranchAccess",
             // FP-006C1 added the user-to-company assignment table. This list asserted the platform schema
             // without it until FP-006C6, when this suite was run again.
-            "UserCompanyAccess"
+            "UserCompanyAccess",
+            // T-082 added the identity-to-employee mapping (ADR-030). Added here in T-140, eighteen days
+            // later — the SAME failure the comment above records for `UserCompanyAccess`, for the same
+            // reason: this suite is only run occasionally, so the list drifts between runs.
+            "UserEmployeeLink"
           ],
           tables.Where(name => !name.StartsWith("__", StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal));
         Assert.Contains("__EFMigrationsHistory", tables);

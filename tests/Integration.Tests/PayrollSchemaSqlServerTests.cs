@@ -72,7 +72,7 @@ public sealed class PayrollSchemaSqlServerTests
   }
 
   [Fact]
-  public async Task The_migration_creates_all_seven_payroll_tables()
+  public async Task The_migration_creates_all_eight_payroll_tables()
   {
     await using var fixture = await PayrollFixture.CreateAsync();
 
@@ -83,7 +83,9 @@ public sealed class PayrollSchemaSqlServerTests
       WHERE s.name = 'tenant' AND t.name LIKE 'Payroll%';
       """);
 
-    Assert.Equal(7, tables);
+    // EIGHT since T-110 added `PayrollOneOffPayments`. This read 7 and went unnoticed for eighteen days
+    // because no full Integration run completed in that window (T-140).
+    Assert.Equal(8, tables);
   }
 
   [Fact]

@@ -176,9 +176,14 @@ public static class LocalizationEndpointRouteBuilderExtensions
     resourceKey, culture, result.Value, result.IsActive, result.CurrentVersionNumber, result.TenantLocalizationVersion,
     RowVersionCodec.Encode(result.RowVersion));
 
+  // ---- THE FALLBACK FOR AN UNMAPPED CODE, AND IT IS A SERVER ERROR AS OF T-093.
+  //
+  // It was `InvalidRequest` — a 400 — which blames the caller for a gap in `LocalizationApiErrorMapper`'s
+  // table and hides it. Every module mapper states the opposite convention in its own header, and this
+  // site is the only one whose default lived away from the table it defaults for.
   private static LocalizationApiError Map(Error error) => LocalizationApiErrorMapper.TryMap(error.Code, out var mapped)
     ? mapped
-    : LocalizationApiErrorMapper.InvalidRequest;
+    : LocalizationApiErrorMapper.WriteFailure;
 
   private static IResult Problem(HttpContext context, LocalizationApiError error) => Results.Problem(
     type: $"https://httpstatuses.com/{error.StatusCode}",

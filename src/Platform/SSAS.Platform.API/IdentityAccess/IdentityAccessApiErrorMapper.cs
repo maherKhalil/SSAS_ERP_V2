@@ -83,8 +83,16 @@ public static class IdentityAccessApiErrorMapper
       // indistinguishable from the wire. Do not delete this as redundant.
       "Persistence.WriteFailure" => ProblemResults.WriteFailure,
 
-      // STEP 3 FLIPS THIS. Left as-is for one commit so the flip is measured on its own.
-      _ => ProblemResults.RequestInvalid
+      // ---- THE DEFAULT IS A SERVER ERROR, AND THAT IS THE POINT.
+      //
+      // It was `RequestInvalid` until T-093. An unmapped code means this table is out of date: a 400 would
+      // blame the caller for the gap and hide it; a 500 is visible and gets fixed. Nothing is guessed from
+      // the code's shape.
+      //
+      // **Flipped AFTER the real codes were mapped, deliberately.** Flipping first would have turned every
+      // still-unmapped code into a 500, including ones that are legitimate caller errors and were
+      // accidentally right under the old default.
+      _ => ProblemResults.WriteFailure
     };
   }
 }

@@ -2,6 +2,20 @@ namespace SSAS.Platform.API.Localization;
 
 public sealed record LocalizationApiError(int StatusCode, string Code);
 
+// ==================================================================================================
+// THIS SITE'S DEFAULT IS NOT IN THIS FILE, WHICH IS WHY READING IT DOES NOT REVEAL THE ANSWER (T-093).
+// ==================================================================================================
+//
+// `TryMap` returns a bool with a `null!` sentinel: **the fallback for an unmapped code lives at the CALL
+// SITE**, `LocalizationEndpointRouteBuilderExtensions.Map`. One decision, two spellings, and a reader of
+// the mapper alone cannot see it — which is how it stayed a 400 while every other site had ruled a 500.
+//
+// **The fallback is now `WriteFailure`**, matching the convention every module mapper states: an unmapped
+// code means this table is out of date, a 400 blames the caller for the gap and hides it, a 500 is visible
+// and gets fixed.
+//
+// If the sentinel shape is ever collapsed into a plain `Map`, the default must come WITH it. Splitting a
+// default from the table it belongs to is the defect this paragraph exists to prevent recurring.
 public static class LocalizationApiErrorMapper
 {
   public const string GenericProblemResourceKey = "platform.authentication.errors.request_rejected";

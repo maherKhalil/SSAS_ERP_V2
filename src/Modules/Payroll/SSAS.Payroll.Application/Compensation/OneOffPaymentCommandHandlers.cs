@@ -4,6 +4,7 @@ using SSAS.Payroll.Application.Abstractions;
 using SSAS.Payroll.Application.Permissions;
 using SSAS.Payroll.Application.Reads;
 using SSAS.Payroll.Domain.Compensation;
+using SSAS.Payroll.Domain.Elements;
 
 namespace SSAS.Payroll.Application.Compensation;
 
@@ -61,7 +62,7 @@ public sealed class RecordOneOffPaymentCommandHandler(
     var element = await elements.GetByIdAsync(command.PayElementId, cancellationToken);
     if (element is null || element.CompanyId != command.CompanyId)
     {
-      return Result.Failure<Guid>(OneOffPaymentErrors.PayElementNotFound);
+      return Result.Failure<Guid>(PayElementErrors.NotFound);
     }
 
     var payment = OneOffPayment.Create(

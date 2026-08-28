@@ -74,9 +74,9 @@ flagged for the architect, not performed by this package.
 `OD-PAY-0016` option 3 is a self-service scope: an employee reads **their own** payslip and nothing else.
 It is genuinely useful and probably the first thing anyone will ask for.
 
-**It depends on a mapping from the authenticated identity to an employee record, and this package does not
-assert that such a mapping exists.** *(T-086: the mapping exists as of `ADR-030` / `UserEmployeeLink`; what defers payroll self-service now is the unbuilt permission and endpoint. `AC-ATT-0032` is the live assertion.)* It should be verified in the repository before any requirement relies
-on it. Writing "the employee views their own payslip" without checking is exactly the shape of assumption
+**It depended on a mapping from the authenticated identity to an employee record, which this package did not
+assert existed.** *(Amended T-104: the mapping exists (`ADR-030` / `UserEmployeeLink`, T-082) and payroll self-service SHIPPED under FP-015 — `Payroll.Payslips.ViewOwn`, catalogued and routed at `GET /me/payslips`. The T-086 note here said it was still deferred and cited `AC-ATT-0032`, which stopped asserting an absence in T-102.)*
+Writing "the employee views their own payslip" without checking was exactly the shape of assumption
 that produced FP-011's near-miss — plausible, conventional, and not how this repo necessarily works.
 
 ---

@@ -252,11 +252,33 @@ internal static class EmployeeImportRowErrorMapper
     };
   }
 
-  public static readonly ApiError DepartmentNotFound = new(400, "department.not_found");
+  // ================================================================================================
+  // TWO STRINGS SPLIT IN T-096. ONE WIRE CODE WAS CARRYING TWO DIFFERENT FACTS.
+  // ================================================================================================
+  //
+  // `department.not_found` and `position.not_found` were declared HERE at 400 and at
+  // `DepartmentApiErrorMapper` / `PositionApiErrorMapper` at 404. **Same string, two statuses, and a caller
+  // sees strings rather than constants.**
+  //
+  // ---- AND `DEC-L-079` DOES NOT FORCE THEM TO AGREE. IT EXPOSES THAT THEY ARE NOT THE SAME FACT.
+  //
+  //   404 on the resource route  the position RESOURCE does not exist
+  //   400 on an import row       the position NAMED IN THIS ROW is invalid, and the row is the caller's
+  //
+  // Forcing one status would have made one of the two answers wrong. So the ROW case takes its own code,
+  // following this file's own `employee_import.` convention — already used by `StatusNotCreatable` — and
+  // the resource codes keep theirs.
+  //
+  // ---- THE TWO SIBLINGS KEEP THEIR STRINGS, AND THAT IS DELIBERATE.
+  //
+  // `department.inactive` and `position.inactive` are declared NOWHERE ELSE, so they carry one status and
+  // one meaning. **Renaming them would change a wire contract to fix a defect they do not have** — the
+  // split follows the collision, not the file.
+  public static readonly ApiError DepartmentNotFound = new(400, "employee_import.department_not_found");
 
   public static readonly ApiError DepartmentInactive = new(400, "department.inactive");
 
-  public static readonly ApiError PositionNotFound = new(400, "position.not_found");
+  public static readonly ApiError PositionNotFound = new(400, "employee_import.position_not_found");
 
   public static readonly ApiError PositionInactive = new(400, "position.inactive");
 

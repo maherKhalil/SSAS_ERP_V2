@@ -209,7 +209,17 @@ public static class EmployeeApiErrorMapper
       // is answered as one.
       "EmployeeImportRun.InvalidImportKey" => ApiErrors.RequestInvalid,
       "EmployeeImportRun.InvalidFileName" => ApiErrors.RequestInvalid,
-      "EmployeeImportRun.InvalidActor" => ApiErrors.Forbidden,
+      // ---- 500, CORRECTED IN T-096, AND IT BRINGS THIS SITE INTO LINE WITH T-080's RULING.
+      //
+      // T-080 ruled 500 at the import-contracts site and gave the reason: `ImportEmployeesCommandHandler`
+      // already refuses a missing actor with `Employee.InvalidActor` (403), so **reaching the aggregate's
+      // own actor guard means the handler's precondition passed and the aggregate refused anyway** — an
+      // internal inconsistency, not a caller fault. `AuthenticationSubject.Create` caps the subject at the
+      // same length the aggregate checks, so the gap is unreachable.
+      //
+      // **Answering 403 told a caller they lacked authority when the system had reached an impossible
+      // state.** One site was right by that ruling and this one was never brought into line.
+      "EmployeeImportRun.InvalidActor" => ApiErrors.WriteFailure,
       "EmployeeImportRun.InvalidCounts" => ApiErrors.WriteFailure,
       "EmployeeExportRun.InvalidColumnSet" => ApiErrors.WriteFailure,
 

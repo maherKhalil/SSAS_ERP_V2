@@ -1,6 +1,5 @@
 using System.Net;
-using System.Reflection;
-using Microsoft.AspNetCore.Routing;
+using SSAS.API.Tests.Infrastructure;
 using SSAS.Payroll.Application.Permissions;
 
 namespace SSAS.API.Tests.Payroll;
@@ -91,66 +90,29 @@ public sealed class PayrollSelfServiceTests : IClassFixture<PayrollApiTestHost>
   }
 
   // ================================================================================================
-  // AC-SS-0007 — THE CONTRACT NAMES NO EMPLOYEE, ON ALL FOUR SURFACES.
+  // AC-SS-0007 / TS-SS-0003 — THE CONTRACT NAMES NO EMPLOYEE, ON ALL FOUR SURFACES.
   // ================================================================================================
   //
   // Asserted against the CONTRACT rather than a handler's behaviour, as the criterion requires: a handler
   // that happened to ignore an employee parameter would still be a contract that carried one.
   //
-  // ---- THIS IS THE FIRST TEST IN THE TREE TO INSPECT HANDLER PARAMETERS, SO THE LINE IT DRAWS IS
-  // ---- INHERITED BY EVERYONE AFTER IT.
+  // ---- THE RULE MOVED OUT OF THIS FILE IN T-089, AND THE MOVE IS THE POINT.
   //
-  // A minimal-API handler's parameters mix two populations: values BOUND FROM THE REQUEST, and SERVICES
-  // resolved from the container. Only the first is part of the contract — an injected `IPayrollReadService`
-  // is not something a caller can set, and a sweep that treated it as a contract member would be asserting
-  // nonsense.
+  // T-088 wrote it here as `bound.Count == 0`, which was correct for a route that binds nothing. **Attendance
+  // then added `/me/records`, which legitimately binds `fromDate` and `toDate`** — a filter that narrows the
+  // caller's own data and cannot widen it. Left where it was, the rule would have had to be relaxed for that
+  // route, and a guard with a per-route exception stops meaning anything.
   //
-  // **The classification is stated in the failure message rather than assumed**, so a future reader can
-  // dispute which side a parameter landed on instead of discovering the line by reading this comment.
+  // `SelfServiceContractRule` states the general property instead — **no bound parameter may be the SUBJECT
+  // of the read** — in ONE place, so the two modules cannot drift into two different definitions of the same
+  // criterion. `DEC-L-072`: the assertable claim belongs somewhere one edit reaches every caller.
+  //
+  // **This route still binds nothing, and that remains true under the general rule** — it is simply no
+  // longer the thing being asserted.
   [Fact]
   [Trait("Criterion", "AC-SS-0007")]
-  public void The_self_route_contract_names_no_employee_on_any_surface()
-  {
-    var endpoint = host.MappedRoutes().Single(route => route.Pattern == Route);
-
-    // PATH. The route pattern is the whole path surface, and it carries no parameters at all.
-    Assert.DoesNotContain("employee", endpoint.Pattern, StringComparison.OrdinalIgnoreCase);
-
-    var handler = host.MappedEndpoint(Route).Metadata.GetMetadata<MethodInfo>();
-    Assert.NotNull(handler);
-
-    // QUERY, HEADER AND BODY. Every parameter the handler declares, split into the two populations, with
-    // the split reported either way.
-    var bound = new List<string>();
-    var injected = new List<string>();
-
-    foreach (var parameter in handler!.GetParameters())
-    {
-      var type = parameter.ParameterType;
-
-      // A service is one the container can hand over. Everything else is bound from the request — which is
-      // the conservative direction: an unrecognised type is treated as part of the contract, not excused
-      // from it.
-      var isService = type.IsInterface ||
-        type == typeof(CancellationToken) ||
-        type == typeof(Microsoft.AspNetCore.Http.HttpContext);
-
-      (isService ? injected : bound).Add($"{type.Name} {parameter.Name}");
-    }
-
-    // NOT VACUOUS. A handler whose parameters could not be read at all would leave both lists empty and
-    // every assertion below would pass over nothing.
-    Assert.NotEmpty(injected);
-
-    Assert.True(
-      bound.Count == 0,
-      $"The self-service route must bind nothing from the request. Bound: [{string.Join(", ", bound)}]. " +
-      $"Injected (not part of the contract): [{string.Join(", ", injected)}].");
-
-    Assert.DoesNotContain(
-      injected,
-      parameter => parameter.Contains("employee", StringComparison.OrdinalIgnoreCase));
-  }
+  public void The_self_route_contract_names_no_employee_on_any_surface() =>
+    SelfServiceContractRule.AssertNoSubjectOnAnySurface(host.MappedEndpoint(Route));
 
   private Task<HttpResponseMessage> Send(params string[] permissions) =>
     host.Client.SendAsync(PayrollApiTestHost.Request(

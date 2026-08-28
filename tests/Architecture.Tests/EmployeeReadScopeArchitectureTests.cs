@@ -543,7 +543,13 @@ public sealed class EmployeeReadScopeArchitectureTests
     // would then pass forever while the caller set grew unwatched.
     Assert.NotEmpty(injecting);
 
-    Assert.Equal(["PayrollSelfServiceScopeResolver"], injecting);
+    // TWO, AS OF T-089. `AttendanceSelfServiceScopeResolver` joined by the same route the first one did:
+    // it asks *which employee am I*, derives its scope from that employee's own placement, and never takes
+    // an employee identifier from a caller. **A third still needs a person** — that is the entire point of
+    // an exact set rather than a `.Any()`.
+    Assert.Equal(
+      ["AttendanceSelfServiceScopeResolver", "PayrollSelfServiceScopeResolver"],
+      injecting);
   }
 
   // ================================================================================================

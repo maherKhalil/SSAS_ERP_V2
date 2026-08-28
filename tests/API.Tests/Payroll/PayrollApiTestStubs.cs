@@ -188,6 +188,15 @@ public sealed class StubPayrollPeriodRepository : IPayrollPeriodRepository
 
 public sealed class StubPayrollRunRepository : IPayrollRunRepository
 {
+  // ---- NOTHING TO DO HERE, AND THE EMPTINESS IS THE POINT.
+  //
+  // An in-memory stub has no change tracker, so it has no orphans for an explicit delete to remove. The
+  // defect this method exists for is a PERSISTENCE fact — a platform-wide `Restrict` overriding a module's
+  // configured cascade — and it is invisible to every stub by construction. That is why it took a real-SQL
+  // end-to-end test to find, and why this override can be honestly empty.
+  public Task RemoveDraftLinesAsync(PayrollRun run, CancellationToken cancellationToken = default) =>
+    Task.CompletedTask;
+
   public List<PayrollRun> Stored { get; } = [];
 
   public bool Exists { get; set; }

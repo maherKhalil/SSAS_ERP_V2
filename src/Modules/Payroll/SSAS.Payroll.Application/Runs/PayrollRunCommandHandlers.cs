@@ -289,6 +289,19 @@ public sealed class CalculatePayrollRunCommandHandler(
       return Result.Failure(calculated.Error);
     }
 
+    // ---- THE PREVIOUS DRAFT LINES ARE DELETED EXPLICITLY, BEFORE THE NEW SET REPLACES THEM.
+    //
+    // `SetCalculation` clears the collection, and the platform forbids cascades: `PersistenceDbContext`
+    // sets EVERY foreign key to `Restrict` after the module contributors run. So an orphan is a row nothing
+    // deletes and a non-nullable foreign key EF cannot null — the save fails outright.
+    //
+    // **Recalculation was broken on main because of this**, on the ordinary path an operator takes when a
+    // preview is wrong: fix the element, calculate again.
+    //
+    // It runs before `SetCalculation` rather than after, because the fixer reacts to the severance the
+    // moment the collection is cleared.
+    await runs.RemoveDraftLinesAsync(run, cancellationToken);
+
     var set = run.SetCalculation(calculated.Value, currentUser.UserId);
     if (set.IsFailure)
     {

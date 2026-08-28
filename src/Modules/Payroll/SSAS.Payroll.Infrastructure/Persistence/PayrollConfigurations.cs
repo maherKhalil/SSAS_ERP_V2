@@ -19,6 +19,10 @@ public sealed class PayElementConfiguration : IEntityTypeConfiguration<PayElemen
 
     builder.ToTable("PayrollElements", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(element => element.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(element => element.Id).ValueGeneratedNever();
 
     builder.Property(element => element.TenantId).IsRequired();
     builder.Property(element => element.CompanyId).IsRequired();
@@ -94,6 +98,18 @@ public sealed class OneOffPaymentConfiguration : IEntityTypeConfiguration<OneOff
     builder.ToTable("PayrollOneOffPayments", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(payment => payment.Id);
 
+    // ---- THE KEY IS ASSIGNED IN THE CONSTRUCTOR (T-113).
+    //
+    // `OneOffPayment.Create` calls `new(Guid.NewGuid(), ...)`, and EF's convention for a `Guid` primary key
+    // is `ValueGeneratedOnAdd`. **A store-generated key holding a non-default value, found while fixing up a
+    // tracked graph, is classified Modified rather than Added** — so `ApplyPersistenceRules` never stamps
+    // `TenantId`, and the write boundary refuses the save.
+    //
+    // **T-110 shipped this entity without it, and no test could have caught it**: its tests are in-memory
+    // domain tests and stubbed API tests, and nothing in the product executed a one-off against SQL Server.
+    // `ConstructorKeyedEntityModelTests` found it on its first run.
+    builder.Property(payment => payment.Id).ValueGeneratedNever();
+
     builder.Property(payment => payment.TenantId).IsRequired();
     builder.Property(payment => payment.CompanyId).IsRequired();
 
@@ -138,6 +154,10 @@ public sealed class EmployeeCompensationConfiguration : IEntityTypeConfiguration
 
     builder.ToTable("PayrollEmployeeCompensation", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(record => record.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(record => record.Id).ValueGeneratedNever();
 
     builder.Property(record => record.TenantId).IsRequired();
     builder.Property(record => record.CompanyId).IsRequired();
@@ -178,6 +198,21 @@ public sealed class EmployeeCompensationConfiguration : IEntityTypeConfiguration
     // A history row is never updated, so there is no concurrent update for a version to detect. Adding one
     // would advertise an update path that does not exist.
 
+    // ================================================================================================
+    // THE CONFIGURED CASCADE BELOW IS OVERRIDDEN BY THE PLATFORM. READ BEFORE RELYING ON IT.
+    // ================================================================================================
+    //
+    // `PersistenceDbContext.OnModelCreating` ends by setting EVERY foreign key in the composed model to
+    // `DeleteBehavior.Restrict`, and it runs AFTER the module contributors — deliberate platform policy,
+    // no silent cascades anywhere in a multi-tenant model, and `TenantDbContext` names it where the
+    // contributors are applied.
+    //
+    // So this declaration expresses INTENT and does not take effect. It is kept because the intent is real
+    // and a reader should see it; the removal that actually happens is EXPLICIT, in the repository, and the
+    // handler orders it.
+    //
+    // Believing this line cost two shipped defects (FP-013): payroll recalculation and journal-draft
+    // update both failed against a real database on orphans nothing deleted.
     builder.HasMany(record => record.Assignments)
       .WithOne()
       .HasForeignKey(assignment => assignment.EmployeeCompensationId)
@@ -197,6 +232,10 @@ public sealed class PayElementAssignmentConfiguration : IEntityTypeConfiguration
 
     builder.ToTable("PayrollElementAssignments", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(assignment => assignment.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(assignment => assignment.Id).ValueGeneratedNever();
 
     builder.Property(assignment => assignment.TenantId).IsRequired();
     builder.Property(assignment => assignment.EmployeeCompensationId).IsRequired();
@@ -223,6 +262,10 @@ public sealed class PayrollPeriodConfiguration : IEntityTypeConfiguration<Payrol
 
     builder.ToTable("PayrollPeriods", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(period => period.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(period => period.Id).ValueGeneratedNever();
 
     builder.Property(period => period.TenantId).IsRequired();
     builder.Property(period => period.CompanyId).IsRequired();
@@ -261,6 +304,10 @@ public sealed class PayrollRunConfiguration : IEntityTypeConfiguration<PayrollRu
 
     builder.ToTable("PayrollRuns", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(run => run.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(run => run.Id).ValueGeneratedNever();
 
     builder.Property(run => run.TenantId).IsRequired();
     builder.Property(run => run.CompanyId).IsRequired();
@@ -339,6 +386,10 @@ public sealed class PayrollRunDraftLineConfiguration : IEntityTypeConfiguration<
 
     builder.ToTable("PayrollRunDraftLines", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(line => line.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(line => line.Id).ValueGeneratedNever();
 
     builder.Property(line => line.TenantId).IsRequired();
     builder.Property(line => line.PayrollRunId).IsRequired();
@@ -365,6 +416,10 @@ public sealed class PayrollRunLineConfiguration : IEntityTypeConfiguration<Payro
 
     builder.ToTable("PayrollRunLines", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(line => line.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(line => line.Id).ValueGeneratedNever();
 
     builder.Property(line => line.TenantId).IsRequired();
     builder.Property(line => line.PayrollRunId).IsRequired();

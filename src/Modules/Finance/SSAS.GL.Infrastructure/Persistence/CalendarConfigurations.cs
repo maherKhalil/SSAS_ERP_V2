@@ -21,6 +21,14 @@ public sealed class FiscalYearConfiguration : IEntityTypeConfiguration<FiscalYea
 
     builder.HasKey(year => year.Id);
 
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(year => year.Id).ValueGeneratedNever();
+
     builder.Property(year => year.TenantId).IsRequired();
     builder.Property(year => year.CompanyId).IsRequired();
 
@@ -81,6 +89,14 @@ public sealed class FiscalPeriodConfiguration : IEntityTypeConfiguration<FiscalP
     });
 
     builder.HasKey(period => period.Id);
+
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(period => period.Id).ValueGeneratedNever();
 
     // Present because FiscalPeriod is ITenantOwnedEntity — which it must be, or the E3 cutover manifest
     // (derived by reflection over that interface) would not carry this table and the periods would silently

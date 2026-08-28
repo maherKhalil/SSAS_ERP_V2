@@ -243,4 +243,26 @@ internal sealed class PayrollRunRepository(ITenantDbContextAccessor contextAcces
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
     await context.Set<PayrollRun>().AddAsync(run, cancellationToken);
   }
+
+  // See the port for why this exists: the platform sets every foreign key to `Restrict` AFTER the module
+  // configurations run, so an orphaned draft line is a row nothing deletes and the save fails.
+  //
+  // Called BEFORE `SetCalculation` clears the collection. Removing them afterwards would mean EF's
+  // navigation fixer had already seen the severance and already tried to null a non-nullable foreign key —
+  // which is the exact failure this method exists to prevent, arriving one step earlier.
+  public async Task RemoveDraftLinesAsync(PayrollRun run, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(run);
+
+    if (run.DraftLines.Count == 0)
+    {
+      return;
+    }
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // Materialized before RemoveRange: the navigation and the tracker are the same objects, and removing
+    // from one while enumerating the other is how this becomes an intermittent bug instead of a fixed one.
+    context.Set<PayrollRunDraftLine>().RemoveRange([.. run.DraftLines]);
+  }
 }

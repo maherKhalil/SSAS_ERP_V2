@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SSAS.Attendance.Application.Abstractions;
+using SSAS.HR.Contracts.Employment;
 using SSAS.Attendance.Contracts.Summaries;
 using SSAS.Attendance.Domain.Periods;
 using SSAS.Attendance.Domain.Records;
@@ -74,7 +75,12 @@ internal sealed class AttendanceSummaryService(
   // Not a query written here. `GetForCompanyAsync` is the ONE resolution of "the company's calendar", and a
   // second implementation would eventually disagree with the one that decides what leave consumed — which
   // is the reason `AttendanceReadService` gives for delegating its own day count to the domain.
-  IWorkingCalendarRepository calendars) : IAttendanceSummary
+  IWorkingCalendarRepository calendars,
+  // ---- HR's EMPLOYMENT FACT, THROUGH HR's OWN CONTRACT (T-119).
+  //
+  // Attendance already references `SSAS.HR.Contracts` and `LeaveCommandHandlers` already injects this, so
+  // the seam exists and this is not a new cross-module dependency.
+  IEmployeeRoster roster) : IAttendanceSummary
 {
   public async Task<AttendanceSummaryResult> GetForPeriodAsync(
     Guid companyId,
@@ -107,6 +113,8 @@ internal sealed class AttendanceSummaryService(
       .Where(record => record.EmployeeId == employeeId)
       .Select(record => new
       {
+        // T-119: carried so the employment-window filter below can see which day each record is for.
+        record.AttendanceDate,
         record.WorkedQuantity,
         record.OvertimeQuantity,
         record.OvertimeTier,
@@ -114,6 +122,61 @@ internal sealed class AttendanceSummaryService(
         record.UnpaidAbsenceQuantity
       })
       .ToListAsync(cancellationToken);
+
+    // ---- RECORDS OUTSIDE THE EMPLOYMENT WINDOW DO NOT COUNT (T-119).
+    //
+    // **An employee terminated on the 15th did not have unpaid absence on the 20th.** Before T-119 the
+    // summary summed every record in the PERIOD, so a leaver was deducted for absence recorded after they
+    // left — T-115 clamped the working-day count and left the quantities unbounded, and T-116 measured the
+    // result.
+    //
+    // ---- WHY HERE RATHER THAN AT THE WRITE, AND IT IS THE ORDINARY CASE THAT DECIDES IT.
+    //
+    // Refusing to RECORD attendance after termination covers only one ordering. **Termination is routinely
+    // entered after the fact — you terminate on the 20th effective the 15th — and the records are already
+    // written by then.** A write-time guard cannot see a termination that has not happened yet; a summary
+    // computed when the run is calculated sees both.
+    //
+    // ---- AND WHY ATTENDANCE RATHER THAN PAYROLL.
+    //
+    // The summary returns TOTALS, and a total cannot be narrowed after the fact — the same wall T-115 hit
+    // with the working-day count. **The clamp belongs on the side holding the per-record data.** Payroll's
+    // alternative would have meant putting the employment window into this contract, which is the employee
+    // dimension `EmploymentTypeAssumptionTests` guard 3 exists to keep out.
+    // ---- IT NARROWS THE DEDUCTION AND NOTHING ELSE, AND THAT IS DELIBERATE.
+    //
+    // **A blanket window filter over the record set would have been one line shorter and would have made a
+    // second, opposite decision.** Four quantities travel on these records and two of them are PAYMENTS:
+    //
+    //   UnpaidAbsenceQuantity   a DEDUCTION   excluding it protects the employee   <- ruled, done here
+    //   WorkedQuantity          hourly PAY    excluding it WITHHOLDS money
+    //   OvertimeQuantityByTier  overtime PAY  excluding it WITHHOLDS money
+    //   PaidAbsenceQuantity     never reaches Payroll
+    //
+    // **The ruling was that an employee is not DEDUCTED for absence on days they were not employed. It said
+    // nothing about not PAYING them for work recorded on those days, and the two are opposite errors.**
+    //
+    // ---- AND THE ASYMMETRY IS REAL, NOT JUST CAUTION.
+    //
+    // **Absence outside employment is NOISE**: a stale record for somebody who had left, meaning nothing.
+    // **Work outside employment is a CONTRADICTION**: either they worked, so the termination date is wrong,
+    // or they did not, so the record is. Silently resolving that either way moves money on data the product
+    // knows is inconsistent — which is why it is reported rather than decided here.
+    var employment = (await roster.GetEmploymentAsync(
+        companyId, ToInstant(period.StartDate), ToInstant(period.EndDate), cancellationToken))
+      .FirstOrDefault(record => record.EmployeeId == employeeId);
+
+    var employedFrom = employment is null
+      ? period.StartDate
+      : DateOnly.FromDateTime(employment.EmploymentDateUtc.UtcDateTime);
+
+    var employedTo = employment?.TerminationDateUtc is { } terminated
+      ? DateOnly.FromDateTime(terminated.UtcDateTime)
+      : period.EndDate;
+
+    var unpaidAbsence = records
+      .Where(record => record.AttendanceDate >= employedFrom && record.AttendanceDate <= employedTo)
+      .Sum(record => record.UnpaidAbsenceQuantity);
 
     if (records.Count == 0)
     {
@@ -149,7 +212,7 @@ internal sealed class AttendanceSummaryService(
       records.Sum(record => record.WorkedQuantity),
       overtimeByTier,
       records.Sum(record => record.PaidAbsenceQuantity),
-      records.Sum(record => record.UnpaidAbsenceQuantity));
+      unpaidAbsence);
   }
 
   // ---- WORKING DAYS BETWEEN TWO DATES (T-115).

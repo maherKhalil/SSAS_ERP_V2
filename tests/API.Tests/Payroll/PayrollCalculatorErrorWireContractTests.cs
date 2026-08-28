@@ -1,5 +1,6 @@
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Payroll.API;
+using SSAS.Payroll.Domain.Elements;
 using SSAS.Payroll.Domain.Runs;
 
 namespace SSAS.API.Tests.Payroll;
@@ -45,6 +46,44 @@ public sealed class PayrollCalculatorErrorWireContractTests
     // NOT A 500. That is the claim worth making separately from the exact code: an unmapped error falls
     // through to a 500 for what is a business refusal, with no exception and no log entry.
     Assert.NotEqual(500, mapped.StatusCode);
+  }
+
+  // ---- THE ONE-OFF ROUTE'S REFUSALS (T-125). UNMAPPED FROM T-110 UNTIL NOW.
+  //
+  // **`POST /employees/{id}/one-off-payments` with `amount: 0` answered 500** — a validation refusal
+  // arriving as a server fault. The register could not see it: T-110 added the route and its handler and
+  // never seeded the handler, so every code it returns sat outside every closure.
+  //
+  // **Asserted here as well as seeded, for the same reason the calculator's four are**: this file exists to
+  // cover what the register structurally could not, and a seed added today is not evidence about the
+  // statuses themselves.
+  [Theory]
+  [InlineData("Payroll.OneOffPaymentCompanyRequired", 400)]
+  [InlineData("Payroll.OneOffPaymentEmployeeRequired", 400)]
+  [InlineData("Payroll.OneOffPaymentPeriodRequired", 400)]
+  [InlineData("Payroll.OneOffPaymentPayElementRequired", 400)]
+  [InlineData("Payroll.OneOffPaymentAmountNotPositive", 400)]
+  [InlineData("Payroll.OneOffPaymentAlreadyConsumed", 409)]
+  [InlineData("Payroll.OneOffPaymentConsumingRunIsForAnotherPeriod", 409)]
+  public void Every_one_off_refusal_has_a_deliberate_status(string code, int expected)
+  {
+    var mapped = PayrollApiErrorMapper.Map(new Error(code, "irrelevant to the mapping"));
+
+    Assert.Equal(expected, mapped.StatusCode);
+    Assert.NotEqual(500, mapped.StatusCode);
+  }
+
+  // ---- AND THE PAY ELEMENT ONE ANSWERS 404, THROUGH THE CODE THAT ALREADY MEANT IT.
+  //
+  // T-110 declared `Payroll.OneOffPaymentPayElementNotFound` for a condition `Payroll.PayElementNotFound`
+  // already covered — **the same fact under two names, and the second was unmapped**, so *the pay element
+  // you named does not exist* answered 404 from one route and 500 from another. T-125 deleted the duplicate.
+  [Fact]
+  public void A_one_off_naming_an_unknown_element_answers_the_existing_not_found()
+  {
+    var mapped = PayrollApiErrorMapper.Map(PayElementErrors.NotFound);
+
+    Assert.Equal(404, mapped.StatusCode);
   }
 
   // ---- AND THE TWO ARE NOT THE SAME REFUSAL, WHICH IS WHY THEY DIFFER.

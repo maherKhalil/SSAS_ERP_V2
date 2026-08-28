@@ -185,6 +185,21 @@ public sealed class ModuleErrorMappingArchitectureTests
         // invisible until it is added here. That is the floor, and it is stated rather than hidden:
         // `The_register_seeds_every_static_class_that_returns_an_error` holds it.
         typeof(SSAS.Payroll.Domain.Runs.PayrollCalculator),
+
+        // ---- AND THE ONE-OFF ROUTE'S HANDLER AND AGGREGATE (T-125).
+        //
+        // **T-120 seeded a static class and this was still missed three tasks later.** `RecordOneOffPaymentCommandHandler`
+        // is a route parameter at `PayrollEndpointRouteBuilderExtensions.cs:146`, added by T-110, and never
+        // seeded — so its codes were outside every closure and `amount: 0` answered 500.
+        //
+        // **`OneOffPayment` is seeded too, and for a different reason:** the consumption refusals are
+        // returned by the AGGREGATE, which no constructor walk reaches — a repository returns it, and the
+        // closure follows parameter TYPES rather than return types.
+        //
+        // **The floor this exposes is wider than T-120 stated it.** `KnownUnseeded` fires only for static
+        // classes; **an unseeded handler or aggregate fires nothing at all.** T-126 is that hole.
+        typeof(SSAS.Payroll.Application.Compensation.RecordOneOffPaymentCommandHandler),
+        typeof(SSAS.Payroll.Domain.Compensation.OneOffPayment),
       ],
       // ---- ONE CODE, AND IT CROSSES A MODULE BOUNDARY.
       //
@@ -198,7 +213,15 @@ public sealed class ModuleErrorMappingArchitectureTests
       // `DEC-L-079` fixes the status at GL's 404. The string stays `gl.not_found` rather than becoming
       // `payroll.not_found`, because **what was not found is the ledger account** — naming the wrong
       // missing thing would be a worse answer than the 500 it replaces.
-      []
+      //
+      // ---- ONE CODE STAYS UNMAPPED, AND IT IS A DEFENCE RATHER THAN A REFUSAL (T-125).
+      //
+      // `OneOffPayment.MarkConsumedBy` refuses a `Guid.Empty` run id. **No route can produce that**: the
+      // only caller is `ApprovePayrollRunCommandHandler`, which passes `run.Id` from a run it has already
+      // loaded from the database. **It is a guard against a programming error, not a business refusal**, and
+      // mapping it would put a status on a path no request can take — a dead arm, which T-095 established
+      // is worse than an honest gap.
+      ["Payroll.OneOffPaymentConsumingRunRequired"]
       ),
 
     new("DepartmentApiErrorMapper",

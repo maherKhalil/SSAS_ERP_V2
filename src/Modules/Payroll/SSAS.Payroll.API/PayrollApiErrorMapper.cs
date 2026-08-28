@@ -159,6 +159,28 @@ public static class PayrollApiErrorMapper
       // well-formed and the world is inconsistent.
       "Payroll.AttendanceContradictsEmployment" => RunStateInvalid,
 
+      // ---- ONE-OFF PAY INSTRUCTIONS (T-125). UNMAPPED SINCE T-110 CREATED THE ROUTE.
+      //
+      // **`POST /employees/{id}/one-off-payments` with `amount: 0` answered 500** — a validation refusal
+      // arriving as a server fault, with no exception anybody reads. The register could not see it because
+      // T-110 added the route and its handler and **never added the handler to the seed list**, so every
+      // code it returns was outside every closure (T-117, T-124).
+      //
+      // 400 for the five shape refusals: the request is malformed and no state will make it succeed.
+      "Payroll.OneOffPaymentCompanyRequired" => ApiErrors.RequestInvalid,
+      "Payroll.OneOffPaymentEmployeeRequired" => ApiErrors.RequestInvalid,
+      "Payroll.OneOffPaymentPeriodRequired" => ApiErrors.RequestInvalid,
+      "Payroll.OneOffPaymentPayElementRequired" => ApiErrors.RequestInvalid,
+      "Payroll.OneOffPaymentAmountNotPositive" => ApiErrors.RequestInvalid,
+
+      // ---- AND 409 FOR THE TWO CONSUMPTION REFUSALS, WHICH ARE ABOUT STATE RATHER THAN SHAPE.
+      //
+      // Both arrive from APPROVAL, not from the instruction's own route: the run is already holding this
+      // instruction, or it is a run for another period. **The request is well-formed and the world disagrees
+      // with it**, which is `RunStateInvalid`'s shape.
+      "Payroll.OneOffPaymentAlreadyConsumed" => RunStateInvalid,
+      "Payroll.OneOffPaymentConsumingRunIsForAnotherPeriod" => RunStateInvalid,
+
       // FP-013, OD-ATT-0010. A 409 rather than a 422: the request is well-formed and the world is not ready
       // — somebody has to close the attendance period, which is the same shape as `PeriodClosed` above.
       "Payroll.AttendancePeriodOpen" => AttendancePeriodOpen,

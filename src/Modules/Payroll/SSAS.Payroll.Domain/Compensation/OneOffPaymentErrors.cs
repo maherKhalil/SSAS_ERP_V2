@@ -39,13 +39,16 @@ public static class OneOffPaymentErrors
     "Payroll.OneOffPaymentAlreadyConsumed",
     "This one-off payment has already been paid by this run.");
 
-  // ---- THE ELEMENT MUST EXIST AND BE THE COMPANY'S.
+  // ---- ⚠ TWO CONSTANTS USED TO LIVE IN THIS FILE AND NEITHER SHOULD HAVE (T-125).
   //
-  // A one-off naming an element that does not exist has no kind and no GL account, so it could not produce
-  // a line at all. Refused when it is written rather than discovered when a run is calculated.
-  public static readonly Error PayElementNotFound = new(
-    "Payroll.OneOffPaymentPayElementNotFound",
-    "The pay element this one-off payment names does not exist for this company.");
+  // **`PayElementNotFound` declared `Payroll.OneOffPaymentPayElementNotFound` for a condition that already
+  // had a code.** `PayElementErrors.NotFound` is `Payroll.PayElementNotFound` and has been mapped to 404
+  // since FP-012. **The same fact under two names is `DEC-L-080` in the error vocabulary** — and the second
+  // name was unmapped, so *the pay element you named does not exist* answered **404 from one route and 500
+  // from another.** `RecordOneOffPaymentCommandHandler` returns the existing code.
+  //
+  // **`NotFound` declared `Payroll.OneOffPaymentNotFound` and was returned by nothing at all** — a code for
+  // a lookup path that does not exist, which reads to the next person as evidence that one does.
 
   // ---- A RUN FOR ANOTHER PERIOD REACHING THIS INSTRUCTION (T-124).
   //
@@ -60,7 +63,4 @@ public static class OneOffPaymentErrors
     "Payroll.OneOffPaymentConsumingRunIsForAnotherPeriod",
     "A payroll run for a different period cannot pay this one-off payment.");
 
-  public static readonly Error NotFound = new(
-    "Payroll.OneOffPaymentNotFound",
-    "The one-off payment was not found.");
 }

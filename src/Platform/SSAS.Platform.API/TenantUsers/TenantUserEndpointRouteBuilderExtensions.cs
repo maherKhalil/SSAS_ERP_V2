@@ -16,6 +16,18 @@ namespace SSAS.Platform.API.TenantUsers;
 public sealed record TenantUserLifecycleRequest(
   [property: JsonPropertyName("expectedRowVersion")] string? ExpectedRowVersion);
 
+// ---- NO `expectedRowVersion`, AND ITS ABSENCE IS THE DECISION (T-092).
+//
+// `UserEmployeeLink` carries no row version because it has NO MUTABLE STATE: it is created and deleted,
+// never updated. **A row version prevents a lost update, and there is no update to lose.** Adding one would
+// imply a modification path that does not exist.
+//
+// The concurrency control is the two unique indexes `ADR-030` Decision 3 is enforced by. A race between two
+// administrators loses at the database, and the unit of work already translates that to a refusal — which
+// is the correct control for a create-or-refuse, not a workaround for a missing one.
+public sealed record LinkEmployeeRequest(
+  [property: JsonPropertyName("employeeId")] Guid? EmployeeId);
+
 // ==================================================================================================
 // THE TENANT-USER LIFECYCLE SURFACE (T-091). TWO ROUTES, AND THEY OPEN A FOLDER THAT DID NOT EXIST.
 // ==================================================================================================
@@ -70,6 +82,41 @@ public static class TenantUserEndpointRouteBuilderExtensions
       .RequirePermission(PlatformPermissionNames.ReactivateUsers)
       .WithName("PlatformTenantUsersReactivate");
 
+    // ================================================================================================
+    // THE EMPLOYEE LINK (T-092, ADR-030). THE ROW THAT MAKES T-090 AND T-091 DO ANYTHING.
+    // ================================================================================================
+    //
+    // Four self-service permissions across two modules resolve through `IUserEmployeeResolver`, and until
+    // this route existed **nothing in the product had ever written a link** — so every one of them answered
+    // "no linked employee" for every real caller.
+    //
+    // ---- A PAIR OF PERMISSIONS, NOT ONE.
+    //
+    // Linking decides WHOSE PAYSLIPS A LOGIN CAN READ. Creating that mapping and destroying it are
+    // different decisions with different blast radii — the `Deactivate`/`Reactivate` split, and the
+    // `GL.Drafts.Manage` / `GL.Journals.Post` precedent behind it.
+    //
+    // ---- AND REMOVAL SHIPS WITH CREATION, NOT AFTER IT.
+    //
+    // At most one live link each way, enforced by two unique indexes, with removal physical and no soft
+    // delete: **a mistaken link occupies both slots**, so creating the correct one collides and is refused
+    // rather than repaired. Without removal the FIRST mistake would be permanent.
+    //
+    // The alternative was an upsert on the link route, and it is worse: it hides a destructive act inside a
+    // creative one, so reassigning which employee a login maps to would read as "create a link" in an audit
+    // trail.
+    //
+    // ---- POST TO A NAMED SUB-RESOURCE, NOT DELETE.
+    //
+    // **There is no `MapDelete` anywhere in `src/`**, and this is not the task to introduce one. Removal is
+    // spelled the way `/manager/remove` and `/holidays/remove` already spell it.
+    group.MapPost("/tenant-users/{tenantUserId:long}/employee-link", LinkEmployeeAsync)
+      .RequirePermission(PlatformPermissionNames.LinkEmployees)
+      .WithName("PlatformTenantUsersLinkEmployee");
+    group.MapPost("/tenant-users/{tenantUserId:long}/employee-link/remove", UnlinkEmployeeAsync)
+      .RequirePermission(PlatformPermissionNames.UnlinkEmployees)
+      .WithName("PlatformTenantUsersUnlinkEmployee");
+
     return endpoints;
   }
 
@@ -107,6 +154,56 @@ public static class TenantUserEndpointRouteBuilderExtensions
 
     var result = await handler.HandleAsync(
       new ReactivateTenantUserCommand(tenantUserId, rowVersion), cancellationToken);
+
+    return result.IsFailure
+      ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error))
+      : Results.NoContent();
+  }
+
+  private static async Task<IResult> LinkEmployeeAsync(
+    HttpContext context,
+    long tenantUserId,
+    LinkEmployeeToTenantUserCommandHandler handler,
+    CancellationToken cancellationToken)
+  {
+    ApiResponseSecurity.Apply(context);
+
+    var request = await StrictRequestReader.ReadStrictJsonAsync<LinkEmployeeRequest>(
+      context,
+      new Dictionary<string, JsonValueKind[]>
+      {
+        ["employeeId"] = [JsonValueKind.String]
+      },
+      cancellationToken);
+
+    if (request?.EmployeeId is not { } employeeId)
+    {
+      return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+    }
+
+    var result = await handler.HandleAsync(
+      new LinkEmployeeToTenantUserCommand(tenantUserId, employeeId), cancellationToken);
+
+    return result.IsFailure
+      ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error))
+      : Results.NoContent();
+  }
+
+  // ---- NO BODY AT ALL, AND THAT FOLLOWS FROM ONE LIVE LINK EACH WAY.
+  //
+  // The tenant user identifies the link uniquely, so an employee in the body would exist only to be
+  // validated against a state the caller could have read — a parameter whose sole purpose is to be
+  // rejected. `StrictRequestReader` is not called, so an unexpected body is ignored rather than parsed.
+  private static async Task<IResult> UnlinkEmployeeAsync(
+    HttpContext context,
+    long tenantUserId,
+    UnlinkEmployeeFromTenantUserCommandHandler handler,
+    CancellationToken cancellationToken)
+  {
+    ApiResponseSecurity.Apply(context);
+
+    var result = await handler.HandleAsync(
+      new UnlinkEmployeeFromTenantUserCommand(tenantUserId), cancellationToken);
 
     return result.IsFailure
       ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error))

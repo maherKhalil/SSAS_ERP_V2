@@ -40,6 +40,34 @@ public sealed class PlatformErrorMappingTests
   public void The_identity_access_site_answers_as_ruled(string code, int status) =>
     Assert.Equal(status, IdentityAccessApiErrorMapper.Map(new Error(code, "x")).StatusCode);
 
+  // ---- T-092's LINK REFUSALS, AND THE TWO COLLISION DIRECTIONS SHARE A WIRE CODE ON PURPOSE.
+  //
+  // The two `Error` values stay separate so the DESCRIPTION names the repair; the STATUS and code are shared
+  // because a client branching on which side collided would be making a decision only a human can act on.
+  //
+  // `EmploymentEnded` is 409 rather than 400: the request is well formed and the STATE refuses it.
+  // `UserEmployeeLink.NotFound` is 404 and deliberately not a silent success, so a typo in the tenant user
+  // id cannot look like a completed correction.
+  [Theory]
+  [InlineData("UserEmployeeLink.TenantUserAlreadyLinked", 409)]
+  [InlineData("UserEmployeeLink.EmployeeAlreadyLinked", 409)]
+  [InlineData("UserEmployeeLink.EmploymentEnded", 409)]
+  [InlineData("UserEmployeeLink.NotFound", 404)]
+  [InlineData("UserEmployeeLink.Invalid", 400)]
+  public void The_link_refusals_answer_as_ruled(string code, int status) =>
+    Assert.Equal(status, IdentityAccessApiErrorMapper.Map(new Error(code, "x")).StatusCode);
+
+  // ---- AND THE INVERSION SURVIVES THE MAPPER.
+  //
+  // The handler distinguishes an unknown employee from a terminated one. **A mapper that folded both into
+  // one status would undo that at the last step**, and the administrator would be back to guessing whether
+  // they mistyped an id or named a former employee.
+  [Fact]
+  public void An_unknown_employee_and_a_terminated_one_reach_the_wire_as_different_statuses() =>
+    Assert.NotEqual(
+      IdentityAccessApiErrorMapper.Map(new Error("Common.NotFound", "x")).StatusCode,
+      IdentityAccessApiErrorMapper.Map(new Error("UserEmployeeLink.EmploymentEnded", "x")).StatusCode);
+
   // ---- THE DEFAULT, ASSERTED AS A DEFAULT.
   //
   // A code no arm names must answer 500, not 400: an unmapped code means the table is out of date, and a

@@ -27,6 +27,29 @@ public static class IdentityAccessErrors
   // than here, because a rule that relies on every write path remembering is one nothing catches.
   public static readonly Error InvalidUserEmployeeLink = new("UserEmployeeLink.Invalid", "A user-employee link requires a tenant, a tenant user and an employee.");
 
+  // ---- T-092. THE THREE REFUSALS LINKING CAN GIVE, EACH NAMING A DIFFERENT CONDITION.
+  //
+  // The two unique indexes are what ENFORCE `ADR-030` Decision 3 and they remain the authority. These
+  // exist because a unique violation cannot say WHICH way the collision went, and the two mean different
+  // things to whoever has to fix it: the user is spoken for, or the employee is.
+  public static readonly Error TenantUserAlreadyLinked = new(
+    "UserEmployeeLink.TenantUserAlreadyLinked",
+    "This tenant user is already linked to a different employee. Remove the existing link first.");
+
+  public static readonly Error EmployeeAlreadyLinked = new(
+    "UserEmployeeLink.EmployeeAlreadyLinked",
+    "This employee is already linked to a different tenant user. Remove the existing link first.");
+
+  // Refused rather than allowed: T-090's seam will not resolve a terminated employee, so the link would be
+  // inert from birth and the administrator's act would do nothing they could observe.
+  public static readonly Error EmploymentEnded = new(
+    "UserEmployeeLink.EmploymentEnded",
+    "That employee's employment has ended, so a link would grant nothing.");
+
+  public static readonly Error LinkNotFound = new(
+    "UserEmployeeLink.NotFound",
+    "No link exists for that tenant user.");
+
   public static readonly Error ConcurrencyConflict = new("Persistence.ConcurrencyConflict", "The record was changed by another operation.");
   public static readonly Error UniqueConstraintViolation = new("Persistence.UniqueConstraint", "The requested identity or access value already exists.");
   public static readonly Error WriteFailure = new("Persistence.WriteFailure", "The identity or access change could not be persisted.");

@@ -13,6 +13,8 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.UpdateUsers, "Update tenant user profiles"),
       Define(PlatformPermissionNames.DeactivateUsers, "Deactivate tenant users"),
       Define(PlatformPermissionNames.ReactivateUsers, "Reactivate tenant users"),
+      Define(PlatformPermissionNames.LinkEmployees, "Link a tenant user to an employee record"),
+      Define(PlatformPermissionNames.UnlinkEmployees, "Remove a tenant user's link to an employee record"),
       Define(PlatformPermissionNames.AssignUserRoles, "Assign tenant roles to users"),
       Define(PlatformPermissionNames.RemoveUserRoles, "Remove tenant roles from users"),
       Define(PlatformPermissionNames.ViewRoles, "View tenant roles"),

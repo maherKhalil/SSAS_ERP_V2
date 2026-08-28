@@ -77,6 +77,48 @@ public sealed class PayrollChainSqlServerTests
   private const decimal DailySalaryRate = 100m;
 
   // ================================================================================================
+  // REVERSE AND RERUN (T-114). T-112's FILTERED UNIQUE INDEX, AGAINST A REAL SERVER.
+  // ================================================================================================
+  //
+  // **A filtered unique index is exactly the sort of thing that behaves differently on a real server than
+  // in anyone's head**, and this one has never been exercised. `OD-PAY-0011` ruled reverse-and-rerun; the
+  // constraint refused the rerun half from the day it was written, because it matched any run in any state.
+  //
+  // **Both halves are asserted, and the second is what keeps the fix honest:** a period whose run was
+  // reversed accepts another, and a period with a LIVE run still refuses one. A change that only opened the
+  // first would have re-admitted the two-live-runs case option 3 was rejected for.
+  [Fact]
+  [Trait("Decision", "OD-PAY-0011")]
+  public async Task A_reversed_period_accepts_another_run_and_a_live_one_still_does_not()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync();
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync();
+    await chain.SeedAttendanceAsync();
+    await chain.CloseAttendancePeriodAsync();
+
+    var first = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(first)).IsSuccess);
+    Assert.True((await chain.PostAsync(first)).IsSuccess);
+
+    // ---- WHILE THE FIRST RUN IS LIVE, A SECOND IS REFUSED. The half that must not regress.
+    Assert.True((await chain.TryCreateRunAsync()).IsFailure);
+
+    // ---- REVERSE IT, THROUGH THE REAL HANDLER AND THE REAL LEDGER.
+    Assert.True((await chain.ReverseAsync(first)).IsSuccess);
+    Assert.True((await chain.RunAsync(first)).IsReversed);
+
+    // ---- AND NOW THE PERIOD ACCEPTS A CORRECTION. The half that never worked.
+    var second = await chain.TryCreateRunAsync();
+    Assert.True(second.IsSuccess, second.IsFailure ? second.Error.Message : string.Empty);
+
+    // ---- AND THAT SECOND RUN IS ITSELF LIVE, so a THIRD is refused again.
+    Assert.True((await chain.TryCreateRunAsync()).IsFailure);
+  }
+
+  // ================================================================================================
   // THE PERSON THE RUN USED TO DROP (T-114). T-110's ENTIRE REASON FOR EXISTING.
   // ================================================================================================
   //
@@ -621,6 +663,38 @@ public sealed class PayrollChainSqlServerTests
       return await graph.Post.HandleAsync(new PostPayrollRunCommand(runId));
     }
 
+    // ---- REVERSAL THROUGH THE REAL HANDLER (T-114).
+    public async Task<Result<Guid>> ReverseAsync(Guid runId)
+    {
+      await using var graph = new ChainGraph(this);
+      return await graph.Reverse.HandleAsync(
+        new ReversePayrollRunCommand(runId, PayDate, "chain reversal"));
+    }
+
+    // ---- A RUN CREATED THE WAY THE DATABASE SEES IT (T-114).
+    //
+    // Straight to the aggregate and the context, which is what puts the filtered unique index in the path.
+    // Returns the save's result rather than throwing, because a REFUSAL is the assertion in half the cases.
+    public async Task<Result<Guid>> TryCreateRunAsync()
+    {
+      await using var context = CreateContext();
+
+      var run = PayrollRun.Create(Company, PayrollPeriodId).Value;
+      context.Set<PayrollRun>().Add(run);
+
+      try
+      {
+        await context.SaveChangesAsync();
+        return Result.Success(run.Id);
+      }
+      catch (DbUpdateException)
+      {
+        // The unique index refused it. Reported as a value rather than an exception, so the test asserts
+        // the REFUSAL rather than catching around it.
+        return Result.Failure<Guid>(PayrollErrors.RunAlreadyExistsForPeriod);
+      }
+    }
+
     public async Task<JournalEntry> PostedJournalAsync(Guid runId)
     {
       await using var context = CreateContext();
@@ -707,6 +781,10 @@ public sealed class PayrollChainSqlServerTests
 
         Post = new PostPayrollRunCommandHandler(
           runs, periods, elements, ledger, scope, unitOfWork, currentUser);
+
+        // T-114: the real reversal path, so the run's `ReversedUtc` is stamped by the handler after the
+        // LEDGER has accepted — not by the test reaching into the aggregate.
+        Reverse = new ReversePayrollRunCommandHandler(runs, ledger, scope, unitOfWork);
       }
 
       public CalculatePayrollRunCommandHandler Calculate { get; }
@@ -714,6 +792,8 @@ public sealed class PayrollChainSqlServerTests
       public ApprovePayrollRunCommandHandler Approve { get; }
 
       public PostPayrollRunCommandHandler Post { get; }
+
+      public ReversePayrollRunCommandHandler Reverse { get; }
 
       public async ValueTask DisposeAsync() => await context.DisposeAsync();
     }

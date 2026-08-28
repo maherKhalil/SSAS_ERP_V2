@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using SSAS.BuildingBlocks.Domain;
+using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -267,6 +268,72 @@ public sealed class TenantCutoverFreezeSqlServerTests
     Assert.Equal(0, await fixture.ActiveOperationCountAsync(fixture.TenantA));
   }
 
+  // ================================================================================================
+  // A FAILED POST-CUTOVER OBSERVATION REFUSES THE WRITE (T-135).
+  // ================================================================================================
+  //
+  // **The result of `RecordPostCutoverWriteAsync` was discarded until T-135**, which defeated the reason the
+  // observation is taken at admission at all: the design is deliberately conservative so the platform can
+  // never MISS a write that landed, **and an unread failure is exactly that miss.**
+  //
+  // The consequence is not a lost log line. **That observation decides whether a flipback is safe** — so a
+  // silently-unrecorded write leaves the platform believing the target is untouched, and a flipback would
+  // discard a committed write.
+  //
+  // **Asserted through the real fence over a real connection**, because the refusal happens after the write
+  // admission lock is taken and a test that skipped it would not be exercising this path.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task A_write_is_refused_when_its_post_cutover_observation_cannot_be_recorded()
+  {
+    await using var fixture = await CutoverFixture.CreateAsync();
+
+    var store = new ConflictingObservationStore(fixture.TenantA, fixture.SharedDatabaseId);
+
+    var refused = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
+      () => fixture.AdmitWriteThroughFenceAsync(store, fixture.TenantA, fixture.SharedDatabaseId));
+
+    // The store's own error, not `TenantWritesFrozen`: nothing is frozen, a write lost a race.
+    Assert.Equal(TenantStorageErrors.CutoverConcurrencyConflict, refused.Error);
+    Assert.True(store.RecordWasAttempted);
+  }
+
+  // A gate that permits this write and has never seen one, over a store whose write-once observation loses
+  // its race. Only the two members the fence actually calls are implemented — **the other eight throw
+  // rather than returning empty, so a future fence that starts calling one is loud rather than silently
+  // fenced against nothing.**
+  private sealed class ConflictingObservationStore(Guid tenantId, long tenantDatabaseId)
+    : ITenantCutoverOperationStore
+  {
+    public bool RecordWasAttempted { get; private set; }
+
+    public Task<TenantCutoverWriteGate?> FindActiveWriteGateAsync(
+      Guid requestedTenantId, CancellationToken cancellationToken = default) =>
+      Task.FromResult<TenantCutoverWriteGate?>(new TenantCutoverWriteGate(
+        CutoverOperationId: 1,
+        TenantId: tenantId,
+        SourceTenantDatabaseId: tenantDatabaseId + 1,
+        TargetTenantDatabaseId: tenantDatabaseId,
+        Status: TenantCutoverOperationStatus.RoutingFlipped,
+        PostCutoverWriteObservedUtc: null));
+
+    public Task<Result> RecordPostCutoverWriteAsync(
+      long cutoverOperationId, string actor, CancellationToken cancellationToken = default)
+    {
+      RecordWasAttempted = true;
+      return Task.FromResult(Result.Failure(TenantStorageErrors.CutoverConcurrencyConflict));
+    }
+
+    public Task<Result<long>> BeginAsync(TenantCutoverBeginRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<TenantCutoverOperationRecord?> FindAsync(long cutoverOperationId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<Result> CompleteAsync(long cutoverOperationId, string actor, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<TenantCutoverOperationRecord?> FindActiveForTenantAsync(Guid requestedTenantId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<Result> RequestFreezeAsync(long cutoverOperationId, string actor, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<Result> FreezeAsync(long cutoverOperationId, string actor, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<Result> FailFreezeAsync(long cutoverOperationId, string? failureSummary, string actor, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<Result> ReleaseFreezeAsync(long cutoverOperationId, string? failureSummary, string actor, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+  }
+
   private sealed class CutoverFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -368,6 +435,22 @@ public sealed class TenantCutoverFreezeSqlServerTests
       platform.TenantDatabaseAssignments.Add(assignment);
       await platform.SaveChangesAsync();
       return tenant.Id;
+    }
+
+    // ---- THE REAL FENCE, REAL CONNECTION, CALLER-SUPPLIED STORE (T-135).
+    //
+    // `TenantContext` hardwires the real store, which cannot produce `CutoverConcurrencyConflict` on demand
+    // — it arises from a lost race inside a write-once update. Supplying the store lets the failure be
+    // delivered AT the fence, which is where the behaviour under test lives.
+    public async Task AdmitWriteThroughFenceAsync(
+      ITenantCutoverOperationStore store, Guid tenantId, long tenantDatabaseId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(sharedCatalog));
+      await connection.OpenAsync();
+      await using var transaction = await connection.BeginTransactionAsync();
+
+      await new TenantCutoverWriteFence(store, Options.Create(freeze))
+        .AdmitWriteAsync(tenantId, tenantDatabaseId, connection, transaction);
     }
 
     // ---- THE REAL WRITE BOUNDARY, with the real fence over a real connection.

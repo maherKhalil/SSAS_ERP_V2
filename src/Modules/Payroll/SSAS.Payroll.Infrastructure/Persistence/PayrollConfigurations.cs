@@ -280,11 +280,33 @@ public sealed class PayrollRunConfiguration : IEntityTypeConfiguration<PayrollRu
     builder.Property(run => run.CreatedBy).HasMaxLength(PayrollPersistenceConstants.ActorMaximumLength);
     builder.Property(run => run.ModifiedBy).HasMaxLength(PayrollPersistenceConstants.ActorMaximumLength);
 
-    // One run per company per period. `OD-PAY-0011` ruled correction by reverse-and-rerun rather than by
-    // superseding runs, so two runs claiming one period is never legitimate — and had superseding been ruled
-    // instead, this index could not exist. The lifecycle decision and the schema constraint are the same
-    // decision seen twice.
-    builder.HasIndex(run => new { run.TenantId, run.CompanyId, run.PayrollPeriodId }).IsUnique();
+    // ---- ONE **UNREVERSED** RUN PER COMPANY PER PERIOD (T-112).
+    //
+    // ---- THE INFERENCE THIS COMMENT USED TO MAKE, AND WHY IT WAS WRONG.
+    //
+    // It read: *"`OD-PAY-0011` ruled correction by reverse-and-rerun rather than by superseding runs, so two
+    // runs claiming one period is never legitimate."* **The conclusion does not follow from the premise, and
+    // the option table it cites says so.**
+    //
+    // Option 3 (supersede) was rejected because *"two runs claiming the same period need a rule for which is
+    // authoritative in every read."* **Option 1 — reverse and RUN AGAIN — also produces two runs for the
+    // period.** The difference between the accepted option and the rejected one was never the COUNT of runs;
+    // it is that under option 1 only one of them is LIVE, because the other was reversed.
+    //
+    // **Collapsing "not superseding" into "not two runs" made this constraint enforce the REJECTED option's
+    // prohibition instead of the ACCEPTED option's rule** — and it refused the rerun half of reverse-and-rerun
+    // outright.
+    //
+    // ---- THE FILTER IS THE MISSING RULE.
+    //
+    // *The unreversed run is the authoritative one.* That is the rule option 3 lacked and option 1 has, and
+    // it is now stated to SQL Server rather than assumed. **Superseding stays rejected exactly as ruled:**
+    // two UNREVERSED runs for one period remain impossible.
+    builder.HasIndex(run => new { run.TenantId, run.CompanyId, run.PayrollPeriodId })
+      .IsUnique()
+      .HasFilter("[ReversedUtc] IS NULL");
+
+    builder.Property(run => run.ReversedUtc);
 
     builder.HasMany(run => run.DraftLines)
       .WithOne()

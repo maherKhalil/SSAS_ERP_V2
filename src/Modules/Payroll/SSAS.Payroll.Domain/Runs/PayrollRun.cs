@@ -88,6 +88,50 @@ public sealed class PayrollRun
 
   public DateTimeOffset? PostedUtc { get; private set; }
 
+  // ---- WHEN THIS RUN'S POSTING WAS REVERSED (T-112). `PostedUtc`'s SHAPE EXACTLY.
+  //
+  // A lifecycle timestamp stamped once, on a type that is **mutable for its whole life and deliberately
+  // carries no `IAppendOnlyEntity`** — see the note at the top of this file. `BR-PAY-0011`'s *"never updated
+  // afterwards"* is about the LINES, which ARE append-only, and about not erasing what was attempted.
+  // **Stamping a new fact erases nothing.**
+  //
+  // ---- WHY PAYROLL RECORDS THIS WHEN THE LEDGER ALREADY KNOWS.
+  //
+  // `ReversePayrollRunCommandHandler` used to write nothing here, reasoning that *"marking it reversed would
+  // be a claim the ledger already makes better"* — and that reasoning was right **for GL's purposes**. GL
+  // derives reversal from the reversing entry, and it should.
+  //
+  // **Payroll needs the fact for a different purpose: its own uniqueness rule.** One run per period is
+  // enforced by a unique index, and **a filtered index cannot read another module's table.** Asking GL at
+  // create time would move that authority out of the database into application code, which is the one thing
+  // `PayrollRunConfiguration`'s comment says is load-bearing. So the fact is recorded here, for here.
+  public DateTimeOffset? ReversedUtc { get; private set; }
+
+  public bool IsReversed => ReversedUtc is not null;
+
+  // ---- STAMPED AFTER THE LEDGER HAS ACCEPTED THE REVERSAL, NEVER BEFORE.
+  //
+  // The same discipline `Post` follows: the run records what the ledger DID, so a run cannot claim a
+  // reversal that never posted. The handler calls this only once `ReverseAsync` reports success.
+  //
+  // Refuses a second reversal rather than restamping. A run reversed twice would mean two reversing entries
+  // for one posting, and the second timestamp would quietly overwrite the record of when the first happened.
+  public Result MarkReversed()
+  {
+    if (Status != PayrollRunStatus.Posted || JournalEntryId is null)
+    {
+      return Result.Failure(PayrollErrors.RunNotReversible);
+    }
+
+    if (ReversedUtc is not null)
+    {
+      return Result.Failure(PayrollErrors.RunAlreadyReversed);
+    }
+
+    ReversedUtc = DateTimeOffset.UtcNow;
+    return Result.Success();
+  }
+
   // The journal this run produced, by identifier. **No foreign key to GL's tables** (`DEC-PAY-0008` and the
   // module boundary): a database-level FK would couple the two modules' migrations and make the boundary a
   // fiction at the schema layer even while `ADR-012` held at the assembly layer.

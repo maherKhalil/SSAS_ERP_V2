@@ -607,7 +607,13 @@ public sealed class PostPayrollRunCommandHandler(
 public sealed class ReversePayrollRunCommandHandler(
   IPayrollRunRepository runs,
   IJournalPoster ledger,
-  IPayrollScopeResolver scope)
+  IPayrollScopeResolver scope,
+  // ---- NEW IN T-112, AND ITS ABSENCE UNTIL NOW WAS THE TELL.
+  //
+  // This handler took no unit of work because it wrote nothing: it called the ledger and returned. **A
+  // command handler that persists nothing was the visible shape of the run never recording its own
+  // reversal**, and the comment below claimed a correction workflow that the database refused.
+  ITenantUnitOfWork unitOfWork)
 {
   public async Task<Result<Guid>> HandleAsync(
     ReversePayrollRunCommand command, CancellationToken cancellationToken = default)
@@ -645,13 +651,29 @@ public sealed class ReversePayrollRunCommandHandler(
         : Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal);
     }
 
-    // ---- THE RUN IS NOT MUTATED, AND THAT IS DELIBERATE.
+    // ---- THE RUN KEEPS ITS STATUS AND ITS JOURNAL, AND GAINS ONE FACT (T-112).
     //
-    // The run stays `Posted` and keeps naming its original journal. Marking it "reversed" would be a claim
-    // the ledger already makes better — GL derives reversal from the reversing entry's existence rather than
-    // writing a flag onto the original, because writing one would be mutating an append-only row. Payroll
-    // follows the same discipline: the correction is a NEW run for the same period, and the reversal makes
-    // the ledger truthful in the meantime.
-    return Result.Success(outcome.JournalEntryId!.Value);
+    // **This block used to write nothing**, reasoning that marking the run reversed would duplicate a claim
+    // GL makes better — and that reasoning was right for GL's purposes. It still is: `Status` stays
+    // `Posted`, `JournalEntryId` still names the original, and nothing here restates what the ledger holds.
+    //
+    // **What changed is that PAYROLL needs the fact for a purpose of its own.** One run per period is
+    // enforced by a unique index, and until T-112 that index could not tell a reversed period from a live
+    // one — so *"the correction is a NEW run for the same period"*, which this comment asserted, **was
+    // refused by the database from the day it was written.** `ExistsForPeriodAsync` matched any run in any
+    // state, and no second run for the period could ever be created.
+    //
+    // **A filtered unique index cannot read GL's tables**, so the fact is stamped here and the index filters
+    // on it. The correction really is a new run for the same period now.
+    var reversed = run.MarkReversed();
+    if (reversed.IsFailure)
+    {
+      return Result.Failure<Guid>(reversed.Error);
+    }
+
+    var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
+    return saved.IsFailure
+      ? Result.Failure<Guid>(saved.Error)
+      : Result.Success(outcome.JournalEntryId!.Value);
   }
 }

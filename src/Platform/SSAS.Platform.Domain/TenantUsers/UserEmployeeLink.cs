@@ -66,9 +66,17 @@ namespace SSAS.Platform.Domain.TenantUsers;
 // wrong employee was linked, or a successor replaces a predecessor.
 //
 // **Termination is not such an event.** `REQ-SS-0006` requires the link to survive it, because severing
-// it makes a terminated employee's retained payslips unattributable. The guard on a terminated employee is
-// on the identity's ability to authenticate — **never on the link.** The spec records this in four places
-// because it is the single most likely implementation mistake in the package.
+// it makes a terminated employee's retained payslips unattributable. **Never on the link** — the spec
+// records that in four places because it is the single most likely implementation mistake in the package.
+//
+// ---- WHERE THE GUARD ACTUALLY IS, CORRECTED IN T-090 (`DEC-L-073`).
+//
+// This used to say the guard is *on the identity's ability to authenticate*. That was the intent and it
+// was not the whole answer. **`AC-SS-0012` is closed at the RESOLVER** — `UserEmployeeResolver` refuses to
+// resolve a terminated employee, per request and against live state, because permissions travel in an
+// access token's claims and deactivating an identity cannot close one already issued.
+//
+// The identity guard is real and is `T-091`. **Two guards, neither on the link.**
 public sealed class UserEmployeeLink : Entity<long>, IAuditableEntity
 {
   public const int ActorMaximumLength = 256;

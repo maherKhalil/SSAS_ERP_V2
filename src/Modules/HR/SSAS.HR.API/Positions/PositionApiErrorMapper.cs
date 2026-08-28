@@ -1,5 +1,6 @@
 using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.HR.API.Employees;
 
 namespace SSAS.HR.API.Positions;
 
@@ -199,6 +200,33 @@ public static class PositionApiErrorMapper
       "Persistence.ConcurrencyConflict" => ApiErrors.ConcurrencyConflict,
 
       "Position.InvalidPositionAssignment" => ApiErrors.RequestInvalid,
+
+      // ================================================================================================
+      // TEN `Employee.*` CODES THIS SITE CAN RECEIVE (T-095, `DEC-L-079`).
+      // ================================================================================================
+      //
+      // T-094's derived register found them: this site's routes invoke `ChangeEmployeePositionCommandHandler`
+      // and the position-history read, both of which return `Employee.*` refusals directly. **Until now every
+      // one of them answered `500 request.failed`.**
+      //
+      // ---- THE STATUSES ARE COPIED FROM `EmployeeApiErrorMapper`, NOT CHOSEN HERE.
+      //
+      // `DEC-L-079`: a status is a property of the CODE, not of the SITE. **`Employee.NotFound` answering 404
+      // on an employee route and 500 here is a disclosure and an inconsistency at once** — a caller could
+      // learn which surface refused them from the status alone.
+      //
+      // The CODE STRINGS are reused too: `employee.not_found` on a position route is accurate, because what
+      // was not found is the employee. `Cross_site_agreement` asserts the statuses.
+      "Employee.NotFound" => EmployeeApiErrorMapper.NotFound,
+      "Employee.InvalidTransition" => EmployeeApiErrorMapper.TransitionInvalid,
+      "Employee.CompanyScopeDenied" => EmployeeApiErrorMapper.CompanyScopeDenied,
+      "Employee.BranchScopeDenied" => EmployeeApiErrorMapper.BranchScopeDenied,
+      "Employee.ConcurrencyConflict" => ApiErrors.ConcurrencyConflict,
+      "Employee.InvalidActor" => ApiErrors.Forbidden,
+      "Employee.ReadPermissionDenied" => ApiErrors.Forbidden,
+      "Employee.WritePermissionDenied" => ApiErrors.Forbidden,
+      "Employee.InvalidReadScope" => ApiErrors.RequestInvalid,
+      "Employee.PositionUnchanged" => ApiErrors.RequestInvalid,
 
       // Everything else, including genuine storage and routing failure, keeps server semantics.
       _ => ApiErrors.WriteFailure

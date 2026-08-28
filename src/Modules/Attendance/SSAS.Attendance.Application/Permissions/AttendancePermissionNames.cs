@@ -77,6 +77,24 @@ public static class AttendancePermissionNames
   public const string ViewSensitiveLeave = "Attendance.Leave.ViewSensitive";
 
   // ================================================================================================
+  // SELF-SERVICE (FP-015, T-089). TWO PERMISSIONS, AND THE SECOND ONE IS THE POINT.
+  // ================================================================================================
+  //
+  // **The self plane inherits the administrative plane's divisions.** `ViewRecords` and `ViewLeave` are
+  // separate above for a reason — a timesheet and a leave history disclose different things about a person
+  // — and **a single self permission would grant leave visibility to everyone granted timesheet
+  // visibility.**
+  //
+  // A coarser self permission is a WIDENING wearing the costume of a simplification, and it is the failure
+  // FP-015 was written to prevent: this package's own drafts wrote one permission, and the split was found
+  // by reading the administrative constants rather than the drafts.
+  //
+  // `TS-SS-0013` asserts the consequence directly: records-self does NOT grant leave-self.
+  public const string ViewOwnRecords = "Attendance.Records.ViewOwn";
+
+  public const string ViewOwnLeave = "Attendance.Leave.ViewOwn";
+
+  // ================================================================================================
   // WHAT IS DELIBERATELY ABSENT, AND IT IS NOT AN OVERSIGHT.
   // ================================================================================================
   //

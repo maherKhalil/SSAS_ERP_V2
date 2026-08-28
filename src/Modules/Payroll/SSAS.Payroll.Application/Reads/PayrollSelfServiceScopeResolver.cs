@@ -46,7 +46,7 @@ public sealed class PayrollSelfServiceScopeResolver(
   ICurrentTenantUser currentTenantUser,
   ICurrentUser currentUser,
   IUserEmployeeResolver userEmployees,
-  IEmployeeCompanyDirectory employeeCompanies) : IPayrollSelfServiceScopeResolver
+  IEmployeePlacementDirectory employeePlacements) : IPayrollSelfServiceScopeResolver
 {
   // FOUR STEPS, AND EACH REFUSAL MEANS SOMETHING DIFFERENT: a tenant session, the named permission, the
   // caller's employee, that employee's company. Steps three and four are what replace the company-access
@@ -82,13 +82,13 @@ public sealed class PayrollSelfServiceScopeResolver(
     //
     // **The cost is named rather than hidden: a dangling link is invisible from the wire.** Detecting one
     // is a reconciliation concern belonging to whoever owns the link's lifecycle, not to a read.
-    var companyId = await employeeCompanies.GetCompanyIdAsync(employee, cancellationToken);
-    if (companyId is not { } company)
+    var placement = await employeePlacements.GetPlacementAsync(employee, cancellationToken);
+    if (placement is not { } placed)
     {
       return Result.Failure<OwnEmployeeReadScope>(PayrollErrors.NoLinkedEmployee);
     }
 
-    var scope = PayrollReadScope.Create(tenantId, [company]);
+    var scope = PayrollReadScope.Create(tenantId, [placed.CompanyId]);
 
     return scope is null
       ? Result.Failure<OwnEmployeeReadScope>(PayrollScopeErrors.CompanyScopeDenied)

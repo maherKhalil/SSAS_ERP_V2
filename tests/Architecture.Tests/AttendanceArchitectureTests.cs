@@ -273,45 +273,42 @@ public sealed class AttendanceArchitectureTests
   }
 
   // ================================================================================================
-  // NO ViewOwn PERMISSION EXISTS (AC-ATT-0032, OD-ATT-0013).
+  // THE SELF-SERVICE PERMISSIONS ARE EXACTLY TWO (AC-ATT-0032, OD-ATT-0013).
   // ================================================================================================
   //
-  // ---- THE REASON THIS GUARD WAS WRITTEN FOR HAS EXPIRED. THE ASSERTION HAS NOT (T-083).
+  // ---- WHAT THIS GUARD USED TO ASSERT, AND WHY IT DID NOT SIMPLY GET DELETED (T-089).
   //
-  // It used to read: *"self-service is deferred because it depends on a mapping from the authenticated
-  // identity to an employee record, and this build does not assert such a mapping exists."*
+  // It asserted that NO permission name contained `Own`, `Self` or `Mine`. That absence was correct for as
+  // long as self-service was deferred — first because the identity-to-employee mapping did not exist, then,
+  // after T-082 built it, because FP-015's endpoint did not.
   //
-  // **The mapping now exists** — `UserEmployeeLink`, `ADR-030`, built in T-082 and asserted by
-  // `UserEmployeeLinkSqlServerTests`. What is still absent is FP-015's permission and its endpoint, so
-  // **this assertion stands and the input it was waiting for has arrived.**
+  // **FP-015 has now landed, so the absence is false. The question the guard answers is not.** It was never
+  // really *"is there a self permission"*; it was *"has a self-service surface appeared without a person
+  // deciding its shape"*. **An absence check answers that only until the first one is added, and then it is
+  // deleted and answers nothing ever again.** An exact inventory keeps answering it: the THIRD one still
+  // needs a person, exactly as the first two did.
   //
-  // `PayrollPermissionNames` recorded the same refusal in the same words, and for the same reason: *"Adding
-  // a `Payroll.Payslips.ViewOwn` on an unverified assumption is exactly the shape of the FP-011 near-miss."*
-  // Three consecutive features were shaped by that missing input; the absence of the PERMISSION is still
-  // asserted here rather than merely intended, and that is now the only thing this guard is about.
+  // `DEC-L-072`, applied on the day the door opened — the same move T-088 made for the placement directory's
+  // injection set, and for the same reason.
   //
-  // ---- AND THE OLD REASON EXPIRED IN SILENCE, WHICH IS THE PART WORTH KEEPING.
+  // ---- AND WHY THE INVENTORY IS TWO RATHER THAN ONE.
   //
-  // It was prose, so nothing failed when it stopped being true. **Had it been an assertion — one test that
-  // no Platform-Domain type pairs a user identifier with an employee identifier — T-082 would have
-  // reddened it on the day the mapping landed**, and no sweep would have been needed to find it.
-  // ---- THE NAME ASSERTS WHAT, AND THE REASON LIVES HERE WHERE IT CAN EXPIRE VISIBLY (T-087).
+  // The administrative plane permissions records and leave separately (`Attendance.Records.View` versus
+  // `Attendance.Leave.View`) because a timesheet and a leave history disclose different things. **A single
+  // `Attendance.ViewOwn` would be a WIDENING wearing the costume of a simplification:** granting one's own
+  // attendance would silently grant one's own leave.
   //
-  // It used to be called `..._because_the_subject_cannot_be_resolved`. **The subject can now be resolved**
-  // — `UserEmployeeLink`, `ADR-030`, T-082 — so the name carried a reason that had expired, in the one
-  // place a stale claim is read on every single run.
+  // **Pinning both names is what makes a later collapse into one a visible decision** rather than a
+  // simplification nobody reviewed. `TS-SS-0013` asserts the runtime half — that neither substitutes for
+  // the other at an endpoint — and this asserts the catalog half.
   //
-  // Its neighbours already assert what rather than why (`Every_attendance_permission_follows_the_three_part_grammar`),
-  // and a reason in a name cannot be corrected without changing every citation of it. **In a comment it can
-  // expire and be fixed in one place; in an identifier it cannot.**
-  //
-  // **The durable handle is `AC-ATT-0032`, not this method.** `AC-` identifiers survive refactors and are
-  // what the traceability matrix, the feature package and the specification prose all cite; a test name
-  // changes whenever the thing it describes does, which is exactly what happened here.
+  // **The durable handle is `AC-ATT-0032`, not this method name.** `AC-` identifiers survive refactors and
+  // are what the traceability matrix and specification prose cite; a test name changes whenever the thing
+  // it describes does, which is exactly what happened here, twice.
   [Fact]
   [Trait("Criterion", "AC-ATT-0032")]
   [Trait("Decision", "OD-ATT-0013")]
-  public void No_self_service_permission_is_declared()
+  public void The_self_service_permissions_are_exactly_the_two_that_were_decided()
   {
     var constants = typeof(SSAS.Attendance.Application.Permissions.AttendancePermissionNames)
       .GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -319,10 +316,17 @@ public sealed class AttendanceArchitectureTests
       .Select(field => (string)field.GetRawConstantValue()!)
       .ToArray();
 
-    Assert.DoesNotContain(constants, name =>
-      name.Contains("Own", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("Self", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("Mine", StringComparison.OrdinalIgnoreCase));
+    string[] expectedSelfService = ["Attendance.Leave.ViewOwn", "Attendance.Records.ViewOwn"];
+
+    var actualSelfService = constants
+      .Where(name =>
+        name.Contains("Own", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Self", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Mine", StringComparison.OrdinalIgnoreCase))
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Equal(expectedSelfService, actualSelfService);
 
     // And the catalog contributor defines exactly the constants that exist — no more, no fewer. A
     // permission an endpoint requires but the catalog omits refuses every caller, which is FP-006P's

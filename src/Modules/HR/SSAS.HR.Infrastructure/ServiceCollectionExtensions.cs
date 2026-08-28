@@ -42,7 +42,7 @@ services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeRoster, EmployeeRosterS
     // The FOURTH (FP-015, T-088). Employee-first, and deliberately the only one of the four that applies no
     // company authorization — the caller is an employee reading their own record, and requiring a
     // company-access grant would refuse exactly the caller it exists for.
-    services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeCompanyDirectory, EmployeeCompanyDirectoryService>();
+    services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeePlacementDirectory, EmployeePlacementDirectoryService>();
 
 
 services.AddScoped<IEmployeeRepository, EmployeeRepository>();

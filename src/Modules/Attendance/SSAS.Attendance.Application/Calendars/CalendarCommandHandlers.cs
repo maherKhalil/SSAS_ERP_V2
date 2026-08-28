@@ -167,6 +167,20 @@ public sealed class RemoveHolidayCommandHandler(
       return authorized;
     }
 
+    // ---- THE ROW IS DELETED EXPLICITLY, BEFORE THE AGGREGATE DROPS IT (FP-013 follow-up).
+    //
+    // The platform sets every foreign key to `Restrict` after the module contributors run, so this
+    // module's configured cascade never applies: a holiday removed from the collection would be an orphan
+    // nothing deletes, against a non-nullable foreign key EF cannot null.
+    //
+    // Found by looking rather than by failing — Payroll and GL carry the identical defect, and this module
+    // was written after both of them and inherited it from the same misleading comment.
+    var holiday = calendar.Holidays.FirstOrDefault(candidate => candidate.HolidayDate == command.HolidayDate);
+    if (holiday is not null)
+    {
+      await calendars.RemoveHolidayAsync(holiday, cancellationToken);
+    }
+
     var removed = calendar.RemoveHoliday(command.HolidayDate);
     if (removed.IsFailure)
     {

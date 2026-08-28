@@ -99,6 +99,28 @@ public interface IPayrollRunRepository
 
   Task AddAsync(PayrollRun run, CancellationToken cancellationToken = default);
 
+  // ================================================================================================
+  // RECALCULATION DELETES THE OLD DRAFT LINES EXPLICITLY, BECAUSE THE PLATFORM FORBIDS CASCADES.
+  // ================================================================================================
+  //
+  // `PayrollRunConfiguration` asks for `DeleteBehavior.Cascade` on this relationship and does not get it.
+  // `PersistenceDbContext.OnModelCreating` ends by setting EVERY foreign key in the composed model to
+  // `DeleteBehavior.Restrict`, and it runs AFTER the module contributors — deliberate platform policy, no
+  // silent cascades anywhere in a multi-tenant model, named by `TenantDbContext` where the contributors are
+  // applied.
+  //
+  // So `SetCalculation`'s `draftLines.Clear()` orphans rows the database will not delete and EF cannot null
+  // (the foreign key is non-nullable), and the save fails with "the association ... has been severed".
+  // **Recalculating a payroll run was broken on main**, and nothing saw it because nothing had ever
+  // recalculated a run loaded from a database.
+  //
+  // Explicit removal rather than an exception carved out of the platform's stance: visible at the call
+  // site, testable, and it leaves the foreign key `Restrict` — now truthfully so rather than as a
+  // configuration quietly overruled.
+  //
+  // The domain stays EF-ignorant. `PayrollRun` knows nothing about this; the handler orders it.
+  Task RemoveDraftLinesAsync(PayrollRun run, CancellationToken cancellationToken = default);
+
   // ---- THE THREE LOADERS ARE SEPARATE ON PURPOSE.
   //
   // A single `GetAsync` that always included both line sets would load an entire company's approved pay

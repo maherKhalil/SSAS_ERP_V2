@@ -24,6 +24,21 @@ public interface IWorkingCalendarRepository
   Task<bool> NameExistsAsync(Guid companyId, string normalizedName, CancellationToken cancellationToken = default);
 
   Task AddAsync(WorkingCalendar calendar, CancellationToken cancellationToken = default);
+
+  // ================================================================================================
+  // REMOVING A HOLIDAY DELETES THE ROW EXPLICITLY (FP-013 follow-up).
+  // ================================================================================================
+  //
+  // `WorkingCalendar.RemoveHoliday` takes the holiday out of the collection, and
+  // `WorkingCalendarConfiguration` asks for `DeleteBehavior.Cascade` and does not get it:
+  // `PersistenceDbContext.OnModelCreating` sets EVERY foreign key in the composed model to `Restrict` AFTER
+  // the module contributors run. Deliberate platform policy — no silent cascades in a multi-tenant model —
+  // and `TenantDbContext` names it where the contributors are applied.
+  //
+  // So a removed holiday is an orphan nothing deletes, against a non-nullable foreign key EF cannot null,
+  // and the save fails. **The same defect Payroll and GL carry, in the module written after both of them**
+  // — which is how a convention that lives only in comments spreads instead of being enforced.
+  Task RemoveHolidayAsync(CalendarHoliday holiday, CancellationToken cancellationToken = default);
 }
 
 public interface IAttendancePeriodRepository

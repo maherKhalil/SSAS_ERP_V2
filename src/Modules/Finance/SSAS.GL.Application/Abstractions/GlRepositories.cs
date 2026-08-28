@@ -61,6 +61,25 @@ public interface IJournalDraftRepository
   // `OD-GL-0007` chose two aggregates precisely so discarding one could be an ordinary delete rather than a
   // hole in the append-only guarantee.
   void Remove(JournalDraft draft);
+
+  // ================================================================================================
+  // REPLACING A DRAFT'S LINES DELETES THE OLD ONES EXPLICITLY (FP-013 follow-up).
+  // ================================================================================================
+  //
+  // The same defect FP-013's chain test found in Payroll, in the same shape here. `JournalDraft.ReplaceLines`
+  // does `lines.Clear()`, and `JournalDraftConfiguration` asks for `DeleteBehavior.Cascade` and does not get
+  // it: `PersistenceDbContext.OnModelCreating` sets EVERY foreign key in the composed model to `Restrict`
+  // AFTER the module contributors run. Deliberate platform policy — no silent cascades in a multi-tenant
+  // model — and `TenantDbContext` names it where the contributors are applied.
+  //
+  // So updating a draft that already HAS lines orphans rows nothing deletes, against a non-nullable foreign
+  // key EF cannot null, and the save fails.
+  //
+  // **This was never observed because GL's update path has never been driven against real SQL through its
+  // real handler** — the same blind spot that hid Payroll's, found by looking rather than by failing.
+  // `GlJournalPoster` is unaffected: the draft it builds is transient and never tracked, so it has no old
+  // lines to orphan.
+  Task RemoveLinesAsync(JournalDraft draft, CancellationToken cancellationToken = default);
 }
 
 public interface IJournalEntryRepository

@@ -11,8 +11,8 @@ preference but a missing input, and is the most important thing in this document
 
 ## The self-service problem, verified rather than assumed
 
-`REQ-ATT-0023` proposes that an employee may read their own attendance and leave records. It is the most
-obviously desirable requirement in the package, and **it is not implementable today.**
+`REQ-ATT-0023` proposes that an employee may read their own attendance and leave records. It was the most
+obviously desirable requirement in the package, and **it was delivered under FP-015 in T-089.** The refusal quoted below is preserved as the state it described, not the state today.
 
 `PayrollPermissionNames` says why, and it says it as a deliberate refusal:
 

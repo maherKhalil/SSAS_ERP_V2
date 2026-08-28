@@ -89,7 +89,7 @@ and `DEC-ATT-0014`, and to `TS-ATT-0018`, `TS-ATT-0025`, `TS-ATT-0026`, `TS-ATT-
 | `OD-ATT-0010` close discipline | `REQ-ATT-0021`; whether Payroll can read an open period |
 | **`OD-ATT-0011` branch** | every table, the read scope, the calendar, the contract grain |
 | **`OD-ATT-0012` corrections** | `REQ-ATT-0019`; **the aggregate split**, and the attendance-record unique index |
-| `OD-ATT-0013` read permissions | `REQ-ATT-0023`, `REQ-ATT-0024`, `REQ-ATT-0025`; the self-service blocker |
+| `OD-ATT-0013` read permissions | `REQ-ATT-0023`, `REQ-ATT-0024`, `REQ-ATT-0025`; self-service delivered under FP-015 (T-089) |
 | `OD-ATT-0014` module home | project layout; moves with `OD-ATT-0002`(1) |
 | `OD-ATT-0015` `OD-PAY-0007` reopen | nothing in this package — **it moves Payroll** |
 | `OD-ATT-0016` device integration | `OD-ATT-0003`'s shape if ruled in |

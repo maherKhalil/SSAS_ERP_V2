@@ -33,6 +33,18 @@ would not.
 
 ## HTTP surface
 
+> **Reconciled 2026-08-28 (T-100) after a route inventory found SIX divergences from the shipped module.**
+> This block was written as a proposal and the module shipped; nothing compared the two until
+> `AttendanceRouteInventoryTests` was built in T-099.
+>
+> **Five are corrected below and one is preserved.** Two paths here carried an `{id}` the live routes do not
+> take; three routes were built after this proposal and never added. **`POST /records/bulk` was specified
+> and never built — it is KEPT, marked, because deleting it would retire a recorded intention silently, and
+> this document is the only place it exists.**
+>
+> The divergences and their date are stated rather than quietly fixed: **a document reconciled to code
+> without saying so teaches nobody that it drifted**, and the drift is the finding.
+
 ### Working calendar — all scopes
 
 ```
@@ -41,7 +53,7 @@ POST   /api/attendance/calendars                      Attendance.Calendars.Manag
 PUT    /api/attendance/calendars/{id}                 Attendance.Calendars.Manage
 POST   /api/attendance/calendars/{id}/holidays        Attendance.Calendars.Manage
 POST   /api/attendance/calendars/{id}/holidays/remove Attendance.Calendars.Manage
-GET    /api/attendance/calendars/{id}/working-days    Attendance.Calendars.View
+GET    /api/attendance/calendars/working-days         Attendance.Calendars.View
 ```
 
 `holidays/remove` as a **POST**, not `DELETE`, following HR's `manager/remove`: removing a holiday is a
@@ -50,13 +62,27 @@ dated change to a maintained list, and the codebase already spells that as a nam
 `working-days` is the query `REQ-ATT-0003` requires, exposed because clients need the same answer the domain
 uses — a client computing working days itself would drift from the server the first time a holiday moved.
 
+**The path carries no calendar id (corrected T-100).** This block proposed
+`/calendars/{id}/working-days`; the shipped route is `/calendars/working-days` and takes the company and the
+date range as query parameters, because the calendar that applies is resolved from the company rather than
+named by the caller.
+
 ### Attendance records — scope A and C
 
 ```
 GET    /api/attendance/records                        Attendance.Records.View
 POST   /api/attendance/records                        Attendance.Records.Manage
-POST   /api/attendance/records/bulk                   Attendance.Records.Manage
+POST   /api/attendance/records/{id}/adjustments       Attendance.Records.Manage   [added T-100 — shipped under OD-ATT-0012]
+POST   /api/attendance/records/bulk                   Attendance.Records.Manage   [SPECIFIED, NEVER BUILT — see below]
 ```
+
+**`/records/{id}/adjustments` is `OD-ATT-0012`'s answer, and this block predates it.** The ruling made a
+correction an APPENDED ADJUSTMENT rather than an amendment, so the route exists and the absent `PUT` below
+is the other half of the same decision.
+
+**`/records/bulk` was specified here and never built.** It is kept rather than deleted: this document is the
+only record that it was intended, and removing it would retire the intention with no trace. **Whether it is
+still wanted is the owner's call, not this reconciliation's.**
 
 **No `PUT` and no `DELETE`, deliberately.** Whether a correction is an amendment or an appended adjustment is
 `OD-ATT-0012`, and the absent verbs are that ruling made visible in the surface rather than a rule someone
@@ -97,8 +123,28 @@ POST   /api/attendance/leave-requests/{id}/reject     Attendance.Leave.Approve
 POST   /api/attendance/leave-requests/{id}/cancel     Attendance.Leave.Manage
 
 GET    /api/attendance/leave-balances                 Attendance.Leave.View
-PUT    /api/attendance/leave-balances/{id}            Attendance.Leave.Manage   [administered only]
+PUT    /api/attendance/leave-balances                 Attendance.Leave.Manage   [administered only — path corrected T-100]
 ```
+
+### Self-service — added T-100, shipped under FP-015
+
+```
+GET    /api/attendance/me/records                     Attendance.Records.ViewOwn   [added T-100 — FP-015 / T-089]
+GET    /api/attendance/me/leave-requests              Attendance.Leave.ViewOwn     [added T-100 — FP-015 / T-089]
+```
+
+**Two routes and two permissions, mirroring the administrative split.** Records are permissioned separately
+from leave above because a timesheet and a leave history disclose different things, and the self plane
+inherits that: **a single `Attendance.ViewOwn` would be a widening wearing the costume of a simplification**,
+granting sight of one's own attendance and silently granting sight of one's own leave.
+
+**Neither route names an employee on any surface** — not on the path, not in query, header or body. The
+subject is resolved from the caller's own identity through `UserEmployeeLink`, which is the mapping the note
+below anticipated.
+
+**These postdate this proposal**, which is why the note below still reads as though no route reads the
+mapping. It is left standing and answered rather than rewritten: the anticipation was correct and naming
+that is worth more than tidying it away.
 
 **No `code` on the leave-type update request** — the code is immutable from creation, following `Account`
 and `PayElement`, so the wire shape has no field for it and a caller who sends one gets a 400 rather than a
@@ -113,6 +159,12 @@ that would let an approver change what they are approving at the moment of appro
 `employeeId` in the body is therefore mandatory, not inferred. **If the mapping is later created, that field
 becomes optional and the route gains a self-service meaning** — a change worth anticipating rather than
 retrofitting.
+
+**What actually happened (T-100, recording it rather than editing the paragraph above).** The mapping was
+built in T-082 and self-service arrived in T-089 — but **not by relaxing `employeeId` on this route.** It
+arrived as the two separate `/me/` routes above, carrying their own permissions, because a route that infers
+its subject when a field is absent and accepts one when it is present is two authorization rules wearing one
+contract. `POST /leave-requests` is still the administrator's route and its `employeeId` is still mandatory.
 
 ---
 

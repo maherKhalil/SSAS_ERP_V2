@@ -169,6 +169,18 @@ public static class PayrollErrors
     "Payroll.RunAlreadyReversed",
     "This payroll run has already been reversed.");
 
+  // ---- AN EMPLOYEE'S ATTENDANCE DISAGREES WITH THEIR EMPLOYMENT DATES (T-121).
+  //
+  // Work recorded on days they were not employed. **Either they worked and the termination date is wrong,
+  // or they did not and the record is** — and neither module can tell which, so neither chooses.
+  //
+  // It fails the RUN rather than the employee, on the same reasoning as `DailySalaryHasNoWorkingDays`: a
+  // run that silently omitted or inflated one person's pay would be discovered on payday.
+  public static readonly Error AttendanceContradictsEmployment = new(
+    "Payroll.AttendanceContradictsEmployment",
+    "An employee has attendance recorded on days they were not employed. Correct the attendance records or "
+    + "the employment dates before calculating this run.");
+
   public static readonly Error UnbalancedPosting = new(
     "Payroll.UnbalancedPosting",
     "The calculated run does not produce a balanced journal, which is a calculation defect rather than a user error.");

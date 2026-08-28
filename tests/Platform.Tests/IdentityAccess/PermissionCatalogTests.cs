@@ -13,6 +13,8 @@ public sealed class PermissionCatalogTests
     { "Platform.Users.Update", "Update tenant user profiles" },
     { "Platform.Users.Deactivate", "Deactivate tenant users" },
     { "Platform.Users.Reactivate", "Reactivate tenant users" },
+    { "Platform.EmployeeLinks.Link", "Link a tenant user to an employee record" },
+    { "Platform.EmployeeLinks.Unlink", "Remove a tenant user's link to an employee record" },
     { "Platform.UserRoles.Assign", "Assign tenant roles to users" },
     { "Platform.UserRoles.Remove", "Remove tenant roles from users" },
     { "Platform.Roles.View", "View tenant roles" },
@@ -94,8 +96,17 @@ public sealed class PermissionCatalogTests
     // administering itself, as opposed to the PlatformSupport-scoped family below, which is cross-tenant
     // authority and is never assignable to a tenant role. The count is asserted so a new permission cannot
     // enter the catalog without someone deciding which plane it belongs to.
-    Assert.Equal(26, identifiers.Length);
-    Assert.Equal(22, catalog.All.Count(item => item.Scope == PermissionScope.Tenant));
+    //
+    // ---- 28 SINCE T-092, AND THE GUARD DID EXACTLY WHAT IT IS FOR.
+    //
+    // `Platform.EmployeeLinks.Link` and `.Unlink` are TENANT scope: linking a tenant's user to that
+    // tenant's employee is a tenant administering itself, and the row is keyed by tenant. **Nothing here
+    // is cross-tenant authority**, so neither belongs in the PlatformSupport family.
+    //
+    // A PAIR rather than one, because creating an access mapping and destroying one are different
+    // decisions — and the link decides whose payslips a login can read.
+    Assert.Equal(28, identifiers.Length);
+    Assert.Equal(24, catalog.All.Count(item => item.Scope == PermissionScope.Tenant));
     Assert.Equal(4, catalog.All.Count(item => item.Scope == PermissionScope.PlatformSupport));
 
     // The platform-plane (PlatformSupport) family is exactly the tenant-admin permissions plus the

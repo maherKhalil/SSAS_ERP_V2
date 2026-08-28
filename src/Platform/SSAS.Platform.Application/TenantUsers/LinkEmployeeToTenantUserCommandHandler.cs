@@ -40,13 +40,32 @@ public sealed record LinkEmployeeToTenantUserCommand(long TenantUserId, Guid Emp
 // hide a destructive act inside a creative one, and reassigning which employee a login maps to would
 // appear in an audit trail as "create a link." Given the link decides whose payslips a login can read,
 // that act has to be nameable: it is `POST .../employee-link/remove` followed by a link.
+//
+// ---- THE STANDING DIRECTORY IS OPTIONAL, AND THE THIRD TIME THE CONTAINER HAS SAID SO.
+//
+// Required, it broke the two Platform-support end-to-end hosts, which mount Platform with NO module
+// registered — so nothing implements an HR-owned contract. **Platform sits beneath the modules and has to
+// stand up without them**; T-090 learned this for `UserEmployeeResolver` and T-091 for the deactivator.
+//
+// ---- BUT THE RESOLUTION IS NOT AUTOMATICALLY THE SAME, AND HERE IS WHY IT IS.
+//
+// T-091 made `ITenantUserDeactivator` REQUIRED, because an absent deactivator would have meant *skip the
+// guard* — fail OPEN. **The question is never "what did the last task do"; it is what ABSENCE MEANS.**
+//
+// Here absence means *no HR module, therefore no employees, therefore nothing to link*. An absent
+// directory is treated as `Unknown` and every link is refused — fail CLOSED, and the same answer a
+// present directory gives for an employee that does not exist.
+//
+// **What it costs, named: a host misconfigured without HR reports every link attempt as "employee not
+// found" rather than as a missing module.** Diagnosable — nothing can be linked at all — and the
+// alternative was writing rows whose subject nobody verified.
 public sealed class LinkEmployeeToTenantUserCommandHandler(
   IUserEmployeeLinkRepository links,
   ITenantUserRepository tenantUsers,
-  IEmploymentStandingDirectory employmentStanding,
   IPlatformUnitOfWork unitOfWork,
   ICurrentTenant currentTenant,
-  ICurrentUser currentUser)
+  ICurrentUser currentUser,
+  IEmploymentStandingDirectory? employmentStanding = null)
 {
   public async Task<Result> HandleAsync(
     LinkEmployeeToTenantUserCommand command, CancellationToken cancellationToken = default)
@@ -93,7 +112,10 @@ public sealed class LinkEmployeeToTenantUserCommandHandler(
     //
     // **Do NOT "fix" this to match the seam.** The collapse is right there and wrong here, and the reason
     // is who is asking.
-    var standing = await employmentStanding.GetStandingAsync(command.EmployeeId, cancellationToken);
+    var standing = employmentStanding is null
+      ? EmploymentStanding.Unknown
+      : await employmentStanding.GetStandingAsync(command.EmployeeId, cancellationToken);
+
     if (standing == EmploymentStanding.Unknown)
     {
       return Result.Failure(IdentityAccessErrors.NotFound);

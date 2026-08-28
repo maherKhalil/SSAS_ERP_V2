@@ -175,6 +175,31 @@ public sealed class UserEmployeeLinkWriterTests
     Assert.Equal(0, world.UnitOfWork.SaveCount);
   }
 
+  // ================================================================================================
+  // NO STANDING DIRECTORY AT ALL REFUSES — THE FAIL-CLOSED HALF OF AN OPTIONAL DEPENDENCY.
+  // ================================================================================================
+  //
+  // The directory is optional because Platform must stand up with no module registered; the two
+  // Platform-support hosts proved it by failing DI validation when it was required.
+  //
+  // **An optional dependency is a fail-open waiting to happen unless the absent case is a test.** Absence
+  // means no HR, therefore no employees, therefore nothing to link — so every link is refused, and the row
+  // whose subject nobody could verify is never written.
+  //
+  // T-091 made its equivalent REQUIRED, because there absence would have meant *skip the guard*. The
+  // question is what absence MEANS, not what the previous task chose.
+  [Fact]
+  public async Task A_handler_with_no_standing_directory_refuses_without_writing()
+  {
+    var world = new World();
+
+    var result = await world.Link(withStanding: false).HandleAsync(Command());
+
+    Assert.True(result.IsFailure);
+    Assert.Empty(world.Links.Added);
+    Assert.Equal(0, world.UnitOfWork.SaveCount);
+  }
+
   private static LinkEmployeeToTenantUserCommand Command() => new(World.TenantUserId, EmployeeId);
 
   private static UserEmployeeLink NewLink(Guid employeeId) =>
@@ -190,9 +215,9 @@ public sealed class UserEmployeeLinkWriterTests
 
     public RecordingUnitOfWork UnitOfWork { get; } = new();
 
-    public LinkEmployeeToTenantUserCommandHandler Link() => new(
-      Links, new SingleUser(NewTenantUser(status)), Standing, UnitOfWork,
-      new FixedTenant(), new FixedUser());
+    public LinkEmployeeToTenantUserCommandHandler Link(bool withStanding = true) => new(
+      Links, new SingleUser(NewTenantUser(status)), UnitOfWork,
+      new FixedTenant(), new FixedUser(), withStanding ? Standing : null);
 
     public UnlinkEmployeeFromTenantUserCommandHandler Unlink() => new(
       Links, UnitOfWork, new FixedTenant(), new FixedUser());

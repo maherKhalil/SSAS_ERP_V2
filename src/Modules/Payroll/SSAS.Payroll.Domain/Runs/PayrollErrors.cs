@@ -127,6 +127,23 @@ public static class PayrollErrors
     "Payroll.NoIncludedEmployees",
     "No employee was employed during this period, so there is nothing to calculate.");
 
+  // ---- A DAILY SALARY HAS NO INPUT YET (T-107).
+  //
+  // `SalaryType.Daily` needs a COUNT OF DAYS WORKED. `AttendanceSummaryResult` reports worked HOURS,
+  // overtime hours by tier, and paid/unpaid absence in DAYS — and no count of days worked at all.
+  //
+  // **Every way to derive one is a rule nobody has ruled.** Calendar days minus unpaid absence counts
+  // weekends as worked; hours divided by a standard day length requires a standard day the product does not
+  // define. So this REFUSES rather than guessing: `DEC-PAY-0002`'s reasoning — a behaviour whose input does
+  // not exist must not be declared — applied to the one salary type whose input still does not.
+  //
+  // It fails the whole run rather than the employee, deliberately. A run that silently omitted one person's
+  // pay would be discovered on payday.
+  public static readonly Error DailySalaryHasNoWorkedDayCount = new(
+    "Payroll.DailySalaryHasNoWorkedDayCount",
+    "An employee is on a daily salary, but Attendance reports no count of days worked. "
+    + "Daily salaries cannot be calculated until it does.");
+
   public static readonly Error UnbalancedPosting = new(
     "Payroll.UnbalancedPosting",
     "The calculated run does not produce a balanced journal, which is a calculation defect rather than a user error.");

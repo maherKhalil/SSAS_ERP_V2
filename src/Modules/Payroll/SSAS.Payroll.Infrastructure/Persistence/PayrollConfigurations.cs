@@ -106,6 +106,13 @@ public sealed class EmployeeCompensationConfiguration : IEntityTypeConfiguration
       .HasPrecision(PayrollPersistenceConstants.MoneyPrecision, PayrollPersistenceConstants.MoneyScale)
       .IsRequired();
 
+    // ---- SALARY TYPE (T-107). Stored as the enum's int, and 0 IS Monthly.
+    //
+    // Every row written before this column existed reads back as 0, which is `SalaryType.Monthly` — the
+    // value they already were. That is why the enum's zero is Monthly rather than alphabetical or
+    // "unspecified": an unspecified default would have made every historical row refuse to calculate.
+    builder.Property(record => record.SalaryType).IsRequired();
+
     builder.Property(record => record.WasOutsideGradeBand).IsRequired();
     builder.Property(record => record.GradeBandObservation)
       .HasMaxLength(PayrollPersistenceConstants.ObservationMaximumLength);

@@ -54,6 +54,20 @@ public sealed class EmploymentTypeAssumptionTests
   // no other factor, so a part-timer's pay is correct **only if a human encoded the ratio into
   // `BaseAmount`** — and nothing records that they did. A 0.6 FTE employee on a full-time figure and
   // a full-time employee are identical to every query in the system.
+  //
+  // ---- THIS GUARD FIRED IN T-107, AND HERE IS THE ANSWER IT ASKED FOR.
+  //
+  // `WorkedQuantity` was added as a component. **It is not a ratio, a schedule or a policy: it is
+  // HOURS ACTUALLY ATTENDED, an observed quantity rather than a contractual dimension.** It says what
+  // someone did, never what they were engaged to do — 0.6 FTE and a full-timer who took two weeks off
+  // produce the same number, which is precisely why it cannot express the thing this guard watches for.
+  //
+  // **And it narrows what is at stake above, for one salary type only.** An `Hourly` employee's pay is
+  // `rate x hours attended`, so a part-timer is paid correctly BY CONSTRUCTION and no human has to
+  // encode a ratio anywhere. `Monthly` is unchanged and the paragraph above still describes it exactly.
+  //
+  // The assertion stays EXACT-EQUALITY. Relaxing it to "contains" would answer this question once and
+  // never ask it again, which is the whole value of a tripwire that fires on any shape change.
   // ================================================================================================
   [Fact]
   public void Payroll_input_cannot_express_a_working_ratio_or_a_schedule()
@@ -61,7 +75,7 @@ public sealed class EmploymentTypeAssumptionTests
     string[] expected =
     [
       "EmployeeId", "HiredUtc", "TerminatedUtc",
-      "Compensation", "OvertimeQuantityByTier", "UnpaidAbsenceQuantity"
+      "Compensation", "OvertimeQuantityByTier", "UnpaidAbsenceQuantity", "WorkedQuantity"
     ];
 
     Assert.Equal(expected, ComponentsOf(typeof(PayrollEmployeeInput)));

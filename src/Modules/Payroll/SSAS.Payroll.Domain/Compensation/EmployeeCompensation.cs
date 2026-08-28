@@ -27,6 +27,31 @@ namespace SSAS.Payroll.Domain.Compensation;
 // **There is no `RowVersion` either**, and that is not an omission. A history row is never updated, so there
 // is no concurrent update for a version to detect. `RowVersion` belongs on mutable aggregates
 // (`DEC-PAY-0009`), and putting one here would advertise an update path that does not exist.
+// ---- HOW A BASE AMOUNT IS APPLIED TO A PERIOD (T-107).
+//
+// **All three are RATES applied to a period.** `Monthly` is an amount FOR the period, prorated by the
+// employee's calendar days in it; `Daily` and `Hourly` are amounts PER UNIT, multiplied by the quantity
+// Attendance reports. The difference is not cosmetic — proration and the unpaid-absence deduction belong to
+// the first and DOUBLE-COUNT against the other two, because a rate times a worked quantity already reflects
+// what was and was not worked.
+//
+// **A one-time payment is deliberately NOT here.** It is an EVENT, not a rate applied to a period, and this
+// aggregate has no `EffectiveToUtc` and no `IsCurrent` by design — *"the end of one record is the start of
+// the next"* (see the note above). A one-time payment has no next record, so it would recur in every period
+// forever. Forcing it in means adding the exact field the design refused, which is how a deliberate absence
+// becomes an accident. It is its own instruction with its own lifecycle (T-108).
+public enum SalaryType
+{
+  // ZERO IS MONTHLY AND THAT IS LOAD-BEARING. Every compensation record written before T-107 is monthly by
+  // construction, and `default` must mean what they already are — an unmapped column reading back as 0 is
+  // the only value that leaves an existing calculation unchanged.
+  Monthly = 0,
+
+  Daily = 1,
+
+  Hourly = 2
+}
+
 public sealed class EmployeeCompensation
   : AggregateRoot<Guid>, IAuditableEntity, ITenantOwnedEntity, ICompanyOwnedEntity
 {
@@ -37,13 +62,15 @@ public sealed class EmployeeCompensation
     Guid companyId,
     Guid employeeId,
     DateTimeOffset effectiveFromUtc,
-    decimal baseAmount)
+    decimal baseAmount,
+    SalaryType salaryType)
     : base(id)
   {
     CompanyId = companyId;
     EmployeeId = employeeId;
     EffectiveFromUtc = effectiveFromUtc;
     BaseAmount = baseAmount;
+    SalaryType = salaryType;
   }
 
   // EF materialization only.
@@ -67,6 +94,14 @@ public sealed class EmployeeCompensation
 
   // `decimal(19,4)` at rest (`ADR-027`, `DEC-PAY-0004`). Always positive.
   public decimal BaseAmount { get; private set; }
+
+  // ---- WHAT `BaseAmount` MEANS (T-107).
+  //
+  // The amount alone is ambiguous: 5000 is a month's salary or an hour's rate depending entirely on this.
+  // **Effective-dated for free** — moving an employee from monthly to hourly writes a NEW record, so the
+  // history of what they were paid AND how it was computed both survive, which is the whole reason
+  // `DEC-POS-0023` put pay here rather than on `Employee`.
+  public SalaryType SalaryType { get; private set; }
 
   // ---- THE BAND OBSERVATION (REQ-PAY-0006, OD-PAY-0004, RULED option 1: INFORMATIONAL).
   //
@@ -97,7 +132,9 @@ public sealed class EmployeeCompensation
     Guid employeeId,
     DateTimeOffset effectiveFromUtc,
     decimal baseAmount,
-    IReadOnlyList<(Guid PayElementId, decimal? RateOrAmount)>? assignments = null)
+    IReadOnlyList<(Guid PayElementId, decimal? RateOrAmount)>? assignments = null,
+    // DEFAULTED, so every existing call site keeps its meaning rather than being edited to restate it.
+    SalaryType salaryType = SalaryType.Monthly)
   {
     if (companyId == Guid.Empty)
     {
@@ -115,7 +152,7 @@ public sealed class EmployeeCompensation
     }
 
     var compensation = new EmployeeCompensation(
-      Guid.NewGuid(), companyId, employeeId, effectiveFromUtc.ToUniversalTime(), baseAmount);
+      Guid.NewGuid(), companyId, employeeId, effectiveFromUtc.ToUniversalTime(), baseAmount, salaryType);
 
     foreach (var (payElementId, rateOrAmount) in assignments ?? [])
     {

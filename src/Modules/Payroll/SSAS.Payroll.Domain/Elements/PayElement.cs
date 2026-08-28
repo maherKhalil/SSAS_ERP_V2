@@ -26,9 +26,22 @@ public enum PayElementKind
 // This enum is the boundary `OD-PAY-0006` drew. A tenant chooses one; nobody adds one without shipping code
 // to implement it, which is precisely the point.
 //
-// **`DEC-PAY-0002` is why the set stops here.** There is no `PerHour`, no `PerDayAbsent` and no
-// `OvertimeMultiple`, because Attendance is unbuilt and none of them has an input. Adding them later is
-// additive — a new member and its implementation — and no existing element changes shape.
+// **`DEC-PAY-0002` is why the set stopped where it did, and TWO OF ITS THREE NAMED ABSENCES HAVE SINCE
+// ARRIVED.** It read: *"There is no `PerHour`, no `PerDayAbsent` and no `OvertimeMultiple`, because
+// Attendance is unbuilt and none of them has an input."* Attendance shipped (FP-013), and with it:
+//
+//   PerHour        -> `OvertimeHourly` (5), quantity x rate
+//   PerDayAbsent   -> `UnpaidAbsenceDeduction` (6), a derived daily rate
+//   OvertimeMultiple  -- STILL ABSENT. A tier carries an AMOUNT, not a multiple of base.
+//
+// **`DEC-PAY-0002`'s reasoning was right and is what let them in**: each was refused for want of an INPUT,
+// and each arrived the moment its input did. Amended in T-107 (`DEC-L-073`) because the sentence read as
+// though all three were still absent while two were declared sixty lines below it.
+//
+// **And the reasoning is still load-bearing for the one input that has NOT arrived.** `SalaryType.Daily`
+// needs a count of days worked; `AttendanceSummaryResult` reports worked HOURS and absence DAYS and no such
+// count, so the calculator refuses a daily salary rather than deriving one — see
+// `PayrollErrors.DailySalaryHasNoWorkedDayCount`. Same rule, still applying, to the last of the three.
 //
 // **`DEC-PAY-0016` is why there is no `StatutoryBracket`.** V1 is jurisdiction-neutral. A tenant can express
 // a fixed or proportional deduction; it cannot have the product apply a tax table, because no jurisdiction is

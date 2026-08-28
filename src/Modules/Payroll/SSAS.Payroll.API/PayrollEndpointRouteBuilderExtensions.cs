@@ -7,6 +7,7 @@ using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.Payroll.Application.Compensation;
+using SSAS.Payroll.Domain.Compensation;
 using SSAS.Payroll.Application.Elements;
 using SSAS.Payroll.Application.Permissions;
 using SSAS.Payroll.Application.Reads;
@@ -163,6 +164,7 @@ public static class PayrollEndpointRouteBuilderExtensions
     var created = await handler.HandleAsync(
       new RecordCompensationCommand(
         request.CompanyId, employeeId, request.EffectiveFromUtc, request.BaseAmount,
+        request.SalaryType ?? SalaryType.Monthly,
         assignments, request.WasOutsideGradeBand, request.GradeBandObservation),
       cancellationToken);
 

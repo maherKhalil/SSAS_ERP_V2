@@ -4,12 +4,12 @@
 > [`decisions-ratified.md`](decisions-ratified.md). Conditional passages below are resolved inline where the
 > ruling removes a fork; where they are not, the ratification file is authoritative.
 
-Three parts: the permission names, the read scope, and **the self-service blocker** — which is not a
-preference but a missing input, and is the most important thing in this document.
+Three parts: the permission names, the read scope, and **self-service** — which was this document's central
+problem and was delivered under FP-015 in T-089; the passages below are kept as the record of why.
 
 ---
 
-## The self-service problem, verified rather than assumed
+## The self-service problem, verified rather than assumed — and resolved under FP-015 (T-089)
 
 `REQ-ATT-0023` proposes that an employee may read their own attendance and leave records. It was the most
 obviously desirable requirement in the package, and **it was delivered under FP-015 in T-089.** The refusal quoted below is preserved as the state it described, not the state today.
@@ -28,15 +28,15 @@ quotation remains accurate. `PayrollPermissionNames` no longer reads that way.)*
 real database. `Employee` still carries no user identifier and does not need one: the link is a separate
 Platform table, which is `ADR-030` Decision 2.
 
-So every self-service requirement in this package — an employee viewing their own attendance, submitting
-their own leave request, seeing their own balance — **depends on an input the product does not have.** That
-is precisely `DEC-PAY-0002`'s shape, and the same discipline applies:
+Every self-service requirement in this package — an employee viewing their own attendance, submitting
+their own leave request, seeing their own balance — **once depended on an input the product did not have.**
+That was precisely `DEC-PAY-0002`'s shape, and the discipline it produced was:
 
-**A permission whose subject cannot be resolved must not be declared.** No `Attendance.Records.ViewOwn`, no
-`Attendance.Leave.RequestOwn` — **and the subject IS now resolvable, so what holds the line is FP-015's
-unbuilt permission and endpoint rather than a missing input.** The absence is asserted by **`AC-ATT-0032`**,
-which the Attendance architecture guard cites — the criterion is the durable handle, not the guard's method
-name (T-087).
+**A permission whose subject cannot be resolved must not be declared.** The subject became resolvable in
+T-082 (`ADR-030`), and FP-015 declared the two it licensed — `Attendance.Records.ViewOwn` and
+`Attendance.Leave.ViewOwn`, delivered T-089. **`Attendance.Leave.RequestOwn` still does not exist**, because
+requesting one's own leave was never built. The inventory is stated by **`AC-ATT-0032`**, which the
+Attendance architecture guard cites — the criterion is the durable handle, not the method name (T-087).
 
 **This has real consequences for `OD-ATT-0001` and `OD-ATT-0007`.** A leave module in which employees cannot
 submit their own requests is a leave module operated entirely by administrators on employees' behalf. That
@@ -138,7 +138,7 @@ registered in the module's DI extension.
 
 ## What is deliberately absent
 
-**No `ViewOwn` of any kind** — the self-service blocker above.
+**No `Attendance.Leave.RequestOwn`** — self-service *reading* shipped under FP-015 (T-089); requesting did not.
 
 **No permission for the summary contract.** It is consumed in-process by Payroll, whose own
 `Payroll.Runs.Manage` already gates the calculation that reads it. A second permission on the contract would

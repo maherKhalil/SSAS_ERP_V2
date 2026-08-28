@@ -5,6 +5,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.HR.Contracts.Employment;
 using SSAS.BuildingBlocks.Tenancy.Companies;
@@ -497,6 +498,51 @@ public sealed class EmployeeReadScopeArchitectureTests
         ReturnsManyEmployees(method.ReturnType),
         $"{method.Name} must not return more than one Employee.");
     }
+  }
+
+  // ================================================================================================
+  // 18. THE STANDING DIRECTORY HAS EXACTLY ONE CALLER, AND IT IS THE SEAM (T-090, AC-SS-0012).
+  // ================================================================================================
+  //
+  // `IEmploymentStandingDirectory` is answered by the SAME class as the placement directory, so it opens no
+  // new door in the employee-set list. What it does open is a second question that can be asked ABOUT an
+  // employee from outside HR, and the value of the answer is that ONE place acts on it.
+  //
+  // **The ruling that put the refusal at the resolver rather than in each self-service read only holds
+  // while there is one caller.** A second injection site would be a second place deciding what a terminated
+  // employee may reach — which is the per-handler shape `REQ-SS-0003` rejected, arriving through a caller
+  // instead of through a handler.
+  //
+  // So: an exact inventory of one, the same shape as its neighbour. **A second requires a person.**
+  [Fact]
+  [Trait("Criterion", "AC-SS-0012")]
+  public void Only_the_user_employee_resolver_injects_the_standing_directory()
+  {
+    // Every assembly that references SSAS.BuildingBlocks.Tenancy and could therefore ask for this contract.
+    var candidates = new[]
+    {
+      typeof(SSAS.Platform.Infrastructure.Persistence.Queries.UserEmployeeResolver).Assembly,
+      typeof(SSAS.Payroll.Application.Reads.PayrollSelfServiceScopeResolver).Assembly,
+      typeof(SSAS.Attendance.Application.Approval.LeaveApprovalRouter).Assembly,
+      HrApplicationAssembly,
+      typeof(SSAS.HR.Infrastructure.ServiceCollectionExtensions).Assembly
+    };
+
+    var injecting = candidates
+      .Distinct()
+      .SelectMany(assembly => assembly.GetTypes())
+      .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+        .Any(constructor => constructor.GetParameters()
+          .Any(parameter => parameter.ParameterType == typeof(IEmploymentStandingDirectory))))
+      .Select(type => type.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // NOT VACUOUS. An empty result would mean the sweep stopped finding anything — and this assertion
+    // would then pass forever while the caller set grew unwatched.
+    Assert.NotEmpty(injecting);
+
+    Assert.Equal(["UserEmployeeResolver"], injecting);
   }
 
   // ================================================================================================

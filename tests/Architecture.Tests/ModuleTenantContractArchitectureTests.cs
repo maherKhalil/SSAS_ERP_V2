@@ -176,6 +176,9 @@ public sealed class ModuleTenantContractArchitectureTests
         // The company scope of the acting user, needed so a module can constrain a company-owned read or
         // write to the companies that user may reach (FP-006C4). Platform owns the answer; HR must ask it.
         nameof(CompanyAccessSummary),
+        // T-090's standing answer. A three-valued enum rather than a bool, so `default` is the CLOSED
+        // answer and no caller has to decide what "I could not find that employee" means.
+        nameof(EmploymentStanding),
         nameof(IBranchTransferAuthorizer),
         nameof(IBranchTransferScope),
         // The trusted execution branch, needed so a module can record which branch an operation happened in
@@ -184,6 +187,16 @@ public sealed class ModuleTenantContractArchitectureTests
         // The acting tenant user, needed so a module can name WHO is asking when resolving scope. It carries
         // no roles, permissions, session or claims: what they may DO stays with the permission pipeline.
         nameof(ICurrentTenantUser),
+        // ---- ADDED BY T-090, AND THE FIRST ON THIS SEAM POINTING PLATFORM -> MODULE.
+        //
+        // `IUserEmployeeResolver` answers which employee a tenant user is, from the PLATFORM database.
+        // Whether that employment has ended lives on `Employee` in the TENANT database and `ADR-030`
+        // Decision 4 forbids the foreign key that would let the seam read it — so it has to ask, and HR is
+        // the authority. A status copy on the Platform side would be a second source of truth.
+        //
+        // It cannot live in `SSAS.HR.Contracts`: no Platform project references any module, and keeping
+        // that true is exactly what `ADR-012` is for. Same edge as its neighbour, opposite direction.
+        nameof(IEmploymentStandingDirectory),
         // A module's own permission definitions, offered to the one composed catalog. Platform composes and
         // validates; the module owns the names. Without it a module's permissions cannot be granted to any
         // role, which is the FP-006 release blocker this contract closes (ADR-012 r1.2).

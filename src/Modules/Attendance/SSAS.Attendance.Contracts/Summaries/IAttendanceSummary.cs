@@ -97,22 +97,6 @@ public sealed record AttendanceSummaryResult(
   // it into an enum here would put a jurisdictional list into a cross-module contract.
   IReadOnlyDictionary<string, decimal> OvertimeQuantityByTier,
 
-  // ---- THE PERIOD'S STANDARD WORKING DAYS (T-108).
-  //
-  // A COMPANY-AND-PERIOD fact, not an employee one: how many working days the company's calendar says this
-  // period contains, before anything about this employee is considered. It is an `int` rather than a
-  // `decimal` because the calendar counts whole days — the quantities around it are decimal because half a
-  // day can be absent, and half a working day cannot exist.
-  //
-  // **`DEC-ATT-0004` is satisfied, not stretched: this is a quantity.** Attendance says the period holds 22
-  // working days; Payroll decides what a day is worth.
-  //
-  // **Frozen here, exactly as leave freezes its own count.** `AC-ATT-0019` refuses to let a holiday added
-  // later change what a past leave request consumed, and a pay run has the same property for a stronger
-  // reason — the run is computed and stored, so recomputing this would make a payslip disagree with the
-  // figure it was produced from.
-  int StandardWorkingDays,
-
   decimal PaidAbsenceQuantity,
 
   // The quantity Payroll deducts. The single most consequential number in this record.
@@ -122,12 +106,7 @@ public sealed record AttendanceSummaryResult(
     AttendanceSummaryStatus status, Guid employeeId, Guid companyId) =>
     new(status, employeeId, companyId, Guid.Empty,
       DateTimeOffset.MinValue, DateTimeOffset.MinValue, 0m,
-      new Dictionary<string, decimal>(StringComparer.Ordinal),
-      // ZERO WORKING DAYS ON AN UNAVAILABLE SUMMARY, and it is the fail-closed answer rather than a filler.
-      // A daily-salaried employee whose summary did not arrive is paid for zero days, which is visibly
-      // wrong on a payslip; any other placeholder would be invisibly wrong.
-      0,
-      0m, 0m);
+      new Dictionary<string, decimal>(StringComparer.Ordinal), 0m, 0m);
 }
 
 // ---- THE INSPECTION RESULT.
@@ -156,6 +135,44 @@ public interface IAttendanceSummary
     Guid companyId,
     Guid employeeId,
     DateTimeOffset anyDateInPeriodUtc,
+    CancellationToken cancellationToken = default);
+
+  // ---- WORKING DAYS BETWEEN TWO DATES (T-115).
+  //
+  // **This takes BOUNDS, and the note above says bounds a caller could name are bounds a caller could
+  // misalign. That objection is about PERIOD SELECTION and does not reach here.** `GetForPeriodAsync`
+  // resolves *which period* a date falls in, and a misaligned range would make it answer for a straddle
+  // without anyone noticing. **A working-day count resolves no period.** It is a pure question about the
+  // company's calendar, with a well-defined answer for any two dates, and a caller cannot get a silently
+  // wrong period back because no period is chosen.
+  //
+  // ---- IT IS NOT A NEW SHAPE. IT IS AN EXISTING ONE CROSSING A BOUNDARY IT SHOULD ALREADY HAVE CROSSED.
+  //
+  // `IAttendanceReadService.GetWorkingDaysAsync` has existed since FP-013 and is routed at
+  // `GET /calendars/working-days`, for a reason that describes Payroll exactly: *"clients need the SAME
+  // answer the domain uses — a client computing working days itself would drift from the server the first
+  // time a holiday moved."* That service lives in `SSAS.Attendance.Application`, which `ADR-012` bars
+  // Payroll from referencing, so the capability was public to HTTP callers and invisible to the one module
+  // whose money depends on it.
+  //
+  // ---- WHY PAYROLL NEEDS THE BOUNDS RATHER THAN THE PERIOD'S TOTAL.
+  //
+  // A DAILY-rate employee is paid for working days they were EMPLOYED for. Payroll holds the employment
+  // dates and clamps them to the period — `PayrollCalculator.ProrationFactor` already computes exactly that
+  // window — but from a period TOTAL it cannot derive the count inside a sub-window. **Before T-115 a joiner
+  // hired mid-period was paid the whole period's working days.**
+  // ---- IT RETURNS A PLAIN `int`, NOT A `Result<int>`, AND THAT MATCHES THE SEAM RATHER THAN THE SERVICE.
+  //
+  // `SSAS.Attendance.Contracts` carries no `Result<T>` — this surface reports outcomes as VALUES a caller
+  // must handle (`AttendanceSummaryStatus`, `AttendancePeriodInspection`), never as a type the caller might
+  // ignore. **Zero means the question could not be answered** — no working calendar for the company — which
+  // is the same fail-closed answer `NotAvailable` gives, and for the same reason: a daily-salaried employee
+  // reported as zero days is VISIBLY wrong on a payslip, and `PayrollErrors.DailySalaryHasNoWorkingDays`
+  // refuses the run rather than paying it.
+  Task<int> GetWorkingDaysAsync(
+    Guid companyId,
+    DateOnly fromDate,
+    DateOnly toDate,
     CancellationToken cancellationToken = default);
 
   // ---- THE GATE (OD-ATT-0010, the InspectPostingWindowAsync pattern).

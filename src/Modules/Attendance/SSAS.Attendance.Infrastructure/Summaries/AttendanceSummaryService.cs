@@ -139,25 +139,6 @@ internal sealed class AttendanceSummaryService(
       .GroupBy(record => record.OvertimeTier!, StringComparer.Ordinal)
       .ToDictionary(group => group.Key, group => group.Sum(record => record.OvertimeQuantity), StringComparer.Ordinal);
 
-    // ---- THE PERIOD'S STANDARD WORKING DAYS, FROZEN HERE (T-108).
-    //
-    // A company-and-period fact, computed once and carried with the quantities it will price. Absent
-    // calendar means ZERO rather than a guess: a daily-salaried employee then reports zero working days,
-    // the calculator refuses the run, and nobody is paid a number derived from a calendar that does not
-    // exist.
-    //
-    // ---- WHICH CALENDAR, AND THIS IS AN INFERENCE THE PRODUCT ALREADY MAKES.
-    //
-    // `GetForCompanyAsync` returns the DEFAULT calendar, falling back to the alphabetically first. A
-    // company with an office calendar and a plant calendar gets one of them — and already does, because
-    // leave freezes its consumed days against exactly this resolution. **The real answer is an
-    // employee-to-calendar assignment and it does not exist anywhere in the product.**
-    //
-    // Daily pay inherits that inference rather than introducing it; refusing it here while leave keeps
-    // doing it would break daily pay for every multi-calendar company and offer nothing better.
-    var calendar = await calendars.GetForCompanyAsync(companyId, cancellationToken);
-    var standardWorkingDays = calendar?.WorkingDaysBetween(period.StartDate, period.EndDate) ?? 0;
-
     return new AttendanceSummaryResult(
       AttendanceSummaryStatus.Available,
       employeeId,
@@ -167,9 +148,30 @@ internal sealed class AttendanceSummaryService(
       ToInstant(period.EndDate),
       records.Sum(record => record.WorkedQuantity),
       overtimeByTier,
-      standardWorkingDays,
       records.Sum(record => record.PaidAbsenceQuantity),
       records.Sum(record => record.UnpaidAbsenceQuantity));
+  }
+
+  // ---- WORKING DAYS BETWEEN TWO DATES (T-115).
+  //
+  // The DOMAIN answers, through the same `GetForCompanyAsync` resolution leave and the summary already use.
+  // A second implementation of the day count would eventually disagree with the one that decides what people
+  // are owed — which is the reason `AttendanceReadService` gives for delegating its own.
+  //
+  // Zero when the company has no working calendar, matching `NotAvailable`'s fail-closed zero.
+  public async Task<int> GetWorkingDaysAsync(
+    Guid companyId,
+    DateOnly fromDate,
+    DateOnly toDate,
+    CancellationToken cancellationToken = default)
+  {
+    if (toDate < fromDate)
+    {
+      return 0;
+    }
+
+    var calendar = await calendars.GetForCompanyAsync(companyId, cancellationToken);
+    return calendar?.WorkingDaysBetween(fromDate, toDate) ?? 0;
   }
 
   public async Task<AttendancePeriodInspection> InspectPeriodAsync(

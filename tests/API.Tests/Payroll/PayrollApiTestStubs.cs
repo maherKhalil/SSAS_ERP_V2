@@ -319,6 +319,16 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
     UnpaidAbsenceQuantity = 0m;
   }
 
+  // ---- WORKING DAYS (T-115). Configurable, defaulting to the fixtures' 21.
+  //
+  // A STUB answers what the test asks it to; the real service reads the company's calendar. Zero is the
+  // fail-closed answer, and a test that needs it sets it explicitly.
+  public int WorkingDays { get; set; } = 21;
+
+  public Task<int> GetWorkingDaysAsync(
+    Guid companyId, DateOnly fromDate, DateOnly toDate, CancellationToken cancellationToken = default) =>
+    Task.FromResult(toDate < fromDate ? 0 : WorkingDays);
+
   public Task<AttendanceSummaryResult> GetForPeriodAsync(
     Guid companyId, Guid employeeId, DateTimeOffset anyDateInPeriodUtc,
     CancellationToken cancellationToken = default) =>
@@ -327,7 +337,6 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
       anyDateInPeriodUtc, anyDateInPeriodUtc,
       WorkedQuantity: 0m,
       new Dictionary<string, decimal>(OvertimeByTier, StringComparer.Ordinal),
-      StandardWorkingDays: 0,
       PaidAbsenceQuantity: 0m,
       UnpaidAbsenceQuantity: UnpaidAbsenceQuantity));
 

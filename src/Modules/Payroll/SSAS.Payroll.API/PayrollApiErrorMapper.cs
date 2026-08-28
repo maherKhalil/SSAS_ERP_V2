@@ -124,6 +124,16 @@ public static class PayrollApiErrorMapper
       "Payroll.NoIncludedEmployees" => NothingToCalculate,
       "Payroll.UnbalancedPosting" => NothingToCalculate,
 
+      // ---- A DAILY SALARY WITH NO WORKING DAYS TO PRICE (T-115). 409, not 422.
+      //
+      // **The request is well-formed and the world is not ready** — the company has no working calendar, or
+      // the employee's attendance summary did not arrive — which is `AttendancePeriodOpen`'s shape rather
+      // than `NothingToCalculate`'s. There IS something to compute; the input it needs is absent.
+      //
+      // **Unmapped, this fell through to a 500** for what is a business refusal, and the error-mapping
+      // register caught it. It had been unmapped since T-107 declared the constant.
+      "Payroll.DailySalaryHasNoWorkingDays" => RunStateInvalid,
+
       // FP-013, OD-ATT-0010. A 409 rather than a 422: the request is well-formed and the world is not ready
       // — somebody has to close the attendance period, which is the same shape as `PeriodClosed` above.
       "Payroll.AttendancePeriodOpen" => AttendancePeriodOpen,

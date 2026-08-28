@@ -266,14 +266,41 @@ public sealed class CalculatePayrollRunCommandHandler(
         ? attendance.WorkedQuantity
         : 0m;
 
-      // ---- THE PERIOD'S STANDARD WORKING DAYS (T-108). Read by `SalaryType.Daily` and by nothing else.
+      // ---- THE WORKING DAYS THIS EMPLOYEE WAS EMPLOYED FOR (T-115). Read by `SalaryType.Daily` alone.
       //
-      // Zero when the summary is unavailable, on the same rule as the three above — and for a daily-salaried
-      // employee the calculator then REFUSES the run rather than paying zero days. Absent attendance means
-      // "worked no hours" for an hourly employee, which is an answer; it cannot mean "the company's calendar
-      // has no working days", which is not.
+      // **Bounded to the employment window, not the period.** A daily employee is paid for working days they
+      // were EMPLOYED for: before T-115 this was the period's total, so a joiner hired on the 16th of a
+      // 21-working-day month was paid all 21 — and a leaver was paid through the end of the period after
+      // termination. The daily arm consults no dates itself, so the clamp has to happen here.
+      //
+      // The window is the same one `PayrollCalculator.ProrationFactor` computes for the monthly path:
+      // start at the later of hire and period start, end at the earlier of termination and period end.
+      //
+      // ---- AND IT STAYS ON THE `Available` BRANCH, WHICH IS LOAD-BEARING RATHER THAN TIDY.
+      //
+      // `GetWorkingDaysAsync` reads the COMPANY's calendar. It knows nothing about whether this employee's
+      // attendance arrived, and would happily answer 21 for someone whose summary was unavailable — while
+      // `UnpaidAbsenceQuantity` stayed 0. **A daily employee would go from REFUSED to PAID IN FULL with no
+      // absence deduction, silently**, which is the same failure class T-115 exists to remove.
+      //
+      // Zero here keeps the refusal: `PayrollCalculator` fails the run with
+      // `PayrollErrors.DailySalaryHasNoWorkingDays` rather than paying nobody's idea of a number. **A
+      // daily-salaried employee reported as zero days is VISIBLY wrong on a payslip; any other placeholder
+      // is invisibly wrong.** That reasoning was written on `AttendanceSummaryResult.StandardWorkingDays`,
+      // which T-115 removed, so it lives here now — the behaviour outlived the field it was written on.
+      var employedFrom = record.EmploymentDateUtc.ToUniversalTime().Date > period.StartUtc.Date
+        ? record.EmploymentDateUtc.ToUniversalTime().Date
+        : period.StartUtc.Date;
+
+      var employedTo = record.TerminationDateUtc is { } terminated
+        && terminated.ToUniversalTime().Date < period.EndUtc.Date
+        ? terminated.ToUniversalTime().Date
+        : period.EndUtc.Date;
+
       var standardWorkingDays = attendance.Status == AttendanceSummaryStatus.Available
-        ? attendance.StandardWorkingDays
+        ? await attendanceSummary.GetWorkingDaysAsync(
+            run.CompanyId, DateOnly.FromDateTime(employedFrom), DateOnly.FromDateTime(employedTo),
+            cancellationToken)
         : 0;
 
       inputs.Add(new PayrollEmployeeInput(

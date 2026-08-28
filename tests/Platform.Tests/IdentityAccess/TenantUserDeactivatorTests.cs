@@ -168,11 +168,17 @@ public sealed class TenantUserDeactivatorTests
 
       if (linked)
       {
+        // PARAMETERISED, not interpolated. `ExecuteSqlRawAsync` with an interpolated string raises EF1002,
+        // and the gate's first condition is zero warnings — a suppression here would trade a real rule for
+        // a test fixture's convenience.
         await context.Database.ExecuteSqlRawAsync(
-          $"""
+          """
           INSERT INTO UserEmployeeLink (TenantId, TenantUserId, EmployeeId, CreatedUtc, CreatedBy)
-          VALUES ('{TenantId}', {tenantUser.Id}, '{EmployeeId}', '2026-08-28T12:00:00Z', 'seed');
-          """);
+          VALUES ({0}, {1}, {2}, '2026-08-28T12:00:00Z', 'seed');
+          """,
+          TenantId.ToString(),
+          tenantUser.Id,
+          EmployeeId.ToString());
       }
 
       var unitOfWork = new RecordingUnitOfWork();

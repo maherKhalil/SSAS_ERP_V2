@@ -71,10 +71,10 @@ public static class PayrollPermissionNames
   // employee record, and this build did not assert such a mapping exists. **It does now:**
   // `UserEmployeeLink` (`ADR-030`, T-082), asserted against a real database.
   //
-  // **So the dependency is satisfied and the absence is now a SCOPE decision rather than a blocked one.**
-  // A `Payroll.Payslips.ViewOwn` would no longer rest on an unverified assumption — which is what made
-  // adding one *"exactly the shape of the FP-011 near-miss"* — but it is FP-015's to add, with the endpoint
-  // and the acceptance criteria that go with it. **Nothing here is waiting on an input any more.**
+  // **So the dependency was satisfied, and FP-015 added it (T-089).** `Payroll.Payslips.ViewOwn` is
+  // declared below, catalogued, and routed at `GET /me/payslips`. Adding one once rested on an unverified
+  // assumption — *"exactly the shape of the FP-011 near-miss"* — and the mapping is what removed that.
+  // **Nothing here is waiting on an input, and nothing is waiting on FP-015 either.**
   public const string ViewPayslips = "Payroll.Payslips.View";
 
   // ---- SELF-SERVICE (FP-015, `OD-SS-0001`, T-088). A DISTINCT PERMISSION, NOT A SCOPE.

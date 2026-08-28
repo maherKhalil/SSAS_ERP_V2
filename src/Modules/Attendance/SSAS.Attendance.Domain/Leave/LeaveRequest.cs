@@ -13,9 +13,11 @@ namespace SSAS.Attendance.Domain.Leave;
 // ---- WHO SUBMITS IT, AND WHY THAT IS NOT THE EMPLOYEE.
 //
 // `OD-ATT-0013` deferred self-service because no identity-to-employee mapping existed. **It exists now** —
-// `UserEmployeeLink` (`ADR-030`, T-082) — so what defers self-service today is the absent PERMISSION and
-// ENDPOINT, not an absent input. **`AC-ATT-0032`** is what fails the day that changes — the criterion
-// rather than the guard's method name, because the name is not durable and the criterion is (T-087).
+// `UserEmployeeLink` (`ADR-030`, T-082) — and FP-015 built the permission and the endpoint (T-089).
+// **Self-service READING shipped; submitting one's own leave request did not**, which is why this
+// aggregate still takes an administrator's submission. **`AC-ATT-0032`** is the inventory of the two that
+// did ship — the criterion rather than the guard's method name, because the name is not durable and the
+// criterion is (T-087).
 //
 // ---- AND A NOTE ON THE WORDS THAT USED TO BE HERE, MADE ONCE FOR THE WHOLE MODULE.
 //

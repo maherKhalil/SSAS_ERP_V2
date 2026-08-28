@@ -192,7 +192,7 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     // `SelfService.LinkedEmployee` decides what the caller resolves to: a value for a linked employee, null
     // for the unmapped case that must answer 404 rather than 500.
     builder.Services.AddSingleton<IUserEmployeeResolver>(SelfService);
-    builder.Services.AddSingleton<IEmployeeCompanyDirectory>(SelfService);
+    builder.Services.AddSingleton<IEmployeePlacementDirectory>(SelfService);
     builder.Services.AddScoped<IPayrollSelfServiceScopeResolver, PayrollSelfServiceScopeResolver>();
     builder.Services.AddScoped<CreatePayElementCommandHandler>();
     builder.Services.AddScoped<UpdatePayElementCommandHandler>();

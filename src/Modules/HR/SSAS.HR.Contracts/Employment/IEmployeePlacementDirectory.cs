@@ -1,8 +1,22 @@
 namespace SSAS.HR.Contracts.Employment;
 
 // ==================================================================================================
-// WHICH COMPANY AN EMPLOYEE BELONGS TO, ASKED EMPLOYEE-FIRST (FP-015, T-088).
+// WHERE AN EMPLOYEE SITS, ASKED EMPLOYEE-FIRST (FP-015, T-088; widened T-089).
 // ==================================================================================================
+//
+// ---- IT RETURNS SCOPE DIMENSIONS, AND NOTHING ELSE, DELIBERATELY.
+//
+// Company and branch, because those are the two dimensions a module read scope has. **No department, no
+// name, no status.** The moment this returns a third thing that is not a scope dimension it stops being a
+// placement lookup and becomes a general employee reader — and this is a door with a deliberately weak
+// lock (`EmployeeReadScopeArchitectureTests`, guard 16). **A narrow door is what makes the weak lock
+// acceptable.**
+//
+// ---- ONE METHOD, NOT TWO, AND THAT IS THE WHOLE POINT.
+//
+// A separate company-only lookup would let the RECORDS path — which is branch-scoped under `OD-ATT-0011` —
+// call it and forget the branch. **A silently unbranched records read is a widening that looks like a
+// working feature**, so the omission is removed rather than documented.
 //
 // ---- HR ALREADY KNOWS THIS. IT WAS ONLY ANSWERABLE FROM THE OTHER DIRECTION.
 //
@@ -38,12 +52,16 @@ namespace SSAS.HR.Contracts.Employment;
 // companies, this contract's shape changes and so does the read scope built from it** — they change
 // together, which makes them one unit rather than a hidden assumption. Whoever makes `CompanyId` plural
 // meets this paragraph here.
-public interface IEmployeeCompanyDirectory
+// The two scope dimensions an employee sits in. A record rather than a tuple so a caller cannot silently
+// swap them: both are `Guid` and a positional mix-up would compile.
+public sealed record EmployeePlacement(Guid CompanyId, Guid BranchId);
+
+public interface IEmployeePlacementDirectory
 {
-  // The employee's company, or null when no such employee exists in the current tenant.
+  // The employee's placement, or null when no such employee exists in the current tenant.
   //
   // **Null is an ordinary answer, not a fault.** `ADR-030` Decision 4 makes a cross-database foreign key
   // impossible, so a `UserEmployeeLink` naming an employee that no longer exists is a state the application
   // must answer rather than assume away.
-  Task<Guid?> GetCompanyIdAsync(Guid employeeId, CancellationToken cancellationToken = default);
+  Task<EmployeePlacement?> GetPlacementAsync(Guid employeeId, CancellationToken cancellationToken = default);
 }

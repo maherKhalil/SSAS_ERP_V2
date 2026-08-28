@@ -311,11 +311,12 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
 //
 // Defaults are the ordinary case: the caller is linked to `PayrollApiTestHost.EmployeeId`, who works at
 // `CompanyA`. A test wanting the unmapped refusal sets `LinkedEmployee` to null and says so.
-public sealed class StubSelfServiceDirectory : IUserEmployeeResolver, IEmployeeCompanyDirectory
+public sealed class StubSelfServiceDirectory : IUserEmployeeResolver, IEmployeePlacementDirectory
 {
   public Guid? LinkedEmployee { get; set; } = PayrollApiTestHost.EmployeeId;
 
-  public Guid? EmployeeCompany { get; set; } = PayrollApiTestHost.CompanyA;
+  public EmployeePlacement? EmployeePlacement { get; set; } =
+    new(PayrollApiTestHost.CompanyA, Guid.NewGuid());
 
   public List<long> AskedForUser { get; } = [];
 
@@ -325,13 +326,14 @@ public sealed class StubSelfServiceDirectory : IUserEmployeeResolver, IEmployeeC
     return Task.FromResult(LinkedEmployee);
   }
 
-  public Task<Guid?> GetCompanyIdAsync(Guid employeeId, CancellationToken cancellationToken = default) =>
-    Task.FromResult(employeeId == LinkedEmployee ? EmployeeCompany : null);
+  public Task<EmployeePlacement?> GetPlacementAsync(
+    Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(employeeId == LinkedEmployee ? EmployeePlacement : null);
 
   public void Reset()
   {
     LinkedEmployee = PayrollApiTestHost.EmployeeId;
-    EmployeeCompany = PayrollApiTestHost.CompanyA;
+    EmployeePlacement = new(PayrollApiTestHost.CompanyA, Guid.NewGuid());
     AskedForUser.Clear();
   }
 }

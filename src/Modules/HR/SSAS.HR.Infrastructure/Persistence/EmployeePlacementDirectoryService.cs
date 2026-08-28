@@ -25,10 +25,11 @@ namespace SSAS.HR.Infrastructure.Persistence;
 // Platform-side link says it is theirs.**
 //
 // Nothing here writes, following `DEC-ATT-0003`'s rule for the sibling contracts.
-internal sealed class EmployeeCompanyDirectoryService(ITenantDbContextAccessor contextAccessor)
-  : IEmployeeCompanyDirectory
+internal sealed class EmployeePlacementDirectoryService(ITenantDbContextAccessor contextAccessor)
+  : IEmployeePlacementDirectory
 {
-  public async Task<Guid?> GetCompanyIdAsync(Guid employeeId, CancellationToken cancellationToken = default)
+  public async Task<EmployeePlacement?> GetPlacementAsync(
+    Guid employeeId, CancellationToken cancellationToken = default)
   {
     if (employeeId == Guid.Empty)
     {
@@ -40,9 +41,11 @@ internal sealed class EmployeeCompanyDirectoryService(ITenantDbContextAccessor c
     // No status predicate. A TERMINATED employee still has payslips and `REQ-SS-0006` requires them to stay
     // readable — filtering on active here would sever self-service at termination through the back door,
     // which is the mistake FP-015 records in four places.
+    // Both dimensions from one row, in one query. Two queries would be two chances for the branch to be
+    // the one nobody fetched.
     return await context.Set<Employee>().AsNoTracking()
       .Where(employee => employee.Id == employeeId)
-      .Select(employee => (Guid?)employee.CompanyId)
+      .Select(employee => new EmployeePlacement(employee.CompanyId, employee.BranchId))
       .SingleOrDefaultAsync(cancellationToken);
   }
 }

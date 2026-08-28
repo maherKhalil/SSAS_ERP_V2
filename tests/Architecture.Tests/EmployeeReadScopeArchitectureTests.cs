@@ -518,7 +518,7 @@ public sealed class EmployeeReadScopeArchitectureTests
   // requires a person, exactly as a fourth door did.**
   [Fact]
   [Trait("Decision", "DEC-PAY-0017")]
-  public void Only_the_self_service_scope_resolver_injects_the_company_directory()
+  public void Only_the_self_service_scope_resolvers_inject_the_placement_directory()
   {
     // Every assembly that references SSAS.HR.Contracts and could therefore ask for this contract.
     var candidates = new[]
@@ -534,7 +534,7 @@ public sealed class EmployeeReadScopeArchitectureTests
       .SelectMany(assembly => assembly.GetTypes())
       .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
         .Any(constructor => constructor.GetParameters()
-          .Any(parameter => parameter.ParameterType == typeof(IEmployeeCompanyDirectory))))
+          .Any(parameter => parameter.ParameterType == typeof(IEmployeePlacementDirectory))))
       .Select(type => type.Name)
       .OrderBy(name => name, StringComparer.Ordinal)
       .ToArray();
@@ -586,7 +586,7 @@ public sealed class EmployeeReadScopeArchitectureTests
   //      own employee.
   //
   // **Part 2 lives entirely in WHO CALLS IT, which is prose, and prose expires (`DEC-L-072`).** So it is
-  // asserted rather than described — see `Only_the_self_service_scope_resolver_injects_the_company_directory`
+  // asserted rather than described — see `Only_the_self_service_scope_resolvers_inject_the_placement_directory`
   // below. A second injection site then requires a person, exactly as a fourth door did.
 
   // ---- THREE FILES, BECAUSE THERE ARE NOW TWO SANCTIONED READ SHAPES (RULED 2026-08-24, DEC-PAY-0017).
@@ -625,7 +625,7 @@ public sealed class EmployeeReadScopeArchitectureTests
     Assert.Equal(
       [
         "EmployeeApproverDirectoryService.cs",
-        "EmployeeCompanyDirectoryService.cs",
+        "EmployeePlacementDirectoryService.cs",
         "EmployeeReadService.cs",
         "EmployeeRepository.cs",
         "EmployeeRosterService.cs"

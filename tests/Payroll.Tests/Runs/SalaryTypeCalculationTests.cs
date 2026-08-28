@@ -207,14 +207,21 @@ public sealed class SalaryTypeCalculationTests
     Assert.Equal(4400m, Assert.Single(lines).Amount);
   }
 
-  // ---- AND THE UNPAID DAYS COME OFF THE BASE, THEN THE DEDUCTION TAKES THEM AGAIN.
+  // ---- THE UNPAID DAYS COME OFF THE BASE, AND THE ELEMENT DOES NOT FIRE (T-109).
   //
-  // **Both, and that is the model rather than an oversight.** 22 working days less 3 unpaid is 19 at 200 =
-  // 3800 of base; the deduction then prices those 3 days against the CALENDAR-day rate the element has
-  // always used — 3800 / 31 x 3. The base answers "how many days is this employee owed", the deduction is
-  // the element a company configured, and they are different questions.
+  // **This is the regression test for T-108's defect, and it must assert the ABSENCE of the deduction
+  // rather than only the base.** T-108 shipped this same base — 3800 — and let the element fire on top of
+  // it; a test that checked only the base would have passed against the defect and would pass against it
+  // again.
+  //
+  // 22 working days less 3 unpaid is 19 at 200 = 3800, which is exactly what nineteen days cost. Under
+  // T-108 the element then took 3800/31 x 3 = 367.74, leaving **3432.26 for nineteen days that cost 3800.**
+  //
+  // The company here HAS configured an unpaid-absence element, which is the only configuration in which
+  // the defect was visible — the element takes no per-employee assignment, so defining it once affected
+  // every daily employee, and a company that never defined one was always correct.
   [Fact]
-  public void A_daily_salary_excludes_unpaid_days_from_the_base()
+  public void A_daily_salary_prices_unpaid_days_in_the_base_and_takes_no_deduction()
   {
     var basic = PayrollTestData.Element(
       "BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
@@ -225,13 +232,30 @@ public sealed class SalaryTypeCalculationTests
     var lines = Calculate(
       Daily(200m), [basic, absence], standardWorkingDays: 22, unpaidAbsenceQuantity: 3m);
 
-    // 22 - 3 = 19 days at 200.
     Assert.Equal(3800m, lines.Single(line => line.PayElementId == basic.Id).Amount);
+    Assert.DoesNotContain(lines, line => line.PayElementId == absence.Id);
+  }
 
-    // And the deduction fires too: 3800 / 31 calendar days x 3 unpaid = 367.74. **Asserted rather than
-    // described** — the first version of this test named the deduction in its comment and passed only the
-    // base element, which would have let the "both" claim go unchecked.
-    Assert.Equal(367.74m, lines.Single(line => line.PayElementId == absence.Id).Amount);
+  // ---- AND MONTHLY KEEPS THE ELEMENT, WITH THE SAME ELEMENT AND THE SAME QUANTITY.
+  //
+  // **The pair is the point.** T-109 changed which salary types the deduction applies to, and a test that
+  // only proved daily's exemption would not show that monthly still takes it — leaving "removed the
+  // deduction" and "removed it for daily" indistinguishable.
+  //
+  // 3100 over 31 calendar days is 100 a day; three unpaid days is 300.
+  [Fact]
+  public void A_monthly_salary_still_takes_the_deduction_the_daily_one_no_longer_does()
+  {
+    var basic = PayrollTestData.Element(
+      "BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+
+    var absence = PayrollTestData.Element(
+      "UNPAID", PayElementKind.Deduction, PayElementBehaviour.UnpaidAbsenceDeduction, 0m, 50, AbsenceAccount);
+
+    var lines = Calculate(Monthly(3100m), [basic, absence], unpaidAbsenceQuantity: 3m);
+
+    Assert.Equal(3100m, lines.Single(line => line.PayElementId == basic.Id).Amount);
+    Assert.Equal(300m, lines.Single(line => line.PayElementId == absence.Id).Amount);
   }
 
   // ---- A DAILY SALARY IS NOT PRORATED EITHER.

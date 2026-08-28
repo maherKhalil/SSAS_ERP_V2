@@ -157,13 +157,23 @@ public sealed class EmploymentTypeAssumptionTests
   // **`DEC-ATT-0004` is satisfied rather than stretched: it is a quantity.** Attendance says the period
   // holds 22 working days; Payroll decides what a day is worth.
   //
-  // ---- AND IT NARROWS THE PARAGRAPH ABOVE FOR ONE SALARY TYPE, WHILE LEAVING IT EXACT FOR THE OTHERS.
+  // ---- WHICH SALARY TYPES THE PARAGRAPH ABOVE STILL DESCRIBES (T-109).
   //
-  // The under-deduction described above is a MONTHLY problem: it comes from a calendar-day divisor applied
-  // to a monthly amount. A `Daily` employee's base is now `working days - unpaid days`, so a missed day
-  // costs exactly one day of their rate in the base. **The `UnpaidAbsenceDeduction` element still uses the
-  // calendar-day divisor and is still wrong for a part-timer in exactly the way described** — the base is
-  // no longer, and the deduction still is.
+  //   MONTHLY  IT STANDS, ENTIRELY AND UNCHANGED. A calendar-day divisor applied to a monthly amount, and
+  //            someone working three days a week is under-deducted by exactly their unknown ratio.
+  //   DAILY    CLOSED. The base is `working days - unpaid days` at the employee's own rate, and T-109
+  //            excluded the element, so a missed day costs one day and nothing else touches it.
+  //   HOURLY   NEVER APPLIED. Pay is attendance; there was never a deduction to be imprecise.
+  //
+  // ---- AND THE T-108 VERSION OF THIS PARAGRAPH WAS WRONG, WHICH IS WHY THE SPLIT IS SPELLED OUT.
+  //
+  // It divided the risk into BASE (fixed) and DEDUCTION (still wrong), and put daily's base on the fixed
+  // side — **while the element was still firing on top of it.** Every clause was true about the base and
+  // the conclusion a reader would draw was false: daily's NET over-deducted by the element's whole amount.
+  //
+  // **The axis is the salary type, not the base-versus-element.** A guard that under-states its own risk is
+  // more dangerous than a stale comment, because it is read precisely when someone is deciding whether a
+  // thing is safe.
   // ================================================================================================
   [Fact]
   public void The_attendance_summary_carries_quantities_and_cannot_carry_a_ratio()

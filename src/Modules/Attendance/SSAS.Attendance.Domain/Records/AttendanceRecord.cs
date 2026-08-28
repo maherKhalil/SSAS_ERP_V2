@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.SharedKernel;
 
 namespace SSAS.Attendance.Domain.Records;
 
@@ -77,7 +78,7 @@ public enum AttendanceRecordKind
 public sealed class AttendanceRecord
   : AggregateRoot<Guid>, IAuditableEntity, ITenantOwnedEntity, ICompanyOwnedEntity, IBranchOwnedEntity, IAppendOnlyEntity
 {
-  public const int OvertimeTierMaximumLength = 32;
+  public const int OvertimeTierMaximumLength = OvertimeTierKey.MaximumLength;
   public const int NoteMaximumLength = 1000;
 
   private AttendanceRecord(
@@ -210,7 +211,7 @@ public sealed class AttendanceRecord
     return Result.Success(new AttendanceRecord(
       Guid.NewGuid(), companyId, attendancePeriodId, employeeId, attendanceDate,
       AttendanceRecordKind.Observation, adjustedRecordId: null,
-      workedQuantity, overtimeQuantity, Trim(overtimeTier),
+      workedQuantity, overtimeQuantity, OvertimeTierKey.Normalize(overtimeTier),
       paidAbsenceQuantity, unpaidAbsenceQuantity, Trim(note)));
   }
 
@@ -261,7 +262,7 @@ public sealed class AttendanceRecord
     return Result.Success(new AttendanceRecord(
       Guid.NewGuid(), companyId, attendancePeriodId, employeeId, attendanceDate,
       AttendanceRecordKind.Adjustment, adjustedRecordId,
-      workedDelta, overtimeDelta, Trim(overtimeTier),
+      workedDelta, overtimeDelta, OvertimeTierKey.Normalize(overtimeTier),
       paidAbsenceDelta, unpaidAbsenceDelta, Trim(note)));
   }
 

@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.SharedKernel;
 
 namespace SSAS.Payroll.Domain.Elements;
 
@@ -215,9 +216,11 @@ public sealed class PayElementName : ValueObject
 // write boundary applies — which `Account` deliberately does not.
 public sealed class PayElement : AggregateRoot<Guid>, IAuditableEntity, ITenantOwnedEntity, ICompanyOwnedEntity
 {
-  // Matches `AttendanceRecord.OvertimeTierMaximumLength`. The two sides of the same label must agree, and
-  // the value is duplicated rather than shared because Payroll cannot reference Attendance's domain.
-  public const int OvertimeTierMaximumLength = 32;
+  // Cites `OvertimeTierKey.MaximumLength`, which is where the tier vocabulary now lives (T-131). It was
+  // duplicated here and in `AttendanceRecord` with a comment on each saying the two must agree — and a
+  // fact in two places goes stale in one of them (`DEC-L-080`). Payroll still cannot reference Attendance's
+  // domain; the shared kernel is what both may reference.
+  public const int OvertimeTierMaximumLength = OvertimeTierKey.MaximumLength;
 
   private string normalizedCode = string.Empty;
   private string normalizedName = string.Empty;
@@ -387,7 +390,7 @@ public sealed class PayElement : AggregateRoot<Guid>, IAuditableEntity, ITenantO
       return Result.Failure(PayElementErrors.OvertimeTierInvalid);
     }
 
-    OvertimeTier = string.IsNullOrWhiteSpace(overtimeTier) ? null : overtimeTier.Trim();
+    OvertimeTier = OvertimeTierKey.Normalize(overtimeTier);
     return Result.Success();
   }
   public Result Update(string? name, decimal defaultRateOrAmount, int calculationOrder)

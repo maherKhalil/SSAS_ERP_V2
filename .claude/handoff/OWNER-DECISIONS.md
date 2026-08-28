@@ -24,32 +24,33 @@ PayrollCalculator.OvertimeQuantity     element.OvertimeTier -> quantities[tier] 
 **What is missing is not a layer. It is a shared VOCABULARY**, and the gap is a money path:
 
 ```
-Attendance groups tiers with   StringComparer.Ordinal        case-sensitive
-AttendanceRecord stores the tier VERBATIM                    no trim
-PayElement.SetOvertimeTier    stores overtimeTier.Trim()     trims
-the match                     quantities.TryGetValue(tier)   ordinal, exact
+AttendanceRecord   trims, does not case-fold
+PayElement         trims, does not case-fold      (the same rule, written separately)
+the match          TryGetValue, StringComparer.Ordinal — CASE-SENSITIVE
 ```
 
-**Both sides are free strings, and they normalise differently.** A record tagged `"Night"` against an
-element tagged `"NIGHT"`, or a record with a leading space against an element that trimmed one, **does not
-match — and `OvertimeQuantity` returns `0m`.** The employee is paid **no overtime for that tier, silently**:
-no error, no warning, and a payslip that looks complete.
+**Neither side case-folds, and the match is case-sensitive.** A record tagged `"Night"` against an element
+tagged `"NIGHT"` **does not match — and the lookup returns `0m`.** The employee is paid **no overtime for
+that tier, silently**: no error, no warning, and a payslip that looks complete.
 
-**Every test on both sides uses the literal `"NIGHT"`.** The mismatch case is covered nowhere.
+**Every test on both sides used the literal `"NIGHT"`**, so the mismatch was covered nowhere.
+
+**✅ FIXED (T-131), and it needed no decision from you.** Both sides now normalise through one shared rule —
+trim then upper-case, the same treatment leave-type codes and calendar names already had. A test now covers
+the mismatched-case cases, and reverting the fix fails it.
 
 **What it blocks.** Nothing today — one tier spelled consistently works. It is a latent money defect that
 surfaces the first time two people type the same tier differently.
 
 **⚠ THIS IS TWO PROBLEMS AND ONLY ONE OF THEM IS YOURS.**
 
-**The accidental half is being fixed and needs no decision.** One rule — how a tier is normalised — is
-written twice and differently, on the two sides of one contract. **Nobody chose that**, and engineering is
-correcting it so both sides normalise identically. **That removes every mismatch caused by spelling the
-same tier two ways.**
+**The accidental half is fixed and needed no decision.** One rule — how a tier is normalised — was written
+twice, and **the half neither copy implemented was case.** Nobody chose that. Both sides now share one rule,
+so **a tier typed in any case matches.**
 
-**The half that IS yours: what should happen when a tier genuinely has no matching pay element.** After the
-fix, a record can still carry a tier no element prices — because someone invented a tier, or retired the
-element. **Today that pays zero, silently.**
+**The half that IS yours: what should happen when a tier genuinely has no matching pay element.** A record
+can still carry a tier no element prices — because someone invented a tier, or the element was retired.
+**That still pays zero, silently, and no amount of normalising changes it.**
 
 **The options.**
 - **Refuse the run** — payroll fails and names the unmatched tier. Nobody is underpaid, but a single bad

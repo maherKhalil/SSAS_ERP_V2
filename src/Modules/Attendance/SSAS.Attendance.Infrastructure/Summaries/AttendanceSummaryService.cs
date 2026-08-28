@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using SSAS.Attendance.Application.Abstractions;
 using SSAS.HR.Contracts.Employment;
@@ -224,7 +225,9 @@ internal sealed class AttendanceSummaryService(
     // silently omit every correction — which is precisely why the repository port has no such method.
     var overtimeByTier = records
       .Where(record => record.OvertimeQuantity != 0m && record.OvertimeTier is not null)
-      .GroupBy(record => record.OvertimeTier!, StringComparer.Ordinal)
+      // Grouped on the NORMALIZED key, not the stored one. Records written before T-131 kept whatever case
+      // the operator typed, and this is what makes those rows match a pay element without a data migration.
+      .GroupBy(record => OvertimeTierKey.Normalize(record.OvertimeTier)!, StringComparer.Ordinal)
       .ToDictionary(group => group.Key, group => group.Sum(record => record.OvertimeQuantity), StringComparer.Ordinal);
 
     return new AttendanceSummaryResult(

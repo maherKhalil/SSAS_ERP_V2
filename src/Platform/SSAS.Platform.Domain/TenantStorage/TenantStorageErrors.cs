@@ -4,6 +4,42 @@ namespace SSAS.Platform.Domain.TenantStorage;
 
 // Tenant-storage registry errors (ADR-017). Platform operational metadata, kept separate from both
 // tenant-plane IdentityAccessErrors and platform-authority PlatformSupportErrors.
+//
+// ==================================================================================================
+// ⚠ NONE OF THESE 117 CODES IS MAPPED TO AN HTTP STATUS, AND THAT IS CORRECT TODAY (T-129).
+// ==================================================================================================
+//
+// **No file in `SSAS.Platform.API` names a `TenantStorage.` code at all.** Measured, not assumed:
+//
+//   declared here                                 117
+//   returned somewhere in src/                    115
+//   mapped to a status by any API error mapper      0
+//
+// **They are unmapped because there is no transport, not because anyone decided their statuses.** T-122
+// recorded three `RestoreChain*` codes as a landmine on that basis; **the family is the landmine, and it is
+// a hundred and seventeen codes rather than three.**
+//
+// ---- ⚠ WHAT HAPPENS THE DAY SOMEBODY BUILDS PLATFORM'S ADMINISTRATION TRANSPORT.
+//
+// **Every one of these becomes a live 500 on a business refusal** — no exception, no log entry, and a
+// handler that reads correctly. That is precisely the failure T-118 and T-125 each found one instance of,
+// **and this is a hundred and fifteen of them arriving in a single task.**
+//
+// **Whoever builds that transport will not think to check the mapper**, because nothing in the routing work
+// points here. **This comment is the pointer.** Three whole administrative surfaces are waiting on it:
+// tenants, roles, and users beyond de/reactivation — **16 of Platform's 28 permissions require no route,
+// and at least 29 `Platform.Application` handlers are named nowhere in `SSAS.Platform.API`** (T-128; the 29
+// is a floor, because a handler merely mentioned in a comment counts as routed).
+//
+// ---- AND TWO OF THE 117 ARE RETURNED BY NOTHING AND NAMED BY NO TEST.
+//
+//   TenantStorage.MigrationOwnershipNotAcquired
+//   TenantStorage.RestoreVerificationRestoreFailed
+//
+// **NOT deleted, and that is the opposite call from T-125's** — there, a dead code sat beside a LIVE route
+// whose behaviour proved it surplus. **Here there is no transport to prove anything**, and
+// `RestoreVerificationRestoreFailed` naming a condition the restore-verification flow plainly has is at
+// least as likely to be a MISSING return as a surplus constant. **Recorded for whoever owns that flow.**
 public static class TenantStorageErrors
 {
   public static readonly Error ServerKeyRequired =

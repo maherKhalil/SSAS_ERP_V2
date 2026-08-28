@@ -30,6 +30,27 @@ public interface IGlReadService
   Task<JournalDetail?> GetJournalAsync(
     GlReadScope scope, Guid journalEntryId, CancellationToken cancellationToken = default);
 
+  // ---- THE DRAFT READS (T-098). THE HALF THAT WAS NEVER BUILT.
+  //
+  // Four write routes shipped — create, update, discard, post — and **nothing could read a draft.** The
+  // create route returns a `Location` header and an id for a resource no route could fetch, so a preparer
+  // could not see what they were editing and a poster could not see what they were about to post.
+  //
+  // `GL.Drafts.View` was declared with the writers in the same commit and required by nothing until now.
+  //
+  // Same pair and same parameters as the journal reads, because a draft is the same shape of thing: a
+  // header with lines, searched by company and date, fetched by id.
+  Task<IReadOnlyList<JournalDraftListItem>> SearchJournalDraftsAsync(
+    GlReadScope scope,
+    Guid? companyId,
+    DateTimeOffset? fromUtc,
+    DateTimeOffset? toUtc,
+    string? reference,
+    CancellationToken cancellationToken = default);
+
+  Task<JournalDraftDetail?> GetJournalDraftAsync(
+    GlReadScope scope, Guid journalDraftId, CancellationToken cancellationToken = default);
+
   Task<AccountBalance?> GetAccountBalanceAsync(
     GlReadScope scope,
     Guid accountId,

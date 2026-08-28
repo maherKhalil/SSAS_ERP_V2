@@ -44,6 +44,27 @@ namespace SSAS.Architecture.Tests;
 // So responsibility is DECLARED by code family. A wrong derivation accuses innocents; a declaration is
 // reviewable, and a new family has to be added by a person — H9's argument for its exact inventory.
 //
+// ---- THE RESPONSIBLE SET IS A STATIC FLOOR, NOT A TOTAL (T-093). T-094 CLOSES IT.
+//
+// Responsibility is declared by code FAMILY, and the families were chosen by reading the handlers each
+// site's routes name. **Errors raised inside services those handlers INJECT are not counted** —
+// `ITenantBranchValidator`, `ICompanyContextEstablisher`, `IBranchTopologyGuard` and their kind all
+// return Results that flow straight through to these mappers.
+//
+// **This is not a theoretical limit; it has already been demonstrated twice.**
+//
+//   1. The manual reachability walk that preceded this register missed `TenantUser.InvalidTransition` at
+//      the IdentityAccess site — a code already known to be reachable — because it arrives as
+//      `domainResult` from the aggregate rather than through an `*Errors.*` symbol in the handler file.
+//   2. That same walk put Company at ONE wrong code. **The register found five more**, all of them
+//      `CompanyAccessErrors` raised by the company-context establisher — an injected service.
+//
+// **A floor that has been shown to be a floor is a stronger warning than one asserted in the abstract**,
+// which is why both demonstrations are written down here rather than summarised.
+//
+// **T-094 replaces the statically-named handler set with a transitive walk.** When it lands, the exact-set
+// registers below go RED and force the work — that is the guard doing its job, not a regression.
+//
 // ---- A SITE MAY MAP CODES OUTSIDE ITS FAMILIES, AND THAT IS NOT PENALISED.
 //
 // The import site maps three `Employee.Position*` codes because an import surfaces employee errors. Only
@@ -73,6 +94,21 @@ public sealed class ModuleErrorMappingArchitectureTests
   [
     typeof(SSAS.Payroll.Domain.Runs.PayrollRun).Assembly,
     typeof(SSAS.Payroll.Application.Permissions.PayrollPermissionNames).Assembly
+  ];
+
+  // ---- PLATFORM ENTERED THE REGISTER IN T-093, AND IT CHANGED WHAT THE GUARD COVERS.
+  //
+  // T-078 and T-079 built a per-site inventory **and stopped at the module boundary.** T-091 then mounted
+  // two routes onto `IdentityAccessApiErrorMapper` — the one mapper outside it — and shipped a
+  // `400 request.invalid` for a tenant user that does not exist. **Nothing went red, because nothing was
+  // looking.**
+  //
+  // Both Platform assemblies, because `Pagination.Invalid` and the localization codes are declared in
+  // Application while the rest are in Domain.
+  private static readonly Assembly[] PlatformAssemblies =
+  [
+    typeof(SSAS.Platform.Domain.TenantUsers.TenantUser).Assembly,
+    typeof(SSAS.Platform.Application.Permissions.PlatformPermissionNames).Assembly
   ];
 
   private static readonly Assembly[] HrAssemblies =
@@ -131,7 +167,130 @@ public sealed class ModuleErrorMappingArchitectureTests
     // evidence when the name searched for is the right one.
     new("EmployeeImportExportTransportContracts", HrAssemblies,
       Path.Combine("src", "Modules", "HR", "SSAS.HR.API", "Employees", "EmployeeImportExportTransportContracts.cs"),
-      ["EmployeeImport", "EmployeeImportRun", "EmployeeExportRun"], [])
+      ["EmployeeImport", "EmployeeImportRun", "EmployeeExportRun"], []),
+
+    // ================================================================================================
+    // PLATFORM — FIVE SITES, ADDED IN T-093.
+    // ================================================================================================
+
+    new("CompanyApiErrorMapper", PlatformAssemblies,
+      Path.Combine("src", "Platform", "SSAS.Platform.API", "Companies", "CompanyApiErrorMapper.cs"),
+      ["Company"],
+      // ---- FIVE, AND THEY ARE THE EVIDENCE FOR THE FLOOR WARNING ABOVE.
+      //
+      // All five are `CompanyAccessErrors`, raised by the company-context establisher — an INJECTED
+      // SERVICE, exactly the class of source the static reachability walk does not see. The manual
+      // estimate that preceded this register put Company at one wrong code; the register found five more.
+      //
+      // **Not mapped here because a status is a contract decision owned by the surface**, and nobody has
+      // ruled these. Recorded as debt so paying it down is something someone writes down.
+      [
+        "Company.AssignmentInvalid",
+        "Company.ContextRequired",
+        "Company.InvalidSelection",
+        "Company.InvalidSelectionFormat",
+        "Company.SelectionRequired"
+      ]),
+
+    // ---- THE SITE T-091 SHIPPED A DEFECT ONTO.
+    //
+    // It answers for the roles read AND for T-091's two tenant-user lifecycle routes. Its arms covered
+    // three codes; five reachable ones fell through to a default of `400 request.invalid`.
+    new("IdentityAccessApiErrorMapper", PlatformAssemblies,
+      Path.Combine("src", "Platform", "SSAS.Platform.API", "IdentityAccess", "IdentityAccessApiErrorMapper.cs"),
+      ["TenantUser", "Role", "Common", "Persistence", "Authorization", "Identity", "Invitation", "Permission", "Tenant"],
+      // ---- TWENTY-SIX, AND ALMOST ALL OF THEM ARE DECLARED FOR SURFACES THAT DO NOT EXIST.
+      //
+      // T-092's Part 1 measured it: **fifteen Platform permissions are declared and required by no route**,
+      // and seven of the nine tenant-user handlers have no transport at all. Role management, tenant
+      // lifecycle and invitation completion are all handlers-and-DI with nothing mounted.
+      //
+      // **So these are not a mapping backlog; they are the shadow of an unbuilt surface.** They are listed
+      // rather than excused because the day one of those routes is mounted, this list is what has to be
+      // edited — and the edit is where someone decides the status.
+      [
+        "Identity.Invalid",
+        "Invitation.ActiveMembership",
+        "Invitation.DeactivatedMembership",
+        "Permission.Invalid",
+        "Role.HasActiveUsers",
+        "Role.InvalidName",
+        "Role.InvalidTransition",
+        "Role.NotAssignable",
+        "Role.PermissionAlreadyAssigned",
+        "Role.PermissionAssignmentNotFound",
+        "Role.PlatformPermissionRejected",
+        "Role.ProtectedSystemRole",
+        "Tenant.CodeExists",
+        "Tenant.InvalidActor",
+        "Tenant.InvalidCode",
+        "Tenant.InvalidName",
+        "Tenant.InvalidTransition",
+        "Tenant.InvalidTransitionReason",
+        "Tenant.Mismatch",
+        "Tenant.NotFound",
+        "Tenant.Required",
+        "TenantUser.Inactive",
+        "TenantUser.InvalidDisplayName",
+        "TenantUser.InvalidEmail",
+        "TenantUser.RoleAlreadyAssigned",
+        "TenantUser.RoleAssignmentNotFound"
+      ]),
+
+    // ---- ITS DEFAULT IS NOT IN THIS FILE, WHICH IS WHY READING THE MAPPER DOES NOT REVEAL IT.
+    //
+    // `TryMap` returns a bool with a `null!` sentinel; the fallback lives at
+    // `LocalizationEndpointRouteBuilderExtensions.cs:179-181`. Two spellings of one decision.
+    new("LocalizationApiErrorMapper", PlatformAssemblies,
+      Path.Combine("src", "Platform", "SSAS.Platform.API", "Localization", "LocalizationApiErrorMapper.cs"),
+      ["localization"],
+      // Two, both raised by the management audit guard. Unruled, so recorded rather than guessed at.
+      ["localization.actor_invalid", "localization.group_invalid"]),
+
+    new("PlatformSupportAuthorityApiErrorMapper", PlatformAssemblies,
+      Path.Combine("src", "Platform", "SSAS.Platform.API", "PlatformSupport", "PlatformSupportAuthorityApiErrorMapper.cs"),
+      ["PlatformSupport"],
+      // Two more the static walk missed and the register found. Unruled; recorded.
+      ["PlatformSupport.AccountIneligible", "PlatformSupport.NoUsablePlatformAuthority"]),
+
+    // ================================================================================================
+    // AUTHENTICATION HAS NO MAPPER, AND THAT IS A RULING RATHER THAN A HOLE.
+    // ================================================================================================
+    //
+    // **Every ordinary authority failure collapses to one generic 401** — asserted by
+    // `Every_ordinary_authority_failure_returns_the_same_generic_401`, because distinguishing "no such
+    // account" from "wrong password" is the disclosure the collapse exists to prevent.
+    //
+    // **So every code in these families is deliberately unmapped, and all of them are listed below.**
+    // Registering the site rather than omitting it is the point: an omitted site is indistinguishable
+    // from an oversight, and the next sweep rediscovers it as a hole. A NEW authentication error now
+    // has to be added to `KnownUnmapped` by a person, who will meet this paragraph while doing it.
+    //
+    // The source path is the route file, which contains no arms at all — so the guard reads a real file
+    // and finds nothing mapped, which is exactly the state being recorded.
+    new("PlatformAuthentication", PlatformAssemblies,
+      Path.Combine("src", "Platform", "SSAS.Platform.API", "Authentication", "AuthenticationEndpointRouteBuilderExtensions.cs"),
+      ["Authentication", "AuthenticationAccount", "AuthenticationSession", "AccountActionToken"],
+      [
+        "AccountActionToken.Invalid",
+        "AccountActionToken.InvalidHash",
+        "AccountActionToken.SensitiveValueConsumed",
+        "Authentication.AccessTokenUnavailable",
+        "Authentication.CompromisedPassword",
+        "Authentication.Failed",
+        "Authentication.InvalidAccessTokenClaims",
+        "Authentication.InvalidClientId",
+        "Authentication.InvalidLoginEmail",
+        "Authentication.InvalidPassword",
+        "Authentication.NoEligibleMembership",
+        "Authentication.PasswordCheckUnavailable",
+        "Authentication.TenantSelectionFailed",
+        "AuthenticationAccount.InvalidTransition",
+        "AuthenticationAccount.PasswordNotAllowed",
+        "AuthenticationAccount.PasswordRequired",
+        "AuthenticationSession.Invalid",
+        "AuthenticationSession.RefreshFailed"
+      ])
   ];
 
   // ---- THE REGISTER IS AN EXACT SET, NOT A CEILING.
@@ -184,7 +343,12 @@ public sealed class ModuleErrorMappingArchitectureTests
     "DepartmentApiErrorMapper",
     "PositionApiErrorMapper",
     "EmployeeApiErrorMapper",
-    "EmployeeImportExportTransportContracts"
+    "EmployeeImportExportTransportContracts",
+    "CompanyApiErrorMapper",
+    "IdentityAccessApiErrorMapper",
+    "LocalizationApiErrorMapper",
+    "PlatformSupportAuthorityApiErrorMapper",
+    "PlatformAuthentication"
   };
 
   [Fact]
@@ -201,11 +365,32 @@ public sealed class ModuleErrorMappingArchitectureTests
   // examined by nothing, and every per-site assertion above would stay green. That is the same shape as a
   // route outside an inventory, and it is the way this guard would quietly stop covering the module it
   // was written for.
+  // ---- FOUR FAMILIES HAVE NO HTTP SURFACE AT ALL, AND THAT IS RECORDED RATHER THAN INFERRED (T-093).
+  //
+  // Widening the register to Platform surfaced these: every code in them is declared, none is reachable
+  // from any route, and **no mapping site exists because there is nothing to map them for.**
+  //
+  //   Branch            no branch routes exist; `TenantBranchService` is invoked from other handlers
+  //   Subscription      `Subscriptions/` holds one entitlement type and no route file
+  //   TenantStorage     117 codes, all operational — backup, cutover, restore verification
+  //   UserEmployeeLink  raised only by `UserEmployeeLink.Create`, which nothing in `src` calls (T-092)
+  //
+  // **This is a DECLARATION, on exactly the same footing as `ResponsibleFamilies`, and for the reason
+  // this file already gives:** there is no call graph to walk, so "unrouted" cannot be derived. A wrong
+  // declaration here hides a family instead of accusing one, which is the more dangerous direction — so
+  // it is an EXACT set. A fifth family cannot join it without a person writing it down.
+  //
+  // **The day one of these gains a route, this list is what has to be edited**, and the edit is where
+  // someone decides which site answers for it.
+  private static readonly string[] UnroutedFamilies =
+    ["Branch", "Subscription", "TenantStorage", "UserEmployeeLink"];
+
   [Fact]
   public void Every_declared_error_family_is_owned_by_exactly_one_site()
   {
     var claimed = Sites()
       .SelectMany(site => site.ResponsibleFamilies)
+      .Concat(UnroutedFamilies)
       .ToArray();
 
     Assert.Equal(claimed.Length, claimed.Distinct(StringComparer.Ordinal).Count());
@@ -227,7 +412,20 @@ public sealed class ModuleErrorMappingArchitectureTests
       unclaimed.Length == 0,
       "A declared error family is claimed by no mapping site, so nothing asserts its codes are mapped and " +
       "every arm of this guard passes over it. Give it to the site that answers for the routes raising " +
-      $"it:{Environment.NewLine}{string.Join(Environment.NewLine, unclaimed)}");
+      "it, or — if it has no HTTP surface at all — to `UnroutedFamilies`, with the reason:" +
+      $"{Environment.NewLine}{string.Join(Environment.NewLine, unclaimed)}");
+
+    // NOT VACUOUS IN THE OTHER DIRECTION EITHER. A family listed as unrouted that no longer exists would
+    // sit here forever, quietly excusing nothing — and would hide the day its name was reused.
+    var stale = UnroutedFamilies
+      .Where(family => !declared.Contains(family, StringComparer.Ordinal))
+      .ToArray();
+
+    Assert.True(
+      stale.Length == 0,
+      "A family is listed in `UnroutedFamilies` but no longer declares any error. Remove it: an excuse " +
+      $"for something that does not exist is an excuse waiting to cover something that does:{Environment.NewLine}" +
+      string.Join(Environment.NewLine, stale));
   }
 
   private static string[] ResponsibleCodes(MappingSite site) =>

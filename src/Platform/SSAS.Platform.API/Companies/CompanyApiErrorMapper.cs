@@ -36,8 +36,18 @@ public static class CompanyApiErrorMapper
       // Trusted-context denials (unreachable on an authorized request; mapped defensively).
       "Company.InvalidActor" => ProblemResults.Forbidden,
       "Authorization.Unauthorized" => ProblemResults.Forbidden,
-      // Persistence write failure and any unexpected/unmapped error -> safe internal failure,
-      // never masked as client validation.
+      // ---- T-093. `ApplicationExecutionContext.GetTenantActor` RETURNS THIS, AND EVERY TENANT-PLANE
+      // ---- HANDLER FUNNELS THROUGH IT. Unmapped it fell to the default and answered 500 — an
+      // authorization refusal reported as a server error, which tells the caller to retry something that
+      // will never succeed and pages an operator for a working system.
+      "Tenant.Unauthorized" => ProblemResults.Forbidden,
+      // ---- EXPLICIT, THOUGH IT MATCHES THE DEFAULT (T-093, T-080's precedent).
+      //
+      // An arm that agrees with the default is a DECISION; the absence of one is an accident, and the two
+      // are indistinguishable from the wire. Do not delete this as redundant: deleting it removes the
+      // record that someone checked.
+      "Persistence.WriteFailure" => ProblemResults.WriteFailure,
+      // Any unexpected/unmapped error -> safe internal failure, never masked as client validation.
       _ => ProblemResults.WriteFailure
     };
   }

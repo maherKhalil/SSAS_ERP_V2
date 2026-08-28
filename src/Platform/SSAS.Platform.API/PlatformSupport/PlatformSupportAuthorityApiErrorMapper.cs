@@ -41,7 +41,15 @@ public static class PlatformSupportAuthorityApiErrorMapper
       "Persistence.UniqueConstraint" => PrincipalConflict,
       // Trusted-context denials (unreachable on an authorized request; mapped defensively, never as validation).
       "Authorization.Unauthorized" => ProblemResults.Forbidden,
-      // Persistence write failure and anything unmapped -> safe internal failure.
+      // ---- T-093. THE SAME REFUSAL THE OTHER THREE PLATFORM SITES ALSO MISSED.
+      //
+      // `ApplicationExecutionContext.GetTenantActor` returns it and every tenant-plane handler funnels
+      // through that call. Unmapped it answered 500 here — a refusal reported as a server error.
+      "Tenant.Unauthorized" => ProblemResults.Forbidden,
+      // ---- EXPLICIT, THOUGH IT MATCHES THE DEFAULT (T-093, T-080's precedent). An arm that agrees with
+      // the default is a decision; its absence is an accident, and the wire cannot tell them apart.
+      "Persistence.WriteFailure" => ProblemResults.WriteFailure,
+      // Anything unmapped -> safe internal failure.
       _ => ProblemResults.WriteFailure
     };
   }

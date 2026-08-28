@@ -118,6 +118,42 @@ public sealed class PayrollChainSqlServerTests
   }
 
   // ================================================================================================
+  // A DAILY-RATE LEAVER (T-116). THE LAST UNTESTED ARM OF AN EXPRESSION THAT HAS BEEN WRONG TWICE.
+  // ================================================================================================
+  //
+  // T-115 fixed the joiner and left the leaver **correct by construction** — `min(termination, period end)`
+  // is in the same expression — **but asserted by reasoning rather than by a run.** That is exactly the
+  // shape T-114 left, and within the hour it turned out to be a 1100-per-employee defect.
+  //
+  // **"Correct by construction" is also what `StandardWorkingDays` was**, two tasks before it turned out to
+  // be the wrong quantity. The reasoning was sound each time.
+  //
+  // **Terminated on 15 January:** 11 working days from the 1st to the 15th, less two unpaid, so **9 x 100 =
+  // 900.** Before T-115 this employee was paid the whole period's 19 days: **1900, an overpayment of 1000
+  // for days after they left.**
+  [Fact]
+  [Trait("Decision", "OD-PAY-0010")]
+  public async Task A_daily_rate_leaver_is_paid_only_to_their_termination()
+  {
+    await using var chain = await ChainFixture.CreateAsync();
+
+    await chain.SeedEmployeeAsync(terminationDate: "2026-01-15T00:00:00+00:00");
+    await chain.SeedLedgerAsync();
+    await chain.SeedPayrollConfigurationAsync(SalaryType.Daily, DailySalaryRate);
+    await chain.SeedAttendanceAsync();
+    await chain.CloseAttendancePeriodAsync();
+
+    var runId = await chain.CreateAndCalculateRunAsync();
+    Assert.True((await chain.ApproveAsync(runId)).IsSuccess);
+    Assert.True((await chain.PostAsync(runId)).IsSuccess);
+
+    var lines = (await chain.RunAsync(runId)).Lines.ToList();
+
+    Assert.Equal(900m, lines.Single(line => line.GlAccountId == chain.SalaryAccountId).Amount);
+    Assert.DoesNotContain(lines, line => line.GlAccountId == chain.AbsenceAccountId);
+  }
+
+  // ================================================================================================
   // AND THE REFUSAL THAT HAD TO SURVIVE THE FIX (T-115).
   // ================================================================================================
   //
@@ -528,8 +564,16 @@ public sealed class PayrollChainSqlServerTests
     //
     // The four cases written before T-115 assert numbers that assume a full-period employee, and a spine
     // that had to be edited to add a joiner would not be proving the same thing afterwards.
-    public Task SeedEmployeeAsync(string employmentDate = "2020-01-01T00:00:00+00:00")
+    // ---- AND A TERMINATION DATE (T-116), ALSO DEFAULTED.
+    //
+    // `CK_Employees_TerminationDateMatchesStatus` ties the two together, so a leaver is seeded as
+    // `Terminated` WITH a date or `Active` with none — the database refuses any other combination, which is
+    // why this takes one parameter and derives the status rather than taking both.
+    public Task SeedEmployeeAsync(
+      string employmentDate = "2020-01-01T00:00:00+00:00", string? terminationDate = null)
     {
+      var status = terminationDate is null ? "Active" : "Terminated";
+      var terminationValue = terminationDate is null ? "NULL" : $"'{terminationDate}'";
       var department = DepartmentId;
       var position = PositionId;
 
@@ -554,13 +598,13 @@ public sealed class PayrollChainSqlServerTests
 
         INSERT INTO [tenant].[Employees]
           ([EmployeeId], [TenantId], [CompanyId], [BranchId], [DepartmentId], [PositionId],
-           [EmployeeNumber], [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [Status],
-           [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy],
+           [EmployeeNumber], [NormalizedEmployeeNumber], [FullName], [EmploymentDate], [TerminationDate],
+           [Status], [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy],
            [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
         VALUES
           ('{Employee}', '{Tenant}', '{Company}', '{BranchId}', '{department}', '{position}',
-           N'CHAIN-1', N'CHAIN-1', N'Chain Person', '{employmentDate}', N'Active',
-           N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
+           N'CHAIN-1', N'CHAIN-1', N'Chain Person', '{employmentDate}', {terminationValue},
+           N'{status}', N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
            SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
         """);
     }

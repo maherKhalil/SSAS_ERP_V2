@@ -295,9 +295,23 @@ public sealed class AttendanceArchitectureTests
   // It was prose, so nothing failed when it stopped being true. **Had it been an assertion — one test that
   // no Platform-Domain type pairs a user identifier with an employee identifier — T-082 would have
   // reddened it on the day the mapping landed**, and no sweep would have been needed to find it.
+  // ---- THE NAME ASSERTS WHAT, AND THE REASON LIVES HERE WHERE IT CAN EXPIRE VISIBLY (T-087).
+  //
+  // It used to be called `..._because_the_subject_cannot_be_resolved`. **The subject can now be resolved**
+  // — `UserEmployeeLink`, `ADR-030`, T-082 — so the name carried a reason that had expired, in the one
+  // place a stale claim is read on every single run.
+  //
+  // Its neighbours already assert what rather than why (`Every_attendance_permission_follows_the_three_part_grammar`),
+  // and a reason in a name cannot be corrected without changing every citation of it. **In a comment it can
+  // expire and be fixed in one place; in an identifier it cannot.**
+  //
+  // **The durable handle is `AC-ATT-0032`, not this method.** `AC-` identifiers survive refactors and are
+  // what the traceability matrix, the feature package and the specification prose all cite; a test name
+  // changes whenever the thing it describes does, which is exactly what happened here.
   [Fact]
+  [Trait("Criterion", "AC-ATT-0032")]
   [Trait("Decision", "OD-ATT-0013")]
-  public void No_self_service_permission_is_declared_because_the_subject_cannot_be_resolved()
+  public void No_self_service_permission_is_declared()
   {
     var constants = typeof(SSAS.Attendance.Application.Permissions.AttendancePermissionNames)
       .GetFields(BindingFlags.Public | BindingFlags.Static)

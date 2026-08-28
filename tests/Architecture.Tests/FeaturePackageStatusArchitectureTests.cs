@@ -146,7 +146,7 @@ public sealed class FeaturePackageStatusArchitectureTests
         Package: Path.GetFileName(Path.GetDirectoryName(path))!,
         File: Path.GetFileName(path),
         Title: File.ReadLines(path).FirstOrDefault() ?? string.Empty))
-      .Where(document => document.Title.StartsWith("#", StringComparison.Ordinal))
+      .Where(document => document.Title.StartsWith('#'))
       .ToArray();
 
     // NOT VACUOUS, and it belongs here rather than in each test: a sweep that stopped finding documents

@@ -220,7 +220,13 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
 
   // ---- THE ROW-LEVEL CODES ARE THE PROJECTION'S, NOT THE ROUTE MAPPER'S (R8).
   //
-  // A department code that resolves to nothing reports `department.not_found` IN THE REPORT — a code the
+  // ---- THE ROW CODE CHANGED IN T-096, AND THE CHANGE IS THE POINT OF THIS TEST EXISTING.
+  //
+  // It reported `department.not_found`, which `DepartmentApiErrorMapper` also carries — at 404, while this
+  // is 400. **One wire string, two statuses, and a caller sees strings rather than constants.** The row
+  // case now has its own code under this file's `employee_import.` convention.
+  //
+  // A department code that resolves to nothing reports it IN THE REPORT — a code the
   // route mapper never emits, because at route level the same domain error is `request.invalid`.
   [Fact]
   [Trait("Decision", "R8")]
@@ -237,7 +243,7 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     var error = document.RootElement.GetProperty("errors").EnumerateArray().Single();
 
     Assert.Equal("departmentCode", error.GetProperty("column").GetString());
-    Assert.Equal("department.not_found", error.GetProperty("code").GetString());
+    Assert.Equal("employee_import.department_not_found", error.GetProperty("code").GetString());
   }
 
   // ---- AND `status=Terminated` REPORTS ITS OWN NAMESPACE (R9, OD-DOC-010).

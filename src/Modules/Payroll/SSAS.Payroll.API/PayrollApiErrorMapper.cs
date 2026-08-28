@@ -137,7 +137,14 @@ public static class PayrollApiErrorMapper
 
       // Company-context establishment shares the platform's codes, so they are mapped by the same names GL
       // uses — wire-equivalence across modules is the contract where errors must match (`ADR-012`).
-      "Company.ContextRequired" => ApiErrors.RequestInvalid,
+      // ---- 403, CORRECTED IN T-096. IT ANSWERED 400 HERE AND 403 AT FOUR OTHER SITES.
+      //
+      // Found by `The_same_code_answers_the_same_status_at_every_site_that_maps_it` on its first run, and
+      // ruled on the distinction the product already draws rather than on a head-count:
+      // `Company.SelectionRequired` is 400 because THE CALLER MUST SELECT ONE, while this one is *"a
+      // trusted company context is required"* — **an authorization context that could not be established,
+      // which no change to the request can fix.**
+      "Company.ContextRequired" => ApiErrors.Forbidden,
       "Company.ScopeDenied" => CompanyScopeDenied,
 
       // ---- EXHAUSTIVE BY CONSTRUCTION. A new domain error with no line here becomes a 500 and fails the

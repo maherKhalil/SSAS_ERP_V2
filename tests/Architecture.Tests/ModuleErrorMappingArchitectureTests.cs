@@ -102,44 +102,10 @@ public sealed class ModuleErrorMappingArchitectureTests
     Type[] Seeds,
     string[] KnownUnmapped);
 
-  private static readonly Assembly[] AttendanceAssemblies =
-  [
-    typeof(SSAS.Attendance.Domain.Calendars.WorkingCalendar).Assembly,
-    typeof(SSAS.Attendance.Application.Permissions.AttendancePermissionNames).Assembly
-  ];
 
-  private static readonly Assembly[] GlAssemblies =
-  [
-    typeof(SSAS.GL.Domain.Accounts.Account).Assembly,
-    typeof(SSAS.GL.Application.Permissions.GlPermissionNames).Assembly
-  ];
 
-  private static readonly Assembly[] PayrollAssemblies =
-  [
-    typeof(SSAS.Payroll.Domain.Runs.PayrollRun).Assembly,
-    typeof(SSAS.Payroll.Application.Permissions.PayrollPermissionNames).Assembly
-  ];
 
-  // ---- PLATFORM ENTERED THE REGISTER IN T-093, AND IT CHANGED WHAT THE GUARD COVERS.
-  //
-  // T-078 and T-079 built a per-site inventory **and stopped at the module boundary.** T-091 then mounted
-  // two routes onto `IdentityAccessApiErrorMapper` — the one mapper outside it — and shipped a
-  // `400 request.invalid` for a tenant user that does not exist. **Nothing went red, because nothing was
-  // looking.**
-  //
-  // Both Platform assemblies, because `Pagination.Invalid` and the localization codes are declared in
-  // Application while the rest are in Domain.
-  private static readonly Assembly[] PlatformAssemblies =
-  [
-    typeof(SSAS.Platform.Domain.TenantUsers.TenantUser).Assembly,
-    typeof(SSAS.Platform.Application.Permissions.PlatformPermissionNames).Assembly
-  ];
 
-  private static readonly Assembly[] HrAssemblies =
-  [
-    typeof(SSAS.HR.Domain.Employees.Employee).Assembly,
-    typeof(SSAS.HR.Application.Permissions.HrPermissionNames).Assembly
-  ];
 
   private static MappingSite[] Sites() =>
   [
@@ -530,25 +496,91 @@ public sealed class ModuleErrorMappingArchitectureTests
   }
 
   // ================================================================================================
-  // THE TWO DISAGREEMENTS THIS GUARD FOUND ON ITS FIRST RUN. NEITHER WAS INTRODUCED BY T-095.
+  // AND THE PROPERTY `DEC-L-079` WAS ACTUALLY ABOUT: ONE WIRE STRING, ONE STATUS (T-096).
   // ================================================================================================
   //
-  // **`Company.ContextRequired` — 403 at four sites, 400 at Payroll.** The same missing company context is
-  // an authorization refusal on four surfaces and a malformed request on the fifth.
+  // ---- THE ARM-LEVEL GUARD ABOVE IS THIS ONE'S WEAKER SHADOW, AND IT MISSED A REAL DEFECT.
   //
-  // **`EmployeeImportRun.InvalidActor` — 403 at the employee mapper, 500 at the import contracts.** A
-  // refusal reported as a server failure is the exact defect `EmployeeApiErrorMapper`'s own header warns
-  // about: *"tells the caller to retry something that will never succeed, and pages an operator for a
-  // working system."*
+  // It compares which STATUS each error CODE gets, site by site. **It cannot see two sites mapping
+  // DIFFERENT constants that carry the SAME wire string** — which is exactly what
+  // `department.not_found` and `position.not_found` did: 400 in the import row mapper, 404 on the
+  // resource route.
   //
-  // **Reported, not ruled.** Copying one site's answer over the other would be choosing a status, which is
-  // the surface's decision — and the wrong choice propagates a defect rather than leaving one.
-  private static readonly string[] KnownDisagreements =
-  [
-    "Company.ContextRequired: CompanyApiErrorMapper=403, DepartmentApiErrorMapper=403, " +
-      "EmployeeApiErrorMapper=403, GlApiErrorMapper=403, PayrollApiErrorMapper=400",
-    "EmployeeImportRun.InvalidActor: EmployeeApiErrorMapper=403, EmployeeImportExportTransportContracts=500"
-  ];
+  // **A caller sees strings. It has never seen a constant or an error code.** So the property that matters
+  // is the one asserted here, and the arm-level version survives because it catches a different mistake —
+  // the same *error* answered differently — one step earlier.
+  //
+  // ---- IT ENUMERATES EVERY `ApiError` DECLARATION, NOT ONLY THE ONES AN ARM USES.
+  //
+  // A constant declared and not yet used still fixes a string to a status, and the collision it creates is
+  // real the moment something maps to it. Enumerating declarations rather than arms is what makes this
+  // catch the defect BEFORE a route starts answering with it.
+  [Fact]
+  [Trait("Decision", "DEC-L-079")]
+  public void A_wire_code_string_carries_one_status_across_the_whole_product()
+  {
+    var declarations = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+
+    foreach (var type in MapperTypes())
+    {
+      foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(field => field.IsInitOnly && field.FieldType.Name == "ApiError"))
+      {
+        if (field.GetValue(null) is not { } value)
+        {
+          continue;
+        }
+
+        var code = value.GetType().GetProperty("Code")?.GetValue(value) as string;
+        var status = value.GetType().GetProperty("StatusCode")?.GetValue(value) as int?;
+
+        if (code is null || status is not { } number)
+        {
+          continue;
+        }
+
+        if (!declarations.TryGetValue(code, out var statuses))
+        {
+          declarations[code] = statuses = new SortedSet<string>(StringComparer.Ordinal);
+        }
+
+        statuses.Add($"{number} ({type.Name}.{field.Name})");
+      }
+    }
+
+    // NOT VACUOUS. An enumeration that stopped finding declarations would agree with itself over nothing.
+    Assert.NotEmpty(declarations);
+
+    var conflicting = declarations
+      .Where(entry => entry.Value.Select(line => line.Split(' ')[0]).Distinct(StringComparer.Ordinal).Count() > 1)
+      .Select(entry => $"{entry.Key}: {string.Join(", ", entry.Value)}")
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(
+      conflicting.Length == 0,
+      "A wire code string is declared with more than one HTTP status. A caller sees the string, so the same " +
+      "code means two different outcomes depending on which surface answered — and no amount of agreement " +
+      "between ARMS can fix it, because the disagreement is between the constants themselves. Either the " +
+      $"two conditions are the same fact and must share a status, or they are not and need different " +
+      $"strings:{Environment.NewLine}{string.Join(Environment.NewLine, conflicting)}");
+  }
+
+  // ================================================================================================
+  // THE TWO DISAGREEMENTS THIS GUARD FOUND ON ITS FIRST RUN. BOTH RULED AND PAID IN T-096.
+  // ================================================================================================
+  //
+  // **`Company.ContextRequired`** answered 400 at Payroll and 403 at four other sites. Ruled 403 in T-096,
+  // on the distinction the product already draws: `Company.SelectionRequired` is 400 because the caller
+  // must select one; this one is an authorization context that could not be established.
+  //
+  // **`EmployeeImportRun.InvalidActor`** answered 403 at the employee mapper and 500 at the import
+  // contracts. Ruled 500 — which is what T-080 had already ruled at the other site, so one was right and
+  // the other was never brought into line.
+  //
+  // **The list is empty and that is a measurement.** It stays here because a THIRD disagreement must be
+  // recorded by a person rather than absorbed, and an empty exact set says so more clearly than no set.
+  private static readonly string[] KnownDisagreements = [];
 
   private static IEnumerable<(string Code, int Status)> ArmsIn(MappingSite site)
   {

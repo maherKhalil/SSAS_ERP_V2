@@ -110,6 +110,26 @@ public sealed class UserEmployeeResolverSeamTests
     Assert.Empty(scope.Standing.Asked);
   }
 
+  // ================================================================================================
+  // NO DIRECTORY AT ALL STILL REFUSES — THE FAIL-CLOSED HALF OF AN OPTIONAL DEPENDENCY.
+  // ================================================================================================
+  //
+  // The standing directory is an optional constructor parameter because Platform must stand up without any
+  // module registered — fourteen API tests proved it by failing DI validation when it was required.
+  //
+  // **An optional dependency is a fail-open waiting to happen unless the absent case is asserted.** A host
+  // with no HR module has no employees, so nobody has a standing and nobody resolves; without this test
+  // that reasoning lives only in a comment, and the first refactor to "simplify" the null check would take
+  // the safe branch out with nothing turning red.
+  [Fact]
+  [Trait("Criterion", "AC-SS-0012")]
+  public async Task A_resolver_with_no_standing_directory_refuses()
+  {
+    await using var scope = await SeamScope.CreateAsync(EmploymentStanding.Current, withDirectory: false);
+
+    Assert.Null(await scope.Resolver.ResolveEmployeeIdAsync(TenantUserId));
+  }
+
   private sealed class SeamScope : IAsyncDisposable
   {
     private readonly SqliteConnection connection;
@@ -131,7 +151,8 @@ public sealed class UserEmployeeResolverSeamTests
 
     public RecordingStanding Standing { get; }
 
-    public static async Task<SeamScope> CreateAsync(EmploymentStanding standing)
+    public static async Task<SeamScope> CreateAsync(
+      EmploymentStanding standing, bool withDirectory = true)
     {
       var connection = new SqliteConnection("Data Source=:memory:");
       await connection.OpenAsync();
@@ -176,7 +197,7 @@ public sealed class UserEmployeeResolverSeamTests
       return new SeamScope(
         connection,
         context,
-        new UserEmployeeResolver(context, new FixedTenant(), recording),
+        new UserEmployeeResolver(context, new FixedTenant(), withDirectory ? recording : null),
         recording);
     }
 

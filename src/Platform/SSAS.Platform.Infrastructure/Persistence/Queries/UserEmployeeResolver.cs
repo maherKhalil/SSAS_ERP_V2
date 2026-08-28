@@ -58,10 +58,23 @@ namespace SSAS.Platform.Infrastructure.Persistence.Queries;
 // **And it does not touch the link.** `REQ-SS-0006` / `AC-SS-0011` / `TS-SS-0009`: the row survives
 // termination so retained payslips stay attributable. **What closes is the resolution, not the record** —
 // which is why the refusal lives in this method and not in a `Where` clause over `UserEmployeeLinks`.
+//
+// ---- THE STANDING DIRECTORY IS OPTIONAL, AND THE CONTAINER IS WHY.
+//
+// It was a required constructor parameter first. **Fourteen API tests failed DI validation**: the two
+// Platform-support end-to-end hosts mount Platform WITHOUT any module, so nothing implements an HR-owned
+// contract and `UserEmployeeResolver` could not be constructed at all.
+//
+// **That is not a test problem; it is the composition telling the truth.** Platform is beneath the modules
+// and has to stand up without them. A required dependency on a module-implemented contract inverts that.
+//
+// **Absent is not an excuse to resolve — it is a reason not to.** A host with no HR module has no employees,
+// so nobody has an employment standing and nobody resolves. `A_resolver_with_no_standing_directory_refuses`
+// asserts that, because a `null` default that nothing exercises is a fail-open waiting to happen.
 public sealed class UserEmployeeResolver(
   PlatformDbContext dbContext,
   ICurrentTenant currentTenant,
-  IEmploymentStandingDirectory employmentStanding)
+  IEmploymentStandingDirectory? employmentStanding = null)
   : IUserEmployeeResolver
 {
   public async Task<Guid?> ResolveEmployeeIdAsync(
@@ -94,7 +107,9 @@ public sealed class UserEmployeeResolver(
     // **The cost is named rather than hidden: a terminated employee cannot tell "your access ended" from
     // "you were never linked."** That is an operational message to deliver out of band, not a fact for an
     // API to leak.
-    var standing = await employmentStanding.GetStandingAsync(employeeId, cancellationToken);
+    var standing = employmentStanding is null
+      ? EmploymentStanding.Unknown
+      : await employmentStanding.GetStandingAsync(employeeId, cancellationToken);
 
     // `Current` and nothing else. `Unknown` fails closed with `Ended` — see `EmploymentStanding`, where
     // that direction is chosen once so no caller has to choose it again.

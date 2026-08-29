@@ -37,6 +37,9 @@ public sealed class PayrollCalculatorErrorWireContractTests
   [InlineData("Payroll.PeriodBoundsInvalid", 400)]
   [InlineData("Payroll.DailySalaryHasNoWorkingDays", 409)]
   [InlineData("Payroll.OneOffPaymentElementNotPayable", 422)]
+  // 409, not 422: assigning the element or correcting the tier makes the identical request succeed, which
+  // is `DailySalaryHasNoWorkingDays`' shape rather than `OneOffPaymentElementNotPayable`'s (T-149).
+  [InlineData("Payroll.OvertimeTierHasNoPricedElement", 409)]
   public void Every_error_the_calculator_returns_has_a_deliberate_status(string code, int expected)
   {
     var mapped = PayrollApiErrorMapper.Map(new Error(code, "irrelevant to the mapping"));

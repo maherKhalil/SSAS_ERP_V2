@@ -159,6 +159,12 @@ public static class PayrollApiErrorMapper
       // well-formed and the world is inconsistent.
       "Payroll.AttendanceContradictsEmployment" => RunStateInvalid,
 
+      // Same shape and the same status: the request is well-formed, and the world is not ready because
+      // an overtime tier the employee worked is priced by none of their assigned elements. Assigning the
+      // element or correcting the tier makes the identical request succeed, which is what distinguishes
+      // this from a 422 (T-149).
+      "Payroll.OvertimeTierHasNoPricedElement" => RunStateInvalid,
+
       // ---- ONE-OFF PAY INSTRUCTIONS (T-125). UNMAPPED SINCE T-110 CREATED THE ROUTE.
       //
       // **`POST /employees/{id}/one-off-payments` with `amount: 0` answered 500** — a validation refusal

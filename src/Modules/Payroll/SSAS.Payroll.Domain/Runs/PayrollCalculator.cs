@@ -180,6 +180,34 @@ public static class PayrollCalculator
           PayrollErrors.DailySalaryHasNoWorkingDays);
       }
 
+      // ---- OVERTIME WORKED AGAINST A TIER NOTHING PRICES (T-149).
+      //
+      // Attendance supplies quantities per tier; each `OvertimeHourly` element names the ONE tier it prices.
+      // If the employee worked a tier none of their assigned elements names, **those hours are priced by
+      // nothing and the payslip is short by exactly them.**
+      //
+      // Refused rather than paid as zero — `DailySalaryHasNoWorkingDays` and `AttendanceContradictsEmployment`
+      // both refuse on the same reasoning: **a zero is indistinguishable from an employee who did nothing.**
+      //
+      // ⚠ ONLY WHEN THE EMPLOYEE IS PAID OVERTIME AT ALL. An employee with no assigned `OvertimeHourly`
+      // element is not misconfigured — the rule two screens below states that its absence MEANS "this
+      // employee is not paid overtime", a legitimate standing instruction. **Refusing there would break a
+      // supported setup, so the guard requires at least one assigned overtime element before it fires.**
+      var pricedTiers = ordered
+        .Where(candidate => candidate.Behaviour == PayElementBehaviour.OvertimeHourly &&
+          (employee.Compensation?.Assignments.Any(a => a.PayElementId == candidate.Id) ?? false))
+        .Select(candidate => candidate.OvertimeTier)
+        .Where(tier => tier is not null)
+        .ToArray();
+
+      if (pricedTiers.Length > 0 && employee.OvertimeQuantityByTier is { } workedTiers &&
+        workedTiers.Any(worked => worked.Value != 0m &&
+          !pricedTiers.Contains(worked.Key, StringComparer.Ordinal)))
+      {
+        return Result.Failure<IReadOnlyList<PayrollRunDraftLine>>(
+          PayrollErrors.OvertimeTierHasNoPricedElement);
+      }
+
       // A ONE-OFF-ONLY EMPLOYEE HAS NO BASE. Not zero-because-something-went-wrong: they were never on a
       // rate, so there is no amount for a period to prorate or a quantity to multiply.
       var baseAmount = employee.Compensation is null ? 0m : RoundLine(employee.Compensation.SalaryType switch

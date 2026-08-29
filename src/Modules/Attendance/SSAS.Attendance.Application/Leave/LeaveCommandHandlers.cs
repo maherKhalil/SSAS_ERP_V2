@@ -73,7 +73,7 @@ public sealed class CreateLeaveTypeCommandHandler(
       // ---- THE LEAVE TYPE RACE: THE GUARD AND THE INDEX NAME THE SAME CONDITION (T-176).
       //
       // `ILeaveTypeRepository.CodeExistsAsync` is a read, so two callers can both pass it with the same value and both reach
-      // this save. **`the unique index on (TenantId, CompanyId, NormalizedCode)` decides it at commit**, and the loser reached
+      // this save. **the unique index on `(TenantId, CompanyId, NormalizedCode)` decides it at commit**, and the loser reached
       // `AttendanceApiErrorMapper` with an unmapped `Persistence.UniqueConstraint` — answered 500 for a
       // plain business conflict, while `LeaveErrors.DuplicateLeaveTypeCode` sat mapped to 409 and unreturned on
       // this path.

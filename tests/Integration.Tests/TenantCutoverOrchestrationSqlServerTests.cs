@@ -793,37 +793,103 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(
     DateTimeOffset? RoutingFlippedUtc,
     DateTimeOffset? PostCutoverWriteObservedUtc);
 
-  // ---- ⚠ THE TEMPLATE CARRIES SCHEMA AND NOTHING ELSE, AND THAT IS ASSERTED RATHER THAN INTENDED.
+  // ---- ⚠ THE TEMPLATE CARRIES WHAT THE MIGRATIONS PRODUCE AND NOT ONE ROW MORE.
   //
   // Every test's three catalogs are byte-for-byte copies of these two, so a row in the template is a row in
   // all sixty. **The failure that makes this worth a test is not that the tests would break — it is that they
-  // would NOT.** A seeding step added to the template later gives every test rows it never created, counts
-  // that are silently one too high, and a suite that passes differently rather than failing.
+  // would NOT.** A seeding step added to the template gives every test rows it never created, counts that are
+  // silently one too high, and a suite that passes differently rather than failing.
+  //
+  // ---- ⚠ THIS ASSERTION WAS FIRST WRITTEN AS "NO ROWS AT ALL" AND WAS WRONG ON ITS FIRST RUN.
+  //
+  // The platform catalog is NOT empty after migrating, and never has been. `AddTrialSubscriptionSeed`
+  // (T-041, `DEC-L-034`) deliberately writes an all-module trial plan so that an existing estate is not
+  // locked out when the entitlement resolver goes live, and `AddLocalizationCore` writes a catalogue state.
+  // **The template is built by `MigrateAsync` and nothing else, so its rows ARE what the migrations produce —
+  // by construction, not by inference — and the per-test `MigrateAsync` this replaced produced the identical
+  // eleven rows.** Nothing changed; the first version of this test asserted something that was never true.
+  //
+  // **THE WRONG ASSERTION IS WHY THESE ELEVEN ROWS ARE WRITTEN DOWN AT ALL.** Every test in this class has
+  // always inherited them and no test said so. They are now pinned by name and count.
+  //
+  // EXACT COUNTS RATHER THAN A FLOOR, because a new seeding migration is a DECISION — somebody authoring rows
+  // that every test in this class inherits — and it should redden here and be ratified deliberately rather
+  // than absorbed. That is the opposite of the table count below, which moves as a SIDE EFFECT of unrelated
+  // migrations and therefore takes a floor.
+  private static readonly (string Table, int Rows)[] MigrationSeeded =
+  [
+    ("platform.LocalizationCatalogStates", 1),
+    ("platform.ModuleDefinitions", 4),
+    ("platform.SubscriptionPlanModules", 4),
+    ("platform.SubscriptionPlanPrices", 1),
+    ("platform.SubscriptionPlans", 1),
+  ];
+
   [Fact]
-  public async Task The_template_every_test_restores_from_carries_no_rows_of_its_own()
+  public async Task The_template_every_test_restores_from_carries_only_what_the_migrations_wrote()
   {
-    foreach (var catalog in new[] { template.TenantTemplateCatalog, template.PlatformTemplateCatalog })
+    var platformSeeds = new Dictionary<string, int>(StringComparer.Ordinal);
+    foreach (var (table, rows) in MigrationSeeded)
+    {
+      platformSeeds[table] = rows;
+    }
+
+    // ⚠ THE SEEDS ARE PLATFORM-ONLY, SO THE TENANT TEMPLATE EXPECTS AN EMPTY SET, NOT THIS ONE. Applying the
+    // platform expectations to the tenant catalog would report all five as missing and make the tenant half
+    // of this guard permanently, meaninglessly red.
+    var expectations = new[]
+    {
+      (Catalog: template.TenantTemplateCatalog, Expected: new Dictionary<string, int>(StringComparer.Ordinal)),
+      (Catalog: template.PlatformTemplateCatalog, Expected: platformSeeds),
+    };
+
+    foreach (var (catalog, expected) in expectations)
     {
       var counts = await CatalogTemplate.RowCountsAsync(catalog);
 
-      // ⚠ ANTI-VACUITY. A catalog with no tables at all satisfies "nothing has rows" perfectly, so the
-      // emptiness check below is worthless without evidence the schema is really there. A FLOOR rather than
-      // an exact count deliberately: the table count legitimately grows every time a migration is added, and
-      // a number that must be edited on unrelated work is a number that gets edited without being read.
+      // ⚠ ANTI-VACUITY. A catalog with no tables at all satisfies "nothing unexpected has rows" perfectly, so
+      // the check below is worthless without evidence the schema is really there. A FLOOR rather than an
+      // exact count deliberately: the table count legitimately grows every time a migration is added, and a
+      // number that must be edited during unrelated work is a number that gets edited without being read.
       Assert.True(counts.Count >= 30,
         $"{catalog} reports only {counts.Count} tables, so this guard is inspecting an empty or " +
         "half-restored catalog rather than the migrated schema.");
 
-      var seeded = counts
+      var populated = counts
         .Where(entry => entry.Value > 0
           && !entry.Key.EndsWith("__EFMigrationsHistory", StringComparison.Ordinal))
-        .OrderByDescending(entry => entry.Value)
+        .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
+
+      // Anything populated that the migrations are not known to write — the fixture-seeding leak this exists
+      // to catch. The tenant template is expected to match NOTHING here, and does.
+      var unexpected = populated
+        .Where(entry => !expected.ContainsKey(entry.Key))
+        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
         .ToArray();
 
-      Assert.True(seeded.Length == 0,
-        $"the {catalog} template carries rows every test would inherit: " +
-        string.Join(", ", seeded.Select(entry => $"{entry.Key}={entry.Value}")) +
-        ". The template must be schema only — move the seeding into the fixture that needs it.");
+      Assert.True(unexpected.Length == 0,
+        $"the {catalog} template carries rows every test would inherit and no migration wrote: " +
+        string.Join(", ", unexpected.Select(entry => $"{entry.Key}={entry.Value}")) +
+        ". The template must carry only migration output — move the seeding into the fixture that needs it.");
+
+      // And a KNOWN seeded table whose count has moved is equally a change every test inherits.
+      //
+      // ⚠ THIS ITERATES `expected`, NOT `populated`, AND THAT IS THE WHOLE POINT. Written the other way it
+      // reads only tables that still have rows — so a seed falling to ZERO drops out of the collection being
+      // examined and fires nothing. **The case the guard most needs to catch is the one where a table it is
+      // watching becomes empty**, and inspecting only non-empty tables is exactly how it would miss it. A
+      // table absent from the catalog entirely counts as zero here for the same reason.
+      var drifted = expected
+        .Where(entry => counts.GetValueOrDefault(entry.Key, 0) != entry.Value)
+        .Select(entry => new { entry.Key, Found = counts.GetValueOrDefault(entry.Key, 0) })
+        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+        .ToArray();
+
+      Assert.True(drifted.Length == 0,
+        $"a migration-seeded table in {catalog} changed row count: " +
+        string.Join(", ", drifted.Select(entry =>
+          $"{entry.Key} expected {expected[entry.Key]} but found {entry.Found}")) +
+        ". Ratify the new seed by updating MigrationSeeded, having checked what every test now inherits.");
     }
   }
 
@@ -929,13 +995,20 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(
 
     // Every table in a catalog, with its exact row count. `sys.partitions.rows` would be cheaper and is
     // approximate; this is the number an assertion depends on, so it is counted rather than estimated.
+    // ⚠ ONE CONNECTION FOR ALL ~37 COUNTS, AND THAT IS NOT A MICRO-OPTIMISATION.
+    //
+    // Fixtures here resolve their connection string with `Pooling = false`, deliberately — a pooled
+    // connection outlives the test that opened it and can hold a catalog open against `DROP DATABASE`. The
+    // cost is that EVERY open is a real handshake, so a helper that opens one per table pays ~37 of them.
+    // The first version of this method did exactly that and cost **63 seconds**; this one costs about one.
     public static async Task<Dictionary<string, int>> RowCountsAsync(string catalog)
     {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+
       var tables = new List<(string Schema, string Name)>();
-      await using (var connection = new SqlConnection(ConnectionFor(catalog)))
+      await using (var command = connection.CreateCommand())
       {
-        await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
         command.CommandText =
           "SELECT SCHEMA_NAME([schema_id]), [name] FROM sys.tables ORDER BY [name]";
         command.CommandTimeout = 600;
@@ -949,8 +1022,11 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(
       var counts = new Dictionary<string, int>(StringComparer.Ordinal);
       foreach (var (schema, name) in tables)
       {
-        var value = await ScalarAsync($"SELECT COUNT(*) FROM [{schema}].[{name}]", catalog);
-        counts[$"{schema}.{name}"] = int.Parse(value ?? "0", CultureInfo.InvariantCulture);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM [{schema}].[{name}]";
+        command.CommandTimeout = 600;
+        counts[$"{schema}.{name}"] =
+          Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
       }
 
       return counts;

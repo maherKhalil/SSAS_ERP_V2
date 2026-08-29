@@ -13,12 +13,17 @@ using Microsoft.IdentityModel.Tokens;
 using SSAS.API.Tests.Employees;
 using SSAS.API.Tests.Infrastructure;
 using SSAS.Attendance.API;
+using SSAS.Attendance.Application.Abstractions;
+using SSAS.Attendance.Application.Approval;
+using SSAS.Attendance.Application.Leave;
 using SSAS.Attendance.Application.Reads;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Tenancy;
+using SSAS.BuildingBlocks.Tenancy.Branches;
 using SSAS.BuildingBlocks.Tenancy.Companies;
+using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.HR.Contracts.Employment;
 using SSAS.Host.API.Authentication;
 using SSAS.Host.API.Authorization;
@@ -82,6 +87,25 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
 
   public StubAttendanceReads Reads { get; } = new();
 
+  // The write-path doubles (T-197). Held on the host so a test can set one answer and read the wire.
+  public StubBranchAccess BranchAccess { get; } = new();
+
+  public StubLeaveRequests LeaveRequests { get; } = new();
+
+  public StubLeaveTypes LeaveTypes { get; } = new();
+
+  public StubLeaveBalances LeaveBalances { get; } = new();
+
+  public StubWorkingCalendars WorkingCalendars { get; } = new();
+
+  public StubLeaveSubmissionLock SubmissionLock { get; } = new();
+
+  public StubEmployeeRoster Roster { get; } = new();
+
+  public StubApproverDirectory Approvers { get; } = new();
+
+  public StubAttendanceUnitOfWork UnitOfWork { get; } = new();
+
   // The self-service pair, one object because a test setting one and forgetting the other would produce a
   // dangling link by accident rather than by intent.
   public StubAttendanceSelfServiceDirectory SelfService { get; } = new();
@@ -134,6 +158,33 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
     builder.Services.AddSingleton<IUserEmployeeResolver>(SelfService);
     builder.Services.AddSingleton<IEmployeePlacementDirectory>(SelfService);
     builder.Services.AddScoped<IAttendanceSelfServiceScopeResolver, AttendanceSelfServiceScopeResolver>();
+
+    // ---- ⚠ THE WRITE PATH, WHICH THIS HOST DID NOT COMPOSE AT ALL UNTIL T-197.
+    //
+    // `AddAttendanceModule()` registers ONE endpoint filter. Every repository and every command handler
+    // lives in `AddAttendanceInfrastructure()`, which this host never called — so the module's 25
+    // administrative routes were MAPPED AND UNREACHABLE, and nothing in the folder could tell.
+    //
+    // The two Application services are the REAL ones. `AttendanceScopeResolver` and `LeaveApprovalRouter`
+    // live in Application rather than Infrastructure, so registering the production types costs nothing and
+    // means the scope and approval decisions under test are the ones that ship.
+    builder.Services.AddSingleton<ITenantBranchAccessResolver>(BranchAccess);
+    builder.Services.AddSingleton<ILeaveRequestRepository>(LeaveRequests);
+    builder.Services.AddSingleton<ILeaveTypeRepository>(LeaveTypes);
+    builder.Services.AddSingleton<ILeaveBalanceRepository>(LeaveBalances);
+    builder.Services.AddSingleton<IWorkingCalendarRepository>(WorkingCalendars);
+    builder.Services.AddSingleton<ILeaveSubmissionLock>(SubmissionLock);
+    builder.Services.AddSingleton<IEmployeeRoster>(Roster);
+    builder.Services.AddSingleton<IEmployeeApproverDirectory>(Approvers);
+    builder.Services.AddSingleton<ITenantUnitOfWork>(UnitOfWork);
+
+    builder.Services.AddScoped<IAttendanceScopeResolver, AttendanceScopeResolver>();
+    builder.Services.AddScoped<ILeaveApprovalRouter, LeaveApprovalRouter>();
+
+    builder.Services.AddScoped<SubmitLeaveRequestCommandHandler>();
+    builder.Services.AddScoped<ApproveLeaveRequestCommandHandler>();
+    builder.Services.AddScoped<RejectLeaveRequestCommandHandler>();
+    builder.Services.AddScoped<CancelLeaveRequestCommandHandler>();
 
     builder.Services.AddAttendanceModule();
 

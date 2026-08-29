@@ -45,6 +45,20 @@ public static class AttendanceApiErrorMapper
   public static readonly ApiError EmploymentWindow = new(409, "attendance.employment_window");
   public static readonly ApiError LeaveStateInvalid = new(409, "attendance.leave_state_invalid");
   public static readonly ApiError BalanceInsufficient = new(409, "attendance.balance_insufficient");
+  // ---- ⚠ ANOTHER SUBMISSION FOR THE SAME EMPLOYEE HOLDS THE LOCK, AND THIS ANSWERED 500 (T-197).
+  //
+  // `Attendance.LeaveSubmissionBusy` had NO ARM in the table below, so it fell to `ApiErrors.WriteFailure`
+  // — **500 `request.failed`** — for a condition that is neither a failure nor the caller's fault.
+  //
+  // **A double-clicked submit button is sufficient to reach it.** That is the same observation that put
+  // overlapping leave on the owner's decision list: the lock closed the DATA defect and left the ANSWER
+  // wrong, so the employee saw a server error for a request they should simply retry.
+  //
+  // Distinguishable rather than folded into `Conflict`, following `department.hierarchy_busy` exactly: every
+  // other 409 here means CHANGE THE REQUEST, and this one means SEND IT AGAIN. Collapsing them would tell an
+  // employee to alter a leave request that was correct.
+  public static readonly ApiError SubmissionBusy = new(409, "attendance.leave_submission_busy");
+
   public static readonly ApiError ApprovalDenied = new(403, "attendance.approval_denied");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
   public static readonly ApiError BranchScopeDenied = new(403, "branch.scope_denied");
@@ -98,6 +112,7 @@ public static class AttendanceApiErrorMapper
       "Attendance.LeaveTypeNotFound" => NotFound,
       "Attendance.LeaveBalanceNotFound" => NotFound,
       "Attendance.LeaveRequestNotFound" => NotFound,
+      "Attendance.LeaveSubmissionBusy" => SubmissionBusy,
 
       // ---- STATE CONFLICTS. The caller is not wrong; the world is not ready.
       "Attendance.WorkingCalendarNameConflict" => Conflict,

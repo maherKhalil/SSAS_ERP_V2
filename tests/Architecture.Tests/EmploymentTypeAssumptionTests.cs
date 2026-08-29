@@ -9,10 +9,20 @@ namespace SSAS.Architecture.Tests;
 // THREE COMPUTATIONS ASSUME EVERY EMPLOYEE IS FULL-TIME. THESE FAIL THE DAY THAT STOPS BEING TRUE.
 // ==================================================================================================
 //
-// Employment type does not exist in this product (T-068, verified 2026-08-27: zero occurrences of
-// `EmploymentType`, `PartTime`, `FullTime`, `Contractor`, `Freelance`, `Fte` or `WorkingRatio` in
-// `src/` or `tests/`). Three computations nonetheless depend on its absence, and **two of them are
-// already wrong for a part-time employee in a way that announces nothing.**
+// ---- ⚠ THE PREMISE THIS FILE WAS WRITTEN ON HAS CHANGED. T-153 INTRODUCED `EmploymentType`.
+//
+// This said employment type "does not exist in this product" (T-068, verified 2026-08-27). **It exists
+// now**: `SSAS.HR.Contracts.Employment.EmploymentType`, with `FullTime`, `PartTime` and `Contract`.
+//
+// **And all three guards below still passed, unchanged, the moment it landed** — which was not the
+// expectation. The reason is guard 4, added by T-153 and stated there: the type is read ONCE, at
+// compensation-recording, to decide whether a record may exist at all. **It never reaches the
+// calculation**, and these three pin the calculation.
+//
+// So the exposure is unchanged and is now MORE precise, not less: a `PartTime` employee is expressible
+// in HR today, **and the payroll calculation still cannot tell them from a full-time one.** Three
+// computations depend on that absence, and **two of them are already wrong for a part-time employee in
+// a way that announces nothing.**
 //
 // ---- THESE DO NOT DETECT A PART-TIME EMPLOYEE. NOTHING IN THE MODEL CAN.
 //
@@ -203,5 +213,46 @@ public sealed class EmploymentTypeAssumptionTests
     ];
 
     Assert.Equal(expected, ComponentsOf(typeof(AttendanceSummaryResult)));
+  }
+
+  // ---- GUARD 4: THE TYPE EXISTS, AND IT STILL DOES NOT REACH THE CALCULATION (T-153).
+  //
+  // Guards 1–3 pin what the calculation can express. **This pins where the new type is allowed to be**,
+  // and together they are why guards 1–3 did not fire when it landed.
+  //
+  // ⚠ **The day this fails is the day the exposure above becomes reachable.** Someone will add employment
+  // type to a calculation input for a good reason — prorating a part-timer is the obvious one — and
+  // guards 1–3 would catch that shape. This catches the assemblies instead, so the two are not the same
+  // instrument twice: a type reaching `SSAS.Payroll.Domain` at all is visible here even if it arrives on
+  // a record these three do not name.
+  [Fact]
+  [Trait("Decision", "DEC-PAY-0017")]
+  public void Employment_type_reaches_the_command_path_and_not_the_calculation()
+  {
+    var employmentType = typeof(SSAS.HR.Contracts.Employment.EmploymentType);
+
+    // It is real. Without this the rest of the test passes vacuously the day someone deletes it
+    // (`DEC-L-070`).
+    Assert.True(employmentType.IsEnum);
+    Assert.Equal(
+      ["Contract", "FullTime", "PartTime"],
+      Enum.GetNames(employmentType).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+
+    // ---- AND NOTHING IN PAYROLL'S DOMAIN USES IT.
+    //
+    // `SSAS.Payroll.Domain` is where every amount is decided. The type is consumed one layer out, in
+    // `SSAS.Payroll.Application`, by the handler that records compensation — so the domain reaching it is
+    // the signal that it has become an input to money rather than a gate on a command.
+    //
+    // ⚠ **USES, NOT REFERENCES, AND THE DIFFERENCE WAS MEASURED RATHER THAN ASSUMED.** This first read
+    // "a reference from the domain", which is wrong: adding the `ProjectReference` to the `.csproj` alone
+    // **leaves this test green**, because the compiler emits no assembly reference for an assembly no
+    // type is taken from. Adding a single use of `EmploymentType` reddens it immediately.
+    //
+    // **The usage reading is the one worth having** — an unused reference decides no money — but a reader
+    // who expects this to fail review of the `.csproj` would be relying on something it does not do.
+    Assert.DoesNotContain(
+      typeof(PayrollEmployeeInput).Assembly.GetReferencedAssemblies(),
+      reference => reference.Name == "SSAS.HR.Contracts");
   }
 }

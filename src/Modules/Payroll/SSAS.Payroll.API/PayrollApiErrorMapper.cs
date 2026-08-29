@@ -97,6 +97,17 @@ public static class PayrollApiErrorMapper
       "Payroll.PayElementCodeConflict" => Conflict,
       "Payroll.PayElementCodeImmutable" => Conflict,
       "Payroll.CompensationAssignmentDuplicate" => Conflict,
+
+      // ---- CONFLICT, NOT `RequestInvalid`: THE REQUEST IS WELL FORMED AND THE STATE REFUSES IT (T-153).
+      //
+      // Nothing about the payload is wrong. The same body succeeds unchanged once HR changes the
+      // employment type, which is the distinction `Conflict` carries here and `RequestInvalid` does not.
+      "Payroll.CompensationNotAvailableForContract" => Conflict,
+
+      // `NotFound` on the same reading as `Payroll.CompensationNotFound` above: an employee id that HR
+      // cannot resolve is indistinguishable from one this caller may not reach, and the mapper has
+      // deliberately not tried to separate those since it was written.
+      "Payroll.CompensationEmployeeNotInHr" => NotFound,
       "Payroll.PeriodConflict" => Conflict,
       "Payroll.RunConflict" => Conflict,
       "Payroll.PayElementInactive" => Conflict,

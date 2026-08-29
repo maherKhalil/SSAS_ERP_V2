@@ -384,3 +384,26 @@ public sealed class StubSelfServiceDirectory : IUserEmployeeResolver, IEmployeeP
     AskedForUser.Clear();
   }
 }
+
+// ================================================================================================
+// THE FOURTH ROUTE OUT OF PAYROLL (T-153).
+// ================================================================================================
+//
+// ---- ⚠ THE DEFAULT IS `FullTime`, AND IT IS A DELIBERATE CHOICE RATHER THAN A CONVENIENCE.
+//
+// `RecordCompensationCommandHandler` refuses an employee HR cannot resolve, so a stub defaulting to null
+// would fail every existing compensation test with `CompensationEmployeeNotInHr` — **and each of those
+// failures would be about this stub, not about the endpoint under test.**
+//
+// `FullTime` is what those tests have always implicitly assumed. **The two interesting answers — null and
+// `Contract` — must be asked for by name**, which is what makes a test that sets one visibly about it.
+public sealed class StubEmployeeEngagementDirectory : IEmployeeEngagementDirectory
+{
+  public EmploymentType? EmploymentType { get; set; } = SSAS.HR.Contracts.Employment.EmploymentType.FullTime;
+
+  public void Reset() => EmploymentType = SSAS.HR.Contracts.Employment.EmploymentType.FullTime;
+
+  public Task<EmploymentType?> GetEmploymentTypeAsync(
+    Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(EmploymentType);
+}

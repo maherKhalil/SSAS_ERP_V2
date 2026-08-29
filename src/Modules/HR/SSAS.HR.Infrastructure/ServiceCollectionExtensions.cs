@@ -43,6 +43,7 @@ services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeRoster, EmployeeRosterS
     // company authorization — the caller is an employee reading their own record, and requiring a
     // company-access grant would refuse exactly the caller it exists for.
     services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeePlacementDirectory, EmployeePlacementDirectoryService>();
+    services.AddScoped<SSAS.HR.Contracts.Employment.IEmployeeEngagementDirectory, EmployeePlacementDirectoryService>();
 
     // T-090. HR owns employment status, so HR answers the Platform seam's question about it. Registered
     // beside its sibling because it is the same class; a second registration rather than a shared one

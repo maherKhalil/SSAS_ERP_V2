@@ -1,9 +1,11 @@
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
+using SSAS.HR.Contracts.Employment;
 using SSAS.Payroll.Application.Abstractions;
 using SSAS.Payroll.Application.Permissions;
 using SSAS.Payroll.Application.Reads;
 using SSAS.Payroll.Domain.Compensation;
+using SSAS.Payroll.Domain.Runs;
 
 namespace SSAS.Payroll.Application.Compensation;
 
@@ -34,7 +36,16 @@ public sealed record RecordCompensationCommand(
 public sealed class RecordCompensationCommandHandler(
   IEmployeeCompensationRepository compensation,
   IPayrollScopeResolver scope,
-  ITenantUnitOfWork unitOfWork)
+  ITenantUnitOfWork unitOfWork,
+
+  // ---- ⚠ THE DEPENDENCY IS THE POINT, NOT A COST (T-153).
+  //
+  // `DEC-PAY-0017` refuses a fifth field on the roster projection because a widened projection is read
+  // with no call site changing. **This constructor IS the call site changing**, and every future consumer
+  // of an employment type will have to change one too.
+  //
+  // `DEC-PAY-0014` is not crossed: this reads, and Payroll still writes nothing to HR.
+  IEmployeeEngagementDirectory engagement)
 {
   public async Task<Result<Guid>> HandleAsync(
     RecordCompensationCommand command, CancellationToken cancellationToken = default)
@@ -46,6 +57,22 @@ public sealed class RecordCompensationCommandHandler(
     if (authorized.IsFailure)
     {
       return Result.Failure<Guid>(authorized.Error);
+    }
+
+    // ---- THE PAIRING, CHECKED BEFORE ANYTHING IS BUILT OR WRITTEN.
+    //
+    // After authorisation deliberately: **an unauthorised caller must not learn whether an employee
+    // exists in HR**, and answering `CompensationEmployeeNotInHr` first would tell them.
+    var employmentType = await engagement.GetEmploymentTypeAsync(command.EmployeeId, cancellationToken);
+
+    if (employmentType is null)
+    {
+      return Result.Failure<Guid>(PayrollErrors.CompensationEmployeeNotInHr);
+    }
+
+    if (employmentType is EmploymentType.Contract)
+    {
+      return Result.Failure<Guid>(PayrollErrors.CompensationNotAvailableForContract);
     }
 
     var record = EmployeeCompensation.Create(

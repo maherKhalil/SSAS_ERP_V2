@@ -198,7 +198,7 @@ public sealed class UpdatePositionCommandHandler(
 //
 // Extracted so the order is written once and every handler inherits it, rather than being retyped four
 // times and drifting on the third. `JobGradeWriteContext` and `SalaryGradeWriteContext` state the same four
-// questions for their own aggregates; see `GradeCommandHandlers.cs` for why they are not one generic type.
+// questions for their own aggregates; see `JobGradeCommandHandlers.cs` and `SalaryGradeCommandHandlers.cs` for why they are not one generic type.
 internal static class PositionWriteContext
 {
   public static async Task<Result<Position>> LoadAsync(

@@ -107,9 +107,13 @@ public static class PayrollApiErrorMapper
       // employment type, which is the distinction `Conflict` carries here and `RequestInvalid` does not.
       "Payroll.CompensationNotAvailableForContract" => Conflict,
 
-      // `NotFound` on the same reading as `Payroll.CompensationNotFound` above: an employee id that HR
-      // cannot resolve is indistinguishable from one this caller may not reach, and the mapper has
+      // `NotFound` on the non-disclosure reading this mapper states in its header: an employee id that
+      // HR cannot resolve is indistinguishable from one this caller may not reach, and the mapper has
       // deliberately not tried to separate those since it was written.
+      //
+      // ⚠ **This cited `Payroll.CompensationNotFound` until T-179.** That code was removed in T-168 and
+      // the citation outlived it — **a stale pointer is the same failure as a stale claim**, and it
+      // survived the removal because nothing checks that a comment names something real.
       "Payroll.CompensationEmployeeNotInHr" => NotFound,
       "Payroll.PeriodConflict" => Conflict,
       "Payroll.RunConflict" => Conflict,

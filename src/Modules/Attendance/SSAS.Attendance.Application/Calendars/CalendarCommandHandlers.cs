@@ -57,8 +57,8 @@ public sealed class CreateWorkingCalendarCommandHandler(
     {
       // ---- THE WORKING CALENDAR RACE: THE GUARD AND THE INDEX NAME THE SAME CONDITION (T-176).
       //
-      // `ICalendarRepository.NameExistsAsync` is a read, so two callers can both pass it with the same value and both reach
-      // this save. **`the unique index on (TenantId, CompanyId, NormalizedName)` decides it at commit**, and the loser reached
+      // `IWorkingCalendarRepository.NameExistsAsync` is a read, so two callers can both pass it with the same value and both reach
+      // this save. **the unique index on `(TenantId, CompanyId, NormalizedName)` decides it at commit**, and the loser reached
       // `AttendanceApiErrorMapper` with an unmapped `Persistence.UniqueConstraint` — answered 500 for a
       // plain business conflict, while `WorkingCalendarErrors.DuplicateName` sat mapped to 409 and unreturned on
       // this path.

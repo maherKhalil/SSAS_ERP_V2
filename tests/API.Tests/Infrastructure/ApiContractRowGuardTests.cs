@@ -78,10 +78,35 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
   // A regex that stops matching makes the guard above green on every document at once. **Naming the
   // documents that must yield rows means a broken extractor fails here** rather than silently retiring the
   // guard — the same reasoning as `Known_real_dependencies_are_actually_discovered`.
+  //
+  // ---- ⚠ ALL THIRTEEN ARE NAMED, AND THE FIRST VERSION NAMED SIX (T-162).
+  //
+  // Six was chosen to cover the three FORMATS, and it did — bare lines, split cells, joined cells. **But
+  // every one of the thirteen documents yields rows**, so seven were outside the floor entirely: a
+  // document that is renamed, emptied or has its table rewritten would have been noticed by nothing.
+  //
+  // **That is the unicode guard's shape** — a control that samples what it should enumerate — **found in
+  // the instrument built the same afternoon to prevent it.** `DEC-L-086`: enumerate rather than match, and
+  // here the enumeration is also the shorter argument, because "all of them" needs no justification and
+  // "these six" needs one that goes stale.
+  //
+  // ⚠ **The main guard never skipped the other seven.** `ContractDocuments()` walks every file on disk, so
+  // coverage was always complete; what was incomplete was the ANTI-VACUITY CONTROL over that walk. A
+  // guard can be comprehensive and still be unable to tell you it stopped working.
+  //
+  // **A new package with a route table must be added here.** That is deliberate friction: `FP-015` gets
+  // its `api-contracts.md` when PR #171 merges, and this list is where it announces itself.
   [Theory]
   [InlineData("FP-001-identity-access")]
+  [InlineData("FP-002-authentication-token-lifecycle")]
   [InlineData("FP-003-tenant-lifecycle")]
   [InlineData("FP-004-localization")]
+  [InlineData("FP-005-company-legal-entity")]
+  [InlineData("FP-006-hr-employee")]
+  [InlineData("FP-007-hr-department")]
+  [InlineData("FP-008-hr-position")]
+  [InlineData("FP-009-hr-employee-import-export")]
+  [InlineData("FP-011-gl-foundation")]
   [InlineData("FP-012-payroll")]
   [InlineData("FP-013-attendance")]
   [InlineData("FP-014-subscription")]
@@ -92,6 +117,31 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
 
     Assert.True(File.Exists(document), $"{package} has no api-contracts.md");
     Assert.NotEmpty(RowsOf(document));
+  }
+
+  // ---- AND THE LIST ABOVE IS EXHAUSTIVE, WHICH ONLY THIS CAN SAY.
+  //
+  // Naming thirteen fixes today's gap and creates tomorrow's: a fourteenth document added without a line
+  // here is scanned by the main guard but never proven to yield rows. **This compares the named set to
+  // what is on disk**, so the floor cannot fall behind the corpus it is the floor for.
+  [Fact]
+  public void The_named_documents_are_every_contract_document_on_disk()
+  {
+    var named = typeof(ApiContractRowGuardTests)
+      .GetMethod(nameof(Every_contract_document_yields_rows))!
+      .GetCustomAttributes(typeof(InlineDataAttribute), false)
+      .Cast<InlineDataAttribute>()
+      .Select(data => (string)data.GetData(null!).Single().Single()!)
+      .OrderBy(package => package, StringComparer.Ordinal)
+      .ToArray();
+
+    var onDisk = ContractDocuments()
+      .Select(document => Path.GetFileName(Path.GetDirectoryName(document))!)
+      .OrderBy(package => package, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.NotEmpty(onDisk);
+    Assert.Equal(onDisk, named);
   }
 
   private HashSet<string> LiveRoutes() => PlatformRouteInventory.Under(factory, "/api")

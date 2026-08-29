@@ -129,6 +129,56 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
     Assert.Empty(deleteRoutes);
   }
 
+  // ---- A POSTED JOURNAL HAS NO MUTATION ROUTE, AND THAT ABSENCE IS WHAT ENFORCES `BR-GL-0002` (T-166).
+  //
+  // `JournalErrors.Immutable` is declared, mapped to 409, and **returned by nothing** — which reads like a
+  // dead arm until you ask what enforces the rule instead. **Nothing returns it because nothing can reach
+  // it**, and that is the design rather than an omission:
+  //
+  // ```
+  // no PUT / PATCH / DELETE on /journals/{journalEntryId}   a caller cannot ask to mutate a posted journal
+  // drafts.Remove(draft) in the SAME transaction as posting  there is no posted draft left to mutate;
+  //                                                          PUT /journal-drafts/{id} answers DraftNotFound
+  // ```
+  //
+  // **`DEC-L-084`'s shape: an invariant enforced structurally rather than by a check.** Deleting the error
+  // because "nothing returns it" would erase the only trace of `BR-GL-0002` from the source, and
+  // `api-contracts.md` documents it as promised behaviour.
+  //
+  // ⚠ **THIS IS THE TEST THAT MAKES THE ABSENCE LOAD-BEARING.** Someone adding `PUT /journals/{id}` later
+  // would find a named 409 already declared and mapped, and could reasonably assume it is live. It is not,
+  // and nothing else would tell them.
+  //
+  // **`POST /journals/{id}/reversals` is the one permitted write and is named here**, because a rule that
+  // said "no writes under /journals" would be false and would be deleted the first time it fired.
+  [Fact]
+  [Trait("Decision", "BR-GL-0002")]
+  public void A_posted_journal_exposes_no_mutation_route()
+  {
+    var underAJournal = host.MappedRoutes()
+      .Where(route => route.Pattern.Contains("/journals/{journalEntryId:guid}", StringComparison.Ordinal))
+      .ToArray();
+
+    // Without this the two assertions below pass against an empty set (`DEC-L-070`).
+    Assert.NotEmpty(underAJournal);
+
+    var mutating = underAJournal
+      .Where(route => route.Method is "PUT" or "PATCH" or "DELETE")
+      .Select(route => $"{route.Method} {route.Pattern}")
+      .ToArray();
+
+    Assert.Empty(mutating);
+
+    // The permitted write, named rather than implied.
+    var posts = underAJournal
+      .Where(route => route.Method == "POST")
+      .Select(route => route.Pattern)
+      .ToArray();
+
+    Assert.All(posts, pattern =>
+      Assert.EndsWith("/journals/{journalEntryId:guid}/reversals", pattern, StringComparison.Ordinal));
+  }
+
   [Fact]
   [Trait("Decision", "OD-GL-0007")]
   public void Posting_lives_under_the_draft_because_the_journal_does_not_exist_yet()

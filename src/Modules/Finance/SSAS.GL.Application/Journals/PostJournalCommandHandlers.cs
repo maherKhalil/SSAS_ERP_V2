@@ -1,6 +1,7 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.GL.Application.Abstractions;
 using SSAS.GL.Application.Permissions;
@@ -121,6 +122,17 @@ public sealed class PostJournalDraftCommandHandler(
       // **This handler can hit exactly one.** `UX_GlJournalLines_Entry_LineNumber` is deterministic from
       // the draft, and `UX_GlJournalEntries_OneReversalPerOriginal` is FILTERED to
       // `ReversesJournalEntryId IS NOT NULL`, which a posting never sets.
+      //
+      // ⚠ **THAT FILTER IS LOAD-BEARING FOR THIS TRANSLATION, IN A FILE NOBODY WOULD THINK TO CHECK.**
+      //
+      // `JournalConfigurations.cs` declares `UX_GlJournalEntries_OneReversalPerOriginal` with
+      // `.HasFilter("[ReversesJournalEntryId] IS NOT NULL")`. **Remove that filter and this translation
+      // becomes wrong**: every posting would then contend on the index's NULLs, and the loser would be
+      // told a journal number already exists when the real collision was elsewhere — the exact confident
+      // wrong answer that keeping this out of the mapper avoided.
+      //
+      // **A schema filter and a handler's correctness are coupled here.** Stated because the coupling is
+      // silent, and "tidying" an index filter is a plausible unrelated change.
       // ⚠ COMPARED ON THE CODE STRING, BECAUSE `ADR-012` FORBIDS THE TYPE.
       //
       // `Persistence.UniqueConstraint` is declared as `IdentityAccessErrors.UniqueConstraintViolation` in
@@ -130,7 +142,7 @@ public sealed class PostJournalDraftCommandHandler(
       //
       // **A shared constant in BuildingBlocks would be better and is not mine to introduce**: it would be
       // a new cross-module vocabulary, which is an architecture decision rather than a defect fix.
-      if (saved.Error.Code == "Persistence.UniqueConstraint")
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
       {
         return Result.Failure<Guid>(JournalErrors.NumberConflict);
       }

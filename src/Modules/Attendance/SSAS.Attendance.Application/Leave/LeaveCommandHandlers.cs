@@ -216,22 +216,24 @@ public sealed class SetLeaveEntitlementCommandHandler(
       // already exists and no retry can succeed. **Same 409, opposite correct client action** — which is
       // why the code matters and the status alone does not.
       //
-      // ⚠⚠ **THE INDEX DOES NOT EXIST YET. THIS RACE IS OPEN AND THIS BRANCH IS INERT.**
+      // ⚠ **THE INDEX EXISTS AND ALWAYS HAS — T-171/T-172 SAID OTHERWISE AND WERE WRONG (T-173).**
       //
-      // `AttendanceLeaveBalances` carries **zero** unique indexes today, so nothing produces
-      // `Persistence.UniqueConstraint` here and both racing callers still succeed. **The double-spend
-      // described above is LIVE.**
+      // `IX_AttendanceLeaveBalances_TenantId_EmployeeId_LeaveTypeId_PeriodYear` is unique and unfiltered,
+      // shipped in `AddAttendanceFoundation` on 2026-08-25, and `AttendanceConfigurations` states its
+      // reasoning in place. **The race was never open; the loser was simply getting a 500** because
+      // `Persistence.UniqueConstraint` reached the mapper unmapped. This branch is what makes it a 409.
       //
-      // The index is gated on `scripts/preflight-leave-balance-duplicates.sql`, which must be run against
-      // real tenant data first: an unfiltered unique index cannot be built over existing duplicates, and a
-      // duplicate pair where both rows carry consumption means somebody has ALREADY over-consumed.
-      // **Merging those rows decides how much leave a real person has and is nobody's call here.**
+      // ⚠ **AND THE INDEX KEY IS NARROWER THAN THE READ.** The index omits `CompanyId`; the read
+      // (`GetForEmployeeAsync`) includes it. So the constraint is STRICTER than the lookup: one balance
+      // per employee, type and year across ALL companies in the tenant. If an employee id can ever appear
+      // under two companies, the second company's entitlement is refused by an index nobody would think
+      // to look at from here.
       //
-      // ---- ⚠ AND ONCE IT EXISTS: SOUND ONLY WHILE THAT TABLE CARRIES EXACTLY ONE UNIQUE INDEX.
+      // ---- SOUND ONLY WHILE THAT TABLE CARRIES EXACTLY ONE UNIQUE INDEX.
       //
-      // This handler writes nothing else, so a unique violation here could only be that one — and naming
-      // it becomes a guess the day a second unique index is added to the table. The coupling is invisible
-      // from here, which is why it is written here.
+      // This handler writes nothing else, so a unique violation here can only be that one — and naming it
+      // becomes a guess the day a second unique index is added. The coupling is invisible from here,
+      // which is why it is written here.
       if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
       {
         return Result.Failure<Guid>(LeaveErrors.DuplicateBalance);

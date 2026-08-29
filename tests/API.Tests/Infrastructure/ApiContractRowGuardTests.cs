@@ -339,7 +339,8 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
   // after four slices of endpoint tests. **It moved three times in a day while living only in reports**,
   // and a number nobody re-runs is a number nobody can trust.
   //
-  // It is what found the largest gap of the day: `AttendanceApiTestHost` mapped 25 routes over a container
+  // It is what found the largest gap of the day: `AttendanceApiTestHost` mapped 25 routes — the surface as at
+  // 2026-08-29; it is 27 as at 2026-08-30 — over a container
   // that had never heard of their handlers. **Nothing else could have** — an unregistered handler is not a
   // dependency of anything registered, so service-provider validation had nothing to say, and the routes
   // had existed too long for any change to trigger it. Only issuing a request finds that.

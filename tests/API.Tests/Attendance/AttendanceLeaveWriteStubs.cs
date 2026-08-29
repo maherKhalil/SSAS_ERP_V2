@@ -23,7 +23,9 @@ namespace SSAS.API.Tests.Attendance;
 // module's writes had no composition to reach and **not one HTTP request had ever been issued against leave
 // requests, leave types, balances, calendars, periods or records.**
 //
-// The gap was invisible because the folder looked well tested: a route inventory listing all 25 routes, a
+// The gap was invisible because the folder looked well tested: a route inventory listing all 25 routes the
+// surface then had — **25 as at 2026-08-29, 27 as at 2026-08-30 (T-214)**, and the date is written down
+// because an undated count in a file about routes is a claim that rots the next time one is added — a
 // permission sweep asserting each one requires a permission, a transport test reflecting over request
 // records, and a self-service test exercising `/me` only. **None of them issues a request.** A permission
 // sweep that never calls a route is the route-inventory failure one level up.

@@ -68,7 +68,36 @@ public sealed class CreateLeaveTypeCommandHandler(
     await leaveTypes.AddAsync(leaveType.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(leaveType.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE LEAVE TYPE RACE: THE GUARD AND THE INDEX NAME THE SAME CONDITION (T-176).
+      //
+      // `ILeaveTypeRepository.CodeExistsAsync` is a read, so two callers can both pass it with the same value and both reach
+      // this save. **`the unique index on (TenantId, CompanyId, NormalizedCode)` decides it at commit**, and the loser reached
+      // `AttendanceApiErrorMapper` with an unmapped `Persistence.UniqueConstraint` — answered 500 for a
+      // plain business conflict, while `LeaveErrors.DuplicateLeaveTypeCode` sat mapped to 409 and unreturned on
+      // this path.
+      //
+      // ---- ⚠ THE SAME CODE HONESTLY SERVES BOTH, AND THAT IS NOT TRUE OF EVERY RACE.
+      //
+      // **The race and the pre-check produce an IDENTICAL caller-visible condition** — the name is taken —
+      // so one code answers both without lying about either. **Retrying the identical request fails again:**
+      // the caller must change the input, not repeat it.
+      //
+      // That is the opposite of the leave-entitlement race, where a retry finds the winner's row and
+      // succeeds, and of the journal reversal, where two different conditions collapse into one exception
+      // and neither can be named. **Same 409 in all three; three different things for a client to do.**
+      //
+      // ⚠ **SOUND ONLY WHILE THIS HANDLER CAN REACH EXACTLY ONE UNIQUE INDEX.** It writes a `LeaveType` and nothing else.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(LeaveErrors.DuplicateLeaveTypeCode);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(leaveType.Value.Id);
   }
 }
 

@@ -325,6 +325,11 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
     }
   }
 
+  // Exposed for the hierarchy-lock CONTENTION test, which needs a SECOND connection. Every call builds
+  // fresh options, so two calls are two connections -- and that is the whole property under test: a lock
+  // taken on one connection is invisible to a test that only ever uses the other.
+  public TenantDbContext CreateContext() => NewContext();
+
   private TenantDbContext NewContext()
   {
     var options = new DbContextOptionsBuilder<TenantDbContext>()

@@ -281,7 +281,7 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // again and the caller must change the code. Same 409, different instruction.
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
-  public async Task A_duplicate_account_code_race_is_409_rather_than_500()
+  public async Task A_persistence_conflict_on_account_create_maps_to_409_rather_than_500()
   {
     host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
       "Persistence.UniqueConstraint", "Unique index violated.");
@@ -368,7 +368,7 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
 
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
-  public async Task A_duplicate_fiscal_year_code_race_is_409_rather_than_500()
+  public async Task A_persistence_conflict_on_fiscal_year_define_maps_to_409_rather_than_500()
   {
     host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
       "Persistence.UniqueConstraint", "Unique index violated.");

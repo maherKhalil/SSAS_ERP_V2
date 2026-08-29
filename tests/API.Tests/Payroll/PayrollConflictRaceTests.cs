@@ -17,6 +17,17 @@ namespace SSAS.API.Tests.Payroll;
 // **The race and the pre-check produce an identical caller-visible condition**, so retrying the identical
 // request fails again — the caller must change the input. A lost journal-number race, by contrast, is
 // satisfied by a retry, which allocates a new number. Same 409, opposite instruction.
+//
+// ---- ⚠ AND THESE TESTS PROVE THE MAPPING, NOT THE RACE. THE NAMES SAY SO NOW (T-193).
+//
+// The race above is real and is why the mapping matters. **No race happens here.** Each test sets a
+// persistence failure on the unit of work and asserts what the mapper does with it — which is worth having
+// and is the whole defect T-178 fixed.
+//
+// They were called `A_duplicate_..._race_is_409_rather_than_500`, and that name is what a reader sees in a
+// failure report and in a green suite. **It would have been read as the concurrency being covered**, when
+// what is covered is the answer given once the database has already decided. Renamed to say the second
+// thing, because a test name is a stronger claim than a comment, not a weaker one.
 public sealed class PayrollConflictRaceTests(PayrollApiTestHost host) : IClassFixture<PayrollApiTestHost>
 {
   private static readonly SSAS.BuildingBlocks.Domain.Error UniqueViolation =
@@ -24,7 +35,7 @@ public sealed class PayrollConflictRaceTests(PayrollApiTestHost host) : IClassFi
 
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
-  public async Task A_duplicate_pay_element_code_race_is_409_rather_than_500()
+  public async Task A_persistence_conflict_on_pay_element_create_maps_to_409_rather_than_500()
   {
     host.ResetToAuthorizedState();
     host.UnitOfWork.Failure = UniqueViolation;
@@ -38,7 +49,7 @@ public sealed class PayrollConflictRaceTests(PayrollApiTestHost host) : IClassFi
 
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
-  public async Task A_duplicate_payroll_period_race_is_409_rather_than_500()
+  public async Task A_persistence_conflict_on_payroll_period_create_maps_to_409_rather_than_500()
   {
     host.ResetToAuthorizedState();
     host.UnitOfWork.Failure = UniqueViolation;
@@ -55,7 +66,7 @@ public sealed class PayrollConflictRaceTests(PayrollApiTestHost host) : IClassFi
   // stays legal — which it was not before T-112, when the guard matched a run in any state.
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
-  public async Task A_duplicate_payroll_run_race_is_409_rather_than_500()
+  public async Task A_persistence_conflict_on_payroll_run_create_maps_to_409_rather_than_500()
   {
     host.ResetToAuthorizedState();
 

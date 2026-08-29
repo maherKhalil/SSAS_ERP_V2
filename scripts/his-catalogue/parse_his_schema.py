@@ -44,9 +44,29 @@ QUALIFIED = re.compile(r"\[([^\]]*)\]\.\[([^\]]*)\]")
 # The first version demanded the qualified form and reported ZERO schemas. The floor caught it,
 # which is the whole argument for asserting counts rather than listing what was found.
 MANIFEST = re.compile(r"/\*+ Object:\s+(\w+)\s+\[([^\]]*)\](?:\.\[([^\]]*)\])?")
-CREATE_TABLE = re.compile(r"^CREATE TABLE \[([^\]]*)\]\.\[([^\]]*)\]", re.MULTILINE)
-CREATE_VIEW = re.compile(r"^CREATE VIEW \[([^\]]*)\]\.\[([^\]]*)\]", re.MULTILINE | re.IGNORECASE)
-CREATE_PROC = re.compile(r"^CREATE\s+PROC(?:EDURE)?\s+\[([^\]]*)\]\.\[([^\]]*)\]",
+# Lenient for the same reason, verified not to change the count (1754 either way): the laxity costs
+# nothing and removes the class rather than the instance.
+CREATE_TABLE = re.compile(r"^\s*CREATE\s+TABLE\s*\[([^\]]*)\]\.\[([^\]]*)\]",
+                          re.MULTILINE | re.IGNORECASE)
+# ⚠ THE SAME DEFECT, FOUND BY THE GUARD ADDED FOR PROCEDURES, ON ITS FIRST RUN (T-218).
+# Six views were lost to `^CREATE VIEW \[` with its literal single space: five carry LEADING TABS
+# and one a DOUBLE space. Views had no floor and no cross-check either, so 171 of 177 had been
+# passing as complete for as long as this parser has existed.
+CREATE_VIEW = re.compile(r"^\s*CREATE\s+VIEW\s*\[([^\]]*)\]\.\[([^\]]*)\]",
+                         re.MULTILINE | re.IGNORECASE)
+# ⚠ TWO DEFECTS LIVED IN THIS ONE PATTERN AND COST 52 OF 1,347 PROCEDURES (T-218).
+#
+# It was `^CREATE\s+PROC(?:EDURE)?\s+\[`, and the script writes procedures three ways:
+#
+#   `CREATE PROCEDURE [Billing].[X]`      the form the pattern expected
+#   ` CREATE proc   [Finance].[SPACCO3301]`   A LEADING SPACE -- 50 of them, defeated by `^CREATE`
+#   `CREATE PROCEDURE[GL].[Sp_totalPatientsBill]`   NO SPACE AT ALL -- 2, defeated by `\s+`
+#
+# **The lost 52 have entirely ordinary names.** The awkwardness is in the whitespace around the KEYWORD,
+# not in the identifier -- the nine apostrophe names parsed correctly throughout. A guess aimed at the
+# awkward names would have been refuted while the defect stayed in place; comparing the manifest set
+# against the parsed set found it in one pass, which is why `floors()` now does that for every artefact.
+CREATE_PROC = re.compile(r"^\s*CREATE\s+PROC(?:EDURE)?\s*\[([^\]]*)\]\.\[([^\]]*)\]",
                          re.MULTILINE | re.IGNORECASE)
 CREATE_SCHEMA = re.compile(r"^CREATE SCHEMA \[([^\]]*)\]", re.MULTILINE)
 
@@ -162,6 +182,9 @@ def floors(catalogue, text):
         ("manifest views", len(manifest.get("View", [])), 177),
         ("manifest schemas", len(manifest.get("Schema", [])), 38),
         ("parsed tables", len(catalogue["tables"]), 1754),
+        # Added T-218. Its absence is what let 1,295 of 1,347 pass as complete.
+        ("parsed procedures", len(catalogue["procedures"]), 1347),
+        ("parsed views", len(catalogue["views"]), 177),
         ("parsed foreign keys", len(catalogue["foreign_keys"]), 1988),
         ("REFERENCES lines", len(REFERENCES.findall(text)), 1988),
         ("identity columns", text.count("IDENTITY("), 1541),
@@ -170,15 +193,35 @@ def floors(catalogue, text):
 
     # The manifest ENUMERATES and the CREATE statements MATCH. Disagreement means one of them has
     # started lying, and which one is not knowable from either alone - so it is a failure, not a note.
-    tables_in_manifest = set(manifest.get("Table", []))
-    parsed = set(catalogue["tables"])
-    if tables_in_manifest != parsed:
-        only_manifest = sorted(tables_in_manifest - parsed)[:5]
-        only_parsed = sorted(parsed - tables_in_manifest)[:5]
+    #
+    # ---- ⚠ THIS RAN FOR TABLES ALONE UNTIL T-218, AND PROCEDURES WERE SILENTLY 96% COMPLETE.
+    #
+    # Tables had a count AND this set comparison, and tables were never wrong. Foreign keys had a count.
+    # **Procedures had neither, and 1,295 of 1,347 passed every check this file performed.** The mechanism
+    # was right and the COVERAGE was the gap, which is why the fix extends it rather than replacing it.
+    for kind, key in (("Table", "tables"), ("StoredProcedure", "procedures"), ("View", "views")):
+        in_manifest = set(manifest.get(kind, []))
+        parsed = set(catalogue[key])
+        if in_manifest != parsed:
+            failures.append(
+                "manifest and CREATE %s disagree: %d only in manifest %s, %d only parsed %s"
+                % (kind.upper(), len(in_manifest - parsed), sorted(in_manifest - parsed)[:5],
+                   len(parsed - in_manifest), sorted(parsed - in_manifest)[:5]))
+
+    # ---- ⚠ AND A CONTROL OVER THE FLOORS THEMSELVES, BECAUSE THE FLOORS HAD NO FLOOR.
+    #
+    # Fixing procedures closes one instance. The CLASS is that this function guards whatever somebody
+    # thought of, and **nothing asserted that every artefact type in the catalogue HAS a guard** — which is
+    # exactly how procedures went unguarded while the comment above warned about partial failure.
+    #
+    # This makes adding an artefact type without deciding how to guard it a RED PARSE rather than a silent
+    # omission. It is the enumerate-the-set rule pointed at our own instrument.
+    guarded = {"tables", "procedures", "views", "foreign_keys", "schemas", "manifest"}
+    unguarded = sorted(set(catalogue) - guarded)
+    if unguarded:
         failures.append(
-            "manifest and CREATE TABLE disagree: %d only in manifest %s, %d only parsed %s"
-            % (len(tables_in_manifest - parsed), only_manifest,
-               len(parsed - tables_in_manifest), only_parsed))
+            "artefact type(s) %s are in the catalogue and named in no floor: add a count and a "
+            "manifest cross-check, or add them to `guarded` with a reason" % unguarded)
 
     return checks, failures
 

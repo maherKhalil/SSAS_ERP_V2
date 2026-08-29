@@ -188,12 +188,19 @@ public sealed class GlFiscalYearOverlapChainSqlServerTests
       new FixtureTenant(fixture.Tenant),
       new DefiningUser(),
 
-      // ---- THE REAL LOCK, NOT A STUB (T-184).
+      // ---- ⚠ THE REAL LOCK, AND THESE TESTS STILL CANNOT SEE IT (T-184, CORRECTED BY T-190).
       //
-      // These tests run against SQL Server, so `sp_getapplock` is available and the handler exercises the
-      // actual sequencing. **A stub returning success would make every assertion below pass while proving
-      // nothing about the lock** — and the one property most worth exercising is that the lock refuses
-      // when there is no open transaction, which only the real implementation can demonstrate.
+      // This comment used to claim the composition exercised the lock. **It does not, and that was
+      // measured**: planting the lock to grant unconditionally — never calling `sp_getapplock` at all —
+      // leaves every test in this file green. `sp_getapplock` could be deleted outright unnoticed.
+      //
+      // The reason is the SHAPE, not the wiring. These tests call the handler sequentially on ONE
+      // connection, so the lock is never contended, and an uncontended lock is indistinguishable from no
+      // lock. **A test cannot prove a guard it never triggers.**
+      //
+      // The real lock stays here because composing the production object is still righter than a stub. But
+      // the evidence that it works is in `GlFiscalYearDefinitionLockContentionSqlServerTests`, which uses a
+      // second connection — the only shape that can redden that plant.
       new SqlServerFiscalYearDefinitionLock(new SingleContext(context)));
 
   private sealed class SingleContext(TenantDbContext context) : ITenantDbContextAccessor

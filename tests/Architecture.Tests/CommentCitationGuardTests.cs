@@ -93,13 +93,24 @@ public sealed class CommentCitationGuardTests
   // comment style change — which turns the assertion above green everywhere at once. A floor catches that.
   //
   // **An exact count would also fire on every new comment**, which is churn rather than signal: a citation
-  // added is coverage arriving, and it is already checked by the assertion above. Measured at 357 across
-  // 1,127 files on 2026-08-29.
+  // added is coverage arriving, and it is already checked by the assertion above. A number bumped
+  // reflexively is worse than no number — it trains its readers to update without reading.
+  //
+  // ---- ⚠ AND THE FLOOR IS TIGHT ON PURPOSE. IT WAS 300 AGAINST A MEASURED 357 AND THAT WAS TOO LOOSE.
+  //
+  // **Extractors rarely stop dead; they DEGRADE** — a pattern stops seeing one comment style, one file
+  // convention, one syntax. A 16% margin catches catastrophic failure and passes for exactly the partial
+  // degradation that is the likely case. **Every one of the six instrument failures logged on 2026-08-29
+  // was partial; not one returned nothing, and that is why each was believed.**
+  //
+  // A tight floor costs no churn: it never needs raising as comments accumulate, only attention when
+  // citations are legitimately removed — which is rare and deliberate. Measured at 357 across 1,127 files
+  // on 2026-08-29.
   [Fact]
   public void The_citation_population_has_not_collapsed()
   {
     Assert.True(
-      Citations().Count() >= 300,
+      Citations().Count() >= 350,
       $"only {Citations().Count()} citations found; the extractor has probably stopped matching");
   }
 

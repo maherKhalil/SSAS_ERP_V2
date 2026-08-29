@@ -18,7 +18,7 @@ namespace SSAS.API.Tests.Attendance;
 //
 // So the lock closed the DATA defect and left the ANSWER wrong, and nothing could see it: the error is
 // produced by `SqlServerLeaveSubmissionLock` in INFRASTRUCTURE and merely propagated by the handler, so it
-// never appears in the handler's source. `Every_error_a_site_is_responsible_for_is_mapped` walks the errors
+// never appears in the handler's source. `Every_error_a_site_is_responsible_for_is_mapped_rather_than_falling_through` walks the errors
 // a handler names, and this one enters through a seam that walk does not cross — **comprehensive over what
 // it looks at, and blind to what arrives from elsewhere**, which is the day's recurring shape.
 //

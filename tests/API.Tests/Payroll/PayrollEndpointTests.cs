@@ -267,6 +267,27 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
     Assert.Equal(posted.Lines.Sum(line => line.Debit), posted.Lines.Sum(line => line.Credit));
   }
 
+  // ⚠ THE SIBLING OF THE TEST BELOW, AND IT WAS A 500 UNTIL T-198.
+  //
+  // `MarkReversed()` returns two errors and the handler propagates both. `RunNotReversible` had a mapper
+  // arm and `RunAlreadyReversed` did not, so the two halves of one aggregate method answered 409 and 500.
+  // Found by enumerating codes produced in Domain or Infrastructure that no mapper handles — the error is
+  // never named in the handler, so the guard that walks a handler's own source cannot see it.
+  [Fact]
+  public async Task A_run_that_is_already_reversed_cannot_be_reversed_again()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedPostedRun();
+    Assert.True(run.MarkReversed().IsSuccess);
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/reversals", host.TokenWith(AllPermissions),
+      """{"reversalDateUtc":"2026-02-10T00:00:00Z","description":"Correction"}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("payroll.run_state_invalid", await PayrollApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   public async Task A_run_that_is_not_posted_cannot_be_reversed()
   {

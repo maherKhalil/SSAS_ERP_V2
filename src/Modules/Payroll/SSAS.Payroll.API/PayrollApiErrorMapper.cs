@@ -132,6 +132,18 @@ public static class PayrollApiErrorMapper
       "Payroll.RunNotApprovable" => RunStateInvalid,
       "Payroll.RunNotPostable" => RunStateInvalid,
       "Payroll.RunNotReversible" => RunStateInvalid,
+
+      // ---- ⚠ THE SIXTH SIBLING, AND IT ANSWERED 500 UNTIL T-198.
+      //
+      // `PayrollRun.MarkReversed()` returns exactly two errors — `RunNotReversible` above and this one —
+      // and the handler PROPAGATES both without naming either. **One was mapped and one was not**, so
+      // reversing an already-reversed run answered `request.failed` while reversing an unposted one
+      // answered a clean 409.
+      //
+      // `Every_error_a_site_is_responsible_for_is_mapped_rather_than_falling_through` walks the errors a HANDLER NAMES, and an error
+      // arriving as `result.Error` from an aggregate appears in no handler's source. Same seam as
+      // `Attendance.LeaveSubmissionBusy`, which reached its mapper from an Infrastructure lock (T-197).
+      "Payroll.RunAlreadyReversed" => RunStateInvalid,
       "Payroll.RunHasNoLines" => RunStateInvalid,
 
       "Payroll.LedgerRefusedPosting" => LedgerRefused,

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Domain;
@@ -87,9 +88,45 @@ public sealed class DefineFiscalYearCommandHandler(
     await calendar.AddAsync(year.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure
-      ? Result.Failure<Guid>(saved.Error)
-      : Result.Success(year.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE FISCAL-YEAR CODE RACE (T-177).
+      //
+      // `IFiscalCalendarRepository.CodeExistsAsync` is a read, so two callers can pass it with the same value and both reach this
+      // save. **`UX_GlFiscalYears_Tenant_Company_Code` decides it at commit**, and the loser reached `GlApiErrorMapper` with an
+      // unmapped `Persistence.UniqueConstraint` — answered 500 for a plain business conflict, while
+      // `CalendarErrors.DuplicateCode` sat mapped to 409 and unreturned on this path.
+      //
+      // ---- ⚠ THE SAME CODE HONESTLY SERVES THE CHECK AND THE RACE.
+      //
+      // **Both produce an identical caller-visible condition** — that code is taken — so one code answers
+      // both without lying about either. **Retrying the identical request fails again**; the caller must
+      // change the code. That is not the leave-entitlement shape, where a retry finds the winner's row
+      // and succeeds, nor the journal reversal, where two conditions collapse and neither can be named.
+      //
+      // ⚠ **REACHES EXACTLY ONE UNIQUE INDEX, WHICH IS WHY IT MAY NAME ONE.** It writes a `FiscalYear` and its child periods, and `FiscalPeriod` carries NO unique index — only
+      // `IX_GlFiscalPeriods_Year_Start`, which is not unique. So one index is reachable.
+      //
+      // ---- ⚠⚠ THIS NAMES THE CODE RACE ONLY. THE OVERLAP RACE REMAINS OPEN AND IS NOT CLOSED HERE.
+      //
+      // This handler runs TWO guards: `CodeExistsAsync` and `OverlapsExistingAsync`. **Only the first
+      // has a database backstop.** `CalendarConfigurations` records why there is deliberately no index
+      // on `(StartUtc, EndUtc)`: SQL Server cannot express "these ranges must not overlap" at all
+      // (`DEC-L-084`), so `OverlapsExistingAsync` is the ONLY enforcement and two concurrent callers can
+      // still define overlapping years.
+      //
+      // **So the error below must be the CODE conflict specifically, and must not read as "fiscal year
+      // conflict" generally.** A translation that closes one race while appearing to close two is worse
+      // than the 500 it replaces: **a 500 invites investigation and a confident 409 does not.**
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(CalendarErrors.DuplicateCode);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(year.Value.Id);
   }
 }
 

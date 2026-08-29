@@ -274,6 +274,44 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // ⚠ **This asserts the STATUS AND THE CODE, and the code is the load-bearing half.** A 409 alone would
   // also be produced by an inactive account or an already-reversed journal; only `gl.conflict` arriving
   // from `JournalErrors.NumberConflict` says the translation happened.
+  // ---- THE OTHER TWO GL UNIQUENESS RACES (T-177), AND THEY ARE A DIFFERENT SHAPE FROM THE JOURNAL NUMBER.
+  //
+  // A lost journal-number race is satisfied by retrying — the retry allocates a new number. **These two are
+  // not**: the race and the pre-check produce the same condition, so retrying the identical request fails
+  // again and the caller must change the code. Same 409, different instruction.
+  [Fact]
+  [Trait("Decision", "DEC-DEP-0027")]
+  public async Task A_duplicate_account_code_race_is_409_rather_than_500()
+  {
+    host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
+      "Persistence.UniqueConstraint", "Unique index violated.");
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/accounts", host.TokenWith(GlPermissionNames.CreateAccounts),
+      """{"code":"4100","name":"Receivables"}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ⚠ The fiscal-year translation names the CODE race only. The OVERLAP race has no index behind it
+  // (`DEC-L-084`) and is unchanged by this — `GlFiscalYearOverlapChainSqlServerTests` is what covers the
+  // guard that remains its only enforcement.
+  [Fact]
+  [Trait("Decision", "DEC-DEP-0027")]
+  public async Task A_duplicate_fiscal_year_code_race_is_409_rather_than_500()
+  {
+    host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
+      "Persistence.UniqueConstraint", "Unique index violated.");
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/fiscal-years", host.TokenWith(GlPermissionNames.ManagePeriods),
+      """{"code":"FY2026","startUtc":"2026-01-01T00:00:00Z","endUtc":"2027-01-01T00:00:00Z","periods":[{"name":"P1","startUtc":"2026-01-01T00:00:00Z","endUtc":"2027-01-01T00:00:00Z"}]}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
   public async Task A_duplicate_journal_number_is_409_rather_than_500()

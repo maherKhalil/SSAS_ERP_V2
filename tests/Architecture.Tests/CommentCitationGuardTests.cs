@@ -103,6 +103,20 @@ public sealed class CommentCitationGuardTests
   // degradation that is the likely case. **Every one of the six instrument failures logged on 2026-08-29
   // was partial; not one returned nothing, and that is why each was believed.**
   //
+  // ---- ⚠ AND IT BUYS INSTRUMENT HEALTH, NOT COVERAGE. THE TWO WERE CONFLATED WHEN THIS WAS TIGHTENED.
+  //
+  // **A floor proves the instrument still works and says nothing about the subject.** Delete seven
+  // citations from source and 350 still passes — this test would not notice, and it is not meant to. What
+  // it notices is the EXTRACTOR going quiet.
+  //
+  // The distinction is between a corpus whose size is outside our control and grows with ordinary work —
+  // comments, error codes, routes, which take a floor — and a set WE control whose membership is the
+  // point, which takes an exact count because fewer means a member left. **Comments are the first kind**,
+  // so a floor is right here and an exact count would be churn.
+  //
+  // Recorded because the tightening from 300 to 350 was described in terms that implied both, and a guard
+  // believed to protect coverage while protecting only liveness is the more dangerous of the two errors.
+  //
   // A tight floor costs no churn: it never needs raising as comments accumulate, only attention when
   // citations are legitimately removed — which is rare and deliberate. Measured at 357 across 1,127 files
   // on 2026-08-29.

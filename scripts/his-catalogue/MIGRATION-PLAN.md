@@ -138,29 +138,63 @@ database name — **refused**, the way `sp_getapplock` with `Transaction` owners
 open transaction. **The failure is the feature**: a run that silently picks a tenant produces data that
 looks correct and belongs to nobody.
 
-### Company — derived and asserted must not collapse
+### Company — ⚠ RESOLVED BY THE OWNER, AND THIS RETIRES THE PLAN'S LARGEST RISK
+
+**`ApplicationSetup.Company` contains exactly ONE row, and that row is the tenant.** Confirmed by the
+owner from production, 2026-08-29.
+
+#### What that retires, with the numbers it retires
 
 ```
 tables carrying a CompanyID    1199 of 1754
 tables carrying NONE            555
 CompanyID declarations         1199   (one per table)
-of those NOT NULL                  3   — 1199 nullable-or-absent against 3 that are certain
+of those NOT NULL                  3
 ```
+
+The plan previously required attribution to be **derived** where an FK path existed and **asserted**
+where none did, recording which — because a derived company and an asserted one are different evidential
+claims. **That reasoning was correct on a premise that is now false.** With one company there is nothing
+to derive: every row belongs to the only company there is.
+
+So **assertion is total and correct**, and the `company_source ∈ {declared, derived, asserted}` column is
+no longer needed. Struck rather than deleted, because the argument for it returns intact the day a second
+company exists.
 
 ⚠ **Two of the three NOT NULL columns are spelled `CompanyId`, not `CompanyID`.** A case-sensitive
 pattern finds **one of three** — a 67% miss **concentrated in the rarest and most load-bearing class**,
-while the bulk count is off by under 1%. The headline looked fine and the loss went exactly where the
-information was.
+while the bulk count is off by under 1%. Kept, because it is a fact about reading this schema and it will
+be true of the next pattern anyone writes against it.
 
-**The source cannot tell you which company most rows belong to.** Attribution must therefore be:
+#### ⚠ AND THE CONFIRMATION MUST NOT BE OVER-APPLIED: ONE TENANT, ONE COMPANY, **TWO COLUMNS**
 
-1. **derived** — follow FKs to a parent that carries a company, or
-2. **asserted** — supplied by the operator for a table that has no path,
+"CompanyID is the tenant id" is true of the DATA and must not become true of the TARGET SCHEMA. Our ERP
+has `TenantId` and `CompanyId` as separate required columns, and the single source value populates
+**both**.
 
-and **the result must record which.** A derived company and an asserted one are different evidential
-claims; collapsing them into one column destroys the only record of how much of the migration was
-guessed. **Two columns: `company_id` and `company_source ∈ {declared, derived, asserted}`.**
+**Follow the schema, not the count.** `ApplicationSetup.Company` carries `HoldingCompany` and
+`ParentCompanyId` — **the source schema is built for a GROUP and currently holds one member.** A row count
+of one is a fact about today; the parent and holding columns are a statement of intent, and they disagree.
+The day a second clinic or a second legal entity arrives, a migration that mapped company onto tenant has
+nowhere to put it and the answer is a re-migration.
 
+#### ⚠ A PRE-MIGRATION GATE: EVERY `CompanyID` MUST NAME THE ONE COMPANY
+
+This is now a DATA-QUALITY question rather than a tenancy one, and the confirmation does not answer it.
+
+**There are 1,199 `CompanyID` columns and THREE foreign keys among them.** So nothing in the database has
+ever prevented a row from carrying a `CompanyID` that matches no `Company` row at all — a 2, a 7, a value
+left by a previous install.
+
+For every `CompanyID`-bearing table, `SELECT DISTINCT CompanyID` must yield **only NULL and the single**
+**`Company.Id`**. **Any other value is a row whose company attribution is a lie**, and it is far cheaper to
+find in a gate than halfway through a transfer.
+
+⚠ **The gate must PRINT THE VALUES IT FOUND, not report a pass.** A gate that says "ok" is
+indistinguishable from a gate whose query matched nothing, and an empty result must be SEEN rather than
+inferred — the same reason the tenant-column count above is printed with its (empty) list beside it.
+
+Cheap to write now; runs the day the copy lands.
 ---
 
 ## 5. What this plan does not cover

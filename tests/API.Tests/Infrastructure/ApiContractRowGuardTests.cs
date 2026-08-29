@@ -329,6 +329,127 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     Assert.Equal(41, undecided.Length);
   }
 
+  // ================================================================================================
+  // THE FOURTH AXIS: A LIVE ROUTE NO TEST EVER CALLS (T-209).
+  // ================================================================================================
+  //
+  // ---- ⚠ THE NUMBER THAT FOUND ATTENDANCE, COMMITTED SO IT STOPS DRIFTING.
+  //
+  // A completeness audit measured 63 uncalled routes, then 42 after the instrument was corrected, then 8
+  // after four slices of endpoint tests. **It moved three times in a day while living only in reports**,
+  // and a number nobody re-runs is a number nobody can trust.
+  //
+  // It is what found the largest gap of the day: `AttendanceApiTestHost` mapped 25 routes over a container
+  // that had never heard of their handlers. **Nothing else could have** — an unregistered handler is not a
+  // dependency of anything registered, so service-provider validation had nothing to say, and the routes
+  // had existed too long for any change to trigger it. Only issuing a request finds that.
+  //
+  // ---- ⚠ WHY EIGHT AND NOT ZERO, AND WHY THE EIGHT ARE ASSERTED RATHER THAN LISTED.
+  //
+  // Six of the eight are the UNDO half of a pair that is tested — reject beside approve, deactivate beside
+  // activate, holidays/remove beside holidays. They share a handler shape, a permission and a mapper arm
+  // with a route that has tests, so the marginal evidence is small.
+  //
+  // That is a judgement, not a proof, and the counter-argument is real: today's prior says the second time
+  // you do something is the first time nobody has tried. What settles it is that the specific failure —
+  // an unmapped code answering 500 — is now closed by `PropagatedErrorMappingTests`, and the permission
+  // pairings examined today were correct three times out of three.
+  //
+  // **A remainder we chose to stop at is a set WE control and whose membership is the point**, so it is an
+  // exact count: a ninth uncalled route reddens rather than sitting in a report nobody re-runs.
+  //
+  // ---- THE PROXY, AND ITS ONE CORRECTION.
+  //
+  // "Addressed" means a test source contains a string that could address the route. Route INVENTORIES are
+  // excluded deliberately: they enumerate routes without calling them, and counting them as coverage is how
+  // a route list becomes mistaken for a test suite.
+  //
+  // **String constants are inlined first.** `DepartmentEndpointTests` declares `const string Route` and
+  // builds `$"{Route}/{id}/move"`, so the path never appears contiguously — the first version of this scan
+  // reported 63 and 21 of them were tested. It reads the corpus the way the corpus is written.
+  [Fact]
+  public void Every_live_route_is_addressed_by_some_test_that_is_not_an_inventory()
+  {
+    var live = LiveRoutes();
+
+    // ---- ⚠ TWO NUMBERS, TWO KINDS, AND GETTING EITHER WRONG REPORTS HEALTH WHILE MEASURING NOTHING.
+    //
+    // The DENOMINATOR is a corpus that grows with ordinary work, so it takes a FLOOR — and that floor is
+    // the anti-vacuity control: **if route discovery breaks and finds nothing, zero uncalled routes is
+    // green and perfect.** Computing it live also retires the stale-denominator problem rather than
+    // managing it.
+    //
+    // The EXCEPTIONS are a set we control and whose membership is the point, so they take an EXACT count.
+    Assert.True(
+      live.Count >= 140,
+      $"only {live.Count} live routes discovered, below the floor of 140: route discovery has degraded, " +
+      "and every count below it is meaningless rather than reassuring");
+
+    var corpus = ExercisingTestSources();
+    Assert.True(corpus.Length > 200_000, "the test corpus looks truncated; this scan cannot be trusted");
+
+    // ⚠ `Regex.Escape` ESCAPES `{` AND NOT `}`, so an escaped `{}` placeholder becomes `\{}` and neither
+    // `{}` nor `\{\}` matches it. Replacing after escaping silently matched nothing and reported 8 uncalled
+    // routes as 93 — an instrument claiming five-sixths of the product was untested.
+    //
+    // A SENTINEL SUBSTITUTED BEFORE ESCAPING cannot be wrong about what the escaper did, which is the point:
+    // the previous two attempts were both reasonable guesses about someone else's escaping rules.
+    var uncalled = live
+      .Where(route => !Regex.IsMatch(corpus, SegmentPattern(route.Split(' ', 2)[1])))
+      .OrderBy(route => route, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(
+      uncalled.Length == 8,
+      $"{uncalled.Length} live routes are addressed by no test, expected 8. MORE means a route arrived " +
+      "that nothing calls -- the shape that left 25 attendance routes mapped over a container with no " +
+      "handlers. FEWER means one was covered and the number should come down deliberately:" +
+      Environment.NewLine + string.Join(Environment.NewLine, uncalled));
+  }
+
+  // `/api/gl/accounts/{}/balance` -> a regex matching any single segment where the placeholder is, with
+  // every other character literal. The sentinel survives escaping because it contains no metacharacters.
+  private static string SegmentPattern(string path)
+  {
+    const string Sentinel = "SEGMENTPLACEHOLDER";
+    return Regex.Escape(path.Replace("{}", Sentinel, StringComparison.Ordinal))
+      .Replace(Sentinel, "[^/\"]+", StringComparison.Ordinal);
+  }
+
+  // Every test source except the inventories and this file.
+  private static string ExercisingTestSources()
+  {
+    var root = Path.Combine(FindRepositoryRoot(), "tests");
+    var builder = new System.Text.StringBuilder();
+
+    foreach (var path in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+    {
+      var name = Path.GetFileName(path);
+      if (path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+        path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+        name.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("RowGuard", StringComparison.OrdinalIgnoreCase))
+      {
+        continue;
+      }
+
+      var text = File.ReadAllText(path);
+      foreach (Match constant in Regex.Matches(text, ConstantPattern))
+      {
+        text = text.Replace(
+          "{" + constant.Groups[1].Value + "}", constant.Groups[2].Value, StringComparison.Ordinal);
+      }
+
+      builder.Append(text).Append('\n');
+    }
+
+    return builder.ToString();
+  }
+
+  // `const string X = "value";` -- inlined into `{X}` interpolations before the corpus is searched.
+  private const string ConstantPattern =
+    @"const\s+string\s+(\w+)\s*=\s*""([^""]*)""";
+
   private enum RowKind
   {
     NoCell,

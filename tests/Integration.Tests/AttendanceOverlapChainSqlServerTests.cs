@@ -233,6 +233,68 @@ public sealed class AttendanceOverlapChainSqlServerTests
     }
   }
 
+  // ================================================================================================
+  // THE DATABASE REFUSES AN IDENTICAL ACTIVE REQUEST (T-150).
+  // ================================================================================================
+  //
+  // **The handler's guard cannot be reached by a test that goes through the handler** — an identical range
+  // is an overlap, so the guard refuses first. **This inserts through the context, which is exactly what two
+  // concurrent submissions produce**: both pass the guard, and only the engine can refuse the second.
+  //
+  // ⚠ **It closes the double-click, not the overlap.** Two submissions for 7th–11th and 9th–15th still both
+  // commit — a unique index constrains equality on a key, and overlap is a range predicate no index can
+  // express (`DEC-L-084`).
+  [Fact]
+  [Trait("Decision", "AC-ATT-0029")]
+  public async Task The_database_refuses_a_second_identical_active_request()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+    var leaveTypeId = await SeedLeaveAsync(fixture, context);
+
+    context.Set<LeaveRequest>().Add(ActiveRequest(fixture, leaveTypeId));
+    await context.SaveChangesAsync();
+
+    // The same employee, the same dates, again — bypassing the handler as a lost race would.
+    context.Set<LeaveRequest>().Add(ActiveRequest(fixture, leaveTypeId));
+
+    await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+  }
+
+  // ---- AND IT MUST NOT REFUSE A RESUBMISSION AFTER A REJECTION.
+  //
+  // The index is filtered to `Status IN (0, 1)` because `GetOverlappingAsync` considers only Submitted and
+  // Approved. **An unfiltered unique index would stop an employee rebooking dates that were rejected or
+  // cancelled** — ordinary, legitimate, and broken by a constraint meant to catch a double-click. This is
+  // the test that holds the filter in place.
+  [Fact]
+  [Trait("Decision", "AC-ATT-0029")]
+  public async Task A_rejected_request_does_not_block_the_same_dates_being_requested_again()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+    var leaveTypeId = await SeedLeaveAsync(fixture, context);
+
+    var rejected = ActiveRequest(fixture, leaveTypeId);
+    Assert.True(rejected.Reject(Guid.NewGuid(), "approver", DateTimeOffset.UtcNow, "not this week").IsSuccess);
+    context.Set<LeaveRequest>().Add(rejected);
+    await context.SaveChangesAsync();
+
+    context.Set<LeaveRequest>().Add(ActiveRequest(fixture, leaveTypeId));
+
+    // No throw: the rejected row is outside the filter, so the dates are free again.
+    Assert.Equal(1, await context.SaveChangesAsync());
+  }
+
+  private static LeaveRequest ActiveRequest(AttendanceFixture fixture, Guid leaveTypeId)
+  {
+    var request = LeaveRequest.Submit(
+      fixture.CompanyA, fixture.Employee, leaveTypeId,
+      new DateOnly(2026, 9, 7), new DateOnly(2026, 9, 11), workingDaysConsumed: 5m).Value;
+    request.TenantId = fixture.Tenant;
+    return request;
+  }
+
   private static SubmitLeaveRequestCommandHandler LeaveHandlerFor(
     TenantDbContext context, AttendanceFixture fixture)
   {

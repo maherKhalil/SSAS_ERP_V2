@@ -417,5 +417,39 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
     // Not unique, and for the same reason as the period range above: `SubmitLeaveRequestCommandHandler`'s
     // overlap check is what keeps one employee's approved requests disjoint. Not an oversight: `DEC-L-084`.
     builder.HasIndex(request => new { request.TenantId, request.EmployeeId, request.StartDate, request.EndDate });
+
+    // ---- ⚠ AND A UNIQUE ONE OVER THE SAME COLUMNS, WHICH CLOSES LESS THAN IT APPEARS TO (T-150).
+    //
+    // **This catches an IDENTICAL repeat — the double-clicked button, the retry after a slow response,
+    // the same request from two devices.** `SubmitLeaveRequestCommandHandler` reads then writes with
+    // nothing held between (no transaction, READ COMMITTED, no range lock), so two concurrent submissions
+    // both pass the overlap check. **For exactly equal ranges, the engine now refuses the second.**
+    //
+    // ⚠ **IT DOES NOT CLOSE THE OVERLAP GAP AND MUST NOT BE READ AS DOING SO.** A unique index constrains
+    // EQUALITY on a key; overlap is a range predicate across rows and no index can express it
+    // (`DEC-L-084`). **Two concurrent submissions for 7th–11th and 9th–15th still both commit.** The
+    // handler's guard remains the only thing standing between them, and only a range lock or
+    // SERIALIZABLE would change that — which is the trade `CalendarCommandHandlers.cs:73` weighs and
+    // declines for fiscal years, and which remains open for leave because leave is self-service.
+    //
+    // ---- FILTERED TO Submitted AND Approved, MATCHING THE GUARD EXACTLY.
+    //
+    // `GetOverlappingAsync` considers only those two statuses. **An unfiltered unique index would refuse
+    // an employee resubmitting dates that were REJECTED or CANCELLED** — a legitimate and ordinary act,
+    // broken by a constraint meant to catch a double-click.
+    // ⚠ NAMED OVERLOAD, WHICH IS LOAD-BEARING. EF identifies an index by its PROPERTY SET, so a second
+    // `HasIndex` over the same columns MODIFIES the first rather than adding one — the scaffolded
+    // migration dropped the non-unique index and replaced it. Naming this one keeps both: the
+    // unfiltered index still serves reads across every status, and this constrains only the active ones.
+    builder.HasIndex(
+        request => new { request.TenantId, request.EmployeeId, request.StartDate, request.EndDate },
+        "UX_AttendanceLeaveRequests_Employee_Range_Active")
+      .IsUnique()
+      // ⚠ STRING LITERALS, NOT ORDINALS. `Status` is stored via `HasConversion<string>()`, and SQL Server
+      // refuses a filtered index whose predicate compares a string column to integer constants —
+      // "the column is compared with a constant of higher data type precedence". **The first attempt used
+      // `IN (0, 1)` and every Attendance integration test failed at catalog creation**, which is the
+      // database refusing to build a schema it cannot honour.
+      .HasFilter("[Status] IN ('Submitted', 'Approved')");
   }
 }

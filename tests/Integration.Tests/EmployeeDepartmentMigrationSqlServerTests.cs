@@ -712,8 +712,7 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
       new SqlConnectionStringBuilder(
         IntegrationSqlEnvironment.BaseConnectionString)
       {
-        InitialCatalog = catalog,
-        Pooling = false
+        InitialCatalog = catalog
       }.ConnectionString;
 
     private sealed class FixtureUser : ICurrentUser

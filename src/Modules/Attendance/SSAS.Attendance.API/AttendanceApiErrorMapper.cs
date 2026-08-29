@@ -75,7 +75,6 @@ public static class AttendanceApiErrorMapper
       "Attendance.AdjustedRecordRequired" => ApiErrors.RequestInvalid,
       "Attendance.AdjustmentNoteRequired" => ApiErrors.RequestInvalid,
       "Attendance.AdjustmentChangesNothing" => ApiErrors.RequestInvalid,
-      "Attendance.RecordDateOutsidePeriod" => ApiErrors.RequestInvalid,
       "Attendance.LeaveCompanyRequired" => ApiErrors.RequestInvalid,
       "Attendance.LeaveTypeCodeInvalid" => ApiErrors.RequestInvalid,
       "Attendance.LeaveTypeNameInvalid" => ApiErrors.RequestInvalid,

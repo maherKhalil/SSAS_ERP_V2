@@ -50,10 +50,6 @@ public static class PayElementErrors
     "Payroll.PayElementAccountRequired",
     "A ledger account is required to map a pay element.");
 
-  public static readonly Error CodeIsImmutable = new(
-    "Payroll.PayElementCodeImmutable",
-    "A pay element's code cannot be changed after it is created.");
-
   // ---- WHY THIS NAMES THE ELEMENT (OD-PAY-0012).
   //
   // The ruling put the mapping check at APPROVAL, and a refusal that says only "a pay element is unmapped"

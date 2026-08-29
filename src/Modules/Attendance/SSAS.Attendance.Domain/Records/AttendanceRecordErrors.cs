@@ -71,7 +71,4 @@ public static class AttendanceRecordErrors
     "Attendance.RecordEmployeeNotInCompany",
     "The employee does not belong to this company.");
 
-  public static readonly Error DateOutsidePeriod = new(
-    "Attendance.RecordDateOutsidePeriod",
-    "The attendance date does not fall inside the attendance period.");
 }

@@ -316,7 +316,7 @@ from the DMV on a box restarted yesterday is evidence of nothing.
   hardcoded `TEBAS_GATS_ONCE.Finance.main_acc` / `GATS_AMRI.Finance.main_acc` — **other installations'
   databases left in production code**.
 - **Type hazards need a per-column decision, not a per-type rule** — **now resolved: see the `float`
-  section above. 1,486 float COLUMNS, of which 425 in real tables hold money or measurements.** `float`
+  section above. 1,486 float COLUMNS, of which 544 in real tables hold money or measurements and a further 51 hold identifiers.** `float`
   appears 1490 times in the SCRIPT beside
   `money` 232 and `decimal` 530. **Float cannot represent 0.1**, and this system carries both currency
   and drug dosages. 38 date-named columns are `varchar`; `CreatedBy` is `nvarchar(max)` on 137 tables.
@@ -427,38 +427,48 @@ set @sqlCommand ='alter TABLE '+@ToDataBAse+'.[Finance].INV_LINE_B_TMP(
 — so they are **text, not columns.** 1490 was a raw grep; **1,486 is a measurement of the schema.** Money
 (232) and decimal (530) reproduce exactly, which is what localises the discrepancy to `float`.
 
-### The count
+### The count, after reading all 400 distinct residual names
 
-| | columns | share of 1,486 |
+| bucket | total | in `TMP_` staging | **in REAL tables** |
+|---|---|---|---|
+| money-shaped | 977 | 639 | **338** |
+| dose / measurement | 261 | 55 | **206** |
+| **where 0.1 matters** | **1,238 (83%)** | 694 | **544, across 239 tables** |
+| identifier / code / date | 158 | 107 | 51 |
+| unclassified | 90 | 39 | 51 |
+
+The real-table hits are where they would hurt: `[Billing].[CashierBox]`,
+`[Pharmacy].[LocalPurchaseOrderDetails]`, `[Assets].[AssetsMaster]`, `[InPatient].[MedicalObservation]`.
+
+### ⚠ The finding is not "some floats hold money". It is that ALMOST NO FLOAT HERE IS APPROPRIATE.
+
+**83% hold money or measurements** and need a `decimal` decision. **A further 158 hold identifiers, codes,
+dates and print positions** — `TKT_NR`, `INVNO`, `LIN_NO`, `EntryCodes`, `CHK_SER`, month names — **which is
+a second and different defect: an identifier in a floating-point type.** 51 of those are in real tables
+across 32 tables.
+
+**Only 90 columns (6%) resist classification**, and they are 59 distinct legacy abbreviations in the
+Finance/airline module (`AIR_OR`, `AIR_COMT`, `ENT_21KM`, `INV_REP0`–`INV_REPO`).
+
+**`float` is not being used as a numeric type here — it is being used as the default type**, and 232
+columns already use `money`, so the correct type was available and known throughout.
+
+### ⚠ How this number moved, because the progression is the finding
+
+| pass | where 0.1 matters | what changed |
 |---|---|---|
-| money-shaped names | **674** | 45% |
-| dose- or measurement-shaped names | **212** | 14% |
-| **where 0.1 plausibly matters** | **886** | **60%** |
+| 1 — obvious English words | 558 | — |
+| 2 — after reading the top of the residual | 886 | `ENT_CR`, `ENT_DR`, `ENT_AMT` are credit, debit, amount |
+| 3 — after reading **all 400** distinct residual names | **1,238** | `_VAL`, `BAS`, `GOZE`, `M1_C`…`M12_D`, `0_DAY`…`120_DAY`, `STRBAL`, `CST_*` |
 
-**And the half that decides the work:**
+**Each pass of reading the discard pile moved the answer by more than any deliberate refinement**, and the
+first two passes left it a floor. Reading all four hundred is what turned it into a count — **twenty
+minutes, because 600 occurrences are only 400 distinct names.**
 
-| | columns | |
-|---|---|---|
-| in `TMP_`/temp **staging** tables | **461** (52%) | rebuilt each run; the stored value is transient |
-| **in REAL tables** | **425** (48%) | **across 214 tables — this is the fidelity decision** |
+**A RESIDUAL IS DEFINED BY THE INSTRUMENT, NOT BY THE WORLD.** *"The things that are not money"* and *"the
+things a regex could not see as money"* are different sets, and the gap between them here was **680
+columns — 46% of every float in the schema.**
 
-The real-table hits are exactly where they would hurt: `[Billing].[CashierBox]`,
-`[Pharmacy].[LocalPurchaseOrderDetails]`, `[Assets].[AssetsMaster]`, `[InPatient].[MedicalObservation]`,
-`[HR].[ComprehensiveSocialResearchRequest]`.
-
-### ⚠ 886 is a LOWER BOUND, and the reason is worth keeping
-
-The test is **name-based**, and the first pass returned **558**. Reading the residual showed the classifier
-was missing an abbreviated accounting convention — `ENT_CR`, `ENT_DR`, `ENT_AMT`, `ENT_CONV` are credit,
-debit, amount and conversion, and none of them matched `credit|debit|amount`. **Adding abbreviations moved
-the answer from 558 to 886, a 59% increase from one pass of reading what the instrument had discarded.**
-
-**The residual of 600 still contains names like `ENT_VAL` and `AIR_BAS` that are probably money too.** So
-the number is a floor rather than an estimate, and **the honest reading is "at least 425 real-table columns
-need a decision", not "exactly 425".**
-
-**A name-based classifier can only find conventions it was told about, and the residual is where the ones
-it was not told about are sitting.** Reading the residual is what turned a wrong answer into a bounded one.
 
 ### What this does not need
 

@@ -236,6 +236,66 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     Assert.Equal(197, all.Length);
     Assert.Equal(131, qualified);
     Assert.Equal(66, all.Length - qualified);
+
+    // ---- ⚠ AND THE 66 ARE DECOMPOSED, BECAUSE A RESIDUAL HAS NO OPINION ABOUT ITS CONTENTS (T-196).
+    //
+    // `all.Length - qualified` cannot be wrong about its SIZE and says nothing whatever about what is in
+    // it. Two windows spent a day reasoning about "73 unqualified permission rows" on the strength of the
+    // comment above, and the set turned out to be four different things — **the count was exactly right
+    // and its label was completely wrong.**
+    //
+    // **Being asserted as a number is what let it go unexamined**: it was the rigorous-looking part of the
+    // file. An anti-vacuity control protects the SIZE of a set and nothing else, so a well-defended count
+    // is somewhere a wrong label lives undisturbed.
+    //
+    // Four numbers instead of one. If the bare rows grew by 18 while the markers fell by 18, the total
+    // above would not move at all and these would.
+    var unqualified = all.Where(row => QualifiedPermission.Match(row.Text).Value.Length == 0).ToArray();
+
+    Assert.Equal(66, unqualified.Length);
+
+    // A status marker standing where a permission belongs — `[BUILT]`, `[NOT ROUTED - handler: X]`. These
+    // are the honest half: they document capability that has no route, and FP-001 holds 17 that name the
+    // handler outright.
+    Assert.Equal(30, unqualified.Count(row => KindOf(row.Text) == RowKind.Marker));
+
+    // A bare `METHOD /path` with no columns at all. These document NOTHING.
+    Assert.Equal(22, unqualified.Count(row => KindOf(row.Text) == RowKind.NoCell));
+
+    // Prose about response shape sitting in the permission column. A shape defect, not a permission gap.
+    Assert.Equal(14, unqualified.Count(row => KindOf(row.Text) == RowKind.Prose));
+
+    // ⚠ **ZERO, AND THAT IS THE ONE WORTH ASSERTING.** The short forms were the only kind this axis could
+    // ever have covered, and T-192 qualified all seven in FP-004 rather than teaching the guard to accept
+    // them. A new one reddens here immediately instead of being absorbed into a residual.
+    Assert.Equal(0, unqualified.Count(row => KindOf(row.Text) == RowKind.ShortForm));
+  }
+
+  private enum RowKind
+  {
+    NoCell,
+    Marker,
+    Prose,
+    ShortForm,
+  }
+
+  // Three mechanical tests on the row text, in order, with no judgement call in any of them — which is why
+  // the taxonomy above can be asserted without rotting.
+  private static RowKind KindOf(string text)
+  {
+    var trimmed = text.Trim();
+    if (trimmed.Length == 0)
+    {
+      return RowKind.NoCell;
+    }
+
+    if (trimmed[0] == '[')
+    {
+      return RowKind.Marker;
+    }
+
+    var cell = trimmed.Split('|')[0].Trim();
+    return cell.Length > 0 && cell.All(char.IsLetter) ? RowKind.ShortForm : RowKind.Prose;
   }
 
   private static (string Document, int Line, string Method, string Path, string Permission)[]

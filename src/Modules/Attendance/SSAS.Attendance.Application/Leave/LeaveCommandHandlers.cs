@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.Attendance.Application.Abstractions;
 using SSAS.Attendance.Application.Approval;
 using SSAS.Attendance.Application.Permissions;
@@ -192,7 +193,42 @@ public sealed class SetLeaveEntitlementCommandHandler(
     await balances.AddAsync(balance.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(balance.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE ENTITLEMENT RACE, AND WHY THE LOSER IS TOLD TO RETRY (T-171).
+      //
+      // The read above is `GetForEmployeeAsync`, so two callers can both see null and both take this
+      // branch. **`UX_AttendanceLeaveBalances_Employee_Type_Year` decides it at commit**, and before that
+      // index the loser received `Persistence.UniqueConstraint` unmapped — a 500.
+      //
+      // ⚠ **AND A SECOND ROW WAS NOT A REPORTING PROBLEM.** `LeaveBalance.Consume` guards with
+      // `ConsumedQuantity + quantity > EntitlementQuantity` **against that row's own counter**, and the
+      // repository reads with `FirstOrDefaultAsync`. Two rows meant the guard passed twice against two
+      // different counters: **an employee could take double their entitlement and nothing reported it.**
+      //
+      // ---- RETRYABLE, AND THE REASON IS NOT MERELY "TRY AGAIN".
+      //
+      // **The losing operation's intent is satisfied by the winner's row.** A retry finds it and takes the
+      // `SetEntitlement` branch above — which is exactly what this caller asked for. Setting an
+      // entitlement twice concurrently CONVERGES.
+      //
+      // That is the mirror of the journal reversal, where a lost race is TERMINAL because the reversal
+      // already exists and no retry can succeed. **Same 409, opposite correct client action** — which is
+      // why the code matters and the status alone does not.
+      //
+      // ⚠ **SOUND ONLY WHILE `AttendanceLeaveBalances` CARRIES EXACTLY ONE UNIQUE INDEX.** This handler
+      // writes nothing else, so a unique violation here can only be that one — and naming it would become
+      // a guess the day a second unique index is added to that table. The coupling is invisible from here,
+      // which is why it is written here.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(LeaveErrors.DuplicateBalance);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(balance.Value.Id);
   }
 }
 

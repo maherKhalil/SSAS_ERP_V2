@@ -38,9 +38,26 @@ namespace SSAS.HR.Contracts.Employment;
 // value with no call site changing for anyone to review.** So the crossing is a purpose-named read,
 // and this enum is its return type.
 //
-// **Defined ONCE here rather than mirrored in the domain.** `SSAS.HR.Contracts` depends on nothing, so
-// `SSAS.HR.Domain` referencing it creates no cycle, and the only guard on HR's domain references bars
-// `SSAS.Platform` — this is intra-HR. **Two enums kept in step by hand is `DEC-L-080`; one is not.**
+// **Defined ONCE here rather than mirrored in the domain.** **Two enums kept in step by hand is
+// `DEC-L-080`; one is not.**
+//
+// ---- ⚠ SO `SSAS.HR.Domain` DEPENDS ON `SSAS.HR.Contracts`, AND THAT LOOKS BACKWARDS. DO NOT "FIX" IT.
+//
+// The usual reading is that a contracts assembly is the OUTWARD edge — the thing other modules depend on,
+// pointing away from the module that owns it. **Here the module's own domain points at it too, and the
+// next person to notice will read that as an inverted dependency and try to move this enum into
+// `SSAS.HR.Domain`.** That change compiles for exactly as long as nothing consumes the type across the
+// boundary, and then it does not.
+//
+// **`SSAS.HR.Contracts` references zero projects. It is a LEAF, not a layer.** A leaf can be depended on
+// from any direction without creating a cycle, because it has no outgoing edge to close one with —
+// **which is a property of this assembly specifically, not a general licence for domains to depend on
+// contracts.** The day `SSAS.HR.Contracts` takes its first project reference, this stops being safe, and
+// `The_hr_contracts_assembly_is_a_leaf` fails on that day rather than on the day a cycle appears.
+//
+// The alternative was `EmploymentType` in the domain and a second copy here for the crossing. **That is
+// two enums whose members must agree forever, with nothing checking that they do** — the cost is paid
+// silently and in the wrong place, by whoever adds a fourth member to one of them.
 public enum EmploymentType
 {
   // Monthly salary. `SalaryType.Monthly` is `default`, so this being `default` keeps every employee written

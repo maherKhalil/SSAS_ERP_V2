@@ -264,6 +264,51 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
     Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
   }
 
+  // ---- THE JOURNAL-NUMBER RACE ANSWERS 409, NOT 500 (T-165).
+  //
+  // `NextJournalNumberAsync` is a read-then-write and `UX_GlJournalEntries_Tenant_Company_Year_Number`
+  // decides the race at commit. **The loser used to answer 500**: the unit of work returns the generic
+  // `Persistence.UniqueConstraint`, `GlApiErrorMapper` has no arm for it, and the default is
+  // `WriteFailure` — while `Gl.JournalNumberConflict`, mapped to 409, was returned by nothing.
+  //
+  // ⚠ **This asserts the STATUS AND THE CODE, and the code is the load-bearing half.** A 409 alone would
+  // also be produced by an inactive account or an already-reversed journal; only `gl.conflict` arriving
+  // from `JournalErrors.NumberConflict` says the translation happened.
+  [Fact]
+  [Trait("Decision", "DEC-DEP-0027")]
+  public async Task A_duplicate_journal_number_is_409_rather_than_500()
+  {
+    var debit = Account.Create("5300", "Rent").Value;
+    host.Accounts.Accounts[debit.Id] = debit;
+
+    var credit = Account.Create("1100", "Bank").Value;
+    host.Accounts.Accounts[credit.Id] = credit;
+
+    var draft = JournalDraft.Create(DateTimeOffset.UtcNow, "Racing", null).Value;
+    draft.CompanyId = GlApiTestHost.CompanyA;
+    draft.ReplaceLines([(debit.Id, 100m, 0m, null), (credit.Id, 0m, 100m, null)]);
+    host.Drafts.Drafts[draft.Id] = draft;
+
+    var year = SSAS.GL.Domain.Calendar.FiscalYear.Create(
+      "FY2026",
+      new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      [("FY", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+    year.CompanyId = GlApiTestHost.CompanyA;
+    host.Calendar.Years[year.Id] = year;
+
+    // What SQL Server 2601/2627 becomes by the time it reaches this handler.
+    host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error("Persistence.UniqueConstraint", "Unique index violated.");
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/journal-drafts/{draft.Id}/posting",
+      host.TokenWith(GlPermissionNames.PostJournals)));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   [Trait("Decision", "BR-GL-0004")]
   public async Task Posting_to_an_inactive_account_is_409_and_the_error_names_the_account()

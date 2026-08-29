@@ -216,10 +216,22 @@ public sealed class SetLeaveEntitlementCommandHandler(
       // already exists and no retry can succeed. **Same 409, opposite correct client action** — which is
       // why the code matters and the status alone does not.
       //
-      // ⚠ **SOUND ONLY WHILE `AttendanceLeaveBalances` CARRIES EXACTLY ONE UNIQUE INDEX.** This handler
-      // writes nothing else, so a unique violation here can only be that one — and naming it would become
-      // a guess the day a second unique index is added to that table. The coupling is invisible from here,
-      // which is why it is written here.
+      // ⚠⚠ **THE INDEX DOES NOT EXIST YET. THIS RACE IS OPEN AND THIS BRANCH IS INERT.**
+      //
+      // `AttendanceLeaveBalances` carries **zero** unique indexes today, so nothing produces
+      // `Persistence.UniqueConstraint` here and both racing callers still succeed. **The double-spend
+      // described above is LIVE.**
+      //
+      // The index is gated on `scripts/preflight-leave-balance-duplicates.sql`, which must be run against
+      // real tenant data first: an unfiltered unique index cannot be built over existing duplicates, and a
+      // duplicate pair where both rows carry consumption means somebody has ALREADY over-consumed.
+      // **Merging those rows decides how much leave a real person has and is nobody's call here.**
+      //
+      // ---- ⚠ AND ONCE IT EXISTS: SOUND ONLY WHILE THAT TABLE CARRIES EXACTLY ONE UNIQUE INDEX.
+      //
+      // This handler writes nothing else, so a unique violation here could only be that one — and naming
+      // it becomes a guess the day a second unique index is added to the table. The coupling is invisible
+      // from here, which is why it is written here.
       if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
       {
         return Result.Failure<Guid>(LeaveErrors.DuplicateBalance);

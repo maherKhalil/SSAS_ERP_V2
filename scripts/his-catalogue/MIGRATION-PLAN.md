@@ -291,6 +291,19 @@ indistinguishable from a gate whose query matched nothing, and an empty result m
 inferred — the same reason the tenant-column count above is printed with its (empty) list beside it.
 
 Cheap to write now; runs the day the copy lands.
+
+#### THE SECOND ITEM ON THAT LIST: `sys.dm_exec_procedure_stats` (T-219)
+
+The procedure triage below establishes 897 reporting and 450 logic, **but it cannot compute dead code at
+all** — the schema script holds no application calls, so "referenced by nothing" measures the corpus.
+
+`SELECT * FROM sys.dm_exec_procedure_stats` on the production instance carries execution counts and last
+execution times per procedure, which turns that into *"not executed in N days"*.
+
+⚠ **The limit travels with the query: the DMV resets on restart and evicts under cache pressure, so it
+yields a LIVE set and never a DEAD one.** Capture the instance's uptime alongside it — a procedure absent
+from the DMV on a box restarted yesterday is evidence of nothing.
+
 ---
 
 ## 5. What this plan does not cover
@@ -308,3 +321,61 @@ Cheap to write now; runs the day the copy lands.
 - **Unverified here:** the cross-database reference counts, the 39 disabled constraints, and the
   duplicate `FK_Doctors_SpecialityGroupDetails1/_2` both keyed on `[SpecialityID2]`. Reproduce before
   relying on them.
+
+---
+
+## The 1,347 stored procedures: two-thirds are reporting (T-219, counted 2026-08-30)
+
+**This is the largest line item in the migration and it lands on the favourable side.**
+
+| | count | share |
+|---|---|---|
+| **REPORTING** — no write anywhere on its path | **897** | **67%** |
+| **LOGIC** — writes, directly or through a writer it calls | **450** | **33%** |
+
+**So the work is not "port a thousand procedures". It is rebuild 450 as domain code and re-express 897
+as queries** — and a query in the new system is a different kind of artefact from a procedure, written
+against the new model rather than translated from the old one.
+
+### The classification was controlled, not trusted
+
+**264 procedures declare their intent in their own names** (`Rep*`, `*Report*`). The body test never
+looks at names. **260 of the 264 — 98% — agree.**
+
+That is two independent signals, human intent and mechanical read/write analysis, and **agreement between
+independent measurements is worth more than confidence from one.** The four disagreements are real rather
+than defects: `[Billing].[E_Claims_Report]` and its siblings genuinely write, which is a report that
+stages. **A control that agreed perfectly would suggest the two signals were never independent.**
+
+### ⚠ The third axis — dead code — is NOT COMPUTABLE from this catalogue
+
+A mechanical "referenced by nothing in the script" test returns **1,048 of 1,347 (78%)**. **That number is
+not published as a finding, because it is a measurement of the corpus rather than of the estate.** The
+script contains schema only; **every call from the application is invisible to it**, so "referenced by
+nothing" mostly means "called from code we do not have". Reporting it would read as licence to delete
+two-thirds of the estate.
+
+**THE ANSWERING INSTRUMENT IS `sys.dm_exec_procedure_stats`**, which carries execution counts and
+last-execution times per procedure. On a production instance that has been up for a reasonable window it
+turns *"referenced by nothing in the schema"* into *"not executed in N days"*, which is the real question.
+
+**⚠ Its limit must travel with it: the DMV resets on restart and evicts under cache pressure, so it yields
+a LIVE set and never a DEAD one.** A procedure absent from it is **unproven, not unused**. → **Added to
+the production-copy gate list**, beside the `SELECT DISTINCT CompanyID` check.
+
+### What the catalogue does support: a bound, not an estimate
+
+**At least 299 procedures are definitely live** — something inside the schema calls them (another
+procedure, or a view). Of those, **250 are reporting and 49 are logic.** When a population is partially
+invisible, **a bound is honest and an estimate is not**, and which one you have should be stated.
+
+### Limits of the mechanical test
+
+- **42 procedures (3%) use dynamic SQL**, where the read/write test cannot see inside `EXEC(@sql)`.
+  **Five of those are classed REPORTING and that classification is unsafe** — they are the only
+  per-procedure work this triage generates, and they need reading by hand.
+- A reporting procedure that `EXEC`s a writer **is** logic; resolved transitively to a fixed point rather
+  than one hop.
+- Comments are stripped before testing, or a commented-out `INSERT` would make a report look like logic.
+- **String literals are NOT stripped**, so a literal containing `INSERT` over-classifies a procedure as
+  logic. **That is the safe direction** — it moves work from the cheap bucket to the expensive one.

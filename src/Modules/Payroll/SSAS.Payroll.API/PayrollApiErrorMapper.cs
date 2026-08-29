@@ -47,7 +47,7 @@ public static class PayrollApiErrorMapper
   // would name the wrong missing thing.**
   //
   // The literal is repeated rather than referenced: `SSAS.Payroll.API` does not reference `SSAS.GL.API` and
-  // must not. `Cross_site_agreement` is what keeps the two from drifting.
+  // must not. `The_same_code_answers_the_same_status_at_every_site_that_maps_it` is what keeps the two from drifting.
   public static readonly ApiError LedgerAccountNotFound = new(404, "gl.not_found");
 
   public static ApiError Map(Error error)

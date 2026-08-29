@@ -83,7 +83,7 @@ public static class DepartmentApiErrorMapper
       // could learn which surface refused them from the status alone.
       //
       // The CODE STRINGS are reused too, and deliberately: `employee.not_found` on a department route is
-      // accurate, because what was not found is the employee. `Cross_site_agreement` asserts the statuses.
+      // accurate, because what was not found is the employee. `The_same_code_answers_the_same_status_at_every_site_that_maps_it` asserts the statuses.
       "Employee.NotFound" => EmployeeApiErrorMapper.NotFound,
       "Employee.InvalidTransition" => EmployeeApiErrorMapper.TransitionInvalid,
       "Employee.CompanyScopeDenied" => EmployeeApiErrorMapper.CompanyScopeDenied,

@@ -28,7 +28,8 @@ version: 1.0
 > | `[BUILT]` | 1 | `GET /api/platform/roles` — exists exactly as documented |
 > | `[BUILT as ...]` | 3 | exists under a **different path**: the two user lifecycle routes are `/tenant-users/{id}/deactivation` and `/reactivation`, and tenant selection is `POST /api/platform/auth/select-tenant` |
 > | `[SERVED BY ...]` | 1 | `GET /me/tenant-memberships` has no route; the list comes back on the **login response** as `TenantMembershipResponse` |
-> | `[NOT ROUTED - handler: X]` | 17 | the handler **exists and is registered**; nothing maps a route to it |
+> | `[NOT ROUTED - handler: X]` | 16 | the handler **exists and is registered**; nothing maps a route to it |
+> | `[BUILT ...]` | 1 | the permission-catalogue read, routed 2026-08-29 — the only row of this package that needed no owner decision. **Deliberately not written as a method and path here: a legend that names one is parsed as a contract row.** |
 >
 > ---- ⚠ THIS IS THE "HANDLERS BUILT, TRANSPORT MISSING" SHAPE, AND IT IS THE ONLY DOCUMENT THAT IS.
 >
@@ -119,7 +120,7 @@ Retirement fails while active-user assignments exist.
 ## Permission catalog
 
 ```http
-GET /api/platform/permissions   [NOT ROUTED - handler: ListPermissionCatalogQueryHandler]
+GET /api/platform/permissions   Platform.Permissions.View   [BUILT 2026-08-29, T-203]
 ```
 
 ## Platform support

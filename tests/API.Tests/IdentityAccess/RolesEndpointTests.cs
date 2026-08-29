@@ -92,6 +92,71 @@ public sealed class RolesEndpointTests : IAsyncLifetime
     AssertSecurityHeaders(response);
   }
 
+  // ================================================================================================
+  // THE PERMISSION CATALOGUE (T-203) — THE ONE ROW OF THE CAPABILITY GAP THAT NEEDED NO DECISION.
+  // ================================================================================================
+  //
+  // An audit of the 67 documented-but-unrouted rows put 41 behind five owner decisions, 15 behind an
+  // accepted deferral and 10 down to capability that already exists under another path. This was the
+  // remainder: a read of a static catalogue, whose handler was written and registered and whose permission
+  // was catalogued, waiting only for six lines of transport.
+  [Fact]
+  public async Task The_catalogue_requires_its_own_permission()
+  {
+    using var request = Authorized(
+      "/api/platform/permissions",
+      new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
+      new Claim(JwtClaimTypes.Permission, PlatformPermissionNames.ViewRoles));
+
+    var response = await Client.SendAsync(request);
+
+    // `ViewRoles` is the NEIGHBOURING permission and the one most likely to be reached for by mistake:
+    // roles and permissions sit in the same document and the same route group. It is not this route's.
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+  }
+
+  [Fact]
+  public async Task The_catalogue_lists_tenant_assignable_permissions_only()
+  {
+    using var request = Authorized(
+      "/api/platform/permissions",
+      new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
+      new Claim(JwtClaimTypes.Permission, PlatformPermissionNames.ViewPermissions));
+
+    var response = await Client.SendAsync(request);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    var catalogue = await response.Content.ReadFromJsonAsync<PermissionCatalogResponse>();
+    Assert.NotNull(catalogue);
+    Assert.NotEmpty(catalogue!.Items);
+
+    // ⚠ THE ASSERTION THAT MATTERS. `ADR-015`'s PlatformSupport-scoped permissions are never assignable by
+    // a tenant, and listing one to a tenant administrator would advertise an authority they cannot be
+    // granted. The handler filters; this proves the filter survives the transport.
+    Assert.All(catalogue.Items, item => Assert.Equal("Tenant", item.Scope));
+
+    // The scope travels as a STRING. A numeric enum would let a reordering silently change what an
+    // existing value means to a client that has already shipped.
+    Assert.All(catalogue.Items, item => Assert.False(string.IsNullOrWhiteSpace(item.Name)));
+    AssertSecurityHeaders(response);
+  }
+
+  [Fact]
+  public async Task The_catalogue_accepts_no_query_parameters()
+  {
+    using var request = Authorized(
+      "/api/platform/permissions?pageNumber=1",
+      new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
+      new Claim(JwtClaimTypes.Permission, PlatformPermissionNames.ViewPermissions));
+
+    var response = await Client.SendAsync(request);
+
+    // Not paged and not filtered. Accepting and ignoring a parameter would be a promise the route does not
+    // keep, and a caller who paged it would believe they had seen everything.
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+  }
+
   [Fact]
   public async Task Invalid_paging_returns_400_request_invalid()
   {
@@ -156,6 +221,18 @@ public sealed class RolesEndpointTests : IAsyncLifetime
     builder.Services.AddScoped<IRequestTenantEligibility, RequestTenantEligibility>();
     builder.Services.AddSingleton<IRoleReadService>(roleReadService);
     builder.Services.AddScoped<ListRolesQueryHandler>();
+
+    // ---- ⚠ ADDED WITH THE PERMISSION-CATALOGUE ROUTE (T-203), AND ITS ABSENCE BROKE EVERY TEST ABOVE.
+    //
+    // This host maps the identity-access group, so routing ONE more endpoint made its dependencies
+    // construction-time dependencies of the whole host — and DI validation failed all four existing tests
+    // with a message about a handler none of them calls.
+    //
+    // **That is the good failure mode**: a test host that omits a registration proves the production wiring
+    // only by accident, and this one said so loudly the moment production gained a route.
+    builder.Services.AddSingleton<PlatformPermissionCatalog>();
+    builder.Services.AddSingleton<IPermissionCatalog, ComposedPermissionCatalog>();
+    builder.Services.AddScoped<ListPermissionCatalogQueryHandler>();
 
     application = builder.Build();
     application.UseCorrelationId();

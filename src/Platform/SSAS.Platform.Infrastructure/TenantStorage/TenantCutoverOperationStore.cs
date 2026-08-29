@@ -207,9 +207,15 @@ public sealed class TenantCutoverOperationStore(
     // at admission instead: `FindActiveWriteGateAsync` orders by `Id` descending and hands the fence the
     // NEWEST operation for the tenant. The protection is real and it lives there — stated because the wrong
     // attribution reads as the reason a by-Id seek is sufficient here.
+    // ⚠ THE SAME CONDITION AS THE FENCE'S ROUTE CHECK, AND IT CARRIES THE SAME CODE (T-213).
+    //
+    // This is the second site of the misrouted case — the revalidation, rather than admission. It shared
+    // `TenantWritesFrozen` for the same inherited reason and is wrong for the same one: nothing is frozen,
+    // this writer is bound to the tenant's previous database. **Splitting only the fence would have left the
+    // signal ambiguous**, since a caller cannot tell which site refused it.
     if (!refreshed.PermitsWriteTo(tenantDatabaseId))
     {
-      return Result.Failure(TenantStorageErrors.TenantWritesFrozen);
+      return Result.Failure(TenantStorageErrors.TenantWriteRouteStale);
     }
 
     var second = await TryRecordPostCutoverWriteAsync(cutoverOperationId, actor, cancellationToken);

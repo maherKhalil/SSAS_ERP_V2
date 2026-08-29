@@ -6,14 +6,25 @@ namespace SSAS.Platform.Domain.TenantStorage;
 // tenant-plane IdentityAccessErrors and platform-authority PlatformSupportErrors.
 //
 // ==================================================================================================
-// ⚠ NONE OF THESE 117 CODES IS MAPPED TO AN HTTP STATUS, AND THAT IS CORRECT TODAY (T-129).
+// ⚠ NONE OF THESE 118 CODES IS MAPPED TO AN HTTP STATUS, AND THAT IS CORRECT TODAY (T-129).
 // ==================================================================================================
 //
-// **No file in `SSAS.Platform.API` names a `TenantStorage.` code at all.** Measured, not assumed:
+// **No file in `SSAS.Platform.API` names a `TenantStorage.` code at all** — and no file in `src/Modules`
+// does either, which is worth stating separately because the tenant write fence's errors propagate through
+// `TenantUnitOfWork` into module handlers and therefore reach module mappers, a different path from
+// Platform's own transport. Measured, not assumed (recounted at T-213):
 //
-//   declared here                                 117
-//   returned somewhere in src/                    115
+//   declared here                                 118
+//   returned somewhere in src/                    116
 //   mapped to a status by any API error mapper      0
+//
+// ---- AND THIS DOES NOT CONTRADICT `PropagatedErrorMappingTests` BEING GREEN.
+//
+// That guard asserts every wire code a module returns has a mapper arm, **scoped to the four modules that
+// ship an API surface** — GL, HR, Payroll, Attendance. These codes are Platform's, in a subsystem with no
+// transport, so the two instruments measure disjoint sets and both are correct. Its header records the same
+// survey from the other side: 147 unmapped-but-produced codes across `src/`, 99 of them TenantStorage.
+// **When Platform gains an administration transport, that guard's `Surfaces` list is the trigger.**
 //
 // **They are unmapped because there is no transport, not because anyone decided their statuses.** T-122
 // recorded three `RestoreChain*` codes as a landmine on that basis; **the family is the landmine, and it is
@@ -445,8 +456,46 @@ public static class TenantStorageErrors
 
   // What an application write sees while a cutover holds the tenant. A CONTROLLED, VISIBLE maintenance
   // outcome rather than a generic error (ADR-020 freeze failure safety).
+  //
+  // ---- ⚠ TERMINAL FOR THE CUTOVER WINDOW. THE CALLER WAITS; RETRYING NOW CHANGES NOTHING.
+  //
+  // Two conditions raise it and both are genuinely frozen: the write-admission lock timing out (which can
+  // only happen while a freeze drain holds the tenant's exclusive applock — `TenantCutoverLockResource`
+  // .ForTenant is taken Exclusive in exactly one place, the drain, so writer load alone cannot produce it),
+  // and the copy window refusing every write. **`TenantWriteRouteStale` below is the condition that is NOT
+  // this one**, and the two were a single code until T-213.
   public static readonly Error TenantWritesFrozen =
     new("TenantStorage.TenantWritesFrozen", "Writes for this tenant are temporarily frozen by an in-progress storage cutover.");
+
+  // ==================================================================================================
+  // ⚠ NOT FROZEN — MISROUTED. RETRYABLE IMMEDIATELY, AND THAT IS THE WHOLE REASON IT EXISTS (T-213).
+  // ==================================================================================================
+  //
+  // A context created BEFORE a routing flip still holds a connection to the tenant's PREVIOUS database and
+  // does not re-resolve, so the version check never runs for it. The tenant is perfectly writable — on its
+  // new database. **Only this writer is in the wrong place.**
+  //
+  // ---- WHY IT WAS WORTH SPLITTING OUT OF `TenantWritesFrozen`, WHICH IT SHARED UNTIL T-213.
+  //
+  // **The suite already proved the remedy and the message contradicted it.** Three tests assert that a fresh
+  // context succeeds IMMEDIATELY — `A_context_created_before_the_flip_is_refused_and_a_fresh_one_succeeds`
+  // and `An_old_shared_context_stays_refused_after_completion_and_a_fresh_one_writes` — while the error they
+  // received said *"temporarily frozen by an in-progress storage cutover"*, which instructs a caller to stop
+  // and wait for a window that has already closed. **A test name specifies BEHAVIOUR and an error message
+  // specifies REMEDY; both were in the repository, both were read, and nothing ever compared them.**
+  //
+  // `DEC-L-079` and board 938's test: frozen is TERMINAL for the window, misrouted is RETRYABLE NOW. A
+  // caller can act differently on the two, which is exactly the line that decides whether a distinction is
+  // worth making.
+  //
+  // ---- ⚠ THE MESSAGE NAMES THE MISREADING AND KILLS IT, DELIBERATELY.
+  //
+  // A corrected message that merely stops being wrong leaves the old interpretation alive in whoever learned
+  // it. Saying "nothing is frozen" outright is what retires it.
+  public static readonly Error TenantWriteRouteStale =
+    new("TenantStorage.TenantWriteRouteStale",
+      "This write is bound to the tenant's previous database after a completed cutover. Re-resolve the " +
+      "tenant route and retry immediately — nothing is frozen.");
 
   // ---- Shared → Dedicated copy and exact validation (ADR-020, TS-Storage Phase E3).
   //

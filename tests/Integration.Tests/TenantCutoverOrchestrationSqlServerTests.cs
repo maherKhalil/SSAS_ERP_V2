@@ -333,9 +333,13 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(
     Assert.Null((await fixture.ReadOperationAsync(started.Value.CutoverOperationId)).PostCutoverWriteObservedUtc);
 
     // ---- P. The stale context is still refused AFTER Completed, not merely while RoutingFlipped.
+    //
+    // ⚠ AND IT IS REFUSED AS MISROUTED, NOT AS FROZEN (T-213). Nothing is frozen here — the cutover has
+    // COMPLETED and the tenant is writable on its new database. This test's own name says a fresh context
+    // writes, which is the remedy; the code asserted below is what tells a caller to do that.
     var refused = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
       () => stale.SaveChangesAsync());
-    Assert.Equal(TenantStorageErrors.TenantWritesFrozen.Code, refused.Error.Code);
+    Assert.Equal(TenantStorageErrors.TenantWriteRouteStale.Code, refused.Error.Code);
     await stale.DisposeAsync();
     Assert.Equal(2, await OrchestrationFixture.CompanyCountAsync(fixture.SourceCatalog, fixture.TenantA));
 
@@ -692,8 +696,11 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(
     var observed = await racing.RecordPostCutoverWriteAsync(
       operationId, fixture.SourceDatabaseId, "tenant-cutover-post-write");
 
+    // ⚠ MISROUTED, NOT FROZEN (T-213). This is the STORE's route check — the second site of the same
+    // condition the fence refuses at admission — and it refuses a write aimed at the database the tenant was
+    // moved off. Splitting only the fence would have left this one saying "frozen" for the same condition.
     Assert.True(observed.IsFailure);
-    Assert.Equal(TenantStorageErrors.TenantWritesFrozen.Code, observed.Error.Code);
+    Assert.Equal(TenantStorageErrors.TenantWriteRouteStale.Code, observed.Error.Code);
     Assert.Null((await fixture.ReadOperationAsync(operationId)).PostCutoverWriteObservedUtc);
   }
 

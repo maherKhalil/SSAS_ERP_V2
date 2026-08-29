@@ -24,6 +24,7 @@ using SSAS.HR.Infrastructure;
 using SSAS.BuildingBlocks.Tenancy.Permissions;
 using SSAS.Platform.API;
 using SSAS.Platform.API.Authentication;
+using SSAS.Platform.API.Tenants;
 using SSAS.Platform.API.Companies;
 using SSAS.Platform.API.IdentityAccess;
 using SSAS.Platform.API.Localization;
@@ -163,6 +164,10 @@ try
   app.MapPlatformTenantUserEndpoints();
   app.MapPlatformSupportAuthorityEndpoints();
   app.MapPlatformCompanyEndpoints();
+
+  // T-155. The tenant registry: seven handlers that had existed since the platform shipped and were
+  // reachable only from a test. Transport only — no command, handler or domain rule changed.
+  app.MapPlatformTenantEndpoints();
   // HR module transport (ADR-012: the Host maps each module's own endpoints; modules never map each other's).
   app.MapHrEmployeeEndpoints();
   app.MapHrDepartmentEndpoints();

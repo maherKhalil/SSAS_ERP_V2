@@ -407,7 +407,41 @@ public sealed class ModuleErrorMappingArchitectureTests
         "AuthenticationSession.RefreshFailed",
         "Persistence.ConcurrencyConflict"
       ]
-      )
+      ),
+
+    // ---- THE TENANT REGISTRY (T-155). SEVEN HANDLERS THAT HAD NO ROUTE UNTIL THIS SLICE.
+    //
+    // Seeded with all seven, including the two read handlers: a list filter and a get-by-id both refuse,
+    // and `Tenant.ListFilterInvalid` reaching a 500 would be a query-string typo answering as a server
+    // fault.
+    //
+    // ⚠ **THE POINT OF SEEDING THIS ONE IS WHAT IT WILL CATCH LATER, NOT WHAT IT CATCHES NOW.**
+    // Tenant lifecycle returns no `TenantStorage.*` code today — storage administration is a separate
+    // surface of ~117 codes that these handlers never touch. **A future slice that wires storage
+    // administration into a tenant handler makes those codes reachable from this mapper**, and this walk
+    // is what says so rather than a 500 in production.
+    new("TenantApiErrorMapper",
+      Path.Combine("src", "Platform", "SSAS.Platform.API", "Tenants", "TenantApiErrorMapper.cs"),
+      [
+        typeof(SSAS.Platform.Application.Tenants.CreateTenantCommandHandler),
+        typeof(SSAS.Platform.Application.Tenants.ActivateTenantCommandHandler),
+        typeof(SSAS.Platform.Application.Tenants.SuspendTenantCommandHandler),
+        typeof(SSAS.Platform.Application.Tenants.ReactivateTenantCommandHandler),
+        typeof(SSAS.Platform.Application.Tenants.ArchiveTenantCommandHandler),
+        typeof(SSAS.Platform.Application.Tenants.GetTenantQueryHandler),
+        typeof(SSAS.Platform.Application.Tenants.ListTenantsQueryHandler),
+      ],
+      // ---- ONE CODE STAYS UNMAPPED, AND IT IS A DEFENCE RATHER THAN A BUSINESS REFUSAL.
+      //
+      // `TrialSubscriptionIssuer` refuses a `Guid.Empty` tenant id. **No route can produce that**: its
+      // only caller is `CreateTenantCommandHandler`, which passes `tenant.Value.TenantId` from a tenant
+      // the domain has just constructed. **Mapping it would put a status on a path no request can take**
+      // — the dead arm T-095 established is worse than an honest gap, and the same reading that leaves
+      // `Payroll.OneOffPaymentConsumingRunRequired` unmapped above.
+      //
+      // ⚠ **Its sibling `Subscription.TrialPlanMissing` IS mapped**, because a deployment missing the
+      // seeded plan is reachable by any create request.
+      ["Subscription.InvalidTenant"])
   ];
 
   // ---- THE REGISTER IS AN EXACT SET, NOT A CEILING.
@@ -718,7 +752,8 @@ public sealed class ModuleErrorMappingArchitectureTests
     "IdentityAccessApiErrorMapper",
     "LocalizationApiErrorMapper",
     "PlatformSupportAuthorityApiErrorMapper",
-    "PlatformAuthentication"
+    "PlatformAuthentication",
+    "TenantApiErrorMapper"
   };
 
   [Fact]

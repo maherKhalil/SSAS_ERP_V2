@@ -232,7 +232,22 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
       }
     }
 
-    Assert.DoesNotContain(paths.EnumerateObject(), path => path.Name.EndsWith("/reactivate", StringComparison.Ordinal));
+    // ---- ⚠ NARROWED TO COMPANIES (T-155). IT WAS GLOBAL, AND IT PASSED FOR THE WRONG REASON.
+    //
+    // This read `paths.EnumerateObject()` — **no path anywhere in the product may end in `/reactivate`** —
+    // inside a test whose name and every other assertion is about companies.
+    //
+    // **It held only because no reactivate route existed anywhere**, not because a rule forbade one. The
+    // product accepts reactivation as a concept: `Program.cs` describes tenant-user reactivation as "the
+    // repair for its one half-state". The company rule is real and specific — a deactivated COMPANY is
+    // returned by `activate`, so a second verb for the same transition would be two ways to do one thing.
+    //
+    // A tenant is different: `Suspended -> Active` is a distinct transition from `Provisioning -> Active`,
+    // carries a reason where activation does not, and the domain has always had a separate command for it.
+    Assert.DoesNotContain(
+      paths.EnumerateObject(),
+      path => path.Name.StartsWith("/api/platform/companies", StringComparison.Ordinal) &&
+        path.Name.EndsWith("/reactivate", StringComparison.Ordinal));
   }
 
   [Fact]

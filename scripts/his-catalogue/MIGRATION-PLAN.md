@@ -315,7 +315,9 @@ from the DMV on a box restarted yesterday is evidence of nothing.
   identity, users and roles live in a database **not in this script**), `JCIT_DB_Finance.dbo` (21), and
   hardcoded `TEBAS_GATS_ONCE.Finance.main_acc` / `GATS_AMRI.Finance.main_acc` — **other installations'
   databases left in production code**.
-- **Type hazards need a per-column decision, not a per-type rule.** `float` appears 1490 times beside
+- **Type hazards need a per-column decision, not a per-type rule** — **now resolved: see the `float`
+  section above. 1,486 float COLUMNS, of which 425 in real tables hold money or measurements.** `float`
+  appears 1490 times in the SCRIPT beside
   `money` 232 and `decimal` 530. **Float cannot represent 0.1**, and this system carries both currency
   and drug dosages. 38 date-named columns are `varchar`; `CreatedBy` is `nvarchar(max)` on 137 tables.
 - **Unverified here:** the cross-database reference counts, the 39 disabled constraints, and the
@@ -402,3 +404,65 @@ invisible, **a bound is honest and an estimate is not**, and which one you have 
 - Comments are stripped before testing, or a commented-out `INSERT` would make a report look like logic.
 - **String literals are NOT stripped**, so a literal containing `INSERT` over-classifies a procedure as
   logic. **That is the safe direction** — it moves work from the cheap bucket to the expensive one.
+
+---
+
+## `float` where 0.1 matters: 425 columns in 214 real tables (T-221, counted 2026-08-30)
+
+`float` cannot represent 0.1. This system carries **both currency and clinical measurements**, so every
+float column holding either is a fidelity decision at migration time: **convert to `decimal` and accept the
+rounding already baked into the stored values, or carry the drift forward.** This section establishes how
+many such columns there are, because twelve would be a footnote and this is not twelve.
+
+### ⚠ First, a correction to this document's own figure
+
+This plan said `float` appears **1490** times. **The schema has 1,486 float COLUMNS.** The other four are
+inside a dynamic-SQL string literal in a procedure —
+
+```
+set @sqlCommand ='alter TABLE '+@ToDataBAse+'.[Finance].INV_LINE_B_TMP(
+	[INV_PAX] [float] NULL, [INV_RATE] [float] NULL, …
+```
+
+— so they are **text, not columns.** 1490 was a raw grep; **1,486 is a measurement of the schema.** Money
+(232) and decimal (530) reproduce exactly, which is what localises the discrepancy to `float`.
+
+### The count
+
+| | columns | share of 1,486 |
+|---|---|---|
+| money-shaped names | **674** | 45% |
+| dose- or measurement-shaped names | **212** | 14% |
+| **where 0.1 plausibly matters** | **886** | **60%** |
+
+**And the half that decides the work:**
+
+| | columns | |
+|---|---|---|
+| in `TMP_`/temp **staging** tables | **461** (52%) | rebuilt each run; the stored value is transient |
+| **in REAL tables** | **425** (48%) | **across 214 tables — this is the fidelity decision** |
+
+The real-table hits are exactly where they would hurt: `[Billing].[CashierBox]`,
+`[Pharmacy].[LocalPurchaseOrderDetails]`, `[Assets].[AssetsMaster]`, `[InPatient].[MedicalObservation]`,
+`[HR].[ComprehensiveSocialResearchRequest]`.
+
+### ⚠ 886 is a LOWER BOUND, and the reason is worth keeping
+
+The test is **name-based**, and the first pass returned **558**. Reading the residual showed the classifier
+was missing an abbreviated accounting convention — `ENT_CR`, `ENT_DR`, `ENT_AMT`, `ENT_CONV` are credit,
+debit, amount and conversion, and none of them matched `credit|debit|amount`. **Adding abbreviations moved
+the answer from 558 to 886, a 59% increase from one pass of reading what the instrument had discarded.**
+
+**The residual of 600 still contains names like `ENT_VAL` and `AIR_BAS` that are probably money too.** So
+the number is a floor rather than an estimate, and **the honest reading is "at least 425 real-table columns
+need a decision", not "exactly 425".**
+
+**A name-based classifier can only find conventions it was told about, and the residual is where the ones
+it was not told about are sitting.** Reading the residual is what turned a wrong answer into a bounded one.
+
+### What this does not need
+
+**No production copy.** This is a property of the schema, so the count is available now — and the decision
+(convert versus preserve) can be taken before any data moves. What the production copy would add is the
+*magnitude* of the drift already stored, which is a different question and only worth asking if the answer
+is "convert".

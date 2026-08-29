@@ -200,6 +200,12 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<CloseAttendancePeriodCommandHandler>();
     builder.Services.AddScoped<ReopenAttendancePeriodCommandHandler>();
 
+    // Slice 3 (T-204): leave types and balances.
+    builder.Services.AddScoped<CreateLeaveTypeCommandHandler>();
+    builder.Services.AddScoped<UpdateLeaveTypeCommandHandler>();
+    builder.Services.AddScoped<SetLeaveTypeActivationCommandHandler>();
+    builder.Services.AddScoped<SetLeaveEntitlementCommandHandler>();
+
     builder.Services.AddAttendanceModule();
 
     application = builder.Build();

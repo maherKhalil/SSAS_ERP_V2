@@ -271,6 +271,64 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     Assert.Equal(0, unqualified.Count(row => KindOf(row.Text) == RowKind.ShortForm));
   }
 
+  // ================================================================================================
+  // THE THIRD AXIS: A DOCUMENTED ROUTE THE APPLICATION DOES NOT SERVE (T-202).
+  // ================================================================================================
+  //
+  // ---- ⚠ THIS NUMBER LIVED IN A REPORT AND MOVED TWICE BEFORE IT WAS COMMITTED.
+  //
+  // The completeness audit reported 67 rows documenting a route that does not exist, and the owner was told
+  // that was the capability gap. It is not: **25 of the 67 say so in their own notes** and the count did not
+  // read them.
+  //
+  // A number that only exists in a report cannot redden, so it drifts and is re-derived by hand each time.
+  // This is the same decomposition the permission axis carries, for the same reason — **a residual has no
+  // opinion about its contents**, and this residual turned out to be three different things.
+  [Fact]
+  public void The_documented_routes_that_do_not_exist_are_decomposed_rather_than_counted()
+  {
+    var live = LiveRoutes();
+    var all = ContractDocuments().SelectMany(RowsOf).ToArray();
+
+    Assert.NotEmpty(live);
+    Assert.Equal(197, all.Length);
+
+    var absent = all.Where(row => !live.Contains($"{row.Method} {row.Path}")).ToArray();
+
+    Assert.Equal(130, all.Length - absent.Length);
+    Assert.Equal(67, absent.Length);
+
+    // ⚠ CAPABILITY THAT EXISTS UNDER ANOTHER PATH, AND THE ROW SAYS SO. `[BUILT as ...]` and
+    // `[SERVED BY ...]` are used consistently across these documents and explained in their own legend.
+    // `/departments/{id}/parent` shipped as `/move` and `/move-to-root` under `DEC-DEP-0023`;
+    // `/users/{id}/deactivate` as `/tenant-users/{id}/deactivation`. **These are not gaps and must not be
+    // rewritten to match the route** — the row records what was specified, what was built, and the ruling
+    // that explains the difference, and only the first and third would survive a rewrite.
+    Assert.Equal(10, absent.Count(row =>
+      row.Text.Contains("BUILT as", StringComparison.Ordinal) ||
+      row.Text.Contains("SERVED BY", StringComparison.Ordinal)));
+
+    // Decided and recorded already: fourteen tenant-lifecycle rows deferred by `AC-TEN-0020`, and one
+    // delete route superseded by `DEC-TEN-0007` because no delete exists.
+    Assert.Equal(15, absent.Count(row =>
+      row.Text.Contains("DEFERRED", StringComparison.Ordinal) ||
+      row.Text.Contains("SUPERSEDED", StringComparison.Ordinal)));
+
+    // ---- ⚠ WHAT IS LEFT IS THE HONEST CAPABILITY GAP, AND IT IS ALMOST ENTIRELY THE OWNER'S.
+    //
+    // 24 are the commercial plane (owner decision 11), 16 the administration transport (decision 2), 1 the
+    // attendance bulk import (decision 5). **The permissions for the 16 are already catalogued and their
+    // handlers already built** — 28 platform permissions catalogued, 12 required by a live route, 16 by
+    // none — so that decision is about cost, not design.
+    var undecided = absent.Where(row =>
+      !row.Text.Contains("BUILT as", StringComparison.Ordinal) &&
+      !row.Text.Contains("SERVED BY", StringComparison.Ordinal) &&
+      !row.Text.Contains("DEFERRED", StringComparison.Ordinal) &&
+      !row.Text.Contains("SUPERSEDED", StringComparison.Ordinal)).ToArray();
+
+    Assert.Equal(42, undecided.Length);
+  }
+
   private enum RowKind
   {
     NoCell,

@@ -1,6 +1,6 @@
 # Written by scripts/gate.sh on a green run. Do not hand-edit -- see note 7t.
 # suite|configuration|total
-API|Debug|833
+API|Debug|834
 Architecture|Debug|555
 Attendance|Debug|77
 Finance|Debug|46

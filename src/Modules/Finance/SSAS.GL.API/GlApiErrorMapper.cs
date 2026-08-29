@@ -65,6 +65,7 @@ public static class GlApiErrorMapper
       "Gl.AccountCodeConflict" => Conflict,
       "Gl.FiscalYearCodeConflict" => Conflict,
       "Gl.FiscalCalendarBusy" => Conflict,
+      "Gl.FiscalCalendarAmbiguous" => Conflict,
       "Gl.FiscalYearOverlaps" => Conflict,
       "Gl.JournalNumberConflict" => Conflict,
       "Gl.JournalAlreadyReversed" => Conflict,

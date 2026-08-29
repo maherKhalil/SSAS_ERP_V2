@@ -304,6 +304,54 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // overlapping range both mean the input must change, and repeating the request cannot help.
   //
   // Same status, three different instructions, which is why the CODE is asserted and not just the status.
+  // ---- TWO YEARS COVERING ONE DATE IS REFUSED, NOT RESOLVED BY PICKING (T-187).
+  //
+  // T-184 closed the race that could CREATE an overlap. It could not close what the race already wrote,
+  // and `DEC-L-084` means no constraint will ever catch it — so this read is the last line of defence.
+  //
+  // ⚠ **AND ORDERING WOULD NOT HAVE BEEN ENOUGH.** The pick was unstable between calls, and a journal
+  // and its reversal resolve in SEPARATE calls: an entry could land in year A and the entry cancelling it
+  // in year B. An `ORDER BY` makes that consistent rather than correct, and consistency makes a
+  // tiebreak nobody ratified look decided.
+  [Fact]
+  [Trait("Decision", "DEC-L-084")]
+  public async Task Two_fiscal_years_covering_one_date_refuse_the_posting()
+  {
+    var debit = Account.Create("5400", "Utilities").Value;
+    host.Accounts.Accounts[debit.Id] = debit;
+    var credit = Account.Create("1200", "Cash at bank").Value;
+    host.Accounts.Accounts[credit.Id] = credit;
+
+    var draft = JournalDraft.Create(new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero),
+      "Overlapped", null).Value;
+    draft.CompanyId = GlApiTestHost.CompanyA;
+    draft.ReplaceLines([(debit.Id, 100m, 0m, null), (credit.Id, 0m, 100m, null)]);
+    host.Drafts.Drafts[draft.Id] = draft;
+
+    // Two years that BOTH cover 1 June 2026. Only a pre-T-184 race could have written this, which is
+    // exactly why the seed is explicit rather than produced through the API.
+    foreach (var code in new[] { "FY2026", "FY2026-DUPLICATE" })
+    {
+      var year = SSAS.GL.Domain.Calendar.FiscalYear.Create(
+        code,
+        new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        [(code, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+          new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+      year.CompanyId = GlApiTestHost.CompanyA;
+      host.Calendar.Years[year.Id] = year;
+    }
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/journal-drafts/{draft.Id}/posting",
+      host.TokenWith(GlPermissionNames.PostJournals)));
+
+    // The SPECIFIC refusal. A 409 alone would also be produced by a closed period or an inactive
+    // account, and neither of those means "repair the calendar".
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   [Trait("Decision", "DEC-L-084")]
   public async Task A_busy_fiscal_calendar_is_409_and_names_a_retryable_condition()

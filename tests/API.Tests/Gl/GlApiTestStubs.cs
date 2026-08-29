@@ -178,10 +178,21 @@ public sealed class StubCalendarRepository : IFiscalCalendarRepository
   public Task<FiscalYear?> GetByIdAsync(Guid fiscalYearId, CancellationToken cancellationToken = default) =>
     Task.FromResult(Years.TryGetValue(fiscalYearId, out var year) ? year : null);
 
-  public Task<FiscalYear?> GetCoveringAsync(
-    Guid companyId, DateTimeOffset instantUtc, CancellationToken cancellationToken = default) =>
-    Task.FromResult(Years.Values.FirstOrDefault(
-      year => year.CompanyId == companyId && year.Covers(instantUtc)));
+  // ⚠ THE STUB REPRODUCES THE AMBIGUITY RULE, IT DOES NOT ASSUME IT AWAY (T-187).
+  //
+  // A stub that returned `FirstOrDefault` regardless would make every test green while the production
+  // repository refuses — and the one condition worth testing here is the one the stub would erase.
+  public Task<Result<FiscalYear?>> GetCoveringAsync(
+    Guid companyId, DateTimeOffset instantUtc, CancellationToken cancellationToken = default)
+  {
+    var covering = Years.Values
+      .Where(year => year.CompanyId == companyId && year.Covers(instantUtc))
+      .ToList();
+
+    return Task.FromResult(covering.Count > 1
+      ? Result.Failure<FiscalYear?>(CalendarErrors.AmbiguousCoveringYear)
+      : Result.Success<FiscalYear?>(covering.FirstOrDefault()));
+  }
 
   public Task<FiscalPeriod?> GetPeriodAsync(
     Guid fiscalPeriodId, CancellationToken cancellationToken = default) =>

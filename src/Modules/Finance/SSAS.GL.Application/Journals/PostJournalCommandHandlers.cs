@@ -157,7 +157,19 @@ public sealed class PostJournalDraftCommandHandler(
   private async Task<Result<FiscalPeriod>> ResolvePeriodAsync(
     JournalDraft draft, CancellationToken cancellationToken)
   {
-    var year = await calendar.GetCoveringAsync(draft.CompanyId, draft.EntryDateUtc, cancellationToken);
+    var covering = await calendar.GetCoveringAsync(
+      draft.CompanyId, draft.EntryDateUtc, cancellationToken);
+
+    // ---- AMBIGUITY IS NOT ABSENCE (T-187).
+    //
+    // A failure here means MORE THAN ONE fiscal year covers this date. Answering `PeriodNotFound`
+    // would send an operator to define a calendar when the remedy is to repair one.
+    if (covering.IsFailure)
+    {
+      return Result.Failure<FiscalPeriod>(covering.Error);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return Result.Failure<FiscalPeriod>(CalendarErrors.PeriodNotFound);
@@ -257,8 +269,21 @@ public sealed class ReverseJournalCommandHandler(
     // The reversal lands in the period covering ITS OWN date, not the original's. Reversing into a closed
     // period is exactly what `BR-GL-0003` forbids, and a correction dated today belongs in today's period —
     // which is also why the caller supplies the date rather than inheriting it.
-    var year = await calendar.GetCoveringAsync(
+    var covering = await calendar.GetCoveringAsync(
       original.CompanyId, command.ReversalDateUtc, cancellationToken);
+
+    // ⚠ THIS IS THE SITE THAT MADE REFUSING NECESSARY RATHER THAN MERELY CLEANER (T-187).
+    //
+    // The reversal resolves its OWN date in a SEPARATE call from the entry it cancels. With an
+    // unordered pick over two overlapping years, the original could land in year A and this in
+    // year B - different period, different number sequence, for the entry whose whole purpose is
+    // to cancel the first.
+    if (covering.IsFailure)
+    {
+      return Result.Failure<Guid>(covering.Error);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return Result.Failure<Guid>(CalendarErrors.PeriodNotFound);

@@ -122,14 +122,59 @@ public sealed class GlFiscalYearOverlapChainSqlServerTests
 
     // START-INCLUSIVE: the first instant of a year belongs to it.
     var atStart = await calendar.GetCoveringAsync(fixture.CompanyA, Y2026);
-    Assert.NotNull(atStart);
-    Assert.Equal(first.Value, atStart!.Id);
+
+    // A FAILURE here would mean two years cover this instant — the ambiguity T-187 refuses.
+    // Asserting success first means an overlap reddens as itself rather than as a null.
+    Assert.True(atStart.IsSuccess, atStart.IsFailure ? atStart.Error.Code : null);
+    Assert.NotNull(atStart.Value);
+    Assert.Equal(first.Value, atStart.Value!.Id);
 
     // END-EXCLUSIVE: the instant a year ends belongs to the NEXT one. A journal posted at midnight on
     // 1 January lands in the new fiscal year, and that is the behaviour money depends on.
     var atBoundary = await calendar.GetCoveringAsync(fixture.CompanyA, Y2027);
-    Assert.NotNull(atBoundary);
-    Assert.Equal(second.Value, atBoundary!.Id);
+
+    Assert.True(atBoundary.IsSuccess, atBoundary.IsFailure ? atBoundary.Error.Code : null);
+    Assert.NotNull(atBoundary.Value);
+    Assert.Equal(second.Value, atBoundary.Value!.Id);
+  }
+
+  // ---- TWO COVERING YEARS ARE REFUSED BY THE REPOSITORY ITSELF (T-187).
+  //
+  // ⚠ **THIS TEST EXISTS BECAUSE THE API-LEVEL ONE PROVES THE STUB, NOT THE REPOSITORY.** Breaking
+  // `FiscalCalendarRepository.GetCoveringAsync` leaves `Two_fiscal_years_covering_one_date_refuse_the_posting`
+  // GREEN — that test runs against `StubCalendarRepository` and proves only that the handler propagates a
+  // failure. Measured by planting both, not assumed.
+  //
+  // The rows are written straight to the context because **no API path can produce them**: the guard
+  // refuses sequentially and T-184 closed the concurrent door. An overlap can only exist from a
+  // pre-T-184 race, and `DEC-L-084` means no constraint will ever catch one — so seeding directly is the
+  // only honest way to reach the state this defends against.
+  [Fact]
+  [Trait("Decision", "DEC-L-084")]
+  public async Task Two_years_covering_one_instant_are_refused_rather_than_arbitrarily_picked()
+  {
+    await using var fixture = await GlFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+
+    foreach (var code in new[] { "FY2026", "FY2026-OVERLAP" })
+    {
+      var year = FiscalYear.Create(code, Y2026, Y2027,
+        [(code, Y2026, Y2027)]).Value;
+      year.CompanyId = fixture.CompanyA;
+      context.Add(year);
+    }
+
+    await context.SaveChangesAsync();
+
+    var calendar = new FiscalCalendarRepository(new SingleContext(context));
+    var covering = await calendar.GetCoveringAsync(
+      fixture.CompanyA, new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero));
+
+    Assert.True(covering.IsFailure);
+
+    // The SPECIFIC refusal. `PeriodNotFound` would send an operator to define a calendar when the
+    // remedy is to repair one.
+    Assert.Equal(CalendarErrors.AmbiguousCoveringYear, covering.Error);
   }
 
   private static DefineFiscalYearCommand Year(

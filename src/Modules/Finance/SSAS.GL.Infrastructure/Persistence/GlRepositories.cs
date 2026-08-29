@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Domain;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.GL.Application.Abstractions;
@@ -72,17 +73,30 @@ internal sealed class FiscalCalendarRepository(ITenantDbContextAccessor contextA
   // so an omitted Include would surface as an empty period collection and a `Gl.FiscalPeriodNotFound` for a
   // date the calendar plainly covers. Loading them is not an optimisation choice here; it is the difference
   // between a correct answer and a confidently wrong one.
-  public async Task<FiscalYear?> GetCoveringAsync(
+  public async Task<Result<FiscalYear?>> GetCoveringAsync(
     Guid companyId, DateTimeOffset instantUtc, CancellationToken cancellationToken = default)
   {
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
     var instant = instantUtc.ToUniversalTime();
 
-    return await context.Set<FiscalYear>()
+    // ---- TAKE TWO, BECAUSE ONE CANNOT REPORT AMBIGUITY (T-187).
+    //
+    // This was `FirstOrDefaultAsync` WITH NO ORDERING, so with two overlapping years the one returned was
+    // whatever the plan produced — **and could differ between two calls in the same request.** A journal
+    // and its reversal resolve separately, so an entry could land in year A and the entry cancelling it
+    // in year B.
+    //
+    // **Two is the whole cost**: it answers "is there more than one" without loading a calendar's worth
+    // of years, and the second row is never used except to refuse.
+    var covering = await context.Set<FiscalYear>()
       .Include(year => year.Periods)
-      .FirstOrDefaultAsync(
-        year => year.CompanyId == companyId && year.StartUtc <= instant && year.EndUtc > instant,
-        cancellationToken);
+      .Where(year => year.CompanyId == companyId && year.StartUtc <= instant && year.EndUtc > instant)
+      .Take(2)
+      .ToListAsync(cancellationToken);
+
+    return covering.Count > 1
+      ? Result.Failure<FiscalYear?>(CalendarErrors.AmbiguousCoveringYear)
+      : Result.Success<FiscalYear?>(covering.FirstOrDefault());
   }
 
   public async Task<FiscalPeriod?> GetPeriodAsync(

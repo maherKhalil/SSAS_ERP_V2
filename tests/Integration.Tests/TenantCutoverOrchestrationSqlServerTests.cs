@@ -35,14 +35,35 @@ namespace SSAS.Integration.Tests;
 // stated reason for serialization went with it, and nothing replaced it.
 //
 // It was also ~68% of the remaining chain — the whole round-2 prize was this one class.
-public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper output)
+//
+// ---- ⚠ EACH TEST'S THREE CATALOGS ARE RESTORED FROM A TEMPLATE, NOT MIGRATED. WHY, AND WHAT THAT COSTS.
+//
+// Every test here builds three private catalogs, and until 2026-08-29 each one ran the migrations: 18 tenant
+// migrations twice and 26 platform migrations once, **62 migration applications per test to produce a schema
+// identical every time.** Measured alone on an idle instance that is 75.5 s of a 131.8 s test — and measured
+// again under full-suite load it is the SAME 75.5 s, so the cost is intrinsic and not contention.
+//
+// The migrations now run ONCE per class into a template, which is backed up and restored per test. Restoring
+// three catalogs costs 5.6 s against 75.5 s, and ten concurrent restores from one device measured 2.4 s with
+// no failures, so the shared device does not serialize.
+//
+// **THE ISOLATION IS UNCHANGED, WHICH IS THE POINT.** Every test still gets three private catalogs with a
+// unique token and still drops them in teardown. Nothing is shared between tests but a read-only `.bak` file.
+// The alternative considered and rejected was resetting one shared platform catalogue between tests: it saves
+// less, and it trades away the property that makes these tests trustworthy.
+//
+// The template is rebuilt from the migrations in the tree ON EVERY RUN and never cached across runs — a
+// stale `.bak` would be a schema that disagrees with the code and nothing would redden.
+public sealed class TenantCutoverOrchestrationSqlServerTests(
+  ITestOutputHelper output, TenantCutoverOrchestrationSqlServerTests.CatalogTemplate template)
+  : IClassFixture<TenantCutoverOrchestrationSqlServerTests.CatalogTemplate>
 {
   // ---- A + B. The happy path, and the co-tenant that must not notice.
   [Fact]
   [Trait("Decision", "ADR-020")]
   public async Task A_full_cutover_moves_one_tenant_and_leaves_its_co_tenant_serving()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 4, "ORCH");
     await fixture.SeedCompaniesAsync(fixture.TenantB, 3, "COTEN");
 
@@ -90,7 +111,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-022")]
   public async Task A_target_that_fails_the_recovery_gate_is_refused_before_the_tenant_is_frozen()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync(protectTarget: false);
+    await using var fixture = await OrchestrationFixture.CreateAsync(template, protectTarget: false);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "GATE");
 
     var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
@@ -110,7 +131,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-022")]
   public async Task A_gate_that_degrades_while_frozen_stops_the_flip_and_leaves_the_tenant_frozen()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "DEGR");
 
     // Reach Frozen through the real services, then degrade recoverability before resuming.
@@ -132,7 +153,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task A_tampered_target_stops_the_cutover_and_leaves_the_tenant_frozen()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 4, "TAMP");
 
     var operationId = await fixture.BeginFreezeAndCopyAsync();
@@ -155,7 +176,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [InlineData("flipped")]
   public async Task Resume_continues_from_whatever_a_lost_process_left_behind(string checkpoint)
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "LOSS");
 
     // Each checkpoint is reached through the real services and then abandoned — exactly the durable state a
@@ -199,7 +220,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task Two_concurrent_starts_produce_exactly_one_cutover()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "TWOST");
 
     var attempts = await Task.WhenAll(
@@ -227,7 +248,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task Nothing_can_interleave_while_an_orchestration_owns_the_cutover()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "OWN");
     await fixture.SeedCompaniesAsync(fixture.TenantB, 2, "OTHER");
     var operationId = await fixture.BeginAndFreezeAsync();
@@ -296,7 +317,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task An_old_shared_context_stays_refused_after_completion_and_a_fresh_one_writes()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "CTX");
 
     // Created BEFORE the cutover and never re-resolved.
@@ -348,7 +369,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task Two_concurrent_first_target_writes_both_succeed_and_record_one_timestamp()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "RACE");
     var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
     Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Code : null);
@@ -379,7 +400,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task A_failing_invalidator_leaves_routing_authoritative_and_other_instances_converge()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "CONV");
 
     // An instance that caches Shared/1 and is never told anything.
@@ -412,7 +433,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task Routing_history_cannot_be_deleted_by_direct_sql()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "DEL");
     Assert.True((await fixture.Orchestrator().StartAsync(fixture.StartRequest())).IsSuccess);
 
@@ -455,7 +476,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task The_write_gate_uses_the_newest_cutover_not_an_older_completed_one()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "NEWEST");
 
     var completed = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
@@ -497,7 +518,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task The_write_gate_lookup_seeks_its_index_at_realistic_cardinality()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "PLAN");
     Assert.True((await fixture.Orchestrator().StartAsync(fixture.StartRequest())).IsSuccess);
 
@@ -564,7 +585,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task A_write_whose_observation_cannot_be_recorded_is_refused_and_commits_nothing()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1FAIL");
     var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
     Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Code : null);
@@ -588,7 +609,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task The_first_write_observation_is_not_moved_by_later_writes()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1ONCE");
     var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
     Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Code : null);
@@ -627,7 +648,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task A_first_target_write_records_its_observation_even_when_complete_wins_the_row()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1RACE");
 
     // Flipped but NOT finalised: routing is authoritative and no observation exists yet.
@@ -658,7 +679,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task A_displaced_observation_is_refused_when_the_route_no_longer_permits_that_write()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1ROUTE");
     var operationId = await fixture.BeginFreezeCopyAndFlipAsync();
 
@@ -772,6 +793,213 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     DateTimeOffset? RoutingFlippedUtc,
     DateTimeOffset? PostCutoverWriteObservedUtc);
 
+  // ---- ⚠ THE TEMPLATE CARRIES SCHEMA AND NOTHING ELSE, AND THAT IS ASSERTED RATHER THAN INTENDED.
+  //
+  // Every test's three catalogs are byte-for-byte copies of these two, so a row in the template is a row in
+  // all sixty. **The failure that makes this worth a test is not that the tests would break — it is that they
+  // would NOT.** A seeding step added to the template later gives every test rows it never created, counts
+  // that are silently one too high, and a suite that passes differently rather than failing.
+  [Fact]
+  public async Task The_template_every_test_restores_from_carries_no_rows_of_its_own()
+  {
+    foreach (var catalog in new[] { template.TenantTemplateCatalog, template.PlatformTemplateCatalog })
+    {
+      var counts = await CatalogTemplate.RowCountsAsync(catalog);
+
+      // ⚠ ANTI-VACUITY. A catalog with no tables at all satisfies "nothing has rows" perfectly, so the
+      // emptiness check below is worthless without evidence the schema is really there. A FLOOR rather than
+      // an exact count deliberately: the table count legitimately grows every time a migration is added, and
+      // a number that must be edited on unrelated work is a number that gets edited without being read.
+      Assert.True(counts.Count >= 30,
+        $"{catalog} reports only {counts.Count} tables, so this guard is inspecting an empty or " +
+        "half-restored catalog rather than the migrated schema.");
+
+      var seeded = counts
+        .Where(entry => entry.Value > 0
+          && !entry.Key.EndsWith("__EFMigrationsHistory", StringComparison.Ordinal))
+        .OrderByDescending(entry => entry.Value)
+        .ToArray();
+
+      Assert.True(seeded.Length == 0,
+        $"the {catalog} template carries rows every test would inherit: " +
+        string.Join(", ", seeded.Select(entry => $"{entry.Key}={entry.Value}")) +
+        ". The template must be schema only — move the seeding into the fixture that needs it.");
+    }
+  }
+
+  // ================================================================================================
+  // THE MIGRATED SCHEMA, BUILT ONCE PER CLASS AND HANDED OUT AS TWO BACKUP DEVICES.
+  // ================================================================================================
+  //
+  // xUnit creates this once before the first test and disposes it after the last, so the migrations run one
+  // time rather than twenty. It holds NO tenant state and nothing a test can mutate — the devices are read
+  // from, never written to, after `InitializeAsync` returns.
+  public sealed class CatalogTemplate : IAsyncLifetime
+  {
+    private readonly string token = Guid.NewGuid().ToString("N")[..12];
+    private readonly List<string> catalogs = [];
+
+    public string TenantDevice { get; private set; } = string.Empty;
+
+    public string PlatformDevice { get; private set; } = string.Empty;
+
+    // Kept alive for the life of the class so the emptiness guard can read the schema the tests restore.
+    public string TenantTemplateCatalog { get; private set; } = string.Empty;
+
+    public string PlatformTemplateCatalog { get; private set; } = string.Empty;
+
+    public string DataPath { get; private set; } = string.Empty;
+
+    public string LogPath { get; private set; } = string.Empty;
+
+    public async Task InitializeAsync()
+    {
+      // The location must be reachable by BOTH the test process (which creates the folder) and the SQL
+      // Server service identity (which writes the backup into it) — the asymmetry ADR-022 §11 describes.
+      var backupRoot = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SSAS_BackupTests");
+      Directory.CreateDirectory(backupRoot);
+
+      TenantTemplateCatalog = $"SSAS_E5_TplTenant_{token}";
+      PlatformTemplateCatalog = $"SSAS_E5_TplPlatform_{token}";
+      TenantDevice = Path.Combine(backupRoot, $"SSAS_E5_Tpl_{token}_tenant.bak");
+      PlatformDevice = Path.Combine(backupRoot, $"SSAS_E5_Tpl_{token}_platform.bak");
+
+      DataPath = await ScalarAsync(
+        "SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(400))") ?? string.Empty;
+      LogPath = await ScalarAsync(
+        "SELECT CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS nvarchar(400))") ?? string.Empty;
+
+      foreach (var catalog in new[] { TenantTemplateCatalog, PlatformTemplateCatalog })
+      {
+        await ExecuteAsync("master", $"CREATE DATABASE [{catalog}]");
+        catalogs.Add(catalog);
+      }
+
+      await using (var tenant = TenantContext(TenantTemplateCatalog))
+      {
+        await tenant.Database.MigrateAsync();
+      }
+
+      await using (var platform = TemplatePlatformContext(PlatformTemplateCatalog))
+      {
+        await platform.Database.MigrateAsync();
+      }
+
+      await ExecuteAsync("master",
+        $"BACKUP DATABASE [{TenantTemplateCatalog}] TO DISK = N'{TenantDevice}' " +
+        "WITH INIT, COPY_ONLY, CHECKSUM");
+      await ExecuteAsync("master",
+        $"BACKUP DATABASE [{PlatformTemplateCatalog}] TO DISK = N'{PlatformDevice}' " +
+        "WITH INIT, COPY_ONLY, CHECKSUM");
+    }
+
+    public async Task DisposeAsync()
+    {
+      foreach (var catalog in catalogs)
+      {
+        try
+        {
+          await ExecuteAsync("master",
+            $"IF DB_ID(N'{catalog}') IS NOT NULL BEGIN " +
+            $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
+            $"DROP DATABASE [{catalog}]; END");
+        }
+        catch (SqlException error)
+        {
+          TestCatalogJanitor.RecordLeak(catalog, error);
+        }
+      }
+
+      foreach (var device in new[] { TenantDevice, PlatformDevice })
+      {
+        try
+        {
+          if (!string.IsNullOrWhiteSpace(device) && File.Exists(device))
+          {
+            File.Delete(device);
+          }
+        }
+        catch (IOException)
+        {
+          // A left-behind backup file is not a leaked catalog and must not fail a passing run.
+        }
+      }
+    }
+
+    // Every table in a catalog, with its exact row count. `sys.partitions.rows` would be cheaper and is
+    // approximate; this is the number an assertion depends on, so it is counted rather than estimated.
+    public static async Task<Dictionary<string, int>> RowCountsAsync(string catalog)
+    {
+      var tables = new List<(string Schema, string Name)>();
+      await using (var connection = new SqlConnection(ConnectionFor(catalog)))
+      {
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+          "SELECT SCHEMA_NAME([schema_id]), [name] FROM sys.tables ORDER BY [name]";
+        command.CommandTimeout = 600;
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+          tables.Add((reader.GetString(0), reader.GetString(1)));
+        }
+      }
+
+      var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+      foreach (var (schema, name) in tables)
+      {
+        var value = await ScalarAsync($"SELECT COUNT(*) FROM [{schema}].[{name}]", catalog);
+        counts[$"{schema}.{name}"] = int.Parse(value ?? "0", CultureInfo.InvariantCulture);
+      }
+
+      return counts;
+    }
+
+    private static TenantDbContext TenantContext(string catalog)
+    {
+      var options = new DbContextOptionsBuilder<TenantDbContext>()
+        .UseSqlServer(ConnectionFor(catalog), sql => sql.MigrationsHistoryTable(
+          TenantPersistenceConstants.MigrationHistoryTable,
+          TenantPersistenceConstants.MigrationHistorySchema))
+        .Options;
+      return new TenantDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
+    }
+
+    private static PlatformDbContext TemplatePlatformContext(string catalog)
+    {
+      var options = new DbContextOptionsBuilder<PlatformDbContext>()
+        .UseSqlServer(ConnectionFor(catalog),
+          sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform"))
+        .Options;
+      return new PlatformDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
+    }
+
+    private static string ConnectionFor(string catalog) =>
+      new SqlConnectionStringBuilder(IntegrationSqlEnvironment.BaseConnectionString)
+      { InitialCatalog = catalog, Pooling = false }.ConnectionString;
+
+    private static async Task ExecuteAsync(string catalog, string sql)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = sql;
+      command.CommandTimeout = 600;
+      await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<string?> ScalarAsync(string sql, string catalog = "master")
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = sql;
+      command.CommandTimeout = 600;
+      return (await command.ExecuteScalarAsync())?.ToString();
+    }
+  }
+
   private sealed class OrchestrationFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -802,12 +1030,13 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
 
     public string PlatformConnectionString => ConnectionFor(platformCatalog);
 
-    public static async Task<OrchestrationFixture> CreateAsync(bool protectTarget = true)
+    public static async Task<OrchestrationFixture> CreateAsync(
+      CatalogTemplate template, bool protectTarget = true)
     {
       var fixture = new OrchestrationFixture();
       try
       {
-        await fixture.InitialiseAsync(protectTarget);
+        await fixture.InitialiseAsync(template, protectTarget);
         return fixture;
       }
       catch
@@ -817,35 +1046,22 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       }
     }
 
-    private async Task InitialiseAsync(bool protectTarget)
+    private async Task InitialiseAsync(CatalogTemplate template, bool protectTarget)
     {
       platformCatalog = $"SSAS_E5_Platform_{token}";
       SourceCatalog = $"SSAS_E5_Shared_{token}";
       TargetCatalog = $"SSAS_E5_Dedicated_{token}";
       freeze.WriteAdmissionTimeout = TimeSpan.FromSeconds(2);
 
-      foreach (var catalog in new[] { platformCatalog, SourceCatalog, TargetCatalog })
-      {
-        await ExecuteAsync("master", $"CREATE DATABASE [{catalog}]");
-      }
-
-      foreach (var catalog in new[] { SourceCatalog, TargetCatalog })
-      {
-        await using var connection = new SqlConnection(ConnectionFor(catalog));
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
-          .UseSqlServer(connection, sql => sql.MigrationsHistoryTable(
-            TenantPersistenceConstants.MigrationHistoryTable,
-            TenantPersistenceConstants.MigrationHistorySchema))
-          .Options;
-        await using var context = new TenantDbContext(
-          options, new TestUser(), new TestTenant(null), new TestClock());
-        await context.Database.MigrateAsync();
-      }
+      // Three private catalogs exactly as before — the schema arrives by RESTORE rather than by 62
+      // migrations. See the class comment for the measurement that motivated it.
+      await RestoreAsync(template.TenantDevice, SourceCatalog, template);
+      await RestoreAsync(template.TenantDevice, TargetCatalog, template);
+      await RestoreAsync(template.PlatformDevice, platformCatalog, template);
 
       storage.Servers[ServerKey] = new TenantStorageServerOptions { ConnectionString = Configured() };
 
       await using var platform = PlatformContext();
-      await platform.Database.MigrateAsync();
 
       SourceDatabaseId = await RegisterAsync(platform, TenantDatabaseStorageMode.Shared, SourceCatalog);
       TargetDatabaseId = await RegisterAsync(platform, TenantDatabaseStorageMode.Dedicated, TargetCatalog);
@@ -1309,6 +1525,37 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     public static string ConnectionFor(string catalog) =>
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }
         .ConnectionString;
+
+    // One catalog restored from a template device. The backup carries the template's LOGICAL file names, so
+    // every copy must MOVE them to physical paths of its own or the second restore collides with the first.
+    private static async Task RestoreAsync(string device, string catalog, CatalogTemplate template)
+    {
+      var files = new List<(string Logical, string Type)>();
+      await using (var connection = new SqlConnection(ConnectionFor("master")))
+      {
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"RESTORE FILELISTONLY FROM DISK = N'{device}'";
+        command.CommandTimeout = 600;
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+          files.Add((reader.GetString(reader.GetOrdinal("LogicalName")),
+            reader.GetString(reader.GetOrdinal("Type"))));
+        }
+      }
+
+      var moves = files.Select((file, index) =>
+      {
+        var isLog = file.Type.Equals("L", StringComparison.OrdinalIgnoreCase);
+        var root = isLog ? template.LogPath : template.DataPath;
+        var extension = isLog ? ".ldf" : ".mdf";
+        return $"MOVE N'{file.Logical}' TO N'{Path.Combine(root, $"{catalog}_{index}{extension}")}'";
+      });
+
+      await ExecuteAsync("master",
+        $"RESTORE DATABASE [{catalog}] FROM DISK = N'{device}' WITH {string.Join(", ", moves)}, RECOVERY");
+    }
 
     private static async Task ExecuteAsync(string catalog, string sql)
     {

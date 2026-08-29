@@ -38,7 +38,7 @@ namespace SSAS.HR.Infrastructure.Persistence;
 // injection sets are pinned separately: the placement directory is for the two self-service scope
 // resolvers, the standing directory is for the Platform seam and nothing else.
 internal sealed class EmployeePlacementDirectoryService(ITenantDbContextAccessor contextAccessor)
-  : IEmployeePlacementDirectory, IEmploymentStandingDirectory
+  : IEmployeePlacementDirectory, IEmploymentStandingDirectory, IEmployeeEngagementDirectory
 {
   public async Task<EmployeePlacement?> GetPlacementAsync(
     Guid employeeId, CancellationToken cancellationToken = default)
@@ -103,5 +103,31 @@ internal sealed class EmployeePlacementDirectoryService(ITenantDbContextAccessor
       EmployeeStatus.Terminated => EmploymentStanding.Ended,
       _ => EmploymentStanding.Unknown
     };
+  }
+
+  // ---- THE THIRD SMALL READ ON THIS SERVICE, AND THE CLASS NAME NO LONGER COVERS ALL THREE.
+  //
+  // `IEmploymentStandingDirectory` is already not placement, so this is the second departure rather than
+  // the first. **What these three share is the shape, not the subject**: a single employee, by id, one
+  // column projected, `Guid.Empty` refused before the query, and null for an employee that is not there.
+  //
+  // Splitting them into three services would give three constructors reaching the same accessor for the
+  // same row. **Left together deliberately; if a fourth arrives the name should change.**
+  public async Task<EmploymentType?> GetEmploymentTypeAsync(
+    Guid employeeId, CancellationToken cancellationToken = default)
+  {
+    if (employeeId == Guid.Empty)
+    {
+      return null;
+    }
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // ⚠ THE CAST IS WHAT MAKES "NO SUCH EMPLOYEE" DISTINGUISHABLE. Without it a missing row and a
+    // `FullTime` employee both come back as 0, and the caller cannot tell them apart.
+    return await context.Set<Employee>().AsNoTracking()
+      .Where(employee => employee.Id == employeeId)
+      .Select(employee => (EmploymentType?)employee.EmploymentType)
+      .SingleOrDefaultAsync(cancellationToken);
   }
 }

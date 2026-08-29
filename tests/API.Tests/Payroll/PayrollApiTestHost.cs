@@ -57,10 +57,15 @@ public sealed class PayrollApiEndpointGroup
 // here would be scaffolding for a dimension the module does not have, and its absence is what makes that
 // visible.
 //
-// ---- AND THE TWO CROSS-MODULE CONTRACTS ARE STUBBED, WHICH IS THE PROOF.
+// ---- AND EVERY CROSS-MODULE CONTRACT IS STUBBED, WHICH IS THE PROOF.
 //
-// `IJournalPoster` and `IEmployeeRoster` are the ONLY routes out of this module. That they can be replaced
-// here — with no GL or HR service registered at all — is the boundary demonstrated rather than asserted.
+// ⚠ **This said "the TWO cross-module contracts" and named `IJournalPoster` and `IEmployeeRoster`. There
+// are four.** FP-013 added `IAttendanceSummary` and T-153 added `IEmployeeEngagementDirectory`, and the
+// count went stale both times because nothing reads prose (`DEC-L-002`).
+//
+// **The claim itself was always sound and is left standing**: that all of them can be replaced here — with
+// no GL, HR or Attendance service registered at all — is the boundary demonstrated rather than asserted.
+// **A number in a comment is not one of them; `The_payroll_host_registers_no_foreign_module_service` is.**
 public sealed class PayrollApiTestHost : IAsyncLifetime
 {
   public const string Issuer = "https://ssas.tests/payroll";
@@ -100,6 +105,8 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
 
   public StubEmployeeRoster Roster { get; } = new();
 
+  public StubEmployeeEngagementDirectory Engagement { get; } = new();
+
   // The self-service pair, one object because a test setting one and forgetting the other would produce a
   // dangling link by accident rather than by intent.
   public StubSelfServiceDirectory SelfService { get; } = new();
@@ -108,6 +115,11 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
   public StubAttendanceSummary Attendance { get; } = new();
 
   public HttpClient Client => client ?? throw new InvalidOperationException("The test host has not started.");
+
+  // Exposed for `The_payroll_host_registers_no_foreign_module_service`, which is the guard that makes the
+  // boundary claim above testable rather than asserted in prose.
+  public IServiceProvider Services =>
+    application?.Services ?? throw new InvalidOperationException("The test host has not started.");
 
   private static string FirstMethodOf(RouteEndpoint endpoint)
   {
@@ -186,6 +198,7 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     // The two doors out of the module, and nothing else from GL or HR is registered at all.
     builder.Services.AddSingleton<IJournalPoster>(Ledger);
     builder.Services.AddSingleton<IEmployeeRoster>(Roster);
+    builder.Services.AddSingleton<IEmployeeEngagementDirectory>(Engagement);
     builder.Services.AddSingleton<IAttendanceSummary>(Attendance);
 
     builder.Services.AddScoped<IPayrollScopeResolver, PayrollScopeResolver>();
@@ -241,6 +254,7 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     Runs.Reset();
     Ledger.Reset();
     Roster.Reset();
+    Engagement.Reset();
     SelfService.Reset();
     Attendance.Reset();
     UnitOfWork.Failure = null;

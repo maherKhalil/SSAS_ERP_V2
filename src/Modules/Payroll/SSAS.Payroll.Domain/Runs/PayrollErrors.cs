@@ -203,6 +203,33 @@ public static class PayrollErrors
     "An employee worked overtime under a tier none of their assigned overtime elements prices. Assign an "
     + "element for that tier, or correct the tier on the attendance records, before calculating this run.");
 
+  // ---- A CONTRACT EMPLOYEE TAKES NO COMPENSATION RECORD AT ALL (T-153).
+  //
+  // `EmployeeCompensation` prices a RECURRING engagement: every `SalaryType` it can express — `Monthly`,
+  // `Daily`, `Hourly` — is a rate the run multiplies out each period. **A contract engagement is paid
+  // through `OneOffPayment`, which is a different mechanism with its own approval and its own errors.**
+  //
+  // So this is not "contract employees may only use salary type X". **There is no X.** Recording a
+  // compensation record for a contract employee would make them recur in every run, which is precisely
+  // the outcome the engagement type exists to prevent.
+  //
+  // ⚠ **The refusal is on the pairing, not on the employee.** A contract employee who converts to
+  // full-time takes a compensation record the moment HR changes the type, and this stops firing with no
+  // Payroll change at all.
+  public static readonly Error CompensationNotAvailableForContract = new(
+    "Payroll.CompensationNotAvailableForContract",
+    "This employee is engaged on a contract, and a contract engagement is paid through one-off payments "
+    + "rather than a recurring compensation record. Record a one-off payment, or change the employment "
+    + "type in HR first.");
+
+  // ⚠ AND THE EMPLOYEE MUST EXIST. A null employment type says HR HAS NO SUCH EMPLOYEE, which is a
+  // different fact from any type — collapsing it into "not a contract" would turn a missing row into a
+  // silent grant, and compensation would be recorded against an id that names nobody.
+  public static readonly Error CompensationEmployeeNotInHr = new(
+    "Payroll.CompensationEmployeeNotInHr",
+    "No employee with that identifier exists in HR for the current tenant, so no compensation can be "
+    + "recorded against it.");
+
   public static readonly Error UnbalancedPosting = new(
     "Payroll.UnbalancedPosting",
     "The calculated run does not produce a balanced journal, which is a calculation defect rather than a user error.");

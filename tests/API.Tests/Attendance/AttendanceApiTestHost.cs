@@ -15,6 +15,8 @@ using SSAS.API.Tests.Infrastructure;
 using SSAS.Attendance.API;
 using SSAS.Attendance.Application.Abstractions;
 using SSAS.Attendance.Application.Approval;
+using SSAS.Attendance.Application.Calendars;
+using SSAS.Attendance.Application.Periods;
 using SSAS.Attendance.Application.Leave;
 using SSAS.Attendance.Application.Reads;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -98,6 +100,8 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
 
   public StubWorkingCalendars WorkingCalendars { get; } = new();
 
+  public StubAttendancePeriods Periods { get; } = new();
+
   public StubLeaveSubmissionLock SubmissionLock { get; } = new();
 
   public StubEmployeeRoster Roster { get; } = new();
@@ -173,6 +177,7 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
     builder.Services.AddSingleton<ILeaveTypeRepository>(LeaveTypes);
     builder.Services.AddSingleton<ILeaveBalanceRepository>(LeaveBalances);
     builder.Services.AddSingleton<IWorkingCalendarRepository>(WorkingCalendars);
+    builder.Services.AddSingleton<IAttendancePeriodRepository>(Periods);
     builder.Services.AddSingleton<ILeaveSubmissionLock>(SubmissionLock);
     builder.Services.AddSingleton<IEmployeeRoster>(Roster);
     builder.Services.AddSingleton<IEmployeeApproverDirectory>(Approvers);
@@ -185,6 +190,15 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<ApproveLeaveRequestCommandHandler>();
     builder.Services.AddScoped<RejectLeaveRequestCommandHandler>();
     builder.Services.AddScoped<CancelLeaveRequestCommandHandler>();
+
+    // Slice 2 (T-199): calendars and periods.
+    builder.Services.AddScoped<CreateWorkingCalendarCommandHandler>();
+    builder.Services.AddScoped<UpdateWorkingCalendarCommandHandler>();
+    builder.Services.AddScoped<AddHolidayCommandHandler>();
+    builder.Services.AddScoped<RemoveHolidayCommandHandler>();
+    builder.Services.AddScoped<CreateAttendancePeriodCommandHandler>();
+    builder.Services.AddScoped<CloseAttendancePeriodCommandHandler>();
+    builder.Services.AddScoped<ReopenAttendancePeriodCommandHandler>();
 
     builder.Services.AddAttendanceModule();
 

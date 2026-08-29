@@ -1,6 +1,7 @@
 using SSAS.Attendance.Application.Abstractions;
 using SSAS.Attendance.Application.Leave;
 using SSAS.Attendance.Domain.Calendars;
+using SSAS.Attendance.Domain.Periods;
 using SSAS.Attendance.Domain.Leave;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Domain;
@@ -131,6 +132,40 @@ public sealed class StubWorkingCalendars : IWorkingCalendarRepository
 // is reachable over HTTP against a stub. That behaviour is proven where it can be —
 // `AttendanceOverlapChainSqlServerTests`, on two real connections. **What is proven HERE is only that a
 // refusal from this seam becomes the right status**, which is why `Failure` is settable.
+// The period store (T-199, slice 2). `Overlapping` defaults FALSE and `Existing` defaults NULL, and both
+// defaults are answers rather than absences — see the roster note below, which cost two failing runs to
+// learn. A test that needs a period sets one.
+public sealed class StubAttendancePeriods : IAttendancePeriodRepository
+{
+  public AttendancePeriod? Existing { get; set; }
+
+  public bool Overlapping { get; set; }
+
+  public List<AttendancePeriod> Added { get; } = [];
+
+  public Task<AttendancePeriod?> GetByIdAsync(
+    Guid attendancePeriodId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Existing);
+
+  public Task<AttendancePeriod?> GetCoveringAsync(
+    Guid companyId, DateOnly onDate, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Existing);
+
+  public Task<AttendancePeriod?> GetCurrentOpenAsync(
+    Guid companyId, DateOnly asOf, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Existing);
+
+  public Task<bool> OverlapsAsync(
+    Guid companyId, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Overlapping);
+
+  public Task AddAsync(AttendancePeriod period, CancellationToken cancellationToken = default)
+  {
+    Added.Add(period);
+    return Task.CompletedTask;
+  }
+}
+
 public sealed class StubLeaveSubmissionLock : ILeaveSubmissionLock
 {
   public Error? Failure { get; set; }

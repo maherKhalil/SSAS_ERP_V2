@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.Attendance.Contracts.Summaries;
 using SSAS.BuildingBlocks.Domain;
@@ -86,7 +87,30 @@ public sealed class GeneratePayrollPeriodCommandHandler(
     await periods.AddAsync(period.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(period.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE PAYROLL-PERIOD RACE (T-178).
+      //
+      // `IPayrollPeriodRepository.ExistsForFiscalPeriodAsync` is a read, so two callers can pass it with the same value and both reach this
+      // save. **The unique index on `(TenantId, CompanyId, FiscalPeriodId)` decides it at commit**, and the loser reached `PayrollApiErrorMapper` with
+      // an unmapped `Persistence.UniqueConstraint` — answered 500 for a plain business conflict, while
+      // `PayrollErrors.PeriodAlreadyExists` sat mapped to 409 and unreturned on this path.
+      //
+      // **The race and the pre-check produce an IDENTICAL caller-visible condition**, so one code serves
+      // both honestly, and **retrying the identical request fails again** — the caller must change the
+      // input rather than repeat it.
+      //
+      // ⚠ **EVERY INDEX THIS SAVE CAN REACH MEANS THE SAME THING TO THE CALLER, WHICH IS THE ACTUAL TEST.**
+      // This writes a `PayrollPeriod` and nothing else.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(PayrollErrors.PeriodAlreadyExists);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(period.Value.Id);
   }
 }
 
@@ -130,7 +154,42 @@ public sealed class CreatePayrollRunCommandHandler(
     await runs.AddAsync(run.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(run.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE PAYROLL-RUN RACE (T-178).
+      //
+      // `IPayrollRunRepository.ExistsForPeriodAsync` is a read, so two callers can pass it with the same value and both reach this
+      // save. **The FILTERED unique index on `(TenantId, CompanyId, PayrollPeriodId)` decides it at commit**, and the loser reached `PayrollApiErrorMapper` with
+      // an unmapped `Persistence.UniqueConstraint` — answered 500 for a plain business conflict, while
+      // `PayrollErrors.RunAlreadyExistsForPeriod` sat mapped to 409 and unreturned on this path.
+      //
+      // **The race and the pre-check produce an IDENTICAL caller-visible condition**, so one code serves
+      // both honestly, and **retrying the identical request fails again** — the caller must change the
+      // input rather than repeat it.
+      //
+      // ⚠ **EVERY INDEX THIS SAVE CAN REACH MEANS THE SAME THING TO THE CALLER, WHICH IS THE ACTUAL TEST.**
+      // This writes a `PayrollRun` and nothing else — a new run has no draft lines, because lines arrive
+      // at calculation, a later step.
+      //
+      // ---- ⚠ THE CONDITION IS "AN UNREVERSED RUN EXISTS", NOT "A RUN EXISTS". REVERSE-AND-RERUN IS LEGAL.
+      //
+      // The index carries `HasFilter("[ReversedUtc] IS NULL")` and `ExistsForPeriodAsync` filters the same
+      // predicate — **one rule stated in two languages**, which is what makes the guard and the constraint
+      // agree instead of merely coexist.
+      //
+      // **Wording it as "a run already exists" would read as forbidding the rerun**, and that is not a
+      // hypothetical: before T-112 the guard matched a run in ANY state while the rule meant only unreversed
+      // ones, so *"the correction is a NEW run for the same period"* **was refused by the database from the
+      // day the comment claiming it worked was written.** The filter is what repaired it, on both sides.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(PayrollErrors.RunAlreadyExistsForPeriod);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(run.Value.Id);
   }
 }
 

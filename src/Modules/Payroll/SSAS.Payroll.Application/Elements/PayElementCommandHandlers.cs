@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.Payroll.Application.Abstractions;
@@ -66,7 +67,30 @@ public sealed class CreatePayElementCommandHandler(
     await elements.AddAsync(element.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(element.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE PAY-ELEMENT CODE RACE (T-178).
+      //
+      // `IPayElementRepository.CodeExistsAsync` is a read, so two callers can pass it with the same value and both reach this
+      // save. **The unique index on `(TenantId, CompanyId, NormalizedCode)` decides it at commit**, and the loser reached `PayrollApiErrorMapper` with
+      // an unmapped `Persistence.UniqueConstraint` — answered 500 for a plain business conflict, while
+      // `PayElementErrors.DuplicateCode` sat mapped to 409 and unreturned on this path.
+      //
+      // **The race and the pre-check produce an IDENTICAL caller-visible condition**, so one code serves
+      // both honestly, and **retrying the identical request fails again** — the caller must change the
+      // input rather than repeat it.
+      //
+      // ⚠ **EVERY INDEX THIS SAVE CAN REACH MEANS THE SAME THING TO THE CALLER, WHICH IS THE ACTUAL TEST.**
+      // This writes a `PayElement` and nothing else; the assignment index belongs to compensation.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(PayElementErrors.DuplicateCode);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(element.Value.Id);
   }
 }
 

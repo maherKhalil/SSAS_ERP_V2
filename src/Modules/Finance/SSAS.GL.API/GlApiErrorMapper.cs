@@ -72,7 +72,6 @@ public static class GlApiErrorMapper
       "Gl.FiscalPeriodClosed" => PeriodClosed,
       "Gl.AccountInactive" => AccountInactive,
       "Gl.AccountCodeImmutable" => Immutable,
-      "Gl.JournalImmutable" => Immutable,
 
       // ---- AUTHORIZATION. Permission and scope are separate axes and answer separately.
       "Gl.ReadPermissionDenied" => ApiErrors.Forbidden,

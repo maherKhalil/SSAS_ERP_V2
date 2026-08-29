@@ -54,31 +54,4 @@ public static class JournalErrors
   public static readonly Error AlreadyReversed = new(
     "Gl.JournalAlreadyReversed",
     "This journal has already been reversed.");
-
-  // ---- ⚠ DECLARED, MAPPED TO 409, AND RETURNED BY NOTHING — DELIBERATELY. DO NOT DELETE IT (T-166).
-  //
-  // This looks like a dead arm and a set-difference over declared-versus-returned codes will report it as
-  // one. **It is not: `BR-GL-0002` is enforced STRUCTURALLY, and this is the only trace of that rule in
-  // the source.**
-  //
-  // ```
-  // no PUT / PATCH / DELETE on /journals/{journalEntryId}    a caller cannot ask to mutate a posted journal
-  // drafts.Remove(draft) in the same transaction as posting  no posted draft survives to be mutated, so
-  //                                                          PUT /journal-drafts/{id} answers DraftNotFound
-  // ```
-  //
-  // **`DEC-L-084`'s shape: an invariant the schema and the route surface hold, rather than a check.**
-  // `api-contracts.md` documents this as promised behaviour backed by `BR-GL-0002`, so removing the code
-  // would leave the document naming an error the source no longer contains.
-  //
-  // **The absence is asserted by `A_posted_journal_exposes_no_mutation_route`**, which is what stops
-  // someone adding `PUT /journals/{id}` later and assuming this named refusal is live. It is not, and
-  // nothing else would tell them.
-  //
-  // ⚠ **The previous note said a caller "attempts a mutation" and deserves a named refusal.** The intent
-  // was right and the premise was wrong: **no caller can attempt one.** Corrected rather than removed,
-  // because the intent is the part that matters.
-  public static readonly Error Immutable = new(
-    "Gl.JournalImmutable",
-    "A posted journal entry cannot be modified or deleted.");
 }

@@ -131,9 +131,15 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
 
   // ---- A POSTED JOURNAL HAS NO MUTATION ROUTE, AND THAT ABSENCE IS WHAT ENFORCES `BR-GL-0002` (T-166).
   //
-  // `JournalErrors.Immutable` is declared, mapped to 409, and **returned by nothing** — which reads like a
-  // dead arm until you ask what enforces the rule instead. **Nothing returns it because nothing can reach
-  // it**, and that is the design rather than an omission:
+  // ⚠ **THIS TEST IS NOW THE ONLY THING HOLDING `BR-GL-0002` AT THE TRANSPORT BOUNDARY (T-170).**
+  //
+  // `JournalErrors.Immutable` was declared, mapped to 409, and returned by nothing. T-166 kept it on the
+  // argument that it was the rule's only trace in source. **That premise was false** — `BR-GL-0002` is
+  // named in thirteen places across eight files — so the code was removed in T-170 as a door with no room
+  // behind it, on the same reading that retired Payroll's `PayElementCodeImmutable`.
+  //
+  // **A removal can need a test, and the test is for what the removal left holding the rule.** Here that is
+  // the absence of a mutation route:
   //
   // ```
   // no PUT / PATCH / DELETE on /journals/{journalEntryId}   a caller cannot ask to mutate a posted journal

@@ -17,6 +17,7 @@ using SSAS.Attendance.Application.Abstractions;
 using SSAS.Attendance.Application.Approval;
 using SSAS.Attendance.Application.Calendars;
 using SSAS.Attendance.Application.Periods;
+using SSAS.Attendance.Application.Records;
 using SSAS.Attendance.Application.Leave;
 using SSAS.Attendance.Application.Reads;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -102,6 +103,8 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
 
   public StubAttendancePeriods Periods { get; } = new();
 
+  public StubAttendanceRecords Records { get; } = new();
+
   public StubLeaveSubmissionLock SubmissionLock { get; } = new();
 
   public StubEmployeeRoster Roster { get; } = new();
@@ -178,6 +181,7 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
     builder.Services.AddSingleton<ILeaveBalanceRepository>(LeaveBalances);
     builder.Services.AddSingleton<IWorkingCalendarRepository>(WorkingCalendars);
     builder.Services.AddSingleton<IAttendancePeriodRepository>(Periods);
+    builder.Services.AddSingleton<IAttendanceRecordRepository>(Records);
     builder.Services.AddSingleton<ILeaveSubmissionLock>(SubmissionLock);
     builder.Services.AddSingleton<IEmployeeRoster>(Roster);
     builder.Services.AddSingleton<IEmployeeApproverDirectory>(Approvers);
@@ -205,6 +209,10 @@ public sealed class AttendanceApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<UpdateLeaveTypeCommandHandler>();
     builder.Services.AddScoped<SetLeaveTypeActivationCommandHandler>();
     builder.Services.AddScoped<SetLeaveEntitlementCommandHandler>();
+
+    // Slice 4 (T-208): attendance records.
+    builder.Services.AddScoped<RecordAttendanceCommandHandler>();
+    builder.Services.AddScoped<AdjustAttendanceCommandHandler>();
 
     builder.Services.AddAttendanceModule();
 

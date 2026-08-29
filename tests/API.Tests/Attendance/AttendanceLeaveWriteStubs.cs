@@ -2,6 +2,7 @@ using SSAS.Attendance.Application.Abstractions;
 using SSAS.Attendance.Application.Leave;
 using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Periods;
+using SSAS.Attendance.Domain.Records;
 using SSAS.Attendance.Domain.Leave;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Domain;
@@ -162,6 +163,31 @@ public sealed class StubAttendancePeriods : IAttendancePeriodRepository
   public Task AddAsync(AttendancePeriod period, CancellationToken cancellationToken = default)
   {
     Added.Add(period);
+    return Task.CompletedTask;
+  }
+}
+
+// The record store (T-208, slice 4). `Existing` defaults NULL and `ForPeriod` defaults EMPTY, and both are
+// ANSWERS rather than absences -- see the roster note below, which cost two failing runs to learn.
+public sealed class StubAttendanceRecords : IAttendanceRecordRepository
+{
+  public AttendanceRecord? Existing { get; set; }
+
+  public List<AttendanceRecord> ForPeriod { get; } = [];
+
+  public List<AttendanceRecord> Added { get; } = [];
+
+  public Task<AttendanceRecord?> GetByIdAsync(
+    Guid attendanceRecordId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Existing);
+
+  public Task<IReadOnlyList<AttendanceRecord>> GetForEmployeePeriodAsync(
+    Guid attendancePeriodId, Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<AttendanceRecord>>(ForPeriod);
+
+  public Task AddAsync(AttendanceRecord record, CancellationToken cancellationToken = default)
+  {
+    Added.Add(record);
     return Task.CompletedTask;
   }
 }

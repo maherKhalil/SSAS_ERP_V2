@@ -114,13 +114,28 @@ number, which is why the control was run before anything was built on it.
 |---|---|---|---|
 | **D1** | **Is `GeneralStores` a shared service or an ERP module?** | **59** (37%) | **Shared.** This document already argues it: inventory is referenced by Marketing, InPatient, Nursing, Maintenance, CSSD, Emergency and Laboratory. That is correct design and must survive. |
 | **D2** | **Is `ApplicationSetup` shared master data?** | **8** | **Shared.** Cities, governorates, countries, banks — referenced from both sides and owned by neither. |
-| **D3** | **Where do the employee master and the org structure live?** | **63** (40%) | **Genuinely open — this is the real architectural question.** `Nursing.Employee` is one person master with two role extensions (`Doctors`, `NurseMaster`), and `HR.Department` / `HR.SubDepartment` are pointed at by InfectionControl, CSSD, Billing and InPatient. **Org structure is referenced in BOTH directions**, so it cannot simply follow ERP. |
+| **D3** | **Who owns the organisational structure of the hospital — HR, or the clinical modules?** | **63** (40%) | **Genuinely open — this is the real architectural question, and it is answerable without reading a schema.** `Nursing.Employee` is one person master with two role extensions (`Doctors`, `NurseMaster`), while `HR.Department` / `HR.SubDepartment` are pointed at from InfectionControl, CSSD, Billing and InPatient. **Referenced in BOTH directions, so it cannot simply follow ERP.** |
 | | **settled by the three** | **130 of 159 (82%)** | |
 | | **remainder needing per-edge disposition** | **29** | listed below |
 
 **D1 and D2 are close to settled by the owner's own framing — *one product, HIS with ERP included*. They
 need RATIFYING, not deriving.** D3 is the one that deserves argument, and it is worth noting that the
 answer decides 40% of the seam on its own.
+
+**⚠ D3 IS ONE DECISION ONLY IF ALL THREE PARTS LAND TOGETHER. THEY ARE COUPLED BY THE EDGES, NOT
+IDENTICAL** — and a plan that offers two options where there are four invites the fourth to be proposed in
+the meeting instead of here. Each part dissolves its own subset independently:
+
+| part of D3 | edges it dissolves | what it is |
+|---|---|---|
+| **person master** | **38** | `Nursing.Employee` with its `Doctors` / `NurseMaster` role extensions |
+| **org structure** | **14** | `HR.Department`, `HR.SubDepartment` — the ward and department tree |
+| **employment reference data** | **11** | `HR.Banks`, `SocialStatus`, `Jobs`, `Unions`, `TypeofContract`, `TaxDistinctionMaster`, `EmployeeTerminationCase` |
+
+**Splitting them is legitimate** — the person master could sit with HR while the ward tree stays clinical —
+**and the cost of each split is the edge count above, which stays crossing and joins the reference-or-drop
+list.** So D3 is *one* decision at 63 edges if the parts move together, or up to *three* decisions with a
+stated price for separating them.
 
 **⚠ And "comes along" is not available to a crossing foreign key.** By definition its endpoints are on
 opposite sides, so that outcome exists ONLY as a consequence of a placement that stops the edge crossing —
@@ -168,7 +183,12 @@ the asset lifecycle (`Maintenance`/`CSSD → Assets`, 9), insurance and patient 
 
 **⚠ `Pharmacy.LocalPurchaseOrderHeader → Purchasing.PurchaseRequest` is one of only TWO `NOCHECK` foreign
 keys among all 159** (the other being `FK_NurseMaster_Employee`, discussed below). Orphans may already
-exist on both, and both need a data check before either is turned into a reference.
+exist on both.
+
+**That edge is BLOCKED ON THE PRODUCTION COPY, not decided.** A reference across the boundary is a promise
+about integrity, and this relationship has never been checked by the database — so whether it can become a
+reference at all depends on whether orphans exist, which is not knowable from the catalogue. **It is the
+one item in the 29 whose disposition cannot be argued, only measured.**
 
 ⚠ **One earlier reading was wrong and is corrected here.** `Registration.Patients` (160 inbound FKs),
 `Nursing.Employee` (108) and `Registration.Doctors` (80) are **not** three unreconciled staff masters.

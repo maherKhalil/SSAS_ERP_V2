@@ -59,6 +59,27 @@ public static class CalendarErrors
   // It is also returned when a caller reaches the lock with no open transaction — **a sequencing bug in
   // this module, not a busy system.** Refusing there is what stops that bug presenting as an intermittent
   // overlap much later, and `sp_getapplock` with `Transaction` ownership makes it unmissable.
+  // ---- TWO FISCAL YEARS COVER ONE DATE, AND THAT IS A DIFFERENT CONDITION FROM NONE (T-187).
+  //
+  // `PeriodNotFound` means *no calendar covers this date*, and its remedy is to define or open one.
+  // **This means TWO do, and its remedy is to fix the calendar.** Collapsing them sends an operator to
+  // do the wrong thing with full confidence.
+  //
+  // ⚠ **WHY REFUSING BEATS PICKING ONE, EVEN DETERMINISTICALLY.** `GetCoveringAsync` had no ordering, so
+  // the year returned could differ BETWEEN CALLS — and a journal and its reversal are SEPARATE calls
+  // resolving separate dates. An entry could post into year A and the entry that cancels it into year B:
+  // different period, different number sequence. **Adding an ORDER BY would make that consistent rather
+  // than correct** — both still landing in a year chosen by a tiebreak nobody ratified, and the
+  // consistency would make it look decided.
+  //
+  // `DEC-L-084` is why this is the last line of defence: no constraint can express range non-overlap, so
+  // the guard is the only enforcement, and a guard that has ever been bypassed leaves data no guard can
+  // retroactively fix. T-184 closed the race; it could not close what the race already wrote.
+  public static readonly Error AmbiguousCoveringYear = new(
+    "Gl.FiscalCalendarAmbiguous",
+    "More than one fiscal year covers this date for this company. The calendar must be corrected before "
+    + "entries can be posted to it.");
+
   public static readonly Error CalendarDefinitionBusy = new(
     "Gl.FiscalCalendarBusy",
     "Another fiscal-year definition for this company is in progress. Retry the request.");

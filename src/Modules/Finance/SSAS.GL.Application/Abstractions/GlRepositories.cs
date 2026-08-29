@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Domain;
 using SSAS.GL.Domain.Accounts;
 using SSAS.GL.Domain.Calendar;
 using SSAS.GL.Domain.Journals;
@@ -35,7 +36,17 @@ public interface IFiscalCalendarRepository
 
   // Loaded WITH its periods, because the period is what a posting resolves and a year without them cannot
   // answer `ResolveOpenPeriodFor`.
-  Task<FiscalYear?> GetCoveringAsync(
+  //
+  // ---- ⚠ THREE ANSWERS, NOT TWO (T-187).
+  //
+  // `Success(null)` is *no year covers this date*. `Success(year)` is the ordinary answer. **`Failure` is
+  // *more than one covers it*, which is a different condition with a different remedy** and must not
+  // collapse into the first.
+  //
+  // **This returns a `Result` so the ambiguity is expressible at all.** A nullable year can only say
+  // "one or none", so the previous signature forced the implementation to pick — and it picked with
+  // `FirstOrDefaultAsync` and no ordering, which could differ between two calls in one request.
+  Task<Result<FiscalYear?>> GetCoveringAsync(
     Guid companyId, DateTimeOffset instantUtc, CancellationToken cancellationToken = default);
 
   Task<FiscalPeriod?> GetPeriodAsync(Guid fiscalPeriodId, CancellationToken cancellationToken = default);

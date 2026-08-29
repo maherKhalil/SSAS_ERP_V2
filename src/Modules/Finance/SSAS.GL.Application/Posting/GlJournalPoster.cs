@@ -85,7 +85,17 @@ public sealed class GlJournalPoster(
       return JournalPostingOutcome.Refused(JournalPostingStatus.Unbalanced, postable.Error.Message);
     }
 
-    var year = await calendar.GetCoveringAsync(request.CompanyId, draft.Value.EntryDateUtc, cancellationToken);
+    var covering = await calendar.GetCoveringAsync(request.CompanyId, draft.Value.EntryDateUtc, cancellationToken);
+
+    // A `Failure` is AMBIGUITY - more than one fiscal year covers this date (T-187).
+    // **Payroll posts through this path too**, so the same broken calendar reaches the
+    // ledger from two directions and both must refuse rather than pick.
+    if (covering.IsFailure)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
@@ -144,7 +154,17 @@ public sealed class GlJournalPoster(
       return JournalPostingOutcome.Refused(JournalPostingStatus.ReversalTargetUnavailable);
     }
 
-    var year = await calendar.GetCoveringAsync(original.CompanyId, request.ReversalDateUtc, cancellationToken);
+    var covering = await calendar.GetCoveringAsync(original.CompanyId, request.ReversalDateUtc, cancellationToken);
+
+    // A `Failure` is AMBIGUITY - more than one fiscal year covers this date (T-187).
+    // **Payroll posts through this path too**, so the same broken calendar reaches the
+    // ledger from two directions and both must refuse rather than pick.
+    if (covering.IsFailure)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
@@ -191,7 +211,28 @@ public sealed class GlJournalPoster(
   public async Task<PostingWindow> InspectPostingWindowAsync(
     Guid companyId, DateTimeOffset entryDateUtc, CancellationToken cancellationToken = default)
   {
-    var year = await calendar.GetCoveringAsync(companyId, entryDateUtc, cancellationToken);
+    var covering = await calendar.GetCoveringAsync(companyId, entryDateUtc, cancellationToken);
+
+    // ---- ⚠ THIS ONE IS A QUERY, AND ITS ANSWER IS THE ONE THAT WORRIES ME MOST (T-187).
+    //
+    // A `Failure` is AMBIGUITY — more than one fiscal year covers this date. **`PostingWindow` has no
+    // vocabulary for that**: its statuses describe a period's state, not a calendar's integrity, and
+    // widening the contract would change what every caller must handle for a condition none of them can
+    // remedy.
+    //
+    // So it answers `PeriodNotFound`, which is **not the honest answer and is the safe one**. This is a
+    // read that Payroll uses to decide whether a run may post; reporting "no window" stops the run, where
+    // reporting a usable window would let payroll post into an arbitrarily chosen year. **The WRITE paths
+    // above return the real error; this query degrades to a refusal rather than inventing a status.**
+    //
+    // If a caller ever needs to tell the two apart here, `PostingWindowStatus` is where the distinction
+    // belongs — not a second query.
+    if (covering.IsFailure)
+    {
+      return new PostingWindow(PostingWindowStatus.PeriodNotFound, null);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return new PostingWindow(PostingWindowStatus.PeriodNotFound, null);

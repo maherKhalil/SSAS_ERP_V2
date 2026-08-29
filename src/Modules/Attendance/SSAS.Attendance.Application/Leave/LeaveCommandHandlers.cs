@@ -640,18 +640,53 @@ public sealed class CancelLeaveRequestCommandHandler(
     // submission reserves nothing — the consequence of `OD-ATT-0006` putting the movement at approval.
     if (wasApproved)
     {
+      // ---- ⚠ A NULL HERE IS REFUSED, NOT SKIPPED, AND THE DIFFERENCE IS LEAVE DAYS (T-189).
+      //
+      // Both lookups used to be `is not null` guards that fell through in silence. **Falling through means
+      // the days consumed at approval are never returned and the caller is told the cancel SUCCEEDED** —
+      // no error, no log, and a balance that is quietly wrong from then on.
+      //
+      // Approval already refuses on exactly these two nulls, with exactly these two errors. Mirroring it is
+      // what makes consume and release the same shape rather than one strict and one forgiving.
+      //
+      // ---- NEITHER NULL IS REACHABLE TODAY, AND THAT IS WHY THE REFUSAL IS WORTH ITS LINES.
+      //
+      // The argument spans five files, so it is written once here rather than rediscovered:
+      //
+      //   1. `wasApproved` is true, and approval REFUSES both nulls — so both existed at approval.
+      //   2. The key is IDENTICAL at both sites: company, employee, leave type, `StartDate.Year`. And
+      //      `LeaveTypeId`, `StartDate` and `WorkingDaysConsumed` are assigned only in the constructor;
+      //      every mutator (`Approve`, `Reject`, `Cancel`, the `*AtRoot` pair) moves STATUS alone.
+      //   3. Nothing deletes either entity — neither repository interface has a remove, and no
+      //      `Remove`/`RemoveRange` touches these sets anywhere in `src/`.
+      //   4. Neither lookup filters on `IsActive`, so `SetActivation(false)` does not hide a type.
+      //   5. `ConsumesBalance` is computed from `Behaviour`, which `Create` sets and no mutator changes.
+      //      **A flip there would be the silent path**: consumed as metered, cancelled as unmetered.
+      //
+      // The only global query filter is on `TenantId`, identical across both operations.
+      //
+      // Every link is something a later change could break — a delete method, a `Behaviour` setter, an
+      // `IsActive` predicate added to a lookup. **The refusal is what turns any of those from silently
+      // losing leave days into a visible failure**, which is the whole reason it replaces a skip.
       var leaveType = await leaveTypes.GetByIdAsync(request.LeaveTypeId, cancellationToken);
-      if (leaveType is not null && leaveType.ConsumesBalance)
+      if (leaveType is null)
+      {
+        return Result.Failure(LeaveErrors.LeaveTypeNotFound);
+      }
+
+      if (leaveType.ConsumesBalance)
       {
         var balance = await balances.GetForEmployeeAsync(
           request.CompanyId, request.EmployeeId, request.LeaveTypeId, request.StartDate.Year, cancellationToken);
-        if (balance is not null)
+        if (balance is null)
         {
-          var released = balance.Release(request.WorkingDaysConsumed);
-          if (released.IsFailure)
-          {
-            return released;
-          }
+          return Result.Failure(LeaveErrors.BalanceNotFound);
+        }
+
+        var released = balance.Release(request.WorkingDaysConsumed);
+        if (released.IsFailure)
+        {
+          return released;
         }
       }
     }

@@ -199,7 +199,7 @@ it as a known gap — now correctly weighted as a proposal nobody has ruled on r
 
 ---
 
-## 6. The hours-per-day factor — unchanged, absent and unclaimed
+## 6. The hours-per-day factor — ✅ NO DECISION NEEDED NOW (T-194). Absent and unclaimed.
 
 **What it is.** There is **no hours-per-day constant anywhere in `src/` or `docs/`.** It was raised, held,
 and no consumer has appeared under the owner's own model of the business.
@@ -212,7 +212,7 @@ in both units.
 
 ---
 
-## 7. Calendar resolution — ⚠ WORSE THAN RECORDED 2026-08-29 (T-158). Duplicated and unpinned.
+## 7. Calendar resolution — ✅ NO DECISION NEEDED NOW (T-194). Duplicated and unpinned; blocks nothing while companies have one calendar each.
 
 **⚠ What changed.** The inference is not only undecided — it is **written twice and enforced nowhere.**
 `IsDefault` descending then `NormalizedName` appears at `AttendanceRepositories.cs:46` **and again** at
@@ -233,7 +233,7 @@ than one calendar per company and delete the ambiguity.
 
 ---
 
-## 8. Period versus pay date in run inclusion — unchanged, deliberate and undocumented for the owner
+## 8. Period versus pay date in run inclusion — ✅ NO DECISION NEEDED NOW (T-194). Deliberate; recorded so the results do not look wrong.
 
 **What it is.** Two different dates decide two different questions, and the split is real:
 
@@ -254,7 +254,7 @@ consequences.
 
 ---
 
-## 9. `Company.BaseCurrencyCode` is stored non-Unicode — added 2026-08-28 (T-134)
+## 9. `Company.BaseCurrencyCode` is stored non-Unicode — ✅ NO DECISION NEEDED NOW (T-194). Added 2026-08-28 (T-134).
 
 **What it is.** Currency codes are persisted as **`char(3)` under an ordinal collation**, not Unicode. Every
 other column holding ERP data is Unicode.
@@ -281,7 +281,25 @@ altered by the change that found it.
 
 ---
 
-## 10. Overlapping leave requests are possible under concurrency — added 2026-08-29 (T-146, T-148)
+## 10. Overlapping leave requests under concurrency — ✅ RESOLVED, NOTHING TO DECIDE (T-194)
+
+**⚠ This shipped and the list did not say so.** `ILeaveSubmissionLock` is registered in production
+(`SSAS.Attendance.Infrastructure/ServiceCollectionExtensions.cs`), `SubmitLeaveRequestCommandHandler` takes
+it, and `AttendanceOverlapChainSqlServerTests` proves it against real SQL Server with three tests: the lock
+refuses without an open transaction, a second submission for the same employee on a SECOND CONNECTION
+cannot take it, and a submission for a different employee is not blocked. A database unique index refuses a
+second identical active request besides.
+
+**Struck rather than deleted, because the entry below records why it was weighed differently from the
+fiscal-year and attendance-period guards** — a leave request is self-service and submitted whenever an
+employee likes, so the rarity argument that justified accepting the other two never applied here. That
+reasoning is what produced the lock and is worth keeping.
+
+---
+
+<details><summary>The original entry, for the record</summary>
+
+### 10. Overlapping leave requests are possible under concurrency — added 2026-08-29 (T-146, T-148)
 
 **What it is.** Two leave requests for the same employee covering the same days can both be accepted, if
 they are submitted close enough together. Overlapping approved leave becomes **double-counted unpaid
@@ -326,6 +344,8 @@ operation.
 **What is already true.** The guard itself is tested against a real database (T-146), so it works when
 requests arrive one at a time. **Tested is not enforced:** the test proves the check runs, not that
 concurrency cannot defeat it.
+
+</details>
 
 ## 11. The commercial plane is half-built, and nothing recorded that — added 2026-08-29 (T-158)
 

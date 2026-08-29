@@ -97,11 +97,25 @@ engineering.
 **The options.**
 - **Build it** — the routes plus 115 status decisions. The second half is the larger piece.
 - **Build a slice** — e.g. tenants only, and accept that roles and users stay manual.
+  **⚠ Corrected 2026-08-29 (T-155, T-158): a tenants slice needs about SEVEN error mappings, not 115.**
+  The 115 belong to storage administration — backup, restore, cutover — which tenant lifecycle never
+  touches. **And the tenant slice is separately blocked by a recorded deferral; see the note in item 1.**
 - **Defer knowingly** — it works today via engineering; the cost is engineering time per change.
 
 ---
 
-## 3. Employment type — unchanged, still absent
+## 3. Employment type — ⚠ BASIS CORRECTED 2026-08-29 (T-153, T-158). Built; the question survives.
+
+**⚠ What changed.** This item said employment type does not exist. **It does** — shipped on the owner's
+ruling: full time is monthly, part time is daily or hourly, contract takes no compensation record.
+`Employee` carries the field and the assumption guards now number four, not three.
+
+**The decision is unchanged and its stated basis was wrong.** The type lives on the **command path**, read
+once when compensation is recorded, and **never reaches a calculation**. So a part-timer is expressible in
+HR and **payroll still cannot tell one from a full-timer**.
+
+**The question, precisely:** should the calculation itself use employment type — proration, accrual, anything
+that should differ for a part-timer — or is expressing it at the compensation boundary enough?
 
 **What it is.** There is **no employment-type concept anywhere in HR.** `Employee` has no field for it. Every
 payroll calculation assumes one shape of employment.
@@ -120,7 +134,16 @@ be paid on full-time assumptions with nothing detecting it.
 
 ---
 
-## 4. Self-service grants — ⚠ CHANGED (three permissions, not six)
+## 4. Self-service grants — ⚠ MECHANISM CORRECTED 2026-08-29 (T-158). There is no per-user grant.
+
+**⚠ What changed.** This item described *"per-user permission grants, one person at a time"*. **No such
+mechanism exists in this product.** `TenantUser` holds role assignments and nothing else; there is no
+`TenantUserPermission` or `UserPermissionGrant` entity anywhere in `src/`. **Permissions reach a user only
+through a role** — so the option this item offered as an improvement, *"a bulk grant by role"*, is already
+the only mechanism there is.
+
+**What is actually absent** is assigning a role to many users at once, or a role granted by default at hire.
+**The three self-service permissions are confirmed as recorded, and none appears in any seeded role.**
 
 **What it is.** Employee self-service is gated by per-user permission grants, with **no bulk mechanism**.
 Granting it to a workforce means granting it one person at a time.
@@ -189,7 +212,13 @@ in both units.
 
 ---
 
-## 7. Calendar resolution — unchanged, inferred rather than decided
+## 7. Calendar resolution — ⚠ WORSE THAN RECORDED 2026-08-29 (T-158). Duplicated and unpinned.
+
+**⚠ What changed.** The inference is not only undecided — it is **written twice and enforced nowhere.**
+`IsDefault` descending then `NormalizedName` appears at `AttendanceRepositories.cs:46` **and again** at
+`AttendanceReadService.cs:347`. **They agree today. No test pins the order.** And the requirement that makes
+it matter — that two calls must not return different calendars and therefore different day counts — **is
+stated in only one of the two.** The read path silently depends on the write path's comment.
 
 **What it is.** When a company has more than one working calendar, the code picks one by
 **`IsDefault` first, then by name** — chosen for determinism, so the answer is never arbitrary.
@@ -297,6 +326,47 @@ operation.
 **What is already true.** The guard itself is tested against a real database (T-146), so it works when
 requests arrive one at a time. **Tested is not enforced:** the test proves the check runs, not that
 concurrency cannot defeat it.
+
+## 11. The commercial plane is half-built, and nothing recorded that — added 2026-08-29 (T-158)
+
+**What it is.** FP-014's subscription and billing feature. **The domain and the read path exist. The entire
+write half does not, and invoicing does not exist at all.**
+
+**The measured facts.**
+
+```
+BUILT    domain, 9 entities   ModuleDefinition, PlanLimit, PlanModuleGrant, PlanPrice,
+                              SubscriptionPlan, TenantEntitlement, TenantEntitlementGrant,
+                              TenantSubscription, TrialSubscription
+         persistence          migration, configurations, repository
+         the READ path        entitlement cache, reader, snapshot, and an API projection
+
+ABSENT   write handlers       create / update / retire a plan, assign a subscription,
+                              grant or revoke an entitlement — zero
+         permissions          all six documented ones absent from the catalog:
+                              Plans.View/.Administer, Subscriptions.View/.Administer,
+                              EntitlementGrants.Administer, Invoices.View
+         routes               all 25 documented routes absent
+         invoicing            NO invoice type in the product. No file even named for one.
+```
+
+**⚠ Why this is not the same as item 1.** Item 1's surfaces are **handlers built, transport missing** — the
+doors are the only thing absent. **This is domain built, and handlers, permissions, routes and an entire
+invoice concept missing.** *"Just needs transport"* and *"needs handlers, permissions, routes and an
+invoice aggregate"* are different decisions, and the first would badly understate this.
+
+**And nothing records the gap.** The tenant transport's absence is deferred by a criterion and enforced by
+a live test. **FP-014's api-contracts describes 25 routes with no reconciliation note, no
+specified-but-unbuilt marking, and no instrument has ever compared it to the code.**
+
+**What it blocks.** Selling the product. There is no way to define a plan, price it, subscribe a tenant,
+grant an entitlement or issue an invoice other than by engineering.
+
+**The options.** Put it on the roadmap as a feature rather than a transport slice; mark the document so a
+reader stops believing 25 routes exist; or decide the commercial plane is out of scope before release and
+record that. **Doing nothing leaves a document describing a product that is half there.**
+
+---
 
 ## What is NOT on this list
 

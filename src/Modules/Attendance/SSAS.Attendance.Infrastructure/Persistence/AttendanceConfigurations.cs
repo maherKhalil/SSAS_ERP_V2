@@ -358,6 +358,31 @@ public sealed class LeaveBalanceConfiguration : IEntityTypeConfiguration<LeaveBa
     // One balance per employee, type and year. Unique HERE — unlike attendance records — because a second
     // balance row for the same three is a duplicate rather than a correction: an entitlement is amended in
     // place (it is not append-only), so there is nothing a second row could legitimately mean.
+    //
+    // ---- ⚠ THE KEY IS NARROWER THAN THE READ, AND WHAT MAKES THAT SAFE LIVES IN ANOTHER MODULE.
+    //
+    // This index omits `CompanyId`. `ILeaveBalanceRepository.GetForEmployeeAsync` reads by
+    // `(CompanyId, EmployeeId, LeaveTypeId, PeriodYear)`, so **the constraint is STRICTER than the
+    // lookup**: one balance per employee, type and year across every company in the tenant.
+    //
+    // **That is harmless only because an employee belongs to one company for life.** `Employee.cs` states
+    // it: *"no way to change `CompanyId` or `EmployeeNumber` after creation"*, and nothing in
+    // `src/Modules/HR` assigns `Employee.CompanyId` outside construction. So `EmployeeId` functionally
+    // determines `CompanyId`, and the read's company predicate is defence in depth against reading across
+    // a company boundary rather than part of the key.
+    //
+    // ⚠ **The guarantee is NOT that the setter is sealed.** `Employee.CompanyId` has a public setter, for
+    // the ownership interface the persistence layer stamps through — `Employee.cs` says so in the same
+    // paragraph. What holds the invariant is that **no command path writes it**, plus the shared write
+    // boundaries. **If employees ever become multi-company, THIS INDEX is what breaks**, and the only
+    // symptom will be a 409 that makes no sense from the handler.
+    //
+    // ---- AND ONE CORRECT BEHAVIOUR THAT WILL LOOK LIKE A BUG.
+    //
+    // A caller passing the WRONG `companyId` for a real employee reads null, creates, and loses to this
+    // index — answered as `Attendance.LeaveBalanceConflict` (409) rather than the 500 it used to be.
+    // **That is right, and whoever meets it will report it as a defect.** Named here so they find the
+    // reason instead of the symptom.
     builder.HasIndex(balance => new
       { balance.TenantId, balance.EmployeeId, balance.LeaveTypeId, balance.PeriodYear })
       .IsUnique();

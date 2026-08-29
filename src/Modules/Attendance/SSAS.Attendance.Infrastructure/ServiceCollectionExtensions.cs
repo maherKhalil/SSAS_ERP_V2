@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
     // manifest from the model -- absent from Shared-to-Dedicated cutover, which fails SILENTLY.
     services.AddSingleton<ITenantModelContributor, AttendanceTenantModelContributor>();
 
+    services.AddScoped<ILeaveSubmissionLock, SqlServerLeaveSubmissionLock>();
     services.AddScoped<IWorkingCalendarRepository, WorkingCalendarRepository>();
     services.AddScoped<IAttendancePeriodRepository, AttendancePeriodRepository>();
     services.AddScoped<IAttendanceRecordRepository, AttendanceRecordRepository>();

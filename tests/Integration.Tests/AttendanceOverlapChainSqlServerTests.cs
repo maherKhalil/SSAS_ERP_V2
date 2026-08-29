@@ -295,18 +295,96 @@ public sealed class AttendanceOverlapChainSqlServerTests
     return request;
   }
 
+  // ================================================================================================
+  // THE SUBMISSION LOCK ITSELF (T-151).
+  // ================================================================================================
+  //
+  // **The six tests above pass with or without the lock**, because they are sequential — nothing they do
+  // contends. `DEC-L-083`: a plant removing the lock would redden none of them, so the lock is unproven by
+  // everything written before this point. **These three exercise it directly.**
+  [Fact]
+  [Trait("Decision", "AC-ATT-0029")]
+  public async Task The_submission_lock_refuses_when_no_transaction_is_open()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+
+    // No transaction. `sp_getapplock` with Transaction ownership cannot be held, so the lock refuses rather
+    // than granting something ineffective — the precondition enforcing itself.
+    var acquired = await new SqlServerLeaveSubmissionLock(new SingleContext(context))
+      .AcquireAsync(fixture.Tenant, fixture.Employee);
+
+    Assert.True(acquired.IsFailure);
+    Assert.Equal(LeaveErrors.SubmissionBusy, acquired.Error);
+  }
+
+  // ---- IT ACTUALLY BLOCKS A SECOND HOLDER. Two connections, one employee.
+  [Fact]
+  [Trait("Decision", "AC-ATT-0029")]
+  public async Task A_second_submission_for_the_same_employee_cannot_take_the_lock()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+
+    await using var holder = fixture.CreateContext();
+    await using var holderTransaction = await holder.Database.BeginTransactionAsync();
+
+    Assert.True((await new SqlServerLeaveSubmissionLock(new SingleContext(holder))
+      .AcquireAsync(fixture.Tenant, fixture.Employee)).IsSuccess);
+
+    // A DIFFERENT connection, the same employee — this is the concurrent submission.
+    await using var contender = fixture.CreateContext();
+    await using var contenderTransaction = await contender.Database.BeginTransactionAsync();
+
+    var blocked = await new SqlServerLeaveSubmissionLock(new SingleContext(contender))
+      .AcquireAsync(fixture.Tenant, fixture.Employee);
+
+    Assert.True(blocked.IsFailure);
+    Assert.Equal(LeaveErrors.SubmissionBusy, blocked.Error);
+  }
+
+  // ---- AND IT DOES NOT BLOCK A DIFFERENT EMPLOYEE, WHICH IS THE WHOLE COST ARGUMENT.
+  //
+  // **GL declined a lock because it would be "held across a human-scale operation".** This one is named per
+  // employee, so two people submitting leave at the same instant never contend. **If this test failed, the
+  // cost argument for building the lock at all would collapse** — it would be serialising a company.
+  [Fact]
+  [Trait("Decision", "AC-ATT-0029")]
+  public async Task A_submission_for_a_different_employee_is_not_blocked()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+
+    await using var holder = fixture.CreateContext();
+    await using var holderTransaction = await holder.Database.BeginTransactionAsync();
+
+    Assert.True((await new SqlServerLeaveSubmissionLock(new SingleContext(holder))
+      .AcquireAsync(fixture.Tenant, fixture.Employee)).IsSuccess);
+
+    await using var other = fixture.CreateContext();
+    await using var otherTransaction = await other.Database.BeginTransactionAsync();
+
+    var unrelated = await new SqlServerLeaveSubmissionLock(new SingleContext(other))
+      .AcquireAsync(fixture.Tenant, Guid.NewGuid());
+
+    Assert.True(unrelated.IsSuccess, unrelated.IsFailure ? unrelated.Error.Code : null);
+  }
+
   private static SubmitLeaveRequestCommandHandler LeaveHandlerFor(
     TenantDbContext context, AttendanceFixture fixture)
   {
     var accessor = new SingleContext(context);
 
+    // ⚠ THE REAL LOCK, NOT A PERMISSIVE DOUBLE (T-151). It takes `sp_getapplock` on the same connection
+    // and enlists in the handler's transaction, so these tests exercise the lock's actual behaviour —
+    // including its refusal when no transaction is open, which a granting stub would hide.
     return new SubmitLeaveRequestCommandHandler(
       new LeaveRequestRepository(accessor),
+      new SqlServerLeaveSubmissionLock(accessor),
       new LeaveTypeRepository(accessor),
       new WorkingCalendarRepository(accessor),
       new EmployedRoster(fixture.CompanyA, fixture.Employee),
       new GrantingScope(),
-      new SingleContextUnitOfWork(context));
+      new SingleContextUnitOfWork(context),
+      new FixtureTenant(fixture.Tenant));
   }
 
   // The fixture seeds a period and a record and nothing else — a calendar and a leave type are this test's
@@ -342,6 +420,12 @@ public sealed class AttendanceOverlapChainSqlServerTests
     new(new AttendancePeriodRepository(new SingleContext(context)),
       new GrantingScope(),
       new SingleContextUnitOfWork(context));
+
+  private sealed class FixtureTenant(Guid tenantId)
+    : SSAS.BuildingBlocks.Application.Abstractions.Tenancy.ICurrentTenant
+  {
+    public Guid? TenantId { get; } = tenantId;
+  }
 
   private sealed class SingleContext(TenantDbContext context) : ITenantDbContextAccessor
   {

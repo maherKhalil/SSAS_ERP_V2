@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.Attendance.Application.Abstractions;
 using SSAS.Attendance.Application.Approval;
 using SSAS.Attendance.Application.Permissions;
@@ -200,11 +201,13 @@ public sealed class SetLeaveEntitlementCommandHandler(
 // ================================================================================================
 public sealed class SubmitLeaveRequestCommandHandler(
   ILeaveRequestRepository requests,
+  ILeaveSubmissionLock submissionLock,
   ILeaveTypeRepository leaveTypes,
   IWorkingCalendarRepository calendars,
   IEmployeeRoster roster,
   IAttendanceScopeResolver scope,
-  ITenantUnitOfWork unitOfWork)
+  ITenantUnitOfWork unitOfWork,
+  ICurrentTenant currentTenant)
 {
   public async Task<Result<Guid>> HandleAsync(
     SubmitLeaveRequestCommand command, CancellationToken cancellationToken = default)
@@ -253,6 +256,29 @@ public sealed class SubmitLeaveRequestCommandHandler(
     // figure is a fact about a decision, not a derivation from mutable configuration.
     var workingDays = calendar.WorkingDaysBetween(command.StartDate, command.EndDate);
 
+    // ---- ⚠ THE TRANSACTION AND THE LOCK, BOTH OF WHICH THIS HANDLER LACKED (T-151).
+    //
+    // The check below and the insert that follows were a plain read-then-write: no transaction, READ
+    // COMMITTED, and the shared lock released at statement end. **Two concurrent submissions both read, both
+    // found nothing, and both committed** — a double-clicked button was sufficient, and the result is
+    // double-counted unpaid absence on a payslip.
+    //
+    // **T-150's unique index catches only IDENTICAL ranges.** Overlap is a range predicate and no index can
+    // express it (`DEC-L-084`), so 7th–11th against 9th–15th needed this.
+    //
+    // The lock is EMPLOYEE-scoped: two employees submitting at the same instant never contend. It is
+    // transaction-owned, so a commit or rollback releases it and **it refuses outright if no transaction is
+    // open** rather than granting something ineffective.
+    await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    var locked = await submissionLock.AcquireAsync(
+      currentTenant.TenantId ?? Guid.Empty, command.EmployeeId, cancellationToken);
+
+    if (locked.IsFailure)
+    {
+      return Result.Failure<Guid>(locked.Error);
+    }
+
     // Overlap against requests that actually booked days. Cancelled and rejected ones are excluded by the
     // repository because they booked nothing.
     var overlapping = await requests.GetOverlappingAsync(
@@ -273,6 +299,13 @@ public sealed class SubmitLeaveRequestCommandHandler(
     await requests.AddAsync(request.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
+    if (saved.IsFailure)
+    {
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    await transaction.CommitAsync(cancellationToken);
+
     return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(request.Value.Id);
   }
 

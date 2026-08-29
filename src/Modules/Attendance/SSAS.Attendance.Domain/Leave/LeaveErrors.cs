@@ -97,6 +97,13 @@ public static class LeaveErrors
     "Attendance.LeaveRequestNoWorkingDay",
     "The requested range contains no working day.");
 
+  // Another submission for this employee holds the submission lock, or the caller reached the lock without
+  // an open transaction. **A retry is the remedy for the first and a bug report for the second** — and the
+  // caller cannot tell them apart, which is why both refuse rather than proceeding on an unheld lock.
+  public static readonly Error SubmissionBusy = new(
+    "Attendance.LeaveSubmissionBusy",
+    "Another leave request for this employee is being submitted. Try again.");
+
   public static readonly Error RequestOverlaps = new(
     "Attendance.LeaveRequestOverlaps",
     "The employee already has a submitted or approved leave request covering these dates.");

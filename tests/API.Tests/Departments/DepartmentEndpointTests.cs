@@ -92,7 +92,7 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   // On create, Persistence.UniqueConstraint means the unique index on NormalizedCode had the last word —
   // the same answer the pre-check gives, so a race and a sequential duplicate are indistinguishable.
   [Fact]
-  public async Task D6_A_unique_constraint_on_create_is_a_code_conflict()
+  public async Task D6_A_unique_constraint_violation_on_create_maps_to_a_code_conflict()
   {
     host.UnitOfWork.Failure = IdentityAccessErrors.UniqueConstraintViolation;
 
@@ -293,7 +293,7 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   //
   // It must be indistinguishable from a stale rowversion, because both mean "somebody got there first".
   [Fact]
-  public async Task D23_A_unique_constraint_on_assign_manager_is_a_concurrency_conflict()
+  public async Task D23_A_unique_constraint_violation_on_assign_manager_maps_to_a_concurrency_conflict()
   {
     host.UnitOfWork.Failure = IdentityAccessErrors.UniqueConstraintViolation;
 
@@ -307,7 +307,7 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
 
   // And the rowversion loser gets the identical answer, which is what "indistinguishable" means.
   [Fact]
-  public async Task D24_A_rowversion_conflict_on_assign_manager_answers_identically()
+  public async Task D24_A_concurrency_conflict_on_assign_manager_maps_identically()
   {
     host.UnitOfWork.Failure = IdentityAccessErrors.ConcurrencyConflict;
 

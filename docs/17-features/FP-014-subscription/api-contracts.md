@@ -32,17 +32,50 @@ Everything administrative is **platform-plane**, enforced with `RequirePlatformP
 lapsed must still be reachable by the operator who would restore it, and a tenant user must still be
 able to ask what it has.
 
+> **Reconciled 2026-08-29 (T-159). NONE OF THE TWENTY-FOUR ROUTES BELOW EXISTS.** This document has never
+> been compared to the code until now, and it reads as a description of a live API. **Every row is marked
+> inline with what is actually behind it**, because a row marked only "absent" invites the reader to assume
+> transport is all it needs, and for three of these five groups that is false.
+>
+> | Group | Rows | What exists | What is missing |
+> |---|---|---|---|
+> | Plans | 8 | `SubscriptionPlan`, `PlanPrice`, `PlanLimit`, `PlanModuleGrant`, `ModuleDefinition` | every handler, the permissions, the routes |
+> | Subscriptions | 4 | `TenantSubscription`, and a repository with `AddAsync` / `PlanExistsAsync` / `GreatestEffectiveFromUtcAsync` | any way to LIST or read one; every handler, permission and route |
+> | Entitlement grants | 3 | `TenantEntitlementGrant`, its EF configuration, and `TenantEntitlementReader` feeding the internal snapshot | every handler, permission and route; nothing exposes a grant |
+> | Invoices | 8 | **nothing** — there is no `Invoice` type anywhere in `src/` | the aggregate itself, then everything above it |
+> | Tenant read | 1 | `ITenantModuleEntitlement.IsEnabledAsync` — a per-module boolean used as an authorization guard | an ENUMERATION; the route asks for the enabled set, the code answers one module at a time |
+>
+> **The write half of this feature does not exist.** The domain and the internal read path are real and
+> migrated (`AddSubscriptionCommercialPlane`); **there are no command or query handlers for plans,
+> subscriptions, grants or invoices, and none of the six permissions named below is in the permission
+> catalogue.** `Platform.Plans.View`, `Platform.Plans.Administer`, `Platform.Subscriptions.View`,
+> `Platform.Subscriptions.Administer`, `Platform.EntitlementGrants.Administer` and `Platform.Invoices.*`
+> are spellings in this document and nowhere else.
+>
+> ---- ⚠ WHY THIS RECONCILIATION EXISTS AT ALL, AND WHY IT IS MARKED INLINE.
+>
+> `DEC-L-085`: after a reconciliation the rows that were corrected are trustworthy, and the rows that could
+> not be tested look identical to them. **This document had no reconciliation, so every row carried that
+> unearned authority** — twenty-four of them, describing an API that has never answered a request.
+>
+> **The markers are inline rather than in an added column, deliberately.** FP-007 records its corrections
+> in a fifth table column; a sweep reading the proposed path finds a divergence that was resolved years
+> ago. **FP-013 marks its one unbuilt row inline, and that row is machine-legible.** This follows FP-013.
+>
+> **Nothing here is deleted and nothing is a proposal to build it.** Whether the commercial plane ships is
+> the owner's call; this only stops the document claiming it already has.
+
 ### Plans — `Platform.Plans.*`
 
 ```
-GET    /api/platform/plans                          Platform.Plans.View
-GET    /api/platform/plans/{planId}                 Platform.Plans.View
-POST   /api/platform/plans                          Platform.Plans.Administer
-PUT    /api/platform/plans/{planId}                 Platform.Plans.Administer
-POST   /api/platform/plans/{planId}/retire          Platform.Plans.Administer
-PUT    /api/platform/plans/{planId}/modules         Platform.Plans.Administer
-PUT    /api/platform/plans/{planId}/limits          Platform.Plans.Administer
-PUT    /api/platform/plans/{planId}/prices          Platform.Plans.Administer
+GET    /api/platform/plans                          Platform.Plans.View  [NOT BUILT - domain only]
+GET    /api/platform/plans/{planId}                 Platform.Plans.View  [NOT BUILT - domain only]
+POST   /api/platform/plans                          Platform.Plans.Administer  [NOT BUILT - domain only]
+PUT    /api/platform/plans/{planId}                 Platform.Plans.Administer  [NOT BUILT - domain only]
+POST   /api/platform/plans/{planId}/retire          Platform.Plans.Administer  [NOT BUILT - domain only]
+PUT    /api/platform/plans/{planId}/modules         Platform.Plans.Administer  [NOT BUILT - domain only]
+PUT    /api/platform/plans/{planId}/limits          Platform.Plans.Administer  [NOT BUILT - domain only]
+PUT    /api/platform/plans/{planId}/prices          Platform.Plans.Administer  [NOT BUILT - domain only]
 ```
 
 `retire` as a named **POST**, not `DELETE` — a plan is retired, never deleted, because historical
@@ -55,10 +88,10 @@ grant list is a set, and a partial mutation API for a set invites two operators 
 ### Subscriptions — `Platform.Subscriptions.*`
 
 ```
-GET    /api/platform/tenants/{tenantId}/subscriptions           Platform.Subscriptions.View
-GET    /api/platform/tenants/{tenantId}/subscriptions/current   Platform.Subscriptions.View
-POST   /api/platform/tenants/{tenantId}/subscriptions           Platform.Subscriptions.Administer
-GET    /api/platform/subscriptions                              Platform.Subscriptions.View
+GET    /api/platform/tenants/{tenantId}/subscriptions           Platform.Subscriptions.View  [NOT BUILT - domain + write-only repo]
+GET    /api/platform/tenants/{tenantId}/subscriptions/current   Platform.Subscriptions.View  [NOT BUILT - domain + write-only repo]
+POST   /api/platform/tenants/{tenantId}/subscriptions           Platform.Subscriptions.Administer  [NOT BUILT - domain + write-only repo]
+GET    /api/platform/subscriptions                              Platform.Subscriptions.View  [NOT BUILT - domain + write-only repo]
 ```
 
 **There is no `PUT` and no `DELETE`, and that is the append-only ruling showing through the
@@ -80,9 +113,9 @@ violation leaking through.
 ### Entitlement grants — `Platform.EntitlementGrants.Administer`
 
 ```
-GET    /api/platform/tenants/{tenantId}/grants        Platform.Subscriptions.View
-POST   /api/platform/tenants/{tenantId}/grants        Platform.EntitlementGrants.Administer
-POST   /api/platform/tenants/{tenantId}/grants/revoke Platform.EntitlementGrants.Administer
+GET    /api/platform/tenants/{tenantId}/grants        Platform.Subscriptions.View  [NOT BUILT - domain + internal read]
+POST   /api/platform/tenants/{tenantId}/grants        Platform.EntitlementGrants.Administer  [NOT BUILT - domain + internal read]
+POST   /api/platform/tenants/{tenantId}/grants/revoke Platform.EntitlementGrants.Administer  [NOT BUILT - domain + internal read]
 ```
 
 `grants/revoke` as a **POST**, following HR's `manager/remove` and Attendance's `holidays/remove`:
@@ -96,14 +129,14 @@ accepted. Both, on purpose.
 ### Invoices — `Platform.Invoices.*`
 
 ```
-GET    /api/platform/invoices                         Platform.Invoices.View
-GET    /api/platform/invoices/{invoiceId}             Platform.Invoices.View
-GET    /api/platform/tenants/{tenantId}/invoices      Platform.Invoices.View
-POST   /api/platform/invoices                         Platform.Invoices.Administer
-PUT    /api/platform/invoices/{invoiceId}             Platform.Invoices.Administer
-POST   /api/platform/invoices/{invoiceId}/issue       Platform.Invoices.Administer
-POST   /api/platform/invoices/{invoiceId}/void        Platform.Invoices.Administer
-GET    /api/platform/invoices/{invoiceId}/attempts    Platform.Invoices.View
+GET    /api/platform/invoices                         Platform.Invoices.View  [NOT BUILT - nothing exists]
+GET    /api/platform/invoices/{invoiceId}             Platform.Invoices.View  [NOT BUILT - nothing exists]
+GET    /api/platform/tenants/{tenantId}/invoices      Platform.Invoices.View  [NOT BUILT - nothing exists]
+POST   /api/platform/invoices                         Platform.Invoices.Administer  [NOT BUILT - nothing exists]
+PUT    /api/platform/invoices/{invoiceId}             Platform.Invoices.Administer  [NOT BUILT - nothing exists]
+POST   /api/platform/invoices/{invoiceId}/issue       Platform.Invoices.Administer  [NOT BUILT - nothing exists]
+POST   /api/platform/invoices/{invoiceId}/void        Platform.Invoices.Administer  [NOT BUILT - nothing exists]
+GET    /api/platform/invoices/{invoiceId}/attempts    Platform.Invoices.View  [NOT BUILT - nothing exists]
 ```
 
 `PUT` applies **only while `Draft`**; after `issue` the aggregate refuses it and the route answers a
@@ -115,7 +148,7 @@ modelled conflict. This is `JournalDraft` → `JournalEntry`, where posting is t
 ### The tenant-facing read — `REQ-SUB-0014`
 
 ```
-GET    /api/platform/modules/enabled                  authenticated tenant user, no permission
+GET    /api/platform/modules/enabled                  authenticated tenant user, no permission  [NOT BUILT - capability exists, wrong shape]
 ```
 
 Returns the module keys `EntitlementAt(tenant, now)` resolves — **and nothing else**. No price, no

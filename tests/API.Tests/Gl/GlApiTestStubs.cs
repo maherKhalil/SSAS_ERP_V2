@@ -1,3 +1,4 @@
+using SSAS.GL.Application.Calendar;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.GL.Application.Abstractions;
 using SSAS.GL.Application.Reads;
@@ -279,4 +280,25 @@ public sealed class StubJournalEntryRepository : IJournalEntryRepository
     Entries[entry.Id] = entry;
     return Task.CompletedTask;
   }
+}
+
+// ================================================================================================
+// THE FISCAL-CALENDAR LOCK, STUBBED (T-184).
+// ================================================================================================
+//
+// **Grants by default**, because every existing calendar test asks about a rule and not about
+// contention — a stub that refused would fail them all for a reason unrelated to what they assert.
+//
+// ⚠ **`Failure` is the interesting answer and must be asked for by name.** `Gl.FiscalCalendarBusy` is
+// the only transient refusal on this route: the caller is not wrong and nothing about the request needs
+// changing, which is what separates it from `DuplicateCode` and `OverlappingYear`.
+public sealed class StubFiscalYearDefinitionLock : IFiscalYearDefinitionLock
+{
+  public Error? Failure { get; set; }
+
+  public void Reset() => Failure = null;
+
+  public Task<Result> AcquireAsync(
+    Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Failure is null ? Result.Success() : Result.Failure(Failure));
 }

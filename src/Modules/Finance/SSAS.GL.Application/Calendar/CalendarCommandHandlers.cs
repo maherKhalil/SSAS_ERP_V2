@@ -33,7 +33,8 @@ public sealed class DefineFiscalYearCommandHandler(
   IGlScopeResolver scope,
   ITenantUnitOfWork unitOfWork,
   ICurrentTenant currentTenant,
-  ICurrentUser currentUser)
+  ICurrentUser currentUser,
+  IFiscalYearDefinitionLock calendarLock)
 {
   public async Task<Result<Guid>> HandleAsync(
     DefineFiscalYearCommand command, CancellationToken cancellationToken = default)
@@ -64,6 +65,32 @@ public sealed class DefineFiscalYearCommandHandler(
     if (year.IsFailure)
     {
       return Result.Failure<Guid>(year.Error);
+    }
+
+    // ---- THE TRANSACTION OPENS BEFORE THE CHECKS, AND THE LOCK IS TAKEN INSIDE IT (T-184).
+    //
+    // **Order is the whole correctness argument here.** Both checks below read state that the write then
+    // depends on, so acquiring after them would serialise only the insert and leave the reads racing —
+    // the gap would move, not close. `PostJournalCommandHandlers` states the same rule for its own
+    // aggregate: reading outside the transaction and writing inside it leaves exactly the window those
+    // rules exist to close.
+    //
+    // ⚠ **`DEC-L-084` IS UNTOUCHED AND NO CONSTRAINT HAS APPEARED.** SQL Server still cannot express
+    // range non-overlap, and `CalendarConfigurations` still deliberately carries no index on
+    // `(StartUtc, EndUtc)`. **`OverlapsExistingAsync` remains the only thing that decides overlap** — the
+    // lock makes its answer survive concurrency, it does not replace it.
+    //
+    // **What an overlap costs is why this is worth a transaction on a ledger write path.**
+    // `GetCoveringAsync` uses `FirstOrDefaultAsync`, and posting numbers each journal from the year that
+    // call returns — so two overlapping years scatter one date's postings across two numbering sequences,
+    // arbitrarily. See `IFiscalYearDefinitionLock`.
+    await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    var locked = await calendarLock.AcquireAsync(
+      currentTenant.TenantId.Value, command.CompanyId, cancellationToken);
+    if (locked.IsFailure)
+    {
+      return Result.Failure<Guid>(locked.Error);
     }
 
     if (await calendar.CodeExistsAsync(command.CompanyId, year.Value.Code, cancellationToken))
@@ -125,6 +152,9 @@ public sealed class DefineFiscalYearCommandHandler(
 
       return Result.Failure<Guid>(saved.Error);
     }
+
+    // Commit releases the lock — `@LockOwner = 'Transaction'` means there is no separate release to forget.
+    await transaction.CommitAsync(cancellationToken);
 
     return Result.Success(year.Value.Id);
   }

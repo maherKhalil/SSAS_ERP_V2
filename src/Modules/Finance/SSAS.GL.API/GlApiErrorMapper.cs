@@ -64,6 +64,7 @@ public static class GlApiErrorMapper
       // ---- STATE CONFLICTS. The request was valid; the world was not in the required state.
       "Gl.AccountCodeConflict" => Conflict,
       "Gl.FiscalYearCodeConflict" => Conflict,
+      "Gl.FiscalCalendarBusy" => Conflict,
       "Gl.FiscalYearOverlaps" => Conflict,
       "Gl.JournalNumberConflict" => Conflict,
       "Gl.JournalAlreadyReversed" => Conflict,

@@ -80,10 +80,16 @@ public sealed class TenantCutoverWriteFence(
     // rather than tenant-aware: refusing by TenantId alone would also refuse the target, freezing the
     // tenant permanently, while permitting by TenantId alone would let the stale context write into the
     // database the tenant was just moved off.
+    // ⚠ NOT `TenantWritesFrozen` — THE TENANT IS WRITABLE, THIS WRITER IS IN THE WRONG PLACE (T-213).
+    //
+    // The remedy here is to re-resolve and retry IMMEDIATELY, and the suite has always said so: the tests
+    // covering this path are named for a fresh context SUCCEEDING. Sharing the frozen code told the caller
+    // to wait for a window that has already closed. `DEC-L-079` puts the status on the condition, and this
+    // condition is retryable where a freeze is terminal for its window.
     if (!gate.PermitsWriteTo(tenantDatabaseId))
     {
       throw new Persistence.TenantErp.TenantStorageUnavailableException(
-        TenantStorageErrors.TenantWritesFrozen);
+        TenantStorageErrors.TenantWriteRouteStale);
     }
 
     // ---- THE FIRST WRITE ONTO THE NEW DATABASE, recorded because it decides which rollback regime is

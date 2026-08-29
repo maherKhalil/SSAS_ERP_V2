@@ -41,6 +41,13 @@ namespace SSAS.Architecture.Tests;
 // list, and a guard that must be told what to ignore is the stale record this loop keeps finding.
 //
 // **When one of those subsystems gains an API surface, add it here.** The list below is the trigger.
+//
+// ---- ⚠ THIS GUARD AND `TenantStorageErrors`' HEADER MEASURE DISJOINT SETS, AND BOTH ARE GREEN (T-213).
+//
+// That file records 118 declared codes, 116 returned, **0 mapped** — and the two facts compose rather than
+// conflict: those are Platform's codes, in a subsystem with no transport, so they fall outside the four
+// surfaces below by the same reasoning that excluded the 99 above. **Stated in both places so the next
+// reader does not have to re-derive that two green instruments disagreeing about 99 codes is expected.**
 public sealed class PropagatedErrorMappingTests
 {
   // One place states the scope; every assertion derives from it.

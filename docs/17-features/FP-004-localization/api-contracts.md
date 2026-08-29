@@ -19,13 +19,13 @@ Effective text includes `resourceKey`, `value`, `requestedCulture`, `resolvedCul
 
 | Route | Permission | Success | Numbered contract |
 |---|---|---|---|
-| `GET /api/platform/localization/resources` | View | 200 bounded list | AC-LOC-0042 / TS-LOC-0071 |
-| `GET /api/platform/localization/resources/{resourceKey}` | View | 200 resource | AC-LOC-0043 / TS-LOC-0072 |
-| `PUT /api/platform/localization/resources/{resourceKey}/overrides/{culture}` | Manage | 200 update or 201 create | AC-LOC-0044 / TS-LOC-0073 |
-| `POST /api/platform/localization/resources/{resourceKey}/overrides/{culture}/undo` | Manage | 200 | AC-LOC-0045 / TS-LOC-0074 |
-| `POST /api/platform/localization/resources/{resourceKey}/overrides/{culture}/restore-default` | Manage | 200 | AC-LOC-0046 / TS-LOC-0075 |
-| `GET /api/platform/localization/resources/{resourceKey}/history` | ViewHistory | 200 bounded history | AC-LOC-0047 / TS-LOC-0076 |
-| `POST /api/platform/localization/preview` | Manage | 200 | AC-LOC-0048 / TS-LOC-0077 |
+| `GET /api/platform/localization/resources` | Platform.Localization.View | 200 bounded list | AC-LOC-0042 / TS-LOC-0071 |
+| `GET /api/platform/localization/resources/{resourceKey}` | Platform.Localization.View | 200 resource | AC-LOC-0043 / TS-LOC-0072 |
+| `PUT /api/platform/localization/resources/{resourceKey}/overrides/{culture}` | Platform.Localization.Manage | 200 update or 201 create | AC-LOC-0044 / TS-LOC-0073 |
+| `POST /api/platform/localization/resources/{resourceKey}/overrides/{culture}/undo` | Platform.Localization.Manage | 200 | AC-LOC-0045 / TS-LOC-0074 |
+| `POST /api/platform/localization/resources/{resourceKey}/overrides/{culture}/restore-default` | Platform.Localization.Manage | 200 | AC-LOC-0046 / TS-LOC-0075 |
+| `GET /api/platform/localization/resources/{resourceKey}/history` | Platform.Localization.ViewHistory | 200 bounded history | AC-LOC-0047 / TS-LOC-0076 |
+| `POST /api/platform/localization/preview` | Platform.Localization.Manage | 200 | AC-LOC-0048 / TS-LOC-0077 |
 | `GET /api/platform/localization/effective` | authenticated trusted live Tenant; no administrative permission for ordinary runtime resolution | 200 bounded group/list | AC-LOC-0049 / TS-LOC-0078 |
 | `POST /api/platform/localization/effective/batch` | authenticated trusted live Tenant; no administrative permission for ordinary runtime resolution | 200 bounded batch | AC-LOC-0050 / TS-LOC-0079 |
 

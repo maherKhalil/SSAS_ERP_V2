@@ -25,6 +25,20 @@
 -- twice against two different counters, so an employee can take double their entitlement and nothing
 -- reports it.
 
+-- ---- ⚠ WHY NOBODY NOTICED, WHICH IS THE PART WORTH KNOWING BEFORE YOU READ THE OUTPUT.
+--
+-- `GetForEmployeeAsync` reads with `FirstOrDefaultAsync` AND NO ORDERING. `SingleOrDefaultAsync` would
+-- have thrown on the second row — loud, immediate, investigated. `First` returns an arbitrary row and
+-- says nothing, and without an ORDER BY the row returned can differ BETWEEN CALLS.
+--
+-- **So the double-spend is reachable inside one employee's own sequence of requests, not only across
+-- concurrent sessions** — and it leaves no trace anywhere. `First` versus `Single` is normally argued as
+-- a performance detail; here it is the difference between a defect that announces itself and one that
+-- does not.
+--
+-- The read is NOT being changed to `Single`: once the unique index exists a second row cannot occur, and
+-- a throwing read would then be a worse failure mode than the constraint's named refusal.
+
 SET NOCOUNT ON;
 
 SELECT

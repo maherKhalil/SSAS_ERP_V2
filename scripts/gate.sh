@@ -1070,6 +1070,65 @@ reap_to_zero () {
     echo "!!! ABORT ($CFG): reap left ${LEFT} catalog(s); CatalogLeakGuardTests would fail on them."
     exit 4
   fi
+
+  # 6. BACKUP DEVICES, TOO. T-217.
+  #
+  #    ---- WHY A REAP AND NOT A JANITOR, WHICH IS WHAT WAS ASKED FOR.
+  #
+  #    Seven of the nine backup fixtures already call `Directory.Delete(BackupRoot, recursive: true)` in
+  #    teardown, correctly scoped to their own run's folder. **The leak is not missing cleanup.** Measured
+  #    2026-08-30: 24 files and 18 folders, 161 MB, spanning two weeks — the signature of runs that DIED
+  #    before teardown ran, which is a thing this repository produces regularly (a killed run orphaned five
+  #    catalogs the same evening).
+  #
+  #    **A recorder mirroring `TestCatalogJanitor` would be structurally blind to that.** It records a
+  #    failure AT teardown, and if the process died no recording code runs at all. **A recovery mechanism
+  #    must not live inside the thing it protects against** — this reap works precisely because it runs at
+  #    the START OF THE NEXT RUN rather than the end of the failed one.
+  #
+  #    ---- AND IT RIDES ON PROTECTION THAT ALREADY EXISTS.
+  #
+  #    Step 1 has already established that no testhost of ours is running, and `T-056`'s instance lock has
+  #    already established that no other gate is. **Both are exactly the guarantees this needs**, and they
+  #    were built because a 72-second TASK gate could otherwise reap a 69-minute PHASE run's artefacts
+  #    mid-leg. Building a second sweep with its own concurrency story would repeat that lesson at full
+  #    price.
+  #
+  #    ---- ⚠ IT DOES NOT ABORT, AND THAT IS THE DIFFERENCE FROM THE CATALOG CASE.
+  #
+  #    Step 5 aborts because `CatalogLeakGuardTests` would fail on a surviving catalog. **No guard asserts
+  #    on backup devices, and a leftover `.bak` breaks nothing** — it is disk tidy-up, not a defect. Failing
+  #    a green run over one would be the cure exceeding the disease.
+  local DEVICE_ROOT="${SSAS_TEST_BACKUP_ROOT:-/c/ProgramData/SSAS_BackupTests}"
+  DEVICE_ROOT="${DEVICE_ROOT//\\//}"
+
+  # ⚠ REFUSE A ROOT THAT IS TOO SHALLOW TO BE THE TEST FOLDER. A recursive delete is the one mechanism
+  # that never asks, so the target is checked rather than trusted: an empty or truncated variable must not
+  # turn this into a sweep of a drive.
+  case "$DEVICE_ROOT" in
+    */SSAS_BackupTests|*/SSAS_BackupTests/) ;;
+    *)
+      echo "--- backup devices: SKIPPED, '$DEVICE_ROOT' does not look like the test backup root"
+      DEVICE_ROOT=""
+      ;;
+  esac
+
+  if [ -n "$DEVICE_ROOT" ] && [ -d "$DEVICE_ROOT" ]; then
+    local DEV_FILES DEV_BYTES
+    DEV_FILES=$(find "$DEVICE_ROOT" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
+    DEV_BYTES=$(find "$DEVICE_ROOT" -type f -printf '%s\n' 2>/dev/null | awk '{t+=$1} END {print t+0}')
+    if [ "${DEV_FILES:-0}" != "0" ]; then
+      # Shown before removal, for the same reason step 2 shows the catalogs: the log records what was
+      # destroyed, and anything unexpected in here is visible rather than silent.
+      echo "--- backup devices present before $CFG: ${DEV_FILES} file(s), $((DEV_BYTES / 1048576)) MB"
+      find "$DEVICE_ROOT" -mindepth 1 -maxdepth 2 -type f -printf '      %f\n' 2>/dev/null | head -12
+    fi
+
+    find "$DEVICE_ROOT" -mindepth 1 -delete 2>/dev/null || true
+    local DEV_LEFT
+    DEV_LEFT=$(find "$DEVICE_ROOT" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
+    echo "=== backup devices before $CFG (after reap): ${DEV_LEFT:-?}"
+  fi
 }
 
 # THE TWO LISTS ARE THE ONLY THING SCOPE CHANGES. Everything below -- preconditions, reaping, build,

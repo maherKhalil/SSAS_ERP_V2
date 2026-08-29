@@ -144,6 +144,95 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     Assert.Equal(onDisk, named);
   }
 
+  // A fully-qualified permission: three or more dotted PascalCase segments, as the catalogue spells them.
+  // `AC-LOC-0042`, `FR-DEP-0101` and `DEC-DEP-0023` do not match, which is why the form is this specific.
+  private static readonly Regex QualifiedPermission = new(
+    @"[A-Z][A-Za-z]+(?:\.[A-Z][A-Za-z]+){2,}", RegexOptions.Compiled);
+
+  // ===============================================================================================
+  // THE SECOND AXIS: A DOCUMENTED ROUTE MUST BE GATED ON THE PERMISSION ITS DOCUMENT NAMES (T-164).
+  // ===============================================================================================
+  //
+  // ---- ⚠ THIS CATCHES THE DEFECT THE ROUTE INVENTORIES STRUCTURALLY CANNOT.
+  //
+  // T-099 found `/leave-requests/{id}/approve` gated on `ViewLeave` where `ApproveLeave` belonged — **a
+  // route present, correctly named, and satisfying every surface comparison while handing approval to any
+  // reader.** The inventories could not see it: **they compare the code to itself.**
+  //
+  // **FP-013 named `Attendance.Leave.Approve` for that route and always had.** The document was right
+  // while the code was wrong, so this comparison fails on the day such a defect is written.
+  [Fact]
+  [Trait("Decision", "DEC-L-085")]
+  public void Every_documented_permission_matches_the_route_it_gates()
+  {
+    var policies = LivePolicies();
+
+    Assert.NotEmpty(policies);
+
+    var disagreements = DocumentedPermissions()
+      .Where(row => policies.TryGetValue($"{row.Method} {row.Path}", out var policy) &&
+        !string.Equals(policy, row.Permission, StringComparison.Ordinal))
+      .Select(row =>
+        $"{row.Document}:{row.Line}  {row.Method} {row.Path}  document={row.Permission}  " +
+        $"code={policies[$"{row.Method} {row.Path}"]}")
+      .OrderBy(entry => entry, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Empty(disagreements);
+  }
+
+  // ---- ⚠ AND WHAT IT CANNOT COVER IS COUNTED RATHER THAN SKIPPED.
+  //
+  // Not every row names a permission in a comparable form. **FP-004's column says `View`, not
+  // `Platform.Localization.View`**, and resolving the short form needs a per-document prefix that is
+  // written down nowhere. **Inferring it would put a guess inside a guard.**
+  //
+  // So the axis covers the fully-qualified rows and this states the shortfall as a number. **A silent
+  // 65% looks identical to 100%**; a number that must be edited to fall does not.
+  [Fact]
+  public void The_permission_axis_states_the_rows_it_cannot_cover()
+  {
+    var all = ContractDocuments().SelectMany(RowsOf).ToArray();
+    var qualified = DocumentedPermissions().Length;
+
+    Assert.NotEmpty(all);
+
+    // Measured 2026-08-29 (T-164). **A RISE in coverage is the good direction and must still be
+    // deliberate**: a row gaining a fully-qualified permission is coverage arriving, and it should be
+    // seen rather than absorbed.
+    //
+    // ⚠ **THE UNQUALIFIED COUNT IS ASSERTED, NOT MERELY LISTED, AND THAT IS T-162'S LESSON APPLIED HERE.**
+    //
+    // Listing them is a report nobody reads. **Asserting the number means a new short-form row reddens
+    // this test and someone decides deliberately**; without it the covered fraction erodes while the
+    // guard stays green — comprehensive over what it looks at, and unable to say its scope shrank.
+    Assert.Equal(197, all.Length);
+    Assert.Equal(124, qualified);
+    Assert.Equal(73, all.Length - qualified);
+  }
+
+  private static (string Document, int Line, string Method, string Path, string Permission)[]
+    DocumentedPermissions() => ContractDocuments()
+      .SelectMany(RowsOf)
+      .Select(row => (row.Document, row.Line, row.Method, row.Path,
+        Permission: QualifiedPermission.Match(row.Text).Value))
+      .Where(row => row.Permission.Length > 0)
+      .ToArray();
+
+  // The policy strings carry a plane prefix — `Permission:` or `PlatformPermission:` — and the documents
+  // name the permission alone. The plane is `Every_route_is_mapped_on_the_plane_its_permission_is_scoped_to`'s
+  // subject, not this one.
+  private Dictionary<string, string> LivePolicies() => PlatformRouteInventory.Under(factory, "/api")
+    .Select(endpoint => (
+      Key: $"{PlatformRouteInventory.FirstMethodOf(endpoint)} {Normalize(endpoint.RoutePattern.RawText!)}",
+      Policy: PlatformRouteInventory.AuthorizationOf(endpoint).Policy))
+    .Where(entry => entry.Policy is not null)
+    .GroupBy(entry => entry.Key, StringComparer.Ordinal)
+    .ToDictionary(
+      group => group.Key,
+      group => group.First().Policy!.Split(':').Last(),
+      StringComparer.Ordinal);
+
   private HashSet<string> LiveRoutes() => PlatformRouteInventory.Under(factory, "/api")
     .Select(endpoint =>
       $"{PlatformRouteInventory.FirstMethodOf(endpoint)} {Normalize(endpoint.RoutePattern.RawText!)}")
@@ -154,11 +243,11 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     "api-contracts.md",
     SearchOption.AllDirectories);
 
-  private static (string Document, int Line, string Method, string Path, bool HasMarker)[] RowsOf(
+  private static (string Document, int Line, string Method, string Path, bool HasMarker, string Text)[] RowsOf(
     string document)
   {
     var lines = File.ReadAllLines(document);
-    var rows = new List<(string, int, string, string, bool)>();
+    var rows = new List<(string, int, string, string, bool, string)>();
 
     for (var index = 0; index < lines.Length; index++)
     {
@@ -194,7 +283,8 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
         index + 1,
         match.Groups[1].Value,
         Normalize(match.Groups[2].Value),
-        Marker.IsMatch(line)));
+        Marker.IsMatch(line),
+        line[match.Length..]));
     }
 
     return rows.ToArray();

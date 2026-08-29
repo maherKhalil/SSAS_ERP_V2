@@ -96,6 +96,74 @@ public sealed class AttendanceDrivenCalculationTests
     Assert.Equal(150m, overtimeLine.Amount);
   }
 
+  // ================================================================================================
+  // OVERTIME WORKED AGAINST A TIER NOTHING PRICES REFUSES THE RUN (T-149).
+  // ================================================================================================
+  //
+  // **Before T-149 this paid zero and said nothing.** The hours existed, no element named the tier, and
+  // `OvertimeQuantity` returned `0m` — indistinguishable from an employee who worked no overtime, on a
+  // payslip that looked complete.
+  //
+  // Refused on the precedent this module set twice: `DailySalaryHasNoWorkingDays` and
+  // `AttendanceContradictsEmployment` both refuse rather than producing a defensible-looking zero.
+  [Fact]
+  [Trait("Decision", "OD-ATT-0008")]
+  public void Overtime_under_a_tier_no_assigned_element_prices_refuses_the_run()
+  {
+    var basic = PayrollTestData.Element("BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+    var night = PayrollTestData.Element(
+      "OT-NIGHT", PayElementKind.Earning, PayElementBehaviour.OvertimeHourly, 25m, 10, OvertimeAccount);
+    Assert.True(night.SetOvertimeTier("NIGHT").IsSuccess);
+
+    var compensation = Compensation(3100m, (night.Id, null));
+
+    // Worked a HOLIDAY tier; the only element they hold prices NIGHT.
+    var input = Input(compensation, overtime: new Dictionary<string, decimal>(StringComparer.Ordinal)
+    {
+      ["NIGHT"] = 6m,
+      ["HOLIDAY"] = 3m
+    });
+
+    var lines = PayrollCalculator.Calculate(Guid.NewGuid(), Period(), [input], [basic, night]);
+
+    Assert.True(lines.IsFailure);
+
+    // The SPECIFIC refusal — a daily-salary or employment-contradiction failure would also be a failure.
+    Assert.Equal(PayrollErrors.OvertimeTierHasNoPricedElement, lines.Error);
+  }
+
+  // ---- ⚠ AND IT MUST NOT FIRE FOR AN EMPLOYEE WHO IS SIMPLY NOT PAID OVERTIME.
+  //
+  // The calculator's assignment rule states that an unassigned `OvertimeHourly` element MEANS "this employee
+  // is not paid overtime" — **a legitimate standing instruction.** Attendance may still record their hours;
+  // payroll simply does not price them.
+  //
+  // **Refusing here would break a supported configuration**, which is why the guard requires at least one
+  // assigned overtime element before it fires. This is the test that holds that line.
+  [Fact]
+  [Trait("Decision", "OD-ATT-0008")]
+  public void Overtime_hours_for_an_employee_with_no_overtime_element_are_not_a_refusal()
+  {
+    var basic = PayrollTestData.Element("BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+    var night = PayrollTestData.Element(
+      "OT-NIGHT", PayElementKind.Earning, PayElementBehaviour.OvertimeHourly, 25m, 10, OvertimeAccount);
+    night.SetOvertimeTier("NIGHT");
+
+    // The element EXISTS in the run but is NOT assigned to this employee.
+    var compensation = Compensation(3100m);
+    var input = Input(compensation, overtime: new Dictionary<string, decimal>(StringComparer.Ordinal)
+    {
+      ["NIGHT"] = 6m
+    });
+
+    var lines = PayrollCalculator.Calculate(Guid.NewGuid(), Period(), [input], [basic, night]);
+
+    Assert.True(lines.IsSuccess, lines.IsFailure ? lines.Error.Code : null);
+
+    // And no overtime line — absent, not zero.
+    Assert.DoesNotContain(lines.Value, line => line.PayElementId == night.Id);
+  }
+
   // Each element prices ONE tier. A company defines one per tier, and an element whose tier is absent from
   // the summary contributes nothing rather than silently pricing somebody else's hours.
   [Fact]
@@ -123,19 +191,39 @@ public sealed class AttendanceDrivenCalculationTests
 
   // An element whose tier no attendance names produces NO LINE — not a zero one. Absent and zero are
   // different facts, and a zero line would clutter every payslip with things that did not happen.
+  //
+  // ---- ⚠ ITS DATA CHANGED IN T-149, AND THE REASON MATTERS MORE THAN THE CHANGE.
+  //
+  // This test previously gave the employee a NIGHT element and HOLIDAY hours — **which is now a
+  // refusal**, because those HOLIDAY hours were priced by nothing. The old data proved the stated
+  // intent AND silently encoded the misconfiguration `OvertimeTierHasNoPricedElement` exists to catch.
+  //
+  // **The intent is unchanged and is what this still tests**: the employee now holds BOTH elements and
+  // works only HOLIDAY, so NIGHT is an element whose tier was never worked — and every worked tier is
+  // priced. **The case removed from here is asserted in
+  // `Overtime_under_a_tier_no_assigned_element_prices_refuses_the_run` with the opposite outcome**, so
+  // coverage increased rather than moved.
   [Fact]
   public void An_overtime_element_whose_tier_was_never_worked_produces_no_line()
   {
     var basic = PayrollTestData.Element("BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
     var night = PayrollTestData.Element("OT-NIGHT", PayElementKind.Earning, PayElementBehaviour.OvertimeHourly, 25m, 10, OvertimeAccount);
     night.SetOvertimeTier("NIGHT");
+    var holiday = PayrollTestData.Element("OT-HOL", PayElementKind.Earning, PayElementBehaviour.OvertimeHourly, 40m, 11, OvertimeAccount);
+    holiday.SetOvertimeTier("HOLIDAY");
 
-    var compensation = Compensation(3100m, (night.Id, null));
+    var compensation = Compensation(3100m, (night.Id, null), (holiday.Id, null));
     var input = Input(compensation, overtime: new Dictionary<string, decimal>(StringComparer.Ordinal) { ["HOLIDAY"] = 5m });
 
-    var lines = PayrollCalculator.Calculate(Guid.NewGuid(), Period(), [input], [basic, night]);
+    var lines = PayrollCalculator.Calculate(Guid.NewGuid(), Period(), [input], [basic, night, holiday]);
 
+    Assert.True(lines.IsSuccess, lines.IsFailure ? lines.Error.Code : null);
+
+    // NIGHT was never worked: no line at all.
     Assert.DoesNotContain(lines.Value, line => line.PayElementId == night.Id);
+
+    // And HOLIDAY was, so it is priced — which is what makes this a legal run rather than a refusal.
+    Assert.Equal(200m, lines.Value.Single(line => line.PayElementId == holiday.Id).Amount);
   }
 
   // ---- OVERTIME IS NOT PRORATED, AND THAT IS DELIBERATE.

@@ -181,6 +181,28 @@ public static class PayrollErrors
     "An employee has attendance recorded on days they were not employed. Correct the attendance records or "
     + "the employment dates before calculating this run.");
 
+  // ---- OVERTIME WORKED AGAINST A TIER THE EMPLOYEE'S ELEMENTS DO NOT PRICE (T-149).
+  //
+  // Attendance recorded hours under a tier label; the employee IS paid overtime — they hold at least one
+  // `OvertimeHourly` assignment — but none of their assigned elements names that tier. **The hours exist and
+  // nothing prices them.**
+  //
+  // Refused rather than paid as zero, on the precedent this module has set twice:
+  // `DailySalaryHasNoWorkingDays` refuses rather than paying nothing for a day, and
+  // `AttendanceContradictsEmployment` refuses before a quantity is read. **A zero is indistinguishable from
+  // an employee who worked no overtime**, and it reaches a payslip looking complete.
+  //
+  // ---- ⚠ IT DOES NOT FIRE FOR AN EMPLOYEE WITH NO OVERTIME ELEMENTS AT ALL, AND THAT IS DELIBERATE.
+  //
+  // The calculator's own rule is that an unassigned `OvertimeHourly` element means *"this employee is not
+  // paid overtime"* — **a legitimate standing instruction, not a misconfiguration.** Refusing there would
+  // break a supported setup. **This fires only when the employee IS paid overtime and a tier they worked is
+  // not among the tiers their elements name.**
+  public static readonly Error OvertimeTierHasNoPricedElement = new(
+    "Payroll.OvertimeTierHasNoPricedElement",
+    "An employee worked overtime under a tier none of their assigned overtime elements prices. Assign an "
+    + "element for that tier, or correct the tier on the attendance records, before calculating this run.");
+
   public static readonly Error UnbalancedPosting = new(
     "Payroll.UnbalancedPosting",
     "The calculated run does not produce a balanced journal, which is a calculation defect rather than a user error.");

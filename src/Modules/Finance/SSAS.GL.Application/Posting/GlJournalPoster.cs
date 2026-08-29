@@ -90,6 +90,18 @@ public sealed class GlJournalPoster(
     // A `Failure` is AMBIGUITY - more than one fiscal year covers this date (T-187).
     // **Payroll posts through this path too**, so the same broken calendar reaches the
     // ledger from two directions and both must refuse rather than pick.
+    //
+    // ---- ⚠ THIS STAYS `PeriodNotFound` WHILE THE WINDOW BELOW SAYS `CalendarAmbiguous`, AND THE
+    // ---- ASYMMETRY IS MEASURED RATHER THAN OVERLOOKED (T-188).
+    //
+    // The remedy argument in `PostingWindowStatus.CalendarAmbiguous` turns on an OPERATOR reading the
+    // status. `JournalPostingStatus` has exactly ONE consumer outside this file —
+    // `PayrollRunCommandHandlers`, at two sites — and **both refuse on `!IsPosted` first and refine the
+    // message only for `PeriodClosed`.** Everything else, this included, collapses into a generic
+    // `LedgerRefusedPosting`. **No operator ever reads this value**, so a new one would be inert.
+    //
+    // Widening the enum is cost without effect TODAY. It stops being inert the moment a consumer starts
+    // distinguishing more than `PeriodClosed`, and that is the trigger to revisit.
     if (covering.IsFailure)
     {
       return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
@@ -220,16 +232,14 @@ public sealed class GlJournalPoster(
     // widening the contract would change what every caller must handle for a condition none of them can
     // remedy.
     //
-    // So it answers `PeriodNotFound`, which is **not the honest answer and is the safe one**. This is a
-    // read that Payroll uses to decide whether a run may post; reporting "no window" stops the run, where
-    // reporting a usable window would let payroll post into an arbitrarily chosen year. **The WRITE paths
-    // above return the real error; this query degrades to a refusal rather than inventing a status.**
+    // ---- IT ANSWERS `CalendarAmbiguous`, AND T-187 ANSWERED `PeriodNotFound` HERE (T-188).
     //
-    // If a caller ever needs to tell the two apart here, `PostingWindowStatus` is where the distinction
-    // belongs — not a second query.
+    // That degradation was wrong for a reason stronger than incompleteness: **`PeriodNotFound` prescribes
+    // "define the calendar", and an operator with two overlapping years who follows it defines a THIRD.**
+    // The status did not merely fail to help; it instructed the harmful action on the ledger's authority.
     if (covering.IsFailure)
     {
-      return new PostingWindow(PostingWindowStatus.PeriodNotFound, null);
+      return new PostingWindow(PostingWindowStatus.CalendarAmbiguous, null);
     }
 
     var year = covering.Value;

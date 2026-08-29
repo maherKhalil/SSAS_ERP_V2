@@ -157,7 +157,7 @@ decision 2, unchanged.
 | No period covers the entry date | `Gl.FiscalPeriodNotFound` | `REQ-GL-0009` |
 | Account is inactive | `Gl.AccountInactive` | `BR-GL-0004` |
 | Account not in the caller's scope | `Gl.AccountNotFound` | `BR-RPT-0002` |
-| Attempt to modify a posted journal | `Gl.JournalImmutable` | `BR-GL-0002` |
+| Attempt to modify a posted journal | `Gl.JournalImmutable` `[STRUCTURAL - no route can produce it]` | `BR-GL-0002` |
 | Duplicate journal number in year | `Gl.JournalNumberConflict` | `BR-GL-0005` |
 
 **`Gl.AccountNotFound` rather than `Gl.AccountForbidden` for an out-of-scope account** is deliberate: telling

@@ -163,6 +163,44 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
   // THE TWO APPROVAL REFUSALS, AND BOTH NAME WHAT WENT WRONG
   // ================================================================================================
 
+  // ---- AN AMBIGUOUS CALENDAR REFUSES AT BOTH PAYROLL CONSUMERS (T-188).
+  //
+  // Adding a value to `PostingWindowStatus` is only safe if every consumer refuses an unknown status
+  // rather than falling through as open. **That was measured at both sites, and this is the measurement.**
+  // One tests `PeriodNotFound || FiscalPeriodId is null`; the other tests `PeriodClosed` then `!IsOpen`.
+  //
+  // ⚠⚠ **AND WHAT PAYROLL ACTUALLY ANSWERS IS WORSE THAN A MISLEADING REMEDY: `payroll.not_found`, A
+  // GENERIC 404.** `PayrollErrors.FiscalPeriodNotFound` maps to `NotFound`, so an operator whose calendar
+  // has two overlapping years is told the thing they asked for does not exist.
+  //
+  // The GL side is now honest — `CalendarAmbiguous` says repair the calendar — and the payroll-facing
+  // answer is not. **Deliberately NOT fixed here**, because distinguishing it is the same argument one
+  // layer out and belongs with the payroll error vocabulary. **This test pins the current answer so the
+  // day someone distinguishes it, this reddens and explains itself rather than being quietly updated.**
+  [Theory]
+  [Trait("Decision", "DEC-L-084")]
+  [InlineData("periods")]
+  [InlineData("approval")]
+  public async Task An_ambiguous_calendar_refuses_rather_than_falling_through_as_open(string route)
+  {
+    host.ResetToAuthorizedState();
+    host.Ledger.Window = new PostingWindow(PostingWindowStatus.CalendarAmbiguous, null);
+
+    var response = route == "periods"
+      ? await host.Client.SendAsync(PayrollApiTestHost.Request(
+          HttpMethod.Post, "/api/payroll/periods", host.TokenWith(AllPermissions),
+          """{"companyId":"22222222-2222-2222-2222-222222222222","anyDateInPeriodUtc":"2026-01-15T00:00:00Z","payDateUtc":"2026-02-05T00:00:00Z"}"""))
+      : await host.Client.SendAsync(PayrollApiTestHost.Request(
+          HttpMethod.Post, $"/api/payroll/runs/{SeedCalculatedRun().Id}/approval",
+          host.TokenWith(AllPermissions)));
+
+    // Refused, and NOT as an open window. The status is unknown to both call sites and neither treats
+    // an unknown status as permission to post.
+    Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+    Assert.NotEqual(HttpStatusCode.Created, response.StatusCode);
+    Assert.Equal("payroll.not_found", await PayrollApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   [Trait("Decision", "OD-PAY-0014")]
   public async Task Approval_into_a_closed_period_is_refused_and_names_the_period()

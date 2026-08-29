@@ -372,8 +372,31 @@ invisible, **a bound is honest and an estimate is not**, and which one you have 
 ### Limits of the mechanical test
 
 - **42 procedures (3%) use dynamic SQL**, where the read/write test cannot see inside `EXEC(@sql)`.
-  **Five of those are classed REPORTING and that classification is unsafe** — they are the only
-  per-procedure work this triage generates, and they need reading by hand.
+  **Five of those were classed REPORTING, which the mechanical test could not justify.**
+
+  **⚠ ALL FIVE HAVE NOW BEEN READ (T-220) AND ALL FIVE ARE GENUINELY REPORTING. The 897/450 split is
+  unchanged.** Every one builds a `SELECT` — three of them a `PIVOT` — and executes it; **no write verb
+  appears anywhere in any of the five bodies, inside the dynamic strings or outside them.**
+
+  | procedure | what it builds |
+  |---|---|
+  | `[dbo].[DynamicPivotTableInSql]` | `SELECT … PIVOT` over emergency arrivals |
+  | `[HR].[SP_EmployeeAssessment]` | `SELECT … PIVOT` of five years of assessment grades |
+  | `[HotelServices].[RepWorkListOrder]` | `SELECT` with optional filters appended |
+  | `[GeneralStores].[GetInvoicePayment]` | `SELECT` across supplier dues and payments |
+  | `[Pharmacy].[GetInvoicePayment]` | the same shape, in the pharmacy schema |
+
+  **This is the one hole the triage stated in its own number, and it is now closed rather than carried.**
+
+- ⚠ **AND READING THEM FOUND SOMETHING THE TRIAGE WAS NOT LOOKING FOR: FOUR OF THE FIVE CONCATENATE
+  PARAMETERS DIRECTLY INTO THE SQL STRING.** `[GeneralStores].[GetInvoicePayment]` and its pharmacy twin
+  take `@where nvarchar(4000)` and `@inv nvarchar(4000)` and splice them in unquoted — **a caller-supplied
+  SQL fragment executed verbatim.** `RepWorkListOrder` concatenates too, but converts typed `int` and
+  `datetime` parameters, so its exposure is far narrower.
+
+  **These become queries in the new system, and the injection surface must not be carried across with
+  them.** Recorded here because it is a property of the code rather than of the data, so it needs no
+  production copy — and because a triage that only asked "does it write" would never have seen it.
 - A reporting procedure that `EXEC`s a writer **is** logic; resolved transitively to a fixed point rather
   than one hop.
 - Comments are stripped before testing, or a commented-out `INSERT` would make a report look like logic.

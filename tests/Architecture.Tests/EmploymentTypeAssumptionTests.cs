@@ -225,6 +225,28 @@ public sealed class EmploymentTypeAssumptionTests
   // guards 1–3 would catch that shape. This catches the assemblies instead, so the two are not the same
   // instrument twice: a type reaching `SSAS.Payroll.Domain` at all is visible here even if it arrives on
   // a record these three do not name.
+  // ---- ⚠ `FullTime` IS THE ZERO, AND THAT IS NOW PERSISTED DATA SEMANTICS RATHER THAN A SOURCE DETAIL.
+  //
+  // `20260829175328_AddEmployeeEmploymentType` adds the column with `defaultValue: 0`, so EVERY EMPLOYEE
+  // ROW WRITTEN BEFORE THAT MIGRATION READS BACK AS `FullTime`. The enum was ordered for exactly that,
+  // following the construction `SalaryType` used when it arrived — and `SalaryTypeCalculationTests` pins
+  // its zero the same way.
+  //
+  // **The member-set assertion below deliberately SORTS the names, so it pins membership and NOT ORDER.**
+  // Someone adding a member at the top, or sorting the enum because it reads better, passes that check
+  // while silently reassigning the engagement of every existing employee — no error, no migration, no
+  // failing test. A comment explains the intent to a reader; only this survives a reader who does not look.
+  [Fact]
+  public void Full_time_is_the_zero_because_existing_rows_read_back_as_it()
+  {
+    Assert.Equal(0, (int)SSAS.HR.Contracts.Employment.EmploymentType.FullTime);
+
+    // Stated as the default too, because that is the property the migration actually relies on: a column
+    // added to a populated table reads 0 for every existing row.
+    Assert.Equal(
+      SSAS.HR.Contracts.Employment.EmploymentType.FullTime,
+      default(SSAS.HR.Contracts.Employment.EmploymentType));
+  }
   [Fact]
   [Trait("Decision", "DEC-PAY-0017")]
   public void Employment_type_reaches_the_command_path_and_not_the_calculation()
@@ -234,6 +256,12 @@ public sealed class EmploymentTypeAssumptionTests
     // It is real. Without this the rest of the test passes vacuously the day someone deletes it
     // (`DEC-L-070`).
     Assert.True(employmentType.IsEnum);
+    // ⚠ SORTED, SO THIS CANNOT DETECT REORDERING — AND REORDERING IS A DATA DEFECT HERE.
+    //
+    // The sort is correct: reflection order is not contractual and a test depending on it is flaky. **It is
+    // also the exact operation that erases the ordinal invariant**, and `FullTime` being the zero is what
+    // the migration's `defaultValue: 0` relies on. `Full_time_is_the_zero_because_existing_rows_read_back_as_it`
+    // covers what this deliberately cannot.
     Assert.Equal(
       ["Contract", "FullTime", "PartTime"],
       Enum.GetNames(employmentType).OrderBy(name => name, StringComparer.Ordinal).ToArray());

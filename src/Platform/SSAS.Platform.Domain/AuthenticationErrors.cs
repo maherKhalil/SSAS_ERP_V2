@@ -13,7 +13,6 @@ public static class AuthenticationErrors
   public static readonly Error PasswordRequired = new("AuthenticationAccount.PasswordRequired", "Initial password setup is required.");
   public static readonly Error PasswordNotAllowed = new("AuthenticationAccount.PasswordNotAllowed", "A password must not be supplied for this account.");
   public static readonly Error InvalidActionToken = new("AccountActionToken.Invalid", "The action token is invalid or unavailable.");
-  public static readonly Error InvalidActionTokenHash = new("AccountActionToken.InvalidHash", "The action token hash is invalid.");
   public static readonly Error SensitiveTokenConsumed = new("AccountActionToken.SensitiveValueConsumed", "The sensitive token value is no longer available.");
   public static readonly Error ActiveMembershipCannotBeInvited = new("Invitation.ActiveMembership", "The membership cannot be invited.");
   public static readonly Error DeactivatedMembershipRequiresReactivation = new("Invitation.DeactivatedMembership", "The membership requires the approved reactivation workflow.");

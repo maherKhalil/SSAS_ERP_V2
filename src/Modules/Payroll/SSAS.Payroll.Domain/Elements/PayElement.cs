@@ -265,6 +265,16 @@ public sealed class PayElement : AggregateRoot<Guid>, IAuditableEntity, ITenantO
   // `REQ-GL-0006` settled the same question for accounts on the stricter reading, and the reasoning carries:
   // a code is a business identifier that pay history was calculated against, so re-coding an element
   // silently re-labels what people were paid. Renaming is a correction; re-coding is not.
+  //
+  // ---- ⚠ ENFORCED BY THE COMMAND'S SHAPE, NOT BY A CHECK — AND `Account` DOES IT THE OTHER WAY.
+  //
+  // `UpdatePayElementCommand` has no `Code` parameter, so the rule cannot be broken through the only
+  // update path. **`AccountErrors.CodeIsImmutable` IS returned; `PayElementErrors.CodeIsImmutable` was
+  // declared, mapped, and returned by nothing** — removed in T-168 as a door with no room behind it.
+  //
+  // **DO NOT MAKE THE TWO MODULES CONSISTENT.** They enforce one rule two ways, and both are sound:
+  // adding a check here would be code that cannot fire, and removing GL's would delete one that can.
+  // **The asymmetry is the record; a reader who "fixes" it will not know which side is load-bearing.**
   public PayElementCode Code { get; private set; }
 
   public PayElementName Name { get; private set; }

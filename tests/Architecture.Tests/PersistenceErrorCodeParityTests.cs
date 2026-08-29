@@ -68,3 +68,37 @@ public sealed class PersistenceErrorCodeParityTests
       quoted);
   }
 }
+
+// ===================================================================================================
+// A PAY ELEMENT CODE IS IMMUTABLE BECAUSE THE COMMAND CANNOT CARRY ONE (T-168).
+// ===================================================================================================
+//
+// `PayElementErrors.CodeIsImmutable` was declared, mapped to 409, and returned by nothing. **It was
+// removed rather than wired**, on Payroll's own precedent in `CompensationErrors`: *"an error for an
+// operation that cannot be expressed would be dead code advertising a door that does not exist."*
+//
+// ⚠ **REMOVING IT LEFT THE RULE ENFORCED BY A SHAPE AND ASSERTED BY NOTHING.** Adding a `Code` parameter
+// to `UpdatePayElementCommand` would make it changeable, and the named refusal that once existed is gone.
+// **This is what GL got from `A_posted_journal_exposes_no_mutation_route` and Payroll did not have.**
+//
+// The rule itself is `REQ-GL-0006`'s reading carried across in `PayElement.cs`: a code is a business
+// identifier that pay history was calculated against, so re-coding silently re-labels what people were
+// paid.
+public sealed class PayElementCodeImmutabilityTests
+{
+  [Fact]
+  [Trait("Decision", "DEC-PAY-0011")]
+  public void The_update_command_cannot_carry_a_code()
+  {
+    var parameters = typeof(SSAS.Payroll.Application.Elements.UpdatePayElementCommand)
+      .GetProperties()
+      .Select(property => property.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // Without this the assertion below passes against a type that has lost every property (`DEC-L-070`).
+    Assert.NotEmpty(parameters);
+
+    Assert.DoesNotContain("Code", parameters);
+  }
+}

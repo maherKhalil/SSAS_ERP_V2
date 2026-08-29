@@ -12,10 +12,16 @@ namespace SSAS.Payroll.API;
 //
 // ---- AN OUT-OF-SCOPE RECORD IS A 404, AND ON THIS SURFACE THAT MATTERS MOST.
 //
-// `Payroll.CompensationNotFound` covers both "no such record" and "a record you may not reach". Reporting
-// the second as 403 would let a caller enumerate who is paid what, one probe at a time — ask for an employee
-// identifier, read the status, learn whether compensation exists. GL made this argument about a chart of
-// accounts; here the directory being denied is people's pay.
+// The 404 covers both "no such record" and "a record you may not reach". Reporting the second as 403 would
+// let a caller enumerate who is paid what, one probe at a time — ask for an employee identifier, read the
+// status, learn whether compensation exists. GL made this argument about a chart of accounts; here the
+// directory being denied is people's pay.
+//
+// ⚠ **THIS USED TO NAME `Payroll.CompensationNotFound`, AND THAT CODE IS GONE (T-168).** The decision is
+// not: the route answers the 404 DIRECTLY at `GetCompensationCurrentAsync`, which returns
+// `PayrollApiErrorMapper.NotFound` when the read is null and never touches a domain code. **The behaviour
+// shipped; only the unused domain code went.** Kept here because deleting the arm would have taken the
+// only written trace of a deliberate non-disclosure decision with it.
 public static class PayrollApiErrorMapper
 {
   public static readonly ApiError NotFound = new(404, "payroll.not_found");
@@ -87,15 +93,12 @@ public static class PayrollApiErrorMapper
 
       // ---- ABSENT, OR NOT REACHABLE. Deliberately indistinguishable.
       "Payroll.PayElementNotFound" => NotFound,
-      "Payroll.CompensationNotFound" => NotFound,
-      "Payroll.CompensationNoneInForce" => NotFound,
       "Payroll.PeriodNotFound" => NotFound,
       "Payroll.RunNotFound" => NotFound,
       "Payroll.FiscalPeriodNotFound" => NotFound,
 
       // ---- STATE CONFLICTS. The caller is not wrong; the world is not ready.
       "Payroll.PayElementCodeConflict" => Conflict,
-      "Payroll.PayElementCodeImmutable" => Conflict,
       "Payroll.CompensationAssignmentDuplicate" => Conflict,
 
       // ---- CONFLICT, NOT `RequestInvalid`: THE REQUEST IS WELL FORMED AND THE STATE REFUSES IT (T-153).

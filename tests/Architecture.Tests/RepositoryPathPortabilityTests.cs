@@ -153,6 +153,43 @@ public sealed class RepositoryPathPortabilityTests
     Assert.Empty(offenders);
   }
 
+  // ---- `SSAS.HR.Contracts` IS A LEAF, AND `SSAS.HR.Domain` DEPENDS ON IT BECAUSE OF THAT (T-153/T-154).
+  //
+  // `EmploymentType` lives in `SSAS.HR.Contracts` and is used by `SSAS.HR.Domain`, which reads as an
+  // inverted dependency and invites a "fix". **It is safe for one reason only: the contracts assembly has
+  // no outgoing project edge, so no direction of dependency on it can close a cycle.**
+  //
+  // ⚠ **THIS READS THE `.csproj`, AND THAT IS DELIBERATE RATHER THAN INCIDENTAL.** T-153 measured the
+  // alternative: `Assembly.GetReferencedAssemblies()` **cannot see a `ProjectReference` no type is taken
+  // from**, because the compiler emits no assembly reference for it. A leaf claim is about what the
+  // project DECLARES, so an instrument that only sees usage would call this green the moment someone adds
+  // a reference and green until they first use it — which is the interval the fix would be made in.
+  [Fact]
+  [Trait("Decision", "ADR-012")]
+  public void The_hr_contracts_assembly_is_a_leaf()
+  {
+    var contracts = RepositoryProjectFiles()
+      .SingleOrDefault(file => RepositoryPaths.ProjectNameFromFile(file) == "SSAS.HR.Contracts");
+
+    // Without this the assertion below passes for a project that is not there (`DEC-L-070`).
+    Assert.NotNull(contracts);
+
+    Assert.Empty(References(contracts!));
+  }
+
+  // AND THE EDGE THAT DEPENDS ON THAT LEAF IS ITSELF PINNED. If someone moves `EmploymentType` into the
+  // domain, this is what says the crossing was deliberate rather than an accident being corrected.
+  [Fact]
+  [Trait("Decision", "DEC-PAY-0017")]
+  public void The_hr_domain_depends_on_the_hr_contracts_leaf()
+  {
+    var domain = RepositoryProjectFiles()
+      .SingleOrDefault(file => RepositoryPaths.ProjectNameFromFile(file) == "SSAS.HR.Domain");
+
+    Assert.NotNull(domain);
+    Assert.Contains("SSAS.HR.Contracts", References(domain!));
+  }
+
   private static IReadOnlyList<string> RepositoryProjectFiles() =>
   [
     .. Directory

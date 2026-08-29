@@ -44,10 +44,19 @@ namespace SSAS.Architecture.Tests;
 //
 // ---- ⚠ THIS GUARD AND `TenantStorageErrors`' HEADER MEASURE DISJOINT SETS, AND BOTH ARE GREEN (T-213).
 //
-// That file records 118 declared codes, 116 returned, **0 mapped** — and the two facts compose rather than
-// conflict: those are Platform's codes, in a subsystem with no transport, so they fall outside the four
-// surfaces below by the same reasoning that excluded the 99 above. **Stated in both places so the next
-// reader does not have to re-derive that two green instruments disagreeing about 99 codes is expected.**
+// That file records **118 declared, 116 returned, 0 mapped — counted at T-213 on 2026-08-30** — and the two
+// facts compose rather than conflict: those are Platform's codes, in a subsystem with no transport, so they
+// fall outside the four surfaces below by the same reasoning that excluded TenantStorage from the survey
+// above. **Stated in both places so the next reader does not have to re-derive that two green instruments
+// disagreeing about the TenantStorage family is expected rather than a defect.**
+//
+// ---- ⚠ AND THE TWO FIGURES ARE FROM TWO MEASUREMENTS. DO NOT MERGE THEM.
+//
+// The survey above says **99 TenantStorage**, counted on 2026-08-29; the recount at T-213 says **116
+// returned**. They may use different definitions of "produced", or the family may have grown — **nobody has
+// reconciled them, and this sentence exists so the next reader inherits two attributed numbers rather than
+// one merged number whose provenance is gone.** An earlier draft of this very comment quoted the 99 as a
+// current fact, which is the defect T-214 swept for, authored in the artefact recording it.
 public sealed class PropagatedErrorMappingTests
 {
   // One place states the scope; every assertion derives from it.

@@ -853,6 +853,101 @@ public sealed class TenantBranchLifecycleSqlServerTests
     Assert.DoesNotContain("Table Scan", authorization.Operations, StringComparison.Ordinal);
   }
 
+  // ================================================================================================
+  // §8. THE BRANCH TOPOLOGY LOCK, ACTUALLY CONTENDED (T-195).
+  // ================================================================================================
+  //
+  // ---- ⚠ THIS LOCK WAS IN PRODUCTION WITH NO BEHAVIOURAL EVIDENCE, AND ITS REFUSAL HAD NEVER BEEN SEEN.
+  //
+  // `BranchTopologyLock` had one mention in a test tree: an architecture test naming the type. Worse than
+  // the two locks T-190 and T-193 covered, and worse in a specific way — **`BranchErrors.TopologyBusy` is
+  // produced at four sites in `src/` and was asserted NOWHERE**, so nothing had ever observed what a caller
+  // who loses this race is told.
+  //
+  // Found by enumerating every `sp_getapplock` site rather than trusting anyone's count of them. There are
+  // nine; four were already contended, including Attendance's leave-submission lock, which had the full
+  // shape before any of this. **The practice was inconsistently applied, not missing** — and nothing could
+  // see which sites had it.
+  //
+  // ---- THIS ONE IS SESSION-OWNED, SO "RELEASE" MEANS DROPPING THE CONNECTION.
+  //
+  // The other two are `@LockOwner = 'Transaction'`. This is `'Session'` on a dedicated connection, and the
+  // type says why: *"a dead process drops its connection and the lock with it, so there is no lease to
+  // expire and no stale owner to clean up."* **That sentence is a behavioural claim and the second test is
+  // the first thing to check it.**
+  [Fact]
+  public async Task A_second_session_cannot_take_the_branch_topology_lock()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    await using var holder = await fixture.OpenPlatformConnectionAsync();
+    await using var rival = await fixture.OpenPlatformConnectionAsync();
+
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      holder, fixture.TenantA, TimeSpan.FromSeconds(2)));
+
+    Assert.False(await BranchTopologyLock.TryAcquireForSessionAsync(
+      rival, fixture.TenantA, TimeSpan.FromSeconds(2)));
+  }
+
+  // ⚠ THE CONTROL. A lock that had failed SHUT refuses the rival above perfectly and would pass. Only
+  // showing the same acquisition SUCCEED once the holder is gone separates a working lock from a
+  // permanently closed door — and a closed door here means no branch can be renamed or retired, ever.
+  [Fact]
+  public async Task Closing_the_holding_connection_releases_the_branch_topology_lock()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var holder = await fixture.OpenPlatformConnectionAsync();
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      holder, fixture.TenantA, TimeSpan.FromSeconds(2)));
+
+    // No release call anywhere: the connection simply goes away, as a killed process's would.
+    await holder.DisposeAsync();
+
+    await using var successor = await fixture.OpenPlatformConnectionAsync();
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      successor, fixture.TenantA, TimeSpan.FromSeconds(2)));
+  }
+
+  // The resource name is per TENANT, which the type states and nothing checked. Administering one tenant's
+  // branches must not stall another's.
+  [Fact]
+  public async Task Two_tenants_do_not_contend_for_branch_topology()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    await using var first = await fixture.OpenPlatformConnectionAsync();
+    await using var second = await fixture.OpenPlatformConnectionAsync();
+
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      first, fixture.TenantA, TimeSpan.FromSeconds(2)));
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      second, fixture.TenantB, TimeSpan.FromSeconds(2)));
+  }
+
+  // ---- ⚠ AND THE REFUSAL A CALLER ACTUALLY RECEIVES, OBSERVED FOR THE FIRST TIME.
+  //
+  // The three above prove the primitive. This proves the PATH: `TenantBranchService.UpdateAsync` takes the
+  // topology lease and answers `BranchErrors.TopologyBusy` when it cannot get it. That error is produced at
+  // four sites and, until this test, was asserted at none — a reachable code nobody had ever watched
+  // arrive, which is the mirror of the unreachable codes this loop keeps finding.
+  [Fact]
+  public async Task Branch_administration_answers_TopologyBusy_while_the_lock_is_held()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var riyadh = (await fixture.Service().CreateAsync(
+      new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+
+    // A competing administrator, mid-operation, holding the tenant's topology on its own session.
+    await using var competitor = await fixture.OpenPlatformConnectionAsync();
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      competitor, fixture.TenantA, TimeSpan.FromSeconds(2)));
+
+    var renamed = await fixture.Service().UpdateAsync(new UpdateBranchRequest(
+      riyadh.BranchId, "RUH", "Riyadh Central", true, riyadh.RowVersion));
+
+    Assert.True(renamed.IsFailure);
+    Assert.Equal(BranchErrors.TopologyBusy, renamed.Error);
+  }
+
   private sealed class BranchFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -875,6 +970,17 @@ public sealed class TenantBranchLifecycleSqlServerTests
     public long AdministratorUserId { get; private set; }
 
     public long AdministratorUserIdB { get; private set; }
+
+    // Opens a DEDICATED platform connection. The topology lock is SESSION-owned, so each connection is an
+    // independent holder and closing one releases what it held — which is the property §8 exercises and the
+    // reason the type carries no lease and no cleanup.
+    public async Task<SqlConnection> OpenPlatformConnectionAsync()
+    {
+      var connection = new SqlConnection(ConnectionFor(platformCatalog));
+      await connection.OpenAsync();
+      return connection;
+    }
+
 
     public static async Task<BranchFixture> CreateAsync()
     {

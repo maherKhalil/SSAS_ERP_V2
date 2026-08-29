@@ -21,13 +21,13 @@ Every route in this document is **platform-plane** under `ADR-015`. All seven ro
 
 | Route | Required platform permission |
 |---|---|
-| `GET /api/platform/tenants` | `Platform.Tenants.View` |
-| `GET /api/platform/tenants/{tenantId}` | `Platform.Tenants.View` |
-| `POST /api/platform/tenants` | `Platform.Tenants.Manage` |
-| `POST /api/platform/tenants/{tenantId}/activate` | `Platform.Tenants.Lifecycle` |
-| `POST /api/platform/tenants/{tenantId}/suspend` | `Platform.Tenants.Lifecycle` |
-| `POST /api/platform/tenants/{tenantId}/reactivate` | `Platform.Tenants.Lifecycle` |
-| `POST /api/platform/tenants/{tenantId}/archive` | `Platform.Tenants.Lifecycle` |
+| `GET /api/platform/tenants` | `Platform.Tenants.View` `[DEFERRED - AC-TEN-0020]` |
+| `GET /api/platform/tenants/{tenantId}` | `Platform.Tenants.View` `[DEFERRED - AC-TEN-0020]` |
+| `POST /api/platform/tenants` | `Platform.Tenants.Manage` `[DEFERRED - AC-TEN-0020]` |
+| `POST /api/platform/tenants/{tenantId}/activate` | `Platform.Tenants.Lifecycle` `[DEFERRED - AC-TEN-0020]` |
+| `POST /api/platform/tenants/{tenantId}/suspend` | `Platform.Tenants.Lifecycle` `[DEFERRED - AC-TEN-0020]` |
+| `POST /api/platform/tenants/{tenantId}/reactivate` | `Platform.Tenants.Lifecycle` `[DEFERRED - AC-TEN-0020]` |
+| `POST /api/platform/tenants/{tenantId}/archive` | `Platform.Tenants.Lifecycle` `[DEFERRED - AC-TEN-0020]` |
 
 ## Conventions
 
@@ -44,7 +44,7 @@ Every route in this document is **platform-plane** under `ADR-015`. All seven ro
 ## Create tenant
 
 ```http
-POST /api/platform/tenants
+POST /api/platform/tenants   [DEFERRED - AC-TEN-0020]
 ```
 
 Request:
@@ -61,7 +61,7 @@ The result contains safe Tenant lifecycle data and `Provisioning` status. It cre
 ## Get tenant
 
 ```http
-GET /api/platform/tenants/{tenantId}
+GET /api/platform/tenants/{tenantId}   [DEFERRED - AC-TEN-0020]
 ```
 
 Returns only safe Platform lifecycle data and concurrency version.
@@ -69,7 +69,7 @@ Returns only safe Platform lifecycle data and concurrency version.
 ## List tenants
 
 ```http
-GET /api/platform/tenants?pageNumber=1&pageSize=50&status=Active
+GET /api/platform/tenants?pageNumber=1&pageSize=50&status=Active   [DEFERRED - AC-TEN-0020]
 ```
 
 Only approved bounded filters are accepted. The query returns lifecycle projections, not tenant business data.
@@ -77,10 +77,10 @@ Only approved bounded filters are accepted. The query returns lifecycle projecti
 ## Lifecycle commands
 
 ```http
-POST /api/platform/tenants/{tenantId}/activate
-POST /api/platform/tenants/{tenantId}/suspend
-POST /api/platform/tenants/{tenantId}/reactivate
-POST /api/platform/tenants/{tenantId}/archive
+POST /api/platform/tenants/{tenantId}/activate   [DEFERRED - AC-TEN-0020]
+POST /api/platform/tenants/{tenantId}/suspend   [DEFERRED - AC-TEN-0020]
+POST /api/platform/tenants/{tenantId}/reactivate   [DEFERRED - AC-TEN-0020]
+POST /api/platform/tenants/{tenantId}/archive   [DEFERRED - AC-TEN-0020]
 ```
 
 Every lifecycle command carries a bounded `StatusChangeReasonCode`; suspension and archive require an explicit non-`Created` value. Free-form reason text, secrets, and billing detail are not accepted.
@@ -101,12 +101,30 @@ If a future operational endpoint is approved, it must require Platform authoriza
 }
 ```
 
+> **Reconciled 2026-08-29 (T-161). None of the seven lifecycle routes above is built, and the eighth is
+> superseded.** Marked inline so a sweep can read the state without a human.
+>
+> **`[DEFERRED - AC-TEN-0020]` RECORDS a decision; it does not make one.** Tenant endpoints are deferred by
+> FP-003's own first-milestone scope statement, enforced by
+> `Tenant_endpoints_remain_deferred_and_the_platform_api_does_not_reach_tenant_application`. **Whether that
+> deferral still stands is the owner's call and is open** — `AC-TEN-0021` through `AC-TEN-0030` specify this
+> transport in full, with fifteen scenarios, and T-156 found the platform plane they depend on has already
+> shipped. **This marker states where things are, not where they should go.**
+>
+> **`[SUPERSEDED - ...]` is a different state and must not be conflated with it.** The `DELETE` below is not
+> waiting on anyone: `DEC-TEN-0007` gives the repository no delete, the migration installs
+> `TR_Tenants_PreventDelete`, and archive is the only terminal operation. **Deferred means "not yet";
+> superseded means "never".**
+>
+> ⚠ **The heading below already says this in prose, and that is exactly why the row is marked.** A sweep
+> reads rows, not headings — `DEC-L-002`.
+
 ## Explicitly superseded Draft contracts
 
 The following former Draft Tenant Management contract is superseded by approved FP-003:
 
 ```http
-DELETE /api/platform/tenants/{id}
+DELETE /api/platform/tenants/{id}   [SUPERSEDED - no delete exists, by DEC-TEN-0007]
 ```
 
 Archive is the only terminal lifecycle operation. No delete permission, command, repository method, or endpoint is defined.

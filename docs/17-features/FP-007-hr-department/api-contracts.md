@@ -20,13 +20,13 @@ the platform has already closed elsewhere.
 | `POST` | `/api/hr/departments` | `HR.Departments.Create` | `FR-DEP-0101` | as specified |
 | `GET` | `/api/hr/departments/{departmentId}` | `HR.Departments.View` | `FR-DEP-0102` | as specified |
 | `GET` | `/api/hr/departments` | `HR.Departments.View` | `FR-DEP-0103`; filters `status`, `parentDepartmentId`, `search`; paged | as specified |
-| `GET` | `/api/hr/departments/{departmentId}/hierarchy` | `HR.Departments.View` | `FR-DEP-0105`; returns ancestors and descendants | **`GET /{departmentId}/children`, direct children only** (`DEC-DEP-0024`) |
+| `GET` | `/api/hr/departments/{departmentId}/hierarchy` | `HR.Departments.View` | `FR-DEP-0105`; returns ancestors and descendants | **`GET /{departmentId}/children`, direct children only** (`DEC-DEP-0024`) `[BUILT as GET /api/hr/departments/{departmentId}/children]` |
 | `PUT` | `/api/hr/departments/{departmentId}` | `HR.Departments.Update` | `FR-DEP-0104`; **name and code only** | as specified |
-| `POST` | `/api/hr/departments/{departmentId}/parent` | `HR.Departments.Update` | `FR-DEP-0106` | **two routes: `/move` and `/move-to-root`** (`DEC-DEP-0023`) |
-| `PUT` | `/api/hr/departments/{departmentId}/manager` | `HR.Departments.Update` | `FR-DEP-0107`; assign | **`POST /{departmentId}/manager`** (`DEC-DEP-0024`) |
-| `DELETE` | `/api/hr/departments/{departmentId}/manager` | `HR.Departments.Update` | `FR-DEP-0107`; clear | **`POST /{departmentId}/manager/remove`** (`DEC-DEP-0024`) |
+| `POST` | `/api/hr/departments/{departmentId}/parent` | `HR.Departments.Update` | `FR-DEP-0106` | **two routes: `/move` and `/move-to-root`** (`DEC-DEP-0023`) `[BUILT as POST /api/hr/departments/{departmentId}/move + /move-to-root]` |
+| `PUT` | `/api/hr/departments/{departmentId}/manager` | `HR.Departments.Update` | `FR-DEP-0107`; assign | **`POST /{departmentId}/manager`** (`DEC-DEP-0024`) `[BUILT as POST /api/hr/departments/{departmentId}/manager]` |
+| `DELETE` | `/api/hr/departments/{departmentId}/manager` | `HR.Departments.Update` | `FR-DEP-0107`; clear | **`POST /{departmentId}/manager/remove`** (`DEC-DEP-0024`) `[BUILT as POST /api/hr/departments/{departmentId}/manager/remove]` |
 | `POST` | `/api/hr/departments/{departmentId}/deactivate` | `HR.Departments.Deactivate` | `FR-DEP-0108` | as specified |
-| `POST` | `/api/hr/departments/{departmentId}/reactivate` | `HR.Departments.Deactivate` | `FR-DEP-0108` | **`POST /{departmentId}/activate`** (`DEC-DEP-0025`) |
+| `POST` | `/api/hr/departments/{departmentId}/reactivate` | `HR.Departments.Deactivate` | `FR-DEP-0108` | **`POST /{departmentId}/activate`** (`DEC-DEP-0025`) `[BUILT as POST /api/hr/departments/{departmentId}/activate]` |
 
 > **AS-BUILT CORRECTION (2026-08-22, HR as-built cleanup).** Five of the ten rows above name a route the
 > surface does not expose. Each was superseded by a **ratified** Phase 4 decision — `DEC-DEP-0023` split the
@@ -61,7 +61,7 @@ reasoning is identical.
 |---|---|
 | `POST /api/hr/employees` | Request gains **required** `departmentId` (subject to `OD-DEP-001`) |
 | `PUT /api/hr/employees/{id}` | **Unchanged.** `departmentId` is *not* added here (`BRULE-DEP-0018`) |
-| `POST /api/hr/employees/{id}/department` | **New.** `HR.Employees.Update`. `FR-DEP-0110`. Body: `departmentId`, `rowVersion`. *(As built 2026-08-22: shipped as `POST /api/hr/employees/{id}/change-department`, per `DEC-DEP-0024`'s named-POST convention.)* |
+| `POST /api/hr/employees/{id}/department` | **New.** `HR.Employees.Update`. `FR-DEP-0110`. Body: `departmentId`, `rowVersion`. *(As built 2026-08-22: shipped as `POST /api/hr/employees/{id}/change-department`, per `DEC-DEP-0024`'s named-POST convention.)* `[BUILT as POST /api/hr/employees/{id}/change-department]` |
 | `GET /api/hr/employees/{id}` | Response gains `department` — `{ departmentId, code, name }`. **SHIPPED 2026-08-22** |
 | `GET /api/hr/employees` | Response items gain the same; request gains optional `departmentId` filter (`FR-DEP-0111`). **BOTH SHIPPED 2026-08-22** |
 | `GET /api/hr/employees/{id}/branch-history` | **Unchanged** |

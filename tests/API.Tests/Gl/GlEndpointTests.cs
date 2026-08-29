@@ -297,6 +297,27 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // ⚠ The fiscal-year translation names the CODE race only. The OVERLAP race has no index behind it
   // (`DEC-L-084`) and is unchanged by this — `GlFiscalYearOverlapChainSqlServerTests` is what covers the
   // guard that remains its only enforcement.
+  // ---- LOSING THE CALENDAR LOCK IS A 409 AND IT IS THE ONE THAT IS WORTH RETRYING (T-184).
+  //
+  // `Gl.FiscalCalendarBusy` is transient: the caller is not wrong and nothing about the request needs
+  // changing. **That is the opposite of the two other 409s on this route** — a duplicate code and an
+  // overlapping range both mean the input must change, and repeating the request cannot help.
+  //
+  // Same status, three different instructions, which is why the CODE is asserted and not just the status.
+  [Fact]
+  [Trait("Decision", "DEC-L-084")]
+  public async Task A_busy_fiscal_calendar_is_409_and_names_a_retryable_condition()
+  {
+    host.CalendarLock.Failure = SSAS.GL.Domain.Calendar.CalendarErrors.CalendarDefinitionBusy;
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/fiscal-years", host.TokenWith(GlPermissionNames.ManagePeriods),
+      """{"code":"FY2026","startUtc":"2026-01-01T00:00:00Z","endUtc":"2027-01-01T00:00:00Z","periods":[{"name":"P1","startUtc":"2026-01-01T00:00:00Z","endUtc":"2027-01-01T00:00:00Z"}]}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
   public async Task A_duplicate_fiscal_year_code_race_is_409_rather_than_500()

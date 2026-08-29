@@ -50,6 +50,19 @@ public static class CalendarErrors
     "Gl.FiscalYearCodeConflict",
     "A fiscal year with this code already exists for this company.");
 
+  // ---- ANOTHER DEFINITION FOR THIS COMPANY HOLDS THE CALENDAR LOCK (T-184).
+  //
+  // **Transient and worth retrying**, which is what makes it a distinct code rather than a generic
+  // conflict: the caller is not wrong and nothing about the request needs changing. That is the opposite
+  // of `DuplicateCode` and `OverlappingYear`, which both mean the input must change.
+  //
+  // It is also returned when a caller reaches the lock with no open transaction — **a sequencing bug in
+  // this module, not a busy system.** Refusing there is what stops that bug presenting as an intermittent
+  // overlap much later, and `sp_getapplock` with `Transaction` ownership makes it unmissable.
+  public static readonly Error CalendarDefinitionBusy = new(
+    "Gl.FiscalCalendarBusy",
+    "Another fiscal-year definition for this company is in progress. Retry the request.");
+
   public static readonly Error OverlappingYear = new(
     "Gl.FiscalYearOverlaps",
     "A fiscal year already covers part of this date range for this company.");

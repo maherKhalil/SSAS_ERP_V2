@@ -141,7 +141,15 @@ public sealed class GlFiscalYearOverlapChainSqlServerTests
       new GrantingScope(),
       new SingleContextUnitOfWork(context),
       new FixtureTenant(fixture.Tenant),
-      new DefiningUser());
+      new DefiningUser(),
+
+      // ---- THE REAL LOCK, NOT A STUB (T-184).
+      //
+      // These tests run against SQL Server, so `sp_getapplock` is available and the handler exercises the
+      // actual sequencing. **A stub returning success would make every assertion below pass while proving
+      // nothing about the lock** — and the one property most worth exercising is that the lock refuses
+      // when there is no open transaction, which only the real implementation can demonstrate.
+      new SqlServerFiscalYearDefinitionLock(new SingleContext(context)));
 
   private sealed class SingleContext(TenantDbContext context) : ITenantDbContextAccessor
   {

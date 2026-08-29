@@ -183,12 +183,39 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
 
   // ---- ⚠ AND WHAT IT CANNOT COVER IS COUNTED RATHER THAN SKIPPED.
   //
-  // Not every row names a permission in a comparable form. **FP-004's column says `View`, not
-  // `Platform.Localization.View`**, and resolving the short form needs a per-document prefix that is
-  // written down nowhere. **Inferring it would put a guess inside a guard.**
+  // Not every row names a permission in a comparable form, and the shortfall is stated as a number rather
+  // than left to erode quietly. **A silent 65% looks identical to 100%**; a number that must be edited to
+  // fall does not.
   //
-  // So the axis covers the fully-qualified rows and this states the shortfall as a number. **A silent
-  // 65% looks identical to 100%**; a number that must be edited to fall does not.
+  // ---- ⚠ THIS COMMENT USED TO ASSERT AN ABSENCE THAT NOBODY HAD CHECKED, AND THE CHECK CHANGED IT (T-192).
+  //
+  // It said resolving a short form "needs a per-document prefix that is WRITTEN DOWN NOWHERE", and that
+  // inferring one would put a guess inside a guard. The second half was right and the first was false:
+  // `LivePolicies()`, in this same file, already reads each route's actual policy. For any row whose method
+  // and path match a live route, **the fully-qualified permission was available from the running
+  // application all along** — not inferred, read.
+  //
+  // ---- THE 73 WERE ALSO NOT WHAT THE COMMENT DESCRIBED, WHICH MATTERED MORE THAN THE ABSENCE.
+  //
+  // Measured by running the extraction rather than by reading the documents: 37 of the 73 matched a live
+  // route and 36 did not, and by KIND they were
+  //
+  //   30  a status marker where a permission would go — `[BUILT]`, `[NOT ROUTED - handler: X]`
+  //   22  a bare `METHOD /path` line carrying no columns at all
+  //   14  a prose note about response shape
+  //    7  an actual short-form permission cell
+  //
+  // **So only 7 of 73 were the case this comment described**, all in FP-004, all matching a live route, and
+  // every one already agreeing with its policy's last segment. A suffix-only guard would therefore have
+  // locked in seven currently-true facts, caught nothing known, and still been blind to a wrong PLANE —
+  // which is the half of a permission that actually decides who gets in.
+  //
+  // **So the seven were QUALIFIED IN FP-004 INSTEAD**, which moves them onto the axis above and covers the
+  // plane too. The count below fell from 73 to 66 for that reason and no other.
+  //
+  // The 66 that remain are not short forms and no prefix would help them. The 30 markers are the honest
+  // half: those rows document capability that has no route, `FP-001` holding 17 that name their handler
+  // outright. That is a product gap, not a permission one.
   [Fact]
   public void The_permission_axis_states_the_rows_it_cannot_cover()
   {
@@ -207,8 +234,8 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     // this test and someone decides deliberately**; without it the covered fraction erodes while the
     // guard stays green — comprehensive over what it looks at, and unable to say its scope shrank.
     Assert.Equal(197, all.Length);
-    Assert.Equal(124, qualified);
-    Assert.Equal(73, all.Length - qualified);
+    Assert.Equal(131, qualified);
+    Assert.Equal(66, all.Length - qualified);
   }
 
   private static (string Document, int Line, string Method, string Path, string Permission)[]

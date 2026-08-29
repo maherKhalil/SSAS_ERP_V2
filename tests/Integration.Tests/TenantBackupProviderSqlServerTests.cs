@@ -999,8 +999,17 @@ public sealed class TenantBackupProviderSqlServerTests
       }
       catch (IOException)
       {
-        // Files are written by the SQL Server service account; if this process cannot remove them that is a
-        // test-environment ACL matter, not something production code should be given the power to solve.
+        // ⚠ THE REASON THIS SWALLOW USED TO GIVE WAS WRONG, AND A WRONG REASON STOPS THE NEXT PERSON
+        // LOOKING (T-217). It said the files are written by the SQL Server service account and that a
+        // failure to remove them is "a test-environment ACL matter". **Checked on 2026-08-30: deleting a
+        // service-account-owned `.bak` from this process succeeds immediately** — the test user holds Full
+        // control on the folder, which carries delete-subfolders-and-files, so the child's own ACL does not
+        // block it.
+        //
+        // What actually survives is artefacts from runs that DIED before teardown, which no catch block can
+        // ever clean up because none of it runs. **That is handled by the reap at the start of the next
+        // gate (`reap_to_zero` step 6), not here.** This catch remains only so a genuinely locked file —
+        // SQL Server still holding a handle — cannot turn a passing test into a failing one.
       }
       catch (UnauthorizedAccessException)
       {

@@ -142,15 +142,37 @@ Payroll.Payslips.ViewOwn
 
 ---
 
-## 5. `POST /api/attendance/records/bulk` — unchanged, specified and never built
+## 5. `POST /api/attendance/records/bulk` — ⚠ REWEIGHTED 2026-08-29 (T-157). It was never specified.
 
-**What it is.** A bulk attendance-record route, **specified in `FP-013`'s api-contracts and never built.**
-It is documented there as specified-but-absent rather than deleted, deliberately.
+**What it is.** A bulk attendance-record route that exists as **one row in a route table and nothing else**.
 
-**What it blocks.** Importing attendance from a device or spreadsheet. Today each record is one request.
+**⚠ What changed.** This item previously read *"specified in FP-013's api-contracts and never built"*. That
+is literally accurate and it invites you to picture a specification. **There is none.** Measured:
 
-**The options.** Build it; delete the specification and decide records arrive one at a time; or leave it
-recorded as a known gap.
+```
+"bulk" across all thirteen FP-013 documents        3 occurrences, all in api-contracts.md,
+                                                   all the same route-table row plus its note
+requirements.md / acceptance-criteria.md /
+test-scenarios.md / traceability-matrix.md         zero — no REQ, no AC, no TS names it
+anything doing it under another name               none; RecordAttendanceCommand is strictly singular
+```
+
+**Compare item 1's tenant transport: ten criteria, fifteen scenarios, an ADR and a decision id.**
+
+**And the block it sits in lost five of its six other arguments.** That api-contracts section was written as a
+**proposal before the module shipped**, and nothing compared the two until the route inventory was built. The
+comparison found six divergences — two paths carrying an id the live routes do not take, three routes built
+and never documented — and **all five were corrected to the code.** `/records/bulk` is the sole survivor, and
+it survived **not because it was validated but because it was the one claim with no code to contradict it.**
+
+**It is not deferred.** No guard, no criterion, no scope statement defers it; the document explicitly
+declined to decide, saying *"whether it is still wanted is the owner's call."*
+
+**What it blocks.** Importing attendance from a device or a spreadsheet. Today each record is one request.
+**Whether that is wanted is the only real question here, and nothing found supports or contradicts it.**
+
+**The options.** Build it; delete the row and record that attendance arrives one record at a time; or leave
+it as a known gap — now correctly weighted as a proposal nobody has ruled on rather than as unbuilt work.
 
 ---
 

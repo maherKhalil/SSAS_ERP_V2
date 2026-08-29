@@ -107,6 +107,15 @@ public sealed class ModuleErrorMappingArchitectureTests
 
 
 
+  // ---- ⚠ THE RECORDED EXEMPTIONS, EXPOSED SO A SECOND GUARD CITES THEM RATHER THAN RE-DECIDING (T-200).
+  //
+  // `PropagatedErrorMappingTests` walks the errors a module RETURNS rather than the errors a site NAMES,
+  // which is how two live 500s were found on 2026-08-29. It therefore meets the same deliberately-unmapped
+  // codes this file already argues about — `Payroll.OneOffPaymentConsumingRunRequired` among them — and a
+  // second copy of that list would go stale against this one in exactly the way DEC-L-080 describes.
+  internal static IReadOnlySet<string> RecordedUnmapped() =>
+    Sites().SelectMany(site => site.KnownUnmapped).ToHashSet(StringComparer.Ordinal);
+
   private static MappingSite[] Sites() =>
   [
     new("AttendanceApiErrorMapper",

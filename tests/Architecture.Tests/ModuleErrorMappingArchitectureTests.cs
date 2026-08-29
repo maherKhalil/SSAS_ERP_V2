@@ -145,7 +145,28 @@ public sealed class ModuleErrorMappingArchitectureTests
         typeof(SSAS.GL.Application.Journals.DiscardJournalDraftCommandHandler),
         typeof(SSAS.GL.Application.Journals.PostJournalDraftCommandHandler),
         typeof(SSAS.GL.Application.Journals.ReverseJournalCommandHandler),
-      ], []),
+      ],
+      // ---- ⚠ `Persistence.UniqueConstraint` STAYS UNMAPPED DELIBERATELY, AND A MODULE-WIDE ARM WOULD BE
+      // A CONFIDENT WRONG ANSWER (T-165).
+      //
+      // **GL has SIX unique indexes**: account code, fiscal-year code, draft line number, journal number,
+      // one-reversal-per-original, and entry line number. **One generic arm answers the same message to
+      // all six** — a duplicate account code would be told *"a journal with this number already exists in
+      // this fiscal year"*, and a double-reversal race would be told it too, when that condition owns
+      // `Gl.JournalAlreadyReversed`.
+      //
+      // **The 500 default is not the bug here; it is the house rule working.** `GlApiErrorMapper` says so
+      // in its own words, and it is what made this defect findable at all.
+      //
+      // **`DEC-DEP-0027`: resolved by the caller who knows the operation.** `PostJournalDraftCommandHandler`
+      // translates it to `JournalErrors.NumberConflict` because it can reach exactly one index — the
+      // reversal index is FILTERED to `ReversesJournalEntryId IS NOT NULL`, which a posting never sets.
+      //
+      // ⚠ **`ReverseJournalCommandHandler` can reach TWO and is therefore NOT translated** (T-165
+      // establish): it takes a journal number AND writes the reversal link, and
+      // `IdentityAccessErrors.UniqueConstraintViolation` is a static error carrying no index name. **A
+      // handler that cannot tell which index it hit must not name one.**
+      ["Persistence.UniqueConstraint"]),
 
     new("PayrollApiErrorMapper",
       Path.Combine("src", "Modules", "Payroll", "SSAS.Payroll.API", "PayrollApiErrorMapper.cs"),

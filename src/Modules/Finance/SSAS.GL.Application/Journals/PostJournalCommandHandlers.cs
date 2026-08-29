@@ -104,6 +104,37 @@ public sealed class PostJournalDraftCommandHandler(
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
     if (saved.IsFailure)
     {
+      // ---- THE JOURNAL-NUMBER RACE, NAMED HERE RATHER THAN IN THE MAPPER (T-165).
+      //
+      // `NextJournalNumberAsync` is a read-then-write, and `UX_GlJournalEntries_Tenant_Company_Year_Number`
+      // is what makes the race unwinnable. **Before this, the loser answered 500**: the unit of work
+      // returns the generic `Persistence.UniqueConstraint`, `GlApiErrorMapper` has no arm for it, and the
+      // default is `WriteFailure` — while `JournalErrors.NumberConflict`, mapped to 409, was returned by
+      // nothing.
+      //
+      // ⚠ **TRANSLATED HERE AND NOT IN THE MAPPER, AND THAT IS `DEC-DEP-0027` LITERALLY.** GL has SIX
+      // unique indexes. A module-wide arm would answer *"a journal with this number already exists"* to a
+      // duplicate account code, a duplicate fiscal-year code, and — worst — a double-reversal race, which
+      // owns `JournalErrors.AlreadyReversed`. **A confident wrong answer is what the 500 default exists to
+      // prevent.** Only the caller knows which index it could have hit.
+      //
+      // **This handler can hit exactly one.** `UX_GlJournalLines_Entry_LineNumber` is deterministic from
+      // the draft, and `UX_GlJournalEntries_OneReversalPerOriginal` is FILTERED to
+      // `ReversesJournalEntryId IS NOT NULL`, which a posting never sets.
+      // ⚠ COMPARED ON THE CODE STRING, BECAUSE `ADR-012` FORBIDS THE TYPE.
+      //
+      // `Persistence.UniqueConstraint` is declared as `IdentityAccessErrors.UniqueConstraintViolation` in
+      // `SSAS.Platform.Domain`, which GL may not reference. **The code STRING is the only vocabulary the
+      // two share across that boundary**, and GL is the first module to need it — no other handler in
+      // `src/Modules` compares on a `Persistence.*` code today.
+      //
+      // **A shared constant in BuildingBlocks would be better and is not mine to introduce**: it would be
+      // a new cross-module vocabulary, which is an architecture decision rather than a defect fix.
+      if (saved.Error.Code == "Persistence.UniqueConstraint")
+      {
+        return Result.Failure<Guid>(JournalErrors.NumberConflict);
+      }
+
       return Result.Failure<Guid>(saved.Error);
     }
 

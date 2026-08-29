@@ -453,6 +453,20 @@ Finance/airline module (`AIR_OR`, `AIR_COMT`, `ENT_21KM`, `INV_REP0`–`INV_REPO
 **`float` is not being used as a numeric type here — it is being used as the default type**, and 232
 columns already use `money`, so the correct type was available and known throughout.
 
+### ⚠ AND AT 83% THE REMEDY INVERTS: ONE RULE AND NINETY EXCEPTIONS, NOT 544 JUDGEMENTS
+
+**The number tripled and the work shrank by an order of magnitude**, which is the opposite of what a bigger
+count usually means.
+
+  *"544 real-table columns need review"*   → a per-column exercise, 544 decisions, weeks
+  ***"83% of floats are wrong"***          → **a TYPE-MAPPING RULE with an exception list**
+
+At 83% the default flips. **You no longer justify each conversion — you justify each NON-conversion**, so
+the migration reviews **the 90 unclassified columns rather than the 1,238 classified ones.** `float` becomes
+`decimal` unless something proves otherwise.
+
+**One rule and ninety exceptions, not five hundred and forty-four judgements.**
+
 ### ⚠ How this number moved, because the progression is the finding
 
 | pass | where 0.1 matters | what changed |
@@ -476,3 +490,53 @@ columns — 46% of every float in the schema.**
 (convert versus preserve) can be taken before any data moves. What the production copy would add is the
 *magnitude* of the drift already stored, which is a different question and only worth asking if the answer
 is "convert".
+
+---
+
+## Two properties of the source system that are not migration questions
+
+**These are facts about the running system rather than about moving it. Both were found as by-products of
+analyses aimed at something else, and neither will be looked for under the heading it was found in.**
+
+### 1. ⚠ An injection interface in the invoice-payment procedures (found T-220)
+
+`[GeneralStores].[GetInvoicePayment]` and `[Pharmacy].[GetInvoicePayment]` take
+
+```
+@where nvarchar(4000),
+@inv   nvarchar(4000)
+```
+
+and splice both into the statement unquoted before executing it. **A parameter named `@where`, four
+thousand characters wide, concatenated into SQL is not an injection RISK — it is an injection INTERFACE**,
+and it is a documented part of the procedure's contract.
+
+`[HotelServices].[RepWorkListOrder]` also concatenates, but converts typed `int` and `datetime` parameters
+first, **so its exposure is far narrower — that distinction is the severity axis.**
+
+**Whether these are reachable from an authenticated user's input is not knowable from the schema**, and
+that is the question to answer before deciding urgency. **What is knowable: these become queries in the new
+system, and the interface must not be carried across with them.**
+
+**Found by hand-reading five procedures that a mechanical triage had flagged as unsafe to classify.** A
+classifier asking *"does it write"* cannot notice an injection surface, because nobody told it to weigh one.
+
+### 2. ⚠ 158 identifiers stored in `float` — a correctness question, not a fidelity one (found T-222)
+
+`TKT_NR`, `INVNO`, `LIN_NO`, `EntryCodes`, `CHK_SER`, `REQ_NO`, and the twelve month names are `float`
+columns. **51 of them are in real tables, across 32 tables.**
+
+**Money in `float` drifts. An identifier in `float` is a different failure:** it can compare unequal to
+itself after a round trip, sort wrongly, and format with exponent notation. **If any of these participates
+in a join or a lookup, that is a live defect in the running system rather than a migration concern.**
+
+⚠ **This is NOT an assertion that it bites today**, and half of it is now checked rather than presumed.
+
+**FOREIGN KEYS: zero of the 51 participate in one.** Every declared referential relationship in the schema
+was enumerated and none is keyed on a float identifier — **so the worst case, a float on both sides of an
+enforced join, does not occur.**
+
+**JOINS AND `WHERE` EQUALITIES ARE STILL UNVERIFIED.** Those live in the 1,347 procedure bodies and the 177
+views rather than in the schema, so the catalogue cannot answer them; **it needs a pass over the bodies,
+which is a different instrument.** Recorded as unverified rather than dismissed — **and the FK result
+lowers the ceiling on how bad it can be without closing the question.**

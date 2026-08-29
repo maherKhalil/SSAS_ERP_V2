@@ -99,6 +99,97 @@ foreign keys   ERP-internal 495   clinical-internal 1334   CROSSING 159  (82 erp
 **Each of the 159 needs a disposition — comes along, becomes a reference into HIS, or is dropped. That
 decision list IS the migration scope.**
 
+### ⚠ But it is not 159 decisions. It is three, and then 29. (T-216, counts as at 2026-08-30)
+
+An earlier reading of this section — including the sentence directly above — treated the 159 as a decision
+list. **It is an edge list. Most of the edges are CONSEQUENCES of a small number of placement decisions
+nobody has taken yet**, and enumerating consequences as decisions hides the decisions.
+
+**All figures below were recomputed from `catalogue/catalogue.json` and reproduce this document's own
+published totals exactly — crossing 159, erp→clinical 82, clinical→erp 77** — so the ERP/clinical schema
+split used here is the one this plan was written from. A misclassification would have silently changed every
+number, which is why the control was run before anything was built on it.
+
+| # | decision | edges it settles | recommendation |
+|---|---|---|---|
+| **D1** | **Is `GeneralStores` a shared service or an ERP module?** | **59** (37%) | **Shared.** This document already argues it: inventory is referenced by Marketing, InPatient, Nursing, Maintenance, CSSD, Emergency and Laboratory. That is correct design and must survive. |
+| **D2** | **Is `ApplicationSetup` shared master data?** | **8** | **Shared.** Cities, governorates, countries, banks — referenced from both sides and owned by neither. |
+| **D3** | **Who owns the organisational structure of the hospital — HR, or the clinical modules?** | **63** (40%) | **Genuinely open — this is the real architectural question, and it is answerable without reading a schema.** `Nursing.Employee` is one person master with two role extensions (`Doctors`, `NurseMaster`), while `HR.Department` / `HR.SubDepartment` are pointed at from InfectionControl, CSSD, Billing and InPatient. **Referenced in BOTH directions, so it cannot simply follow ERP.** |
+| | **settled by the three** | **130 of 159 (82%)** | |
+| | **remainder needing per-edge disposition** | **29** | listed below |
+
+**D1 and D2 are close to settled by the owner's own framing — *one product, HIS with ERP included*. They
+need RATIFYING, not deriving.** D3 is the one that deserves argument, and it is worth noting that the
+answer decides 40% of the seam on its own.
+
+**⚠ D3 IS ONE DECISION ONLY IF ALL THREE PARTS LAND TOGETHER. THEY ARE COUPLED BY THE EDGES, NOT
+IDENTICAL** — and a plan that offers two options where there are four invites the fourth to be proposed in
+the meeting instead of here. Each part dissolves its own subset independently:
+
+| part of D3 | edges it dissolves | what it is |
+|---|---|---|
+| **person master** | **38** | `Nursing.Employee` with its `Doctors` / `NurseMaster` role extensions |
+| **org structure** | **14** | `HR.Department`, `HR.SubDepartment` — the ward and department tree |
+| **employment reference data** | **11** | `HR.Banks`, `SocialStatus`, `Jobs`, `Unions`, `TypeofContract`, `TaxDistinctionMaster`, `EmployeeTerminationCase` |
+
+**Splitting them is legitimate** — the person master could sit with HR while the ward tree stays clinical —
+**and the cost of each split is the edge count above, which stays crossing and joins the reference-or-drop
+list.** So D3 is *one* decision at 63 edges if the parts move together, or up to *three* decisions with a
+stated price for separating them.
+
+**⚠ And "comes along" is not available to a crossing foreign key.** By definition its endpoints are on
+opposite sides, so that outcome exists ONLY as a consequence of a placement that stops the edge crossing —
+which is exactly what D1–D3 do for 130 of them. **For the 29 below the choice really is binary: become a
+reference, or be dropped.**
+
+#### The 29 that survive the three decisions
+
+| child | parent | direction | trust |
+|---|---|---|---|
+| `Assets.Asset_Transactions` | `Billing.CashierBox` | ERP→HIS | CHECK |
+| `Billing.CustomerMaster` | `GL.accounts` | HIS→ERP | CHECK |
+| `CSSD.Machine` | `Assets.AssetsMaster` | HIS→ERP | CHECK |
+| `HR.ComprehensiveSocialResearchRequest` | `InPatient.AdmitPatients` | ERP→HIS | CHECK |
+| `HR.ComprehensiveSocialResearchRequest` | `Registration.Patients` | ERP→HIS | CHECK |
+| `HR.MaterialGrades` | `OutPatient.SpecialityGroupMaster` | ERP→HIS | CHECK |
+| `HR.SpecialMemo` | `Registration.Patients` | ERP→HIS | CHECK |
+| `Maintenance.AsstesWarenty` | `Assets.AssetsMaster` | HIS→ERP | CHECK |
+| `Maintenance.AsstesWarenty` | `Assets.FX_Location` | HIS→ERP | CHECK |
+| `Maintenance.MaintenanceRecorde` | `Assets.AssetsMaster` | HIS→ERP | CHECK |
+| `Maintenance.MaintenanceRecorde` | `Assets.FX_Location` | HIS→ERP | CHECK |
+| `Maintenance.OrginalMaintenanceRequest` | `Assets.AssetsMaster` | HIS→ERP | CHECK |
+| `Maintenance.OrginalMaintenanceRequest` | `Assets.FX_Location` | HIS→ERP | CHECK |
+| `Maintenance.WarentyAlarmRequest` | `Assets.AssetsMaster` | HIS→ERP | CHECK |
+| `Maintenance.WarentyAlarmRequest` | `Assets.FX_Location` | HIS→ERP | CHECK |
+| `Pharmacy.LocalPurchaseOrderHeader` | `Purchasing.PurchaseRequest` | HIS→ERP | **NOCHECK** |
+| `Purchasing.PurchaseRequestDetail` | `Pharmacy.Drugs` | ERP→HIS | CHECK |
+| `Purchasing.PurchaseRequestDetail` | `Pharmacy.GenericNames` | ERP→HIS | CHECK |
+| `Purchasing.PurchaseTenderDeliveryDrugBatch` | `Pharmacy.Substores` | ERP→HIS | CHECK |
+| `Purchasing.PurchaseTenderDrug` | `Pharmacy.Drugs` | ERP→HIS | CHECK |
+| `Purchasing.PurchaseTenderDrug` | `Pharmacy.GenericNames` | ERP→HIS | CHECK |
+| `Purchasing.PurchaseTenderDrug` | `Pharmacy.UnitConversionFactor` | ERP→HIS | CHECK |
+| `Purchasing.PurchaseTenderSupplierGivingDrug` | `Pharmacy.Drugs` | ERP→HIS | CHECK |
+| `Purchasing.PurchaseTenderSupplierGivingDrug` | `Pharmacy.GenericNames` | ERP→HIS | CHECK |
+| `Purchasing.PurchaseTenderSupplierGivingDrug` | `Pharmacy.UnitConversionFactor` | ERP→HIS | CHECK |
+| `Receivable.InsuranceClaims` | `Billing.InsuranceCompanies` | ERP→HIS | CHECK |
+| `Receivable.InsuranceClaimsMaster` | `Billing.InsuranceCompanies` | ERP→HIS | CHECK |
+| `Receivable.InsuranceDeposite` | `Billing.InsuranceCompanies` | ERP→HIS | CHECK |
+| `Receivable.PatientPackagePaymentMaster` | `Registration.Patients` | ERP→HIS | CHECK |
+
+**They are four themes, not twenty-nine unrelated choices:** drug procurement (`Purchasing ↔ Pharmacy`, 10),
+the asset lifecycle (`Maintenance`/`CSSD → Assets`, 9), insurance and patient billing
+(`Receivable`/`Assets → Billing`/`Registration`, 6), and social-work case records (`HR → InPatient` /
+`Registration` / `OutPatient`, 4).
+
+**⚠ `Pharmacy.LocalPurchaseOrderHeader → Purchasing.PurchaseRequest` is one of only TWO `NOCHECK` foreign
+keys among all 159** (the other being `FK_NurseMaster_Employee`, discussed below). Orphans may already
+exist on both.
+
+**That edge is BLOCKED ON THE PRODUCTION COPY, not decided.** A reference across the boundary is a promise
+about integrity, and this relationship has never been checked by the database — so whether it can become a
+reference at all depends on whether orphans exist, which is not knowable from the catalogue. **It is the
+one item in the 29 whose disposition cannot be argued, only measured.**
+
 ⚠ **One earlier reading was wrong and is corrected here.** `Registration.Patients` (160 inbound FKs),
 `Nursing.Employee` (108) and `Registration.Doctors` (80) are **not** three unreconciled staff masters.
 `Doctors.EmployeeId → Nursing.Employee.Id` and `NurseMaster.EmployeeId → Nursing.Employee.Id`: **one
@@ -107,6 +198,11 @@ person master with two role extensions.** Good design, oddly placed.
 **What is actually wrong there:** `FK_NurseMaster_Employee` is `WITH NOCHECK` while
 `FK_Doctors_Employee` is `WITH CHECK` — **asymmetric trust on the same relationship**, so orphan nurses
 may already exist.
+
+**And that asymmetry is genuinely exceptional rather than typical of the seam: exactly 2 of the 159
+crossing foreign keys are `NOCHECK` (as at 2026-08-30, T-216)** — this one and
+`Pharmacy.LocalPurchaseOrderHeader → Purchasing.PurchaseRequest`. **The number is stated because
+"exceptional" without it reads as "typical" to the next person**, which would invert the point.
 
 **99 of 1988 foreign keys were added `WITH NOCHECK`.** Those are where the orphans are, and **they
 surface as migration failures rather than source errors**, because the source never checked them.

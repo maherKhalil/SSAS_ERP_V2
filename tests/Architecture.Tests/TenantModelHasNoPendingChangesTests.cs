@@ -25,11 +25,24 @@ namespace SSAS.Architecture.Tests;
 // `Persistence.WriteFailure`, and 8 in `DepartmentApplicationSqlServerTests` reporting the raw
 // `Invalid column name 'EmploymentType'`.
 //
-// **NOTHING COULD HAVE CAUGHT IT WHERE ANYONE WOULD LOOK.** `GetPendingMigrations` appears five times in
-// this repository and every one is in `Integration.Tests` — the suite `GATE_SCOPE=TASK` does not run — and
-// it answers a DIFFERENT question anyway: whether APPLIED migrations match a live database. It cannot see
-// a model that has drifted from its own snapshot, **because both of those are code and it never compares
-// them.**
+// **NOTHING COULD HAVE CAUGHT IT WHERE ANYONE WOULD LOOK**, and the reason is the QUESTION rather than the
+// count. `GetPendingMigrations` answers whether APPLIED migrations match a LIVE DATABASE. It cannot see a
+// model that has drifted from its own snapshot, **because both of those are code and it never compares
+// them** — and it needs a database, so nothing that uses it can run at task scope.
+//
+// ---- ⚠ AN EARLIER VERSION OF THIS COMMENT SAID "APPEARS FIVE TIMES, AND EVERY ONE IS IN
+// `Integration.Tests`". BOTH HALVES WERE WRONG (T-219, counted 2026-08-30).
+//
+//   `GetPendingMigrationsAsync()` in `Integration.Tests`   **15 call sites across 9 files**
+//   in `src/`                                              **4** — `TenantMigrationRunner` (the interface,
+//                                                          its implementation and its call) and
+//                                                          `TenantDatabaseSchemaHealthService`
+//
+// **The argument survives the correction and the sentence did not.** Those four production uses ask the
+// same live-database question, so none of them could have caught the drift either — but "every one is in
+// `Integration.Tests`" was false, and a false supporting claim beside a true conclusion is exactly what
+// stops the next reader checking the conclusion. Written the same evening as the rule that a count in
+// prose is a claim that rots; **this one was wrong on the day it was written.**
 //
 // ---- A SCHEMA DIVERGENCE IS A FACT ABOUT THE CODE AND NEEDS NO SERVER TO OBSERVE.
 //

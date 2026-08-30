@@ -671,3 +671,39 @@ either way**:
 
 **So "one rule and ninety exceptions" is really ONE RULE, ONE ROUTED-OUT CLASS OF 158, AND FIVE NAMES
 NOBODY CAN RESOLVE FROM THE SCHEMA.** That is ratifiable in a sitting.
+
+---
+
+# THE PRODUCTION-COPY CHECKLIST (T-227, assembled 2026-08-30)
+
+**This is the page to open on the day the copy lands.** Every question below was raised somewhere else in
+this document and could not be answered from the schema. **They were five sentences in five sections; this
+is the single list.**
+
+**Run them in this order — the cheap refusals first, so an hour is not spent on a copy that fails the first
+check.**
+
+| # | check | answers | cost | if it fails |
+|---|---|---|---|---|
+| **1** | **`SELECT DISTINCT CompanyID` on every one of the 1,199 `CompanyID`-bearing tables** | is every row's company attribution real? There are 1,199 such columns and **three foreign keys among them**, so nothing has ever prevented an orphan value | minutes, scriptable | rows whose company attribution is a lie — **find before the transfer, not during** |
+| **2** | **`sys.dm_exec_procedure_stats`, captured with the instance's uptime** | which of the 1,347 procedures are actually executed. **The schema cannot answer this** — "referenced by nothing" measures the corpus, because every application call is invisible to it | one query | nothing; it only ever ADDS a live set |
+| **3** | **Row counts and value ranges on the 425 real-table money floats** | how much drift is already stored. **Only worth running if the decision is "convert"** | minutes | informs the conversion, does not block it |
+| **4** | **Orphan check on the two `NOCHECK` foreign keys** — `FK_NurseMaster_Employee` and `Pharmacy.LocalPurchaseOrderHeader → Purchasing.PurchaseRequest` | whether orphans already exist. **The engine has never validated either** | two queries | a reference across the boundary is a promise about integrity; **an orphan means the promise cannot be made** |
+| **5** | **Reachability of the 7 Tier-1 dynamic-SQL procedures** from application code | whether `SPSearch`, `SPTransfearData` and the rest are callable by an authenticated user. **Needs the application source, not the database** | depends on access | decides urgency, not remedy — they are rewritten regardless |
+
+## ⚠ Two properties of these checks
+
+**Every one of them PRINTS what it found rather than reporting a pass.** A check that says "ok" is
+indistinguishable from a check whose query matched nothing — **the same reason the tenant-column count in
+this document is printed with its (empty) list beside it.**
+
+**And check 2 has a limit that must travel with it: `sys.dm_exec_procedure_stats` resets on restart and
+evicts under cache pressure.** It yields a **LIVE set and never a DEAD one.** A procedure absent from it on
+a box restarted yesterday is evidence of nothing, which is why the instance uptime is captured alongside.
+
+## What is NOT on this list, and why
+
+**The type-mapping decision (`float` → `decimal`) does not need the copy.** It is a property of the schema
+and can be ratified now. **The 130-of-159 foreign-key dispositions do not need the copy either** — they
+follow from three placement decisions. **Nothing on this list blocks planning; it all blocks EXECUTION**,
+which is the distinction that decides what can proceed tonight and what waits.

@@ -14,6 +14,31 @@ marked otherwise, so **`DEC-L-007` applies: green gate, merge immediately — no
 **Refill:** the architect refills at TWO remaining, not at zero. If this file drops to two open items and no
 refill has arrived, **say so and start the highest-value thing you can defend** rather than idling.
 
+## ⚠ SESSION RESTARTED 2026-08-30 — ITEM 90 WAS IN FLIGHT AND IS UNCOMMITTED
+
+**The owner restarted VS Code while 90 was part-done. The changes are on disk, on `ClaudeBranch`, not on an
+agent branch, and they were never committed.** A restart does not remove them — **but a `git reset --hard`
+or a branch switch will.** Verify this state before doing anything else, and do not assume 90 is untouched.
+
+**Staged when the session ended:**
+- `src/Host/SSAS.Host.API/Authentication/AccessTokenIssuer.cs` — the ruled fix: log the cause server-side,
+  leave the caller's `AccessTokenIssuanceUnavailable` unchanged.
+- `tests/API.Tests/Infrastructure/JwtInfrastructureTests.cs`
+
+**Modified, not staged** — these are the remaining group-C catches being judged individually:
+- `.../Localization/LocalizationManagementAuditGuard.cs`
+- `.../Localization/LocalizationTextResolver.cs`
+- `.../Identity/CompromisedPasswordOptionsValidator.cs` — **comment only**; it is correct as written, every
+  arm returns `ValidateOptionsResult.Fail` so startup refuses, and the generic message protects the dataset
+  path. It looks careless and is the opposite, which is exactly why it needs the reason stated.
+- `.../Localization/LocalizationManagementAuditReadinessHealthCheck.cs`
+- `.../Localization/LocalizationMemoryCache.cs`
+- `.../TenantStorage/TenantStorageOptionsValidator.cs`
+
+**Resume by reading the diff first**, not by restarting the item — the ruling is item 90 below and has not
+changed.
+
+
 | # | item | status | detail |
 |---|---|---|---|
 | 90 | **`AccessTokenIssuer:61` and `:110` — a real defect, not a documentation gap.** Missing key, bad algorithm and oversized token collapse to one observable in the auth path, in a file with no logger. **Log the cause server-side; leave the caller's `AccessTokenIssuanceUnavailable` unchanged** — opaque outward, diagnosable inward. Then judge the remaining nine group-C catches individually, and comment `CompromisedPasswordOptionsValidator` (it refuses startup; the generic message protects the dataset path). | **open** | BOARD 2026-08-30 |

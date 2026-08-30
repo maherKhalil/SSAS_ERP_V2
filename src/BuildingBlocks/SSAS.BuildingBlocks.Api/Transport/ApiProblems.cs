@@ -2,8 +2,65 @@ using Microsoft.AspNetCore.Http;
 
 namespace SSAS.BuildingBlocks.Api.Transport;
 
-// A transport-neutral (status, code) pair for RFC 7807 ProblemDetails projection.
-public sealed record ApiError(int StatusCode, string Code);
+// ==================================================================================================
+// A TRANSPORT-NEUTRAL (STATUS, CODE) PAIR, AND WHETHER ITS DETAIL MAY BE SHOWN (T-261).
+// ==================================================================================================
+//
+// ---- WHY `DetailAllowed` EXISTS AND WHY IT DEFAULTS TO FALSE ONLY WHERE IT MATTERS.
+//
+// `Error.Message` never reached a caller: the problem document carried `code`, `correlationId` and
+// `resourceKey` and nothing else, so **every message in the product was documentation for the developer
+// reading the constant.** 129 distinct domain codes collapse into `request.invalid` alone, and a caller
+// seeing it could not tell a bad page size from an unknown property.
+//
+// Passing the message as RFC 7807 `detail` fixes that, and it is safe because **no message carries a
+// runtime value** — measured across `src/`: zero interpolations, zero concatenations, zero variables.
+// There is nothing in a message that was not written by hand into a constant.
+//
+// ---- ⚠ EXCEPT ON 401 AND 403, WHERE IT FAILS CLOSED.
+//
+// `branch.scope_denied` has NINE domain codes behind it with nine different messages — *"the branch was
+// not found"*, *"the branch is not active"*, *"not available to this user"*. **Showing those lets a
+// caller separate a branch that does not exist from one that exists and is forbidden**, which is a
+// scope-enumeration oracle over the tenant's structure. The single 403 is what prevents it.
+//
+// **So an authorization refusal shows no detail unless a code opts in**, and the default is the safe one
+// because of the code nobody has written yet: a new 403 added later by someone who never read this
+// would otherwise ship detail by default, and a leaked oracle looks exactly like a helpful message.
+// Only a deliberate act exposes anything.
+//
+// Measured when this was written: five 401/403 codes exist, and only `branch.scope_denied` has more
+// than one message behind it — so failing closed for all of them costs nothing today.
+public sealed record ApiError(
+  int StatusCode, string Code, bool DetailAllowed = false, string? Detail = null)
+{
+  // A refusal that is not an authorization decision may always explain itself. Authorization refusals
+  // must opt in, one code at a time, with the reason at the declaration.
+  // ⚠ AN ALLOWLIST, NOT A BLOCKLIST -- A CLIENT ERROR EXPLAINS ITSELF AND NOTHING ELSE DOES.
+  //
+  // This began as `not (401 or 403)` and **an existing test found the hole**: `A45_A_real_storage_failure`
+  // injects `TenantStorage.Unavailable` — *"no route to the tenant database"* — and asserts the body never
+  // says `tenant database`. A 500 sailed straight through the 401/403 check and leaked it.
+  //
+  // The safety measurement that licensed this change was *no message carries a runtime value*: true, and
+  // **it answered the wrong question.** The risk is not data interpolated into a message, it is a message
+  // that describes our own infrastructure — and a hand-written constant does that perfectly well.
+  //
+  // So the classes divide by **who the message is for**. A 4xx tells callers what THEY did wrong, and the
+  // message is addressed to them. A 5xx says something broke on OUR side: that message is for an operator,
+  // and it already reaches one through the log and the correlation id. The response is not its route.
+  //
+  // Written as a positive test on 4xx so that **a status class nobody has thought about yet fails closed**
+  // — the blocklist form would have admitted 502 and 504 the same way it admitted 500.
+  public bool ShowsDetail =>
+    (StatusCode is >= 400 and < 500 and not (401 or 403)) || DetailAllowed;
+
+  // The domain message, attached by the mapper that still had it, and shown only where allowed.
+  public string? VisibleDetail => ShowsDetail ? Detail : null;
+
+  // Used by every mapper: keep the code and status, carry this refusal's own message.
+  public ApiError Explaining(string? message) => this with { Detail = message };
+}
 
 // ==================================================================================================
 // THE GENERIC TRANSPORT FAILURES EVERY MODULE'S HTTP SURFACE NEEDS (FP-006C5).
@@ -57,6 +114,8 @@ public static class ApiErrors
 // module's key. Each API surface supplies its own.
 public static class ApiProblems
 {
+  // The detail travels ON the ApiError, attached by the mapper that still had the domain message --
+  // 96 call sites hand a mapped ApiError straight to this method and never see the original.
   public static IResult Problem(HttpContext context, ApiError error, string resourceKey)
   {
     ArgumentNullException.ThrowIfNull(context);
@@ -67,6 +126,7 @@ public static class ApiProblems
       type: $"https://httpstatuses.com/{error.StatusCode}",
       statusCode: error.StatusCode,
       title: error.Code,
+      detail: error.VisibleDetail,
       extensions: new Dictionary<string, object?>
       {
         ["code"] = error.Code,

@@ -521,6 +521,36 @@ system, and the interface must not be carried across with them.**
 **Found by hand-reading five procedures that a mechanical triage had flagged as unsafe to classify.** A
 classifier asking *"does it write"* cannot notice an injection surface, because nobody told it to weigh one.
 
+#### The full picture across all 42 dynamic-SQL procedures (T-224, 2026-08-30)
+
+**17 of the 42 splice an unconverted string parameter into the statement.** They fall into two tiers, and
+the tier is decidable: **a parameter spliced INSIDE quotes is a value; one spliced BARE is structure.**
+
+**TIER 1 — structure spliced bare, 7 procedures.** The caller supplies a table, a database, a column list,
+a `WHERE` clause, or a procedure name. **This is not injection through a value; it is an interface for
+arbitrary SQL.**
+
+| procedure | what the caller controls |
+|---|---|
+| `[dbo].[SPSearch]`, `[Finance].[SPSearch]` | `@Table`, `@Fields`, `@Conditions`, and `@Description` — **executed as a procedure name via `exec('exec ' + @Description + …)`.** A generic SQL execution engine exposed as a stored procedure. |
+| `[Finance].[SPTransfearData]` | `@ToDataBAse`, spliced into **sixteen `DELETE FROM` statements** — deletes Finance tables in a caller-named database |
+| `[GeneralStores].[GetInvoicePayment]`, `[Pharmacy].[GetInvoicePayment]` | `@where`, `@inv` — a whole `WHERE` clause |
+| `[dbo].[DynamicPivotTableInSql]` | `@ColumnToPivot`, `@ListToPivot` |
+| `[Finance].[usp_ENTRY_TP_Header_DetailInsert]` | `@jrn_typ` |
+
+**TIER 2 — a value inside quotes, 10 procedures**, and they are **one recurring pattern rather than ten
+findings**: `USR_C = '''+ @USR_C +'''` in the Finance reporting procedures (`SPACCO*`, `SPF1Get*`,
+`xACCO3128`). Breaking out requires a quote in the value — the classic case, and the narrow one.
+
+⚠ **HOW THE TIER-1 COUNT MOVED, BECAUSE IT MOVED FOR THE USUAL REASON.** A first structural regex returned
+**4**. Hand-reading `SPSearch` — which that regex had placed in tier 2 — showed it splicing `@Table` and
+`@Conditions` bare, **because the regex recognised `' + @x + '` and not a splice at the end of a string.**
+Reclassifying per occurrence returned **7**. The first pass under-counted the worst tier by 43%, and it was
+found by a hand-read contradicting the machine rather than by improving the machine.
+
+**The parameters listed above are indicative rather than complete** — the same head-parsing limit that hid
+`@Table` will have hidden others.
+
 ### 2. ⚠ 158 identifiers stored in `float` — a correctness question, not a fidelity one (found T-222)
 
 `TKT_NR`, `INVNO`, `LIN_NO`, `EntryCodes`, `CHK_SER`, `REQ_NO`, and the twelve month names are `float`
@@ -536,7 +566,15 @@ in a join or a lookup, that is a live defect in the running system rather than a
 was enumerated and none is keyed on a float identifier — **so the worst case, a float on both sides of an
 enforced join, does not occur.**
 
-**JOINS AND `WHERE` EQUALITIES ARE STILL UNVERIFIED.** Those live in the 1,347 procedure bodies and the 177
-views rather than in the schema, so the catalogue cannot answer them; **it needs a pass over the bodies,
-which is a different instrument.** Recorded as unverified rather than dismissed — **and the FK result
-lowers the ceiling on how bad it can be without closing the question.**
+**JOINS AND `WHERE` EQUALITIES ARE UNVERIFIED AND ARE NOT GOING TO BE VERIFIED**, which is a decision
+rather than an omission. They live in the 1,347 procedure bodies and the 177 views, so they are greppable —
+**but a count of ad-hoc joins on float identifiers is a risk surface, not a defect list.** Small integer
+values in `float` compare fine, which is why this has run for years, **so the scan would produce a number
+that neither proves a defect nor excludes one.**
+
+**AND THE MIGRATION CONVERTS THESE COLUMNS REGARDLESS.** Float identifiers become proper types on the way
+across, which removes the class entirely rather than measuring it. **A question whose answer cannot change
+the remedy is not worth closing.**
+
+**The complete honest position: no enforced join is keyed on a float identifier; ad-hoc equality in
+procedure bodies is unverified; and the conversion removes the question either way.**

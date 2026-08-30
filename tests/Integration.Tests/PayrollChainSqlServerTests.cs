@@ -32,6 +32,8 @@ using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
+using SSAS.TestSupport.CutoverModel;
+
 namespace SSAS.Integration.Tests;
 
 // ================================================================================================

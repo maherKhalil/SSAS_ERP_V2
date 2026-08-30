@@ -167,8 +167,15 @@ public sealed class SearchSalaryGradesQueryHandler(
 // chances for one to start clamping.
 internal static class PositionPagination
 {
-  public static Result Validate(int page, int pageSize) =>
-    page < 1 || pageSize < 1 || pageSize > PositionSearchCriteria.MaxPageSize
-      ? Result.Failure(PositionErrors.InvalidPagination)
+  public static Result Validate(int page, int pageSize)
+  {
+    if (page < 1)
+    {
+      return Result.Failure(PositionErrors.InvalidPageNumber);
+    }
+
+    return pageSize < 1 || pageSize > PositionSearchCriteria.MaxPageSize
+      ? Result.Failure(PositionErrors.InvalidPageSize)
       : Result.Success();
+  }
 }

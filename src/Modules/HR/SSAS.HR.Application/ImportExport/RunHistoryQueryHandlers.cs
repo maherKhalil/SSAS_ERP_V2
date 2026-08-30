@@ -31,11 +31,14 @@ public sealed class SearchImportRunsQueryHandler(
     ArgumentNullException.ThrowIfNull(query);
 
     // PAGINATION IS REFUSED, NOT CLAMPED — the rule the employee and department searches already apply.
-    if (query.PageNumber < 1 ||
-      query.PageSize < 1 ||
-      query.PageSize > EmployeeRunHistoryCriteria.MaxPageSize)
+    if (query.PageNumber < 1)
     {
-      return Result.Failure<PagedResult<EmployeeImportRunListItem>>(EmployeeErrors.InvalidPagination);
+      return Result.Failure<PagedResult<EmployeeImportRunListItem>>(EmployeeErrors.InvalidPageNumber);
+    }
+
+    if (query.PageSize < 1 || query.PageSize > EmployeeRunHistoryCriteria.MaxPageSize)
+    {
+      return Result.Failure<PagedResult<EmployeeImportRunListItem>>(EmployeeErrors.InvalidPageSize);
     }
 
     // The scope is resolved LIVE by the same resolver every employee read uses, so `HR.Employees.View` is
@@ -72,11 +75,14 @@ public sealed class SearchExportRunsQueryHandler(
   {
     ArgumentNullException.ThrowIfNull(query);
 
-    if (query.PageNumber < 1 ||
-      query.PageSize < 1 ||
-      query.PageSize > EmployeeRunHistoryCriteria.MaxPageSize)
+    if (query.PageNumber < 1)
     {
-      return Result.Failure<PagedResult<EmployeeExportRunListItem>>(EmployeeErrors.InvalidPagination);
+      return Result.Failure<PagedResult<EmployeeExportRunListItem>>(EmployeeErrors.InvalidPageNumber);
+    }
+
+    if (query.PageSize < 1 || query.PageSize > EmployeeRunHistoryCriteria.MaxPageSize)
+    {
+      return Result.Failure<PagedResult<EmployeeExportRunListItem>>(EmployeeErrors.InvalidPageSize);
     }
 
     // ---- `HR.Employees.View`, NOT `HR.Employees.Export`.

@@ -917,6 +917,32 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
     Assert.Equal("Finance", department.GetProperty("name").GetString());
   }
 
+  // ================================================================================================
+  // ⚠ A BAD PAGE NUMBER AND A BAD PAGE SIZE ARE DISTINGUISHABLE ON THE WIRE (T-260).
+  // ================================================================================================
+  //
+  // Both used to answer `request.invalid` — the same code a malformed body, an unknown property and a
+  // stale row version get. **A paging client that fixed the wrong parameter retried and failed
+  // identically**, which is the argument that made a malformed identifier a 400 rather than a 404.
+  //
+  // ⚠ **AND THE DOMAIN SPLIT ALONE WOULD HAVE BEEN INVISIBLE HERE.** The problem document carries
+  // `code`, `correlationId` and `resourceKey` and **no message field**, so `Error.Message` never reaches
+  // a caller. The wire code is the entire channel — which is why this asserts the CODE and not the
+  // status: both are 400, and a test that checked only the status would pass against the old behaviour.
+  [Theory]
+  [InlineData("?pageNumber=0", "request.page_number_invalid")]
+  [InlineData("?pageSize=0", "request.page_size_invalid")]
+  [InlineData("?pageSize=99999", "request.page_size_invalid")]
+  public async Task An_out_of_range_page_names_the_parameter_at_fault(string query, string expected)
+  {
+    var response = await Send(HttpMethod.Get, Route + query, ViewToken);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+    Assert.Equal(expected, document.RootElement.GetProperty("code").GetString());
+  }
+
   // ---- AND SO DOES EVERY LIST ROW.
   [Fact]
   public async Task A47_A_search_result_row_carries_its_department()

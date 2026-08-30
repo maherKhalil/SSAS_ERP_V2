@@ -109,8 +109,23 @@ public static class DepartmentErrors
   public static readonly Error CompanyScopeDenied =
     new("Department.CompanyScopeDenied", "The company is outside the caller's authorized scope.");
 
-  public static readonly Error InvalidPagination =
-    new("Department.InvalidPagination", "The requested page number or page size is out of range.");
+  // ⚠ TWO CODES, BECAUSE ONE CANNOT SAY WHICH PARAMETER TO FIX (T-260).
+  //
+  // The code these replaced covered three conditions -- page below one, page size below one,
+  // page size above the maximum -- and all three answered the same 400 `request.invalid`. **A paging
+  // client that fixes the wrong parameter retries and fails identically**, which is the same argument
+  // that made a malformed identifier a 400 rather than a 404: a caller who cannot tell two conditions
+  // apart cannot act on either.
+  //
+  // TWO rather than three: whether a page size was below one or above the maximum is visible to the
+  // client from its own request. **And there is nowhere to say which bound** -- the problem document
+  // carries `code`, `correlationId` and `resourceKey`, and no message field, so the code is the whole
+  // channel.
+  public static readonly Error InvalidPageNumber =
+    new("Department.InvalidPageNumber", "The requested page number is out of range.");
+
+  public static readonly Error InvalidPageSize =
+    new("Department.InvalidPageSize", "The requested page size is out of range.");
 
   public static readonly Error PermissionDenied =
     new("Department.PermissionDenied", "The caller lacks the required department permission.");

@@ -385,7 +385,8 @@ public sealed class EmployeeReadScopeArchitectureTests
 
     var handler = ReadHrCode("SSAS.HR.Application", "Employees", "Reads", "SearchEmployeesQueryHandler.cs");
 
-    Assert.Contains(nameof(EmployeeErrors.InvalidPagination), handler, StringComparison.Ordinal);
+    Assert.Contains(nameof(EmployeeErrors.InvalidPageNumber), handler, StringComparison.Ordinal);
+    Assert.Contains(nameof(EmployeeErrors.InvalidPageSize), handler, StringComparison.Ordinal);
     Assert.DoesNotContain("Math.Min", handler, StringComparison.Ordinal);
     Assert.DoesNotContain("Math.Clamp", handler, StringComparison.Ordinal);
   }

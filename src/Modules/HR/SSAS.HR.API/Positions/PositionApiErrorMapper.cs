@@ -175,7 +175,8 @@ public static class PositionApiErrorMapper
   private static ApiError MapShared(Error error) =>
     error.Code switch
     {
-      "Position.InvalidPagination" => ApiErrors.RequestInvalid,
+      "Position.InvalidPageNumber" => ApiErrors.PageNumberInvalid,
+      "Position.InvalidPageSize" => ApiErrors.PageSizeInvalid,
       "Position.InvalidActor" => ApiErrors.RequestInvalid,
       "Position.InvalidGradeReference" => ApiErrors.RequestInvalid,
 

@@ -707,11 +707,12 @@ public sealed class PositionApplicationSqlServerTests
   //
   // Silently reducing a page size of 5000 to 200 would return a page the caller did not ask for and let
   // them believe they had seen the rest.
+  // Each row names the parameter it refuses (T-260).
   [Theory]
-  [InlineData(0, 25)]
-  [InlineData(1, 0)]
-  [InlineData(1, 201)]
-  public async Task An_out_of_range_page_request_is_refused(int page, int pageSize)
+  [InlineData(0, 25, false)]
+  [InlineData(1, 0, true)]
+  [InlineData(1, 201, true)]
+  public async Task An_out_of_range_page_request_is_refused(int page, int pageSize, bool sizeIsTheFault)
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
 
@@ -719,7 +720,9 @@ public sealed class PositionApplicationSqlServerTests
       new SearchPositionsQuery(Page: page, PageSize: pageSize));
 
     Assert.True(refused.IsFailure);
-    Assert.Equal(PositionErrors.InvalidPagination, refused.Error);
+    Assert.Equal(
+      sizeIsTheFault ? PositionErrors.InvalidPageSize : PositionErrors.InvalidPageNumber,
+      refused.Error);
   }
 
   private static async Task<SSAS.BuildingBlocks.Domain.Result> StalePositionAsync(

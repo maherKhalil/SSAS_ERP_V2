@@ -899,7 +899,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
       new SearchDepartmentsQuery(PageSize: DepartmentSearchCriteria.MaxPageSize + 1));
 
     Assert.True(refused.IsFailure);
-    Assert.Equal(DepartmentErrors.InvalidPagination, refused.Error);
+    // The query above passes `MaxPageSize + 1`, so the SIZE is the fault (T-260).
+    Assert.Equal(DepartmentErrors.InvalidPageSize, refused.Error);
   }
 
   [Fact]

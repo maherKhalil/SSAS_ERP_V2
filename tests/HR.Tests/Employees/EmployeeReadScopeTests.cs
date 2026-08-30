@@ -378,12 +378,15 @@ public sealed class EmployeeReadScopeTests
   //
   // Silently reducing 5000 to 200 would return a page the caller did not ask for while letting them believe
   // they had seen the rest.
+  // ⚠ EACH ROW NOW NAMES THE PARAMETER IT REFUSES (T-260). One code for three conditions meant this
+  // theory asserted the same thing four times; a client fixing the wrong parameter retried and failed
+  // identically, and the test could not have told the difference either.
   [Theory]
-  [InlineData(0, 50)]
-  [InlineData(1, 0)]
-  [InlineData(1, 201)]
-  [InlineData(-1, 50)]
-  public async Task Out_of_range_paging_is_refused(int pageNumber, int pageSize)
+  [InlineData(0, 50, false)]
+  [InlineData(1, 0, true)]
+  [InlineData(1, 201, true)]
+  [InlineData(-1, 50, false)]
+  public async Task Out_of_range_paging_is_refused(int pageNumber, int pageSize, bool sizeIsTheFault)
   {
     var reads = new RecordingReadService();
     var handler = new SearchEmployeesQueryHandler(Resolver(), reads);
@@ -391,7 +394,9 @@ public sealed class EmployeeReadScopeTests
     var result = await handler.HandleAsync(new SearchEmployeesQuery(PageNumber: pageNumber, PageSize: pageSize));
 
     Assert.True(result.IsFailure);
-    Assert.Equal(EmployeeErrors.InvalidPagination, result.Error);
+    Assert.Equal(
+      sizeIsTheFault ? EmployeeErrors.InvalidPageSize : EmployeeErrors.InvalidPageNumber,
+      result.Error);
     Assert.Equal(0, reads.Calls);
   }
 

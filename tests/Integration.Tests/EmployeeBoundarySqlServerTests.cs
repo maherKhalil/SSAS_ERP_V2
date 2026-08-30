@@ -3186,12 +3186,14 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // Silently reducing an over-large page would return a page the caller did not ask for and let them believe
   // they had seen the rest — the rule every other list in the module applies.
+  // Each row names the parameter it refuses (T-260).
   [Theory]
-  [InlineData(0, 50)]
-  [InlineData(1, 0)]
-  [InlineData(1, EmployeeRunHistoryCriteria.MaxPageSize + 1)]
+  [InlineData(0, 50, false)]
+  [InlineData(1, 0, true)]
+  [InlineData(1, EmployeeRunHistoryCriteria.MaxPageSize + 1, true)]
   [Trait("Decision", "FR-DOC-0103")]
-  public async Task H2_An_out_of_range_page_is_refused_rather_than_clamped(int page, int size)
+  public async Task H2_An_out_of_range_page_is_refused_rather_than_clamped(
+    int page, int size, bool sizeIsTheFault)
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     using var graph = fixture.Graph(fixture.BranchA);
@@ -3201,8 +3203,12 @@ public sealed class EmployeeBoundarySqlServerTests
 
     Assert.True(imports.IsFailure);
     Assert.True(exports.IsFailure);
-    Assert.Equal(EmployeeErrors.InvalidPagination.Code, imports.Error.Code);
-    Assert.Equal(EmployeeErrors.InvalidPagination.Code, exports.Error.Code);
+    var expected = sizeIsTheFault
+      ? EmployeeErrors.InvalidPageSize.Code
+      : EmployeeErrors.InvalidPageNumber.Code;
+
+    Assert.Equal(expected, imports.Error.Code);
+    Assert.Equal(expected, exports.Error.Code);
 
     // And the boundary itself is accepted, so the refusal is a ceiling rather than an off-by-one.
     Assert.True((await graph.SearchImportRuns().HandleAsync(

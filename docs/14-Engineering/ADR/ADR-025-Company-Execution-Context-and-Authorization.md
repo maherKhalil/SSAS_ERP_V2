@@ -50,6 +50,41 @@ It also removes a standing inconsistency: this record supersedes deferred portio
 
 ---
 
+## ⚠ IMPLEMENTATION STATUS 2026-08-30 — DECISION 4 IS BINDING AND PARTLY UNGUARDED
+
+**Measured, not read** (item 163, PR #382). Decision 4 forbids company authority in a token: *"The
+`company_id` JWT claim, `ICurrentUser.CompanyId`, and any header or body `CompanyId` are **never**
+authorization proof."* `ADR-014` had documented that plumbing as plumbing; **this ADR made it binding.**
+
+**What now enforces it:**
+
+- **The issuer.** `AccessTokenIssuer` emits exactly `DEC-AUTH-0049`'s claim set and no more, and as of
+  2026-08-30 that is pinned **as a set**, not as a denylist — so a claim added to the issuer fails the test
+  whether or not anyone predicted it.
+- **The platform plane.** `StrictAccessTokenValidator.PlatformForbiddenClaims` rejects `company_id` on a
+  platform token.
+
+⚠ **What does not:**
+
+- **The tenant plane has no forbidden-claim list at all.** The tenant profile checks that its critical
+  claims appear exactly once and validates their formats; **it is silent about extras.** A tenant token
+  carrying `company_id` would pass strict validation today. **The guard exists on the plane where the
+  claim was never plausible and is absent on the plane this prohibition actually names.**
+- **`ICurrentUser.CompanyId` still exists and still reads that claim** — the very member decision 4 names.
+  Nothing consumes it: the only references in `src/` are its declaration, its implementation, and the
+  prohibition itself.
+
+**This is not a vulnerability.** The issuer never emits the claim and tokens are RS256-signed, so no caller
+can introduce one without the signing key. ⚠ **It is an unguarded prohibition: what this ADR forbids is
+prevented today by nobody having written it.** A rule that holds because no one has broken it yet is not
+enforcement — see Principle 14, *a guard must be refusable*.
+
+**Being closed under item 164**, narrowly and deliberately: the named claim is rejected on the tenant plane
+and the vestigial property is removed. **Whether the tenant profile should reject *every* out-of-set claim
+is a wider question with a deployment-ordering cost, and is being costed rather than assumed.**
+
+---
+
 # Context
 
 `ADR-014` established Company as a legal-entity data-partition dimension beneath the tenant, and deliberately deferred everything needed to *use* it:

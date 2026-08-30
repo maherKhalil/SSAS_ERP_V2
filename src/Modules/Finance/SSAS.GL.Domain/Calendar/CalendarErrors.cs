@@ -16,7 +16,8 @@ public static class CalendarErrors
 
   public static readonly Error NoPeriods = new(
     "Gl.FiscalYearHasNoPeriods",
-    "A fiscal year must define at least one period.");
+    "A fiscal year must define at least one period.",
+    Field: "periods");
 
   // ---- CONTIGUOUS AND NON-OVERLAPPING ARE ONE REFUSAL, NOT TWO (AC-GL-0011).
   //

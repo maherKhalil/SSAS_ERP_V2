@@ -42,15 +42,18 @@ public static class PayElementErrors
   // a caller who has misunderstood the model, not a smaller number.
   public static readonly Error NegativeAmount = new(
     "Payroll.PayElementAmountNegative",
-    "A pay element amount or rate cannot be negative; whether it earns or deducts is decided by its kind.");
+    "A pay element amount or rate cannot be negative; whether it earns or deducts is decided by its kind.",
+    Field: "defaultRateOrAmount");
 
   public static readonly Error InvalidCalculationOrder = new(
     "Payroll.PayElementCalculationOrderInvalid",
-    "A pay element calculation order cannot be negative.");
+    "A pay element calculation order cannot be negative.",
+    Field: "calculationOrder");
 
   public static readonly Error AccountRequired = new(
     "Payroll.PayElementAccountRequired",
-    "A ledger account is required to map a pay element.");
+    "A ledger account is required to map a pay element.",
+    Field: "glAccountId");
 
   // ---- WHY THIS NAMES THE ELEMENT (OD-PAY-0012).
   //

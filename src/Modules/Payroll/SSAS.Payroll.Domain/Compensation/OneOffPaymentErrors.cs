@@ -6,7 +6,8 @@ public static class OneOffPaymentErrors
 {
   public static readonly Error CompanyRequired = new(
     "Payroll.OneOffPaymentCompanyRequired",
-    "A one-off payment must belong to a company.");
+    "A one-off payment must belong to a company.",
+    Field: "companyId");
 
   public static readonly Error EmployeeRequired = new(
     "Payroll.OneOffPaymentEmployeeRequired",
@@ -14,17 +15,20 @@ public static class OneOffPaymentErrors
 
   public static readonly Error PeriodRequired = new(
     "Payroll.OneOffPaymentPeriodRequired",
-    "A one-off payment must name the payroll period it is paid in.");
+    "A one-off payment must name the payroll period it is paid in.",
+    Field: "payrollPeriodId");
 
   public static readonly Error PayElementRequired = new(
     "Payroll.OneOffPaymentPayElementRequired",
-    "A one-off payment must name the pay element it is paid as, which supplies its kind and its account.");
+    "A one-off payment must name the pay element it is paid as, which supplies its kind and its account.",
+    Field: "payElementId");
 
   // Zero is refused as well as negative — see `OneOffPayment.Create` for why a zero instruction is worse
   // than no instruction.
   public static readonly Error AmountNotPositive = new(
     "Payroll.OneOffPaymentAmountNotPositive",
-    "A one-off payment must be a positive amount.");
+    "A one-off payment must be a positive amount.",
+    Field: "amount");
 
   public static readonly Error ConsumingRunRequired = new(
     "Payroll.OneOffPaymentConsumingRunRequired",

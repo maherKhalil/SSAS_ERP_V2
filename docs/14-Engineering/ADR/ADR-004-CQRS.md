@@ -31,35 +31,13 @@ used_by:
 
 ## ⚠ WITHDRAWN 2026-08-30 — THE EARLIER "NOT IMPLEMENTED" NOTE HERE WAS FALSE
 
-**An annotation added earlier this day said domain-event dispatch was specified here and not implemented,
-and that there was no dispatcher in the product. Every clause of that was wrong, and it is withdrawn.**
+**An annotation added earlier this day said domain-event dispatch was specified here and not implemented.
+Every clause of it was wrong, and it is withdrawn.** The dispatcher has existed since 2026-07-31, and the
+flow was **exercised end to end through real infrastructure on 2026-08-30** (item 166, PR #384).
 
-**The flow exists and has since 2026-07-31**, verified link by link in `src/`:
-
-`AggregateRoot<TId> : Entity<TId>, IHasDomainEvents` raises events (65 call sites) → the aggregate is
-tracked by its `DbContext` → `ITenantUnitOfWork` / `IPlatformUnitOfWork` are injected in **122 places**
-across the modules → both delegate to `EfUnitOfWork`, whose `SaveChangesAsync` calls
-`DispatchDomainEventsAsync` → that reads `dbContext.ChangeTracker.Entries().OfType<IHasDomainEvents>()`
-where `DomainEvents.Count > 0` → `IDomainEventDispatcher.DispatchAsync` → each registered
-`IDomainEventConsumer` → `ClearDomainEvents()`.
-
-`DomainEventDispatcher` is registered (`AddScoped<IDomainEventDispatcher, DomainEventDispatcher>()`) and
-carries correlation id, user, request id and trace id as dispatch metadata.
-
-⚠ **How the false finding was produced, because the mechanism matters more than the correction.** The
-instrument searched for production readers of **`DequeueDomainEvents`** and found none — which is true.
-**The dispatch path does not use that method.** It reads the `DomainEvents` property and calls
-`ClearDomainEvents()`. **A complete, correct enumeration of the wrong member was reported as the absence
-of the whole mechanism** — and the conclusion was then stated three ways (*"nothing consumes them"*,
-*"there is no dispatcher"*, *"checked three ways"*), which made it read as corroborated rather than
-repeated.
-
-**What is true, and is a much smaller thing:** exactly **one** `IDomainEventConsumer` is registered —
-`LocalizationCacheDomainEventConsumer`. **That is a question about handler coverage, not about whether
-the mechanism exists.**
-
-**Nothing in the decision below was ever in doubt.** A handler written against this ADR will be
-delivered to.
+⚠ **The full account — what the flow is, how the false finding was produced, and the two residual hazards
+that are genuinely open — lives in one place: the note at the head of `ADR-009`.** It is not repeated here,
+because a fact recorded in three places goes stale in two.
 
 # Context
 

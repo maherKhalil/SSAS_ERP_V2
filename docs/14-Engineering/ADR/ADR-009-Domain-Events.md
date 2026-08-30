@@ -61,6 +61,44 @@ the mechanism exists.**
 **Nothing in the decision below was ever in doubt.** A handler written against this ADR will be
 delivered to.
 
+---
+
+### ⚠ Confirmed by exercise, not by reading — item 166 (PR #384), 2026-08-30
+
+**The withdrawal above was established by reading, which is the method that produced the original error.**
+Five tests now exercise the flow through **real infrastructure** — real `EfUnitOfWork`, real
+`DomainEventDispatcher`, real `PlatformDbContext`, a registered consumer — asserting that the consumer
+receives the event with `CorrelationId`, `ActorId` and `RequestId` populated, and that events are cleared
+so a second save announces nothing.
+
+**Events raised inside a transaction are WITHHELD AND THEN RELEASED, not dropped.** `SaveChangesAsync`
+guards its dispatch with `if (transaction is null)`; `ITransaction.CommitAsync` saves, commits, **then**
+dispatches. Rollback or dispose-without-commit never dispatches — **and that is the point of the design,**
+not a gap in it: an event announcing a termination that was then rolled back is worse than no event.
+
+⚠ **The hazard that would have made this real does not occur, and only a two-type reading settles it.**
+Had `TenantUnitOfWork` opened its transaction on the `DbContext` directly, `EfUnitOfWork`'s own
+`transaction` field would have stayed null and **events would have dispatched before commit — announcing
+work that could still roll back, the inverse bug.** It does not: `TenantUnitOfWork` caches one inner
+`EfUnitOfWork` and delegates **both** `BeginTransactionAsync` and `SaveChangesAsync` to it, so the field
+they test is the same field. **Reading `EfUnitOfWork` alone cannot establish that.**
+
+**Both halves are asserted deliberately.** A test pinning only the withholding half would have recorded
+*"not dispatched"* as the whole truth and read as a defect — **which is exactly how the concern arose.**
+
+⚠ **Two hazards remain open and are NOT covered by these tests:**
+
+1. **Dispatch reads only `dbContext.ChangeTracker.Entries()`.** An aggregate that raised events and was
+   never attached — read `AsNoTracking`, or mutated on a detached instance — **is invisible to dispatch.**
+   This is the most plausible remaining way for an event to be dropped silently.
+2. **A consumer that throws after commit** propagates into `CommitAsync`'s catch, which then calls
+   `RollbackAsync` on an already-committed transaction. **What that does is not established.**
+
+**Also excluded:** the aggregate under test is a probe rather than a production command handler (real is
+everything the event passes *through*), and the store is SQLite — this exercises the mechanism, not the
+provider.
+
+
 # Context
 
 SSAS ERP V2 is implemented as a Modular Monolith where business modules must remain independent while still collaborating.

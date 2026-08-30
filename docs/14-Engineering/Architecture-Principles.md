@@ -899,6 +899,41 @@ build-system form of the rule that a passing guard whose file walk found nothing
 
 ---
 
+# Principle 23 – A Wrong Question Passes Every Check a Wrong Instrument Fails
+
+**Instrument defects are catchable.** Plant a known positive, run a control, check the floor — this
+codebase now has a discipline for all of it. ⚠ **None of it detects a correct measurement of the wrong
+thing, because every control validates the instrument against the question you already asked.**
+
+**The case, and it cost an owner decision and three annotated `Accepted` ADRs.** An instrument searched
+for production readers of `DequeueDomainEvents` and found none. **That was true, and it is still true.**
+`AggregateRoot` declares both `DequeueDomainEvents` and `ClearDomainEvents`, **and the dispatch path uses
+the `DomainEvents` property and `ClearDomainEvents()`.** The member searched for was real, unused, and not
+the one the mechanism runs on.
+
+⚠ **The instrument was right and the question was wrong — a cleaner failure than a wrong instrument, and
+much harder to notice**, because everything downstream is sound. There is no red to find.
+
+**Two things make it worse, and both are avoidable:**
+
+- ⚠ **Restating one query three ways reads as three corroborating measurements.** The published finding
+  said *"nothing consumes them"*, *"there is no dispatcher"* and *"checked three ways"*. **That is one
+  measurement wearing three coats. Corroboration requires a different METHOD, not a different sentence.**
+- **A negative was published without opening the thing that would have used the mechanism.** One file —
+  the unit of work, whose entire job is this — settles it in thirty seconds.
+
+**The check that catches it:** for a claim of the form *"the product does not do X"*, **do not only
+enumerate the members you believe X would use. Open the type whose responsibility X is, and read it.**
+An absence claim about a mechanism is verified at the caller, not at the member.
+
+⚠ **And the confirming half is what makes an exercise worth more than a reading.** When the flow was
+finally exercised, the test that mattered — *committing the transaction dispatches what the save withheld*
+— **passed on its first run.** Had events genuinely been lost, it would have failed then, rather than
+needing a plant to prove it could fail. **A green that could only have been produced by working code is
+evidence; a green that a plant had to justify is merely not-yet-disproved.**
+
+---
+
 # Related Documents
 
 - All accepted ADRs (001-012)

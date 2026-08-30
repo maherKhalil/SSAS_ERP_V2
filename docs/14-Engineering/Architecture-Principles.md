@@ -574,6 +574,38 @@ hiding the prose-blindness behind it**, because the old pattern could not match 
 **And when a new control fails on its first run, the prior is that the CONTROL is right.** It was written
 against the requirement; the pattern was written against whatever its author had in mind that day.
 
+# Principle 16e – A Load-Bearing Control Must Say What It Holds Up
+
+**A control can exist, work, and still be one refactor from deletion — because nothing records that anything
+depends on it.**
+
+**Measured 2026-08-30.** `UnicodeStringPersistenceArchitectureTests` carries two bans:
+`Assert.Empty(NonUnicodeStringColumns(PlatformModel()))` and the same for the tenant model, over a walk with
+**three filters** — `GetEntityTypes().SelectMany(GetProperties).Where(IsStringProperty).Where(IsNonUnicode)`.
+Read alone, nothing establishes any of those still yields, and each of a failed model, an `IsStringProperty`
+that stopped recognising the CLR type, and an `IsNonUnicode` that stopped reading the store type is **green**.
+
+**They are in fact guarded.** A third test runs the same walk with exemptions off and asserts that every one
+of the seven acknowledged columns is found — **a known-positive control, and a good one.**
+
+**⚠ But the coupling is invisible from both ends. The bans do not mention the control; the control does not
+mention the bans.** It reads as a test of the exemption list. **Delete it as redundant and the other two
+silently become unfatalsifiable** — no failure, no signal, two assertions that can no longer fail.
+
+**This is a distinct category from a missing control, and it fails twice over:** it loses protection during a
+refactor, **and it produces false negatives in an audit** — a reviewer reading only the two bans reports the
+file as unprotected.
+
+**The remedy is a sentence at each end, and the name of the control is the part that carries it.** Name the
+test for the relationship — *"…still selects real columns, which is what makes the two bans meaningful"* —
+because **the name is what a deleter reads, it appears in runner output, it survives comment-stripping, and
+it cannot be skimmed past the way a file header can.**
+
+**⚠ And this qualifies Principle 16's usual scepticism about notes.** A note that must be RECALLED later does
+not prevent anything. **A note at the point of decision does** — the person who would delete that test is
+looking directly at it when they decide. **The distinction is whether the reader must remember the note or
+merely read what is in front of them.**
+
 # Principle 16c – Validate an Instrument Against Its Known Positive Before Trusting Its Negatives
 
 **An instrument that cannot flag its own known positive reports absences it has not earned.**

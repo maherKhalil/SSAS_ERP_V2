@@ -46,7 +46,8 @@ public static class DepartmentApiErrorMapper
       // ---- CALLER INPUT. Value objects and arguments the caller got wrong.
       "Department.InvalidCode" => ApiErrors.RequestInvalid,
       "Department.InvalidName" => ApiErrors.RequestInvalid,
-      "Department.InvalidPagination" => ApiErrors.RequestInvalid,
+      "Department.InvalidPageNumber" => ApiErrors.PageNumberInvalid,
+      "Department.InvalidPageSize" => ApiErrors.PageSizeInvalid,
       "Department.InvalidActor" => ApiErrors.RequestInvalid,
 
       // ---- ABSENCE, AND EVERYTHING THAT COLLAPSES INTO IT.

@@ -123,9 +123,14 @@ public sealed class SearchDepartmentsQueryHandler(
     // Silently reducing a page size of 5000 to 200 would return a page the caller did not ask for and let
     // them believe they had seen the rest. An out-of-range request is a malformed request — the same rule
     // the employee search already applies.
-    if (query.Page < 1 || query.PageSize < 1 || query.PageSize > DepartmentSearchCriteria.MaxPageSize)
+    if (query.Page < 1)
     {
-      return Result.Failure<PagedResult<DepartmentListItem>>(DepartmentErrors.InvalidPagination);
+      return Result.Failure<PagedResult<DepartmentListItem>>(DepartmentErrors.InvalidPageNumber);
+    }
+
+    if (query.PageSize < 1 || query.PageSize > DepartmentSearchCriteria.MaxPageSize)
+    {
+      return Result.Failure<PagedResult<DepartmentListItem>>(DepartmentErrors.InvalidPageSize);
     }
 
     var scope = await scopeResolver.ResolveAsync(

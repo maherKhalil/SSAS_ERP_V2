@@ -23,6 +23,23 @@ public static class ApiErrors
 {
   public static readonly ApiError RequestInvalid = new(400, "request.invalid");
 
+  // ⚠ THREE CODES THAT USED TO BE `request.invalid`, AND THE REASON IS THE CALLER'S NEXT MOVE (T-260).
+  //
+  // 129 distinct domain codes map to `request.invalid`. That is defensible for most of them -- a
+  // malformed body is a malformed body -- but **paging is the one place a caller retries in a loop**,
+  // and one code for three conditions means a client that fixes the wrong parameter fails identically.
+  //
+  // **The code is the whole channel.** The problem document carries `code`, `correlationId` and
+  // `resourceKey` and NO message field, so `Error.Message` never reaches the caller. Splitting the
+  // domain code alone would have been invisible; these are what make the distinction observable.
+  public static readonly ApiError PageNumberInvalid = new(400, "request.page_number_invalid");
+
+  public static readonly ApiError PageSizeInvalid = new(400, "request.page_size_invalid");
+
+  // Not a page of anything: a cap on the TOTAL rows an export returns. It shared the pagination code
+  // until T-260, which sent a caller to look at a parameter it had not supplied.
+  public static readonly ApiError ExportCeilingInvalid = new(400, "request.export_ceiling_invalid");
+
   public static readonly ApiError RowVersionInvalid = new(400, "platform.rowversion_invalid");
 
   public static readonly ApiError Forbidden = new(403, "authorization.forbidden");

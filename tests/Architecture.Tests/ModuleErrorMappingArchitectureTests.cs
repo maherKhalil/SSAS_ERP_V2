@@ -367,7 +367,9 @@ public sealed class ModuleErrorMappingArchitectureTests
         "Employee.BranchScopeDenied",
         "Employee.CompanyScopeDenied",
         "Employee.InvalidActor",
-        "Employee.InvalidPagination",
+        "Employee.InvalidPageNumber",
+        "Employee.InvalidPageSize",
+        "Employee.InvalidExportCeiling",
         "Employee.InvalidReadScope",
         "Employee.ReadPermissionDenied"
       ]

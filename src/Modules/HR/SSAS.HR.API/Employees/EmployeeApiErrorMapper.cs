@@ -62,7 +62,9 @@ public static class EmployeeApiErrorMapper
       "Employee.InvalidTransferReason" => ApiErrors.RequestInvalid,
       "Employee.TransferDestinationUnchanged" => ApiErrors.RequestInvalid,
       "Employee.InvalidReadScope" => ApiErrors.RequestInvalid,
-      "Employee.InvalidPagination" => ApiErrors.RequestInvalid,
+      "Employee.InvalidPageNumber" => ApiErrors.PageNumberInvalid,
+      "Employee.InvalidPageSize" => ApiErrors.PageSizeInvalid,
+      "Employee.InvalidExportCeiling" => ApiErrors.ExportCeilingInvalid,
 
       // ---- SCOPE. Generic within each dimension; never says which condition applied.
       // ---- THE COMPANY HEADER: SYNTAX IS THE CALLER'S PROBLEM, SCOPE IS NOT THEIR BUSINESS.

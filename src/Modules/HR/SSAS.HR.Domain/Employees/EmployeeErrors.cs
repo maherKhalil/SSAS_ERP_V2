@@ -106,8 +106,27 @@ public static class EmployeeErrors
   public static readonly Error InvalidReadScope =
     new("Employee.InvalidReadScope", "The requested employee scope is not valid.");
 
-  public static readonly Error InvalidPagination =
-    new("Employee.InvalidPagination", "The requested page number or page size is out of range.");
+  // ⚠ TWO CODES, BECAUSE ONE CANNOT SAY WHICH PARAMETER TO FIX (T-260).
+  //
+  // The code these replaced covered three conditions -- page below one, page size below one,
+  // page size above the maximum -- and all three answered the same 400 `request.invalid`. **A paging
+  // client that fixes the wrong parameter retries and fails identically**, which is the same argument
+  // that made a malformed identifier a 400 rather than a 404: a caller who cannot tell two conditions
+  // apart cannot act on either.
+  //
+  // TWO rather than three: whether a page size was below one or above the maximum is visible to the
+  // client from its own request. **And there is nowhere to say which bound** -- the problem document
+  // carries `code`, `correlationId` and `resourceKey`, and no message field, so the code is the whole
+  // channel.
+  // The export row ceiling, which shared `InvalidPagination` until T-260 despite not being a page of
+  // anything. Its own code, because its own parameter is what a caller must fix.
+  public static readonly Error InvalidExportCeiling =
+    new("Employee.InvalidExportCeiling", "The requested export row ceiling is out of range.");
+  public static readonly Error InvalidPageNumber =
+    new("Employee.InvalidPageNumber", "The requested page number is out of range.");
+
+  public static readonly Error InvalidPageSize =
+    new("Employee.InvalidPageSize", "The requested page size is out of range.");
 
   // ---- DEPARTMENT (FP-007 Phase 3, REQ-HR-0102).
   //

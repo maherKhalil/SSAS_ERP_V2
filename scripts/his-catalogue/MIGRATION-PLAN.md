@@ -808,3 +808,43 @@ one decision that could have moved it.** But the coupling should be visible rath
 - **Unverified here:** the cross-database reference counts, the 39 disabled constraints, and the
   duplicate `FK_Doctors_SpecialityGroupDetails1/_2` both keyed on `[SpecialityID2]`. Reproduce before
   relying on them.
+---
+
+## The shape of the 54: what kinds of rule they encode (T-231, 2026-08-30)
+
+The 54 clinical rule-encoding views are the migration's real logic inventory. **This is their SHAPE, not
+their content** — clustering says which domains need building and roughly how much sits in each. **Nobody
+has extracted a single rule, and that work should wait until the owner has decided whether any of this
+proceeds.**
+
+| kind of rule | views | what it means for the build |
+|---|---|---|
+| **stock movement and dispensing** | **17** | the largest cluster by some way — transfers, direct additions and subtractions, physical adjustment, dispensing and returns |
+| **clinical capacity and patient flow** | **11** | bed counts by ward and gender, expected discharges, waiting times, visit slips, theatre and chemotherapy scheduling |
+| **purchasing and goods-received** | **8** | purchase reports, item purchase and return, GRN search, supplier detail |
+| **medication safety and infection control** | **5** | medication error categorisation, dosage printing, ICU infection-control services |
+| **pricing, packages and outstanding balance** | **4** | `V_PatientBill` and its discount precedence, package payment, unpaid bills, vouchers |
+| **sponsor coverage and approvals** | **3** | coverage approval follow-up, sponsor services and drugs |
+| **reference and lookup** | **3** | patients, titles, ICD codes |
+| **insurance claim construction** | **1** | `V_Insurance_Claims` |
+| other | 2 | |
+
+### ⚠ The distribution is not what "rules in views" suggests
+
+**Pricing and coverage — the cluster everyone would predict — is 8 of 54.** The bulk is **inventory and
+patient flow: 28 of 54, more than half.** The billing logic is concentrated and famous; **the stock and
+capacity logic is diffuse and nobody has mentioned it.**
+
+**And 25 of the 54 (inventory + purchasing) are about GOODS, not patients** — which makes them the views
+most likely to be affected by decision **D1**, since `GeneralStores` is the schema that owns goods.
+
+### ⚠ Seven view NAMES exist in both `[Pharmacy]` and `[dbo]`, and they are NOT the same view
+
+`V_DirectAddition`, `V_DirectSubtract`, `V_DispenseItemsReturn`, `V_DispenseItems`, `V_PhysicalAdjastment`,
+`V_Transfer`, `V_TransferCycle`. **Body similarity measured at 8%–54% — they are different queries wearing
+the same name in two schemas.**
+
+**This was checked because it looked like duplication and it is not.** Whoever queries `V_Transfer` without
+a schema qualifier gets whichever the default schema resolves to, **and the two return different things.**
+Someone must decide which is authoritative before either is rebuilt — **and it is a live ambiguity in the
+running system, not only a migration question.**

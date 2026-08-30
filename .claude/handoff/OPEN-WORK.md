@@ -69,6 +69,13 @@ Recruitment and Performance. Fixed Assets is V3; Sales is V4.
 Platform-plane mapping keyed by tenant, optional on both sides, **no foreign key in either direction and
 none possible** — different databases. Self Service is its first consumer.
 
-**One owner decision is needed before the package can be shaped** — whether *"view my own payslip"* is a
-distinct permission or a scope on the existing one. It changes every self-service surface, so it is not
-deferrable to implementation.
+⚠ **A CLAIM CARRIED FORWARD FROM THE PREVIOUS RECKONING AND NOW CHECKED: it said an owner decision was
+needed on whether *"view my own payslip"* is a distinct permission or a scope on the existing one. THE CODE
+ANSWERS IT.** Three distinct self-service permissions exist — `Attendance.Records.ViewOwn`,
+`Attendance.Leave.ViewOwn`, `Payroll.Payslips.ViewOwn` — and the first two are already wired to live
+routes. **It is a distinct permission, decided by construction.**
+
+**What IS still open is `OWNER-DECISIONS.md` entry 4**, and it is a different question: permissions reach a
+user only through a role, there is no per-user grant mechanism anywhere in `src/`, and **none of the three
+self-service permissions appears in any seeded role.** So granting self-service to a workforce has no bulk
+mechanism — that is the decision, not the permission model.

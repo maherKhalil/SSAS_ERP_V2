@@ -18,11 +18,13 @@ public static class CompensationErrors
 
   public static readonly Error AssignmentElementRequired = new(
     "Payroll.CompensationAssignmentElementRequired",
-    "A pay element assignment must name a pay element.");
+    "A pay element assignment must name a pay element.",
+    Field: "assignments[].payElementId");
 
   public static readonly Error NegativeAssignmentAmount = new(
     "Payroll.CompensationAssignmentAmountNegative",
-    "A pay element assignment amount or rate cannot be negative.");
+    "A pay element assignment amount or rate cannot be negative.",
+    Field: "assignments[].rateOrAmount");
 
   // A duplicate would double-count the element in every run, silently — which is the worst kind of payroll
   // defect because the total still looks like a number.

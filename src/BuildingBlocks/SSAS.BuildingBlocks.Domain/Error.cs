@@ -25,6 +25,23 @@ namespace SSAS.BuildingBlocks.Domain;
 //
 // Optional because **most errors have no single input**: a precondition, a conflict, a server fault and
 // a structurally incomplete payload all leave it null, and null means *do not mark any field*.
+// ---- ⚠ `Field` IS A JSON PATH INTO THE REQUEST BODY, NOT A PROPERTY NAME (T-272).
+//
+// It began as a flat name, and a flat name cannot address an element of a collection. An error raised
+// inside `foreach (var assignment in assignments)` concerns `assignments[].payElementId` -- a property
+// of an ELEMENT, not of the body. **And that is where attribution is worth most: a caller editing a
+// journal of twenty lines needs to know which line far more than a caller with one bad `name` needs the
+// word `name`.** The flat form failed hardest exactly where it mattered.
+//
+// The semantics a client may rely on:
+//
+//   * segments are separated by `.` and name **serialized** properties -- what the caller sent, never a
+//     CLR name; `FieldAttributionArchitectureTests` resolves each against its declared `JsonPropertyName`
+//   * `[]` marks a collection segment: `assignments[].payElementId` is *that property of some element*
+//   * **an index appears only when the raising code knows it.** No domain guard tracks a loop index
+//     today, so `[]` is always empty -- and an empty `[]` is honest where a fabricated `[0]` would not be
+//   * a single segment is a valid path and means what it always meant, so widening this cost nothing
+//   * absent entirely means **no single input is at fault** -- mark nothing
 public sealed record Error(string Code, string Message, string? Field = null)
 {
   public static readonly Error None = new(string.Empty, string.Empty);

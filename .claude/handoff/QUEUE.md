@@ -46,6 +46,28 @@ timestamp, and it decays in seconds.**
 
 **True state: `ClaudeBranch` carries #345, #346 and #347. 91, 92 and 93 are unstarted and fully specified
 below. Nothing is in flight.**
+## Session ended 2026-08-30 — where to pick up
+
+**The owner signed out. Both windows stopped cleanly.** ⚠ **This section records COMMITTED state only** — a
+working-tree observation decays within one commit and has already misled this loop once today.
+
+**Item 129 was in progress** — `Company.SelectionRequired` gaining a distinct code while keeping its 400.
+The coder was asked to commit whatever it held onto its branch before stopping, so **look for an
+`agent/T-268-*` branch and check whether it is pushed** before assuming the work is lost or duplicating it.
+**130 is a measurement with no edits, so nothing there is half-done.**
+
+**Both rulings are inline in the table below and neither needs re-deriving.**
+
+**What remains after 129 and 130 is owner-gated, and that is an enumeration result rather than an empty
+queue:** five ERP decisions blocking 41 capability rows, and three HIS placement decisions. `BACKLOG.md`
+is empty of open B-items **deliberately** — the loop spent 2026-08-30 on instrument hardening because that
+is where the defects were, and inventing another sweep to avoid saying *"this needs the owner"* would be
+the failure this board has recorded under several other names.
+
+**Also open, unchanged, and not urgent:** the 13 local-only `codex/*` branches on a PUBLIC repository, and
+`agent/T-072-spec-and-authorization-model`, whose content was landed directly on 2026-08-30 and whose PR
+was closed with an explanation — **the branch is left in place on purpose.**
+
 
 | # | item | status | detail |
 |---|---|---|---|

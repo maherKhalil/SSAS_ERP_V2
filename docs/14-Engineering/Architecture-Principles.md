@@ -437,6 +437,31 @@ stops being established — the next reader sees a green assertion and has no re
 comment naming what was broken and what reddened is greppable, survives a rebase, and is present at the
 moment someone decides whether to believe the test.**
 
+# Principle 17 – When a Blanket Ban Beats an Exemption
+
+**Most guards in this codebase carry an allowlist: an exemption with a stated, checkable reason.
+`RepositoryPathPortabilityTests` deliberately does not** — it bans `Path.GetFileNameWithoutExtension`
+outright, and on 2026-08-30 it correctly reddened a **safe** use of it: a real filesystem path, not an
+MSBuild `Include`. **The right response was to comply, not to carve an exemption.**
+
+**The reason is the whole principle. A rule that fires only on the unsafe kind requires a reader to classify
+each use correctly, every time — and that classification is precisely what failed in the original defect**,
+where an MSBuild path was treated as a filesystem path and the build broke on Linux. **An exemption
+mechanism reintroduces the exact judgement whose unreliability created the rule.**
+
+**So the boundary between the two is not strictness, it is who does the classifying.**
+
+- **Use an exemption with a stated reason when the guard itself can check the claim** — that a route has a
+  sibling parameter route, that a named test method exists and contains the segment, that an error code is
+  recorded unmapped where it was decided. **The guard verifies the exemption; a stale one reddens.**
+- **Use a blanket ban when the distinction can only be drawn by a human reading the code**, and especially
+  when that reading has already been got wrong. **The cost is occasional friction on safe code. The benefit
+  is that nobody has to be right about a subtle case under time pressure.**
+
+**A guard catching correct code is not automatically a false positive.** Ask which of the two situations
+applies before adding an exemption — and note that "this use is obviously fine" is the same sentence the
+original defect's author would have written.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

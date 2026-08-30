@@ -422,7 +422,18 @@ where a file walk that finds nothing returns an empty set and reads as success.*
 A reflection test that finds nothing is exactly as unfalsifiable as a file walk that finds nothing.** The
 conversion above was accepted only with two plants proving the replacements read what they claim to: the
 reference prefix pointed at `System.Runtime`, and the `IQueryable` signature walk widened to `IEnumerable`.
-**Every absence-asserting check earns a plant — text-based or structural, no exceptions.**
+**⚠ And the rule is not really about absence. The question is whether a test has ever been observed to fail
+for the reason it claims to test.** A *presence*-asserting check measured on 2026-08-30 — *"at least one
+Error-level log entry exists"* — needed the plant just as badly, because its failure mode was not *finds
+nothing and passes* but **passes without running at all.** Absence-asserting checks are the largest
+population of this hazard, not the whole of it. **Every check earns a plant, whatever it asserts and however
+it is implemented.**
+
+**A cheap tell, short of a plant: does the clock agree the work happened?** That same test passed on its
+first run reporting `Duration: < 1 ms` **for something that creates a database.** The timing was the only
+thing out of place, and inverting the assertion proved the run was real. **A green whose duration does not
+match the work it claims to have done is worth breaking on purpose** — it costs a minute and needs no second
+implementation.
 
 **Prefer a CROSS-CHECK to a floor wherever a second derivation of the set exists.** A floor catches the walk
 collapsing; it **cannot catch one item dropping out** — eleven assemblies clear a floor of eight while the

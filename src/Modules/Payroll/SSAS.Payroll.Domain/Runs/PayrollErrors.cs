@@ -28,7 +28,8 @@ public static class PayrollErrors
 
   public static readonly Error PeriodNameInvalid = new(
     "Payroll.PeriodNameInvalid",
-    "A payroll period name is required and must be at most 128 characters.");
+    "A payroll period name is required and must be at most 128 characters.",
+    Field: "name");
 
   public static readonly Error PeriodBoundsInvalid = new(
     "Payroll.PeriodBoundsInvalid",

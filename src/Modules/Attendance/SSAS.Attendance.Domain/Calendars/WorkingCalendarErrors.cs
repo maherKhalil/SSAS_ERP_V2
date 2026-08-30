@@ -12,7 +12,8 @@ public static class WorkingCalendarErrors
 
   public static readonly Error InvalidName = new(
     "Attendance.WorkingCalendarNameInvalid",
-    "A working calendar name is required and must be at most 200 characters.");
+    "A working calendar name is required and must be at most 200 characters.",
+    Field: "name");
 
   public static readonly Error DuplicateName = new(
     "Attendance.WorkingCalendarNameConflict",
@@ -34,7 +35,8 @@ public static class WorkingCalendarErrors
 
   public static readonly Error InvalidHolidayName = new(
     "Attendance.HolidayNameInvalid",
-    "A holiday name is required and must be at most 200 characters.");
+    "A holiday name is required and must be at most 200 characters.",
+    Field: "name");
 
   public static readonly Error DuplicateHoliday = new(
     "Attendance.HolidayDateConflict",

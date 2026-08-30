@@ -32,7 +32,7 @@ public sealed class ProblemDetailVisibilityTests
   [Fact]
   public void An_ordinary_refusal_explains_itself()
   {
-    var explained = new ApiError(400, "request.invalid").Explaining("The page size is out of range.");
+    var explained = new ApiError(400, "request.invalid").Explaining("The page size is out of range.", field: null);
 
     Assert.True(explained.ShowsDetail);
     Assert.Equal("The page size is out of range.", explained.VisibleDetail);
@@ -46,13 +46,13 @@ public sealed class ProblemDetailVisibilityTests
   [InlineData(403)]
   public void An_authorization_refusal_withholds_its_detail_unless_it_opted_in(int status)
   {
-    var closed = new ApiError(status, "branch.scope_denied").Explaining("The branch was not found.");
+    var closed = new ApiError(status, "branch.scope_denied").Explaining("The branch was not found.", field: null);
 
     Assert.False(closed.ShowsDetail);
     Assert.Null(closed.VisibleDetail);
 
     var opened = new ApiError(status, "authorization.forbidden", DetailAllowed: true)
-      .Explaining("A trusted branch context is required.");
+      .Explaining("A trusted branch context is required.", field: null);
 
     Assert.True(opened.ShowsDetail);
     Assert.Equal("A trusted branch context is required.", opened.VisibleDetail);
@@ -75,7 +75,7 @@ public sealed class ProblemDetailVisibilityTests
   public void A_server_fault_never_surrenders_its_message(int status)
   {
     var fault = new ApiError(status, "request.failed")
-      .Explaining("no route to the tenant database");
+      .Explaining("no route to the tenant database", field: null);
 
     Assert.False(fault.ShowsDetail);
     Assert.Null(fault.VisibleDetail);
@@ -86,7 +86,7 @@ public sealed class ProblemDetailVisibilityTests
   [Fact]
   public void A_new_authorization_code_declared_without_thought_is_closed_by_default()
   {
-    var accidental = new ApiError(403, "something.new").Explaining("Which of several reasons it was.");
+    var accidental = new ApiError(403, "something.new").Explaining("Which of several reasons it was.", field: null);
 
     Assert.False(accidental.ShowsDetail);
   }

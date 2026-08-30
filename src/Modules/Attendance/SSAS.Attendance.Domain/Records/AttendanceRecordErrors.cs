@@ -26,7 +26,8 @@ public static class AttendanceRecordErrors
 
   public static readonly Error InvalidOvertimeTier = new(
     "Attendance.OvertimeTierInvalid",
-    "An overtime tier must be at most 32 characters and cannot contain control characters.");
+    "An overtime tier must be at most 32 characters and cannot contain control characters.",
+    Field: "overtimeTier");
 
   // Overtime without a tier is a quantity Payroll cannot price: the tier is what a pay element's rate is
   // configured against (`OD-ATT-0008`). Recording it untiered would produce hours nobody could pay.
@@ -36,7 +37,8 @@ public static class AttendanceRecordErrors
 
   public static readonly Error InvalidNote = new(
     "Attendance.RecordNoteInvalid",
-    "An attendance note must be at most 1000 characters and cannot contain control characters.");
+    "An attendance note must be at most 1000 characters and cannot contain control characters.",
+    Field: "note");
 
   public static readonly Error AdjustedRecordRequired = new(
     "Attendance.AdjustedRecordRequired",

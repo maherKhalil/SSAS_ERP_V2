@@ -102,7 +102,7 @@ public static class AttendanceApiErrorMapper
   // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
   // it and showing them would separate a branch that does not exist from one that is forbidden.
   public static ApiError Map(Error error) =>
-    MapCore(error).Explaining(error.Message);
+    MapCore(error).Explaining(error.Message, error.Field);
 
   private static ApiError MapCore(Error error)
   {

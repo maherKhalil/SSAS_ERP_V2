@@ -32,7 +32,8 @@ namespace SSAS.BuildingBlocks.Api.Transport;
 // Measured when this was written: five 401/403 codes exist, and only `branch.scope_denied` has more
 // than one message behind it — so failing closed for all of them costs nothing today.
 public sealed record ApiError(
-  int StatusCode, string Code, bool DetailAllowed = false, string? Detail = null)
+  int StatusCode, string Code, bool DetailAllowed = false, string? Detail = null,
+  string? Field = null)
 {
   // A refusal that is not an authorization decision may always explain itself. Authorization refusals
   // must opt in, one code at a time, with the reason at the declaration.
@@ -59,7 +60,17 @@ public sealed record ApiError(
   public string? VisibleDetail => ShowsDetail ? Detail : null;
 
   // Used by every mapper: keep the code and status, carry this refusal's own message.
-  public ApiError Explaining(string? message) => this with { Detail = message };
+  // ⚠ TWO PRIMITIVES, AND NEITHER IS OPTIONAL (T-269).
+  //
+  // It cannot take the domain `Error`: **this project deliberately references nothing** -- no Domain, no
+  // Application, no module -- because a single ProjectReference would let module vocabulary leak into
+  // every module's transport, and the dependency tests pin that. So the two values cross as primitives.
+  //
+  // **`field` has no default on purpose.** An optional second parameter would let a mapper carry the
+  // message and silently drop the field, which is the failure this whole item exists to prevent -- a
+  // caller unable to tell which input was wrong. Every call site has to decide, and `null` is a decision.
+  public ApiError Explaining(string? message, string? field) =>
+    this with { Detail = message, Field = field };
 }
 
 // ==================================================================================================
@@ -132,7 +143,13 @@ public static class ApiProblems
       {
         ["code"] = error.Code,
         ["correlationId"] = context.Response.Headers["X-Correlation-ID"].ToString(),
-        ["resourceKey"] = resourceKey
-      });
+        ["resourceKey"] = resourceKey,
+
+        // ⚠ ONLY PRESENT WHEN THERE IS ONE. An always-present `field: null` would invite a client
+        // to bind to it, and most refusals name no single input -- a precondition, a conflict, a server
+        // fault. Absent means *mark nothing*, which is different from *mark the field called null*.
+        ["field"] = error.Field
+      }.Where(entry => entry.Value is not null)
+        .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal));
   }
 }

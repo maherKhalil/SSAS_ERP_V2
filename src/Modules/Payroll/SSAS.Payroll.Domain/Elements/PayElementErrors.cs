@@ -12,11 +12,13 @@ public static class PayElementErrors
 
   public static readonly Error InvalidCode = new(
     "Payroll.PayElementCodeInvalid",
-    "A pay element code is required, must be at most 64 characters, and cannot contain control characters.");
+    "A pay element code is required, must be at most 64 characters, and cannot contain control characters.",
+    Field: "code");
 
   public static readonly Error InvalidName = new(
     "Payroll.PayElementNameInvalid",
-    "A pay element name is required and must be at most 256 characters.");
+    "A pay element name is required and must be at most 256 characters.",
+    Field: "name");
 
   public static readonly Error DuplicateCode = new(
     "Payroll.PayElementCodeConflict",

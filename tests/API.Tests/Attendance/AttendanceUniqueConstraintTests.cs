@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using SSAS.Attendance.Application.Permissions;
 using SSAS.Platform.Domain;
@@ -62,6 +63,31 @@ public sealed class AttendanceUniqueConstraintTests(AttendanceApiTestHost host)
   // a holiday added by one test is still there for the next — and the DOMAIN refuses a duplicate date
   // before the save is ever attempted. Sharing a date made this class assert the domain's duplicate rule
   // while believing it was asserting the persistence one, and it answered 409 for the wrong reason.
+  // ⚠ THE DETAIL REACHES THE CALLER, END TO END (T-261).
+  //
+  // Asserted through a real request rather than on `ApiError` in isolation, because the message has to
+  // survive three hops it did not used to make: the mapper attaching it, `ApiError` carrying it, and
+  // `ApiProblems` choosing to render it. A unit test on the record proves none of that.
+  [Fact]
+  public async Task A_refusal_now_explains_itself_in_the_problem_document()
+  {
+    host.ResetToAuthorizedState();
+    host.UnitOfWork.Failure = IdentityAccessErrors.UniqueConstraintViolation;
+
+    var response = await AddHoliday("2026-09-14");
+    var body = await response.Content.ReadAsStringAsync();
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+    using var document = JsonDocument.Parse(body);
+    var detail = document.RootElement.GetProperty("detail").GetString();
+
+    // The domain message for `Persistence.UniqueConstraint`. Before T-261 the response carried no
+    // `detail` member at all and this line threw rather than failing on a value.
+    Assert.False(string.IsNullOrWhiteSpace(detail));
+    Assert.Contains("already exists", detail!, StringComparison.OrdinalIgnoreCase);
+  }
+
   private async Task<HttpResponseMessage> AddHoliday(string holidayDate)
   {
     var request = AttendanceApiTestHost.Request(

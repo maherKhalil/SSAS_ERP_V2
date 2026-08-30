@@ -83,7 +83,25 @@ public static class PositionApiErrorMapper
   // and a race on either index means the same thing to the caller — somebody got there first. The code
   // conflict is the honest default for that, and no analog of the department's `TranslateManagerConflict`
   // is needed because no route here has a second unique constraint with a different meaning.
-  public static ApiError MapPosition(Error error)
+  // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
+  //
+  // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
+  // see the original `Error`. Attaching the message to the result is one edit per mapper; passing it
+  // alongside would have been ninety-six.
+  //
+  // `ApiError.ShowsDetail` decides whether it reaches the caller: an authorization refusal (401/403)
+  // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
+  // it and showing them would separate a branch that does not exist from one that is forbidden.
+  public static ApiError MapPosition(Error error) =>
+    MapPositionCore(error).Explaining(error.Message);
+
+  public static ApiError MapJobGrade(Error error) =>
+    MapJobGradeCore(error).Explaining(error.Message);
+
+  public static ApiError MapSalaryGrade(Error error) =>
+    MapSalaryGradeCore(error).Explaining(error.Message);
+
+  private static ApiError MapPositionCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -107,7 +125,7 @@ public static class PositionApiErrorMapper
     };
   }
 
-  public static ApiError MapJobGrade(Error error)
+  private static ApiError MapJobGradeCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -135,7 +153,7 @@ public static class PositionApiErrorMapper
     };
   }
 
-  public static ApiError MapSalaryGrade(Error error)
+  private static ApiError MapSalaryGradeCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 

@@ -216,7 +216,6 @@ public sealed class GlPostingChainSqlServerTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

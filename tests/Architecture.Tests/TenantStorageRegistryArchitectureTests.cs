@@ -570,7 +570,6 @@ public sealed class TenantStorageRegistryArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

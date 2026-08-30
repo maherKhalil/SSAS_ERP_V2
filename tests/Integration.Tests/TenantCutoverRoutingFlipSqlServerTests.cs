@@ -1010,7 +1010,6 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
     public string? UserId => "cutover-flip-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

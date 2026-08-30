@@ -259,7 +259,6 @@ public sealed class UserEmployeeResolverSeamTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

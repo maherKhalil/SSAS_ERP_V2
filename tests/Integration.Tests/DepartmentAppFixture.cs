@@ -446,7 +446,6 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 
@@ -817,7 +816,6 @@ internal sealed class DepartmentGraph : IAsyncDisposable
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

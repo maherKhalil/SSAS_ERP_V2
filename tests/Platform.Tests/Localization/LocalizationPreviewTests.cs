@@ -55,7 +55,6 @@ public sealed class LocalizationPreviewTests
     public string? UserId => "preview-user";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

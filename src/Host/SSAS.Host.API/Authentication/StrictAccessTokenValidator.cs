@@ -35,6 +35,16 @@ public static class StrictAccessTokenValidator
     JwtClaimTypes.TenantId, JwtClaimTypes.TenantUserId, JwtClaimTypes.Role, JwtClaimTypes.CompanyId
   ];
 
+  // A tenant token must carry none of these either. THIS IS NOT A GENERAL OUT-OF-SET REJECTION and is not
+  // a guess about future claims: `ADR-025` decision 4 names `company_id` BY HAND and makes the prohibition
+  // binding rather than advisory, because a claim is a client-presentable assertion of scope that survives
+  // revocation until the token expires. `ICompanySelection` carries the same sentence at the abstraction
+  // the header legitimately feeds.
+  //
+  // The guard previously existed only on the PLATFORM plane -- where the claim was never plausible -- and
+  // was absent on the plane the prohibition actually names.
+  private static readonly string[] TenantForbiddenClaims = [JwtClaimTypes.CompanyId];
+
   public static Task ValidateAsync(TokenValidatedContext context)
   {
     var principal = context.Principal;
@@ -86,6 +96,7 @@ public static class StrictAccessTokenValidator
 
   private static bool IsValidTenantProfile(ClaimsPrincipal principal) =>
     !TenantCriticalClaims.Any(type => principal.FindAll(type).Count() != 1) &&
+    TenantForbiddenClaims.All(type => !principal.FindAll(type).Any()) &&
     !string.IsNullOrWhiteSpace(principal.FindFirstValue(JwtClaimTypes.Subject)) &&
     TryPositive(principal.FindFirstValue(JwtClaimTypes.IdentityId)) &&
     TryPositive(principal.FindFirstValue(JwtClaimTypes.TenantUserId)) &&

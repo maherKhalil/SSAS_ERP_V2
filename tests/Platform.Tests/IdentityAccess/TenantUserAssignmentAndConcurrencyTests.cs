@@ -229,7 +229,6 @@ public sealed class TenantUserAssignmentAndConcurrencyTests
 
     public string? Email => "actor@example.com";
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 
@@ -248,7 +247,6 @@ public sealed class TenantUserAssignmentAndConcurrencyTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

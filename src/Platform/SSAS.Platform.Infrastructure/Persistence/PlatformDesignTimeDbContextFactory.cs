@@ -29,7 +29,6 @@ public sealed class PlatformDesignTimeDbContextFactory : IDesignTimeDbContextFac
     public string? UserId => "migration";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

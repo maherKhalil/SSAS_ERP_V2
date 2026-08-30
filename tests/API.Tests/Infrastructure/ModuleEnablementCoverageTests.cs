@@ -57,8 +57,14 @@ public sealed class ModuleEnablementCoverageTests(HostWebApplicationFactory fact
   //
   // A host that mapped nothing, or a metadata change that stopped exposing `MethodInfo`, would make the two
   // tests below pass while asserting nothing at all. This is the tripwire for that.
+  // ⚠ THE NAME CARRIES THE COUPLING BECAUSE THE NAME IS WHAT A DELETER READS (T-267).
+  // 
+  // // The comment above already said this. A comment must be sought; a name appears in the runner output,
+  // // survives comment-stripping, and is in front of the person holding the delete key at the moment they
+  // // decide. That is the whole difference between documentation and a control.
+  // 
   [Fact]
-  public void The_endpoint_inventory_covers_all_four_modules()
+  public void The_endpoint_scan_finds_all_four_modules_which_is_what_stops_the_gating_test_below_being_vacuous()
   {
     var owners = Endpoints()
       .Select(OwnerOf)

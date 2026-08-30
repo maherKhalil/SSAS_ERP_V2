@@ -46,22 +46,19 @@ public sealed class PersistenceErrorMappingArchitectureTests
 
       foreach (var code in PersistenceCodes)
       {
-        // ⚠ GL IS EXEMPT BY A RECORDED DECISION, NOT BY OVERSIGHT — `DEC-DEP-0027` (T-165).
+        // ⚠ NO MAPPER IS EXEMPT ANY MORE, AND THE EXEMPTION THAT EXISTED IS WORTH REMEMBERING.
         //
-        // GL has **six** unique indexes: account code, fiscal-year code, draft line number, journal
-        // number, one-reversal-per-original, and entry line number. **One arm answers the same thing to
-        // all six** — a duplicate account code would be told a journal with that number already exists.
-        // T-165 ruled that resolution belongs to the caller who knows which index it can reach, and there
-        // **the 500 default is the house rule working rather than the bug.**
+        // GL carried one under `DEC-DEP-0027` (T-165) and this test honoured it by naming the pair. T-245
+        // amended that decision: its six-index argument stands and still forbids any arm from NAMING an
+        // index, but the sentence *"the 500 default is the house rule working"* was overturned, and
+        // `gl.unique_conflict` names no index. So the skip is gone rather than merely unused.
         //
-        // The pair is named here rather than the flat `RecordedUnmapped()` set being consulted, because
-        // that set is union-across-all-sites: consulting it would exempt every module at once and this
-        // guard would assert nothing. `Every_recorded_exemption_is_still_recorded` below is what stops
-        // this copy going stale against the original, which is the `DEC-L-080` hazard.
-        if (Path.GetFileName(file) == "GlApiErrorMapper.cs")
-        {
-          continue;
-        }
+        // **What must not come back is the shape of the first attempt at it.** Consulting
+        // `ModuleErrorMappingArchitectureTests.RecordedUnmapped()` looked like citing the decision instead
+        // of copying it — but that set is a UNION ACROSS ALL SITES, so it would have exempted every module
+        // at once and this guard would have asserted nothing while appearing scrupulous. **A citation that
+        // resolves to a wider set than the one it names is worse than a copy**, because a copy visibly
+        // goes stale and this fails silently.
 
         // An arm, not a mention: the code has to appear on the left of a switch arm. A mapper that merely
         // discusses the code in a comment has not mapped it, and comments about it are common here.
@@ -89,15 +86,19 @@ public sealed class PersistenceErrorMappingArchitectureTests
       "constraint is better where the path is known.");
   }
 
-  // The staleness check for the exemption above. If `DEC-DEP-0027` is ever revisited and GL's entry is
-  // removed from `ModuleErrorMappingArchitectureTests`, this reddens and the skip has to be reconsidered
-  // rather than quietly outliving the decision it cites.
+  // The inverse of the staleness check this test used to carry. While GL was exempt, this asserted the
+  // exemption was still recorded where it was decided; now that T-245 removed it, it asserts the opposite,
+  // so **the two files cannot drift apart in either direction**. If someone re-exempts GL there without
+  // removing the arm here, one of them is wrong and this says which.
   [Fact]
-  public void The_gl_exemption_this_test_honours_is_still_recorded_where_it_was_decided()
+  public void No_site_records_the_persistence_codes_as_deliberately_unmapped_any_more()
   {
-    Assert.Contains(
-      "Persistence.UniqueConstraint",
-      ModuleErrorMappingArchitectureTests.RecordedUnmapped());
+    var recorded = ModuleErrorMappingArchitectureTests.RecordedUnmapped();
+
+    foreach (var code in PersistenceCodes)
+    {
+      Assert.DoesNotContain(code, recorded);
+    }
   }
 
   private static List<string> MapperFiles()

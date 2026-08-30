@@ -155,27 +155,41 @@ public sealed class ModuleErrorMappingArchitectureTests
         typeof(SSAS.GL.Application.Journals.PostJournalDraftCommandHandler),
         typeof(SSAS.GL.Application.Journals.ReverseJournalCommandHandler),
       ],
-      // ---- ⚠ `Persistence.UniqueConstraint` STAYS UNMAPPED DELIBERATELY, AND A MODULE-WIDE ARM WOULD BE
-      // A CONFIDENT WRONG ANSWER (T-165).
+      // ---- ⚠ `Persistence.UniqueConstraint` WAS EXEMPT HERE AND NO LONGER IS — `DEC-DEP-0027` AMENDED BY
+      // T-245. The original reasoning is kept, because a decision that was amended should read as amended
+      // rather than as though it never said otherwise.
       //
-      // **GL has SIX unique indexes**: account code, fiscal-year code, draft line number, journal number,
-      // one-reversal-per-original, and entry line number. **One generic arm answers the same message to
-      // all six** — a duplicate account code would be told *"a journal with this number already exists in
-      // this fiscal year"*, and a double-reversal race would be told it too, when that condition owns
-      // `Gl.JournalAlreadyReversed`.
+      // **WHAT T-165 SAID, AND MOST OF IT STANDS.** GL has **six** unique indexes: account code,
+      // fiscal-year code, draft line number, journal number, one-reversal-per-original, and entry line
+      // number. **One generic arm answers the same message to all six** — a duplicate account code would
+      // be told *"a journal with this number already exists in this fiscal year"*, and a double-reversal
+      // race would be told it too, when that condition owns `Gl.JournalAlreadyReversed`. **That objection
+      // was right, and it is why no arm here may ever NAME an index.**
       //
-      // **The 500 default is not the bug here; it is the house rule working.** `GlApiErrorMapper` says so
-      // in its own words, and it is what made this defect findable at all.
-      //
-      // **`DEC-DEP-0027`: resolved by the caller who knows the operation.** `PostJournalDraftCommandHandler`
-      // translates it to `JournalErrors.NumberConflict` because it can reach exactly one index — the
-      // reversal index is FILTERED to `ReversesJournalEntryId IS NOT NULL`, which a posting never sets.
-      //
-      // ⚠ **`ReverseJournalCommandHandler` can reach TWO and is therefore NOT translated** (T-165
-      // establish): it takes a journal number AND writes the reversal link, and
+      // **`DEC-DEP-0027`: resolved by the caller who knows the operation** — unchanged and still primary.
+      // `PostJournalDraftCommandHandler` translates it to `JournalErrors.NumberConflict` because it can
+      // reach exactly one index: the reversal index is FILTERED to `ReversesJournalEntryId IS NOT NULL`,
+      // which a posting never sets. **`ReverseJournalCommandHandler` can reach TWO and is therefore still
+      // NOT translated** — it takes a journal number AND writes the reversal link, and
       // `IdentityAccessErrors.UniqueConstraintViolation` is a static error carrying no index name. **A
       // handler that cannot tell which index it hit must not name one.**
-      ["Persistence.UniqueConstraint"]),
+      //
+      // ---- WHAT T-245 OVERTURNED IS ONE SENTENCE.
+      //
+      // T-165 also said *"the 500 default is not the bug here; it is the house rule working"*. **A 500 is
+      // not a silence, it is a WRONG ASSERTION** — it tells the caller the server broke when nothing
+      // broke, sends them to report a bug rather than examine their input, and inflates the single metric
+      // an operator pages on.
+      //
+      // ⚠ **AND THE FORCING-FUNCTION READING IS REFUTED BY THIS REPOSITORY'S OWN HISTORY.** T-171, T-173
+      // and T-176 each rediscovered this exact class and repaired one path apiece, each leaving a comment
+      // recording that the loser *"answered 500 for a plain business conflict"*. **A wrong status kept as
+      // a reminder reminded nobody** — it shipped 500s until someone tripped over it a fourth time.
+      //
+      // `GlApiErrorMapper.UniqueConflict` is `gl.unique_conflict`. **It names no index, so it satisfies
+      // the principle above rather than contradicting it**, and it fires only where no handler resolved
+      // the context: a floor under the unclassified, not a switch pretending to know.
+      []),
 
     new("PayrollApiErrorMapper",
       Path.Combine("src", "Modules", "Payroll", "SSAS.Payroll.API", "PayrollApiErrorMapper.cs"),

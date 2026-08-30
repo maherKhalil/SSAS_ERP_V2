@@ -268,8 +268,14 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   //
   // `NextJournalNumberAsync` is a read-then-write and `UX_GlJournalEntries_Tenant_Company_Year_Number`
   // decides the race at commit. **The loser used to answer 500**: the unit of work returns the generic
-  // `Persistence.UniqueConstraint`, `GlApiErrorMapper` has no arm for it, and the default is
+  // `Persistence.UniqueConstraint`, `GlApiErrorMapper` had no arm for it, and the default was
   // `WriteFailure` — while `Gl.JournalNumberConflict`, mapped to 409, was returned by nothing.
+  //
+  // ⚠ **THE SECOND HALF OF THAT SENTENCE STOPPED BEING TRUE IN T-245**, and this test is why it still
+  // matters. The mapper now has a generic `Persistence.UniqueConstraint` arm, so an untranslated race here
+  // would answer 409 `gl.unique_conflict` rather than 500 — **which means a broken translation no longer
+  // announces itself with a server error.** Asserting the CODE rather than the status is what keeps this
+  // test able to tell "the handler translated it" from "the floor caught it".
   //
   // ⚠ **This asserts the STATUS AND THE CODE, and the code is the load-bearing half.** A 409 alone would
   // also be produced by an inactive account or an already-reversed journal; only `gl.conflict` arriving

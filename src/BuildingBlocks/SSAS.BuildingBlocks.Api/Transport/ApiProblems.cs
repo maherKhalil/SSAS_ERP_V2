@@ -148,6 +148,8 @@ public static class ApiProblems
         // ⚠ ONLY PRESENT WHEN THERE IS ONE. An always-present `field: null` would invite a client
         // to bind to it, and most refusals name no single input -- a precondition, a conflict, a server
         // fault. Absent means *mark nothing*, which is different from *mark the field called null*.
+        // A JSON PATH into the request body, absent when no single input is at fault. `name`,
+        // `assignments[].payElementId`. See `Error.Field` for the full semantics.
         ["field"] = error.Field
       }.Where(entry => entry.Value is not null)
         .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal));

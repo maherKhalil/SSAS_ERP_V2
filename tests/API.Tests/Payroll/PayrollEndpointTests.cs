@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using SSAS.GL.Contracts.Posting;
 using SSAS.HR.Contracts.Employment;
@@ -83,6 +84,39 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     Assert.Equal("request.invalid", await PayrollApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ⚠ A REFUSAL INSIDE A COLLECTION NAMES THE PATH, NOT JUST THE COLLECTION (T-272).
+  //
+  // `field` was a flat property name until this, and a flat name cannot address an element: an assignment
+  // with an empty pay element is wrong at `assignments[].payElementId`, not at `assignments`. **This is
+  // where attribution is worth most** -- a caller sending ten assignments needs to know which property of
+  // an element is at fault, and `request.invalid` alone tells them nothing at all.
+  //
+  // Asserted through a real request because the path crosses the guard that raises it, the mapper, the
+  // projection and serialization -- and the architecture guard proves only that it RESOLVES, not that it
+  // travels.
+  [Fact]
+  public async Task A_refusal_inside_a_collection_names_the_path_to_the_element_property()
+  {
+    host.ResetToAuthorizedState();
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post,
+      "/api/payroll/employees/44444444-4444-4444-4444-444444444444/compensation",
+      host.TokenWith(AllPermissions),
+      """
+      {"companyId":"22222222-2222-2222-2222-222222222222","effectiveFromUtc":"2026-01-01T00:00:00Z",
+       "baseAmount":5000,"wasOutsideGradeBand":false,
+       "assignments":[{"payElementId":"00000000-0000-0000-0000-000000000000","rateOrAmount":10}]}
+      """));
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Equal("assignments[].payElementId",
+      document.RootElement.GetProperty("field").GetString());
   }
 
   // ================================================================================================

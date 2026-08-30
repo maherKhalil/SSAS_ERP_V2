@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using SSAS.BuildingBlocks.Domain;
@@ -5,97 +6,105 @@ using SSAS.BuildingBlocks.Domain;
 namespace SSAS.Architecture.Tests;
 
 // ==================================================================================================
-// EVERY `Error.Field` NAMES A PROPERTY THE WIRE CONTRACT ACTUALLY DECLARES (T-269, corrected T-270).
+// EVERY `Error.Field` RESOLVES AS A JSON PATH INTO THE REQUEST BODY (T-269, T-270, path form T-272).
 // ==================================================================================================
 //
 // 129 domain codes collapse into the single wire code `request.invalid`. The message travels, so a human
 // can read what went wrong — but **a form cannot: it must know which input to mark, and it should not be
 // parsing prose to find out.** `Field` is the machine-readable half.
 //
-// ---- ⚠ THIS VERIFIED THE WRONG TYPE AND AGREED BY LUCK.
+// ---- WHY A PATH RATHER THAN A NAME.
 //
-// T-269 checked each field against the **Application command** and camel-cased the property name to derive
-// the serialized one. That agreed for all sixteen rows — **by coincidence, not by construction.** The
-// serialized name is not derived at all: every request record declares it outright with
-// `[property: JsonPropertyName("...")]`, and the endpoint maps that record onto the command. The two can
-// diverge at any time and the old check would not have noticed.
+// A flat name cannot address an element of a collection. `CreateJournalDraftRequest` carries `lines`,
+// `RecordCompensationRequest` carries `assignments`, and an error raised inside
+// `foreach (var assignment in assignments)` concerns `assignments[].payElementId` — **a property of an
+// element, not a property of the body.**
 //
-// **A guard that gets the right answer from the wrong type is worse than a missing guard, because it reads
-// as coverage.** It now verifies against the transport record and reads the declared name rather than
-// inventing one.
+// **And that is where attribution is worth MOST, not least.** A caller editing a journal of twenty lines
+// needs to know which line far more than a caller with one bad `name` needs the word `name`. The flat form
+// failed hardest exactly where it mattered.
 //
-// That the declaration is what matters is not a style preference here — the header of
-// `AttendanceTransportContracts` records two shipped defects caused by its absence: GL once shipped request
-// records with no `JsonPropertyName` and **every GL write route answered 400** while routes, handlers,
-// domain and mapper were all correct.
+// ---- ⚠ AND A SINGLE SEGMENT IS ALREADY A VALID PATH, WHICH IS WHY THIS COST NOTHING TO ADOPT.
+//
+// `name` means today what it meant before. All 38 rows written under the flat form remain valid unchanged;
+// this widened the contract rather than changing it.
+//
+// ---- THE SEMANTICS A CLIENT CAN RELY ON.
+//
+//   * segments are separated by `.` and name **serialized** properties, never CLR ones
+//   * `[]` marks a collection segment: `assignments[].payElementId` is *that property of some element*
+//   * **an index appears only when the raising code knows it.** Today no domain guard tracks a loop index,
+//     so `[]` is always empty — and an empty `[]` is honest where a fabricated `[0]` would not be
+//   * absent entirely means **no single input is at fault** — mark nothing
 //
 // ---- AND THE GUARD RUNS IN THREE DIRECTIONS, BECAUSE ONE ALONE IS SILENTLY PARTIAL.
 //
-// A map verified by reflection catches a **renamed property**. It cannot catch a **missing row**: a code
-// gains a `Field`, nobody adds an entry, and a one-directional guard never checks it — green, and quieter
-// than before. Nor a **stale row**, whose code stopped carrying a field and which now verifies nothing
-// while looking like coverage.
+// A map verified by reflection catches a **renamed property**. It cannot catch a **missing row** — a code
+// gains a `Field`, nobody adds an entry, and a one-directional guard never checks it. Nor a **stale row**,
+// whose code stopped carrying a field and which now verifies nothing while looking like coverage.
 public sealed class FieldAttributionArchitectureTests
 {
-  // code -> the serialized field, the REQUEST RECORD that declares it, and the property carrying it.
+  // code -> the JSON path, and the request record it is a path INTO.
   //
-  // The record is named because a wrong one fails the declaration check below — which is what reduces the
-  // manual judgement to "which request carries this input", verifiable by eye against the contract file.
-  private static readonly (string Code, string Field, string Request, string Property)[] Attribution =
+  // There is no separate property column any more: the path IS the property reference, resolved segment by
+  // segment against the declared `JsonPropertyName` of each type along the way. A column restating the last
+  // segment could only drift from it.
+  private static readonly (string Code, string Field, string Request)[] Attribution =
   [
     // ---- Attendance
-    ("Attendance.HolidayNameInvalid", "name", "AddHolidayRequest", "Name"),
-    ("Attendance.WorkingCalendarNameInvalid", "name", "CreateWorkingCalendarRequest", "Name"),
-    ("Attendance.WorkingCalendarCompanyRequired", "companyId", "CreateWorkingCalendarRequest", "CompanyId"),
-    ("Attendance.WeekendPatternInvalid", "weekendDays", "CreateWorkingCalendarRequest", "WeekendDays"),
-    ("Attendance.WeekendPatternCoversEveryDay", "weekendDays", "CreateWorkingCalendarRequest", "WeekendDays"),
-    ("Attendance.PeriodNameInvalid", "name", "CreateAttendancePeriodRequest", "Name"),
-    ("Attendance.PeriodCompanyRequired", "companyId", "CreateAttendancePeriodRequest", "CompanyId"),
-    ("Attendance.RecordNoteInvalid", "note", "RecordAttendanceRequest", "Note"),
-    ("Attendance.OvertimeTierInvalid", "overtimeTier", "RecordAttendanceRequest", "OvertimeTier"),
-    ("Attendance.RecordCompanyRequired", "companyId", "RecordAttendanceRequest", "CompanyId"),
-    ("Attendance.RecordEmployeeRequired", "employeeId", "RecordAttendanceRequest", "EmployeeId"),
-    ("Attendance.AdjustmentNoteRequired", "note", "AdjustAttendanceRequest", "Note"),
-    ("Attendance.LeaveTypeCodeInvalid", "code", "CreateLeaveTypeRequest", "Code"),
-    ("Attendance.LeaveTypeNameInvalid", "name", "CreateLeaveTypeRequest", "Name"),
-    ("Attendance.LeaveBehaviourInvalid", "behaviour", "CreateLeaveTypeRequest", "Behaviour"),
-    ("Attendance.LeaveCompanyRequired", "companyId", "CreateLeaveTypeRequest", "CompanyId"),
-    ("Attendance.LeaveDecisionNoteInvalid", "decisionNote", "DecideLeaveRequestRequest", "DecisionNote"),
-    ("Attendance.LeaveBalanceYearInvalid", "periodYear", "SetLeaveEntitlementRequest", "PeriodYear"),
-    ("Attendance.LeaveEntitlementNegative", "entitlementQuantity", "SetLeaveEntitlementRequest",
-      "EntitlementQuantity"),
+    ("Attendance.HolidayNameInvalid", "name", "AddHolidayRequest"),
+    ("Attendance.WorkingCalendarNameInvalid", "name", "CreateWorkingCalendarRequest"),
+    ("Attendance.WorkingCalendarCompanyRequired", "companyId", "CreateWorkingCalendarRequest"),
+    ("Attendance.WeekendPatternInvalid", "weekendDays", "CreateWorkingCalendarRequest"),
+    ("Attendance.WeekendPatternCoversEveryDay", "weekendDays", "CreateWorkingCalendarRequest"),
+    ("Attendance.PeriodNameInvalid", "name", "CreateAttendancePeriodRequest"),
+    ("Attendance.PeriodCompanyRequired", "companyId", "CreateAttendancePeriodRequest"),
+    ("Attendance.RecordNoteInvalid", "note", "RecordAttendanceRequest"),
+    ("Attendance.OvertimeTierInvalid", "overtimeTier", "RecordAttendanceRequest"),
+    ("Attendance.RecordCompanyRequired", "companyId", "RecordAttendanceRequest"),
+    ("Attendance.RecordEmployeeRequired", "employeeId", "RecordAttendanceRequest"),
+    ("Attendance.AdjustmentNoteRequired", "note", "AdjustAttendanceRequest"),
+    ("Attendance.LeaveTypeCodeInvalid", "code", "CreateLeaveTypeRequest"),
+    ("Attendance.LeaveTypeNameInvalid", "name", "CreateLeaveTypeRequest"),
+    ("Attendance.LeaveBehaviourInvalid", "behaviour", "CreateLeaveTypeRequest"),
+    ("Attendance.LeaveCompanyRequired", "companyId", "CreateLeaveTypeRequest"),
+    ("Attendance.LeaveDecisionNoteInvalid", "decisionNote", "DecideLeaveRequestRequest"),
+    ("Attendance.LeaveBalanceYearInvalid", "periodYear", "SetLeaveEntitlementRequest"),
+    ("Attendance.LeaveEntitlementNegative", "entitlementQuantity", "SetLeaveEntitlementRequest"),
 
     // ---- General Ledger
-    ("Gl.AccountCodeInvalid", "code", "CreateAccountRequest", "Code"),
-    ("Gl.AccountNameInvalid", "name", "CreateAccountRequest", "Name"),
-    ("Gl.FiscalYearCodeInvalid", "code", "DefineFiscalYearRequest", "Code"),
-    ("Gl.JournalDescriptionInvalid", "description", "CreateJournalDraftRequest", "Description"),
-    ("Gl.JournalReferenceInvalid", "reference", "CreateJournalDraftRequest", "Reference"),
-    ("Gl.FiscalYearHasNoPeriods", "periods", "DefineFiscalYearRequest", "Periods"),
+    ("Gl.AccountCodeInvalid", "code", "CreateAccountRequest"),
+    ("Gl.AccountNameInvalid", "name", "CreateAccountRequest"),
+    ("Gl.FiscalYearCodeInvalid", "code", "DefineFiscalYearRequest"),
+    ("Gl.FiscalYearHasNoPeriods", "periods", "DefineFiscalYearRequest"),
+    ("Gl.JournalDescriptionInvalid", "description", "CreateJournalDraftRequest"),
+    ("Gl.JournalReferenceInvalid", "reference", "CreateJournalDraftRequest"),
 
     // ---- Payroll
-    ("Payroll.PayElementCodeInvalid", "code", "CreatePayElementRequest", "Code"),
-    ("Payroll.PayElementNameInvalid", "name", "CreatePayElementRequest", "Name"),
-    ("Payroll.PeriodNameInvalid", "name", "GeneratePayrollPeriodRequest", "Name"),
-    ("Payroll.PeriodCompanyRequired", "companyId", "GeneratePayrollPeriodRequest", "CompanyId"),
-    ("Payroll.PayElementAccountRequired", "glAccountId", "CreatePayElementRequest", "GlAccountId"),
-    ("Payroll.PayElementAmountNegative", "defaultRateOrAmount", "CreatePayElementRequest",
-      "DefaultRateOrAmount"),
-    ("Payroll.PayElementCalculationOrderInvalid", "calculationOrder", "CreatePayElementRequest",
-      "CalculationOrder"),
-    ("Payroll.RunCompanyRequired", "companyId", "CreatePayrollRunRequest", "CompanyId"),
-    ("Payroll.RunPeriodRequired", "payrollPeriodId", "CreatePayrollRunRequest", "PayrollPeriodId"),
-    ("Payroll.OneOffPaymentAmountNotPositive", "amount", "RecordOneOffPaymentRequest", "Amount"),
-    ("Payroll.OneOffPaymentCompanyRequired", "companyId", "RecordOneOffPaymentRequest", "CompanyId"),
-    ("Payroll.OneOffPaymentPayElementRequired", "payElementId", "RecordOneOffPaymentRequest",
-      "PayElementId"),
-    ("Payroll.OneOffPaymentPeriodRequired", "payrollPeriodId", "RecordOneOffPaymentRequest",
-      "PayrollPeriodId"),
+    ("Payroll.PayElementCodeInvalid", "code", "CreatePayElementRequest"),
+    ("Payroll.PayElementNameInvalid", "name", "CreatePayElementRequest"),
+    ("Payroll.PayElementAccountRequired", "glAccountId", "CreatePayElementRequest"),
+    ("Payroll.PayElementAmountNegative", "defaultRateOrAmount", "CreatePayElementRequest"),
+    ("Payroll.PayElementCalculationOrderInvalid", "calculationOrder", "CreatePayElementRequest"),
+    ("Payroll.PeriodNameInvalid", "name", "GeneratePayrollPeriodRequest"),
+    ("Payroll.PeriodCompanyRequired", "companyId", "GeneratePayrollPeriodRequest"),
+    ("Payroll.RunCompanyRequired", "companyId", "CreatePayrollRunRequest"),
+    ("Payroll.RunPeriodRequired", "payrollPeriodId", "CreatePayrollRunRequest"),
+    ("Payroll.OneOffPaymentAmountNotPositive", "amount", "RecordOneOffPaymentRequest"),
+    ("Payroll.OneOffPaymentCompanyRequired", "companyId", "RecordOneOffPaymentRequest"),
+    ("Payroll.OneOffPaymentPayElementRequired", "payElementId", "RecordOneOffPaymentRequest"),
+    ("Payroll.OneOffPaymentPeriodRequired", "payrollPeriodId", "RecordOneOffPaymentRequest"),
+
+    // ---- Payroll, element-level: the two paths the flat form could not express at all
+    ("Payroll.CompensationAssignmentElementRequired", "assignments[].payElementId",
+      "RecordCompensationRequest"),
+    ("Payroll.CompensationAssignmentAmountNegative", "assignments[].rateOrAmount",
+      "RecordCompensationRequest"),
   ];
 
-  // ---- DIRECTION ONE: the wire contract still declares the name the field claims.
+  // ---- DIRECTION ONE: every path still resolves against the wire contract.
   [Fact]
-  public void Every_attributed_field_matches_a_name_the_request_record_declares()
+  public void Every_attributed_field_resolves_as_a_path_into_its_request_record()
   {
     var requests = ApiTypes();
 
@@ -106,7 +115,7 @@ public sealed class FieldAttributionArchitectureTests
       "degraded and every failure below would blame the map for a broken scan.");
 
     var broken = new List<string>();
-    foreach (var (code, field, request, property) in Attribution)
+    foreach (var (code, field, request) in Attribution)
     {
       var type = requests.FirstOrDefault(candidate =>
         string.Equals(candidate.Name, request, StringComparison.Ordinal));
@@ -117,32 +126,72 @@ public sealed class FieldAttributionArchitectureTests
         continue;
       }
 
-      var member = type.GetProperty(property, BindingFlags.Public | BindingFlags.Instance);
-      if (member is null)
+      if (Resolve(type, field) is { } failure)
       {
-        broken.Add($"{code}: {request} has no property {property}");
-        continue;
-      }
-
-      // ⚠ THE DECLARED NAME, NOT A CAMEL-CASED GUESS. `StrictRequestReader` deserializes with
-      // case-sensitive default options, so the attribute is what a caller must actually send.
-      var declared = member.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name;
-      if (declared is null)
-      {
-        broken.Add($"{code}: {request}.{property} declares no JsonPropertyName, so nothing fixes its " +
-          "wire name — see the AttendanceTransportContracts header for what that costs");
-        continue;
-      }
-
-      if (!string.Equals(field, declared, StringComparison.Ordinal))
-      {
-        broken.Add($"{code}: field \"{field}\" but {request}.{property} is declared as \"{declared}\"");
+        broken.Add($"{code}: {failure}");
       }
     }
 
     Assert.True(broken.Count == 0,
-      "a field attribution no longer matches the wire contract that carries it, so a form would mark " +
+      "a field no longer resolves against the wire contract that carries it, so a form would mark " +
       "nothing or mark the wrong input:\n  " + string.Join("\n  ", broken));
+  }
+
+  // Walks the path one segment at a time. Returns null when it resolves, or the reason it did not.
+  //
+  // ⚠ Each segment is matched on the DECLARED `JsonPropertyName`, never on the CLR name.
+  // `StrictRequestReader` deserializes with case-sensitive default options, so the attribute is what a
+  // caller must actually send — and a CLR-name match would agree with it only by convention.
+  private static string? Resolve(Type request, string path)
+  {
+    var current = request;
+    foreach (var raw in path.Split('.'))
+    {
+      var collection = raw.EndsWith(']');
+      var segment = collection ? raw[..raw.IndexOf('[', StringComparison.Ordinal)] : raw;
+
+      var member = current
+        .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        .FirstOrDefault(property =>
+          string.Equals(property.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name, segment,
+            StringComparison.Ordinal));
+
+      if (member is null)
+      {
+        return $"{current.Name} declares no JsonPropertyName \"{segment}\" (from path \"{path}\")";
+      }
+
+      if (!collection)
+      {
+        current = member.PropertyType;
+        continue;
+      }
+
+      if (ElementTypeOf(member.PropertyType) is not { } element)
+      {
+        return $"{current.Name}.{segment} is marked as a collection in \"{path}\" but is " +
+          $"{member.PropertyType.Name}, which is not one";
+      }
+
+      current = element;
+    }
+
+    return null;
+  }
+
+  private static Type? ElementTypeOf(Type type)
+  {
+    if (type.IsArray)
+    {
+      return type.GetElementType();
+    }
+
+    if (!typeof(IEnumerable).IsAssignableFrom(type) || type == typeof(string))
+    {
+      return null;
+    }
+
+    return type.IsGenericType ? type.GetGenericArguments().FirstOrDefault() : null;
   }
 
   // ---- ⚠ DIRECTION TWO: no error carries a field this map does not know about.
@@ -151,8 +200,8 @@ public sealed class FieldAttributionArchitectureTests
   {
     var carrying = DeclaredErrors().Where(error => error.Field is not null).ToArray();
 
-    Assert.True(carrying.Length >= 38,
-      $"only {carrying.Length} errors carrying a field were discovered; 38 set one, so the reflection " +
+    Assert.True(carrying.Length >= 40,
+      $"only {carrying.Length} errors carrying a field were discovered; 40 set one, so the reflection " +
       "walk has degraded and 'all are mapped' would be a statement about nothing.");
 
     var unmapped = carrying
@@ -164,7 +213,7 @@ public sealed class FieldAttributionArchitectureTests
     Assert.True(unmapped.Length == 0,
       "an Error names an input but nothing verifies that the name is real:\n  " +
       string.Join("\n  ", unmapped) +
-      "\n\nAdd a row naming the request record and property it refers to.");
+      "\n\nAdd a row naming the request record its path runs into.");
   }
 
   // ---- AND THE MAP DESCRIBES ONLY ERRORS THAT EXIST.

@@ -1,5 +1,6 @@
 ﻿using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.HR.API.Positions;
 
 namespace SSAS.HR.API.Employees;
 
@@ -29,6 +30,18 @@ namespace SSAS.HR.API.Employees;
 // hide it; a 500 is visible and gets fixed. Nothing is guessed from the code's shape.
 public static class EmployeeApiErrorMapper
 {
+  // ⚠ THE FORMAT GATE HAS ITS OWN CODE BECAUSE THE DECISION REQUIRES THE ANSWER TO NAME CSV (T-274).
+  //
+  // `DEC-DOC-0001`: *"Import accepts UTF-8 CSV only in V1... The response to an unsupported format is
+  // `400`, naming CSV."* `request.invalid` names nothing, so the route was answering a caller who sent
+  // XLSX with the same code as one who sent a CSV with a bad header -- and FP-009's contract table
+  // separates those two rows deliberately.
+  //
+  // Declared here rather than in the shared `ApiErrors` for the reason `company.scope_denied` is declared
+  // per mapper: `The_shared_api_project_names_no_business_concept` refuses a business noun in
+  // BuildingBlocks, and `employee_import` is one.
+  public static readonly ApiError ImportFormatUnsupported = new(400, "employee_import.format_unsupported");
+
   public static readonly ApiError NotFound = new(404, "employee.not_found");
   public static readonly ApiError NumberConflict = new(409, "employee.number_conflict");
   public static readonly ApiError NationalIdConflict = new(409, "employee.national_id_conflict");
@@ -171,7 +184,7 @@ public static class EmployeeApiErrorMapper
       "Employee.PositionRequired" => ApiErrors.RequestInvalid,
       "Employee.PositionNotFound" => ApiErrors.RequestInvalid,
       "Employee.PositionInactive" => ApiErrors.RequestInvalid,
-      "Employee.PositionUnchanged" => ApiErrors.RequestInvalid,
+      "Employee.PositionUnchanged" => PositionApiErrorMapper.PositionUnchanged,
       "Employee.PositionInDifferentCompany" => ApiErrors.RequestInvalid,
 
       // ---- EXPLICIT DESPITE MATCHING THE DEFAULT, AND THIS ARM IS NOT REDUNDANT.

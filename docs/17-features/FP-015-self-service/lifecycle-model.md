@@ -6,6 +6,28 @@ version: 0.1
 date: 2026-08-27
 ---
 
+## ⚠ AMENDMENT 2026-08-30 — ONE CLAIM IN "WHAT HAS NO LIFECYCLE HERE" HAS EXPIRED
+
+**The states and transitions are verified and hold exactly.** There is no `Status`, `IsActive` or soft-delete
+on the type, and both indexes are unfiltered — `HasFilter` count is **zero** — so *"live is exists"* is
+literally true of the schema.
+
+**The expired sentence:** *"**Employment type.** Does not exist in the product (`OD-SS-0003`'s finding) and
+belongs to FP-006."* **It exists and is fully shipped** — `enum EmploymentType` in `SSAS.HR.Contracts`, a
+**required constructor parameter** on `Employee`, persisted, read back by `EmployeePlacementDirectoryService`,
+with migration `20260829175328_AddEmployeeEmploymentType` dated **two days after this document was written.**
+
+⚠ **But only half that sentence expired, and the half that held is the more important one.** It says two
+things: *"does not exist"* — a **fact**, now false — and *"must not be built here; it belongs to FP-006"* — a
+**rule**, which was obeyed: `EmploymentType` was built in HR by T-153, not in this package.
+
+**A sentence of the form "X does not exist, and if it arrives it belongs elsewhere" is half prediction and
+half instruction, and the two age at completely different rates.** The prediction had a shelf life of two
+days. The instruction is still correct and still binding. **When re-reading a specification, separate those
+before discarding the sentence** — deleting it for being stale would have thrown away the rule along with
+the fact.
+
+
 # Lifecycle Model — FP-015
 
 **One object has a lifecycle in this package: the `UserEmployeeLink`.** Self-service itself is a read

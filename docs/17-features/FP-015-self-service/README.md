@@ -7,57 +7,33 @@ version: 0.1
 date: 2026-08-27
 ---
 
-## ⚠ Provenance of the documents added 2026-08-30
+## Provenance of the documents added 2026-08-30 — all five re-verified
 
-Five design documents reached this package on 2026-08-30 from a branch opened **2026-08-27**, unmerged for
-**384 commits**. They are landed rather than discarded because their measurements held up — **but they were
-not all re-verified, and which is which matters.**
+Five design documents reached this package on 2026-08-30 from a branch opened **2026-08-27** and unmerged for
+**384 commits**. **All five have now been checked against the tree, one at a time.**
 
-| document | state |
+| document | result |
 |---|---|
-| `authorization-model.md` | **Re-verified against the tree.** §§1, 3, 4, 6 confirmed line by line. **§§2, 5, 7, 8 were overtaken by work done since — see the amendment at the head of that file, and read it before its findings.** |
-| `api-contracts.md` | **Re-verified 2026-08-30.** §§1, 2, 3 hold. **§§4 and 5 name absences since closed; one citation corrected in place** — see the amendment at the head of that file. |
-| `data-model.md` | **Re-verified 2026-08-30 — NO discrepancies, the first such.** The table it specifies is implemented column for column, both unique index names match, and its one named gap (`TenantModelResidencyTests`) is closed. |
-| `domain-model.md` | **Not re-verified.** As written 2026-08-27. |
-| `lifecycle-model.md` | **Not re-verified.** As written 2026-08-27. |
+| `authorization-model.md` | **4 discrepancies.** §§1, 3, 4, 6 hold. **§§2, 5, 7, 8 were overtaken** — see the amendment at the head of that file. |
+| `api-contracts.md` | **3.** §§1, 2, 3 hold. §§4 and 5 name absences since closed; one citation corrected in place. |
+| `data-model.md` | **0.** The table it specifies is implemented column for column. |
+| `domain-model.md` | **0.** Type, base class, members, and the physical-removal rule all match; the mistake it names as most likely was not made. |
+| `lifecycle-model.md` | **1.** States and transitions hold. One "what has no lifecycle here" claim expired — see its amendment. |
 
-**Treat the four unverified documents as a draft of that date, not as a current description of the tree.**
-The one document that was checked had **four of its eight sections overtaken in three days** — so the base
-rate here is high, and silence about the others is not evidence that they held.
+**⚠ An earlier version of this section warned that "the base rate here is high", extrapolated from the one
+document that had been checked at the time. That was wrong, and it is corrected here rather than quietly
+removed.** Eight discrepancies fell across five documents, **and four of them were in a single file**. Two
+documents were perfect.
 
-**What the check found is worth carrying: every cited line number still resolved 384 commits later.** The
-drift was not decay of citations; it was that things named as ABSENT had since been built. **If these four
-are re-verified later, expect the same shape — the descriptive parts sound, the claims about what is
-missing stale.**
+**What actually predicts staleness is not age. It is whether a section describes what IS or what IS NOT.**
+All eight discrepancies are absence claims — *"no guard asserts…"*, *"appears unimplemented"*, *"none"*,
+*"does not exist in the product"* — and **not one descriptive section in five documents was wrong.** The two
+documents that match the tree perfectly are the two describing a table and a type that **did not exist when
+they were written**, which is the opposite of what "unverified for 384 commits" would suggest.
 
-# FP-015 — Employee Self Service
-
-**Status: DRAFT.** No `OD-SS` decision is ruled except one, recorded below. **No code, no schema,
-nothing implemented.** This package does not become buildable until its owner decisions are ruled and
-[`decisions-ratified.md`](decisions-ratified.md) exists, exactly as FP-014 required.
-
----
-
-# WHY THIS PACKAGE EXISTS — IT IS NOT A ROADMAP ITEM
-
-Self-service is on the roadmap as a bare line. **That is not its authority.** Its authority is that
-**two ratified packages deferred a requirement each, both naming the same missing input, and that
-input now exists.**
-
-```
-OD-PAY-0016   payroll self-service DEFERRED — no identity→employee mapping
-OD-ATT-0013   attendance self-service DEFERRED — "no identity→employee assumption anywhere.
-              Third time deferred; NOW A RECORDED FUTURE PACKAGE."
-ADR-030       Identity-to-Employee Mapping — status: ACCEPTED, 2026-08-25
-```
-
-**FP-015 is that recorded future package, and its stated precondition has fired.**
-
-FP-012 put it most strongly: the mapping *"was flagged as unverified, and **it must not be built
-on**."* That prohibition is lifted by `ADR-030` being `Accepted` — **not by anyone deciding the
-feature is now wanted.** The deferrals were never scoping preferences. `FP-013` recorded the
-distinction explicitly: *"This is `DEC-PAY-0002`'s shape — a missing input, not a scoping
-preference."*
+**And one expired sentence was half rule.** *"Employment type does not exist in the product, and belongs to
+FP-006"* stated a fact that lasted two days and an instruction that was obeyed — the type was built in HR,
+not here. **When re-reading a specification, separate the prediction from the rule before discarding either.**
 
 ## The two requirements this package unblocks, by name
 

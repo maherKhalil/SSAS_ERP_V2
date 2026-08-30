@@ -71,11 +71,26 @@ public sealed class FieldAttributionArchitectureTests
     ("Gl.FiscalYearCodeInvalid", "code", "DefineFiscalYearRequest", "Code"),
     ("Gl.JournalDescriptionInvalid", "description", "CreateJournalDraftRequest", "Description"),
     ("Gl.JournalReferenceInvalid", "reference", "CreateJournalDraftRequest", "Reference"),
+    ("Gl.FiscalYearHasNoPeriods", "periods", "DefineFiscalYearRequest", "Periods"),
 
     // ---- Payroll
     ("Payroll.PayElementCodeInvalid", "code", "CreatePayElementRequest", "Code"),
     ("Payroll.PayElementNameInvalid", "name", "CreatePayElementRequest", "Name"),
     ("Payroll.PeriodNameInvalid", "name", "GeneratePayrollPeriodRequest", "Name"),
+    ("Payroll.PeriodCompanyRequired", "companyId", "GeneratePayrollPeriodRequest", "CompanyId"),
+    ("Payroll.PayElementAccountRequired", "glAccountId", "CreatePayElementRequest", "GlAccountId"),
+    ("Payroll.PayElementAmountNegative", "defaultRateOrAmount", "CreatePayElementRequest",
+      "DefaultRateOrAmount"),
+    ("Payroll.PayElementCalculationOrderInvalid", "calculationOrder", "CreatePayElementRequest",
+      "CalculationOrder"),
+    ("Payroll.RunCompanyRequired", "companyId", "CreatePayrollRunRequest", "CompanyId"),
+    ("Payroll.RunPeriodRequired", "payrollPeriodId", "CreatePayrollRunRequest", "PayrollPeriodId"),
+    ("Payroll.OneOffPaymentAmountNotPositive", "amount", "RecordOneOffPaymentRequest", "Amount"),
+    ("Payroll.OneOffPaymentCompanyRequired", "companyId", "RecordOneOffPaymentRequest", "CompanyId"),
+    ("Payroll.OneOffPaymentPayElementRequired", "payElementId", "RecordOneOffPaymentRequest",
+      "PayElementId"),
+    ("Payroll.OneOffPaymentPeriodRequired", "payrollPeriodId", "RecordOneOffPaymentRequest",
+      "PayrollPeriodId"),
   ];
 
   // ---- DIRECTION ONE: the wire contract still declares the name the field claims.
@@ -136,8 +151,8 @@ public sealed class FieldAttributionArchitectureTests
   {
     var carrying = DeclaredErrors().Where(error => error.Field is not null).ToArray();
 
-    Assert.True(carrying.Length >= 27,
-      $"only {carrying.Length} errors carrying a field were discovered; 27 set one, so the reflection " +
+    Assert.True(carrying.Length >= 38,
+      $"only {carrying.Length} errors carrying a field were discovered; 38 set one, so the reflection " +
       "walk has degraded and 'all are mapped' would be a statement about nothing.");
 
     var unmapped = carrying

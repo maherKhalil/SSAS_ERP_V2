@@ -20,7 +20,8 @@ public static class PayrollErrors
   // ---- PERIODS.
   public static readonly Error PeriodCompanyRequired = new(
     "Payroll.PeriodCompanyRequired",
-    "A payroll period must belong to a company.");
+    "A payroll period must belong to a company.",
+    Field: "companyId");
 
   public static readonly Error PeriodFiscalPeriodRequired = new(
     "Payroll.PeriodFiscalPeriodRequired",
@@ -50,11 +51,13 @@ public static class PayrollErrors
   // ---- RUNS.
   public static readonly Error RunCompanyRequired = new(
     "Payroll.RunCompanyRequired",
-    "A payroll run must belong to a company.");
+    "A payroll run must belong to a company.",
+    Field: "companyId");
 
   public static readonly Error RunPeriodRequired = new(
     "Payroll.RunPeriodRequired",
-    "A payroll run must name a payroll period.");
+    "A payroll run must name a payroll period.",
+    Field: "payrollPeriodId");
 
   public static readonly Error RunNotFound = new(
     "Payroll.RunNotFound",

@@ -1,7 +1,17 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-Nine items that engineering cannot settle on its own. Each carries **what it is**, **the measured facts**,
-**what it blocks**, and **the options**. Where the call is genuinely the owner's there is no recommendation.
+**15 items** that engineering cannot settle on its own — **eleven ERP (1-11) and four HIS (12-15)**. Each
+carries **what it is**, **the measured facts**, **what it blocks**, and **the options**. Where the call is
+genuinely the owner's there is no recommendation.
+
+⚠ **This count is derived from the headings, not incremented.** The line it replaces said *"Nine items"*
+while the file held eleven — **the header is a second summary of the body, and it went stale the moment an
+entry was appended without it.**
+
+**12-15 were added 2026-08-30 because they existed only in `scripts/his-catalogue/MIGRATION-PLAN.md`** — a
+window reading this file alone would have concluded there were eleven decisions when there are fifteen.
+**Their analysis stays in the plan and is pointed at rather than copied**; what lives here is the question
+and what it costs.
 
 **Every number here was re-verified against the tree today.** Three items had moved since they were
 recorded, and one had moved enough to change what the decision is about. Those are marked ⚠ **CHANGED**.
@@ -388,6 +398,51 @@ record that. **Doing nothing leaves a document describing a product that is half
 
 ---
 
+## 12. `GeneralStores` — is it a shared service or an ERP module? — added 2026-08-30 (T-216, T-229)
+
+**What it is.** In the HIS schema, inventory is referenced from Marketing, InPatient, Nursing, Maintenance,
+CSSD, Emergency and Laboratory. Whether it is shared or ERP-owned decides **59 of the 159 crossing foreign
+keys (37%)**, and it also decides whether **7 of the 13 `dbo` rule-encoding views** are ours or theirs.
+
+**Recommendation: shared.** Being referenced by seven clinical modules is correct design, not an accident,
+and it must survive the split. **This needs ratifying, not deriving** — your own framing (*one product, HIS
+with ERP included*) already implies it.
+
+**Analysis:** `scripts/his-catalogue/MIGRATION-PLAN.md`. Not repeated here.
+
+## 13. `ApplicationSetup` — is it shared master data? — added 2026-08-30 (T-216)
+
+**What it is.** Cities, governorates, countries, banks — referenced from both sides and owned by neither.
+Decides **8 crossing edges**.
+
+**Recommendation: shared.** Same footing as 12: ratification rather than a question.
+
+## 14. Who owns the hospital's organisational structure — HR, or the clinical modules? — added 2026-08-30
+
+**What it is.** ⚠ **This is the real architectural question, it decides 63 edges (40% of the seam), and it
+is genuinely open.** `Nursing.Employee` is one person master with two role extensions (`Doctors`,
+`NurseMaster`); `HR.Department` and `HR.SubDepartment` are pointed at from InfectionControl, CSSD, Billing
+and InPatient. **It is referenced in both directions, so it cannot simply follow ERP.**
+
+**No recommendation — this one is argued, not derived.** It is answerable without reading a schema, which
+is why it is worth your time rather than more of ours.
+
+**⚠ It is one decision only if three parts move together.** They are coupled by the edges, not identical:
+the **person master** (38 edges), the **ward and department tree** (14), and **employment reference data**
+(11). Splitting them is legitimate — the person master could sit with HR while the ward tree stays clinical
+— **and the price of each split is that its edge count stays crossing.** So: one decision at 63 edges, or
+up to three with a stated cost for separating them.
+
+## 15. Does the HIS migration proceed at all? — added 2026-08-30
+
+**What it is.** ⚠ **Nothing on this list, and nothing in the plan, has ever asked this.** Decisions 12–14
+all presuppose it. The plan is complete and self-checking, the ERP is unaffected either way, and **no code
+has been written for HIS by instruction** — so the cost of answering "no" is the planning already done and
+nothing further.
+
+**It is recorded because it was never asked, not because it is in doubt.** A prior question that only ever
+lives inside the answers to later ones is how a project acquires a direction nobody chose.
+
 ## What is NOT on this list
 
 **Engineering-owned items are excluded** — guard coverage, test shape, the register's floor, inventory
@@ -401,3 +456,17 @@ convention and is asserted by no test at all.**
 
 **So the open item is Attendance's, not Company's, and it is engineering's to settle** — recorded here only
 so the earlier framing does not outlive the measurement. See `T-130.md`.
+
+**⚠ TEST CADENCE IS EXCLUDED, AND IT WAS ESCALATED ANYWAY.** On 2026-08-30 `NEXT-SESSION.md` listed *"when
+to run the integration suite"* under what waits on the owner, phrased as *"it is their compute and their
+time"*. **That is inside the "test shape" exclusion above** — the loop put a question to the owner that
+this very section assigns to engineering, and the two documents contradicted each other for a day.
+
+**Struck, and recorded rather than quietly removed.** The measured position is 24.2 minutes against 43.9
+(855 passing, board row 1095): not per-task, comfortably a pre-merge or nightly gate where 44 was not.
+**The loop decides it.**
+
+**The general control this section is for: an escalation is a claim that engineering cannot answer
+something, which makes it an absence claim** — and it spends the owner's attention, the one cost in this
+project that appears on no ledger. **Check a new escalation against this list's exclusions before it is
+written, not after.**

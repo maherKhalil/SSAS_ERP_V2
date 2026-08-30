@@ -743,3 +743,42 @@ than porting it**, and it is work the ERP build was always going to do.
 
 **And 17 is a floor on the procedure side, not a ceiling on the effort.** `dbo` holds 9 of the 17 and `dbo`
 is not a module — **its contents need attributing before the number is firm.**
+
+---
+
+## `dbo` attributed, and the rebuild number is coupled to D1 (T-229, 2026-08-30)
+
+The 71 rested on 17 clinical procedures, **nine of which were in `dbo` — which is not a module.** Both
+`dbo` populations are now routed by the schemas their bodies actually touch.
+
+### The 9 `dbo` logic procedures → 7 clinical, 2 utilities
+
+| procedures | routes to |
+|---|---|
+| `data_patientradiologystudy_*` ×3, `data_radioimages_*` ×3 | **Radiology** — misplaced clinical artefacts; a `Radiology` schema exists with 22 tables of its own |
+| `[dbo].[Dailyschadule]` | **Registration** (35 references) |
+| `[dbo].[SPSearch]` | **neither** — the generic SQL execution engine, and a Tier-1 injection interface being removed regardless |
+| `[dbo].[usp_TruncateTablesBySchema]` | **neither** — touches `sys` only |
+
+**So the clinical procedure count is 15, not 17**, and the two utilities belong to no module.
+
+### ⚠ The 13 `dbo` rule-encoding views → 7 of them are GeneralStores, and that couples the answer to D1
+
+| | views |
+|---|---|
+| **GeneralStores** — `V_Transfer`, `V_DirectAddition`, `V_DirectSubtract`, `V_OpenningStock`, `V_PhysicalAdjastment`, `V_SupplierPurchaseDetails`, `V_TransferCycle` | **7** |
+| clinical — `MedicationError`, `V_DosagePrint`, `V_ReturnSRR` | 3 |
+| mixed — `VTest`, `V_DispenseItemsReturn`, `V_dispenseItems` | 3 |
+
+**`GeneralStores` is the subject of decision D1**, which this plan recommends resolving as a **shared
+service that survives**. **If D1 goes that way, those 7 views are not replaced and the clinical rebuild
+grows accordingly.**
+
+**THE REBUILD COUNT IS THEREFORE NOT A FIXED NUMBER — IT IS A FUNCTION OF D1.**
+
+  D1 = GeneralStores is **replaced** by the ERP   → **71** artefacts (15 procedures + 54 views + 2 utilities)
+  D1 = GeneralStores is **shared** and survives   → **78** artefacts, because those 7 inventory views stay
+
+**Seven artefacts is not a large swing, and that is itself the useful result: the headline is robust to the
+one decision that could have moved it.** But the coupling should be visible rather than discovered later —
+**a reader who ratifies D1 as "shared" should know it adds seven views to the rebuild.**

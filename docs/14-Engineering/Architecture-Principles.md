@@ -651,6 +651,23 @@ defect count is however many describe a condition the caller could fix and canno
 before adding a wire code ask whether a caller can act on the distinction — for pagination it plainly can,
 because **a paging client is exactly the caller that retries in a loop.**
 
+**⚠ A MESSAGE IS WRONG WHEN IT NAMES A DOMAIN THAT IS NOT THE SUBJECT OF THE FAILURE — WHICH IS NOT THE SAME
+AS NAMING A DOMAIN AT ALL.** Two categories of noun behave completely differently and a guard that conflates
+them produces false reds:
+
+- **Tenancy scaffolding** — *company*, *tenant*, *branch*. **Cross-cutting, and legitimately named in any
+  module.** *"A trusted company context is required"* names the company context, **which is exactly what
+  failed**, whichever module the caller was standing in. Four such messages reach three or four modules each
+  and are all correct.
+- **Bounded-context vocabulary** — *employee*, *payroll*, *journal*, *identity*. **Wrong outside its own
+  context.** *"The requested identity or access value already exists"*, returned for a duplicate holiday,
+  named something the caller was not doing.
+
+**Only the second is ever a defect.** `SharedErrorMessageArchitectureTests` is safe because it scopes to
+`Persistence.*`, which is entirely the second category — **but its noun array carries this trap for whoever
+widens it, and the distinction is recorded at the array for that reason.** A guard that flags correct
+scaffolding messages is a false red, **and a false red is what teaches people to weaken guards.**
+
 **Where a message names several conditions, the remedy is another code, not another field.** 21 of the 345
 messages name more than one condition. `InvalidPagination` — *"page number **or** page size"* — is the clear
 defect, because **a client fixing the wrong one retries and fails again**; the fix is two codes. **For most

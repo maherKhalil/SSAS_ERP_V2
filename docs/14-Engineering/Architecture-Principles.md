@@ -562,15 +562,29 @@ useless one.**
 3. **The log, not the response.** EF records the violated index name; `AccessTokenIssuer` records why signing
    failed. **The caller is deliberately told less — that is a security posture, not an omission.**
 
-**⚠ AMENDMENT 2026-08-30 — the pressure operates at the DOMAIN layer, and 37% of it is discarded at the
-boundary.** Measured: **344 distinct codes appear on the left of a mapper arm, 129 of them map to the single
-wire code `request.invalid` (400), and the whole product exposes 86 distinct wire outcomes.**
+**⚠ AMENDMENT 2026-08-30 — THE MESSAGE FIELD NEVER REACHES A CALLER, AND THE CODE FIELD IS DISCARDED FOR
+37% OF DOMAIN CODES.**
 
-**So "the constraint forces machine-readable distinctions" is true where the codes are minted and stops
-being true at the mapper.** A caller receives the same `request.invalid` for a malformed body, an unknown
-property, a bad row version and an out-of-range page size. **Splitting a domain code achieves nothing
-observable unless the mapper gains a distinct `ApiError` too** — which is why the pagination fix below is
-specified at both layers.
+**`Error.Message` is documentation for the developer reading the constant. It is not a response payload.**
+The problem document is built as `Results.Problem(type, statusCode, title: error.Code, extensions: code /
+correlationId / resourceKey)` — **no `detail`, and not one of 40 `Results.Problem(` call sites passes one.**
+So all 344 message literals, including the 21 naming several conditions in prose, are domain-internal.
+
+**And the code fares better but not well: 344 distinct domain codes reach 86 distinct wire outcomes, with
+129 collapsing into `request.invalid` alone.** A caller receives the same code for a malformed body, an
+unknown property, a stale row version and an out-of-range page size.
+
+**The obvious escape hatch is not one.** `resourceKey` has **eight distinct values across the whole
+product**, one per module surface — **it identifies which module refused, not what was wrong**, and carries
+strictly less than the code beside it.
+
+**The wire contract, end to end: 344 domain codes → 86 wire codes → 8 resource keys, with no prose anywhere
+in the response.**
+
+**⚠ "129 codes collapse" is a MEASUREMENT, not a defect count.** `request.invalid` for a malformed request
+is a defensible contract, and **some collapses are deliberate security postures** — an invitation-token
+error answers five different conditions identically so an attacker cannot learn which tokens exist. **The
+defect count is however many describe a condition the caller could fix and cannot identify.**
 
 **The codes were minted. The mapper is where they stop paying.** Treat a domain-only split as cosmetic, and
 before adding a wire code ask whether a caller can act on the distinction — for pagination it plainly can,

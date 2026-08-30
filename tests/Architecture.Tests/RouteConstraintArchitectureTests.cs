@@ -49,6 +49,12 @@ public sealed class RouteConstraintArchitectureTests
     @"\.Map(?:Get|Post|Put|Delete|Patch)\(\s*""([^""]*)""",
     RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+  // The same call WITHOUT requiring a literal to follow. The gap between the two counts is the whole
+  // subject of `Every_route_is_registered_with_a_literal_pattern`.
+  private static readonly Regex AnyMapCall = new(
+    @"\.Map(?:Get|Post|Put|Delete|Patch)\s*\(",
+    RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
   [Fact]
   public void No_route_parameter_carries_a_type_constraint()
   {
@@ -93,6 +99,132 @@ public sealed class RouteConstraintArchitectureTests
       "than 400 and becomes indistinguishable from an absent record:\n  " +
       string.Join("\n  ", offenders) +
       "\n\nRemove the constraint, or add the route to `Allowed` NAMING THE SIBLING it disambiguates.");
+  }
+
+  // ================================================================================================
+  // ⚠ EVERY ROUTE IS REGISTERED WITH A LITERAL PATTERN, WHICH IS WHAT MAKES THE GUARD ABOVE HONEST.
+  // ================================================================================================
+  //
+  // `No_route_parameter_carries_a_type_constraint` reads route strings out of source. **It can therefore
+  // only see constraints in patterns that are WRITTEN OUT.** `MapGet(Prefix + "/{id:guid}")` or
+  // `MapGet($"{Prefix}/{{id:guid}}")` would carry a constraint past it in complete silence.
+  //
+  // ---- WHY THE FLOOR ABOVE DOES NOT ALREADY COVER THIS, WHICH IS THE PART WORTH UNDERSTANDING.
+  //
+  // That guard asserts it found at least 120 routes across 12 files. **A floor detects the walk COLLAPSING;
+  // it is blind to one item stepping out of view.** 151 literal routes clear a floor of 120 comfortably
+  // while a single composed route hides completely — the corpus still looks healthy, which is precisely
+  // what makes selective invisibility more dangerous than total failure.
+  //
+  // ---- THIS IS A FORECLOSURE, NOT A REPAIR.
+  //
+  // **There are zero non-literal registrations today**, and `src/` contains no interpolated string
+  // constants at all, so nothing is currently hidden. It is asserted anyway because the constraint rule is
+  // published as ENFORCED, and a claim of enforcement obliges the mechanism to be able to see what it
+  // claims to check. **A zero maintained by house style lasts until someone is in a hurry**, and this is
+  // the cheapest moment it will ever be fixable.
+  //
+  // If a composed pattern is ever genuinely needed, this test is the place to decide that — and whoever
+  // does will have to state how the constraint guard is meant to see it.
+  [Fact]
+  public void Every_route_is_registered_with_a_literal_pattern()
+  {
+    var offenders = new List<string>();
+    var total = 0;
+
+    foreach (var file in EndpointFiles())
+    {
+      // ⚠ COMMENTS STRIPPED, STRING LITERALS KEPT — and the order matters more than it looks. These files
+      // discuss `MapGet` in prose constantly, and a comment mentioning one would count as a registration
+      // with no literal after it. But a naive comment stripper would cut `"https://httpstatuses.com/400"`
+      // in half at its `//`, so the stripper has to know it is inside a string.
+      var source = WithoutComments(File.ReadAllText(file));
+
+      var all = AnyMapCall.Matches(source).Count;
+      var literal = MapCall.Matches(source).Count;
+      total += all;
+
+      if (all != literal)
+      {
+        offenders.Add($"{Path.GetFileName(file)}: {all} route registrations, {literal} with a literal " +
+          $"pattern — {all - literal} built rather than written");
+      }
+    }
+
+    Assert.True(total >= 120,
+      $"only {total} route registrations were found; the scan has degraded and a count of zero " +
+      "non-literal registrations would mean nothing.");
+
+    Assert.True(offenders.Count == 0,
+      "a route is registered with a pattern that is BUILT rather than written out, so the constraint " +
+      "guard in this class cannot read it and a type constraint could be reintroduced there invisibly:\n  " +
+      string.Join("\n  ", offenders) +
+      "\n\nWrite the pattern as a literal, or change the constraint guard to understand the construction " +
+      "and say here how.");
+  }
+
+  // Blanks the CONTENT of `//` and `/* */` comments while stepping over string literals, preserving length
+  // so nothing downstream shifts.
+  private static string WithoutComments(string text)
+  {
+    var buffer = text.ToCharArray();
+    var i = 0;
+
+    while (i < buffer.Length)
+    {
+      if (buffer[i] == '"')
+      {
+        buffer[i] = buffer[i];
+        i++;
+        while (i < buffer.Length && buffer[i] != '"')
+        {
+          if (buffer[i] == '\\' && i + 1 < buffer.Length)
+          {
+            i++;
+          }
+
+          i++;
+        }
+
+        i++;
+        continue;
+      }
+
+      if (buffer[i] == '/' && i + 1 < buffer.Length && buffer[i + 1] == '/')
+      {
+        while (i < buffer.Length && buffer[i] != '\n')
+        {
+          buffer[i++] = ' ';
+        }
+
+        continue;
+      }
+
+      if (buffer[i] == '/' && i + 1 < buffer.Length && buffer[i + 1] == '*')
+      {
+        while (i < buffer.Length && !(buffer[i] == '*' && i + 1 < buffer.Length && buffer[i + 1] == '/'))
+        {
+          if (buffer[i] != '\n')
+          {
+            buffer[i] = ' ';
+          }
+
+          i++;
+        }
+
+        for (var j = i; j < Math.Min(i + 2, buffer.Length); j++)
+        {
+          buffer[j] = ' ';
+        }
+
+        i += 2;
+        continue;
+      }
+
+      i++;
+    }
+
+    return new string(buffer);
   }
 
   // Every allowlist entry must justify itself, or the list becomes a place to put inconvenient routes.

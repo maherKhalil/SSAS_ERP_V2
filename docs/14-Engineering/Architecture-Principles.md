@@ -325,6 +325,50 @@ the enclosing `try` rather than above the `catch`.** That is legitimate and comm
 scanning only the lines above a `catch` will report those catches as unreasoned.
 
 
+# Principle 14 – A Guard Must Be Refusable
+
+**Before adding a guard, establish that the thing it forbids currently occurs, or has occurred.** A guard
+over a set that has always been empty asserts only that its own scan still runs. It is indistinguishable
+from a working guard, it goes green forever, and it consumes the attention a real check would have earned.
+
+**Worked example, 2026-08-30.** A rule was specified as *"count bare `catch` with an empty body in `src/`,
+and if it reaches zero, assert zero"*. `git log -S` showed the construct **had never appeared in `src/` in
+the repository's history**. The rule was replaced with one asserting that no catch in `src/` has a
+completely empty body — **and `tests/` contains 23 such bodies, which is what makes the `src/` rule
+meaningful: the codebase writes that pattern fluently where it is correct, so the assertion can be
+refused.** A rule nobody could break is not enforcement.
+
+**Two supporting practices.** **Pin the boundary in both directions** — the rule above is *"said nothing at
+all"*, not *"has no statement"*, so a comment-only body passes; that was fixed by a plant proving a
+comment-only body passes and a plant proving the same body reddens once the comment is removed. **And a new
+guard should find something.** The one above found `TenantCutoverRoutingFlipService.SafeRollbackAsync`,
+whose reason lived on a `#pragma warning disable` line where no reader looks. A guard that finds nothing on
+its first run has not yet been shown to work.
+
+# Principle 15 – Locating and Measuring Must Not Share a Text
+
+**A source-scanning check does two different things: it LOCATES a construct, and it MEASURES a property of
+what it found. Locating needs a normalised text; measuring needs the original. They must not run over the
+same buffer.**
+
+**Locating a C# `catch` requires blanking comments and string literals**, or the word matches inside them —
+an early version inflated a clause count by roughly 25% that way, producing no false failure but quietly
+weakening the floor the count existed to support.
+
+**Then measuring emptiness on that same blanked text inverts the rule.** A comment-only body is blank once
+comments are blanked, **so precisely the catches the rule permits became the ones it flagged.** The
+normalisation that makes locating correct destroys the property being measured.
+
+**The general form: any normalisation applied in order to FIND a thing is a distortion OF the thing found.**
+Locate on the normalised text, record positions, then measure the original at those positions.
+
+**And treat a text-scanning guard's own correctness as the thing needing proof.** Five defects were found in
+such guards over two sittings — a `when` filter's property pattern read as a body, a nested-parenthesis
+capture undercounting by a quarter, a `#pragma` between declaration and brace, a CRLF-blind literal matching
+a file boundary, and the normalisation error above. **None was carelessness: a text scanner simply has more
+ways to be wrong than the property it checks.** Prefer a compiler-enforced or structural check wherever one
+exists, and plant every text-based guard against a real instance before trusting it.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

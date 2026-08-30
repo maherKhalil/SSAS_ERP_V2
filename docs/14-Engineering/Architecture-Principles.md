@@ -268,6 +268,52 @@ Any deviation from these principles requires approval from the Solution Architec
 
 ---
 
+# Principle 12 – Malformed Input Is a 400, Including in the Route Path
+
+**A syntactically invalid value returns `400 Bad Request` with a problem document, wherever it arrives** —
+route path, query string, header, body or rowversion.
+
+**Route paths were the exception until 2026-08-30.** 71 route parameters carried type constraints such as
+`{id:guid}`. A constraint is evaluated during route *matching*, so a malformed value matched no route and
+the framework answered **404 before any module code ran**. The constraints have been removed; the value now
+reaches parameter binding, fails to bind, and produces a 400 naming the offending parameter.
+
+**The reason is not consistency for its own sake. A 404 makes a malformed identifier indistinguishable from
+an absent record** — a caller cannot separate *"your GUID is not a GUID"* from *"that record is gone"*. A
+400 with a problem document can say which. This mattered on 71 routes, permanently, and cost nothing to fix
+while the product has no external consumers.
+
+**Enforced, not merely stated:** `RouteConstraintArchitectureTests` reddens when a constrained route
+parameter is reintroduced, and product-wide the count is **0**. **An exception requires an allowlist entry
+carrying a stated reason** — a route constraint is legitimate where it disambiguates two sibling parameter
+routes, and the check that establishes this is a measurement, not an assumption.
+
+# Principle 13 – When the Exception Type Is Already the Reason
+
+**A discarded exception normally needs a stated reason. It does not need one when the type at a parse
+boundary IS the reason.**
+
+`FormatException`, `JsonException`, `BadHttpRequestException` and `DecoderFallbackException`, caught at a
+parsing or deserialisation boundary and answered with `false` or a 400, are self-describing. **A comment
+there restates the catch**, and comments that restate their code teach readers to skip comments — including
+in the places where a real reason is the only thing standing between a maintainer and a silent failure.
+
+**This exemption is narrow and does not extend by analogy.** It covers a parse boundary where the type
+names the failure and the response is a refusal. It does **not** cover:
+
+- **a broad `Exception` catch**, where distinct causes collapse into one observable — the same defect
+  Principle 12 removes from the routing layer;
+- **a persistence exception**, where the discarded inner error distinguishes a unique violation from a
+  deadlock, and only one of those is retryable;
+- **a teardown or cleanup catch**, where the reason is *"this must not fail the test"* and the cost of
+  omitting it is a fixture that starts failing for a new reason and says nothing;
+- **code that looks careless and is not** — where the generic message is deliberate, the reason is
+  required, because the reader's default inference is wrong.
+
+**Measured 2026-08-30:** 207 catch clauses, 94 discarding the exception, 54 carrying a reason. **19 of
+those 54 state their reason above the enclosing `try` rather than above the `catch`** — a legitimate and
+common shape here, and one an instrument scanning only the lines above a `catch` will report as unreasoned.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

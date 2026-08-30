@@ -88,9 +88,28 @@ they test is the same field. **Reading `EfUnitOfWork` alone cannot establish tha
 
 ⚠ **Two hazards remain open and are NOT covered by these tests:**
 
-1. **Dispatch reads only `dbContext.ChangeTracker.Entries()`.** An aggregate that raised events and was
-   never attached — read `AsNoTracking`, or mutated on a detached instance — **is invisible to dispatch.**
-   This is the most plausible remaining way for an event to be dropped silently.
+1. ⚠ **CLOSED 2026-08-30 (item 167, PR #385) — the hazard is REAL and NO PRODUCTION PATH REACHES IT.**
+   Dispatch reads only `dbContext.ChangeTracker.Entries()`, so an aggregate read `AsNoTracking` or mutated
+   on a detached instance raises events **nothing collects**. Measured: **203 `AsNoTracking` sites across 65
+   files; 30 touch one of the 14 event-raising aggregate types**; classified **by what the query returns** —
+   17 scalar (`AnyAsync`/`CountAsync`: a `bool` leaves, never an entity), 5 projections to DTOs, **8
+   entity-shaped**. ⚠ **All 8 live in `*ReadService` / `*DirectoryService` / `*RosterService`, all return
+   DTOs or ids, and no read service is injected into any command handler** — so the entity cannot reach a
+   caller that mutates and saves. **The hazard is unreachable by construction of the read/write split, not
+   by anyone having guarded it.**
+
+   **Pinned by two tests** — `An_aggregate_never_attached_is_not_dispatched_from` and the production-shaped
+   `An_aggregate_read_with_no_tracking_and_then_mutated_is_not_dispatched_from`. ⚠ **Each asserts two
+   things, and the second carries the meaning: the consumer received nothing AND the events are still on
+   the aggregate** — which distinguishes *nothing was raised* from *something was raised and nobody
+   collected it*, the whole difference between a quiet success and a silent drop. **They pin the drop as
+   CURRENT behaviour, not as correct.** Whether an untracked aggregate's events *should* dispatch is a
+   design question nobody needs to answer while no path reaches it.
+
+   **Not covered:** detached mutation **without** `AsNoTracking` — an entity materialised in one context
+   and mutated against another, or rebuilt from a DTO. **`AsNoTracking` is the searchable form of this
+   hazard, not the only one.**
+
 2. **A consumer that throws after commit** propagates into `CommitAsync`'s catch, which then calls
    `RollbackAsync` on an already-committed transaction. **What that does is not established.**
 

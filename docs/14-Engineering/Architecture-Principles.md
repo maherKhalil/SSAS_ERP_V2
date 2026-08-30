@@ -685,6 +685,35 @@ mechanism reintroduces the exact judgement whose unreliability created the rule.
 applies before adding an exemption — and note that "this use is obviously fine" is the same sentence the
 original defect's author would have written.
 
+
+## ⚠ The limit, added 2026-08-30 — a ban whose false positives outnumber its true ones protects nothing
+
+**The principle above is about who classifies. It is not a licence to ban broadly, and the boundary has a
+measurable form.**
+
+A hazard was found in domain-event dispatch: an aggregate read `AsNoTracking` raises events nothing
+collects. The obvious guard is a ban on `AsNoTracking`. ⚠ **That would refuse 203 call sites across 65
+files to prevent a hazard occurring at NONE of them** — 17 of the nearby ones are existence checks whose
+result is a `bool`, 5 are DTO projections, and the 8 entity-shaped reads all sit in read services that no
+command handler injects.
+
+⚠ **A GUARD WHOSE FALSE POSITIVES OUTNUMBER ITS TRUE ONES BY TWO ORDERS OF MAGNITUDE GETS DELETED RATHER
+THAN FIXED — AND THEN IT PROTECTS NOTHING.** Friction on safe code is the price of Principle 17; it stops
+being a price and becomes the whole cost when almost every firing is safe code. **The ban that survives is
+the one people can live with.**
+
+**The shape that fits here is narrower than either a ban or a test: guard the ESCAPE, not the query.** The
+hazard needs the entity to reach a caller that mutates it, so the assertion is that **no read-side service
+returns an event-raising aggregate type** — true today, cheap by reflection over return types, and with a
+small false-positive surface because read services already return DTOs by convention.
+
+⚠ **And the method that produced the right number is worth more than the number.** The first pass
+classified by **proximity** — `Set<T>` and `AsNoTracking` within a window — and reported 26 entity-returning
+sites, including an `AnyAsync` that returns `bool`. **Classifying by the TERMINAL OPERATOR — by what the
+expression actually produces — took 26 to 8.** A guard built on the first pass would have fired on
+seventeen correct existence checks. **Proximity is not semantics, and a classifier that over-fires is how a
+ban earns its deletion.**
+
 # Principle 18 – Errors Carry a Code and a Literal Message, and That Is Deliberate
 
 `Error(string Code, string Message)` in the domain, `ApiError(int StatusCode, string Code)` at the

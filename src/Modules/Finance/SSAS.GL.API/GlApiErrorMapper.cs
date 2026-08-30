@@ -20,6 +20,39 @@ public static class GlApiErrorMapper
 {
   public static readonly ApiError NotFound = new(404, "gl.not_found");
   public static readonly ApiError Conflict = new(409, "gl.conflict");
+
+  // ============================================================================================
+  // ⚠ THE UNCLASSIFIED UNIQUE VIOLATION -- `DEC-DEP-0027` AS AMENDED (T-245).
+  // ============================================================================================
+  //
+  // T-165 ruled this code must stay UNMAPPED here, and **most of that ruling stands**. GL has SIX unique
+  // indexes -- account code, fiscal-year code, draft line number, journal number, one-reversal-per-
+  // original, entry line number -- and one arm cannot tell which lost. Its principle is the binding one:
+  // **a handler that cannot tell which index it hit must not name one.**
+  //
+  // ---- WHAT CHANGED, AND IT IS ONE SENTENCE OF THAT DECISION.
+  //
+  // T-165 also said *"the 500 default is not the bug here; it is the house rule working"*. **That is
+  // overturned.** A 500 is not silence, it is a WRONG ASSERTION: it tells a caller the server broke when
+  // nothing broke, sends them to file a bug instead of examining their input, and inflates the one metric
+  // an operator pages on.
+  //
+  // **The forcing-function reading is refuted by this repository's own history.** T-171, T-173 and T-176
+  // each rediscovered this class and repaired a single path. A wrong status used as a reminder reminded
+  // nobody; it shipped 500s until someone tripped over it a fourth time.
+  //
+  // ---- WHY THIS ARM DOES NOT CONTRADICT THE PART THAT STANDS.
+  //
+  // **`gl.unique_conflict` names no index**, so it makes exactly the claim the evidence supports: a
+  // uniqueness rule was violated. T-165's objection was to the MESSAGE being false for five of six
+  // indexes -- a duplicate account code told a journal number already exists -- and it never considered a
+  // deliberately unnamed code, because the option before it was reusing a specific one.
+  //
+  // Context is still resolved **by the caller who knows the operation**: `PostJournalDraftCommandHandler`
+  // translates to `JournalErrors.NumberConflict` because it can reach exactly one index, and
+  // `ReverseJournalCommandHandler` still translates nothing because it can reach two. **This arm fires
+  // only where no handler resolved it** -- a floor under the unclassified, not a switch pretending to know.
+  public static readonly ApiError UniqueConflict = new(409, "gl.unique_conflict");
   public static readonly ApiError Unbalanced = new(422, "gl.journal_unbalanced");
   public static readonly ApiError PeriodClosed = new(409, "gl.period_closed");
   public static readonly ApiError AccountInactive = new(409, "gl.account_inactive");
@@ -93,6 +126,9 @@ public static class GlApiErrorMapper
       // wire. Surfacing it as a 500 makes that visible in a test run; defaulting to 400 would ship a
       // confident, wrong answer and nobody would look. `WriteFailure` is the house default for this arm --
       // `DepartmentApiErrorMapper` uses the same one.
+      // `DEC-DEP-0027` as amended -- see `UniqueConflict`. Fires only where no handler resolved the
+      // context; names no index, because this switch cannot know which one lost.
+      "Persistence.UniqueConstraint" => UniqueConflict,
       _ => ApiErrors.WriteFailure
     };
   }

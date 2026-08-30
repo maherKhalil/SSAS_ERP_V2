@@ -625,3 +625,49 @@ a literal or arithmetic moved the count to 63 and isolated 4 as structural.**
 **Both were found by disbelieving an outlier rather than by review**, and the corrected numbers are close to
 the uncorrected ones — 110/67 against 107/70 — **which is the uncomfortable part: two real defects that
 roughly cancelled would have left a plausible answer standing.**
+
+---
+
+## The type rule, completed: what the exceptions actually are (T-226, 2026-08-30)
+
+The float finding gave a rule and an exception list. **The exception list was not yet a list.** Resolving
+it collapses the exercise further, for a reason that was not obvious until the names were read.
+
+### ⚠ The money-versus-measurement distinction does not change the mapping
+
+**`money` and `measurement` both become `decimal`.** So the entire 1,238-column classification — the one
+that took three passes and moved from 558 to 1,238 — **does not affect a single mapping decision.** It was
+worth doing to establish that `float` is the default type rather than a considered choice, **but the only
+distinction that changes what a column becomes is IDENTIFIER versus NUMERIC.**
+
+### The rule, and its three real exception classes
+
+| population | becomes | count |
+|---|---|---|
+| **default — every float column** | **`decimal`** | 1,486 |
+| **identifiers, codes, dates, print positions** | **`int` / `varchar` / `date`** | **158** (51 in real tables) |
+| named nothing useful — needs a domain answer | **unresolved** | **5 names** |
+
+**The 158 are the exception that matters**, and they do not become `decimal` — a ticket number, an invoice
+number, a line number, a print position and the twelve month names are not quantities. **They were counted
+in the float total and must be routed out of the default rule, not converted with it.**
+
+### The 90 unclassified, resolved
+
+59 distinct names, and reading them dissolves most of the uncertainty **because the target type is the same
+either way**:
+
+- **12 names → `decimal`, money-shaped on reading**: `AIR_OR`, `AIR_ORT`, `AIR_COMT`, `AIR_C`, `AIR_P`,
+  `AIR_RF` (airline fare, commission and refund components), `PARKING_TCK` and `ROAD_TCK` (toll and parking
+  charges), `RC_I` / `RC_R` (the issue/refund suffix pair used across the module), `INV_PP`, `Deblor`.
+- **5 names → `decimal`, measurements**: `ENT_21KM` (kilometres), `INV_NTS` (nights), `Min`, `TimeBound`,
+  `PackageChange`.
+- **11 names → `int`/`varchar`, identifiers**: `JRN_N`, `Chapter No#`, `SYS_GRP`, `CAL_DATA`, `REC_FM`,
+  `REC_TO`, `CARR`, `Chk`, `BCC`, `AF`, `CF`.
+- **27 columns `INV_REP0`–`INV_REPO`** — invoice report slots, one occurrence each, all in Finance. A
+  lettered/numbered series of generic slots; **they take the default and nothing is lost either way.**
+- **5 names genuinely resist**: `MISSING`, `Cleaving`, `Rael`, `Others`, `Modified`. **These need someone
+  who knows the Finance module, and they are the whole residue of a 1,486-column analysis.**
+
+**So "one rule and ninety exceptions" is really ONE RULE, ONE ROUTED-OUT CLASS OF 158, AND FIVE NAMES
+NOBODY CAN RESOLVE FROM THE SCHEMA.** That is ratifiable in a sitting.

@@ -114,6 +114,51 @@ public sealed class DomainEventFlowTests
     Assert.Empty(scope.Consumer.Received);
   }
 
+  // ==================================================================================================
+  // ⚠ THE LIMIT OF THE MECHANISM (item 167): DISPATCH COLLECTS FROM THE CHANGE TRACKER AND NOWHERE ELSE.
+  // ==================================================================================================
+  //
+  // `DispatchDomainEventsAsync` reads `dbContext.ChangeTracker.Entries()`. An aggregate that raised events
+  // while EF was not tracking it is invisible to that walk -- no error, no warning, no event.
+  //
+  // ⚠ THESE TESTS PIN THE DROP AS CURRENT BEHAVIOUR. They are not asserting that it is correct. Item 167
+  // established that NO PRODUCTION PATH REACHES IT: every `AsNoTracking` query touching an event-raising
+  // aggregate is a scalar existence check, a projection, or a read service returning DTOs, and no read
+  // service is injected into a command handler. **The hazard is real and unreached** -- so it is pinned
+  // here, where a future change that starts reaching it has something to disagree with.
+  //
+  // The second assertion in each is the one that carries the meaning: the events are STILL ON THE
+  // AGGREGATE afterwards. That distinguishes "nothing was raised" from "something was raised and nobody
+  // collected it", which is the whole difference between a quiet success and a silent drop.
+  [Fact]
+  public async Task An_aggregate_never_attached_is_not_dispatched_from()
+  {
+    await using var scope = await FlowScope.CreateAsync();
+    var detached = FlowProbe.Announcing("never attached");
+
+    await scope.UnitOfWork.SaveChangesAsync();
+
+    Assert.Empty(scope.Consumer.Received);
+    Assert.Single(detached.DomainEvents);
+  }
+
+  // ---- THE PRODUCTION-SHAPED VERSION: READ BACK WITH `AsNoTracking`, MUTATE, SAVE.
+  [Fact]
+  public async Task An_aggregate_read_with_no_tracking_and_then_mutated_is_not_dispatched_from()
+  {
+    await using var scope = await FlowScope.CreateAsync();
+    scope.Context.Set<FlowProbe>().Add(FlowProbe.Announcing("stored"));
+    await scope.UnitOfWork.SaveChangesAsync();
+    scope.Consumer.Received.Clear();
+
+    var untracked = await scope.Context.Set<FlowProbe>().AsNoTracking().SingleAsync();
+    untracked.Announce();
+    await scope.UnitOfWork.SaveChangesAsync();
+
+    Assert.Empty(scope.Consumer.Received);
+    Assert.Single(untracked.DomainEvents);
+  }
+
   private sealed class FlowScope : IAsyncDisposable
   {
     private readonly SqliteConnection connection;
@@ -193,10 +238,13 @@ public sealed class DomainEventFlowTests
     public static FlowProbe Announcing(string note)
     {
       var probe = new FlowProbe(Guid.NewGuid(), note);
-      probe.RaiseDomainEvent(new FlowProbeAnnounced(Guid.NewGuid(), DateTimeOffset.UnixEpoch, probe.Id));
+      probe.Announce();
 
       return probe;
     }
+
+    public void Announce() =>
+      RaiseDomainEvent(new FlowProbeAnnounced(Guid.NewGuid(), DateTimeOffset.UnixEpoch, Id));
   }
 
   private sealed record FlowProbeAnnounced(Guid EventId, DateTimeOffset OccurredUtc, Guid ProbeId)

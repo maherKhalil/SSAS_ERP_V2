@@ -17,6 +17,12 @@ public sealed class LocalizationManagementAuditReadinessHealthCheck(
         ? HealthCheckResult.Healthy()
         : HealthCheckResult.Unhealthy("Localization management audit readiness is unavailable.");
     }
+    // Same pair as `LocalizationManagementAuditGuard`, for the same reason: cancellation is not an
+    // unhealthy audit trail, and everything else is.
+    //
+    // ⚠ **A HEALTH CHECK THAT THROWS IS WORSE THAN ONE REPORTING UNHEALTHY.** The probe's job is to answer,
+    // and an exception escaping here turns a degraded subsystem into a broken health endpoint -- which is
+    // the signal operators use to decide whether anything is wrong at all.
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
       throw;

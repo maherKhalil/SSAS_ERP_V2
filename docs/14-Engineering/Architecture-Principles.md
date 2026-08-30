@@ -541,6 +541,37 @@ than the member.**
 that sentence.** A number taken carefully, about the mechanism you happened to imagine, is the most
 persuasive way to be wrong.
 
+# Principle 16c – Validate an Instrument Against Its Known Positive Before Trusting Its Negatives
+
+**An instrument that cannot flag its own known positive reports absences it has not earned.**
+
+**Worked example, 2026-08-30.** A scan was written to generalise a defect already found: an error message
+naming one domain while being returned for every module. Its first predicate asked *"is this raised from a
+file outside the module that declares it"* — and against the known case that worked **only by accident.**
+The error is declared in Platform and raised in Platform; **it crossed a module boundary in exactly one
+incidental place.** Remove that one crossing and **the instrument built to generalise the finding could not
+have found the finding.**
+
+**The diagnosis is the transferable half: the property was never the DIRECTORY, it was REACH.** Ten mappers
+in ten modules translate that code, so one message explains it to callers of all ten. **The directory was a
+proxy that correlated once.**
+
+**So before believing a scan's empty result, feed it the case you already know.** It is the analysis-time
+form of the known-positive control a guard carries: **a guard's control proves the matcher still matches; a
+scan's known positive proves it could have matched anything at all.**
+
+**⚠ And regex instruments over structured code over-report — treat that as structural, not as luck.** Four
+separate instruments on 2026-08-30 produced four over-reports and no under-reports: a lambda's brace read as
+a method body's end, a comparison read as a raise, one constant name unioning five distinct codes, and prose
+in comments counted as call sites. **The mechanism: you write the pattern from a known positive, so it
+matches that one by construction, and every error is in what ELSE it matches. Under-reporting would require
+the pattern to be too narrow for the very case you checked.** The corollary: **a young regex instrument
+returning zero is the result to trust least.**
+
+**And scope an absence rather than implying one.** *"Only codes with a mapper arm — 348 of 521 declarations
+— only literal declarations, a 21-word noun list"* is evidence. **The same empty result without its boundary
+is a claim about the whole codebase that nobody made deliberately.**
+
 # Principle 17 – When a Blanket Ban Beats an Exemption
 
 **Most guards in this codebase carry an allowlist: an exemption with a stated, checkable reason.

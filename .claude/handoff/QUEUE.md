@@ -15,6 +15,14 @@ put in the repository so a dropped message could not stall the coder — **and w
 the one dependency that fails at the same time as everything else.** On 2026-08-30 a GitHub outage left the
 coder believing the queue held one item when it held three. **A local path closes that.**
 
+⚠ **GREP `.claude/handoff/results/` BEFORE BUILDING ANY INSTRUMENT.** On 2026-08-30 **nine instruments were
+built over two days to re-derive a conclusion that was already written, already corrected, and already
+reasoned through** — `T-201.md`, 142 lines, with the members, the method, the per-package breakdown and two
+self-corrections. **It was never searched.** ⚠ **It had even stated the general rule one window later
+"discovered": *"an instrument that reads only the machine-readable columns will miss the corrections people
+wrote in the margin — and so will a reader who stops at the first word."*** **The results trail is cheaper
+than every instrument in this thread combined.**
+
 ⚠ **EVERY ITEM PRODUCES A COMMITTED RESULT FILE IN `.claude/handoff/results/`, INCLUDING MEASUREMENT-ONLY
 ITEMS.** One file per item, named for it. **Findings and their scope, not narrative** — the board carries the
 reasoning, the results carry the measurements.

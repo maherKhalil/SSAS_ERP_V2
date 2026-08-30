@@ -28,6 +28,37 @@ public sealed class AttendanceCalendarPeriodEndpointTests(AttendanceApiTestHost 
   private const string Calendars = "/api/attendance/calendars";
   private const string Periods = "/api/attendance/periods";
 
+  // ⚠ THE REFUSAL NAMES THE INPUT, AND THE NAME IS THE ONE THE CONTRACT DECLARES (T-270).
+  //
+  // A weekend pattern covering all seven days leaves no working day, so no leave request could ever
+  // consume anything. The caller sent one property wrong out of four, and `request.invalid` alone cannot
+  // say which -- **a form has to know which box to mark and should not be parsing the message to find out.**
+  //
+  // Asserted end to end because the field crosses four boundaries the declaration cannot prove: the guard
+  // attaching it to the domain `Error`, the mapper carrying it onto the `ApiError`, `ApiProblems`
+  // projecting it, and serialization. `weekendDays` is the name `CreateWorkingCalendarRequest` DECLARES
+  // via `JsonPropertyName` -- not a camel-cased guess at a command property.
+  [Fact]
+  public async Task A_refusal_names_the_input_it_concerns()
+  {
+    host.ResetToAuthorizedState();
+    host.WorkingCalendars.NameTaken = false;
+
+    var response = await Send(HttpMethod.Post, Calendars,
+      AttendancePermissionNames.ManageCalendars,
+      $$"""
+      {"companyId":"{{AttendanceApiTestHost.CompanyA}}","name":"Standard",
+       "weekendDays":[0,1,2,3,4,5,6],"isDefault":true}
+      """);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await AttendanceApiTestHost.ProblemCodeAsync(response));
+
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Equal("weekendDays", document.RootElement.GetProperty("field").GetString());
+  }
+
   [Fact]
   public async Task A_calendar_is_created()
   {

@@ -16,7 +16,8 @@ public static class LeaveErrors
 
   public static readonly Error CompanyRequired = new(
     "Attendance.LeaveCompanyRequired",
-    "Leave records must belong to a company.");
+    "Leave records must belong to a company.",
+    Field: "companyId");
 
   // ---- LEAVE TYPES.
   public static readonly Error InvalidLeaveTypeCode = new(
@@ -31,7 +32,8 @@ public static class LeaveErrors
 
   public static readonly Error InvalidLeaveBehaviour = new(
     "Attendance.LeaveBehaviourInvalid",
-    "The leave behaviour is not one this product implements.");
+    "The leave behaviour is not one this product implements.",
+    Field: "behaviour");
 
   public static readonly Error DuplicateLeaveTypeCode = new(
     "Attendance.LeaveTypeCodeConflict",
@@ -60,11 +62,13 @@ public static class LeaveErrors
 
   public static readonly Error InvalidPeriodYear = new(
     "Attendance.LeaveBalanceYearInvalid",
-    "A leave balance year must be a four-digit calendar year.");
+    "A leave balance year must be a four-digit calendar year.",
+    Field: "periodYear");
 
   public static readonly Error NegativeEntitlement = new(
     "Attendance.LeaveEntitlementNegative",
-    "A leave entitlement cannot be negative.");
+    "A leave entitlement cannot be negative.",
+    Field: "entitlementQuantity");
 
   public static readonly Error DuplicateBalance = new(
     "Attendance.LeaveBalanceConflict",

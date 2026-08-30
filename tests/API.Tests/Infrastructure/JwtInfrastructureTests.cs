@@ -1,3 +1,6 @@
+using SSAS.Platform.Domain;
+using SSAS.BuildingBlocks.Domain;
+using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
 using System.Globalization;
 using System.Security.Cryptography;
@@ -589,5 +592,66 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
     public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
 
     public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+  }
+  // ================================================================================================
+  // ⚠ A SIGNING FAILURE IS OPAQUE TO THE CALLER AND VISIBLE TO THE OPERATOR (T-241).
+  // ================================================================================================
+  //
+  // Both `Issue` overloads wrap their body in `catch (Exception)` and return the generic
+  // `AccessTokenIssuanceUnavailable`. **The response is right and the silence was not**: the file had no
+  // logger at all, so a signing key that failed to load and a routine refusal were indistinguishable to
+  // everyone, including the operator watching authentication fail for every user at once.
+  //
+  // **This test has to assert BOTH HALVES, because either alone is satisfied by the wrong fix.** Asserting
+  // only the log would pass if someone also widened the response to name the cause -- which is the leak
+  // the generic failure exists to prevent. Asserting only the response is what the code already did.
+  [Fact]
+  public void A_signing_failure_is_logged_with_its_cause_and_still_answers_the_caller_generically()
+  {
+    var logger = new CapturingLogger<AccessTokenIssuer>();
+    var issuer = new AccessTokenIssuer(
+      new ThrowingSigningKeyProvider(),
+      Options.Create(new JwtOptions { Issuer = "ssas", Audience = "ssas-web" }),
+      logger);
+
+    var client = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
+    var issued = issuer.Issue(new AccessTokenClaims(
+      "immutable-subject", 11, Guid.Parse("72064151-a6a5-414b-bced-43083bc88b3c"), 22, 33, client, 4,
+      ["a-role"], ["a.permission"]), DateTimeOffset.UtcNow);
+
+    // Outward: unchanged, and carrying nothing about the cause.
+    Assert.True(issued.IsFailure);
+    Assert.Equal(AuthenticationErrors.AccessTokenIssuanceUnavailable.Code, issued.Error.Code);
+    Assert.DoesNotContain("signing key", issued.Error.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain(ThrowingSigningKeyProvider.Marker, issued.Error.Message, StringComparison.Ordinal);
+
+    // Inward: the exception itself, not just a note that something failed. A log line without the
+    // exception attached would leave the operator exactly as unable to tell the causes apart.
+    var entry = Assert.Single(logger.Entries);
+    Assert.Equal(LogLevel.Error, entry.Level);
+    Assert.NotNull(entry.Exception);
+    Assert.Contains(ThrowingSigningKeyProvider.Marker, entry.Exception!.Message, StringComparison.Ordinal);
+  }
+
+  // Throws where the real provider would hand back a key -- the shape of a certificate that failed to
+  // load, which is the failure this whole path was silent about.
+  private sealed class ThrowingSigningKeyProvider : ISigningKeyProvider
+  {
+    internal const string Marker = "signing-key-unavailable-marker";
+
+    public SigningKeySnapshot Snapshot => throw new InvalidOperationException(Marker);
+  }
+
+  private sealed class CapturingLogger<T> : ILogger<T>
+  {
+    internal List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(
+      LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+      Func<TState, Exception?, string> formatter) => Entries.Add((logLevel, exception));
   }
 }

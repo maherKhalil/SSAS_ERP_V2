@@ -314,6 +314,30 @@ public sealed class CompaniesMutationEndpointTests : IAsyncLifetime
     return company.CompanyId;
   }
 
+  // ⚠ THE REFUSAL NAMES THE INPUT, AND COMPANY'S NAME IS NOT THE OBVIOUS ONE (T-273).
+  //
+  // Every other module calls this property `name`. `UpdateCompanyProfileRequest` declares it
+  // **`companyName`** -- so a field derived by camel-casing the domain constant would have said `name`
+  // and been wrong, and a form would have marked an input the caller never sent.
+  //
+  // Asserted end to end rather than against the contract, because the architecture guard proves the path
+  // RESOLVES and only a request proves it TRAVELS -- through the value object, the mapper, the projection
+  // and serialization.
+  [Fact]
+  public async Task A_refusal_names_the_input_using_the_name_the_contract_declares()
+  {
+    var id = Seed(CompanyStatus.Active);
+
+    var response = await Client.SendAsync(Request(
+      HttpMethod.Put, $"/api/platform/companies/{id}", UpdateBody(companyName: ""), ManageToken()));
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Equal("companyName", document.RootElement.GetProperty("field").GetString());
+  }
+
   private static string UpdateBody(string companyName = "Acme Egypt", string rowVersion = CurrentRowVersionText) =>
     $"{{\"companyName\":\"{companyName}\",\"expectedRowVersion\":\"{rowVersion}\"}}";
 

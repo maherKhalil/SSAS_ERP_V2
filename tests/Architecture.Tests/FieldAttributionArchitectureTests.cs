@@ -95,6 +95,37 @@ public sealed class FieldAttributionArchitectureTests
     ("Payroll.OneOffPaymentPayElementRequired", "payElementId", "RecordOneOffPaymentRequest"),
     ("Payroll.OneOffPaymentPeriodRequired", "payrollPeriodId", "RecordOneOffPaymentRequest"),
 
+    // ---- Company
+    ("Company.InvalidCode", "companyCode", "CreateCompanyRequest"),
+    ("Company.InvalidName", "companyName", "CreateCompanyRequest"),
+    ("Company.InvalidBaseCurrency", "baseCurrencyCode", "CreateCompanyRequest"),
+    ("Company.InvalidTransitionReason", "reasonCode", "CompanyLifecycleRequest"),
+
+    // ---- HR: Department
+    ("Department.InvalidCode", "code", "CreateDepartmentRequest"),
+    ("Department.InvalidName", "name", "CreateDepartmentRequest"),
+
+    // ---- HR: Employee
+    ("Employee.InvalidEmployeeNumber", "employeeNumber", "CreateEmployeeRequest"),
+    ("Employee.InvalidFullName", "fullName", "CreateEmployeeRequest"),
+    ("Employee.InvalidNationalId", "nationalId", "CreateEmployeeRequest"),
+    ("Employee.InvalidEmploymentDate", "employmentDate", "CreateEmployeeRequest"),
+    ("Employee.TerminationBeforeEmployment", "terminationDate", "TerminateEmployeeRequest"),
+    ("Employee.InvalidTransitionReason", "reasonCode", "EmployeeLifecycleRequest"),
+    ("Employee.DepartmentUnchanged", "departmentId", "ChangeEmployeeDepartmentRequest"),
+    ("Employee.PositionUnchanged", "positionId", "ChangeEmployeePositionRequest"),
+    ("Employee.TransferDestinationUnchanged", "destinationBranchId", "TransferEmployeeRequest"),
+
+    // ---- HR: Position
+    ("Position.InvalidCode", "code", "CreatePositionRequest"),
+    ("Position.InvalidTitle", "title", "CreatePositionRequest"),
+    ("Position.InvalidJobGradeCode", "code", "CreateJobGradeRequest"),
+    ("Position.InvalidJobGradeName", "name", "CreateJobGradeRequest"),
+    ("Position.InvalidRankOrder", "rankOrder", "CreateJobGradeRequest"),
+    ("Position.InvalidGradeReference", "salaryGradeId", "CreateJobGradeRequest"),
+    ("Position.InvalidSalaryGradeCode", "code", "CreateSalaryGradeRequest"),
+    ("Position.InvalidSalaryGradeName", "name", "CreateSalaryGradeRequest"),
+
     // ---- Payroll, element-level: the two paths the flat form could not express at all
     ("Payroll.CompensationAssignmentElementRequired", "assignments[].payElementId",
       "RecordCompensationRequest"),
@@ -200,8 +231,8 @@ public sealed class FieldAttributionArchitectureTests
   {
     var carrying = DeclaredErrors().Where(error => error.Field is not null).ToArray();
 
-    Assert.True(carrying.Length >= 40,
-      $"only {carrying.Length} errors carrying a field were discovered; 40 set one, so the reflection " +
+    Assert.True(carrying.Length >= 63,
+      $"only {carrying.Length} errors carrying a field were discovered; 63 set one, so the reflection " +
       "walk has degraded and 'all are mapped' would be a statement about nothing.");
 
     var unmapped = carrying

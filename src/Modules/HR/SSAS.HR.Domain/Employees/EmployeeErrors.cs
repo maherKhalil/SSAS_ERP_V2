@@ -10,23 +10,28 @@ namespace SSAS.HR.Domain.Employees;
 public static class EmployeeErrors
 {
   public static readonly Error InvalidEmployeeNumber =
-    new("Employee.InvalidEmployeeNumber", "The employee number is invalid.");
+    new("Employee.InvalidEmployeeNumber", "The employee number is invalid.",
+    Field: "employeeNumber");
 
   public static readonly Error InvalidNationalId =
-    new("Employee.InvalidNationalId", "The national identifier is invalid.");
+    new("Employee.InvalidNationalId", "The national identifier is invalid.",
+    Field: "nationalId");
 
   public static readonly Error InvalidFullName =
-    new("Employee.InvalidFullName", "The employee name is invalid.");
+    new("Employee.InvalidFullName", "The employee name is invalid.",
+    Field: "fullName");
 
   public static readonly Error InvalidActor =
     new("Employee.InvalidActor", "A trusted lifecycle actor is required.");
 
   public static readonly Error InvalidEmploymentDate =
-    new("Employee.InvalidEmploymentDate", "The employment date is invalid.");
+    new("Employee.InvalidEmploymentDate", "The employment date is invalid.",
+    Field: "employmentDate");
 
   // BR-HR-0003. Employment Date cannot be later than Termination Date.
   public static readonly Error TerminationBeforeEmployment =
-    new("Employee.TerminationBeforeEmployment", "The termination date cannot precede the employment date.");
+    new("Employee.TerminationBeforeEmployment", "The termination date cannot precede the employment date.",
+    Field: "terminationDate");
 
   // ---- THE ONE HALF-STATE T-091 CAN REACH, NAMED SO THE OPERATOR KNOWS WHICH REPAIR TO RUN.
   //
@@ -47,7 +52,8 @@ public static class EmployeeErrors
     new("Employee.InvalidTransition", "The employee lifecycle transition is invalid.");
 
   public static readonly Error InvalidTransitionReason =
-    new("Employee.InvalidTransitionReason", "The lifecycle reason is invalid for this transition.");
+    new("Employee.InvalidTransitionReason", "The lifecycle reason is invalid for this transition.",
+    Field: "reasonCode");
 
   public static readonly Error NotFound = new("Employee.NotFound", "The employee was not found.");
 
@@ -66,7 +72,8 @@ public static class EmployeeErrors
 
   // A transfer to the branch the employee is already in is not a transfer.
   public static readonly Error TransferDestinationUnchanged =
-    new("Employee.TransferDestinationUnchanged", "The transfer destination is the employee's current branch.");
+    new("Employee.TransferDestinationUnchanged", "The transfer destination is the employee's current branch.",
+    Field: "destinationBranchId");
 
   public static readonly Error InvalidTransferReason =
     new("Employee.InvalidTransferReason", "The transfer reason is invalid.");
@@ -158,7 +165,8 @@ public static class EmployeeErrors
   // request to move an employee where they already are is a malformed request, and answering it with
   // success would either append a history row describing no movement or return a success that did nothing.
   public static readonly Error DepartmentUnchanged =
-    new("Employee.DepartmentUnchanged", "The destination is the employee's current department.");
+    new("Employee.DepartmentUnchanged", "The destination is the employee's current department.",
+    Field: "departmentId");
 
   public static readonly Error DepartmentHistoryImmutable =
     new(
@@ -195,7 +203,8 @@ public static class EmployeeErrors
     new("Employee.PositionRequired", "A position is required.");
 
   public static readonly Error PositionUnchanged =
-    new("Employee.PositionUnchanged", "The destination is the employee's current position.");
+    new("Employee.PositionUnchanged", "The destination is the employee's current position.",
+    Field: "positionId");
 
   public static readonly Error PositionHistoryImmutable =
     new(

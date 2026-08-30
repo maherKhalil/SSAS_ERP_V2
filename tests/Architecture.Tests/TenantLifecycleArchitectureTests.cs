@@ -7,6 +7,10 @@ using SSAS.Platform.Domain.Tenants;
 
 namespace SSAS.Architecture.Tests;
 
+// ---- PLANT RECORD (T-249): collapsing the file walk to `*.csx` reddens this file.
+//
+// Checked rather than assumed. `Assert.NotEmpty(files)` is what catches it, and it catches it because
+// the count is taken AFTER the pattern filter rather than before.
 public sealed class TenantLifecycleArchitectureTests
 {
   [Fact]

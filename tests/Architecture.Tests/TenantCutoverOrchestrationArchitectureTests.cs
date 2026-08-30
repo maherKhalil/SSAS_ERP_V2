@@ -11,6 +11,11 @@ namespace SSAS.Architecture.Tests;
 // The orchestrator's value is ORDER, OWNERSHIP and RESUMABILITY. Every correctness decision belongs to a
 // component that already owns it and has already been reviewed, so the thing most worth guarding is that it
 // keeps composing them rather than growing its own copy of a freeze, a copy engine, or a routing mutation.
+// ---- PLANT RECORD (T-249): collapsing the file walk to `*.csx` reddens this file.
+//
+// Checked rather than assumed, after an audit found no recorded plant. The mutation leaves every
+// directory in place and makes the pattern match nothing, which is the failure mode a missing
+// directory does NOT produce -- that one throws.
 public sealed class TenantCutoverOrchestrationArchitectureTests
 {
   private static readonly Assembly InfrastructureAssembly = typeof(TenantCutoverWriteFence).Assembly;

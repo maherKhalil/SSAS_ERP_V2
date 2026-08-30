@@ -312,20 +312,32 @@ names the failure and the response is a refusal. It does **not** cover:
 - **code that looks careless and is not** — where the generic message is deliberate, the reason is
   required, because the reader's default inference is wrong.
 
-**Measured 2026-08-30, and stated as floors rather than counts.** A first census reported 207 catch clauses;
-a corrected matcher found **291 — 132 in `src/`, 159 in `tests/`** — so the first pass ran 24% and 33% low
-on the two trees. **Every figure derived from it is therefore a lower bound**, including the counts of
-discarding and unreasoned catches: they identify the right groups and understate their sizes.
+**Measured 2026-08-30. The figure is 212 catch clauses — 114 in `src/`, 98 in `tests/` — of which 94 discard
+the exception and 16 discard it with no stated reason, all 16 in `src/`.** Those 16 are the two groups above:
+11 parse boundaries where the type is the reason, and 5 persistence mappings. `tests/` is at zero unreasoned
+and holds all 21 completely-empty bodies; `src/` has none, which Principle 14's guard keeps true.
 
-**The two defects are worth knowing, because both are invisible in the output.** A clause count of the form
-`when (F(x) is { } y)` nests parentheses that a `\([^)]*\)` capture cannot span, and a `#pragma` sitting
-between the clause declaration and its brace defeats a `\s*\{`. **Neither produced an error; both produced
-a smaller number.**
+**⚠ Two earlier figures were published and both were wrong, and the sequence is the lesson.** A first census
+reported **207**. A correction reported **291**. The truth is **212** — so the *correction* was 37% high while
+the original was within 2.5%.
 
-**One shape is worth recording regardless of the totals: a substantial minority of reasons are written above
-the enclosing `try` rather than above the `catch`.** That is legitimate and common here, and an instrument
-scanning only the lines above a `catch` will report those catches as unreasoned.
+**The original was nearly right by CANCELLATION, not by correctness.** It made two errors in opposite
+directions: it **missed** clauses — `when (F(x) is { } y)` nests parentheses a `\([^)]*\)` capture cannot
+span, and a `#pragma` between the declaration and its brace defeats `\s*\{` — while also **counting prose**,
+matching the word `catch` inside comments and string literals. The two offsets happened to be similar in size.
 
+**⚠ THE RULE: A CORRECTION THAT FIXES ONE OF TWO OFFSETTING ERRORS LEAVES THE NUMBER WORSE THAN BOTH ERRORS
+TOGETHER.** The second pass fixed the under-count and not the over-count, breaking the cancellation. **A
+result that improves when a defect is fixed is expected; a result that gets worse means another defect was
+holding it up — and that is a reason to keep looking, not to revert.**
+
+**One shape holds regardless of totals: a substantial minority of reasons are written above the enclosing
+`try`, or above a chain's first arm, rather than above each `catch`.** Both are legitimate and common here.
+
+**⚠ Do not re-derive these counts with the classifier that produced them.** Its window was wrong four times
+in two sittings — too narrow, then too wide, then too narrow again, and once measuring on a normalised
+buffer. **The 16 is trustworthy because the residue was checked by hand, not because the heuristic is sound**,
+and a later run cannot tell those apart. Treat it as a dated observation, not a repeatable measurement.
 
 # Principle 14 – A Guard Must Be Refusable
 

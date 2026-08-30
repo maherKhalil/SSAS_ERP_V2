@@ -411,20 +411,28 @@ because a passing test asks nothing of anyone.** A failure interrogates itself; 
 self-certifying — which is why this class collects in the tests written by the most careful people, whose
 guards pass from the day they are written.
 
-**Three rules follow.**
+**Four rules follow.**
 
-**Prefer removing the failure mode to detecting it.** A floor makes a broken instrument noisy; a structural
-check makes it unbreakable in this way. *"Domain and Application remain EF-free"* is an **assembly-reference**
-question and *"no `IQueryable` on Application boundaries"* is a question about **public method signatures** —
-reflection answers both exactly, and **an assembly that fails to load throws, where a file walk that finds
-nothing returns an empty set and reads as success.** Where the underlying question is structural, ask it
-structurally.
+**Ask a structural question structurally.** *"Domain and Application remain EF-free"* is an
+**assembly-reference** question and *"no `IQueryable` on Application boundaries"* is a question about
+**public method signatures**. Reflection answers both exactly, and **an assembly that fails to load throws,
+where a file walk that finds nothing returns an empty set and reads as success.**
 
-**Every absence-asserting scan that remains a text scan carries a floor.** See Principle 14 for what a floor
-does and does not cover: it detects the walk collapsing, not one item stepping out of view.
+**⚠ But conversion removes one failure mode; it does not remove the need to show the replacement can fail.
+A reflection test that finds nothing is exactly as unfalsifiable as a file walk that finds nothing.** The
+conversion above was accepted only with two plants proving the replacements read what they claim to: the
+reference prefix pointed at `System.Runtime`, and the `IQueryable` signature walk widened to `IEnumerable`.
+**Every absence-asserting check earns a plant — text-based or structural, no exceptions.**
+
+**Prefer a CROSS-CHECK to a floor wherever a second derivation of the set exists.** A floor catches the walk
+collapsing; it **cannot catch one item dropping out** — eleven assemblies clear a floor of eight while the
+twelfth goes unexamined. The guard above instead compares its assembly set against an independently derived
+one, the `SSAS.*.Domain` and `SSAS.*.Application` directories under `src/`. **Two routes to the same set
+disagreeing is the signal; either route alone can be silently short.** Where no second derivation exists, a
+floor is the fallback, not the goal.
 
 **Record plant evidence in the test file, not only in the commit message.** Three of this repository's five
-recorded plants are visible **only in git history**. A property that can be established only by archaeology
+recorded plants were visible **only in git history**. A property that can be established only by archaeology
 stops being established — the next reader sees a green assertion and has no reason to trust it. **A short
 comment naming what was broken and what reddened is greppable, survives a rebase, and is present at the
 moment someone decides whether to believe the test.**

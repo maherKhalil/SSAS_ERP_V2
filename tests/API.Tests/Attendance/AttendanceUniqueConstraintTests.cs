@@ -82,10 +82,13 @@ public sealed class AttendanceUniqueConstraintTests(AttendanceApiTestHost host)
     using var document = JsonDocument.Parse(body);
     var detail = document.RootElement.GetProperty("detail").GetString();
 
-    // The domain message for `Persistence.UniqueConstraint`. Before T-261 the response carried no
-    // `detail` member at all and this line threw rather than failing on a value.
-    Assert.False(string.IsNullOrWhiteSpace(detail));
-    Assert.Contains("already exists", detail!, StringComparison.OrdinalIgnoreCase);
+    // ⚠ THE WHOLE STRING, NOT A SUBSTRING OF IT (T-262).
+    //
+    // This read `Assert.Contains("already exists", ...)` and **passed while the message was wrong**: the
+    // full value was *"The requested identity or access value already exists."* — an identity-access
+    // sentence answering a caller who posted a duplicate holiday. The substring the assertion checked was
+    // the half that was fine. **A substring assertion on a message is not an assertion about the message.**
+    Assert.Equal("A record with the same value already exists.", detail);
   }
 
   private async Task<HttpResponseMessage> AddHoliday(string holidayDate)

@@ -93,10 +93,17 @@ they test is the same field. **Reading `EfUnitOfWork` alone cannot establish tha
    on a detached instance raises events **nothing collects**. Measured: **203 `AsNoTracking` sites across 65
    files; 30 touch one of the 14 event-raising aggregate types**; classified **by what the query returns** —
    17 scalar (`AnyAsync`/`CountAsync`: a `bool` leaves, never an entity), 5 projections to DTOs, **8
-   entity-shaped**. ⚠ **All 8 live in `*ReadService` / `*DirectoryService` / `*RosterService`, all return
-   DTOs or ids, and no read service is injected into any command handler** — so the entity cannot reach a
-   caller that mutates and saves. **The hazard is unreachable by construction of the read/write split, not
-   by anyone having guarded it.**
+   entity-shaped**. **All 8 live in `*ReadService` / `*DirectoryService` / `*RosterService` and all return
+   DTOs or ids** — so the entity never escapes to a caller that could mutate and save it. **The hazard is
+   unreachable because read services hand over DTOs, not aggregates.**
+
+   ⚠ **CORRECTED 2026-08-30 (item 168, PR #386). This entry first said *"and no read service is injected
+   into any command handler"*. That was FALSE: eight command handlers take one, across four services.** The
+   search behind it looked for three interface names in files named `*CommandHandler*.cs`, **and handlers in
+   this codebase live in files named for their aggregate — `LeaveCommandHandlers.cs`, plural.** It
+   enumerated a subset and reported it as the whole. ⚠ **The conclusion survives and the reason does not**,
+   which is the more dangerous of the two ways to be wrong: a false premise under a true conclusion is
+   invisible until someone reasons from the premise.
 
    **Pinned by two tests** — `An_aggregate_never_attached_is_not_dispatched_from` and the production-shaped
    `An_aggregate_read_with_no_tracking_and_then_mutated_is_not_dispatched_from`. ⚠ **Each asserts two
@@ -105,6 +112,14 @@ they test is the same field. **Reading `EfUnitOfWork` alone cannot establish tha
    collected it*, the whole difference between a quiet success and a silent drop. **They pin the drop as
    CURRENT behaviour, not as correct.** Whether an untracked aggregate's events *should* dispatch is a
    design question nobody needs to answer while no path reaches it.
+
+   ⚠ **And the escape is now GUARDED, not merely measured (item 168, PR #386):**
+   `No_read_side_service_returns_an_event_raising_aggregate` checks every read-side method's return type,
+   unwrapped through `Task<>`, `Result<>` and collections at any depth, against `IHasDomainEvents`. **The
+   eight command handlers that take a read service are pinned as an INVENTORY rather than banned** — taking
+   a read service for a DTO is legitimate, and a ban would fire on eight correct handlers. **What the
+   inventory exists to notice is a NINTH, because a new injection is where an aggregate-returning read
+   would first arrive.**
 
    **Not covered:** detached mutation **without** `AsNoTracking` — an entity materialised in one context
    and mutated against another, or rebuilt from a DTO. **`AsNoTracking` is the searchable form of this

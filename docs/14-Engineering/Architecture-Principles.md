@@ -963,6 +963,28 @@ evidence; a green that a plant had to justify is merely not-yet-disproved.**
 
 ---
 
+
+## ⚠ Second instance, 2026-08-30 — and the tell is a SCOPE inherited from a naming convention
+
+The same failure recurred within hours, on a different subject, and it is worth having both because the
+shape of the wrong question changed.
+
+A measurement closed with *"no read service is injected into any command handler."* **False: eight command
+handlers take one, across four services.** The search looked for three interface names **in files named
+`*CommandHandler*.cs`** — and handlers in this codebase live in files named for their aggregate,
+`LeaveCommandHandlers.cs`, **plural.** ⚠ **The instrument enumerated a subset perfectly and reported it as
+the whole.**
+
+**First instance: the wrong MEMBER. Second: a file-naming assumption the codebase does not follow.**
+⚠ **AN ENUMERATION SCOPED BY A NAMING CONVENTION INHERITS THAT CONVENTION'S FALSITY, SILENTLY** — a filter
+that excludes the wrong files produces a smaller, entirely correct answer to a question nobody asked.
+**Before trusting a population, ask what the filter EXCLUDED and name one member of the excluded set.**
+
+⚠ **And note which half survived. The conclusion held — the hazard is still unreachable — but for a
+different reason: read services hand over DTOs, not aggregates.** **A false premise under a true
+conclusion is the more dangerous of the two, because nothing fails until someone reasons from the
+premise** — and it was caught only by an independent check aimed at a different question.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

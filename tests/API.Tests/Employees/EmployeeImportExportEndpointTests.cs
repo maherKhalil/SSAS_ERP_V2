@@ -109,14 +109,51 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
   // ================================================================================================
   //
   // `StrictCsvReaderTests` proves the reader's behaviour directly. This proves the ROUTE is wired to it —
-  // that a JSON body reaches a `400 request.invalid` rather than being parsed by something else.
+  // that a JSON body reaches the route's own refusal rather than being parsed by something else.
+  // ⚠ AND THE OTHER SIDE OF THE SPLIT, WITHOUT WHICH THE CHANGE IS HALF-ASSERTED (T-274).
+  //
+  // `ReadStrictCsvAsync` returns null for three failures and cannot say which. Only ONE of them is an
+  // unsupported FORMAT. A body that declares `text/csv` and then carries bytes that are not valid UTF-8
+  // is a **malformed file**, which FP-009 answers with `request.invalid` -- the same row as a bad header
+  // or an unknown column.
+  //
+  // Without this, the test above would pass equally if the route had simply renamed its only refusal.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0001")]
+  public async Task T4b_A_csv_body_carrying_invalid_utf8_is_a_malformed_file_not_an_unsupported_format()
+  {
+    using var request = EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=t4b",
+      host.TokenWith(HrPermissionNames.ImportEmployees), Csv);
+
+    // 0xFF is not a legal UTF-8 byte in any position. The content type still declares text/csv, so the
+    // FORMAT gate admits it and the DECODER is what refuses.
+    request.Content = new ByteArrayContent([0xFF, 0xFE, 0xFD]);
+    request.Content.Headers.TryAddWithoutValidation("Content-Type", "text/csv; charset=utf-8");
+
+    using var response = await host.Client.SendAsync(request);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ⚠ THE ANSWER NAMES CSV SINCE T-274, AND THAT IS THE CONTRACT RATHER THAN A NEW OPINION.
+  //
+  // This asserted `request.invalid` for every case. **It was not failing -- it pinned the behaviour
+  // T-274 deliberately changed.** `DEC-DOC-0001` reads: *"Import accepts UTF-8 CSV only in V1... The
+  // response to an unsupported format is `400`, naming CSV."* `request.invalid` names nothing, so a
+  // caller sending XLSX got the same answer as one sending a CSV with a bad header -- and FP-009's
+  // contract table separates those two rows deliberately.
+  //
+  // The status is unchanged at 400. Only the code moved, which is the point: the category was always
+  // right and the instruction was missing.
   [Theory]
   [InlineData("application/json")]
   [InlineData("text/plain")]
   [InlineData("multipart/form-data; boundary=x")]
   [InlineData("text/csv; charset=windows-1256")]
   [Trait("Decision", "DEC-DOC-0014")]
-  public async Task T4_A_body_that_is_not_utf8_csv_is_refused_by_the_route(string contentType)
+  public async Task T4_A_body_whose_FORMAT_is_not_utf8_csv_is_refused_by_name(string contentType)
   {
     using var request = EmployeeApiTestHost.CsvRequest(
       HttpMethod.Post, "/api/hr/employees/import?importKey=t4",
@@ -125,7 +162,8 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     using var response = await host.Client.SendAsync(request);
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+    Assert.Equal("employee_import.format_unsupported",
+      await EmployeeApiTestHost.ProblemCodeAsync(response));
 
     // NO RUN RECORD. A refusal of the REQUEST is not an import attempt, so nothing is recorded and the key
     // is not consumed — unlike a refused FILE, which is.
@@ -572,3 +610,4 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.Equal(EmployeeImportOutcome.Validated, host.ImportRuns.Runs.Single().Outcome);
   }
 }
+

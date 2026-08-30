@@ -46,11 +46,24 @@ public sealed class PositionChangeErrorWireContractTests : IClassFixture<Positio
 
     using var response = await host.Client.SendAsync(request);
 
-    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    // ⚠ 422 AND `position.unchanged` SINCE T-274 -- THIS TEST PINNED A DIVERGENCE, NOT A CONTRACT.
+    //
+    // It asserted `400 request.invalid`. **It was not failing; it recorded what the product did.** What
+    // the product did disagreed with `FP-008 api-contracts.md:167` -- `422 position.unchanged` -- and with
+    // `AC-POS-0034`, in BOTH the status and the code. Nothing anywhere recorded a reason to differ, so the
+    // code moved to the contract rather than the contract to the code.
+    //
+    // 422 is the contract's own distinction and it is the right one: the body is well-formed and every
+    // field is valid. What is refused is the request's MEANING against current state.
+    Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
 
     using var document = System.Text.Json.JsonDocument.Parse(
       await response.Content.ReadAsStringAsync());
 
-    Assert.Equal("request.invalid", document.RootElement.GetProperty("code").GetString());
+    Assert.Equal("position.unchanged", document.RootElement.GetProperty("code").GetString());
+
+    // The field survives the status change: the caller sent `positionId` and it is still the input at
+    // fault. Status is the category, the code is the instruction, and the field is which input.
+    Assert.Equal("positionId", document.RootElement.GetProperty("field").GetString());
   }
 }

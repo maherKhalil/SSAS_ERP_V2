@@ -50,9 +50,9 @@ It also removes a standing inconsistency: this record supersedes deferred portio
 
 ---
 
-## ⚠ IMPLEMENTATION STATUS 2026-08-30 — DECISION 4 IS BINDING AND PARTLY UNGUARDED
+## ⚠ IMPLEMENTATION STATUS 2026-08-30 — DECISION 4 IS BINDING, AND AS OF THIS DATE IT IS ENFORCED
 
-**Measured, not read** (item 163, PR #382). Decision 4 forbids company authority in a token: *"The
+**Measured, not read** (item 163, PR #382; closed by item 164, PR #383). Decision 4 forbids company authority in a token: *"The
 `company_id` JWT claim, `ICurrentUser.CompanyId`, and any header or body `CompanyId` are **never**
 authorization proof."* `ADR-014` had documented that plumbing as plumbing; **this ADR made it binding.**
 
@@ -64,24 +64,51 @@ authorization proof."* `ADR-014` had documented that plumbing as plumbing; **thi
 - **The platform plane.** `StrictAccessTokenValidator.PlatformForbiddenClaims` rejects `company_id` on a
   platform token.
 
-⚠ **What does not:**
+- **The tenant plane.** `StrictAccessTokenValidator.TenantForbiddenClaims` rejects `company_id` on a
+  tenant token — **added 2026-08-30 under item 164 (PR #383)**, because until then the tenant profile had
+  no forbidden-claim list at all and would have accepted it. ⚠ **The guard had existed only on the plane
+  where the claim was never plausible, and was absent on the plane this prohibition actually names.**
+- **`ICurrentUser.CompanyId` is gone**, removed in the same change along with its implementation. It read
+  the very claim decision 4 names, and nothing consumed it.
 
-- **The tenant plane has no forbidden-claim list at all.** The tenant profile checks that its critical
-  claims appear exactly once and validates their formats; **it is silent about extras.** A tenant token
-  carrying `company_id` would pass strict validation today. **The guard exists on the plane where the
-  claim was never plausible and is absent on the plane this prohibition actually names.**
-- **`ICurrentUser.CompanyId` still exists and still reads that claim** — the very member decision 4 names.
-  Nothing consumes it: the only references in `src/` are its declaration, its implementation, and the
-  prohibition itself.
+**It was never a vulnerability.** The issuer never emitted the claim and tokens are RS256-signed, so no
+caller could introduce one without the signing key. ⚠ **It was an unguarded prohibition: what this ADR
+forbids was prevented by nobody having written it.** A rule that holds because no one has broken it yet is
+not enforcement — see Principle 14, *a guard must be refusable*.
 
-**This is not a vulnerability.** The issuer never emits the claim and tokens are RS256-signed, so no caller
-can introduce one without the signing key. ⚠ **It is an unguarded prohibition: what this ADR forbids is
-prevented today by nobody having written it.** A rule that holds because no one has broken it yet is not
-enforcement — see Principle 14, *a guard must be refusable*.
+### ⚠ Ruled 2026-08-30: the tenant profile will NOT reject every out-of-set claim
 
-**Being closed under item 164**, narrowly and deliberately: the named claim is rejected on the tenant plane
-and the vestigial property is removed. **Whether the tenant profile should reject *every* out-of-set claim
-is a wider question with a deployment-ordering cost, and is being costed rather than assumed.**
+**Recorded so this is not re-asked.** The wider guard — a tenant token carrying *any* claim outside
+`DEC-AUTH-0049`'s set is refused — was costed under item 164 and **declined.**
+
+- **The ordering hazard I expected does not exist.** `AccessTokenIssuer` and `StrictAccessTokenValidator`
+  are the same assembly, `SSAS.Host.API`, and therefore **the same deployment unit**; they cannot drift
+  between releases.
+- **What remains is a rolling-deploy window**: new instances issue, old instances validate, so a release
+  adding a claim has tokens minted by new instances rejected by old ones while both serve. **Blast radius
+  is total, not partial** — every request carrying an affected token fails authentication — for the rollout
+  plus up to the 15-minute token lifetime, **presenting as intermittent 401s that resolve on retry**, which
+  reads as flapping rather than as a bad release.
+- **The mitigation is standard expand/contract in two releases, so the cost is not the code: it is that
+  every future claim addition becomes a two-release change, permanently.**
+- **The security benefit is defence in depth against a change that is already caught.** A stray claim can
+  reach a token only by a deliberate edit to the issuer — and since 2026-08-30 the issuer's claim set is
+  pinned **as a set**, so such an edit reddens at build time. Signing means nothing else can introduce one.
+- **Base rate, measured:** `JwtClaimTypes.cs` has been touched in **4 commits in the repository's life**,
+  all between 2026-07-30 and 2026-08-11, and **none in the 19 days since**. The claim set stabilised once
+  the authentication surface was specified.
+
+⚠ **The trade is real rather than obvious: today an unexpected claim is accepted silently; afterwards it
+fails loudly. Loud is better for a security property and worse for availability.** The decision rests on
+the benefit being *defence in depth behind an existing build-time guard* while the cost is *permanent and
+paid by every future release*.
+
+⚠ **What would change this answer:** if a second token issuer ever exists, or if issuance moves out of
+`SSAS.Host.API`, **the same-deployment-unit premise fails and this must be reconsidered.**
+
+**Scope note:** `email` and `name` are deliberately **not** in the forbidden list. Decision 4 names
+`company_id`; the others are excluded by the issuer and pinned as a set. **Adding them would widen the
+guard beyond the ruling it enforces.**
 
 ---
 

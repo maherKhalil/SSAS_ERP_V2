@@ -868,6 +868,37 @@ See **Principle 20** — an absence claim is a measurement, and the weaker its m
 
 ---
 
+# Principle 22 – Removing an Interface Member Orphans Its Implementers; the Compiler Only Tells You About Consumers
+
+**Deleting a member from an interface does not break the classes that implement it. It orphans them.** The
+implementations still compile — they are now ordinary methods nobody calls — and the failure arrives from
+analysis, not from the type system: an orphaned member trips **`CA1822`** (*does not access instance
+data*), and `DEC-L-008` condition 1 is **zero warnings**. ⚠ **So the gate goes red for a reason that has
+nothing to do with whether the change was correct.**
+
+**The measured case.** `ICurrentUser.CompanyId` was removed under `ADR-025` decision 4. It had **one
+consumer** — a single test assertion — **and one hundred implementers**: 95 stubs in `tests/`, four in
+`src/` and `tools/`, plus the real one. **The dispatch that ordered the removal said its only references
+were the declaration, the implementation and the prohibition. That was true of consumers and wrong by two
+orders of magnitude about implementers.**
+
+⚠ **A compile-error search finds consumers and is blind to implementers — the exact inverse of what
+*"find every call site"* leads you to expect.** Before removing an interface member, enumerate the types
+that *declare* it, not the code that *reads* it.
+
+## ⚠ And an incremental build is not evidence about code it did not recompile
+
+The same change built **clean, zero warnings, with four orphans standing in `src/` and `tools/`.** The
+build was **incremental**: those projects were never recompiled, so they never re-emitted their warnings.
+The gate, which builds from scratch, caught it; `--no-incremental` reproduces it locally.
+
+**A green build is a statement about the projects the compiler actually looked at.** For any change that
+can produce *analysis* warnings rather than *compile* errors — interface member removal, visibility
+changes, dead-parameter removal — **build with `--no-incremental` before believing the zero.** This is the
+build-system form of the rule that a passing guard whose file walk found nothing has told you nothing.
+
+---
+
 # Related Documents
 
 - All accepted ADRs (001-012)

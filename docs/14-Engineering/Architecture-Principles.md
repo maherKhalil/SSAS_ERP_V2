@@ -446,6 +446,13 @@ nothing and passes* but **passes without running at all.** Absence-asserting che
 population of this hazard, not the whole of it. **Every check earns a plant, whatever it asserts and however
 it is implemented.**
 
+**⚠ And every plant must COMPILE. A plant that breaks the build tests nothing and looks like evidence.** On
+2026-08-30 a plant added a **required** parameter; the build failed, the runner executed a **stale
+assembly**, and the test passed — **a green certifying the previous binary**, about to be written down as
+proof the guard worked. **That is worse than an unplanted guard, because it produces a recorded claim of
+verification.** Check the build result before reading the test result, and prefer a break that cannot fail
+to compile: an optional parameter, a changed literal, a widened pattern, a renamed path segment.
+
 **A cheap tell, short of a plant: does the clock agree the work happened?** That same test passed on its
 first run reporting `Duration: < 1 ms` **for something that creates a database.** The timing was the only
 thing out of place, and inverting the assertion proved the run was real. **A green whose duration does not

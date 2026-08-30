@@ -14,30 +14,20 @@ marked otherwise, so **`DEC-L-007` applies: green gate, merge immediately — no
 **Refill:** the architect refills at TWO remaining, not at zero. If this file drops to two open items and no
 refill has arrived, **say so and start the highest-value thing you can defend** rather than idling.
 
-## ⚠ SESSION RESTARTED 2026-08-30 — ITEM 90 WAS IN FLIGHT AND IS UNCOMMITTED
+## ⚠ CORRECTION — ITEM 90 WAS FINISHED, NOT IN FLIGHT. THE WORKING TREE IS CLEAN.
 
-**The owner restarted VS Code while 90 was part-done. The changes are on disk, on `ClaudeBranch`, not on an
-agent branch, and they were never committed.** A restart does not remove them — **but a `git reset --hard`
-or a branch switch will.** Verify this state before doing anything else, and do not assume 90 is untouched.
+**An earlier version of this section said 90 was part-done and uncommitted on `ClaudeBranch`, and listed
+eight files to inspect. That was wrong.** 90 gated green and merged as **PR #347** in the same minutes; the
+files seen modified were the finished change immediately before its commit. **Nothing is uncommitted and
+there is nothing to recover.**
 
-**Staged when the session ended:**
-- `src/Host/SSAS.Host.API/Authentication/AccessTokenIssuer.cs` — the ruled fix: log the cause server-side,
-  leave the caller's `AccessTokenIssuanceUnavailable` unchanged.
-- `tests/API.Tests/Infrastructure/JwtInfrastructureTests.cs`
+**Recorded rather than deleted, because it is the failure this file exists to prevent** — a status written
+from a snapshot taken at the wrong instant, published as fact, three minutes after the architect finished
+correcting the same class of staleness elsewhere. **A working-tree observation is a measurement with a
+timestamp, and it decays in seconds.**
 
-**Modified, not staged** — these are the remaining group-C catches being judged individually:
-- `.../Localization/LocalizationManagementAuditGuard.cs`
-- `.../Localization/LocalizationTextResolver.cs`
-- `.../Identity/CompromisedPasswordOptionsValidator.cs` — **comment only**; it is correct as written, every
-  arm returns `ValidateOptionsResult.Fail` so startup refuses, and the generic message protects the dataset
-  path. It looks careless and is the opposite, which is exactly why it needs the reason stated.
-- `.../Localization/LocalizationManagementAuditReadinessHealthCheck.cs`
-- `.../Localization/LocalizationMemoryCache.cs`
-- `.../TenantStorage/TenantStorageOptionsValidator.cs`
-
-**Resume by reading the diff first**, not by restarting the item — the ruling is item 90 below and has not
-changed.
-
+**True state: `ClaudeBranch` carries #345, #346 and #347. 91, 92 and 93 are unstarted and fully specified
+below. Nothing is in flight.**
 
 | # | item | status | detail |
 |---|---|---|---|
@@ -53,7 +43,7 @@ with the segment check; the tightening caught a false green in its own implement
 survived falsification and is pinned by a test**), 88 (**census: 207 catch clauses, 94 discard, 40
 unreasoned; two instrument defects found and corrected before the number was trusted**).
 
-**Group A of the 88 census — the ~13 where the exception type IS the reason — is ruled LEAVE.** No comments
+**Group C of the 88 census is CLOSED (#347). Group A — the ~13 where the exception type IS the reason — is ruled LEAVE.** No comments
 there; **the single collective statement is the architect's to write.**
 
 **Division of labour, set by the owner 2026-08-30:** the coder does **coding and testing only**; planning

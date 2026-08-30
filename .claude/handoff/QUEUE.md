@@ -16,19 +16,20 @@ refill has arrived, **say so and start the highest-value thing you can defend** 
 
 | # | item | status | detail |
 |---|---|---|---|
-| 86 | **Uncalled routes: 3 real, 2 instrument artefacts.** Write calls for the 3; allowlist the 2 — **entry names the test method AND the action segment, guard asserts that method's source contains it** (naming the method alone catches a rename and misses a rot). No redundant literal calls to satisfy the instrument. | **in flight — ruled** | BOARD 2026-08-30 |
-| 88 | **Enumerate the swallowed-exception class across `src/` and `tests/`.** Two passes have fixed a swallow and missed its neighbour. Report the count and the list; rule with the architect on which need reasons. Stop fixing instances. | **open** | BOARD 2026-08-30 |
-| 89 | **Which other instruments are blind to composed identifiers?** `ApiContractRowGuardTests` over-reported because a route segment came from `[InlineData]` rather than being spelled out. **Enumerate the guards and inventory tests that match identifiers as LITERALS, and for each ask what in this codebase builds those identifiers instead of writing them.** Report the list and the direction of each instrument's error before proposing fixes — an instrument that over-reports is noise, one that under-reports is a false green. | **open** | BOARD 2026-08-30 |
+| 89 | **Which other instruments are blind to composed identifiers?** Enumerate guards and inventory tests matching identifiers as LITERALS; for each ask what BUILDS those identifiers instead of spelling them. **Report each instrument's error direction before proposing fixes** — over-reporting is noise, under-reporting is a false green. | **open** | BOARD 2026-08-30 |
+| 90 | **`AccessTokenIssuer:61` and `:110` — a real defect, not a documentation gap.** Missing key, bad algorithm and oversized token collapse to one observable in the auth path, in a file with no logger. **Log the cause server-side; leave the caller's `AccessTokenIssuanceUnavailable` unchanged** — opaque outward, diagnosable inward. Then judge the remaining nine group-C catches individually, and comment `CompromisedPasswordOptionsValidator` (it refuses startup; the generic message protects the dataset path). | **open** | BOARD 2026-08-30 |
+| 91 | **Reasons on the 13 test-teardown discards**, then count **bare `catch` with an empty body in `src/`** — a purely syntactic set needing no comment classifier. **If it reaches zero, add a guard asserting zero.** If not, report what is left and why. **No guard requiring a comment on every discarding catch** — that classifier was wrong twice in an hour in both directions. | **open** | BOARD 2026-08-30 |
+| 92 | **What does the API return today for a duplicate key violation?** Group B discards the inner SQL error, so a unique violation and a deadlock arrive identically. **Measure the boundary before documenting it as acceptable:** a duplicate surfacing as a generic failure rather than a conflict is a product defect, not a comment. | **open** | BOARD 2026-08-30 |
 
-**Closed 2026-08-30:** 77, 78 (memory index and descriptions), 79 (docs — architect's, #341), 80 (twelve
-routes, #342/#343), 81 (**dissolved — nothing unowned to build**), 82 (**cancelled — already measured, board
-row 1095**), 83 (bare neighbour catch, #344), 84 (**overturned 80's premise: 71 constrained, 25
-unconstrained**), 85 (**#345 — 71 constraints removed, product-wide total now 0, architecture test
-planted, sibling gate clean with an empty allowlist as a measured claim**), 87 (**the 400s carry a problem
-document naming the parameter — the ruling survived falsification and is now pinned by a test**).
+**Closed 2026-08-30:** 77, 78, 79 (docs — architect's, #341), 80 (#342/#343), 81 (**dissolved**), 82
+(**cancelled — already measured**), 83 (#344), 84 (**overturned 80's premise**), 85 (**#345 — 71 constraints
+removed, product-wide total 0, architecture test planted**), 86 (**#346 — 3 real gaps called, 2 allowlisted
+with the segment check; the tightening caught a false green in its own implementation**), 87 (**the ruling
+survived falsification and is pinned by a test**), 88 (**census: 207 catch clauses, 94 discard, 40
+unreasoned; two instrument defects found and corrected before the number was trusted**).
 
-**Queue is at three and the architect is enumerating for more rather than inventing them.** If it reaches
-two with no refill, say so and start the highest-value thing you can defend.
+**Group A of the 88 census — the ~13 where the exception type IS the reason — is ruled LEAVE.** No comments
+there; **the single collective statement is the architect's to write.**
 
 **Division of labour, set by the owner 2026-08-30:** the coder does **coding and testing only**; planning
 and documentation are the architect's. **A docs-shaped item is pushed back, not done.** When something

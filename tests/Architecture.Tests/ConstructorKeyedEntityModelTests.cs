@@ -7,7 +7,7 @@ using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
 using SSAS.TestSupport.CutoverModel;
 
-namespace SSAS.Integration.Tests;
+namespace SSAS.Architecture.Tests;
 
 // ================================================================================================
 // THE GUARD FOR A DEFECT THAT SHIPPED, AND THE ONLY REASON IT WAS EVER FOUND.
@@ -52,6 +52,28 @@ namespace SSAS.Integration.Tests;
 // separate model this does not build. Its eight configurations already declare `ValueGeneratedNever`, so it
 // is compliant today — but compliant by habit rather than by assertion, and if that context ever grows an
 // entity that forgets, nothing here will notice. Extending the sweep to it is a small, separate change.
+// ---- ⚠ MOVED OUT OF THE INTEGRATION SUITE, AND IT IS THE NINTH OF ITS KIND (T-257).
+//
+// Neither test opens a connection: `ComposedContext()` builds the EF model from a deliberately unusable
+// connection string, `"Server=unused;Database=model-only"`. They assert about a MODEL, not a database.
+//
+// **`GATE_SCOPE=TASK` never runs the Integration suite**, so both spent their lives behind a 24-minute
+// SQL Server dependency that ordinary development does not invoke. Here they run in every gate.
+//
+// ---- WHY THIS ONE MATTERS MORE THAN THE EIGHT BEFORE IT.
+//
+// A duration sweep of the Integration suite on 2026-08-27 found eight database-free tests and they were
+// moved. Re-running the sweep on a current corpus three days later found **one — this file — and it had
+// not existed on the 27th.** The eight were never a backlog to clear: **they are an arrival rate.**
+//
+// That is why `IntegrationSuiteTimingGuardTests` now asserts the property continuously rather than a
+// person re-running the sweep. A cleanup that runs once is the wrong instrument for a source that keeps
+// producing.
+//
+// ---- WHAT UNBLOCKED IT.
+//
+// `CutoverTenantModel` moved to `tests/TestSupport/SSAS.TestSupport.CutoverModel` in T-253 so both suites
+// could share one definition. Until then this file could not follow the other six.
 public sealed class ConstructorKeyedEntityModelTests
 {
   [Fact]

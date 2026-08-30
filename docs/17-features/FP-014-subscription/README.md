@@ -2,7 +2,7 @@
 package: FP-014
 title: Subscription and the Commercial Plane
 module: Platform
-status: RATIFIED (2026-08-25) — and PARTLY BUILT. Measured 2026-08-30: of 54 acceptance criteria, 20 are pinned by a named test, 11 implemented but unpinned, 19 not implemented, 4 blocked on an undefined subject. The entitlement half is built and tested; the billing half does not exist.
+status: RATIFIED (2026-08-25) — and PARTLY BUILT. Measured 2026-08-30: of 54 acceptance criteria, 20 pinned by a named test, 11 implemented but unpinned, 17 not implemented, 4 blocked on an undefined subject, 2 vacuously satisfied. The entitlement half is built and tested; the billing half does not exist.
 version: 1.0
 date: 2026-08-25
 ---
@@ -32,8 +32,53 @@ attributed, because reopening a commercial decision is a different act from reop
 |---|---|---|
 | **Pinned by a named test** | **20** | asserted by a test identified by name |
 | **Implemented but unpinned** | **11** | the behaviour exists; nothing fails if it regresses |
-| **Not implemented** | **19** | see the qualification below — four of these are weaker claims than the rest |
+| **Not implemented** | **17** | an engineer could build it today. **Three are now proven absent by test, not merely unfound** — see below |
 | ⚠ **Subject undefined** | **4** | `AC-SUB-0040`, `0049`, `0050`, `0051` — **not engineering work; a decision nobody has made** |
+| ⚠ **Vacuously satisfied** | **2** | `AC-SUB-0008`, `0026` — **met by the absence of the mechanism they guard against** |
+
+**Revised later the same day, 2026-08-30, from 20 · 11 · 19 · 4.** Nothing was built or removed in between:
+**two criteria moved out of *not implemented* because measuring them showed the defect was in the criterion.**
+The count changed because the classification was wrong, not because the product changed — recorded here
+rather than silently restated.
+
+⚠ **A third move was proposed and REFUSED, and the refusal is the more useful record.** `AC-SUB-0045` was
+reported as *"not satisfiable"* because it mentions *"this package's six"* permissions, which do not
+exist. **But those six are a parenthetical, not the subject.** The criterion's actual assertion is that
+**every** platform-plane permission name is used only with `RequirePlatformPermission` and every
+tenant-plane name only with `RequirePermission` — over the whole 28-name set, **widened to it deliberately
+by `DEC-L-010`** precisely so the ambiguity that already shipped would not go unasserted. **That subject
+exists and the criterion is fully evaluable.** It stays in *not implemented*, where it was.
+
+### ⚠ The fifth bucket: two criteria are met by the absence of what they guard
+
+**A status column cannot express this, and green, red and absent would each mislead.**
+
+- `AC-SUB-0008` and `AC-SUB-0026` are each met **by the absence of the mechanism they guard against.** `0008` requires that no tenant-plane subscription permission exist, and is satisfied
+  because the package defines none on *either* plane. `0026` requires that losing entitlement delete no row
+  — and **nothing is written when a term ends**: `HasExpiredAt` is a pure function of the term against the
+  clock, no job runs, so there is no moment at which a deletion could occur and no before-and-after to
+  count. ⚠ **Both guarantees are real and neither is evidence of anything, because the commit that first
+  creates the mechanism is the commit that can violate them.** Whoever builds the missing half must
+  re-check these two; they are notes attached to future work, not work.
+
+### The three absences now proven rather than unfound
+
+Item 162 built `tests/API.Tests/Infrastructure/EntitlementPermissionCouplingTests.cs` (7 tests, gate green,
+PR #381) and closed `AC-SUB-0013`, `0024` and `0025` **by exercising the path instead of searching it.**
+The tenant permission decision consults exactly three things — a validated tenant, `TenantStatus`, and the
+caller's `permission` claims. **Entitlement is neither among them nor reachable from there.**
+
+⚠ **The half that survives a refactor is the structural pair.** An outcome test states today's behaviour;
+`No_tenant_authorization_handler_takes_an_entitlement_dependency` and its grant-path sibling **redden the
+moment anyone adds an entitlement collaborator, whatever behaviour results.** Both controls were planted
+and each reddened only its own test.
+
+⚠ **`AC-SUB-0013` is closed for the DECISION path only.** Its other half — that the tenant token's claim
+set is exactly FP-002's — is covered for the **platform** plane by `PlatformAccessTokenClaimsTests` and by
+**nothing** for the tenant plane. **That gap is real and is not a subscription gap.**
+
+**Scope of those tests:** the authorization decision and the grant path. A coupling composed elsewhere — in
+a claims-issuing path, or a module handler doing its own entitlement check — is outside them.
 
 ⚠ **THE LINE FALLS ALMOST EXACTLY BETWEEN WHAT A TENANT MAY USE AND WHAT A TENANT IS CHARGED.** The
 entitlement half — plans, grants, terms, expiry, the module gate, the cache — is built and genuinely well
@@ -51,12 +96,11 @@ matters most, because the part it denied is the part carrying the tested guarant
    asserts that every module-owned endpoint is gated and no platform-plane endpoint is, which is count-free
    and strictly stronger, and it carries its own anti-vacuity control. **Do not "fix" the test to match the
    criterion.** The criterion's numbers are what need correcting.
-2. ⚠ **`AC-SUB-0008` IS SATISFIED FOR THE WRONG REASON AND `AC-SUB-0045` IS NOT SATISFIABLE.** `0008`
-   requires that no *tenant*-plane subscription permission exist. That is true — **because this package
-   defines no permissions on either plane.** All 28 platform permission names were enumerated: there is no
-   `Platform.Subscriptions.*`, `Plans.*`, `Grants.*` or `Invoices.*`. `0045` speaks of *"this package's
-   six"*, which do not exist. **A criterion met by universal absence is not evidence that the distinction
-   it protects was implemented** — and a green status table would hide exactly that.
+2. ⚠ **TWO CRITERIA ARE MET BY THE ABSENCE OF WHAT THEY GUARD — see the fifth bucket above, which is the
+   only place they are classified.** The evidence, recorded once: all 28 platform permission names were
+   enumerated and there is no `Platform.Subscriptions.*`, `Plans.*`, `Grants.*` or `Invoices.*`.
+   ⚠ **`AC-SUB-0045` mentions *"this package's six"* and is NOT one of the two** — those six are a
+   parenthetical; its subject is the whole 28-name set, and it is evaluable and unmet.
 3. ⚠ **THE FOURTH BUCKET IS NOT A SMALLER VERSION OF THE THIRD.** All four rest on the **undefined seat**:
    `DEC-L-009` says *"seats"* and never defines one. `AC-SUB-0049` names `TenantUser` **because that is
    the only reading available, not because it was ruled** — flagged in T-008, again in T-013, still open,

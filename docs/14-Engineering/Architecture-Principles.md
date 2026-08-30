@@ -841,6 +841,26 @@ engineering not yet done — in a document an owner reads to decide whether the 
 | not implemented | an engineer, today |
 | ⚠ **subject undefined** | **only the owner, and no engineering can proceed until then** |
 
+## ⚠ A fifth state, added 2026-08-30 after measuring the same package twice
+
+**A criterion can be defective in its PREMISE rather than in its status**, and a status column expresses
+neither — green, red and absent all mislead. Two of 54 turned out to be this:
+
+| criterion | why it is met | who can act |
+|---|---|---|
+| *no tenant-plane subscription permission exists* | the package defines none on **either** plane | **nobody now** — whoever builds the missing half must re-check it |
+| *losing entitlement deletes no row; counts before and after are identical* | **there is no lapse event.** Expiry is a pure read; nothing is written when a term ends, so there is no moment at which a deletion could occur and no before-and-after to count | same |
+
+**Both guarantees are real and neither is evidence of anything, because the commit that first creates the
+mechanism is the commit that can violate them.** They are notes attached to future work, not work — a
+sixth actor the four-bucket table has no row for.
+
+⚠ **AND THE TEST FOR THIS STATE MUST BE APPLIED CAREFULLY, BECAUSE IT OVER-FIRES.** A third criterion was
+proposed for the same treatment on the grounds that it mentions six permissions that do not exist. **It
+was refused: those six are a PARENTHETICAL, and the criterion's subject is the whole 28-name permission
+set, which exists.** The criterion is fully evaluable and simply unmet. **A criterion that names something
+absent is not thereby defective — read what it QUANTIFIES OVER, not what it mentions.**
+
 **And the two weak forms of the third bucket must be separated too.** *"A whole-tree symbol search found
 no such type"* and *"I did not find the seam that would couple these"* are different claims: the first is
 close to proof, the second is an admission. **Four of FP-014's nineteen are the second kind and say so.**

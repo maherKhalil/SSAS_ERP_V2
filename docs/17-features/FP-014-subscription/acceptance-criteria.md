@@ -21,7 +21,7 @@ likely to be dropped between an analysis package and an implementation prompt.
 | `AC-SUB-0005` | A plan is referenced by many tenants; amending it changes no subscription record, and no plan attribute is copied into a subscription row at assignment | `REQ-SUB-0002` |
 | `AC-SUB-0006` | The plan tables carry **no `TenantId` column**, and no route reachable on the tenant plane can create, amend or retire a plan | `REQ-SUB-0003` |
 | `AC-SUB-0007` | A tenant-plane caller holding **every permission the product defines** receives `403` from every subscription, plan, grant and invoice write route | `REQ-SUB-0004` |
-| `AC-SUB-0008` | **No tenant-plane permission name for subscription administration exists in the composed catalog.** The criterion is the absence — there is nothing to grant by mistake | `REQ-SUB-0004` |
+| `AC-SUB-0008` | **No tenant-plane permission name for subscription administration exists in the composed catalog.** The criterion is the absence — there is nothing to grant by mistake. ⚠ **Satisfied vacuously as at 2026-08-30:** the package defines no subscription permissions on **either** plane (all 28 platform names enumerated), **so this is met by there being nothing to separate rather than by the separation being implemented** | `REQ-SUB-0004` |
 | `AC-SUB-0009` | With the tenant's ERP database unreachable, the subscription read and administration surface still answers, and a gated ERP route fails with a modelled `TenantDatabaseUnavailable` rather than the whole API becoming unreachable for that tenant | `REQ-SUB-0005` |
 | `AC-SUB-0010` | Every subscription, grant and invoice write records **who** and **when**, and the actor is the authenticated platform principal rather than a service account | `REQ-SUB-0006` |
 
@@ -49,7 +49,7 @@ likely to be dropped between an analysis package and an implementation prompt.
 | `AC-SUB-0023` | An authenticated tenant user holding **no permissions** receives their tenant's enabled-module set, and the response is identical to the one an administrator receives | `REQ-SUB-0014` |
 | `AC-SUB-0024` | Assigning a permission belonging to a module the tenant is not entitled to is **refused at grant time** | `REQ-SUB-0015` |
 | `AC-SUB-0025` | A role holding a permission granted while entitled **stops satisfying** that permission check when entitlement lapses, and satisfies it again when entitlement returns — with the role assignment unchanged throughout | `REQ-SUB-0015` |
-| `AC-SUB-0026` | Losing entitlement to a module deletes **no row** in that module's tables — counts before and after are identical — and every record is readable again on re-entitlement | `REQ-SUB-0016` |
+| `AC-SUB-0026` | Losing entitlement to a module deletes **no row** in that module's tables — counts before and after are identical — and every record is readable again on re-entitlement. ⚠ **The guarantee holds and the TEST IT ASKS FOR CANNOT BE WRITTEN (2026-08-30).** There is no entitlement-lapse event: `HasExpiredAt` is a pure function of the term against the clock, nothing is written when a term ends and no job runs, **so there is no moment at which a deletion could occur and no before-and-after to count** (`OD-SUB-0010`). **It is satisfied by the absence of the mechanism it guards against, which is not the same as being implemented** — whoever builds a lapse path must re-check this criterion, because that commit is the one that can violate it | `REQ-SUB-0016` |
 
 ## Term, expiry and tenant status
 

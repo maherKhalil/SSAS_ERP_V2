@@ -550,6 +550,29 @@ export MSBUILDDISABLENODEREUSE=1
 # TestResults/ is already gitignored, so the gate cannot pollute the working tree.
 LOGS="${GATE_LOGS:-$ROOT/TestResults/gate}"
 mkdir -p "$LOGS"
+
+# ---- ⚠ THE PATH HANDED TO `dotnet` MUST BE RELATIVE, AND THIS IS NOT A STYLE PREFERENCE (T-251).
+#
+# `$LOGS` is an absolute POSIX path. `dotnet` is a WINDOWS executable, so MSYS normally rewrites
+# `/c/Users/...` into `C:\Users\...` on the way through. **When `MSYS_NO_PATHCONV=1` or
+# `MSYS2_ARG_CONV_EXCL='*'` is set, that rewrite does not happen** -- Windows then reads the leading
+# slash as a drive-relative path and resolves it against the current drive, producing
+# `C:\c\Users\...\TestResults\gate`.
+#
+# **That is outside the repository, where nothing looks.** A full run on 2026-08-27 wrote its entire
+# TRX set there; `TestResults/gate/` kept only stale files, so anyone checking whether the Integration
+# suite had run would have found nothing and concluded it had not. **A defect that manufactures false
+# absences in the gate's own evidence.**
+#
+# It is not hypothetical environment trivia: those two variables are exactly what one sets to stop MSYS
+# mangling a `git show <rev>:<path>` argument. **Fixing one tool's path handling silently relocated
+# another's output.**
+#
+# The fix is a path with nothing to convert. `cd "$ROOT"` happened above, so a repo-relative directory
+# is correct under both settings -- verified by running the same command with and without the variables
+# and confirming the TRX lands in the same place. An explicitly overridden `GATE_LOGS` outside the repo
+# keeps its absolute form, because there is nothing relative to make it.
+LOGS_ARG="${LOGS#"$ROOT"/}"
 GATE_FAILED=0
 
 # ---- CONDITION 4's BASELINE. See note 7t. T-059.
@@ -1227,10 +1250,24 @@ for CFG in $GATE_CONFIGS; do
     # replacement for it.
     dotnet test "$F" -c "$CFG" --nologo -v q --no-build $BLAME \
       --logger "trx;LogFileName=$P-$CFG.trx" \
-      --results-directory "$LOGS" \
+      --results-directory "$LOGS_ARG" \
       $RUNSETTINGS_ARGS \
       > "$LOGS/$P-$CFG.log" 2>&1
     STATUS=$?
+
+    # ---- ⚠ THE RESULTS FILE LANDED WHERE WE ASKED, OR THE GATE SAYS SO (T-251).
+    #
+    # The relocation above was silent for three days: the run passed, the log was written, and only the
+    # TRX went elsewhere. **Nothing in a green gate distinguished "results written here" from "results
+    # written to a directory outside the repository".**
+    #
+    # So the absence is now asserted rather than assumed. This does not fail the gate -- a missing TRX
+    # does not mean the tests were wrong -- but it must never again be INVISIBLE, because the evidence
+    # trail is what a later reader uses to decide whether a suite ran at all.
+    if [ ! -f "$LOGS/$P-$CFG.trx" ]; then
+      echo "!!! $P-$CFG.trx was NOT written to $LOGS -- results are somewhere else and this run leaves"
+      echo "!!! no evidence a reader can find. Check MSYS path conversion (see LOGS_ARG above)."
+    fi
 
     # A DEAD INSTRUMENT MUST NOT READ AS A NOT-APPLICABLE ONE. Until T-056 this block printed a
     # `--- memory:` line when the sampler worked and NOTHING when it died, so a leg with no memory line

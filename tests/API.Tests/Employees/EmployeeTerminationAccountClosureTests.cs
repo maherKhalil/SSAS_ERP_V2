@@ -1,5 +1,6 @@
 using System.Net;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.HR.Domain.Employees;
 using SSAS.HR.Application.Permissions;
 
 namespace SSAS.API.Tests.Employees;
@@ -132,6 +133,59 @@ public sealed class EmployeeTerminationAccountClosureTests : IClassFixture<Emplo
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     Assert.Empty(host.TenantUsers.Asked);
   }
+
+  // ================================================================================================
+  // ⚠ ACTIVATION IS THE THIRD MEMBER OF THIS SET, AND NOTHING HAD EVER CALLED IT (T-240).
+  // ================================================================================================
+  //
+  // `POST /employees/{}/activate` was one of five live routes addressed by no test, while its two
+  // neighbours — terminate and deactivate — are the subject of this whole class. **The set was covered
+  // except for the one transition that RESTORES status**, which is the one where a mistake grants access
+  // rather than withholding it.
+  //
+  // ---- WHY THE SECOND TEST IS THE LOAD-BEARING ONE.
+  //
+  // Termination CLOSES the tenant-user account; activation does not reopen it, and neither does
+  // deactivation. **That is only safe because a terminated employee cannot be activated at all.** If
+  // `Activate` accepted any non-active status, this route would take a terminated employee back to Active
+  // while their account stayed closed — an employee the system considers employed who cannot authenticate,
+  // produced by a single request, and reversible only by someone noticing.
+  //
+  // `Employee.Activate` requires `Inactive` specifically, so the hazard is closed in the domain. **It is
+  // asserted here through the route because that is where a future widening would arrive** — the guard is
+  // one `!=` in an aggregate and nothing at the edge was watching it.
+  [Fact]
+  public async Task Activating_an_inactive_employee_does_not_reopen_their_account()
+  {
+    host.Repository.Employee = StubEmployeeRepository.NewEmployee(EmployeeStatus.Inactive);
+
+    var response = await Activate();
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    Assert.Empty(host.TenantUsers.Asked);
+  }
+
+  [Fact]
+  public async Task A_terminated_employee_cannot_be_activated_back_into_the_workforce()
+  {
+    host.Repository.Employee = StubEmployeeRepository.NewEmployee(EmployeeStatus.Terminated);
+
+    var response = await Activate();
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+    // The account stays closed AND the status stays terminal — the failure has to hold both, because
+    // holding only the second still leaves a terminated employee whose account was reopened.
+    Assert.Empty(host.TenantUsers.Asked);
+    Assert.Equal(EmployeeStatus.Terminated, host.Repository.Employee!.Status);
+  }
+
+  private Task<HttpResponseMessage> Activate() =>
+    host.Client.SendAsync(EmployeeApiTestHost.Request(
+      HttpMethod.Post,
+      $"{Route}/{EmployeeApiTestHost.EmployeeId}/activate",
+      host.TokenWith(HrPermissionNames.UpdateEmployees, HrPermissionNames.ViewEmployees),
+      """{"reasonCode":"Administrative","expectedRowVersion":"AAAAAAAAB9E="}"""));
 
   private Task<HttpResponseMessage> Terminate() =>
     host.Client.SendAsync(EmployeeApiTestHost.Request(

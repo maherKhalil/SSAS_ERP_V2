@@ -400,18 +400,122 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
       .OrderBy(route => route, StringComparer.Ordinal)
       .ToArray();
 
-    // ⚠ 8 → 5 ON 2026-08-30 (T-236), AND THE GUARD IS WHAT MADE IT DELIBERATE.
+    // ⚠ 8 → 5 → 0 (T-236, then T-240), AND THE GUARD IS WHAT MADE EACH STEP DELIBERATE.
     //
-    // `AttendanceMalformedIdentifierTests` issues a request at every Attendance route taking an identifier
-    // in its path, so three that no test had ever called are now called. **The count came down because
-    // coverage went up, which is the good direction — and this guard refused to let it happen silently.**
-    // That is the whole reason it asserts an exact number rather than a ceiling.
+    // T-236 covered three Attendance routes. T-240 covered the last three genuine gaps — the working-days
+    // query, GL account deactivation, and employee activation — and found that **two of the remaining five
+    // were never gaps at all**; see `CompositionBlindSpots` below.
+    var exempt = uncalled.Where(route => CompositionBlindSpots.Any(entry => entry.Route == route)).ToArray();
+    var genuine = uncalled.Except(exempt.Select(route => route)).ToArray();
+
     Assert.True(
-      uncalled.Length == 5,
-      $"{uncalled.Length} live routes are addressed by no test, expected 5. MORE means a route arrived " +
-      "that nothing calls -- the shape that left 25 attendance routes mapped over a container with no " +
-      "handlers. FEWER means one was covered and the number should come down deliberately:" +
-      Environment.NewLine + string.Join(Environment.NewLine, uncalled));
+      exempt.Length == CompositionBlindSpots.Length,
+      $"{CompositionBlindSpots.Length - exempt.Length} exemption(s) no longer describe an unseen route. " +
+      "The exemption exists ONLY because the matcher cannot see a composed path -- if the route is now " +
+      "visible the entry is stale and must go, or it will outlive the blind spot it documents:" +
+      Environment.NewLine + string.Join(Environment.NewLine,
+        CompositionBlindSpots.Select(entry => entry.Route).Except(exempt.Select(route => route))));
+
+    Assert.True(
+      genuine.Length == 0,
+      $"{genuine.Length} live routes are addressed by no test, expected 0. A route arrived that nothing " +
+      "calls -- the shape that left 25 attendance routes mapped over a container with no handlers:" +
+      Environment.NewLine + string.Join(Environment.NewLine, genuine));
+  }
+
+  // ================================================================================================
+  // ⚠ TWO ROUTES THIS SCAN CANNOT SEE, AND THEY ARE FULLY TESTED (T-240).
+  // ================================================================================================
+  //
+  // **A STATIC MATCHER IS BLIND TO ANYTHING COMPOSED.** This scan reads source text for a literal path;
+  // `CompaniesMutationEndpointTests` builds `$"/api/platform/companies/{id}/{action}"` where `action`
+  // arrives from `[InlineData]`. The request is real, the route is exercised twice over — and the final
+  // segment never appears in the source, so the matcher reports it as untested.
+  //
+  // **THE MECHANISM WAS ESTABLISHED BY A CONTROLLED COMPARISON RATHER THAN ARGUED.** In that one file, with
+  // the same helper and the same request path, `/activate` is spelled out literally and counts as called
+  // while `/archive` and `/deactivate` go through `{action}` and do not. **One variable: whether the
+  // segment was written out.**
+  //
+  // The converse was checked rather than assumed — a route could count as CALLED because a comment merely
+  // mentions the path, since the corpus is raw source. Replicating this scan and rerunning it with comment
+  // lines stripped returned the same count. **The instrument over-reports and does not under-report**, and
+  // knowing WHICH direction is what makes the number usable at all.
+  //
+  // ---- WHY AN EXEMPTION AND NOT A FIX.
+  //
+  // Teaching the corpus to expand `[InlineData]` would fix the class rather than these two instances — but
+  // the class has two members, and a substituter guesses at someone else's parameterisation. **The last two
+  // guesses about escaping in this very method returned 93 where the answer was 8.** An entry that has to
+  // name a real method and a segment found inside it cannot be quietly wrong. **Revisit at four or five
+  // entries**, which would mean the class is real and worth teaching the instrument about.
+  //
+  // ⚠ **AND NAMING THE METHOD IS NOT ENOUGH ON ITS OWN.** A rename would be caught, but ROT would not: if
+  // the method survives while its `[InlineData]` row is deleted, the exemption goes on asserting coverage
+  // that no longer happens, with the authority of a named method. So the entry carries the SEGMENT too, and
+  // the guard below reads that method's source and requires the segment to be in it.
+  // Newline-agnostic on purpose: these sources are CRLF and a literal newline escape silently matches
+  // nothing but a file boundary.
+  private static readonly Regex BlankLine = new(
+    @"\r?\n[ \t]*\r?\n", RegexOptions.Compiled);
+
+  private static readonly Regex NextMember = new(
+    @"\r?\n  (?:\[|public|private|internal)", RegexOptions.Compiled);
+
+  private static readonly (string Route, string TestMethod, string Segment)[] CompositionBlindSpots =
+  [
+    ("POST /api/platform/companies/{}/archive", "Lifecycle_happy_path_returns_200", "archive"),
+    ("POST /api/platform/companies/{}/deactivate", "Lifecycle_happy_path_returns_200", "deactivate")
+  ];
+
+  // The exemption's own falsifier: each entry must name a method that exists AND that still mentions the
+  // segment. Without this the list is a place to put inconvenient routes.
+  [Fact]
+  public void Every_composition_exemption_names_a_live_test_that_still_calls_its_route()
+  {
+    var corpus = ExercisingTestSources();
+
+    foreach (var (route, method, segment) in CompositionBlindSpots)
+    {
+      var declaration = Regex.Match(corpus, @"public\s+async\s+Task\s+" + Regex.Escape(method) + @"\s*\(");
+      Assert.True(declaration.Success,
+        $"{route} is exempted by `{method}`, which no longer exists — the exemption is asserting coverage " +
+        "by a test that has been renamed or deleted.");
+
+      // ⚠ TWO WAYS TO GET THIS REGION WRONG, AND BOTH OF THEM PASS QUIETLY.
+      //
+      // FIRST: for a `[Theory]` the segment lives in the `[InlineData]` rows, which sit BEFORE the
+      // method. A region beginning at the declaration excludes exactly the thing it looks for.
+      //
+      // SECOND, AND IT IS THE ONE THAT COST A FALSE GREEN: **the sources are CRLF, so a literal
+      // "\n\n" never matches a blank line at all.** It matches only where the corpus builder appends
+      // its own separator after a file ending in CRLF -- a FILE BOUNDARY. The region then began in some
+      // other test file and ran on for thousands of characters, and `Contains` passed on a segment that
+      // belonged to somebody else's source. It survived a deliberate plant looking perfectly healthy.
+      //
+      // So both bounds are newline-agnostic patterns rather than literals.
+      var before = BlankLine.Matches(corpus[..declaration.Index]);
+      var from = before.Count > 0 ? before[^1].Index : declaration.Index;
+
+      // Bounded ahead by the next member rather than by brace counting: a string literal carrying a
+      // brace would defeat the counter, and several of these bodies contain JSON.
+      var rest = corpus[from..];
+      var afterDeclaration = declaration.Index - from + declaration.Length;
+      var next = NextMember.Match(rest[afterDeclaration..]);
+      var region = next.Success ? rest[..(afterDeclaration + next.Index)] : rest;
+
+      // ⚠ THE ANTI-VACUITY CONTROL FOR THIS TEST'S OWN INSTRUMENT. A region that ran across a file
+      // boundary is how the false green happened, and it is invisible from the assertion below -- a
+      // wrong region and a right one both just say `Contains` passed. One method with its attributes
+      // does not reach 4,000 characters.
+      Assert.True(region.Length < 4_000,
+        $"the extracted region for `{method}` is {region.Length} characters, which means it has run past " +
+        "the method and the segment below may be found in unrelated source.");
+
+      Assert.Contains(segment, region, StringComparison.Ordinal);
+    }
+
+    Assert.NotEmpty(CompositionBlindSpots);
   }
 
   // `/api/gl/accounts/{}/balance` -> a regex matching any single segment where the placeholder is, with

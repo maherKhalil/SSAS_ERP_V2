@@ -1,4 +1,5 @@
 using System.Net;
+using SSAS.GL.Domain.Accounts;
 using SSAS.GL.Application.Permissions;
 
 namespace SSAS.API.Tests.Gl;
@@ -93,6 +94,55 @@ public sealed class GlCorrectionPathEndpointTests(GlApiTestHost host) : IClassFi
 
     Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     Assert.Equal("gl.not_found", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ================================================================================================
+  // ⚠ THE CORRECTION PATH WAS TESTED AND THE ACT IT CORRECTS WAS NOT (T-240).
+  // ================================================================================================
+  //
+  // `POST /accounts/{}/deactivation` was one of five live routes addressed by no test, while
+  // `/accounts/{}/activation` directly below has been covered since this class was written. **The undo was
+  // guarded and the do was not** — which is the inversion you would least expect to find and the easiest to
+  // produce, because the correction path is the one that feels risky.
+  //
+  // **BOTH ROUTES REACH THE SAME HANDLER.** `DeactivateAccountAsync` and `ActivateAccountAsync` are one-line
+  // forwards to `SetAccountActivationAsync`, differing only by `isActive`. So everything the activation test
+  // covers — reading, permission, concurrency token, save — was already covered for this route too, and
+  // **the single uncovered thing was the one bit that differs.** That is what this asserts: the account
+  // comes back INACTIVE rather than active.
+  //
+  // A status-only test would have proved nothing here at all: a `/deactivation` wired to `isActive: true`
+  // returns exactly the same 204.
+  [Fact]
+  public async Task Deactivating_an_account_leaves_it_inactive_rather_than_active()
+  {
+    host.ResetToAuthorizedState();
+
+    var account = Account.Create("4900", "Suspense").Value;
+    Assert.True(account.IsActive, "the fixture must start active or this proves nothing");
+    host.Accounts.Accounts[account.Id] = account;
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/accounts/{account.Id}/deactivation",
+      host.TokenWith(GlPermissionNames.DeactivateAccounts), "{}"));
+
+    Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    Assert.False(account.IsActive,
+      "the deactivation route returned success while leaving the account active, so it is wired to the " +
+      "activation branch of the shared handler.");
+  }
+
+  // The permission pairing, asserted for the act as it already is for the correction.
+  [Fact]
+  public async Task Deactivating_an_account_needs_the_deactivate_permission_not_the_update_one()
+  {
+    host.ResetToAuthorizedState();
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/accounts/{Guid.NewGuid()}/deactivation",
+      host.TokenWith(GlPermissionNames.UpdateAccounts), "{}"));
+
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
   }
 
   // Reactivation is the correction path for a deactivation, and it carries the DEACTIVATE authority rather

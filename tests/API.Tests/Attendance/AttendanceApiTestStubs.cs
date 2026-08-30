@@ -74,12 +74,27 @@ public sealed class StubAttendanceReads : IAttendanceReadService
     Guid? companyId, Guid? employeeId, int? periodYear, CancellationToken cancellationToken = default) =>
     Task.FromResult(Result.Success<IReadOnlyList<LeaveBalanceView>>([]));
 
+  // Settable so a test can tell PASS-THROUGH from a handler computing its own answer. Returning a constant
+  // 0 made both look identical, and the route existed for two months with nothing calling it.
+  public int WorkingDays { get; set; }
+
+  public Guid? WorkingDaysCompanyId { get; private set; }
+
+  public (DateOnly From, DateOnly To)? WorkingDaysRange { get; private set; }
+
   public Task<Result<int>> GetWorkingDaysAsync(
-    Guid companyId, DateOnly fromDate, DateOnly toDate, CancellationToken cancellationToken = default) =>
-    Task.FromResult(Result.Success(0));
+    Guid companyId, DateOnly fromDate, DateOnly toDate, CancellationToken cancellationToken = default)
+  {
+    WorkingDaysCompanyId = companyId;
+    WorkingDaysRange = (fromDate, toDate);
+    return Task.FromResult(Result.Success(WorkingDays));
+  }
 
   public void Reset()
   {
+    WorkingDays = 0;
+    WorkingDaysCompanyId = null;
+    WorkingDaysRange = null;
     RecordsForEmployee.Clear();
     LeaveForEmployee.Clear();
     Records = [];

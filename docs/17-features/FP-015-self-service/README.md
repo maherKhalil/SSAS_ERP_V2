@@ -7,6 +7,29 @@ version: 0.1
 date: 2026-08-27
 ---
 
+## ⚠ Provenance of the documents added 2026-08-30
+
+Five design documents reached this package on 2026-08-30 from a branch opened **2026-08-27**, unmerged for
+**384 commits**. They are landed rather than discarded because their measurements held up — **but they were
+not all re-verified, and which is which matters.**
+
+| document | state |
+|---|---|
+| `authorization-model.md` | **Re-verified against the tree.** §§1, 3, 4, 6 confirmed line by line. **§§2, 5, 7, 8 were overtaken by work done since — see the amendment at the head of that file, and read it before its findings.** |
+| `api-contracts.md` | **Not re-verified.** As written 2026-08-27. |
+| `data-model.md` | **Not re-verified.** As written 2026-08-27. |
+| `domain-model.md` | **Not re-verified.** As written 2026-08-27. |
+| `lifecycle-model.md` | **Not re-verified.** As written 2026-08-27. |
+
+**Treat the four unverified documents as a draft of that date, not as a current description of the tree.**
+The one document that was checked had **four of its eight sections overtaken in three days** — so the base
+rate here is high, and silence about the others is not evidence that they held.
+
+**What the check found is worth carrying: every cited line number still resolved 384 commits later.** The
+drift was not decay of citations; it was that things named as ABSENT had since been built. **If these four
+are re-verified later, expect the same shape — the descriptive parts sound, the claims about what is
+missing stale.**
+
 # FP-015 — Employee Self Service
 
 **Status: DRAFT.** No `OD-SS` decision is ruled except one, recorded below. **No code, no schema,

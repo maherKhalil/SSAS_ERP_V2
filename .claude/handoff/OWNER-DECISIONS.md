@@ -498,7 +498,36 @@ to the payslip.**
 engineering one.** ⚠ **The other half is yours alone: whether anyone has recorded overtime expecting
 payment.** The code answer does not depend on it.
 
-## 17. Three Accepted ADRs specify a domain-event dispatcher that does not exist — added 2026-08-30 (T-271)
+## 17. ⚠ WITHDRAWN THE SAME DAY — THE DISPATCHER EXISTS. THIS ENTRY WAS FALSE
+
+**This entry was added 2026-08-30 (T-271) and withdrawn 2026-08-30 (T-165). It asked the owner to build a
+dispatcher or record a deferral. There was nothing to decide: the dispatcher was built on 2026-07-31 and
+the flow is complete.** Three `Accepted` ADRs were annotated on this premise; **all three annotations are
+withdrawn in place.**
+
+`AggregateRoot<TId> : Entity<TId>, IHasDomainEvents` → 65 raise sites → tracked by the `DbContext` →
+`ITenantUnitOfWork` / `IPlatformUnitOfWork`, injected in **122 places** → `EfUnitOfWork.SaveChangesAsync`
+→ `DispatchDomainEventsAsync`, reading `ChangeTracker.Entries().OfType<IHasDomainEvents>()` →
+`IDomainEventDispatcher.DispatchAsync` (registered `AddScoped`) → each `IDomainEventConsumer` →
+`ClearDomainEvents()`.
+
+⚠ **THE MECHANISM OF THE ERROR, WHICH IS THE PART WORTH KEEPING.** The instrument looked for production
+readers of **`DequeueDomainEvents`** and correctly found none. **The dispatch path does not use that
+method** — it reads the `DomainEvents` property and calls `ClearDomainEvents()`. **A complete and correct
+enumeration of the WRONG MEMBER was published as the absence of the whole mechanism.** ⚠ **And it was
+stated three ways — *"nothing consumes them"*, *"there is no dispatcher"*, *"checked three ways"* — which
+made one measurement read as three corroborating ones.** *A complete enumeration of the wrong set reads
+exactly like a complete enumeration*, written on this board on the same day, applied to the architect's
+own work six hours later.
+
+**What survives, and it is small:** exactly **one** `IDomainEventConsumer` is registered
+(`LocalizationCacheDomainEventConsumer`). **Handler coverage is a fair question and is not an owner
+decision.** ⚠ **The specific harm this entry claimed to prevent — a handler written in good faith that
+never runs — was never possible: a registered consumer is delivered to.**
+
+**Original entry retained below, struck, because the correction is worth more than the claim.**
+
+### ~~17. Three Accepted ADRs specify a domain-event dispatcher that does not exist — added 2026-08-30 (T-271)~~
 
 **What it is.** `RaiseDomainEvent` is called **65 times** across the product. **Nothing consumes them** —
 `DequeueDomainEvents`, `ClearDomainEvents` and the `DomainEvents` property have no production reader, and

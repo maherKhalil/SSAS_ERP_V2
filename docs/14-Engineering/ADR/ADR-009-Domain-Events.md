@@ -29,34 +29,37 @@ used_by:
 
 ---
 
-## ⚠ IMPLEMENTATION STATUS 2026-08-30 — ACCEPTED, AND NOT IMPLEMENTED
+## ⚠ WITHDRAWN 2026-08-30 — THE EARLIER "NOT IMPLEMENTED" NOTE HERE WAS FALSE
 
-**Read this before writing a handler against this ADR. The publishing flow below describes a mechanism the
-product does not currently have.**
+**An annotation added earlier this day said domain-event dispatch was specified here and not implemented,
+and that there was no dispatcher in the product. Every clause of that was wrong, and it is withdrawn.**
 
-**Measured 2026-08-30 across `src/`:**
+**The flow exists and has since 2026-07-31**, verified link by link in `src/`:
 
-- **`RaiseDomainEvent` is called 65 times** — departments, employees, job grades and others. Events are
-  raised exactly as this ADR specifies.
-- **Nothing consumes them.** `DequeueDomainEvents`, `ClearDomainEvents` and the `DomainEvents` property
-  have **no production reader**. Checked three ways; none appears outside `AggregateRoot.cs` and its
-  interface.
-- **There is no dispatcher.** No `IDomainEventDispatcher`, and no type of any name that reads those members.
+`AggregateRoot<TId> : Entity<TId>, IHasDomainEvents` raises events (65 call sites) → the aggregate is
+tracked by its `DbContext` → `ITenantUnitOfWork` / `IPlatformUnitOfWork` are injected in **122 places**
+across the modules → both delegate to `EfUnitOfWork`, whose `SaveChangesAsync` calls
+`DispatchDomainEventsAsync` → that reads `dbContext.ChangeTracker.Entries().OfType<IHasDomainEvents>()`
+where `DomainEvents.Count > 0` → `IDomainEventDispatcher.DispatchAsync` → each registered
+`IDomainEventConsumer` → `ClearDomainEvents()`.
 
-**So every domain event raised in this product is appended to a list on its aggregate and discarded when
-that aggregate goes out of scope.** Nothing is visibly broken, **because nothing depends on the events —
-which is exactly why this went unnoticed.**
+`DomainEventDispatcher` is registered (`AddScoped<IDomainEventDispatcher, DomainEventDispatcher>()`) and
+carries correlation id, user, request id and trace id as dispatch metadata.
 
-**⚠ The risk this note exists to prevent: a handler written against this ADR, in good faith, subscribing to
-an event that will never be delivered.** That handler would compile, pass review, and never run.
+⚠ **How the false finding was produced, because the mechanism matters more than the correction.** The
+instrument searched for production readers of **`DequeueDomainEvents`** and found none — which is true.
+**The dispatch path does not use that method.** It reads the `DomainEvents` property and calls
+`ClearDomainEvents()`. **A complete, correct enumeration of the wrong member was reported as the absence
+of the whole mechanism** — and the conclusion was then stated three ways (*"nothing consumes them"*,
+*"there is no dispatcher"*, *"checked three ways"*), which made it read as corroborated rather than
+repeated.
 
-**This does not retract the decision.** The ADR may still be the intended architecture and the dispatcher a
-later phase — **but that deferral was never recorded, and three Accepted ADRs describe the mechanism as
-though it exists**: this one's publishing flow, ADR-008's *"Domain Events are dispatched after successful
-persistence"*, and ADR-004's *"Publish domain events only from successful commands"*.
+**What is true, and is a much smaller thing:** exactly **one** `IDomainEventConsumer` is registered —
+`LocalizationCacheDomainEventConsumer`. **That is a question about handler coverage, not about whether
+the mechanism exists.**
 
-**Whether to build the dispatcher or to record the deferral formally is the owner's call.** Until one of
-those happens, treat the publishing flow below as **specification, not description**.
+**Nothing in the decision below was ever in doubt.** A handler written against this ADR will be
+delivered to.
 
 # Context
 

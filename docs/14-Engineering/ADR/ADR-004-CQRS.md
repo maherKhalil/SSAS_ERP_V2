@@ -29,9 +29,37 @@ used_by:
 
 ---
 
-## ⚠ Domain-event dispatch is specified here and NOT IMPLEMENTED (measured 2026-08-30)
+## ⚠ WITHDRAWN 2026-08-30 — THE EARLIER "NOT IMPLEMENTED" NOTE HERE WAS FALSE
 
-This document describes domain events being dispatched. **There is no dispatcher in the product** — 65 raise sites, zero consumers. **See the implementation-status note at the head of ADR-009 before writing anything that depends on it.**
+**An annotation added earlier this day said domain-event dispatch was specified here and not implemented,
+and that there was no dispatcher in the product. Every clause of that was wrong, and it is withdrawn.**
+
+**The flow exists and has since 2026-07-31**, verified link by link in `src/`:
+
+`AggregateRoot<TId> : Entity<TId>, IHasDomainEvents` raises events (65 call sites) → the aggregate is
+tracked by its `DbContext` → `ITenantUnitOfWork` / `IPlatformUnitOfWork` are injected in **122 places**
+across the modules → both delegate to `EfUnitOfWork`, whose `SaveChangesAsync` calls
+`DispatchDomainEventsAsync` → that reads `dbContext.ChangeTracker.Entries().OfType<IHasDomainEvents>()`
+where `DomainEvents.Count > 0` → `IDomainEventDispatcher.DispatchAsync` → each registered
+`IDomainEventConsumer` → `ClearDomainEvents()`.
+
+`DomainEventDispatcher` is registered (`AddScoped<IDomainEventDispatcher, DomainEventDispatcher>()`) and
+carries correlation id, user, request id and trace id as dispatch metadata.
+
+⚠ **How the false finding was produced, because the mechanism matters more than the correction.** The
+instrument searched for production readers of **`DequeueDomainEvents`** and found none — which is true.
+**The dispatch path does not use that method.** It reads the `DomainEvents` property and calls
+`ClearDomainEvents()`. **A complete, correct enumeration of the wrong member was reported as the absence
+of the whole mechanism** — and the conclusion was then stated three ways (*"nothing consumes them"*,
+*"there is no dispatcher"*, *"checked three ways"*), which made it read as corroborated rather than
+repeated.
+
+**What is true, and is a much smaller thing:** exactly **one** `IDomainEventConsumer` is registered —
+`LocalizationCacheDomainEventConsumer`. **That is a question about handler coverage, not about whether
+the mechanism exists.**
+
+**Nothing in the decision below was ever in doubt.** A handler written against this ADR will be
+delivered to.
 
 # Context
 

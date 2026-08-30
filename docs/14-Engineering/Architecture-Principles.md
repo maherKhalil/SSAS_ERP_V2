@@ -511,6 +511,36 @@ stops being established — the next reader sees a green assertion and has no re
 comment naming what was broken and what reddened is greppable, survives a rebase, and is present at the
 moment someone decides whether to believe the test.**
 
+# Principle 16b – A Measurement Can Be True and License Nothing
+
+**The test of a measurement is not whether the number is right. It is whether it answers the question the
+risk actually poses.**
+
+**Worked example, 2026-08-30.** Before exposing internal error messages in API responses, the safety case
+rested on a careful measurement: **no message anywhere in `src/` carries a runtime value — zero
+interpolations, zero concatenations, zero variables.** The measurement was correct, was re-run after the
+intervening edits, and held both times.
+
+**It licensed nothing.** The danger was never data interpolated into a message. It was a **hand-written
+constant describing our own infrastructure** — *"no route to the tenant database"* — which is entirely
+static and still a leak. An existing test caught it: a real storage failure was reaching an authorization
+refusal and taking that sentence with it. **"Contains no runtime value" and "safe to disclose" are different
+properties, and only the first had been measured.**
+
+**The remedy divided by AUDIENCE rather than by status code.** A 4xx is addressed to **the caller** and says
+what they did wrong. A 5xx says **something broke on our side**: that message is addressed to an operator,
+who already has it through the log and the correlation id, and the response body is not its delivery route.
+**Reasoning from audience survives a new status code appearing; a rule reading "not 401 or 403" would not.**
+
+**⚠ And it is written as an ALLOWLIST over 4xx, not a blocklist of 401/403/5xx.** A blocklist admits **the
+status class nobody thought about**; an allowlist refuses it. 502 and 504 are closed without anyone having
+declared them. **This is the same fail-closed argument as an opt-in default, applied to the category rather
+than the member.**
+
+**Before relying on a measurement, state the risk in one sentence and check that the measurement is about
+that sentence.** A number taken carefully, about the mechanism you happened to imagine, is the most
+persuasive way to be wrong.
+
 # Principle 17 – When a Blanket Ban Beats an Exemption
 
 **Most guards in this codebase carry an allowlist: an exemption with a stated, checkable reason.

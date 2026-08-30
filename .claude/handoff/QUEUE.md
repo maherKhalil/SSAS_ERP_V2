@@ -51,10 +51,29 @@ below. Nothing is in flight.**
 **The owner signed out. Both windows stopped cleanly.** ⚠ **This section records COMMITTED state only** — a
 working-tree observation decays within one commit and has already misled this loop once today.
 
-**Item 129 was in progress** — `Company.SelectionRequired` gaining a distinct code while keeping its 400.
-The coder was asked to commit whatever it held onto its branch before stopping, so **look for an
-`agent/T-268-*` branch and check whether it is pushed** before assuming the work is lost or duplicating it.
-**130 is a measurement with no edits, so nothing there is half-done.**
+⚠ **ITEM 129 IS ON A BRANCH THAT IS DELIBERATELY RED AND MUST NOT BE MERGED:
+`agent/T-268-precondition-code-RED`, commit `0d05986`, pushed.** The name carries the warning. **The gate
+refused it and was right to.**
+
+**Failure 1 — a real placement error, and its cause is worth reading before fixing it.**
+`ProjectDependencyArchitectureTests.The_shared_api_project_names_no_business_concept` reddened on
+`["ApiProblems.cs -> Company"]`: `CompanySelectionRequired` was put in the shared `ApiErrors` in
+BuildingBlocks, **and the shared API project may not name a business concept.** ⚠ **That is why
+`company.scope_denied` is declared separately in six module mappers rather than once centrally — apparent
+duplication that is the rule being obeyed.** The correct placement is **a per-mapper constant in each of the
+four mappers, matching the `CompanyScopeDenied` idiom exactly.** Small and mechanical.
+
+**Failure 2 — not a mistake. It is the contract change 129 asks for.**
+`D30_A_missing_or_malformed_company_header_is_a_validation_failure` asserts the CURRENT behaviour, that this
+condition answers `request.invalid`. **It must be updated to expect `company.selection_required` and to say
+why a precondition is distinct.** It was deliberately left untouched: **rewriting a wire-contract assertion
+at sign-out is the exact edit that should be made carefully rather than quickly.**
+
+**Sound and reusable on that branch:** the four mapper arms, the Platform alias, and
+`PreconditionCodeArchitectureTests`, **whose plants both pass** — a module collapsing back to the generic
+code reddens the ban, and a broken arm regex reddens both the floor and its own control.
+
+**130 has no edits at all. Nothing of it is lost.**
 
 **Both rulings are inline in the table below and neither needs re-deriving.**
 

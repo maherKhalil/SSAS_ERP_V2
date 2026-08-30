@@ -578,3 +578,50 @@ the remedy is not worth closing.**
 
 **The complete honest position: no enforced join is keyed on a float identifier; ad-hoc equality in
 procedure bodies is unverified; and the conversion removes the question either way.**
+
+---
+
+## The 177 views: 110 carry across, 63 encode rules (T-225, counted 2026-08-30)
+
+The procedure triage asked whether logic re-expresses as queries. **Views are already queries**, so the
+parallel question is the opposite one: **do they carry across as reporting artefacts, or do they encode
+business rules that must become code?**
+
+| | views | share |
+|---|---|---|
+| **plain projection / join** | **110** | 62% |
+| `CASE` used only to coalesce across joins | 4 | 2% |
+| **encodes a rule** — comparison, aggregate or arithmetic | **63** | **36%** |
+
+**The 110 carry across.** They are `SELECT`s over tables with joins and no computation, and they become
+views or queries against the new model with no decision to take.
+
+**The 63 are the work**, and they are concentrated where you would expect: `[Billing].[V_PatientBill]`
+resolves **discount precedence** (`CtService.Discount` falling back to `Ser.Discount`), **sponsor-based
+pricing** (`SponserCategoryId > 0`), `IsDiscountByPercentage` semantics and customer-category resolution —
+**pricing rules living in a view.** `V_Coverage Approvals Follow-up`, `V_Insurance_Claims` and
+`V_PackagePayment` are the same shape.
+
+**⚠ A rule in a view is worse than a rule in a procedure for the migration**, because a view is read by
+things that do not know they are invoking logic. The procedure triage could at least say *"450 procedures
+contain logic"*; **a view presents itself as data.**
+
+### The coalescing distinction, and why it needed a hand-read
+
+A first pass counted every `CASE` as computation and returned **70**. Reading two of them showed
+`[InPatient].[V_AdmitData]` uses `CASE WHEN adReq.[Id] IS NOT NULL THEN adReq.[PatientID]` — **null
+coalescing across an outer join, which is structure rather than a rule** — while `V_PatientBill` in the same
+bucket encodes pricing. **Separating `CASE`s that test only `IS NOT NULL` from those containing a comparison,
+a literal or arithmetic moved the count to 63 and isolated 4 as structural.**
+
+### ⚠ Two instrument defects were fixed before these numbers were believed
+
+1. **View bodies ran to the next `CREATE` of any kind.** A view followed by the 1,988 `ALTER TABLE … ADD
+   CONSTRAINT` statements swallowed all of them — `[Registration].[VUPatientInsuranceR]` measured **865,132
+   characters**. Terminating at `GO` gives a maximum of 18,560 and a median of 1,144.
+2. **The arithmetic test matched `SELECT * FROM`.** `[\w\)]\s*[*]\s*[\w\(]` matches `T * F`, so every
+   `SELECT *` counted as a computation.
+
+**Both were found by disbelieving an outlier rather than by review**, and the corrected numbers are close to
+the uncorrected ones — 110/67 against 107/70 — **which is the uncomfortable part: two real defects that
+roughly cancelled would have left a plausible answer standing.**

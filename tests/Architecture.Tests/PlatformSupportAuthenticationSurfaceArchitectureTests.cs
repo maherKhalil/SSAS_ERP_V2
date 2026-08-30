@@ -70,6 +70,11 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
     Assert.True(scanned.Length >= 20,
       $"only {scanned.Length} types were scanned across the assemblies; the enumeration collapsed.");
 
+    // ⚠ THE CONTROL ON THE MATCHER (T-263). The floor proves types were scanned. It cannot prove the name
+    // test still selects anything, and a ban whose matcher matches nothing is green for the wrong reason.
+    // So the same `Name.Contains` is run over the same collection for a term that MUST be present.
+    Assert.Contains(scanned, type => type.Name.Contains("PlatformSupport", StringComparison.Ordinal));
+
     var deferred = scanned
       .Where(type => type.Name.Contains("PlatformAuthenticatedUser", StringComparison.Ordinal))
       .Select(type => type.FullName)

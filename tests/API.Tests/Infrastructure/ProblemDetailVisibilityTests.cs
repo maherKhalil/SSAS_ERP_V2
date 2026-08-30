@@ -121,6 +121,16 @@ public sealed class ProblemDetailVisibilityTests
       $"only {declared.Length} fail-closed codes were discovered; 8 exist (5 authorization, 3 server), so " +
       "the walk has degraded and 'none opted in' would mean nothing.");
 
+    // ⚠ THE CONTROL ON THE MATCHER (T-263). The floor proves fail-closed codes were FOUND. It cannot
+    // prove `DetailAllowed` is still READ -- rename or drop that property and reflection yields a set in
+    // which nothing is opted in, which is indistinguishable from the answer this test wants. No declared
+    // code opts in today, so the known positive has to be constructed.
+    var opted = new ApiError(403, "control.opted_in", DetailAllowed: true);
+
+    Assert.True(new[] { opted }.Where(error => error.DetailAllowed).Any(),
+      "the predicate this test bans by cannot select a code that HAS opted in, so an empty result below " +
+      "means the filter is broken rather than the product being clean.");
+
     var unexpected = declared
       .Where(error => error.DetailAllowed)
       .Select(error => error.Code)

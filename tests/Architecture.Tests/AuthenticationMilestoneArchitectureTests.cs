@@ -79,9 +79,26 @@ public sealed class AuthenticationMilestoneArchitectureTests
       $"only {events.Length} authentication domain events were discovered, so the namespace filter has " +
       "stopped matching and the assertion below would pass by inspecting nothing.");
 
+    // ⚠ THE CONTROL ON THE MATCHER (T-263). The floor above proves events were FOUND. It cannot prove the
+    // property walk or the regex still LOOK for anything -- and for a ban those two failures are
+    // indistinguishable from success. Both are exercised here against inputs they must match.
+    const string SecretName = "Password|Secret|Hash|Raw";
+
+    Assert.Matches(SecretName, "PasswordHash");
+    Assert.Matches(SecretName, "RawToken");
+    Assert.DoesNotMatch(SecretName, "OccurredUtc");
+
+    var inspected = events
+      .SelectMany(type => type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+      .ToArray();
+
+    Assert.True(inspected.Length >= 10,
+      $"the {events.Length} events yielded only {inspected.Length} public instance properties, so the " +
+      "member walk -- not the event walk -- is what has collapsed, and the ban below reads nothing.");
+
     var violations = events
       .SelectMany(type => type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-        .Where(property => Regex.IsMatch(property.Name, "Password|Secret|Hash|Raw", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        .Where(property => Regex.IsMatch(property.Name, SecretName, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         .Select(property => $"{type.Name}.{property.Name}"))
       .ToArray();
 
@@ -158,9 +175,26 @@ public sealed class AuthenticationMilestoneArchitectureTests
       "stopped matching and 'no deferred types' below would mean nothing.");
 
     const string deferredDeclaration =
-      @"\b(?:JwtSecurityToken|JsonWebTokenHandler|X509Certificate2|SymmetricSecurityKey|CookieOptions|HttpContext)\b";
+      // ⚠ NO WORD ANCHORS, AND THE CONTROL BELOW IS WHY (T-263). This read `\b(?:...)\b`, and the
+      // first known-positive assertion written against it FAILED: `\b` after `JwtSecurityToken` cannot
+      // match `JwtSecurityTokenHandler`, because the next character is a word character. **The canonical
+      // JWT type of this family was not banned by the ban.** The leading `\b` lost `IHttpContextAccessor`
+      // the same way from the other side. Both are precisely what this rule exists to keep out of Domain
+      // and Application, and both satisfied it.
+      //
+      // These names are distinctive enough that an unanchored search has no plausible false positive, and
+      // a ban should catch a DERIVED name as readily as the bare one.
+      @"(?:JwtSecurityToken|JsonWebToken|X509Certificate2|SymmetricSecurityKey|CookieOptions|HttpContext)";
+    // ⚠ THE CONTROL ON THE MATCHER (T-263). Rename any type in that alternation and the regex matches
+    // nothing, `deferred` is empty and this ban goes green having read fifty files and looked for nothing.
+    // The floor above stays satisfied throughout it. So the pattern is made to prove it still matches.
+    Assert.Matches(deferredDeclaration, "var handler = new JwtSecurityTokenHandler();");
+    Assert.Matches(deferredDeclaration, "IHttpContextAccessor accessor");
+    Assert.Matches(deferredDeclaration, "X509Certificate2 certificate");
+    Assert.DoesNotMatch(deferredDeclaration, "var account = new AuthenticationAccount();");
+
     var deferred = platformFiles
-      .Where(path => Regex.IsMatch(File.ReadAllText(path), deferredDeclaration, RegexOptions.CultureInvariant))
+      .Where(path => Regex.IsMatch(CodeOnly(path), deferredDeclaration, RegexOptions.CultureInvariant))
       .ToArray();
     Assert.Empty(deferred);
   }
@@ -191,4 +225,23 @@ public sealed class AuthenticationMilestoneArchitectureTests
 
     throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
   }
+
+  // ⚠ THE BAN READS CODE, NOT PROSE (T-263). Widening the pattern to catch
+  // `IHttpContextAccessor` produced an immediate false red on `ITenantDatabaseResolver.cs`, whose comment
+  // explains at length WHY it must not depend on IHttpContextAccessor. **A file was going to fail this
+  // rule for documenting the rule.**
+  //
+  // The blindness was always here; the old pattern simply could not match that name anywhere, so it never
+  // reached prose either. `RepositoryPathPortabilityTests` strips comments for exactly this reason and
+  // says so -- the second guard in this suite to need it is the point at which it stops being incidental.
+  //
+  // A false red is worse than a missing rule: it is what teaches people to weaken guards.
+  private static string CodeOnly(string path) =>
+    string.Join(
+      "\n",
+      File.ReadAllText(path).Split('\n').Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 ? line[..comment] : line;
+      }));
 }

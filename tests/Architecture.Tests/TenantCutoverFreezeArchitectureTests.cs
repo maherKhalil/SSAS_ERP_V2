@@ -108,6 +108,14 @@ public sealed class TenantCutoverFreezeArchitectureTests
       $"only {tenantStorage.Length} TenantStorage types were scanned; the namespace predicate has " +
       "stopped matching and 'no deferred components' below would mean nothing.");
 
+    // ⚠ THE CONTROL ON THE MATCHER (T-263). The floor proves TenantStorage types were found. Empty out
+    // `DeferredComponents`, or let its terms drift out of the naming convention, and `Any` matches nothing
+    // from a perfectly healthy type list -- a green ban over an unexercised predicate.
+    Assert.NotEmpty(DeferredComponents);
+
+    Assert.Contains(DeferredComponents, term =>
+      $"TenantCutover{DeferredComponents[0]}Service".Contains(term, StringComparison.OrdinalIgnoreCase));
+
     var unexpected = tenantStorage
       .Where(type => DeferredComponents
         .Any(term => type.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))

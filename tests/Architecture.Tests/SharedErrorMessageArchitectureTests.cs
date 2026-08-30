@@ -32,8 +32,23 @@ namespace SSAS.Architecture.Tests;
 // instead of a restatement of one bug.
 public sealed class SharedErrorMessageArchitectureTests
 {
-  // The vocabulary of a specific bounded context. An error that shared infrastructure hands to every module
-  // may not use these, because it is going to be read by a caller who was doing something else entirely.
+  // The vocabulary of a specific bounded context. An error that shared infrastructure hands to every
+  // module may not use these, because it will be read by a caller who was doing something else entirely.
+  //
+  // ⚠ AND THE TEST IS WHETHER THE NOUN IS THE SUBJECT OF THE FAILURE, WHICH IS WHY THIS LIST MUST NOT
+  // BE WIDENED CARELESSLY. Two categories look alike and only one is ever a defect:
+  //
+  //   BOUNDED-CONTEXT VOCABULARY   employee, payroll, journal, department. Wrong outside its own module.
+  //     *"identity or access value"* answering a duplicate HOLIDAY named something the caller
+  //     was not doing. That is the defect this rule exists for.
+  //
+  //   TENANCY SCAFFOLDING          company, tenant, branch. Cross-cutting, and legitimately named from
+  //     any module. `Company.ContextRequired` reaches four modules saying *"a trusted company context is
+  //     required"* -- and the company context IS what failed, whichever module the caller stood in.
+  //
+  // Adding a scaffolding noun here would fail four correct messages. **A false red is worse than a
+  // missing rule, because it is what teaches people to weaken guards.** The rule is safe today only
+  // because it is scoped to `Persistence.*`; widening that scope means revisiting this list first.
   private static readonly string[] DomainNouns =
   [
     "identity", "access", "employee", "department", "position", "tenant", "company", "branch",
@@ -51,6 +66,16 @@ public sealed class SharedErrorMessageArchitectureTests
     Assert.True(shared.Length >= 3,
       $"only {shared.Length} shared persistence errors were discovered; three exist, so the walk has " +
       "degraded and 'no domain nouns' would be a statement about nothing.");
+
+    // ⚠ THE CONTROL ON THE MATCHER (T-263). The floor proves shared errors were FOUND. Narrow
+    // `DomainNouns`, or let `Contains` stop being applied, and `offenders` is empty from a healthy set --
+    // green, having compared nothing. So the same expression is run over a message that MUST offend.
+    const string KnownOffender = "The requested identity or access value already exists.";
+
+    Assert.NotEmpty(DomainNouns);
+    Assert.NotEmpty(DomainNouns
+      .Where(noun => KnownOffender.Contains(noun, StringComparison.OrdinalIgnoreCase))
+      .ToArray());
 
     var offenders = shared
       .Select(error => (error.Code, error.Message, Found: DomainNouns

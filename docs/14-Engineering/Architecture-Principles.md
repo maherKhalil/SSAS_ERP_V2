@@ -526,6 +526,38 @@ mechanism reintroduces the exact judgement whose unreliability created the rule.
 applies before adding an exemption — and note that "this use is obviously fine" is the same sentence the
 original defect's author would have written.
 
+# Principle 18 – Errors Carry a Code and a Literal Message, and That Is Deliberate
+
+`Error(string Code, string Message)` in the domain, `ApiError(int StatusCode, string Code)` at the
+transport. **Two fields at both ends, and no structured detail anywhere in the pipeline.**
+
+**Measured 2026-08-30, across `src/`: 345 declared error codes, 534 `static readonly Error` declarations,
+21 constructed inline — and ZERO with an interpolated message, a concatenation, or a variable of any kind.**
+Every error message in the product is a string literal. **A codebase that has not once reached for
+interpolation across 345 opportunities is not enduring a constraint; it is keeping a convention.**
+
+**The constraint is productive, and that is the reason to keep it.** Interpolated prose is not branchable —
+no client can switch on *"page number or page size"*. **So each time someone needed to say more, the
+two-field shape forced them to mint a CODE**, which is stable, machine-readable, and the thing a caller can
+act on. **A free-text detail field would have absorbed exactly that pressure and made the easy path the
+useless one.**
+
+**Detail goes to one of three places, never into the message:**
+
+1. **A distinct constant per condition — the primary mechanism.** The 345 codes exist because whenever a
+   distinction mattered, someone minted a code rather than parameterising one. **The cost is vocabulary
+   size, not lost information.**
+2. **Per-handler translation.** The handler that knows *which* constraint lost returns a specific code,
+   because a generic arm cannot (see Principle 13 and `DEC-DEP-0027`).
+3. **The log, not the response.** EF records the violated index name; `AccessTokenIssuer` records why signing
+   failed. **The caller is deliberately told less — that is a security posture, not an omission.**
+
+**Where a message names several conditions, the remedy is another code, not another field.** 21 of the 345
+messages name more than one condition. `InvalidPagination` — *"page number **or** page size"* — is the clear
+defect, because **a client fixing the wrong one retries and fails again**; the fix is two codes. **For most
+of the 21 the caller is an internal guard clause that branches on nothing, and an ambiguous message to a
+caller that ignores it costs nothing.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

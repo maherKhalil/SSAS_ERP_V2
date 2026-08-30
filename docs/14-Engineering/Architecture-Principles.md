@@ -303,8 +303,10 @@ names the failure and the response is a refusal. It does **not** cover:
 
 - **a broad `Exception` catch**, where distinct causes collapse into one observable — the same defect
   Principle 12 removes from the routing layer;
-- **a persistence exception**, where the discarded inner error distinguishes a unique violation from a
-  deadlock, and only one of those is retryable;
+- **a persistence exception**, where the inner SQL error carries the difference between a unique violation
+  and a deadlock. **This codebase preserves that difference** with a `when` filter on the inner
+  `SqlException` number, and only one of the two can succeed on retry — so a catch that discards it is
+  discarding a retry decision, not merely a message;
 - **a teardown or cleanup catch**, where the reason is *"this must not fail the test"* and the cost of
   omitting it is a fixture that starts failing for a new reason and says nothing;
 - **code that looks careless and is not** — where the generic message is deliberate, the reason is

@@ -64,8 +64,13 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
       typeof(PlatformSupportAuthenticationEndpointRouteBuilderExtensions).Assembly  // Platform.API
     };
 
-    var deferred = assemblies
-      .SelectMany(assembly => assembly.GetTypes())
+    // ⚠ THREE TESTS HERE PASSED OVER AN EMPTY TYPE SET (T-258). The floor is on the scanned types,
+    // not on the deferred ones — an empty deferred list is the success condition.
+    var scanned = assemblies.SelectMany(assembly => assembly.GetTypes()).ToArray();
+    Assert.True(scanned.Length >= 20,
+      $"only {scanned.Length} types were scanned across the assemblies; the enumeration collapsed.");
+
+    var deferred = scanned
       .Where(type => type.Name.Contains("PlatformAuthenticatedUser", StringComparison.Ordinal))
       .Select(type => type.FullName)
       .ToArray();

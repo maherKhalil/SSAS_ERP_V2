@@ -25,7 +25,14 @@ public sealed class TenantBackupProviderArchitectureTests
     Assert.NotNull(CommandTextType);
 
     // No Application type composes SQL.
-    foreach (var type in ApplicationAssembly.GetTypes())
+    // ⚠ NINE TESTS IN THIS FILE PASSED OVER AN EMPTY TYPE SET (T-258). Each enumeration now has a
+    // floor on the set its loop actually reads.
+    var applicationTypes = ApplicationAssembly.GetTypes();
+    Assert.True(applicationTypes.Length >= 20,
+      $"only {applicationTypes.Length} Application types were found; the assembly reference is wrong " +
+      "or the enumeration collapsed, and the name check below would pass reading nothing.");
+
+    foreach (var type in applicationTypes)
     {
       Assert.DoesNotContain("BackupCommandText", type.Name, StringComparison.Ordinal);
     }
@@ -110,9 +117,18 @@ public sealed class TenantBackupProviderArchitectureTests
       "TenantDatabaseBackupSweepSummary"
     };
 
-    foreach (var type in InfrastructureAssembly.GetTypes()
+    // The NAME predicate is what collapses quietly: rename the types and every assembly still loads
+    // while this set empties.
+    var backupComponents = InfrastructureAssembly.GetTypes()
       .Where(type => type.Name.Contains("Backup", StringComparison.Ordinal))
-      .Where(type => !schedulingComponents.Contains(type.Name, StringComparer.Ordinal)))
+      .Where(type => !schedulingComponents.Contains(type.Name, StringComparer.Ordinal))
+      .ToArray();
+
+    Assert.True(backupComponents.Length >= 3,
+      $"only {backupComponents.Length} non-scheduling Backup components were found; the name predicate " +
+      "has stopped matching and the checks below read nothing.");
+
+    foreach (var type in backupComponents)
     {
       Assert.DoesNotContain(typeof(Microsoft.Extensions.Hosting.IHostedService), type.GetInterfaces());
       Assert.DoesNotContain("Scheduler", type.Name, StringComparison.Ordinal);
@@ -128,9 +144,16 @@ public sealed class TenantBackupProviderArchitectureTests
     // Restore verification is Phase D; the platform deletes no artifacts in V1 at all (ADR-022 §16).
     var forbidden = new[] { "Restore", "VerifyOnly", "Delete", "Purge", "Retention" };
 
-    foreach (var type in InfrastructureAssembly.GetTypes()
+    var backupOrRecovery = InfrastructureAssembly.GetTypes()
       .Where(type => type.Name.Contains("Backup", StringComparison.Ordinal) ||
-        type.Name.Contains("Recovery", StringComparison.Ordinal)))
+        type.Name.Contains("Recovery", StringComparison.Ordinal))
+      .ToArray();
+
+    Assert.True(backupOrRecovery.Length >= 5,
+      $"only {backupOrRecovery.Length} Backup/Recovery types were found; the name predicate has " +
+      "stopped matching.");
+
+    foreach (var type in backupOrRecovery)
     {
       foreach (var method in type.GetMethods(
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static |
@@ -174,7 +197,12 @@ public sealed class TenantBackupProviderArchitectureTests
     // deployment, never assumed or requested by code, and never satisfied with sysadmin.
     foreach (var assembly in new[] { ApplicationAssembly, InfrastructureAssembly })
     {
-      foreach (var type in assembly.GetTypes())
+      var assemblyTypes = assembly.GetTypes();
+      Assert.True(assemblyTypes.Length >= 10,
+        $"{assembly.GetName().Name} yielded only {assemblyTypes.Length} types; the enumeration " +
+        "collapsed and the name check below read nothing.");
+
+      foreach (var type in assemblyTypes)
       {
         Assert.DoesNotContain("Sysadmin", type.Name, StringComparison.OrdinalIgnoreCase);
       }

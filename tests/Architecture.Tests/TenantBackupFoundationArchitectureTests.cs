@@ -106,7 +106,16 @@ public sealed class TenantBackupFoundationArchitectureTests
 
     // No generic all-dimension writer anywhere in Infrastructure.
     var forbidden = new[] { "RecordAllHealthAsync", "RecordHealthAsync", "UpdateHealthAsync" };
-    foreach (var type in InfrastructureAssembly.GetTypes().Where(type => type.IsPublic))
+    // ⚠ THE LOOP BELOW ASSERTS NOTHING OVER AN EMPTY SET, AND THIS FILE PASSED OVER ONE (T-258).
+    //
+    // Ten tests here were measured green with every `GetTypes()` returning zero. A `foreach` that never
+    // runs its body is indistinguishable from one that ran and found nothing wrong.
+    var publicInfrastructure = InfrastructureAssembly.GetTypes().Where(type => type.IsPublic).ToArray();
+    Assert.True(publicInfrastructure.Length >= 20,
+      $"only {publicInfrastructure.Length} public Infrastructure types were found; the enumeration has " +
+      "collapsed and the forbidden-method check below would pass by inspecting nothing.");
+
+    foreach (var type in publicInfrastructure)
     {
       foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
       {
@@ -123,6 +132,8 @@ public sealed class TenantBackupFoundationArchitectureTests
     // intact and readable when backups are late, and denying traffic would convert one into the other.
     var gateSources = typeof(ITenantDatabaseTrafficGate).Assembly.GetTypes()
       .Where(type => type.Name.Contains("TrafficGate", StringComparison.Ordinal));
+
+    Assert.NotEmpty(gateSources);
 
     foreach (var type in gateSources)
     {
@@ -157,15 +168,28 @@ public sealed class TenantBackupFoundationArchitectureTests
     // Scoped to the tenant-storage surface rather than whole assemblies: localization has a long-standing
     // and entirely unrelated RestoreDefault feature, and a blanket scan would flag it forever while saying
     // nothing about backup authority.
+    // ⚠ THE FLOOR IS ACCUMULATED ACROSS THE THREE ASSEMBLIES, NOT ASSERTED PER ASSEMBLY (T-258).
+    //
+    // `IsTenantStorageType` is the FILTER, and a filter is what collapses quietly: a renamed namespace
+    // fragment empties it while every assembly still loads and every type still exists. But any ONE of
+    // the three may legitimately contribute zero, so a per-assembly floor would be a false red. The
+    // TOTAL is what must not be zero.
+    var tenantStorageTypes = 0;
+
     foreach (var assembly in new[] { DomainAssembly, ApplicationAssembly, InfrastructureAssembly })
     {
       // Author-written types only. A lambda inside an exempt method compiles to a display class whose
       // generated method inherits the enclosing name — `<BeginRestoreAsync>b__0` — so without this the guard
       // would demand an exemption for machinery nobody wrote. The sibling type-vocabulary guard excludes
       // compiler-generated types for exactly the same reason.
-      foreach (var type in assembly.GetTypes()
+      var scoped = assembly.GetTypes()
         .Where(type => !Attribute.IsDefined(type, typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute)))
-        .Where(IsTenantStorageType))
+        .Where(IsTenantStorageType)
+        .ToArray();
+
+      tenantStorageTypes += scoped.Length;
+
+      foreach (var type in scoped)
       {
         foreach (var method in type.GetMethods(
           BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static |
@@ -224,6 +248,12 @@ public sealed class TenantBackupFoundationArchitectureTests
         }
       }
     }
+    // The accumulated floor. Twenty-two tenant-storage types were scoped when this was written; the
+    // floor sits far below that so ordinary growth never touches it, and at zero it says the FILTER died
+    // rather than that the surface is clean.
+    Assert.True(tenantStorageTypes >= 10,
+      $"only {tenantStorageTypes} tenant-storage types were scoped across the three assemblies; " +
+      "`IsTenantStorageType` has stopped matching and the execution-verb check above read nothing.");
   }
 
   [Fact]
@@ -278,8 +308,17 @@ public sealed class TenantBackupFoundationArchitectureTests
        ,"TenantDatabaseRestoreVerificationSweepSummary"
     };
 
-    foreach (var type in InfrastructureAssembly.GetTypes()
-      .Where(type => !delivered.Contains(type.Name, StringComparer.Ordinal)))
+    var undelivered = InfrastructureAssembly.GetTypes()
+      .Where(type => !delivered.Contains(type.Name, StringComparer.Ordinal))
+      .ToArray();
+
+    // The `delivered` allowlist grows as the surface ships. This floor is on what remains OUTSIDE it,
+    // which is the set the assertions below actually read.
+    Assert.True(undelivered.Length >= 20,
+      $"only {undelivered.Length} undelivered Infrastructure types remain; either the enumeration " +
+      "collapsed or the allowlist now covers the assembly, and both make the names below unchecked.");
+
+    foreach (var type in undelivered)
     {
       Assert.DoesNotContain("BackupProvider", type.Name, StringComparison.Ordinal);
       Assert.DoesNotContain("BackupScheduler", type.Name, StringComparison.Ordinal);
@@ -336,7 +375,12 @@ public sealed class TenantBackupFoundationArchitectureTests
   {
     // ADR-022 §10 and compliance rule 22: no core enum may claim Full/Differential/TransactionLog apply to
     // every provider. If one is ever introduced, this fails.
-    foreach (var type in DomainAssembly.GetTypes().Where(type => type.IsEnum))
+    var domainEnums = DomainAssembly.GetTypes().Where(type => type.IsEnum).ToArray();
+    Assert.True(domainEnums.Length >= 5,
+      $"only {domainEnums.Length} domain enums were found; the enumeration has collapsed and the " +
+      "universal-vocabulary check below would pass without reading an enum.");
+
+    foreach (var type in domainEnums)
     {
       var names = Enum.GetNames(type);
       var looksUniversal =

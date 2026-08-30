@@ -15,6 +15,22 @@ put in the repository so a dropped message could not stall the coder — **and w
 the one dependency that fails at the same time as everything else.** On 2026-08-30 a GitHub outage left the
 coder believing the queue held one item when it held three. **A local path closes that.**
 
+⚠ **EVERY ITEM PRODUCES A COMMITTED RESULT FILE IN `.claude/handoff/results/`, INCLUDING MEASUREMENT-ONLY
+ITEMS.** One file per item, named for it. **Findings and their scope, not narrative** — the board carries the
+reasoning, the results carry the measurements.
+
+**⚠ STATE THE BLIND SPOTS IN THE FILE, NOT ONLY IN THE MESSAGE.** Every report in this loop has named what
+its population excluded, **and that caveat is the part most likely to be lost when a number is reused by
+someone who was not here.** *"Zero real over 139"* was true and became misleading **precisely because its
+scope did not travel with it.**
+
+**Why this rule exists:** on 2026-08-30 items 150–157 ran for **78 minutes producing no commit at all** —
+the phantom classification, the complete 199-route table, the built→documented mirror, the support-surface
+verification — **all of it living only in messages and in board prose.** ⚠ **The 199-route table is the most
+reusable artefact of the day and would have vanished with the session.** **That is the same failure as a
+count written into a summary while its members stayed nowhere, which this loop had already diagnosed — and
+was then doing to its own work.**
+
 **Standing authority:** work down the list without waiting between items. If one is blocked, skip it, start
 the next, and say which in the following message. Every item here is gated (`src/` + `tests/`) unless
 marked otherwise, so **`DEC-L-007` applies: green gate, merge immediately — no `MERGE` word is required.**

@@ -60,6 +60,12 @@ foreign keys           1988        IDENTITY cols     1541        uniqueidentifie
 **The procedure count was wrong by 2.6×** because T-SQL has two spellings and the first pattern knew
 one. `DEC-L-086`: the instrument that enumerates wins.
 
+**⚠ The `CREATE` grep and first-census columns above are a HISTORICAL RECORD of that failure, not current
+values.** Since T-218 the parser matches the manifest exactly — **1,754 tables, 1,347 procedures, 177
+views, zero disagreement** — and `floors()` now fails the parse if any of them drifts, for every artefact
+type rather than for tables alone. **The columns are kept because the discrepancy is the argument for the
+rule; the numbers in them were never claims about today.**
+
 ---
 
 ## 2. ⚠ Three source properties that will break a naive tool
@@ -692,7 +698,7 @@ check.**
 |---|---|---|---|---|
 | **1** | **`SELECT DISTINCT CompanyID` on every one of the 1,199 `CompanyID`-bearing tables** | is every row's company attribution real? There are 1,199 such columns and **three foreign keys among them**, so nothing has ever prevented an orphan value | minutes, scriptable | rows whose company attribution is a lie — **find before the transfer, not during** |
 | **2** | **`sys.dm_exec_procedure_stats`, captured with the instance's uptime** | which of the 1,347 procedures are actually executed. **The schema cannot answer this** — "referenced by nothing" measures the corpus, because every application call is invisible to it | one query | nothing; it only ever ADDS a live set |
-| **3** | **Row counts and value ranges on the 425 real-table money floats** | how much drift is already stored. **Only worth running if the decision is "convert"** | minutes | informs the conversion, does not block it |
+| **3** | **Row counts and value ranges on the 544 real-table money floats** | how much drift is already stored. **Only worth running if the decision is "convert"** | minutes | informs the conversion, does not block it |
 | **4** | **Orphan check on the two `NOCHECK` foreign keys** — `FK_NurseMaster_Employee` and `Pharmacy.LocalPurchaseOrderHeader → Purchasing.PurchaseRequest` | whether orphans already exist. **The engine has never validated either** | two queries | a reference across the boundary is a promise about integrity; **an orphan means the promise cannot be made** |
 | **5** | **Reachability of the 7 Tier-1 dynamic-SQL procedures** from application code | whether `SPSearch`, `SPTransfearData` and the rest are callable by an authenticated user. **Needs the application source, not the database** | depends on access | decides urgency, not remedy — they are rewritten regardless |
 

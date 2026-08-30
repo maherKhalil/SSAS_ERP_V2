@@ -707,3 +707,39 @@ a box restarted yesterday is evidence of nothing, which is why the instance upti
 and can be ratified now. **The 130-of-159 foreign-key dispositions do not need the copy either** — they
 follow from three placement decisions. **Nothing on this list blocks planning; it all blocks EXECUTION**,
 which is the distinction that decides what can proceed tonight and what waits.
+
+---
+
+# ⚠ WHERE THE REBUILD ACTUALLY LANDS: 71 ARTEFACTS, NOT 513 (T-228, 2026-08-30)
+
+**"Rebuild 450 procedures and 63 views" is the wrong number, and it is wrong by roughly seven times.**
+Our ERP replaces Finance, Accounting, GL, Assets, Budgeting, Payroll, HR, Purchasing, Receivable, Banking,
+Contracts, ZaKat and GeneralStores outright. **Logic in those schemas is not migrated — it is superseded.**
+
+| | total | **in ERP-replaced modules** | **in clinical modules — the real rebuild** |
+|---|---|---|---|
+| **logic procedures** | 450 | **433 (96%)** | **17 (4%)** |
+| **rule-encoding views** | 63 | 9 (14%) | **54 (86%)** |
+| **TOTAL** | **513** | **442** | **71** |
+
+### ⚠ The two distributions are INVERTED, and that is the finding rather than a curiosity
+
+**The procedures are 96% Finance** — 384 of 450 in `Finance` alone, plus `Assets` 33, `Budgeting` 7, `GL` 7.
+**That is a general-ledger and fixed-assets system written in T-SQL, and it is exactly what the ERP is.**
+
+**The views are 86% clinical** — `Billing` 12, `Pharmacy` 10, `dbo` 13, `OutPatient` 4, `InPatient` 4.
+**That is patient billing, dispensing and coverage logic, and none of it is replaced by anything.**
+
+**So the logic that LOOKS most intimidating is the logic we are not taking, and the logic that survives is
+sitting in the artefact type that announces itself least.** The 54 clinical rule-bearing views are the
+migration's real logic inventory — **`V_PatientBill`'s discount precedence, `V_Coverage Approvals
+Follow-up`, `V_Insurance_Claims`, `V_PackagePayment`** — and every one of them presents itself as data.
+
+### What this does not mean
+
+**The 442 are not free.** They must be READ, because the ERP's Finance module has to reproduce whatever
+those procedures decide — **but reading a procedure to extract a rule is a different and much cheaper act
+than porting it**, and it is work the ERP build was always going to do.
+
+**And 17 is a floor on the procedure side, not a ceiling on the effort.** `dbo` holds 9 of the 17 and `dbo`
+is not a module — **its contents need attributing before the number is firm.**

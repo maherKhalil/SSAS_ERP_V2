@@ -24,6 +24,34 @@ namespace SSAS.Payroll.API;
 // only written trace of a deliberate non-disclosure decision with it.
 public static class PayrollApiErrorMapper
 {
+  // ============================================================================================
+  // ⚠ THE UNCLASSIFIED UNIQUE VIOLATION, WHICH USED TO BE A 500 (T-244).
+  // ============================================================================================
+  //
+  // `Persistence.UniqueConstraint` is raised by the unit of work when SQL Server refuses a write with
+  // 2601 or 2627. **It is not a domain error of this module**, so the exhaustiveness argument in this
+  // file's header never covered it: the mapper-arm tests check that this module's own errors are mapped,
+  // and a Platform persistence code arriving from below is outside what they look at. It fell to the
+  // default arm and answered **500 `request.failed`** for a plain business conflict.
+  //
+  // Measured before the fix: two callers adding the same holiday, the loser got a 500.
+  //
+  // ---- ⚠ A DISTINCT CODE, NOT THIS MODULE'S GENERIC `Conflict`, AND THAT IS THE POINT.
+  //
+  // Handlers that anticipate a specific race translate the code themselves — `WorkingCalendarErrors
+  // .DuplicateName`, `LeaveBalance` entitlement convergence — and those tell a caller WHICH constraint
+  // lost and whether a retry can succeed. **This arm is the floor for the paths nobody classified**, and
+  // giving it its own code means an operator can see how often an unclassified one fires. Folding it into
+  // `Conflict` would hide exactly the signal that says another handler needs a translation.
+  //
+  // ---- WHAT THIS CODE DOES NOT PROMISE.
+  //
+  // A 409 usually implies the caller can do something about it. **On a path where a unique violation
+  // means an internal invariant broke, that is not true**, and this arm cannot tell the difference — it
+  // has only the code, not the index. That is the reason it is a floor rather than a replacement: the
+  // right fix for any specific path is still a handler-level translation naming its constraint.
+  public static readonly ApiError UniqueConflict = new(409, "payroll.unique_conflict");
+
   public static readonly ApiError NotFound = new(404, "payroll.not_found");
 
   // FP-015 (T-088). 404 because the route exists, the caller is authenticated and permitted, and what is
@@ -245,6 +273,9 @@ public static class PayrollApiErrorMapper
       // they did not get wrong.
       "Gl.AccountNotFound" => LedgerAccountNotFound,
 
+      // See `UniqueConflict` above: the floor for a unique violation nobody classified. Better than the
+      // 500 it replaces, and worse than a handler translation that names the constraint.
+      "Persistence.UniqueConstraint" => UniqueConflict,
       _ => ApiErrors.WriteFailure
     };
   }

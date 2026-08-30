@@ -15,6 +15,30 @@ python scripts/his-catalogue/analyse_seam.py scripts/his-catalogue/catalogue/cat
 
 ---
 
+## What this plan found (all counts 2026-08-30; each has its own section below)
+
+**⚠ THE HEADLINE: THE REBUILD IS ~71 LOGIC ARTEFACTS, NOT 513.** Our ERP replaces Finance, Accounting, GL,
+Assets, Budgeting, Payroll, HR, Purchasing, Receivable, Banking, Contracts, ZaKat and GeneralStores
+outright, and **96% of the logic procedures live in exactly those schemas.**
+
+| | measured | what it means |
+|---|---|---|
+| **the rebuild** | **15 procedures + 54 views ≈ 71** (78 if D1 makes GeneralStores shared) | not 513 — **96% of logic procedures are in modules the ERP replaces** |
+| stored procedures | 1,347 — **897 reporting (67%), 450 logic (33%)** | re-express two-thirds as queries; rebuild the rest |
+| views | 177 — **110 carry across, 63 encode rules** | **a view presents itself as data**, which is why the 63 matter more than their share |
+| the seam | **159 crossing foreign keys** | **three placement decisions settle 130 of them**; 29 need individual disposition |
+| `float` | **1,486 columns, 83% holding money or measurements** | `float` is the DEFAULT type here — **one mapping rule, 158 identifiers routed out, 5 names unresolved** |
+| dead code | **not computable from the schema** | needs `sys.dm_exec_procedure_stats` from production |
+
+**Two properties of the SOURCE SYSTEM, not of the migration**, are recorded separately: **an injection
+interface** in `SPSearch` / `SPTransfearData` / `GetInvoicePayment`, and **158 identifiers stored in
+`float`**. Neither is a migration question and both are live in the running system.
+
+**What still needs the owner:** the three placement decisions (D1–D3), and the production copy for the
+five checks at the end of this document. **Everything else here is settled or settleable without data.**
+
+---
+
 ## 1. The source, measured
 
 ```
@@ -306,26 +330,6 @@ from the DMV on a box restarted yesterday is evidence of nothing.
 
 ---
 
-## 5. What this plan does not cover
-
-- **No transfer engine.** Ruled out for now; the ERP finishes first.
-- **No reference data exists to inherit.** The 103 `INSERT`s are into **temp tables inside procedure
-  bodies**. There is no chart of accounts, no service catalogue, no drug list — "empty" is literal.
-- **The script does not stand up alone.** Procedures reference `JCIT_MembershipDB.dbo` (101 times —
-  identity, users and roles live in a database **not in this script**), `JCIT_DB_Finance.dbo` (21), and
-  hardcoded `TEBAS_GATS_ONCE.Finance.main_acc` / `GATS_AMRI.Finance.main_acc` — **other installations'
-  databases left in production code**.
-- **Type hazards need a per-column decision, not a per-type rule** — **now resolved: see the `float`
-  section above. 1,486 float COLUMNS, of which 544 in real tables hold money or measurements and a further 51 hold identifiers.** `float`
-  appears 1490 times in the SCRIPT beside
-  `money` 232 and `decimal` 530. **Float cannot represent 0.1**, and this system carries both currency
-  and drug dosages. 38 date-named columns are `varchar`; `CreatedBy` is `nvarchar(max)` on 137 tables.
-- **Unverified here:** the cross-database reference counts, the 39 disabled constraints, and the
-  duplicate `FK_Doctors_SpecialityGroupDetails1/_2` both keyed on `[SpecialityID2]`. Reproduce before
-  relying on them.
-
----
-
 ## The 1,347 stored procedures: two-thirds are reporting (T-219, counted 2026-08-30)
 
 **This is the largest line item in the migration and it lands on the favourable side.**
@@ -336,7 +340,8 @@ from the DMV on a box restarted yesterday is evidence of nothing.
 | **LOGIC** — writes, directly or through a writer it calls | **450** | **33%** |
 
 **So the work is not "port a thousand procedures". It is rebuild 450 as domain code and re-express 897
-as queries** — and a query in the new system is a different kind of artefact from a procedure, written
+as queries** — **⚠ and a later section narrows the 450 much further: 96% of them sit in modules the ERP
+replaces outright, so the actual rebuild is 15 procedures. See *Where the rebuild actually lands*.** — and a query in the new system is a different kind of artefact from a procedure, written
 against the new model rather than translated from the old one.
 
 ### The classification was controlled, not trusted
@@ -407,7 +412,7 @@ invisible, **a bound is honest and an estimate is not**, and which one you have 
 
 ---
 
-## `float` where 0.1 matters: 425 columns in 214 real tables (T-221, counted 2026-08-30)
+## `float` where 0.1 matters: 544 columns in 239 real tables (T-221/T-222, counted 2026-08-30)
 
 `float` cannot represent 0.1. This system carries **both currency and clinical measurements**, so every
 float column holding either is a fidelity decision at migration time: **convert to `decimal` and accept the
@@ -782,3 +787,24 @@ grows accordingly.**
 **Seven artefacts is not a large swing, and that is itself the useful result: the headline is robust to the
 one decision that could have moved it.** But the coupling should be visible rather than discovered later —
 **a reader who ratifies D1 as "shared" should know it adds seven views to the rebuild.**
+
+
+---
+
+## 5. What this plan does not cover
+
+- **No transfer engine.** Ruled out for now; the ERP finishes first.
+- **No reference data exists to inherit.** The 103 `INSERT`s are into **temp tables inside procedure
+  bodies**. There is no chart of accounts, no service catalogue, no drug list — "empty" is literal.
+- **The script does not stand up alone.** Procedures reference `JCIT_MembershipDB.dbo` (101 times —
+  identity, users and roles live in a database **not in this script**), `JCIT_DB_Finance.dbo` (21), and
+  hardcoded `TEBAS_GATS_ONCE.Finance.main_acc` / `GATS_AMRI.Finance.main_acc` — **other installations'
+  databases left in production code**.
+- **Type hazards need a per-column decision, not a per-type rule** — **now resolved: see the `float`
+  section above. 1,486 float COLUMNS, of which 544 in real tables hold money or measurements and a further 51 hold identifiers.** `float`
+  appears 1490 times in the SCRIPT beside
+  `money` 232 and `decimal` 530. **Float cannot represent 0.1**, and this system carries both currency
+  and drug dosages. 38 date-named columns are `varchar`; `CreatedBy` is `nvarchar(max)` on 137 tables.
+- **Unverified here:** the cross-database reference counts, the 39 disabled constraints, and the
+  duplicate `FK_Doctors_SpecialityGroupDetails1/_2` both keyed on `[SpecialityID2]`. Reproduce before
+  relying on them.

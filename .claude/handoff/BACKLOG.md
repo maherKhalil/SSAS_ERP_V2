@@ -28,6 +28,7 @@ have no work** — if you are reporting an empty queue, you should already be wo
 | B9 | **Is the `.Map(Get\|Post\|…)` regex complete?** It is a filter, so **a route registered in a form it does not match is invisible to the constraint guard.** `MapMethods`, `MapFallback`, `MapGroup`, a bare `Map`, anything else ASP.NET offers. **Enumerate the registration forms actually used in `src/`, then say which the regex covers.** | Same blind-spot family as composed identifiers: the guard is exhaustive over the forms it knows about, and nothing has enumerated the forms. |
 
 ---
+| B10 | **For the 21 multi-condition messages, does every raise site actually match its code's NAME?** The pagination code was raised for an **export ceiling** — a cap on total rows, not a page of anything — **and nobody noticed because the name made the mismatch invisible.** A caller told *"page size invalid"* for a bad ceiling goes looking at a parameter it never sent, **which is worse than an ambiguous message: it is a wrong one.** 21 codes, raise sites enumerated, **report mismatches only.** | The fourth condition behind `InvalidPagination` was only visible once the code was split. **The number of conditions hiding behind an ambiguous code is unknown until you split it** — so the same may be true of the other 20. |
 
 ## How this file is maintained
 

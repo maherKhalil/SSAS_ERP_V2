@@ -13,6 +13,36 @@ package's documents, so nothing below is a confirmation of an assumption made he
 
 ---
 
+
+## ⚠ AMENDMENT 2026-08-30 — §4 AND §5 NAME ABSENCES THAT HAVE SINCE BEEN CLOSED
+
+Re-verified against the tree before landing. **§§1, 2 and 3 hold and their citations resolve.** The two
+sections that record what was *missing* are the two that were overtaken — the same pattern as this package's
+`authorization-model.md`, and the reason its amendment is worth reading alongside this one.
+
+**§5's Attendance column is stale in all four cells.** It records *none*, *none*, *none* and *zero
+occurrences of `api/attendance` in `tests/`*. Today `AttendanceRouteInventoryTests.cs` exists,
+`AttendanceRoutePermissionTests.Every_attendance_route_requires_a_permission` exists, and **eleven** test
+files reference `api/attendance`. **So §5's conclusion — that an Attendance route added without
+`RequirePermission` would be anonymous and nothing would fail — no longer holds.** §5 names **T-077** as the
+task that would close it, and T-077 closed it: **the prerequisite it declares is satisfied.**
+
+**§4's stated absence is false today.** It reports that *"no guard asserts that a module's errors are
+mapped rather than falling through (T-076 searched; none found)"*. `ModuleErrorMappingArchitectureTests`
+asserts precisely that, per site, with a `KnownUnmapped` register — joined this week by
+`PersistenceErrorMappingArchitectureTests` and `TranslatedErrorCodeReachesAMapperTests`. ⚠ **The obligation
+§4 derives still stands on its own merits; only the absence it argues from is gone.**
+
+**One citation had drifted and is corrected in place:** `AttendanceApiErrorMapper.cs:149` is now **line
+200**. It is the only moved reference in this file, which matters because the file's value is that its
+references were measured rather than recalled.
+
+**§3 was checked with particular care and is CORRECT.** Its claim that `REQ-SS-0005` missed
+`UserEmployeeLink` was expected to fail the same way `authorization-model.md` §7 did — **and it does not.
+`IUserEmployeeLinkRepository` and `IdentityAccessErrors.InvalidUserEmployeeLink` both exist.** ⚠ **A pattern
+just confirmed in a neighbouring document is a hypothesis here, not a finding**, and checking it against the
+tree rather than against the neighbour is what kept this section intact.
+
 ## 1. Mounting — `REQ-SS-0008` is true of the tree, not merely intended
 
 **A route added to an existing module group inherits four things free** and declares two:
@@ -91,7 +121,7 @@ thrown and no logger is touched**, so *no exception, no error-log entry* is sati
 **The trap:**
 
 ```
-AttendanceApiErrorMapper.cs:149   _ => ApiErrors.WriteFailure
+AttendanceApiErrorMapper.cs:200   _ => ApiErrors.WriteFailure
 ApiErrors.cs:32                   WriteFailure = new(500, "request.failed")
 ```
 

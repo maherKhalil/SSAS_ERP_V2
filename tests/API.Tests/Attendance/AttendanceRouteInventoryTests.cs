@@ -53,36 +53,36 @@ public sealed class AttendanceRouteInventoryTests(HostWebApplicationFactory fact
     // ---- WORKING CALENDAR. Structural configuration, not personal data.
     ("POST", "/api/attendance/calendars", AttendancePermissionNames.ManageCalendars),
     ("GET", "/api/attendance/calendars", AttendancePermissionNames.ViewCalendars),
-    ("PUT", "/api/attendance/calendars/{workingCalendarId:guid}", AttendancePermissionNames.ManageCalendars),
-    ("POST", "/api/attendance/calendars/{workingCalendarId:guid}/holidays", AttendancePermissionNames.ManageCalendars),
-    ("POST", "/api/attendance/calendars/{workingCalendarId:guid}/holidays/remove", AttendancePermissionNames.ManageCalendars),
+    ("PUT", "/api/attendance/calendars/{workingCalendarId}", AttendancePermissionNames.ManageCalendars),
+    ("POST", "/api/attendance/calendars/{workingCalendarId}/holidays", AttendancePermissionNames.ManageCalendars),
+    ("POST", "/api/attendance/calendars/{workingCalendarId}/holidays/remove", AttendancePermissionNames.ManageCalendars),
     ("GET", "/api/attendance/calendars/working-days", AttendancePermissionNames.ViewCalendars),
 
     // ---- PERIODS. Closing and reopening carry their own permission, separate from creating.
     ("POST", "/api/attendance/periods", AttendancePermissionNames.ManagePeriods),
     ("GET", "/api/attendance/periods", AttendancePermissionNames.ViewPeriods),
-    ("POST", "/api/attendance/periods/{attendancePeriodId:guid}/close", AttendancePermissionNames.ClosePeriods),
-    ("POST", "/api/attendance/periods/{attendancePeriodId:guid}/reopen", AttendancePermissionNames.ClosePeriods),
+    ("POST", "/api/attendance/periods/{attendancePeriodId}/close", AttendancePermissionNames.ClosePeriods),
+    ("POST", "/api/attendance/periods/{attendancePeriodId}/reopen", AttendancePermissionNames.ClosePeriods),
 
     // ---- RECORDS. `OD-ATT-0012` ruled adjustments-never-edits, so a correction is a POST to a
     // ---- sub-resource rather than a PUT. `No_attendance_record_responds_to_put_or_delete` asserts it.
     ("POST", "/api/attendance/records", AttendancePermissionNames.ManageRecords),
     ("GET", "/api/attendance/records", AttendancePermissionNames.ViewRecords),
-    ("POST", "/api/attendance/records/{attendanceRecordId:guid}/adjustments", AttendancePermissionNames.ManageRecords),
+    ("POST", "/api/attendance/records/{attendanceRecordId}/adjustments", AttendancePermissionNames.ManageRecords),
 
     // ---- LEAVE TYPES. A catalog, permissioned separately from the leave it classifies.
     ("POST", "/api/attendance/leave-types", AttendancePermissionNames.ManageLeaveTypes),
     ("GET", "/api/attendance/leave-types", AttendancePermissionNames.ViewLeaveTypes),
-    ("PUT", "/api/attendance/leave-types/{leaveTypeId:guid}", AttendancePermissionNames.ManageLeaveTypes),
-    ("POST", "/api/attendance/leave-types/{leaveTypeId:guid}/activate", AttendancePermissionNames.ManageLeaveTypes),
-    ("POST", "/api/attendance/leave-types/{leaveTypeId:guid}/deactivate", AttendancePermissionNames.ManageLeaveTypes),
+    ("PUT", "/api/attendance/leave-types/{leaveTypeId}", AttendancePermissionNames.ManageLeaveTypes),
+    ("POST", "/api/attendance/leave-types/{leaveTypeId}/activate", AttendancePermissionNames.ManageLeaveTypes),
+    ("POST", "/api/attendance/leave-types/{leaveTypeId}/deactivate", AttendancePermissionNames.ManageLeaveTypes),
 
     // ---- LEAVE REQUESTS. Approving and rejecting carry `ApproveLeave`; submitting and cancelling do not.
     ("POST", "/api/attendance/leave-requests", AttendancePermissionNames.ManageLeave),
     ("GET", "/api/attendance/leave-requests", AttendancePermissionNames.ViewLeave),
-    ("POST", "/api/attendance/leave-requests/{leaveRequestId:guid}/approve", AttendancePermissionNames.ApproveLeave),
-    ("POST", "/api/attendance/leave-requests/{leaveRequestId:guid}/reject", AttendancePermissionNames.ApproveLeave),
-    ("POST", "/api/attendance/leave-requests/{leaveRequestId:guid}/cancel", AttendancePermissionNames.ManageLeave),
+    ("POST", "/api/attendance/leave-requests/{leaveRequestId}/approve", AttendancePermissionNames.ApproveLeave),
+    ("POST", "/api/attendance/leave-requests/{leaveRequestId}/reject", AttendancePermissionNames.ApproveLeave),
+    ("POST", "/api/attendance/leave-requests/{leaveRequestId}/cancel", AttendancePermissionNames.ManageLeave),
 
     // ---- BALANCES. Entitlement is settable; consumed is not (`AC-ATT-0040`).
     ("PUT", "/api/attendance/leave-balances", AttendancePermissionNames.ManageLeave),

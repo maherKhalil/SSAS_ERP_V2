@@ -339,6 +339,23 @@ in two sittings — too narrow, then too wide, then too narrow again, and once m
 buffer. **The 16 is trustworthy because the residue was checked by hand, not because the heuristic is sound**,
 and a later run cannot tell those apart. Treat it as a dated observation, not a repeatable measurement.
 
+## Diagnosing a persistence conflict — where the failure is actually recorded
+
+**The application logs nothing of its own for a failed save.** Neither unit of work takes a logger, and
+`Error(Code, Message)` cannot carry the `SqlException` that names the index. **The operator is nevertheless
+not blind: EF Core records it.**
+
+**Measured 2026-08-30 against a real server and a real 2627 on the working-calendar unique index:** exactly
+**one** `Error`-level entry, with the exception attached, under category
+**`Microsoft.EntityFrameworkCore.Update`**. `CorrelationIdMiddleware` plus `"Enrich": ["FromLogContext"]`
+ties it to the originating request.
+
+**⚠ The category is `…EntityFrameworkCore.Update`, NOT `…EntityFrameworkCore.Database.Command`.** The
+`Database.Command` category — the intuitive guess, and the one predicted from EF's `CommandError` event —
+**logs nothing at `Error` on this path.** Both clear the `"Microsoft": "Warning"` override, so the practical
+answer is the same either way; **but the category is what an operator filters on, and a runbook naming
+`Database.Command` would return nothing and read as "no such failure ever happened".**
+
 # Principle 14 – A Guard Must Be Refusable
 
 **Before adding a guard, establish that the thing it forbids currently occurs, or has occurred.** A guard

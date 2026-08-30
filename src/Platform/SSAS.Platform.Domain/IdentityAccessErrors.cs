@@ -50,9 +50,22 @@ public static class IdentityAccessErrors
     "UserEmployeeLink.NotFound",
     "No link exists for that tenant user.");
 
+  // ⚠ THESE THREE ARE RAISED BY SHARED CODE, SO THEIR MESSAGES MUST NAME NO DOMAIN (T-262).
+  //
+  // Both unit-of-work classes return them for EVERY aggregate, and ten mappers translate
+  // `Persistence.UniqueConstraint` alone into a correct per-module wire code. The code was always right.
+  // The MESSAGE said *"identity or access value"*, which was harmless for exactly as long as nobody could
+  // read it — until T-261 put `Error.Message` on the wire and an Attendance caller posting a duplicate
+  // holiday started receiving `409 attendance.unique_conflict` explained as an identity or access value.
+  //
+  // **Making a latent artefact visible converts its defects into live ones.** These strings were written
+  // under the assumption that only a developer would read them.
+  //
+  // `ConcurrencyConflict` needed no change and is why this is a defect rather than a design: same origin,
+  // same 409, same breadth, written neutrally on the adjacent line.
   public static readonly Error ConcurrencyConflict = new("Persistence.ConcurrencyConflict", "The record was changed by another operation.");
-  public static readonly Error UniqueConstraintViolation = new("Persistence.UniqueConstraint", "The requested identity or access value already exists.");
-  public static readonly Error WriteFailure = new("Persistence.WriteFailure", "The identity or access change could not be persisted.");
+  public static readonly Error UniqueConstraintViolation = new("Persistence.UniqueConstraint", "A record with the same value already exists.");
+  public static readonly Error WriteFailure = new("Persistence.WriteFailure", "The change could not be persisted.");
   public static readonly Error NotFound = new("Common.NotFound", "The requested record was not found.");
   public static readonly Error Unauthorized = new("Authorization.Unauthorized", "An authenticated actor and trusted tenant are required.");
 }

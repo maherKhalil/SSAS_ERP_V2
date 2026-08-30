@@ -383,6 +383,52 @@ a file boundary, and the normalisation error above. **None was carelessness: a t
 ways to be wrong than the property it checks.** Prefer a compiler-enforced or structural check wherever one
 exists, and plant every text-based guard against a real instance before trusting it.
 
+# Principle 16 – A Green Guard Produces No Prompt to Ask Whether It Is Measuring Anything
+
+**Measured 2026-08-30.** `PersistenceArchitectureTests` passed **all nine of its tests when its file walk
+found nothing.** Renaming one path segment — a plausible layout change — was enough. Three of the nine are
+`Assert.Empty` over that walk with no floor: *no generic repository in production source*, *no Entity
+Framework in Domain or Application*, *no `IQueryable` on Application boundaries*. **Three real architectural
+rules, defended by an instrument that reports success when it inspects an empty set.**
+
+**The population, across this repository's guards that match against file text:**
+
+| | |
+|---|---|
+| guards matching file text | **18** |
+| with an anti-vacuity floor | 14 |
+| with recorded plant evidence | 5 |
+| asserting an ABSENCE | **12** |
+| absence-asserting **and** no recorded plant | **12 — all of them** |
+
+**The combination that matters is absence-asserting, text-scanning and unplanted**, because such a guard
+reports zero violations both when the rule holds and when the instrument is broken, and those two outputs
+are identical.
+
+**Why the class accumulates has nothing to do with difficulty.** Demonstrating the failure took under a
+minute and no cleverness: change what the walk looks for, confirm the suite stays green. **It accumulates
+because a passing test asks nothing of anyone.** A failure interrogates itself; a success is
+self-certifying — which is why this class collects in the tests written by the most careful people, whose
+guards pass from the day they are written.
+
+**Three rules follow.**
+
+**Prefer removing the failure mode to detecting it.** A floor makes a broken instrument noisy; a structural
+check makes it unbreakable in this way. *"Domain and Application remain EF-free"* is an **assembly-reference**
+question and *"no `IQueryable` on Application boundaries"* is a question about **public method signatures** —
+reflection answers both exactly, and **an assembly that fails to load throws, where a file walk that finds
+nothing returns an empty set and reads as success.** Where the underlying question is structural, ask it
+structurally.
+
+**Every absence-asserting scan that remains a text scan carries a floor.** See Principle 14 for what a floor
+does and does not cover: it detects the walk collapsing, not one item stepping out of view.
+
+**Record plant evidence in the test file, not only in the commit message.** Three of this repository's five
+recorded plants are visible **only in git history**. A property that can be established only by archaeology
+stops being established — the next reader sees a green assertion and has no reason to trust it. **A short
+comment naming what was broken and what reddened is greppable, survives a rebase, and is present at the
+moment someone decides whether to believe the test.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

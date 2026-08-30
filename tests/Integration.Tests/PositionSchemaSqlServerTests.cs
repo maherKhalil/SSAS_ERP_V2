@@ -605,6 +605,9 @@ public sealed class PositionSchemaSqlServerTests
       await work;
       return true;
     }
+  // The exception IS the answer here, not an error being swallowed: `Capture` exists to turn "did this
+  // statement get refused" into a bool, and a `SqlException` is the refusal. Anything that is NOT a
+  // SqlException still propagates and fails the test, which is what keeps this from being a blanket catch.
     catch (SqlException)
     {
       return false;

@@ -875,6 +875,9 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
         {
           child.WaitForExit(30_000);
         }
+        // The child was just killed, so a failure to wait on it means it is already gone. `SystemException`
+        // covers both the invalid-handle and the access cases, and either one answers the question the wait
+        // was asking.
         catch (SystemException)
         {
         }
@@ -912,7 +915,19 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
       if (!string.IsNullOrWhiteSpace(root) && Directory.Exists(root))
       {
         try { Directory.Delete(root, recursive: true); }
+        // ⚠ TEARDOWN OF A DIRECTORY, AND UNLIKE THE CATALOG ABOVE IT IS NOT RECORDED.
+        //
+        // A file still locked by a process that has not fully exited is the normal case here, and failing
+        // the test for it would report a cleanup race as a product defect. **The leak is not lost**: the
+        // gate reaps stale backup roots at startup, because a recorder at teardown is structurally blind
+        // to a run that died before reaching it.
         catch (IOException) { }
+        // ⚠ TEARDOWN OF A DIRECTORY, AND UNLIKE THE CATALOG ABOVE IT IS NOT RECORDED.
+        //
+        // A file still locked by a process that has not fully exited is the normal case here, and failing
+        // the test for it would report a cleanup race as a product defect. **The leak is not lost**: the
+        // gate reaps stale backup roots at startup, because a recorder at teardown is structurally blind
+        // to a run that died before reaching it.
         catch (UnauthorizedAccessException) { }
       }
     }

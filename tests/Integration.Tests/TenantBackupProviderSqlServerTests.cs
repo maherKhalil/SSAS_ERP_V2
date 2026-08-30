@@ -927,6 +927,9 @@ public sealed class TenantBackupProviderSqlServerTests
           process.Kill(entireProcessTree: true);
         }
       }
+      // ⚠ `HasExited` then `Kill` is a RACE and this is the losing branch, not an error. The process exited
+      // between the check and the kill -- which is the outcome the kill was trying to produce. There is no
+      // way to close the window; the API offers no atomic "kill if running".
       catch (InvalidOperationException)
       {
       }

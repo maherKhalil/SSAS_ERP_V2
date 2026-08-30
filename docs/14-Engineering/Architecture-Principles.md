@@ -562,6 +562,20 @@ useless one.**
 3. **The log, not the response.** EF records the violated index name; `AccessTokenIssuer` records why signing
    failed. **The caller is deliberately told less — that is a security posture, not an omission.**
 
+**⚠ AMENDMENT 2026-08-30 — the pressure operates at the DOMAIN layer, and 37% of it is discarded at the
+boundary.** Measured: **344 distinct codes appear on the left of a mapper arm, 129 of them map to the single
+wire code `request.invalid` (400), and the whole product exposes 86 distinct wire outcomes.**
+
+**So "the constraint forces machine-readable distinctions" is true where the codes are minted and stops
+being true at the mapper.** A caller receives the same `request.invalid` for a malformed body, an unknown
+property, a bad row version and an out-of-range page size. **Splitting a domain code achieves nothing
+observable unless the mapper gains a distinct `ApiError` too** — which is why the pagination fix below is
+specified at both layers.
+
+**The codes were minted. The mapper is where they stop paying.** Treat a domain-only split as cosmetic, and
+before adding a wire code ask whether a caller can act on the distinction — for pagination it plainly can,
+because **a paging client is exactly the caller that retries in a loop.**
+
 **Where a message names several conditions, the remedy is another code, not another field.** 21 of the 345
 messages name more than one condition. `InvalidPagination` — *"page number **or** page size"* — is the clear
 defect, because **a client fixing the wrong one retries and fails again**; the fix is two codes. **For most

@@ -17,7 +17,7 @@ not all re-verified, and which is which matters.**
 |---|---|
 | `authorization-model.md` | **Re-verified against the tree.** §§1, 3, 4, 6 confirmed line by line. **§§2, 5, 7, 8 were overtaken by work done since — see the amendment at the head of that file, and read it before its findings.** |
 | `api-contracts.md` | **Re-verified 2026-08-30.** §§1, 2, 3 hold. **§§4 and 5 name absences since closed; one citation corrected in place** — see the amendment at the head of that file. |
-| `data-model.md` | **Not re-verified.** As written 2026-08-27. |
+| `data-model.md` | **Re-verified 2026-08-30 — NO discrepancies, the first such.** The table it specifies is implemented column for column, both unique index names match, and its one named gap (`TenantModelResidencyTests`) is closed. |
 | `domain-model.md` | **Not re-verified.** As written 2026-08-27. |
 | `lifecycle-model.md` | **Not re-verified.** As written 2026-08-27. |
 

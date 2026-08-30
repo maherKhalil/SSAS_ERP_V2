@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using SSAS.Attendance.Application.Permissions;
 
@@ -143,12 +144,71 @@ public sealed class AttendanceCalendarPeriodEndpointTests(AttendanceApiTestHost 
     Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
   }
 
+  // ================================================================================================
+  // THE WORKING-DAYS QUERY, WHICH NOTHING HAD EVER CALLED (T-240).
+  // ================================================================================================
+  //
+  // `GET /calendars/working-days` was one of five live routes addressed by no test. It is the query
+  // `REQ-ATT-0003` requires, and it exists **so a client gets the SAME answer the domain uses** — a client
+  // computing working days itself drifts the first time a holiday moves, and the drift surfaces as a leave
+  // request consuming a different number of days than the preview promised.
+  //
+  // ⚠ **THAT PURPOSE IS EXACTLY WHAT A STATUS-ONLY TEST CANNOT CHECK.** A 200 carrying a number the handler
+  // invented would look identical to a 200 carrying the domain's number. So this asserts the VALUE reaches
+  // the caller unaltered, and that the query parameters reach the read service unaltered — which together
+  // are the pass-through the route exists to provide.
+  [Fact]
+  public async Task The_working_days_query_returns_the_read_services_answer_and_its_own_arguments()
+  {
+    host.ResetToAuthorizedState();
+    host.Reads.WorkingDays = 17;
+
+    var response = await Send(HttpMethod.Get,
+      $"{Calendars}/working-days?companyId={AttendanceApiTestHost.CompanyA}"
+        + "&fromDate=2026-03-01&toDate=2026-03-31",
+      AttendancePermissionNames.ViewCalendars,
+      body: null);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    // 17 rather than a plausible number: an arithmetic accident cannot land on it, so the assertion fails
+    // if anything between the read service and the wire substitutes its own answer.
+    Assert.Equal(17, payload.RootElement.GetProperty("workingDays").GetInt32());
+
+    Assert.Equal(AttendanceApiTestHost.CompanyA, host.Reads.WorkingDaysCompanyId);
+    Assert.Equal(
+      (new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31)),
+      host.Reads.WorkingDaysRange);
+  }
+
+  // The neighbouring-permission question this class exists to ask, for the route nothing had called.
+  [Fact]
+  public async Task The_working_days_query_refuses_a_token_without_the_view_calendars_grant()
+  {
+    host.ResetToAuthorizedState();
+
+    var response = await Send(HttpMethod.Get,
+      $"{Calendars}/working-days?companyId={AttendanceApiTestHost.CompanyA}"
+        + "&fromDate=2026-03-01&toDate=2026-03-31",
+      AttendancePermissionNames.ViewPeriods,
+      body: null);
+
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+  }
+
   private async Task<HttpResponseMessage> Send(
-    HttpMethod method, string path, string permission, string body)
+    HttpMethod method, string path, string permission, string? body)
   {
     // `AttendanceApiTestHost.Request`'s fourth parameter is the COMPANY HEADER, not a body.
     var request = AttendanceApiTestHost.Request(method, path, host.TokenWith(permission));
-    request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+
+    // A GET carrying a JSON body is not what a client sends, and the working-days query is a GET.
+    if (body is not null)
+    {
+      request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+    }
     return await host.Client.SendAsync(request);
   }
 }

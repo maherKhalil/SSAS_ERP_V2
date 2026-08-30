@@ -6,7 +6,14 @@ FR-PLT-0001
 
 Status
 
-Draft
+Draft — **and staying Draft; this is a decision, not an omission.** The known-wrong
+expired-subscription row was corrected 2026-08-30, so that particular objection is gone, but the
+document still disclaims its own content two paragraphs below: five approved feature packages
+supersede it in their areas, and the Remember Me, theme, Company-status-gates-login, audit and
+notification material is explicitly non-authoritative. A document whose text says *the package
+governs where we disagree* cannot be promoted to a specification without first resolving each of
+those, which is a larger piece of work than correcting one row. Recorded here so the next sweep
+reads an answer instead of re-asking the question.
 
 Lifecycle authority
 
@@ -20,7 +27,7 @@ Approved FP-004 (`docs/17-features/FP-004-localization/`) supersedes this Draft 
 
 Approved FP-005 (`docs/17-features/FP-005-company-legal-entity/`) supersedes this Draft wherever this document describes Company identity or Company status.
 
-The expired-subscription login rule is no longer stated here. `OD-SUB-0009` ruled it binding and it is carried as `REQ-SUB-0018` in FP-014 (`docs/17-features/FP-014-subscription/`), an analysis package not yet approved for implementation. This document cites that requirement and does not restate it, so that one ruled rule does not exist in two places to drift apart.
+The expired-subscription login rule is no longer stated here as a rule, and **it is no longer true**. `OD-SUB-0009` ruled a term exists and was **amended 2026-08-26 by `DEC-L-033`: expiry gates modules and never blocks login**, because a lapsed customer who cannot log in cannot reach the page that would let them subscribe. It is carried as `REQ-SUB-0018` in FP-014 (`docs/17-features/FP-014-subscription/`), **ratified 2026-08-25 and — contrary to that package's own README — implemented**: eight domain types, two EF configurations, two migrations, and a passing gate suite. This document cites that requirement and does not restate it, so that one ruled rule does not exist in two places to drift apart. The *Failure Scenarios* entry below survived that amendment for four months and is corrected there rather than deleted, because the refusal it names is real and lands on a different surface.
 
 The remaining Remember Me, theme selection, whether Company status gates login, audit, notification, and future-enhancement material below is deferred and non-authoritative until covered by an approved feature package. FP-002 names immutable audit storage, notification delivery, MFA and external identity providers among its own deferrals, so no approved package specifies them today. This account is what a section-by-section sweep on 2026-08-25 found; it is not a claim of exhaustiveness.
 
@@ -136,7 +143,7 @@ Suspended tenants cannot login.
 
 Inactive companies cannot login.
 
-Subscription expiry and login: see `REQ-SUB-0018` (ruled binding by `OD-SUB-0009`).
+Subscription expiry does **not** refuse login: see `REQ-SUB-0018` (`OD-SUB-0009` as amended by `DEC-L-033`). An expired tenant authenticates and is refused every gated module.
 
 ---
 
@@ -154,7 +161,7 @@ Inactive Tenant
 
 Inactive Company
 
-Expired Subscription
+Expired Subscription — **not a login failure, and never was one in the shipped product.** `REQ-SUB-0018` (`OD-SUB-0009` as amended by `DEC-L-033`): an expired tenant **authenticates successfully**, reaches the platform plane — its account, its users, and the subscription surface itself — and is refused every **gated module** with `403`. Verified end to end 2026-08-30: authentication eligibility is a total function of `TenantStatus` and consults no subscription, and the entitlement resolver that does read expiry is reachable only from `RequireModule`. A suspended or archived tenant *is* refused at authentication, but that is administrative and this is commercial; `OD-SUB-0010` holds the two dimensions orthogonal and expiry never writes `TenantStatus`. The entry is kept because a reader looking for expiry looks here first.
 
 Unexpected Error
 

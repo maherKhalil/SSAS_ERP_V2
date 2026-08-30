@@ -739,6 +739,63 @@ defect, because **a client fixing the wrong one retries and fails again**; the f
 of the 21 the caller is an internal guard clause that branches on nothing, and an ambiguous message to a
 caller that ignores it costs nothing.**
 
+# Principle 19 – A Wrong Explanation Survives Repetition Better Than No Explanation
+
+**A symptom that is re-flagged repeatedly and never fixed usually has a plausible wrong diagnosis attached
+to it.** Each re-flagging re-endorses the diagnosis instead of re-testing it, so the wrong explanation is
+*strengthened* by the attention that ought to have destroyed it. **An unexplained symptom keeps its
+question open; an explained one closes it, and a wrong closure is invisible.**
+
+**The case that produced this.** `Authentication.md` listed `Expired Subscription` among its login failure
+scenarios. `OD-SUB-0009` diagnosed it in 2026-08 as *"a login refusal for a state the product cannot
+represent"*. That sentence was written once and quoted, in effect, four times over the following weeks —
+each sweep found the row, matched it to the recorded explanation, and moved on.
+
+**The diagnosis was false.** `SubscriptionTerm.HasExpiredAt` is real, tested, and evaluated on every
+request. Expiry *is* representable, and it *does* refuse — with `403`, at the module boundary, because
+`DEC-L-033` amended the ruling on 2026-08-26 precisely so a lapsed customer could still log in and renew.
+**The row's defect was never representability. It was filing a real refusal under the wrong failure
+surface** — a subtler error, and one that *"cannot represent"* actively hides, because a reader who
+believes the state is impossible has no reason to go looking for where it is handled.
+
+**Two operational consequences:**
+
+- ⚠ **When a finding is being raised for the second time, re-test its explanation, not its symptom.** The
+  symptom is confirmed by the fact that you found it again. The explanation is the part that has never
+  been checked and is the reason nothing was done.
+- **A follow-on edit named in prose is not an assigned edit.** `OD-SUB-0009` closed with *"If the ruling is
+  anything other than the first, `Authentication.md` needs the corresponding edit — a separate task, since
+  that file is outside this package."* The ruling *was* other than the first. **The sentence recorded the
+  dependency and gave it no owner, and for four months nobody made the edit.** A cross-package edit named
+  inside a package that cannot make it needs a queued item, not a sentence.
+
+---
+
+# Principle 20 – A Document's Claims About the Code Rot First, and Its Absence Claims Rot Fastest
+
+**Descriptive prose about a design survives revision for a long time. A claim about the *state* of the
+implementation is falsified by the next commit.** The two sit in the same paragraph and are read with the
+same confidence, and only one of them is still true.
+
+**The sharpest instance on record.** FP-014's README, dated **2026-08-25**, states plainly:
+
+> **No code and no schema.** Nothing here is implemented.
+
+The commercial plane's first migration, `AddSubscriptionCommercialPlane`, is dated **2026-08-26** — *the
+next day*. Eight domain types, two EF configurations, two migrations and a passing gate suite now exist.
+**The sentence was written to be admirably explicit, in a section headed *"stated plainly rather than left
+to be inferred from a status word"*, and it was wrong within twenty-four hours.** Its own precision is what
+made it durable: it reads as a considered statement rather than a status field, so nobody re-checked it.
+
+**The rule:** an implementation-status claim carries a date and is re-derived, never inherited. Where a
+document must say what does not exist, it says *as at* a date, and the reader treats it as a measurement
+that decays — because that is exactly what it is.
+
+⚠ **And the search that finds these is not another instrument over the code.** Every sweep this loop has
+run asked what the code contains. **None asked whether the documents' claims about the code still hold** —
+which is why a four-day-old falsehood in a ratified package survived eight enumerations that all had the
+tree in front of them.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

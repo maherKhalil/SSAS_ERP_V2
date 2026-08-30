@@ -425,8 +425,17 @@ record that must be correctable before it is final and immutable after is **two 
 
 **RULED: A TERM EXISTS**, with a start and an end or an explicit perpetual marker. **AMENDED 2026-08-26 by `DEC-L-033`: expiry GATES MODULES and never blocks login.**
 
-`Authentication.md:123` — "Expired subscriptions cannot login" — is in a `Draft` document, describes a
-state the product cannot represent, and is carried as `REQ-SUB-0018` **conditional on this ruling**.
+`Authentication.md` — "Expired subscriptions cannot login" — is in a `Draft` document and is carried as
+`REQ-SUB-0018` **conditional on this ruling**.
+
+> **Withdrawn 2026-08-30.** This entry said the clause *"describes a state the product cannot represent"*.
+> **That was false.** `SubscriptionTerm.HasExpiredAt` is real, tested, and evaluated on every request; expiry
+> is representable and refuses — with `403`, at the module boundary, per this ruling as amended. The clause's
+> defect was never representability but **filing a real refusal under the wrong failure surface**. The wrong
+> explanation is recorded here because it outlived four separate re-flaggings of the symptom: each one
+> re-endorsed this diagnosis instead of re-testing it, and "cannot represent" invites exactly the reading
+> that misses the real error. `Authentication.md` is corrected as of this date. The line number in the
+> original citation was also stale.
 
 | Option | Consequence |
 |---|---|
@@ -436,6 +445,11 @@ state the product cannot represent, and is carried as `REQ-SUB-0018` **condition
 
 If the ruling is anything other than the first, `Authentication.md` needs the corresponding edit —
 a separate task, since that file is outside this package.
+
+> **Done 2026-08-30.** The ruling *was* the third option, and this sentence named the follow-on edit
+> without giving it an owner — so for four months nobody made it, while the stale clause was noticed
+> and re-flagged four times. **A cross-package edit named inside the package that cannot make it needs
+> a queued item, not a sentence.** Recording the dependency is not the same as assigning it.
 
 ---
 

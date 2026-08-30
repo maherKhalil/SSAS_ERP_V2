@@ -31,8 +31,33 @@ architect has these in the owner's brief.
 **Green and its three completion axes are closed.** `GATE_SCOPE=TASK` runs seven suites, ~3,075 tests, in
 about 72 seconds.
 
-- **Axis 1, documented capability with no endpoint:** decomposed from 67 to **41 owner-gated, 15 already
-  deferred, 9 our own doc errors, 2 real** — *almost entirely the owner's to unlock, not ours to build.*
+- **Axis 1, documented capability with no endpoint:** decomposed 2026-08-29 from 67 to **41 owner-gated,
+  15 already deferred, 9 our own doc errors, 2 real**. ⚠ **That count is stale and its MEMBERS were never
+  recorded — read the correction below before using any of those figures.**
+
+  **⚠ CORRECTED AGAIN 2026-08-30, AND THE PREVIOUS CORRECTION WAS THE WRONG ONE.** An earlier note here
+  said the decomposition's members were *"NOT RECOVERABLE"*. **They are recorded in full, and always were:
+  `.claude/handoff/results/T-201.md`, 142 lines, with the members, the method, the per-package breakdown and
+  two self-corrections.**
+
+  **The true decomposition is 41 owner-blocked, 15 deferred or superseded, 10 documentation drift, 1
+  unblocked** — **not 9 and 2. T-201 had already corrected itself from 9-and-2 to 10-and-1**, finding the
+  tenth in its own text: a row that *"begins **New.**"* and ends `[BUILT as POST .../change-department]`.
+  Its words: *"this report fell into the trap it describes, in the paragraph above the one describing it."*
+
+  ⚠ **The single unblocked row is `GET /api/platform/permissions`, the permission-catalogue read, and it
+  SHIPPED 2026-08-29.** **So the residual is ZERO because its one member was built — not "within the error
+  of an unrecoverable measurement".** **That earlier closing conceded an ignorance this project does not
+  have, and it is withdrawn.**
+
+  ⚠ **AND THE TEN ARE NOT DOCUMENTATION ERRORS TO FIX. T-201 explicitly withdraws that recommendation:**
+  *"The first version of this report recommended rewriting the ten paths to the real routes. That was wrong
+  and is withdrawn."* **Each row carries what was specified, what was built, AND the deciding reference —
+  `DEC-DEP-0023`, `-0024`, `-0025` — so rewriting the path column would delete two of those three to fix a
+  count.** **Its verdict: *"The documents are not wrong. The instrument was."*** **Nine instruments were
+  built over two days to re-derive a conclusion that had already been written, corrected and reasoned
+  through.**
+
 - **Axis 2, endpoints with no behavioural test:** Attendance went **0 → 25 of 25 routes** issued a request;
   product-wide uncalled routes went **63 → 8**, and 8 is now an asserted number rather than a report.
 - **Axis 3, owner decisions:** see below.

@@ -1,6 +1,6 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-**18 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), and three measured on 2026-08-30 (16-18)**. Each
+**19 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), and three measured on 2026-08-30 (16-18)**. Each
 carries **what it is**, **the measured facts**, **what it blocks**, and **the options**. Where the call is
 genuinely the owner's there is no recommendation.
 
@@ -500,6 +500,39 @@ produces it.**
 **Same shape as 17 and the smallest of the three.** **The decision is the same: build it, or record it as
 deferred the way `FP-010` does.** ⚠ **One of 63 documented codes with no producer, and the only one of the
 seven that is neither deliberate nor already recorded as deferred.**
+
+## 19. The distributed rate-limit obligation is a declaration, not a verification — added 2026-08-30 (T-283)
+
+**What it is.** ⚠ **This is a DEPLOYMENT obligation, and it is the only item on this list that lives outside
+the code.**
+
+The support-authentication surface — the one anonymous door into the privileged cross-tenant plane — is
+**well defended in the application**: login is limited twice over (30/minute per IP **and** 5 per 15 minutes
+per identity+IP), refresh and logout are limited, keys are HMAC'd, **and the limiter's default switch arm is
+1/minute, so an endpoint added without a case is throttled rather than unlimited.** Account lockout is 5
+attempts for 15 minutes, **held on the account rather than the IP, so address rotation buys nothing against
+one account.**
+
+**⚠ But the limiter's window store is an in-process dictionary and does not span replicas.** The design knows
+this: **production start-up throws unless the HMAC secret is at least 32 characters AND
+`UpstreamDistributedRateLimitingEnforced` is set.**
+
+**⚠ That flag is a DECLARATION, NOT A VERIFICATION. The application cannot check that an upstream limiter
+actually exists.** So on multiple instances **the per-IP limits divide by the replica count while the
+account lockout does not** — the backstop holds, the front door widens.
+
+**The decision.** **Confirm that an upstream distributed limiter is actually deployed in front of this
+surface, or run it single-instance.** **Nothing in the repository can answer this and nothing in it will
+ever fail if the answer is no.**
+
+**Related and NOT a defect:** revoking a support principal's administer permission leaves their issued token
+valid **for at most fifteen minutes** — `JwtOptionsValidator` refuses any configured value above that, so
+**misconfiguration cannot widen the window.** **Disable is the immediate action; revoke is bounded.** Worth
+knowing during an incident, and not a finding.
+
+**Not examined, so that this entry is not read as a clean bill:** whether the upstream limiter is deployed
+(not knowable from the repository), and **MFA on this surface — not looked for either way, and whether it
+should carry a second factor is a product decision rather than a measurement.**
 
 ## What is NOT on this list
 

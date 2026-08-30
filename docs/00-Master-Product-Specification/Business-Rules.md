@@ -37,6 +37,32 @@ Business Rule identifiers shall never be reused.
 
 ---
 
+# ⚠ Coverage of this register — read before citing it as complete
+
+**This register holds the bodies for five rule modules: `BR-PLT`, `BR-GL`, `BR-HR`, `BR-RPT`, `BR-SUB`.**
+
+**⚠ TWO DELIVERED MODULES ARE NOT IN IT.** `BR-ATT` (**13 rules**) and `BR-PAY` (**14 rules**) exist only in
+their feature packages, in `docs/17-features/FP-013-attendance/business-rules.md` and
+`docs/17-features/FP-012-payroll/business-rules.md`.
+
+**So a citation to a `BR-ATT-*` or `BR-PAY-*` identifier has no entry here to resolve against**, while
+citations to the other five do. **A reader who takes this file's module list as the product's rule inventory
+will conclude those two modules have no business rules. They have twenty-seven.**
+
+**This note exists because the omission was silent.** ⚠ **It was raised four separate times in the results
+trail — T-002, T-006 (*"the third time"*), T-007 (*"the fourth appearance"*) — and never actioned, because
+it belonged to no feature package and therefore to no one.** **Recording it a fifth time would have been the
+fifth failure; naming the gap in the register itself is the smallest thing that changes what a reader
+believes.**
+
+**Whether to transcribe the twenty-seven here, or to make this register an index that points at package
+bodies, is a real decision and is now a visible one.** **Transcription would duplicate rule text that is
+maintained elsewhere, and a fact held in two places goes stale in one.** **Neither option is taken here.**
+
+**⚠ Also unresolved: `BR-RPT` has rule bodies in this register and NO feature package at all** — the inverse
+shape, and it is not a documentation defect but an open question about whether reporting is a capability of
+this product.
+
 # Platform Business Rules
 
 ## BR-PLT-0001

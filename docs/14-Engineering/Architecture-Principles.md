@@ -637,6 +637,29 @@ returning zero is the result to trust least.**
 — only literal declarations, a 21-word noun list"* is evidence. **The same empty result without its boundary
 is a claim about the whole codebase that nobody made deliberately.**
 
+# Principle 16f – A Criterion Met by Universal Absence Is Not Evidence of the Thing It Protects
+
+Principle 16 asks whether a *guard* has ever been observed to fail. **The same question applies to an
+acceptance criterion, and it fails in a way that is harder to see, because a criterion has no test run to
+inspect — only a status.**
+
+`AC-SUB-0008` requires that **no tenant-plane subscription permission exist**. It is satisfied. ⚠ **It is
+satisfied because the package defines no subscription permissions on EITHER plane** — all 28 platform
+permission names were enumerated and none is one. The criterion exists to protect a *plane separation*; it
+is currently met by there being nothing to separate. Its sibling `AC-SUB-0045`, which speaks of *"this
+package's six"* permissions, **is not satisfiable at all**, because those six do not exist.
+
+**A status table would show the first green and say nothing useful, and the second would have to be either
+green, red, or absent — and all three would be wrong.** The honest report is a fourth state.
+
+**How to apply:** for any criterion phrased as *"no X exists"* or *"X and Y are distinct"*, ask **whether
+X exists at all**. If it does not, the criterion is *vacuously* met and must be reported as such —
+alongside, not inside, the criteria that are met by construction. **The distinction a vacuous criterion
+protects has not been implemented; it has merely not yet been violated, and it will be violated by the
+commit that first creates X.**
+
+---
+
 # Principle 17 – When a Blanket Ban Beats an Exemption
 
 **Most guards in this codebase carry an allowlist: an exemption with a stated, checkable reason.
@@ -795,6 +818,35 @@ that decays — because that is exactly what it is.
 run asked what the code contains. **None asked whether the documents' claims about the code still hold** —
 which is why a four-day-old falsehood in a ratified package survived eight enumerations that all had the
 tree in front of them.
+
+# Principle 21 – An Undecided Decision Filed as Unbuilt Work Reads as Engineering Debt and Is Not
+
+**"Not implemented" and "nobody has said what this means" look identical in a status table and are
+opposite kinds of item.** The first is work someone can start today. The second **cannot be started at
+all**, and reporting it as though it could is how a decision goes on not being made — because every
+reader assumes it is queued behind the other work.
+
+**The case.** Four of FP-014's acceptance criteria — `AC-SUB-0040`, `0049`, `0050`, `0051` — all rest on
+the **seat**, which `DEC-L-009` names and never defines. `AC-SUB-0049` names `TenantUser` **because that is
+the only reading available, not because it was ruled.** It was flagged in T-008, again in T-013, and is
+still open. ⚠ **Filing those four under "not implemented" would have presented a decision nobody made as
+engineering not yet done — in a document an owner reads to decide whether the product can be sold.**
+
+**So a measurement of implementation status needs a fourth bucket**, not three:
+
+| bucket | who can act |
+|---|---|
+| pinned by a test | nobody — it is done and defended |
+| implemented, unpinned | an engineer, today |
+| not implemented | an engineer, today |
+| ⚠ **subject undefined** | **only the owner, and no engineering can proceed until then** |
+
+**And the two weak forms of the third bucket must be separated too.** *"A whole-tree symbol search found
+no such type"* and *"I did not find the seam that would couple these"* are different claims: the first is
+close to proof, the second is an admission. **Four of FP-014's nineteen are the second kind and say so.**
+See **Principle 20** — an absence claim is a measurement, and the weaker its method the faster it rots.
+
+---
 
 # Related Documents
 

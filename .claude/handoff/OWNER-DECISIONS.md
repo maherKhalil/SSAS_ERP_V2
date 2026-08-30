@@ -398,6 +398,36 @@ record that. **Doing nothing leaves a document describing a product that is half
 
 ---
 
+### ⚠ MEASURED 2026-08-30 (T-161) — THE SPLIT IS NOW A NUMBER, AND ONE PART OF IT IS NOT ENGINEERING WORK
+
+**All 54 of FP-014's acceptance criteria were mapped against the tree and the test suite: 20 pinned by a
+named test, 11 implemented but unpinned, 19 not implemented, 4 blocked on an undefined subject.**
+
+⚠ **THE LINE FALLS ALMOST EXACTLY BETWEEN WHAT A TENANT MAY USE AND WHAT A TENANT IS CHARGED.** The
+entitlement half is built and genuinely well tested — append-only immutability with both bypass routes
+covered, term invariants, expiry, cache expiry at the boundary instant, the seed run twice. **The billing
+half does not exist:** no declaration of `Invoice`, `PaymentAttempt`, `Overage`, `Proration` or `SeatUsage`
+anywhere in `src/`. **This sharpens the entry above rather than replacing it** — "half-built" is now
+measured, and the half that exists is the half with the guarantees.
+
+⚠ **AND FOUR CRITERIA ARE NOT WORK AT ALL — THEY ARE THIS DECISION, WAITING.** `AC-SUB-0040`, `0049`,
+`0050` and `0051` all rest on the **undefined seat**: `DEC-L-009` says *"seats"* and never defines one, and
+`AC-SUB-0049` names `TenantUser` **because that is the only reading available, not because it was ruled.**
+Flagged in T-008, again in T-013, still open — as is `REQ-SUB-0027`'s two enforcement semantics.
+**Filing these under "not implemented" would present a decision nobody has made as engineering not yet
+done, which is precisely the sentence that would mislead this decision.** They are counted separately for
+that reason.
+
+**One more thing the owner should know before reading any status table:** `AC-SUB-0008` — *no tenant-plane
+subscription permission exists* — **is satisfied because this package defines no permissions on either
+plane.** All 28 platform permission names were enumerated; none is a subscription permission. **A green
+row there is universal absence, not an implemented distinction.**
+
+**Nothing above changes what this decision asks.** It changes what a reader would otherwise assume the
+remaining work is: **the seat is not build work, and the entitlement half is not at risk.**
+
+---
+
 ## 12. `GeneralStores` — is it a shared service or an ERP module? — added 2026-08-30 (T-216, T-229)
 
 **What it is.** In the HIS schema, inventory is referenced from Marketing, InPatient, Nursing, Maintenance,

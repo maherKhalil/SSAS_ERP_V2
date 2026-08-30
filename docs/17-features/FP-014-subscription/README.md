@@ -2,7 +2,7 @@
 package: FP-014
 title: Subscription and the Commercial Plane
 module: Platform
-status: RATIFIED — all seventeen owner decisions ruled (2026-08-25), registers promoted; specification only, no code
+status: RATIFIED (2026-08-25) — and PARTLY BUILT. Measured 2026-08-30: of 54 acceptance criteria, 20 are pinned by a named test, 11 implemented but unpinned, 19 not implemented, 4 blocked on an undefined subject. The entitlement half is built and tested; the billing half does not exist.
 version: 1.0
 date: 2026-08-25
 ---
@@ -17,7 +17,72 @@ attributed, because reopening a commercial decision is a different act from reop
 
 **What is and is not done, stated plainly rather than left to be inferred from a status word:**
 
-- **No code and no schema.** Nothing here is implemented.
+- ⚠ **THERE IS CODE AND THERE IS SCHEMA. THE ENTITLEMENT HALF OF THIS PACKAGE IS BUILT AND TESTED.**
+  This bullet previously read *"No code and no schema. Nothing here is implemented"*, written **2026-08-25**
+  and **falsified on 2026-08-26** by `AddSubscriptionCommercialPlane`, the first migration. It stood for
+  four days. **The measurement that replaces it is below, and it is dated because it will decay the same
+  way.** See [Principle 20](../../14-Engineering/Architecture-Principles.md) — an implementation-status
+  claim is re-derived, never inherited, and this one was believed precisely because it was emphatic.
+
+### Implementation status — measured 2026-08-30 against the tree and the test suite
+
+**All 54 acceptance criteria, in four buckets:**
+
+| bucket | count | what it means |
+|---|---|---|
+| **Pinned by a named test** | **20** | asserted by a test identified by name |
+| **Implemented but unpinned** | **11** | the behaviour exists; nothing fails if it regresses |
+| **Not implemented** | **19** | see the qualification below — four of these are weaker claims than the rest |
+| ⚠ **Subject undefined** | **4** | `AC-SUB-0040`, `0049`, `0050`, `0051` — **not engineering work; a decision nobody has made** |
+
+⚠ **THE LINE FALLS ALMOST EXACTLY BETWEEN WHAT A TENANT MAY USE AND WHAT A TENANT IS CHARGED.** The
+entitlement half — plans, grants, terms, expiry, the module gate, the cache — is built and genuinely well
+tested: append-only immutability with both bypass routes covered, term invariants, cache expiry at the
+boundary instant, the seed run twice, the archived tenant seeded like every other. **The commercial half
+does not exist:** no declaration of `Invoice`, `PaymentAttempt`, `Overage`, `Proration` or `SeatUsage`
+appears anywhere in `src/`. **So this document was not merely stale — it was wrong in the direction that
+matters most, because the part it denied is the part carrying the tested guarantees.**
+
+**Four things a criterion-by-criterion reading gets wrong, recorded so the next reader does not repeat it:**
+
+1. ⚠ **`AC-SUB-0020`'s COUNTS ARE STALE AND ITS TEST IS STRONGER THAN ITS TEXT.** The criterion says
+   *"exactly the ten gated route groups and the seven exempt ones"*; the host carries **20 `RequireModule`
+   sites over four module keys** (Attendance, GL, HR, Payroll). **The test asserts neither number** — it
+   asserts that every module-owned endpoint is gated and no platform-plane endpoint is, which is count-free
+   and strictly stronger, and it carries its own anti-vacuity control. **Do not "fix" the test to match the
+   criterion.** The criterion's numbers are what need correcting.
+2. ⚠ **`AC-SUB-0008` IS SATISFIED FOR THE WRONG REASON AND `AC-SUB-0045` IS NOT SATISFIABLE.** `0008`
+   requires that no *tenant*-plane subscription permission exist. That is true — **because this package
+   defines no permissions on either plane.** All 28 platform permission names were enumerated: there is no
+   `Platform.Subscriptions.*`, `Plans.*`, `Grants.*` or `Invoices.*`. `0045` speaks of *"this package's
+   six"*, which do not exist. **A criterion met by universal absence is not evidence that the distinction
+   it protects was implemented** — and a green status table would hide exactly that.
+3. ⚠ **THE FOURTH BUCKET IS NOT A SMALLER VERSION OF THE THIRD.** All four rest on the **undefined seat**:
+   `DEC-L-009` says *"seats"* and never defines one. `AC-SUB-0049` names `TenantUser` **because that is
+   the only reading available, not because it was ruled** — flagged in T-008, again in T-013, still open,
+   as is `REQ-SUB-0027`'s two enforcement semantics. **Filing these under "not implemented" would present
+   a decision nobody has made as engineering work not yet done**, which is the sentence most likely to
+   mislead an owner deciding whether this can be sold.
+4. **The 28 requirements need no separate map.** Every one is cited by at least one acceptance criterion —
+   the set difference is empty, no orphans — **so requirement status follows its criteria.** They were not
+   mapped independently, and that is stated rather than implied.
+
+**On the absence claims, which are the part of this that rots first.** Where *"not implemented"* rests on a
+whole-tree symbol search, it says so. ⚠ **Where it rests on failing to find a seam, it says THAT instead:**
+`AC-SUB-0013`, `0024`, `0025` and `0026` are recorded as *"no entitlement-to-permission coupling was
+found"* — the coupling could be composed at a seam that was not searched, and `0026`'s *"counts before and
+after"* needs an entitlement-lapse path that could not be exercised. **These are weaker claims than the
+other fifteen and are not interchangeable with them.**
+
+⚠ **And "pinned" does not mean "fully covered."** `AC-SUB-0020` is the worked example: pinned by a stronger
+property while its own stated counts are wrong. **A summary reading "20 criteria are test-pinned" would be
+true and would still let those numbers go on being wrong.**
+
+**Provenance:** measured by the implementing window, reported in
+[`.claude/handoff/results/item-161-fp014-implementation-split.md`](../../../.claude/handoff/results/item-161-fp014-implementation-split.md).
+The named tests were **observed, not executed** as part of this measurement; the suites covering the
+platform surface were run under separate items the same day. **No `src/` or `tests/` file was changed, so
+no gate applies to this count.**
 - **The master-register promotion is done.** `REQ-SUB-0001` and `BR-SUB-0001` are registered in
   `Requirement-Numbering.md` and `BR-SUB-0001`…`0021` are promoted into the master
   `Business-Rules.md` (T-022), which makes FP-014 **the first package to close `DEC-L-012`'s

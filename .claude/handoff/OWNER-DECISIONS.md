@@ -1,6 +1,6 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-**15 items** that engineering cannot settle on its own — **eleven ERP (1-11) and four HIS (12-15)**. Each
+**18 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), and three measured on 2026-08-30 (16-18)**. Each
 carries **what it is**, **the measured facts**, **what it blocks**, and **the options**. Where the call is
 genuinely the owner's there is no recommendation.
 
@@ -442,6 +442,64 @@ nothing further.
 
 **It is recorded because it was never asked, not because it is in doubt.** A prior question that only ever
 lives inside the answers to later ones is how a project acquires a direction nobody chose.
+
+## 16. Attendance-driven hourly overtime cannot be paid — added 2026-08-30 (T-270, measured)
+
+**What it is.** ⚠ **Measured end to end, not read.** A pay element's overtime tier can only be set by
+`PayElement.SetOvertimeTier`, **which has no production caller**. Attendance accepts and validates a tier on
+recorded overtime; **Payroll has no way to price one.** Probe with an element built exactly as the API can
+build it and 6 hours of `NIGHT` overtime: **overtime lines 0, overtime amount 0; basic pay correct. The run
+succeeds — no error, no warning, a payslip that looks complete.**
+
+**Locked twice, independently, so closing either half alone fixes nothing:** overtime recorded *without* a
+tier never reaches payroll (`AttendanceSummaryService:227` filters on `OvertimeTier is not null`); overtime
+*with* a tier reaches it and finds no element that can match.
+
+**Boundary, stated precisely:** *Attendance-driven **hourly** overtime*. **Base salary, fixed-amount
+elements, absence deductions and one-off payments are unaffected**, and a `FixedAmount` element used as an
+overtime allowance still pays.
+
+**Why it survived.** Four test files call `SetOvertimeTier` **directly**, each supplying the missing half,
+**so every test of the capability passes while the capability is unreachable from any request.** And the
+mechanism was already documented — `EmployeeErrorWireContractTests` recorded it — **but nobody followed it
+to the payslip.**
+
+**The decision.** Finishing it means adding a tier to the pay-element commands: **a product decision, not an
+engineering one.** ⚠ **The other half is yours alone: whether anyone has recorded overtime expecting
+payment.** The code answer does not depend on it.
+
+## 17. Three Accepted ADRs specify a domain-event dispatcher that does not exist — added 2026-08-30 (T-271)
+
+**What it is.** `RaiseDomainEvent` is called **65 times** across the product. **Nothing consumes them** —
+`DequeueDomainEvents`, `ClearDomainEvents` and the `DomainEvents` property have no production reader, and
+there is no dispatcher of any name. **Every domain event raised is appended to a list on its aggregate and
+discarded.**
+
+**This is not an unrecorded plan — it is the opposite.** **ADR-009 is `Status: Accepted`** and gives the
+publishing flow; **ADR-008** states *"Domain Events are dispatched after successful persistence"*;
+**ADR-004** lists *"Commands publish Domain Events"* as a consequence.
+
+⚠ **And the convention for handling this correctly already exists in the repository and is followed
+elsewhere:** `FP-010-ANALYSIS` carries `status: Deferred — gated on ADR-028` in its own front matter.
+**Documented, deferred, and the record says so.** **So this is one document departing from a convention you
+already keep, not a convention to adopt.**
+
+**The risk.** Nothing is visibly broken, **because nothing depends on the events — which is why it went
+unnoticed.** ⚠ **The exposure is the next person to write a handler in good faith against an Accepted ADR,
+subscribing to an event that will never be delivered: it would compile, pass review, and never run.**
+**All three ADRs were annotated 2026-08-30 so that harm cannot land while this waits.**
+
+**The decision: build the dispatcher, or record the deferral formally.** Either closes it.
+
+## 18. `Branch.FirstBranchRequired` is specified and not implemented — added 2026-08-30 (T-272)
+
+**What it is.** `Branch-Management.md` gives the code a **role table, a state table and an error-table
+row** — *"The tenant has no active branch; an administrator must create the first branch."* **Nothing
+produces it.**
+
+**Same shape as 17 and the smallest of the three.** **The decision is the same: build it, or record it as
+deferred the way `FP-010` does.** ⚠ **One of 63 documented codes with no producer, and the only one of the
+seven that is neither deliberate nor already recorded as deferred.**
 
 ## What is NOT on this list
 

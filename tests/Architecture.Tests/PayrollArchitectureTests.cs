@@ -209,8 +209,8 @@ public sealed class PayrollArchitectureTests
   [Trait("Decision", "DEC-PAY-0004")]
   public void Every_monetary_column_is_decimal_19_4()
   {
-    var columns = ModelWalk.Properties(
-      ModelWalk.Entities(PayrollEntities(), "Payroll domain", 6), "Payroll domain", 70);
+    var columns = ModelWalk.FlooredProperties(
+      ModelWalk.FlooredEntities(PayrollEntities(), "Payroll domain", 6), "Payroll domain", 70);
 
     // ⚠ THE CONTROL ON THIS BAN'S OWN FILTER. The floors above prove the model was read; they cannot
     // prove `ClrType == decimal` still selects anything. Payroll is made of money -- a decimal filter that
@@ -237,8 +237,8 @@ public sealed class PayrollArchitectureTests
   {
     // `Constraints.md` requires Arabic and English. A pay element's name is exactly the field a user writes
     // in their own language.
-    var columns = ModelWalk.Properties(
-      ModelWalk.Entities(PayrollEntities(), "Payroll domain", 6), "Payroll domain", 70);
+    var columns = ModelWalk.FlooredProperties(
+      ModelWalk.FlooredEntities(PayrollEntities(), "Payroll domain", 6), "Payroll domain", 70);
 
     // ⚠ THE CONTROL ON THIS BAN'S OWN FILTER, and it is a DIFFERENT filter from the monetary one above
     // even though both walk the same properties. That is precisely why the floor cannot be shared with it.
@@ -265,7 +265,7 @@ public sealed class PayrollArchitectureTests
     // `TenantCutoverCopyPlan.Build` derives its manifest by REFLECTING over `ITenantOwnedEntity`. A type
     // without the interface is absent from cutover and nothing says so — FP-011 shipped two such types
     // before catching them. Being an owned child is a DOMAIN fact; being copied is a REFLECTION fact.
-    var entities = ModelWalk.Entities(PayrollEntities(), "Payroll domain", 6);
+    var entities = ModelWalk.FlooredEntities(PayrollEntities(), "Payroll domain", 6);
 
     // ⚠ The floor proves entities were found. The assignability test is the matcher, and the control
     // for it is the POSITIVE case: payroll entities are tenant-owned, so the same test must select them.
@@ -299,7 +299,7 @@ public sealed class PayrollArchitectureTests
   {
     // A database-level FK across a module boundary would couple the two migration streams and make the
     // boundary a fiction at the schema layer even while `ADR-012` held at the assembly layer.
-    var entities = ModelWalk.Entities(PayrollEntities(), "Payroll domain", 6);
+    var entities = ModelWalk.FlooredEntities(PayrollEntities(), "Payroll domain", 6);
 
     // ⚠ THE FOREIGN-KEY LAYER IS ITS OWN WALK AND GETS ITS OWN FLOOR. A healthy entity list whose
     // `GetForeignKeys()` returns nothing is a different failure from an empty model, and the ban below

@@ -84,8 +84,23 @@ public sealed class LocalizationArchitectureTests
       typeof(LocalizationGroupBatchRequest)
     };
 
-    Assert.Empty(commands.SelectMany(type => type.GetProperties())
-      .Where(property => Regex.IsMatch(property.Name, "TenantId|Actor|UserId", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)));
+    // ⚠ THE TYPES ARE NAMED BUT THE PROPERTY WALK AND THE REGEX ARE BOTH UNGUARDED. The ban passes if
+    // the commands stop exposing properties, and it passes if the pattern stops matching -- and for a ban
+    // those are indistinguishable from the answer it wants. So both are exercised.
+    const string IdentityName = "TenantId|Actor|UserId";
+
+    Assert.Matches(IdentityName, "TenantId");
+    Assert.Matches(IdentityName, "ActorUserId");
+    Assert.DoesNotMatch(IdentityName, "Culture");
+
+    var properties = commands.SelectMany(type => type.GetProperties()).ToArray();
+
+    Assert.True(properties.Length >= commands.Length,
+      $"{commands.Length} localization commands yielded only {properties.Length} properties; the walk has " +
+      "collapsed and this ban would read nothing.");
+
+    Assert.Empty(properties
+      .Where(property => Regex.IsMatch(property.Name, IdentityName, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)));
   }
 
   [Fact]
@@ -118,6 +133,16 @@ public sealed class LocalizationArchitectureTests
   public void Localization_history_has_no_public_mutation_or_setter_api()
   {
     var type = typeof(TenantLocalizationOverrideVersion);
+
+    // ⚠ BOTH BANS BELOW ARE OVER FILTERED REFLECTION WALKS, AND BOTH PASS OVER AN EMPTY ONE. The type
+    // is named, so it cannot go missing silently -- but `GetProperties()` and the `DeclaredOnly` method
+    // walk can both come back empty from a record that was restructured, and then neither ban reads a
+    // single member.
+    Assert.NotEmpty(type.GetProperties());
+
+    Assert.NotEmpty(type.GetMethods(
+      BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly));
+
     Assert.Empty(type.GetProperties().Where(property => property.SetMethod?.IsPublic == true));
     Assert.Empty(type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
       .Where(method => Regex.IsMatch(method.Name, "^(Set|Update|Delete|Remove|Restore|Undo)", RegexOptions.CultureInvariant)));

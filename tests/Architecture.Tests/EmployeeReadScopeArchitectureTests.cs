@@ -334,6 +334,15 @@ public sealed class EmployeeReadScopeArchitectureTests
     Assert.Equal(typeof(IReadOnlyList<Guid>), typeof(AuthorizedCompanyScope).GetProperty("CompanyIds")!.PropertyType);
     Assert.Equal(typeof(IReadOnlyList<Guid>), typeof(AuthorizedBranchScope).GetProperty("BranchIds")!.PropertyType);
 
+    // ⚠ THE LOOPS BELOW ARE SILENT WHEN EMPTY. `ScopeTypes` collapsing, or a binding-flag change that
+    // stops yielding public instance properties, leaves every `Assert.False` unexecuted and this green.
+    // The exact assertions above guard two NAMED properties; nothing guarded the walk over the rest.
+    Assert.NotEmpty(ScopeTypes);
+
+    Assert.NotEmpty(ScopeTypes
+      .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+      .ToArray());
+
     foreach (var type in ScopeTypes)
     {
       foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))

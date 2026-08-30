@@ -155,8 +155,17 @@ public sealed class TenantCutoverFreezeArchitectureTests
     var entity = context.Model.FindEntityType(typeof(TenantCutoverOperation));
 
     Assert.NotNull(entity);
+    // ⚠ `Assert.NotNull` above guards the LOOKUP. Nothing guarded the FILTER, and **`Assert.All` over
+    // an empty sequence passes** -- so a change that stopped this entity declaring string columns, or a
+    // `ClrType` test that stopped matching, would leave this green having checked no column at all.
+    var strings = entity!.GetProperties()
+      .Where(property => property.ClrType == typeof(string))
+      .ToArray();
+
+    Assert.NotEmpty(strings);
+
     Assert.All(
-      entity!.GetProperties().Where(property => property.ClrType == typeof(string)),
+      strings,
       property => Assert.StartsWith(
         "nvarchar", property.GetColumnType() ?? "nvarchar", StringComparison.Ordinal));
   }

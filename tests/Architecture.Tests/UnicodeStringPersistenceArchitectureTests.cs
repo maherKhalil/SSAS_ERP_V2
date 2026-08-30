@@ -66,8 +66,8 @@ public sealed class UnicodeStringPersistenceArchitectureTests
     // this file does, and its name now says so.
     var model = PlatformModel();
 
-    ModelWalk.Properties(
-      ModelWalk.Entities(model.GetEntityTypes(), "PlatformModel", 28), "PlatformModel", 350);
+    ModelWalk.FlooredProperties(
+      ModelWalk.FlooredEntities(model.GetEntityTypes(), "PlatformModel", 28), "PlatformModel", 350);
 
     Assert.Empty(NonUnicodeStringColumns(model));
   }
@@ -81,8 +81,8 @@ public sealed class UnicodeStringPersistenceArchitectureTests
     // this file does, and its name now says so.
     var model = TenantModel();
 
-    ModelWalk.Properties(
-      ModelWalk.Entities(model.GetEntityTypes(), "TenantModel", 28), "TenantModel", 350);
+    ModelWalk.FlooredProperties(
+      ModelWalk.FlooredEntities(model.GetEntityTypes(), "TenantModel", 28), "TenantModel", 350);
 
     Assert.Empty(NonUnicodeStringColumns(model));
   }

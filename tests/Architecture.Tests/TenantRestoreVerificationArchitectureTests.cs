@@ -338,6 +338,15 @@ public sealed class TenantRestoreVerificationArchitectureTests
     var entity = context.Model.FindEntityType(typeof(TenantDatabaseRestoreVerificationRun));
     Assert.NotNull(entity);
 
+    // ⚠ THE CONTROL: the store-type filter below is three string comparisons deep, and every one of
+    // them can stop matching without the entity lookup noticing. A run whose properties report no store
+    // type at all would produce an empty offender list and a green ban.
+    var typed = entity!.GetProperties()
+      .Where(property => property.GetColumnType() is not null)
+      .ToArray();
+
+    Assert.NotEmpty(typed);
+
     var nonUnicode = entity!.GetProperties()
       .Select(property => new { property.Name, StoreType = property.GetColumnType() })
       .Where(property => property.StoreType is not null &&

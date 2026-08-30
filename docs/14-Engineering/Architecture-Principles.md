@@ -452,6 +452,23 @@ thing out of place, and inverting the assertion proved the run was real. **A gre
 match the work it claims to have done is worth breaking on purpose** — it costs a minute and needs no second
 implementation.
 
+**⚠ The vulnerable shape is `Assert.Empty`, not "scanning text". An assertion satisfied by an empty input is
+the hazard, whatever produced the input.** Three shapes are anti-vacuous by construction and need no floor:
+a comparison against a **non-empty expected list** (`Assert.Equal(ApprovedFiles, actual)` fails outright when
+the walk returns nothing), an enumeration over a **fixed type array** the compiler keeps populated, and a
+**reflection call that throws** rather than returning empty. **Establishing which checks are already safe is
+as much of the answer as finding the broken ones** — of four guards flagged as unprotected on 2026-08-30,
+**two needed nothing**, and adding floors to them would have been ceremony.
+
+**⚠ And put the floor on the POST-FILTER count, because a walk rooted at a directory cannot vanish silently
+— a filter can.** Pointing a walk at a missing `src/PlatformX` throws `DirectoryNotFoundException`; renaming
+a project is caught by an exception, not by an empty result. **The silent failure is always downstream of
+the root**: a changed search pattern, a widened exclusion, a filter on a path segment that no longer
+matches — where every directory still exists and the array comes back empty anyway. That is precisely how
+the `PersistenceArchitectureTests` false green worked: it enumerated from the repository root, which always
+exists, and filtered on a segment. **A floor on the pre-filter count would have looked prudent and caught
+nothing.**
+
 **Prefer a CROSS-CHECK to a floor wherever a second derivation of the set exists.** A floor catches the walk
 collapsing; it **cannot catch one item dropping out** — eleven assemblies clear a floor of eight while the
 twelfth goes unexamined. The guard above instead compares its assembly set against an independently derived

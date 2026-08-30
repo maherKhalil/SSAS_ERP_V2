@@ -61,14 +61,30 @@ public sealed class UnicodeStringPersistenceArchitectureTests
   [Trait("Decision", "ADR-017")]
   public void Every_persisted_string_in_the_platform_model_is_unicode()
   {
-    Assert.Empty(NonUnicodeStringColumns(PlatformModel()));
+    // ⚠ The floors prove the model was BUILT and its properties enumerated. They cannot prove
+    // `IsStringProperty` and `IsNonUnicode` still select anything -- that is what the third test in
+    // this file does, and its name now says so.
+    var model = PlatformModel();
+
+    ModelWalk.Properties(
+      ModelWalk.Entities(model.GetEntityTypes(), "PlatformModel", 28), "PlatformModel", 350);
+
+    Assert.Empty(NonUnicodeStringColumns(model));
   }
 
   [Fact]
   [Trait("Decision", "ADR-017")]
   public void Every_persisted_string_in_the_tenant_model_is_unicode()
   {
-    Assert.Empty(NonUnicodeStringColumns(TenantModel()));
+    // ⚠ The floors prove the model was BUILT and its properties enumerated. They cannot prove
+    // `IsStringProperty` and `IsNonUnicode` still select anything -- that is what the third test in
+    // this file does, and its name now says so.
+    var model = TenantModel();
+
+    ModelWalk.Properties(
+      ModelWalk.Entities(model.GetEntityTypes(), "TenantModel", 28), "TenantModel", 350);
+
+    Assert.Empty(NonUnicodeStringColumns(model));
   }
 
   [Fact]
@@ -98,7 +114,12 @@ public sealed class UnicodeStringPersistenceArchitectureTests
 
   [Fact]
   [Trait("Decision", "ADR-022")]
-  public void The_acknowledged_non_unicode_list_contains_nothing_that_has_since_been_fixed()
+  // ⚠ THIS TEST IS THE CONTROL FOR THE TWO BANS ABOVE, AND THE NAME SAYS SO BECAUSE THE NAME IS WHAT
+  // A DELETER READS. Running the walk with exemptions OFF and requiring every acknowledged column to be
+  // found proves that `GetEntityTypes`, `IsStringProperty` and `IsNonUnicode` all still select real
+  // rows. **Delete this as a redundant test of the exemption list and the two `Assert.Empty` bans above
+  // become unfalsifiable in the same commit, with nothing to show for it.**
+  public void Every_acknowledged_column_is_still_found_which_is_what_makes_the_two_bans_above_meaningful()
   {
     // Keeps the exemption list honest in the other direction: an entry that no longer corresponds to a real
     // non-Unicode column is dead weight that would silently excuse a future regression at the same name.

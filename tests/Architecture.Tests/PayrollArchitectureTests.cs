@@ -209,9 +209,21 @@ public sealed class PayrollArchitectureTests
   [Trait("Decision", "DEC-PAY-0004")]
   public void Every_monetary_column_is_decimal_19_4()
   {
-    var offenders = PayrollEntities()
-      .SelectMany(entity => entity.GetProperties().Select(property => (Entity: entity, Property: property)))
+    var columns = ModelWalk.Properties(
+      ModelWalk.Entities(PayrollEntities(), "Payroll domain", 6), "Payroll domain", 70);
+
+    // ⚠ THE CONTROL ON THIS BAN'S OWN FILTER. The floors above prove the model was read; they cannot
+    // prove `ClrType == decimal` still selects anything. Payroll is made of money -- a decimal filter that
+    // finds nothing here has broken, and without this the ban is green over an empty set.
+    var monetary = columns
       .Where(pair => pair.Property.ClrType == typeof(decimal) || pair.Property.ClrType == typeof(decimal?))
+      .ToArray();
+
+    Assert.True(monetary.Length >= 4,
+      $"only {monetary.Length} decimal columns were found across {columns.Length} payroll properties; the " +
+      "type filter has stopped matching and 'every monetary column is 19,4' would be a claim about nothing.");
+
+    var offenders = monetary
       .Where(pair => pair.Property.GetPrecision() != 19 || pair.Property.GetScale() != 4)
       .Select(pair => $"{pair.Entity.ShortName()}.{pair.Property.Name}")
       .ToArray();
@@ -225,9 +237,18 @@ public sealed class PayrollArchitectureTests
   {
     // `Constraints.md` requires Arabic and English. A pay element's name is exactly the field a user writes
     // in their own language.
-    var offenders = PayrollEntities()
-      .SelectMany(entity => entity.GetProperties().Select(property => (Entity: entity, Property: property)))
-      .Where(pair => pair.Property.ClrType == typeof(string))
+    var columns = ModelWalk.Properties(
+      ModelWalk.Entities(PayrollEntities(), "Payroll domain", 6), "Payroll domain", 70);
+
+    // ⚠ THE CONTROL ON THIS BAN'S OWN FILTER, and it is a DIFFERENT filter from the monetary one above
+    // even though both walk the same properties. That is precisely why the floor cannot be shared with it.
+    var strings = columns.Where(pair => pair.Property.ClrType == typeof(string)).ToArray();
+
+    Assert.True(strings.Length >= 12,
+      $"only {strings.Length} string columns were found across {columns.Length} payroll properties; the " +
+      "type filter has stopped matching and the unicode ban would inspect nothing.");
+
+    var offenders = strings
       .Where(pair => pair.Property.IsUnicode() == false)
       .Select(pair => $"{pair.Entity.ShortName()}.{pair.Property.Name}")
       .ToArray();
@@ -244,7 +265,13 @@ public sealed class PayrollArchitectureTests
     // `TenantCutoverCopyPlan.Build` derives its manifest by REFLECTING over `ITenantOwnedEntity`. A type
     // without the interface is absent from cutover and nothing says so — FP-011 shipped two such types
     // before catching them. Being an owned child is a DOMAIN fact; being copied is a REFLECTION fact.
-    var notTenantOwned = PayrollEntities()
+    var entities = ModelWalk.Entities(PayrollEntities(), "Payroll domain", 6);
+
+    // ⚠ The floor proves entities were found. The assignability test is the matcher, and the control
+    // for it is the POSITIVE case: payroll entities are tenant-owned, so the same test must select them.
+    Assert.Contains(entities, entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType));
+
+    var notTenantOwned = entities
       .Where(entity => !typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))
       .Select(entity => entity.ShortName())
       .ToArray();
@@ -272,8 +299,18 @@ public sealed class PayrollArchitectureTests
   {
     // A database-level FK across a module boundary would couple the two migration streams and make the
     // boundary a fiction at the schema layer even while `ADR-012` held at the assembly layer.
-    var crossing = PayrollEntities()
-      .SelectMany(entity => entity.GetForeignKeys())
+    var entities = ModelWalk.Entities(PayrollEntities(), "Payroll domain", 6);
+
+    // ⚠ THE FOREIGN-KEY LAYER IS ITS OWN WALK AND GETS ITS OWN FLOOR. A healthy entity list whose
+    // `GetForeignKeys()` returns nothing is a different failure from an empty model, and the ban below
+    // cannot tell the difference on its own.
+    var keys = entities.SelectMany(entity => entity.GetForeignKeys()).ToArray();
+
+    Assert.True(keys.Length >= 8,
+      $"{entities.Length} payroll entities declared only {keys.Length} foreign keys; the relationship walk " +
+      "has collapsed and 'no key crosses a module' would be a claim about nothing.");
+
+    var crossing = keys
       .Where(key =>
       {
         var principal = key.PrincipalEntityType.ClrType.FullName ?? string.Empty;

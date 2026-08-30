@@ -1,26 +1,5 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-**⚠ AND THAT INVERSION HAS ITSELF BEEN INVERTED — 2026-08-30 (T-236, T-237). READ THIS BEFORE ACTING ON THE
-PARAGRAPH ABOVE.** The claim *"a 400 for a malformed identifier is the product's convention, asserted by six
-tests across three modules"* **does not survive enumeration.** Those six tests cover **four different input
-surfaces** — malformed rowversions, a malformed company header, a malformed query-string filter, a malformed
-policy name and malformed JSON. **Exactly one is about a ROUTE PATH, and it is Company's.**
-
-**Counted across `src/`: 71 route-path identifiers are constrained and answer 404; 25 are unconstrained and
-answer 400.** Attendance was **not** the deviant — Company and Localization are. The paragraph above named
-the wrong module as the exception because it inferred a route-path convention from tests about headers,
-bodies and query strings. **"Malformed input is a 400" is real and well-evidenced everywhere except the one
-surface it was cited for.**
-
-**Ruled by engineering, no owner action: 400 everywhere, and the constraints come off.** The ruling does
-**not** rest on which behaviour is in the majority — it rests on the fact that **404 makes a malformed
-identifier indistinguishable from an absent record**, so a caller cannot tell "your GUID is not a GUID"
-from "that record is gone". A 400 with a problem document can say which. Staged behind a per-module route
-ambiguity check, since removing a constraint widens what a route matches.
-
-**Recorded rather than edited away, because this entry has now been wrong in two directions** — and a
-correction that erases its predecessor teaches nobody why the first reading was persuasive.
-
 **15 items** that engineering cannot settle on its own — **eleven ERP (1-11) and four HIS (12-15)**. Each
 carries **what it is**, **the measured facts**, **what it blocks**, and **the options**. Where the call is
 genuinely the owner's there is no recommendation.
@@ -477,6 +456,27 @@ convention and is asserted by no test at all.**
 
 **So the open item is Attendance's, not Company's, and it is engineering's to settle** — recorded here only
 so the earlier framing does not outlive the measurement. See `T-130.md`.
+
+**⚠ AND THAT INVERSION HAS ITSELF BEEN INVERTED — 2026-08-30 (T-236, T-237). READ THIS BEFORE ACTING ON THE
+PARAGRAPH ABOVE.** The claim *"a 400 for a malformed identifier is the product's convention, asserted by six
+tests across three modules"* **does not survive enumeration.** Those six tests cover **four different input
+surfaces** — malformed rowversions, a malformed company header, a malformed query-string filter, a malformed
+policy name and malformed JSON. **Exactly one is about a ROUTE PATH, and it is Company's.**
+
+**Counted across `src/`: 71 route-path identifiers are constrained and answer 404; 25 are unconstrained and
+answer 400.** Attendance was **not** the deviant — Company and Localization are. The paragraph above named
+the wrong module as the exception because it inferred a route-path convention from tests about headers,
+bodies and query strings. **"Malformed input is a 400" is real and well-evidenced everywhere except the one
+surface it was cited for.**
+
+**Ruled by engineering, no owner action: 400 everywhere, and the constraints come off.** The ruling does
+**not** rest on which behaviour is in the majority — it rests on the fact that **404 makes a malformed
+identifier indistinguishable from an absent record**, so a caller cannot tell "your GUID is not a GUID"
+from "that record is gone". A 400 with a problem document can say which. Staged behind a per-module route
+ambiguity check, since removing a constraint widens what a route matches.
+
+**Recorded rather than edited away, because this entry has now been wrong in two directions** — and a
+correction that erases its predecessor teaches nobody why the first reading was persuasive.
 
 **⚠ TEST CADENCE IS EXCLUDED, AND IT WAS ESCALATED ANYWAY.** On 2026-08-30 `NEXT-SESSION.md` listed *"when
 to run the integration suite"* under what waits on the owner, phrased as *"it is their compute and their

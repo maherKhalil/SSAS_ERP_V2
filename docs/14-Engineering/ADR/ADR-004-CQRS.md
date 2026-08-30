@@ -29,6 +29,10 @@ used_by:
 
 ---
 
+## ⚠ Domain-event dispatch is specified here and NOT IMPLEMENTED (measured 2026-08-30)
+
+This document describes domain events being dispatched. **There is no dispatcher in the product** — 65 raise sites, zero consumers. **See the implementation-status note at the head of ADR-009 before writing anything that depends on it.**
+
 # Context
 
 SSAS ERP V2 is an enterprise SaaS ERP system containing numerous business modules and hundreds of business operations.

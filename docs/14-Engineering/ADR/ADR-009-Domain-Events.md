@@ -29,6 +29,35 @@ used_by:
 
 ---
 
+## ⚠ IMPLEMENTATION STATUS 2026-08-30 — ACCEPTED, AND NOT IMPLEMENTED
+
+**Read this before writing a handler against this ADR. The publishing flow below describes a mechanism the
+product does not currently have.**
+
+**Measured 2026-08-30 across `src/`:**
+
+- **`RaiseDomainEvent` is called 65 times** — departments, employees, job grades and others. Events are
+  raised exactly as this ADR specifies.
+- **Nothing consumes them.** `DequeueDomainEvents`, `ClearDomainEvents` and the `DomainEvents` property
+  have **no production reader**. Checked three ways; none appears outside `AggregateRoot.cs` and its
+  interface.
+- **There is no dispatcher.** No `IDomainEventDispatcher`, and no type of any name that reads those members.
+
+**So every domain event raised in this product is appended to a list on its aggregate and discarded when
+that aggregate goes out of scope.** Nothing is visibly broken, **because nothing depends on the events —
+which is exactly why this went unnoticed.**
+
+**⚠ The risk this note exists to prevent: a handler written against this ADR, in good faith, subscribing to
+an event that will never be delivered.** That handler would compile, pass review, and never run.
+
+**This does not retract the decision.** The ADR may still be the intended architecture and the dispatcher a
+later phase — **but that deferral was never recorded, and three Accepted ADRs describe the mechanism as
+though it exists**: this one's publishing flow, ADR-008's *"Domain Events are dispatched after successful
+persistence"*, and ADR-004's *"Publish domain events only from successful commands"*.
+
+**Whether to build the dispatcher or to record the deferral formally is the owner's call.** Until one of
+those happens, treat the publishing flow below as **specification, not description**.
+
 # Context
 
 SSAS ERP V2 is implemented as a Modular Monolith where business modules must remain independent while still collaborating.

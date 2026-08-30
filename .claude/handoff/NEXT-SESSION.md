@@ -1,127 +1,104 @@
-# Where to pick up — written 2026-08-26, 21:47
+# Where to pick up — written 2026-08-30, at T-232 / PR #338
 
-Read `BOARD.md` first; this is the short version of what it says.
+**This file was four days and roughly 180 tasks stale before this rewrite.** It described T-048 and said
+*"nothing is in flight"*; the loop was at T-229. **Derived from `git log origin/ClaudeBranch` rather than
+recalled** — 232 merges since 2026-08-27.
 
-## Nothing is in flight
-
-T-048's diagnosis is **partly done and deliberately half-open**. Its result file carries what was
-established; the rest is the first task of the next session.
-
-## T-048 — the one that matters, and it is now smaller than it looked
-
-**The scare is over: no committed migration was scaffolded destructively.** All 13 tenant migrations
-carry zero `DropTable` in `Up`. It is a **tooling hazard, not a data one**.
-
-**Established:** `TenantDbContextDesignTimeFactory` constructs `TenantDbContext` with four arguments
-and omits its optional `IEnumerable<ITenantModelContributor>?`, so the design-time model has no module
-entities. `Up` emits exactly 32 `DropTable` — 7 Attendance, 6 GL, 6 Payroll, 13 HR — which is exactly
-the surface those four contributors configure.
-
-**NOT established, and this decides the fix:** the factory has *never* supplied contributors
-(`git log -S` finds nothing, ever) and predates every module migration — yet **thirteen were scaffolded
-correctly anyway.** Something else supplied a complete model then and nobody knows what.
-
-**A narrowing arrived late and it rules out one whole branch of reasoning.** `git show ea335c1^`:
-before the contributor mechanism existed, `OnModelCreating` applied **only** the Platform-assembly
-tenant configuration namespace. So **the design-time model appears never to have contained module
-entities, by any route** — while thirteen module migrations were scaffolded correctly anyway.
-**That kills "the contributor refactor broke it"** and leaves *something else supplied the model*
-as the surviving shape. It is a narrowing, not a cause.
-
-**Candidates, none tested:** a startup project whose service provider EF preferred; a different
-context or command; hand-authored migrations.
-
-**No fix is proposed, deliberately.** The obvious repair — pass the contributors in the factory —
-is untested against the question of *why it was ever unnecessary*. Proposing it now would be a fix
-to the understood half, recommended for a defect only half explained (`DEC-L-045`).
-
-**Why it matters:** if something else supplied the model, **the factory is not what changed** — and a
-fix to the factory would look correct and be beside the point. Test that before proposing anything.
-
-## Then, roughly in order
-
-- **T-049 (mine)** — `.claude/settings.json` denies `Bash(git push origin main:*)`, which **does not
-  match a bare `git push` from a checked-out `main`**. `DEC-L-007`'s "direct pushes stay denied" has
-  been habit, not enforcement. Found by a harmless docs stamp landing on `main` without a PR.
-  **Needs the owner's approval — it is their config.**
-- **T-038** — sweep the suites for name-based absence guards (`DEC-L-031`; two found by accident).
-- **T-042** — distributed entitlement-cache invalidation, owed **before** the product runs behind more
-  than one instance.
-- **T-025** — enumerate `depends_on` across ADR-001..016 and 023..030.
-- The citation-side propagation checker — closes about **half** the class; the prose half is not
-  mechanically checkable (measured: 4 of 12 sites carry structured markers).
-
-## Two standing facts the next session should not rediscover
-
-- **The loop has no self-starting property** (`DEC-L-042a`). When both windows are idle, only the
-  owner restarts them.
-- **One working tree, two windows** (`DEC-L-013`). Verify with `git show <branch>:<path>`, never by
-  reading the tree while the other holds a branch, and never build while the other is mid-gate.
-
-## Product state
-
-`main` builds clean at 0 warnings with **3,486 tests green** in both configurations.
-`BR-PLT-0008` is enforced — modules gate on subscription, tenants get a 14-day all-module trial,
-expiry costs modules rather than the door.
-
-## Who was in the windows (`DEC-L-050`)
-
-Written by each side for itself. A name here is how the other window addresses you with
-`SendMessage`; a name that is stale is worse than absent, because it fails as a *delivery*
-rather than as a lookup. Rewrite your own line on resume - do not trust the one you find.
-
-| Role | Session name | Last written |
-|---|---|---|
-| Architect | `ssas-erp-v2-b4` | 2026-08-27, rewritten after a restart |
-| Coder | `ssas-erp-v2-aa [a7865a]` | 2026-08-27, written from `ListAgents` this session. The `ssas-erp-v2-37` recorded yesterday was indeed **dead**. |
-
-The coder's line is second-hand: read from `ListAgents`, not written by the coder itself.
-It is recorded because an unverified pointer that can be checked beats no pointer at all -
-but the coder owns that row, and should overwrite it on resume rather than assume it holds.
-
-## Standing down - 2026-08-26 23:05
-
-Owner's instruction, both windows. Nothing is queued and nothing is running. `main` is at
-`92961bb`; T-050 is merged. The work that was *not* scheduled to tomorrow by either window's
-own initiative is listed under the open items above, in the order it was left.
+Read `BOARD.md` for the reasoning. This is what a cold window needs to act.
 
 ---
 
-# CURRENT ASSIGNMENT — read this first
+## The one thing that is urgent to somebody outside this loop
 
-**Coder: your task is `T-055`.** Full specification in `.claude/handoff/tasks/T-055.md`. Read it
-there, not from this summary.
+⚠ **TWO SECURITY PROPERTIES OF THE CUSTOMER'S LIVE HIS DATABASE**, found while planning its migration.
+They are facts about *their running system*, not about the migration, and they are the only findings here
+with any urgency:
 
-**One-line version:** `scripts/gate.sh` calls itself `THE PHASE-EXIT GATE` and has been run per
-task. Its own header measures why that hurts — Integration Debug 32 m 21 s, Release 32 m 35 s,
-against a whole-run figure of 69 minutes. **The two Integration legs are 64 m 56 s of a 69-minute
-gate.** Add `GATE_SCOPE` so a per-task run does not buy a phase-exit answer.
+- **`[dbo].[SPSearch]` and `[Finance].[SPSearch]`** take `@Table`, `@Fields`, `@Conditions` and
+  `@Description`, and **execute `@Description` as a procedure name** — `exec('exec ' + @Description + …)`.
+  **A generic SQL execution engine published as a stored procedure.**
+- **`[Finance].[SPTransfearData]`** splices `@ToDataBAse` into **sixteen `DELETE FROM` statements** — it
+  deletes Finance tables in a database of the caller's choosing.
 
-**It is a NON-GATED task by the letter of the rule** — nothing under `src/` or `tests/` is in
-scope, only `scripts/`. So: **push, and wait for `MERGE T-055`.** Do not self-merge. That is not
-ceremony; it is a change to the instrument that decides whether everything else may merge, and it
-is the one file where a plausible-looking edit has already twice produced a gate that reported
-success on a failing run.
+**17 of 42 dynamic-SQL procedures splice an unconverted string parameter; 7 do it structurally.** Whether
+they are reachable from application code **needs the app source and is not knowable from the schema.** The
+architect has these in the owner's brief.
 
-**Verify, do not assume, that a red suite still exits non-zero under both scopes.** T-016 found that
-hole in a script that looked correct, and `DEC-L-029` found the same defect class again hours later
-by the same person who had just diagnosed it.
+---
 
-Before starting: rewrite your own row in the pointer table above (`DEC-L-050`). Yesterday's coder
-name is dead — the architect's changed too, within hours of being written down. **Do not trust a
-name you did not write this session.**
+## The ERP
 
-## Rules issued 2026-08-26 that did not exist when you last worked
+**Green and its three completion axes are closed.** `GATE_SCOPE=TASK` runs seven suites, ~3,075 tests, in
+about 72 seconds.
 
-- **`DEC-L-051`** — the gate is tiered. This task implements it. **`GATE_SCOPE` does not work yet**;
-  `CODER.md` carries a not-yet-implemented banner that you delete when this lands.
-- **`DEC-L-052`** — the architect sizes tasks to amortise the gate. Its half, not yours.
-- **`DEC-L-053`** — you may write code while a gate runs, in a **second worktree**
-  (`git worktree add ../SSAS_gate <branch>`), never in the tree under test. One gate at a time;
-  build sparingly during a run.
+- **Axis 1, documented capability with no endpoint:** decomposed from 67 to **41 owner-gated, 15 already
+  deferred, 9 our own doc errors, 2 real** — *almost entirely the owner's to unlock, not ours to build.*
+- **Axis 2, endpoints with no behavioural test:** Attendance went **0 → 25 of 25 routes** issued a request;
+  product-wide uncalled routes went **63 → 8**, and 8 is now an asserted number rather than a report.
+- **Axis 3, owner decisions:** see below.
 
-## Queued behind T-055
+**Three live defects were found and fixed by issuing the first-ever HTTP request at those surfaces** —
+`Attendance.LeaveSubmissionBusy` → 500, `Payroll.RunAlreadyReversed` → 500, and a missing `EmploymentType`
+migration that caused **103 Integration failures**.
 
-`T-051`→`T-054` are a written four-task partition for parallel module work (Assets and Sales), and
-`T-049` (a `settings.json` deny-list gap) is **the owner's to decide, not ours** — do not touch
-permission settings.
+## The Integration suite: 43.9 → 24.2 minutes
+
+**It carried 145 true failures unread for eight days**, because `GATE_SCOPE=TASK` never runs it. That is a
+fact about the gate's scope, not about the tests.
+
+- root cause of the 145: **one commit added a mapped property with no migration**
+- **43.9 → 24.2 min, 855 passing.** Work fell 20,912 → 17,653 test-seconds; **effective parallelism rose
+  7.94× → 12.17×**, and the parallelism rise bought nearly twice what the work reduction did
+- **the suite is now exactly latency-bound** — 1,450 s wall against a 1,447 s longest class
+  (`EmployeeBoundary`). Splitting it buys ~2 minutes; **16 cores floor the whole suite near 18. Stop here.**
+
+⚠ **`Pooling = false` is LOAD-BEARING in 12 fixtures and must not be swept.** A `Session`-owned
+`sp_getapplock` **survives disposal of a pooled connection** (measured: `APPLOCK_TEST` 0 pooled, 1
+unpooled). Only a fixture whose *path* takes no session-scoped applock can be pooled — **and checking the
+test file is not checking the path.**
+
+## The HIS migration plan
+
+`scripts/his-catalogue/MIGRATION-PLAN.md`, ~800 lines, **self-checking**: every number is emitted by the two
+scripts beside it, the parser refuses a parse whose artefact counts drift from the source manifest, and
+13 assertions verify every subset sums to its headline.
+
+**Headline: the rebuild is ~71 logic artefacts, not 513** — 96% of the logic procedures sit in modules our
+ERP replaces outright. **The logic that looks most intimidating is the logic we are not taking, and the
+logic that survives sits in the artefact type that announces itself least** (63 rule-encoding views).
+
+---
+
+## What is waiting on the owner
+
+**Five ERP decisions** (#2, #3, #4, #5, #11) block **41 of the 67 capability rows**. Decision #3
+(`EmploymentType`) is already half-landed: the migration ships `defaultValue: 0` = `FullTime`, stated as an
+assumption in the migration itself rather than left as an artefact.
+
+**Plus the cadence question, which this loop raised and cannot answer:** 24 minutes is not per-task, **but
+it is comfortably a pre-merge or nightly gate where 44 was not** — and 145 real failures sat unread for
+eight days precisely because it was not. **It is their compute and their time.**
+
+**Three HIS decisions (D1–D3)** settle **130 of the 159 crossing foreign keys**. D1 (is `GeneralStores` a
+shared service?) also decides whether 25 of the 54 clinical rule-views are ours or theirs.
+
+---
+
+## Two operational hazards this loop has already paid for
+
+⚠ **THE WORKING TREE IS SHARED IN TWO DIMENSIONS.** `git commit` commits the **index**, so `git add <mine>`
+does not scope a commit — use `git commit -m "…" -- <paths>`. And **a branch checkout is as shared as the
+index**: one incident swallowed 441 lines of the coder's staged work, a second destroyed the architect's
+unpushed commits. The architect now commits from a separate detached worktree.
+
+⚠ **A PLANT IS A DELIBERATELY BROKEN TEST IN THE TREE FOR ABOUT A MINUTE.** If the other window commits
+inside that window it reaches the branch under someone else's message, and `git checkout --` then restores
+the plant rather than removing it.
+
+---
+
+## If you are the coder
+
+Run `.claude/roles/PROTOCOL.md` and `.claude/roles/CODER.md`. **Do not pick your own work** — the architect
+dispatches. The queue was at zero when this was written; the architect enumerates rather than declaring
+zero, and that has produced non-empty answers every time it was tried.

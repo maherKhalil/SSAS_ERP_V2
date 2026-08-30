@@ -94,8 +94,20 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
   // coverage was always complete; what was incomplete was the ANTI-VACUITY CONTROL over that walk. A
   // guard can be comprehensive and still be unable to tell you it stopped working.
   //
-  // **A new package with a route table must be added here.** That is deliberate friction: `FP-015` gets
-  // its `api-contracts.md` when PR #171 merges, and this list is where it announces itself.
+  // **A new package with a route table must be added here.** That is deliberate friction, and it worked:
+  // FP-015's `api-contracts.md` landed on disk without a line here, and
+  // `The_named_documents_are_every_contract_document_on_disk` turned the integration branch red until it
+  // was reconciled. **The list announcing a package is the point, not an inconvenience.**
+  //
+  // ⚠ **BUT FP-015 COULD NOT SIMPLY BE ADDED, AND THAT IS THE INTERESTING HALF.** This theory asserts
+  // every named document YIELDS ROWS. FP-015's declares **zero routes on purpose** — its closing section
+  // says *"No URLs, no route names, no request or response shapes… the contract asserted here is a
+  // NEGATIVE one — what a self-service route must not carry"*. FP-014's document has 27 route rows;
+  // FP-015's has none.
+  //
+  // So naming it here would have moved the failure rather than fixed it. It is named in
+  // `RoutelessContractDocuments` below instead, which keeps it inside the on-disk comparison — the
+  // property that caught this — while exempting it from a row expectation it was written not to meet.
   [Theory]
   [InlineData("FP-001-identity-access")]
   [InlineData("FP-002-authentication-token-lifecycle")]
@@ -119,6 +131,38 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     Assert.NotEmpty(RowsOf(document));
   }
 
+  // ⚠ THE ONE PACKAGE WHOSE CONTRACT IS DELIBERATELY ROUTELESS.
+  //
+  // An exemption from the ROW expectation only. It stays in the on-disk comparison below, so it cannot
+  // drop out of the corpus unnoticed — which is the property that caught it arriving in the first place.
+  //
+  // **Its own falsifier is `A_routeless_document_that_grows_routes_loses_its_exemption`**: the day FP-015
+  // gains a route table it must join the theory above, and this list must not quietly outlive the reason
+  // for it. An exemption that cannot expire is a hole.
+  private static readonly string[] RoutelessContractDocuments = ["FP-015-self-service"];
+
+  // The exemption expires by itself. A routeless document that starts declaring routes is a document that
+  // should be inside the row guard, and nothing else would notice the change.
+  [Fact]
+  public void A_routeless_document_that_grows_routes_loses_its_exemption()
+  {
+    foreach (var package in RoutelessContractDocuments)
+    {
+      var document = Path.Combine(
+        FindRepositoryRoot(), "docs", "17-features", package, "api-contracts.md");
+
+      Assert.True(File.Exists(document),
+        $"{package} is exempted from the row expectation but has no api-contracts.md at all.");
+
+      Assert.True(RowsOf(document).Length == 0,
+        $"{package} is listed as routeless and now yields rows. Move it into " +
+        $"{nameof(Every_contract_document_yields_rows)} and drop it from " +
+        $"{nameof(RoutelessContractDocuments)}.");
+    }
+
+    Assert.NotEmpty(RoutelessContractDocuments);
+  }
+
   // ---- AND THE LIST ABOVE IS EXHAUSTIVE, WHICH ONLY THIS CAN SAY.
   //
   // Naming thirteen fixes today's gap and creates tomorrow's: a fourteenth document added without a line
@@ -132,6 +176,7 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
       .GetCustomAttributes(typeof(InlineDataAttribute), false)
       .Cast<InlineDataAttribute>()
       .Select(data => (string)data.GetData(null!).Single().Single()!)
+      .Concat(RoutelessContractDocuments)
       .OrderBy(package => package, StringComparer.Ordinal)
       .ToArray();
 

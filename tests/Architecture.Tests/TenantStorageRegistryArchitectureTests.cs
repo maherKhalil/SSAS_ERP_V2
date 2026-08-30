@@ -305,6 +305,11 @@ public sealed class TenantStorageRegistryArchitectureTests
         typeof(TenantDatabaseSchemaHealthResult), typeof(TenantDatabaseHealthSweepSummary)
       })
     {
+      // ⚠ THE TYPE IS NAMED BUT ITS PROPERTY WALK IS NOT GUARANTEED. `Assert.DoesNotContain` over an
+      // empty property list passes, so a type that stopped exposing public properties -- or a change to
+      // what `GetProperties()` returns -- would leave this green having read nothing.
+      Assert.NotEmpty(type.GetProperties());
+
       Assert.DoesNotContain(type.GetProperties(), property =>
         property.Name.Contains("Backup", StringComparison.OrdinalIgnoreCase) ||
         property.Name.Contains("Recovery", StringComparison.OrdinalIgnoreCase) ||

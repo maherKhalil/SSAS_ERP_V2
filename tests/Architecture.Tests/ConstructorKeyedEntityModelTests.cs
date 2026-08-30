@@ -82,11 +82,26 @@ public sealed class ConstructorKeyedEntityModelTests
   {
     using var context = ComposedContext();
 
-    var offenders = context.Model.GetEntityTypes()
+    var entities = ModelWalk.FlooredEntities(context.Model.GetEntityTypes(), "composed tenant model", 28);
+
+    // ⚠ THE SELECTING HALF OF THE CHAIN, ASSERTED SEPARATELY FROM THE BANNING HALF.
+    //
+    // Four `.Where` links stand between the walk and the offender list, and the ban is satisfied if ANY
+    // of them stops matching -- not owned, single-property key, Guid key, then the violation itself.
+    // The floor above proves the model was built; this proves the first three links still select the
+    // candidates the fourth is supposed to judge.
+    var guidKeyedCandidates = entities
       .Where(entity => !entity.IsOwned())
       .Select(entity => new { Entity = entity, Key = entity.FindPrimaryKey() })
       .Where(candidate => candidate.Key is { Properties.Count: 1 })
       .Where(candidate => candidate.Key!.Properties[0].ClrType == typeof(Guid))
+      .ToArray();
+
+    Assert.True(guidKeyedCandidates.Length >= 10,
+      $"only {guidKeyedCandidates.Length} Guid single-key entities were found among {entities.Length}; " +
+      "the selection chain has stopped matching and the ban below would judge nothing.");
+
+    var offenders = guidKeyedCandidates
       .Where(candidate => candidate.Key!.Properties[0].ValueGenerated != ValueGenerated.Never)
       .Select(candidate =>
         candidate.Entity.ShortName() + "." + candidate.Key!.Properties[0].Name

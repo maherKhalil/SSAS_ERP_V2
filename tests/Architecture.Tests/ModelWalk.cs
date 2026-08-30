@@ -32,11 +32,19 @@ namespace SSAS.Architecture.Tests;
 // share nothing else. **A shared floor cannot discharge a per-predicate control, and there is no shared
 // helper here that pretends otherwise.** Each ban asserts its own filter still selects real rows, next to
 // the ban, where the person changing the filter is looking.
+// ---- AND THE METHOD NAMES CARRY `Floored` BECAUSE THE CALL SITE IS WHERE THE GUARD IS JUDGED.
+//
+// These were `Entities` and `Properties`, which is accurate and exactly the problem: the call site read
+// as data access, so nothing there said an assertion had happened. **An audit scanner run over the two
+// files fixed by this very helper reported them as unprotected**, because the floor had moved to another
+// file. A reader at the call site would have concluded the same thing, and correctly.
+//
+// A comment in here is a note that must be SOUGHT. A name is a note that is READ.
 internal static class ModelWalk
 {
   // The entity layer. `name` is what appears when it fails, because "0 entities" is useless without
   // knowing which walk produced it.
-  public static IEntityType[] Entities(IEnumerable<IEntityType> walk, string name, int floor)
+  public static IEntityType[] FlooredEntities(IEnumerable<IEntityType> walk, string name, int floor)
   {
     var entities = walk.ToArray();
 
@@ -50,7 +58,7 @@ internal static class ModelWalk
 
   // The property layer, floored separately from the entities that yielded it: a healthy entity list whose
   // properties come back empty is a different failure and must say so.
-  public static (IEntityType Entity, IProperty Property)[] Properties(
+  public static (IEntityType Entity, IProperty Property)[] FlooredProperties(
     IEntityType[] entities, string name, int floor)
   {
     var properties = entities

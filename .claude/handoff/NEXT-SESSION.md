@@ -35,24 +35,28 @@ about 72 seconds.
   15 already deferred, 9 our own doc errors, 2 real**. ⚠ **That count is stale and its MEMBERS were never
   recorded — read the correction below before using any of those figures.**
 
-  **⚠ CORRECTED 2026-08-30 (T-276).** **One of the "2 real" is SHIPPED** — FP-001's permission-catalogue
-  read, routed 2026-08-29, `MapGet("/permissions")` in `src`, **the day after the decomposition was
-  published and never reflected here.** **The second is NOT RECOVERABLE**: it lives among the ~50 rows
-  outside FP-001, **and no document annotates those.** Three reconstructions of the original method were
-  tried and rejected.
+  **⚠ CORRECTED AGAIN 2026-08-30, AND THE PREVIOUS CORRECTION WAS THE WRONG ONE.** An earlier note here
+  said the decomposition's members were *"NOT RECOVERABLE"*. **They are recorded in full, and always were:
+  `.claude/handoff/results/T-201.md`, 142 lines, with the members, the method, the per-package breakdown and
+  two self-corrections.**
 
-  ⚠ **Why FP-001's rows survived and the other fifty did not: FP-001 annotates its own
-  `api-contracts.md` inline — 17 `[NOT ROUTED - handler: X]` markers, the only document in the repository
-  with them. The rest were counted HERE, and the members evaporated.** **A fact recorded where the work is
-  stays findable; a fact recorded in a summary becomes a number.**
+  **The true decomposition is 41 owner-blocked, 15 deferred or superseded, 10 documentation drift, 1
+  unblocked** — **not 9 and 2. T-201 had already corrected itself from 9-and-2 to 10-and-1**, finding the
+  tenth in its own text: a row that *"begins **New.**"* and ends `[BUILT as POST .../change-department]`.
+  Its words: *"this report fell into the trap it describes, in the paragraph above the one describing it."*
 
-  **An independent re-derivation on a stated definition** — a route written in an FP `api-contracts.md` as
-  `METHOD /path` with no matching mapped template — gives **44 documented, 15 unmapped: 11 owner-gated
-  (7 on decision 2, 3 on decision 11, 1 on decision 5), 3 our documentation errors, 1 already served on the
-  login response, 0 real.** ⚠ **These numbers are NOT comparable with the 2026-08-29 figures and do not
-  reconcile with them** — the earlier method is unrecoverable, **and claiming agreement would be inventing
-  it.** **Its blind spot is stated: the population is route STRINGS, so a capability documented in prose is
-  outside it entirely, and that is most of them.**
+  ⚠ **The single unblocked row is `GET /api/platform/permissions`, the permission-catalogue read, and it
+  SHIPPED 2026-08-29.** **So the residual is ZERO because its one member was built — not "within the error
+  of an unrecoverable measurement".** **That earlier closing conceded an ignorance this project does not
+  have, and it is withdrawn.**
+
+  ⚠ **AND THE TEN ARE NOT DOCUMENTATION ERRORS TO FIX. T-201 explicitly withdraws that recommendation:**
+  *"The first version of this report recommended rewriting the ten paths to the real routes. That was wrong
+  and is withdrawn."* **Each row carries what was specified, what was built, AND the deciding reference —
+  `DEC-DEP-0023`, `-0024`, `-0025` — so rewriting the path column would delete two of those three to fix a
+  count.** **Its verdict: *"The documents are not wrong. The instrument was."*** **Nine instruments were
+  built over two days to re-derive a conclusion that had already been written, corrected and reasoned
+  through.**
 
 - **Axis 2, endpoints with no behavioural test:** Attendance went **0 → 25 of 25 routes** issued a request;
   product-wide uncalled routes went **63 → 8**, and 8 is now an asserted number rather than a report.

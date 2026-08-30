@@ -310,9 +310,20 @@ names the failure and the response is a refusal. It does **not** cover:
 - **code that looks careless and is not** — where the generic message is deliberate, the reason is
   required, because the reader's default inference is wrong.
 
-**Measured 2026-08-30:** 207 catch clauses, 94 discarding the exception, 54 carrying a reason. **19 of
-those 54 state their reason above the enclosing `try` rather than above the `catch`** — a legitimate and
-common shape here, and one an instrument scanning only the lines above a `catch` will report as unreasoned.
+**Measured 2026-08-30, and stated as floors rather than counts.** A first census reported 207 catch clauses;
+a corrected matcher found **291 — 132 in `src/`, 159 in `tests/`** — so the first pass ran 24% and 33% low
+on the two trees. **Every figure derived from it is therefore a lower bound**, including the counts of
+discarding and unreasoned catches: they identify the right groups and understate their sizes.
+
+**The two defects are worth knowing, because both are invisible in the output.** A clause count of the form
+`when (F(x) is { } y)` nests parentheses that a `\([^)]*\)` capture cannot span, and a `#pragma` sitting
+between the clause declaration and its brace defeats a `\s*\{`. **Neither produced an error; both produced
+a smaller number.**
+
+**One shape is worth recording regardless of the totals: a substantial minority of reasons are written above
+the enclosing `try` rather than above the `catch`.** That is legitimate and common here, and an instrument
+scanning only the lines above a `catch` will report those catches as unreasoned.
+
 
 # Related Documents
 

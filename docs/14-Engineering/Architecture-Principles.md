@@ -453,6 +453,18 @@ proof the guard worked. **That is worse than an unplanted guard, because it prod
 verification.** Check the build result before reading the test result, and prefer a break that cannot fail
 to compile: an optional parameter, a changed literal, a widened pattern, a renamed path segment.
 
+**⚠ And the same rule applies to a PROBE, where it is harder to see: a mutation that never landed is void,
+and unlike a broken build it announces nothing.** On 2026-08-30 a probe replaced `GetTypes()` with an empty
+enumeration across a set of files to find guards that pass over zero types. **One file contained no
+`GetTypes()` at all**, so the edit matched nothing, exited zero, changed nothing — **and the suite passed,
+which the probe recorded as "stays green over zero types".** True, meaningless, and identical in the output
+to a real finding.
+
+**A broken build shouts. A `sed` that matches nothing is silent.** So a mutation step must **assert it
+changed something before the suite runs** — `git diff --quiet <file>` should *fail* after the edit, and if
+it succeeds the probe is void and must report that instead of a result. **Three separate defects in one
+session came down to the same unasked question: did the mutation actually land?**
+
 **A cheap tell, short of a plant: does the clock agree the work happened?** That same test passed on its
 first run reporting `Duration: < 1 ms` **for something that creates a database.** The timing was the only
 thing out of place, and inverting the assertion proved the run was real. **A green whose duration does not

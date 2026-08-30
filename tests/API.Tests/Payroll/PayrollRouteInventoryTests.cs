@@ -12,37 +12,37 @@ public sealed class PayrollRouteInventoryTests(PayrollApiTestHost host) : IClass
   // the surface has to be acknowledged here, which is where a reviewer will see it.
   private static readonly (string Method, string Pattern, string Permission)[] Expected =
   [
-    ("POST", "/api/payroll/employees/{employeeId:guid}/compensation", PayrollPermissionNames.ManageCompensation),
-    ("GET", "/api/payroll/employees/{employeeId:guid}/compensation", PayrollPermissionNames.ViewCompensation),
-    ("GET", "/api/payroll/employees/{employeeId:guid}/compensation/current", PayrollPermissionNames.ViewCompensation),
+    ("POST", "/api/payroll/employees/{employeeId}/compensation", PayrollPermissionNames.ManageCompensation),
+    ("GET", "/api/payroll/employees/{employeeId}/compensation", PayrollPermissionNames.ViewCompensation),
+    ("GET", "/api/payroll/employees/{employeeId}/compensation/current", PayrollPermissionNames.ViewCompensation),
 
     // ---- A ONE-OFF PAY INSTRUCTION (T-110). `ManageCompensation`, and that is the whole reasoning.
     //
     // Deciding somebody is paid an amount is the same authority whether it recurs or happens once. A
     // permission of its own would let the two be granted apart, which nobody has ruled — and inventing a
     // distinction is what `AC-SS-0005`'s reasoning warns against.
-    ("POST", "/api/payroll/employees/{employeeId:guid}/one-off-payments", PayrollPermissionNames.ManageCompensation),
-    ("GET", "/api/payroll/employees/{employeeId:guid}/payslips", PayrollPermissionNames.ViewPayslips),
+    ("POST", "/api/payroll/employees/{employeeId}/one-off-payments", PayrollPermissionNames.ManageCompensation),
+    ("GET", "/api/payroll/employees/{employeeId}/payslips", PayrollPermissionNames.ViewPayslips),
 
     ("POST", "/api/payroll/elements", PayrollPermissionNames.ManageElements),
     ("GET", "/api/payroll/elements", PayrollPermissionNames.ViewElements),
-    ("GET", "/api/payroll/elements/{payElementId:guid}", PayrollPermissionNames.ViewElements),
-    ("PUT", "/api/payroll/elements/{payElementId:guid}", PayrollPermissionNames.ManageElements),
-    ("POST", "/api/payroll/elements/{payElementId:guid}/deactivation", PayrollPermissionNames.ManageElements),
-    ("POST", "/api/payroll/elements/{payElementId:guid}/activation", PayrollPermissionNames.ManageElements),
+    ("GET", "/api/payroll/elements/{payElementId}", PayrollPermissionNames.ViewElements),
+    ("PUT", "/api/payroll/elements/{payElementId}", PayrollPermissionNames.ManageElements),
+    ("POST", "/api/payroll/elements/{payElementId}/deactivation", PayrollPermissionNames.ManageElements),
+    ("POST", "/api/payroll/elements/{payElementId}/activation", PayrollPermissionNames.ManageElements),
 
     ("POST", "/api/payroll/periods", PayrollPermissionNames.ManageRuns),
     ("GET", "/api/payroll/periods", PayrollPermissionNames.ViewRuns),
 
     ("POST", "/api/payroll/runs", PayrollPermissionNames.ManageRuns),
     ("GET", "/api/payroll/runs", PayrollPermissionNames.ViewRuns),
-    ("GET", "/api/payroll/runs/{payrollRunId:guid}", PayrollPermissionNames.ViewRuns),
-    ("POST", "/api/payroll/runs/{payrollRunId:guid}/calculation", PayrollPermissionNames.ManageRuns),
-    ("POST", "/api/payroll/runs/{payrollRunId:guid}/approval", PayrollPermissionNames.ApproveRuns),
-    ("POST", "/api/payroll/runs/{payrollRunId:guid}/posting", PayrollPermissionNames.PostRuns),
-    ("POST", "/api/payroll/runs/{payrollRunId:guid}/reversals", PayrollPermissionNames.PostRuns),
+    ("GET", "/api/payroll/runs/{payrollRunId}", PayrollPermissionNames.ViewRuns),
+    ("POST", "/api/payroll/runs/{payrollRunId}/calculation", PayrollPermissionNames.ManageRuns),
+    ("POST", "/api/payroll/runs/{payrollRunId}/approval", PayrollPermissionNames.ApproveRuns),
+    ("POST", "/api/payroll/runs/{payrollRunId}/posting", PayrollPermissionNames.PostRuns),
+    ("POST", "/api/payroll/runs/{payrollRunId}/reversals", PayrollPermissionNames.PostRuns),
 
-    ("GET", "/api/payroll/runs/{payrollRunId:guid}/payslips/{employeeId:guid}", PayrollPermissionNames.ViewPayslips),
+    ("GET", "/api/payroll/runs/{payrollRunId}/payslips/{employeeId}", PayrollPermissionNames.ViewPayslips),
 
     // ---- SELF-SERVICE (FP-015, T-088). THE ONLY ROUTE HERE THAT NAMES NO SUBJECT.
     //
@@ -136,9 +136,9 @@ public sealed class PayrollRouteInventoryTests(PayrollApiTestHost host) : IClass
     var byKey = host.MappedRoutes()
       .ToDictionary(route => $"{route.Method} {route.Pattern}", route => route.Policy, StringComparer.Ordinal);
 
-    var calculate = byKey["POST /api/payroll/runs/{payrollRunId:guid}/calculation"];
-    var approve = byKey["POST /api/payroll/runs/{payrollRunId:guid}/approval"];
-    var post = byKey["POST /api/payroll/runs/{payrollRunId:guid}/posting"];
+    var calculate = byKey["POST /api/payroll/runs/{payrollRunId}/calculation"];
+    var approve = byKey["POST /api/payroll/runs/{payrollRunId}/approval"];
+    var post = byKey["POST /api/payroll/runs/{payrollRunId}/posting"];
 
     // Three distinct grants, so preparing, authorizing and committing can be three different people.
     Assert.NotEqual(calculate, approve);

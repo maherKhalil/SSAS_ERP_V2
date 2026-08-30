@@ -63,7 +63,7 @@ public static class PayrollEndpointRouteBuilderExtensions
       });
 
     // ---- COMPENSATION. The personal-data surface (BR-PAY-0010, OD-PAY-0016).
-    group.MapPost("/employees/{employeeId:guid}/compensation", RecordCompensationAsync)
+    group.MapPost("/employees/{employeeId}/compensation", RecordCompensationAsync)
       .RequirePermission(PayrollPermissionNames.ManageCompensation).WithName("PayrollCompensationRecord");
 
     // ---- ONE-OFF PAY INSTRUCTIONS (T-110). POST ONLY, like compensation and for a different reason.
@@ -71,11 +71,11 @@ public static class PayrollEndpointRouteBuilderExtensions
     // Deciding someone is paid an amount is the same authority whether it recurs or happens once, so this
     // takes `ManageCompensation` rather than a permission of its own — a second one would let the two be
     // granted apart, which nobody has ruled.
-    group.MapPost("/employees/{employeeId:guid}/one-off-payments", RecordOneOffPaymentAsync)
+    group.MapPost("/employees/{employeeId}/one-off-payments", RecordOneOffPaymentAsync)
       .RequirePermission(PayrollPermissionNames.ManageCompensation).WithName("PayrollOneOffPaymentRecord");
-    group.MapGet("/employees/{employeeId:guid}/compensation", GetCompensationHistoryAsync)
+    group.MapGet("/employees/{employeeId}/compensation", GetCompensationHistoryAsync)
       .RequirePermission(PayrollPermissionNames.ViewCompensation).WithName("PayrollCompensationHistory");
-    group.MapGet("/employees/{employeeId:guid}/compensation/current", GetCompensationCurrentAsync)
+    group.MapGet("/employees/{employeeId}/compensation/current", GetCompensationCurrentAsync)
       .RequirePermission(PayrollPermissionNames.ViewCompensation).WithName("PayrollCompensationCurrent");
 
     // ---- PAY ELEMENTS. Structural, and deliberately a weaker permission than compensation.
@@ -83,13 +83,13 @@ public static class PayrollEndpointRouteBuilderExtensions
       .RequirePermission(PayrollPermissionNames.ManageElements).WithName("PayrollElementsCreate");
     group.MapGet("/elements", SearchElementsAsync)
       .RequirePermission(PayrollPermissionNames.ViewElements).WithName("PayrollElementsSearch");
-    group.MapGet("/elements/{payElementId:guid}", GetElementAsync)
+    group.MapGet("/elements/{payElementId}", GetElementAsync)
       .RequirePermission(PayrollPermissionNames.ViewElements).WithName("PayrollElementsGet");
-    group.MapPut("/elements/{payElementId:guid}", UpdateElementAsync)
+    group.MapPut("/elements/{payElementId}", UpdateElementAsync)
       .RequirePermission(PayrollPermissionNames.ManageElements).WithName("PayrollElementsUpdate");
-    group.MapPost("/elements/{payElementId:guid}/deactivation", DeactivateElementAsync)
+    group.MapPost("/elements/{payElementId}/deactivation", DeactivateElementAsync)
       .RequirePermission(PayrollPermissionNames.ManageElements).WithName("PayrollElementsDeactivate");
-    group.MapPost("/elements/{payElementId:guid}/activation", ActivateElementAsync)
+    group.MapPost("/elements/{payElementId}/activation", ActivateElementAsync)
       .RequirePermission(PayrollPermissionNames.ManageElements).WithName("PayrollElementsActivate");
 
     // ---- PERIODS. Generated from the fiscal calendar, never authored beside it (OD-PAY-0002).
@@ -103,22 +103,22 @@ public static class PayrollEndpointRouteBuilderExtensions
       .RequirePermission(PayrollPermissionNames.ManageRuns).WithName("PayrollRunsCreate");
     group.MapGet("/runs", GetRunsAsync)
       .RequirePermission(PayrollPermissionNames.ViewRuns).WithName("PayrollRunsList");
-    group.MapGet("/runs/{payrollRunId:guid}", GetRunAsync)
+    group.MapGet("/runs/{payrollRunId}", GetRunAsync)
       .RequirePermission(PayrollPermissionNames.ViewRuns).WithName("PayrollRunsGet");
-    group.MapPost("/runs/{payrollRunId:guid}/calculation", CalculateRunAsync)
+    group.MapPost("/runs/{payrollRunId}/calculation", CalculateRunAsync)
       .RequirePermission(PayrollPermissionNames.ManageRuns).WithName("PayrollRunsCalculate");
 
     // THE SENSITIVE ACT (`BR-PLT-0103`, `OD-PAY-0009`). Its own permission, so preparing work and
     // authorizing it can be different people — the `GL.Drafts.Manage` / `GL.Journals.Post` precedent.
-    group.MapPost("/runs/{payrollRunId:guid}/approval", ApproveRunAsync)
+    group.MapPost("/runs/{payrollRunId}/approval", ApproveRunAsync)
       .RequirePermission(PayrollPermissionNames.ApproveRuns).WithName("PayrollRunsApprove");
-    group.MapPost("/runs/{payrollRunId:guid}/posting", PostRunAsync)
+    group.MapPost("/runs/{payrollRunId}/posting", PostRunAsync)
       .RequirePermission(PayrollPermissionNames.PostRuns).WithName("PayrollRunsPost");
-    group.MapPost("/runs/{payrollRunId:guid}/reversals", ReverseRunAsync)
+    group.MapPost("/runs/{payrollRunId}/reversals", ReverseRunAsync)
       .RequirePermission(PayrollPermissionNames.PostRuns).WithName("PayrollRunsReverse");
 
     // ---- PAYSLIPS. A projection over approved lines only (OD-PAY-0015).
-    group.MapGet("/runs/{payrollRunId:guid}/payslips/{employeeId:guid}", GetPayslipAsync)
+    group.MapGet("/runs/{payrollRunId}/payslips/{employeeId}", GetPayslipAsync)
       .RequirePermission(PayrollPermissionNames.ViewPayslips).WithName("PayrollPayslipsGet");
     // ---- SELF-SERVICE (FP-015, `REQ-SS-0004`, T-088). NO EMPLOYEE ANYWHERE IN THE CONTRACT.
     //
@@ -131,7 +131,7 @@ public static class PayrollEndpointRouteBuilderExtensions
     group.MapGet("/me/payslips", GetOwnPayslipsAsync)
       .RequirePermission(PayrollPermissionNames.ViewOwnPayslips).WithName("PayrollOwnPayslipsList");
 
-    group.MapGet("/employees/{employeeId:guid}/payslips", GetPayslipsAsync)
+    group.MapGet("/employees/{employeeId}/payslips", GetPayslipsAsync)
       .RequirePermission(PayrollPermissionNames.ViewPayslips).WithName("PayrollPayslipsForEmployee");
 
     return endpoints;

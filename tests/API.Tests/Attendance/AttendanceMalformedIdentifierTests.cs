@@ -94,6 +94,29 @@ public sealed class AttendanceMalformedIdentifierTests(AttendanceApiTestHost hos
       "failure rather than a handler decision — the route no longer matches a valid id.");
   }
 
+  // ⚠ T-239 — FALSIFYING THE RULING'S OWN JUSTIFICATION RATHER THAN ASSUMING IT.
+  //
+  // The whole case for 400-over-404 is that **400 carries information a 404 cannot**: a caller can tell
+  // "your identifier is malformed" from "that record is absent". **If the 400 is bare, the status change
+  // was cosmetic and the argument was empty** — so this asserts the response actually carries a problem
+  // document, and reports what it contains when it does not.
+  [Fact]
+  public async Task The_bad_request_carries_a_problem_document_rather_than_a_bare_status()
+  {
+    host.ResetToAuthorizedState();
+
+    var response = await Send(HttpMethod.Put, "/api/attendance/leave-types/not-a-guid",
+      AttendancePermissionNames.ManageLeaveTypes, "{}");
+
+    var body = await response.Content.ReadAsStringAsync();
+
+    Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.False(string.IsNullOrWhiteSpace(body),
+      "the 400 is bare, so it carries no more information than the 404 it replaced — the status change " +
+      "would be cosmetic and the case for it empty.");
+    Assert.Contains("leaveTypeId", body, StringComparison.OrdinalIgnoreCase);
+  }
+
   private async Task<HttpResponseMessage> Send(
     HttpMethod method, string path, string permission, string body)
   {

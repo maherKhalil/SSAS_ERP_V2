@@ -84,11 +84,11 @@ public static class EmployeeEndpointRouteBuilderExtensions
       .RequirePermission(HrPermissionNames.ViewEmployees)
       .WithName("HrEmployeesSearch");
 
-    group.MapGet("/{employeeId:guid}", GetByIdAsync)
+    group.MapGet("/{employeeId}", GetByIdAsync)
       .RequirePermission(HrPermissionNames.ViewEmployees)
       .WithName("HrEmployeesGetById");
 
-    group.MapPut("/{employeeId:guid}", UpdateAsync)
+    group.MapPut("/{employeeId}", UpdateAsync)
       .RequirePermission(HrPermissionNames.UpdateEmployees)
       .WithName("HrEmployeesUpdate");
 
@@ -96,25 +96,25 @@ public static class EmployeeEndpointRouteBuilderExtensions
     //
     // Activate and deactivate carry Update authority; termination carries its own, because it is terminal
     // and a user permitted to correct a profile is not thereby permitted to end employment.
-    group.MapPost("/{employeeId:guid}/activate", ActivateAsync)
+    group.MapPost("/{employeeId}/activate", ActivateAsync)
       .RequirePermission(HrPermissionNames.UpdateEmployees)
       .WithName("HrEmployeesActivate");
 
-    group.MapPost("/{employeeId:guid}/deactivate", DeactivateAsync)
+    group.MapPost("/{employeeId}/deactivate", DeactivateAsync)
       .RequirePermission(HrPermissionNames.UpdateEmployees)
       .WithName("HrEmployeesDeactivate");
 
-    group.MapPost("/{employeeId:guid}/terminate", TerminateAsync)
+    group.MapPost("/{employeeId}/terminate", TerminateAsync)
       .RequirePermission(HrPermissionNames.TerminateEmployees)
       .WithName("HrEmployeesTerminate");
 
     // Transfer moves a record across a security partition and is the only operation permitted to change
     // BranchId, so it holds a permission of its own (BRULE-EMP-0015).
-    group.MapPost("/{employeeId:guid}/transfer", TransferAsync)
+    group.MapPost("/{employeeId}/transfer", TransferAsync)
       .RequirePermission(HrPermissionNames.TransferEmployees)
       .WithName("HrEmployeesTransfer");
 
-    group.MapGet("/{employeeId:guid}/branch-history", GetBranchHistoryAsync)
+    group.MapGet("/{employeeId}/branch-history", GetBranchHistoryAsync)
       .RequirePermission(HrPermissionNames.ViewEmployees)
       .WithName("HrEmployeesBranchHistory");
 

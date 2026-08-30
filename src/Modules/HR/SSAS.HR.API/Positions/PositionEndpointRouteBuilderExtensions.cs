@@ -79,19 +79,19 @@ public static class PositionEndpointRouteBuilderExtensions
       .RequirePermission(HrPermissionNames.ViewPositions)
       .WithName("HrPositionsSearch");
 
-    group.MapGet("/{positionId:guid}", GetPositionAsync)
+    group.MapGet("/{positionId}", GetPositionAsync)
       .RequirePermission(HrPermissionNames.ViewPositions)
       .WithName("HrPositionsGetById");
 
-    group.MapPut("/{positionId:guid}", UpdatePositionAsync)
+    group.MapPut("/{positionId}", UpdatePositionAsync)
       .RequirePermission(HrPermissionNames.UpdatePositions)
       .WithName("HrPositionsUpdate");
 
-    group.MapPost("/{positionId:guid}/activate", ActivatePositionAsync)
+    group.MapPost("/{positionId}/activate", ActivatePositionAsync)
       .RequirePermission(HrPermissionNames.DeactivatePositions)
       .WithName("HrPositionsActivate");
 
-    group.MapPost("/{positionId:guid}/deactivate", DeactivatePositionAsync)
+    group.MapPost("/{positionId}/deactivate", DeactivatePositionAsync)
       .RequirePermission(HrPermissionNames.DeactivatePositions)
       .WithName("HrPositionsDeactivate");
 
@@ -116,19 +116,19 @@ public static class PositionEndpointRouteBuilderExtensions
       .RequirePermission(HrPermissionNames.ViewJobGrades)
       .WithName("HrJobGradesSearch");
 
-    group.MapGet("/{jobGradeId:guid}", GetJobGradeAsync)
+    group.MapGet("/{jobGradeId}", GetJobGradeAsync)
       .RequirePermission(HrPermissionNames.ViewJobGrades)
       .WithName("HrJobGradesGetById");
 
-    group.MapPut("/{jobGradeId:guid}", UpdateJobGradeAsync)
+    group.MapPut("/{jobGradeId}", UpdateJobGradeAsync)
       .RequirePermission(HrPermissionNames.UpdateJobGrades)
       .WithName("HrJobGradesUpdate");
 
-    group.MapPost("/{jobGradeId:guid}/activate", ActivateJobGradeAsync)
+    group.MapPost("/{jobGradeId}/activate", ActivateJobGradeAsync)
       .RequirePermission(HrPermissionNames.DeactivateJobGrades)
       .WithName("HrJobGradesActivate");
 
-    group.MapPost("/{jobGradeId:guid}/deactivate", DeactivateJobGradeAsync)
+    group.MapPost("/{jobGradeId}/deactivate", DeactivateJobGradeAsync)
       .RequirePermission(HrPermissionNames.DeactivateJobGrades)
       .WithName("HrJobGradesDeactivate");
 
@@ -156,19 +156,19 @@ public static class PositionEndpointRouteBuilderExtensions
       .RequirePermission(HrPermissionNames.ViewSalaryGrades)
       .WithName("HrSalaryGradesSearch");
 
-    group.MapGet("/{salaryGradeId:guid}", GetSalaryGradeAsync)
+    group.MapGet("/{salaryGradeId}", GetSalaryGradeAsync)
       .RequirePermission(HrPermissionNames.ViewSalaryGrades)
       .WithName("HrSalaryGradesGetById");
 
-    group.MapPut("/{salaryGradeId:guid}", UpdateSalaryGradeAsync)
+    group.MapPut("/{salaryGradeId}", UpdateSalaryGradeAsync)
       .RequirePermission(HrPermissionNames.UpdateSalaryGrades)
       .WithName("HrSalaryGradesUpdate");
 
-    group.MapPost("/{salaryGradeId:guid}/activate", ActivateSalaryGradeAsync)
+    group.MapPost("/{salaryGradeId}/activate", ActivateSalaryGradeAsync)
       .RequirePermission(HrPermissionNames.DeactivateSalaryGrades)
       .WithName("HrSalaryGradesActivate");
 
-    group.MapPost("/{salaryGradeId:guid}/deactivate", DeactivateSalaryGradeAsync)
+    group.MapPost("/{salaryGradeId}/deactivate", DeactivateSalaryGradeAsync)
       .RequirePermission(HrPermissionNames.DeactivateSalaryGrades)
       .WithName("HrSalaryGradesDeactivate");
 
@@ -191,11 +191,11 @@ public static class PositionEndpointRouteBuilderExtensions
 
     var group = Group(endpoints, EmployeeRoutePrefix, "HR Employees");
 
-    group.MapPost("/{employeeId:guid}/change-position", ChangeEmployeePositionAsync)
+    group.MapPost("/{employeeId}/change-position", ChangeEmployeePositionAsync)
       .RequirePermission(HrPermissionNames.UpdateEmployees)
       .WithName("HrEmployeesChangePosition");
 
-    group.MapGet("/{employeeId:guid}/position-history", GetEmployeePositionHistoryAsync)
+    group.MapGet("/{employeeId}/position-history", GetEmployeePositionHistoryAsync)
       .RequirePermission(HrPermissionNames.ViewEmployees)
       .WithName("HrEmployeesPositionHistory");
 

@@ -40,14 +40,14 @@ public sealed class TenantUserLifecycleRouteTests(HostWebApplicationFactory fact
 {
   [Theory]
   [Trait("Criterion", "REQ-SS-0007")]
-  [InlineData("/api/platform/tenant-users/{tenantUserId:long}/deactivation", "Platform.Users.Deactivate")]
-  [InlineData("/api/platform/tenant-users/{tenantUserId:long}/reactivation", "Platform.Users.Reactivate")]
+  [InlineData("/api/platform/tenant-users/{tenantUserId}/deactivation", "Platform.Users.Deactivate")]
+  [InlineData("/api/platform/tenant-users/{tenantUserId}/reactivation", "Platform.Users.Reactivate")]
   // ---- T-092. THE LINK PAIR, ASSERTED THE SAME WAY AND FOR THE SAME REASON.
   //
   // These two permissions were created WITH their routes, unlike the fifteen still declared and required by
   // nothing — so this assertion is what keeps them from joining that list if a route is ever removed.
-  [InlineData("/api/platform/tenant-users/{tenantUserId:long}/employee-link", "Platform.EmployeeLinks.Link")]
-  [InlineData("/api/platform/tenant-users/{tenantUserId:long}/employee-link/remove", "Platform.EmployeeLinks.Unlink")]
+  [InlineData("/api/platform/tenant-users/{tenantUserId}/employee-link", "Platform.EmployeeLinks.Link")]
+  [InlineData("/api/platform/tenant-users/{tenantUserId}/employee-link/remove", "Platform.EmployeeLinks.Unlink")]
   public void The_lifecycle_route_is_mounted_and_requires_its_own_permission(string pattern, string permission)
   {
     var endpoint = Routes().SingleOrDefault(route => route.RoutePattern.RawText == pattern);

@@ -93,15 +93,20 @@ public sealed class CompanyRouteInventoryTests(HostWebApplicationFactory factory
   // ⚠ AN OBSERVATION THIS INVENTORY RECORDS AND DOES NOT ACT ON.
   // ================================================================================================
   //
-  // **`{companyId}` carries no route constraint**, where `{tenantUserId:long}` and `{principalId:long}` in
-  // the sibling Platform groups do, and Attendance's inventory is `:guid` throughout. **So a non-GUID
-  // company id reaches the handler rather than failing to match**, and what the caller receives depends on
-  // how the handler parses it rather than on routing.
+  // ✅ **RESOLVED 2026-08-30 (T-238), AND THIS COMMENT IS WHY.** It recorded that `{companyId}` carried no
+  // route constraint where `{tenantUserId:long}`, `{principalId:long}` and Attendance's `:guid` throughout
+  // did — **so a non-GUID company id reached the handler and became a 400, while the constrained routes
+  // failed to match and became a 404.** It declined to act, and said: *"Recorded so it is a decision when
+  // someone makes it, rather than a difference nobody noticed."*
   //
-  // **Not changed here.** Adding a constraint moves a 400 to a 404 for malformed ids, which is a transport
-  // behaviour change and belongs to a task that says so. **Recorded so it is a decision when someone makes
-  // it, rather than a difference nobody noticed** — this file's job is to pin the surface, and the surface
-  // includes the absence.
+  // **The decision was made the other way round from what this comment anticipated.** Rather than adding a
+  // constraint to Company, **all 71 constrained route parameters across HR, GL, Payroll and Platform were
+  // removed**, so the whole product now answers 400. The reason is that **a 404 makes a malformed
+  // identifier indistinguishable from an absent record** — a caller cannot separate *"your GUID is not a
+  // GUID"* from *"that record is gone"*, and on 71 routes that was permanent.
+  //
+  // **The observation outlived four months of not being acted on because it was written down as an
+  // observation rather than lost as a passing thought.** That is what this section was for.
   [Fact]
   public void The_company_id_segment_is_unconstrained_and_that_is_pinned_rather_than_asserted_correct()
   {

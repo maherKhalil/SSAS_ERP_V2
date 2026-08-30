@@ -39,16 +39,16 @@ public sealed class TenantUserRouteInventoryTests(HostWebApplicationFactory fact
   [
     // ---- DE/REACTIVATION. Two permissions rather than one: restoring access is a different decision from
     // ---- withdrawing it, and only one of them is reversible by the person who made the mistake.
-    ("POST", "/api/platform/tenant-users/{tenantUserId:long}/deactivation",
+    ("POST", "/api/platform/tenant-users/{tenantUserId}/deactivation",
       PermissionPolicyNames.TenantPrefix + PlatformPermissionNames.DeactivateUsers),
-    ("POST", "/api/platform/tenant-users/{tenantUserId:long}/reactivation",
+    ("POST", "/api/platform/tenant-users/{tenantUserId}/reactivation",
       PermissionPolicyNames.TenantPrefix + PlatformPermissionNames.ReactivateUsers),
 
     // ---- EMPLOYEE LINK. Also two permissions, and for the same reason: unlinking severs a user from the
     // ---- employee record that carries their payroll and attendance identity.
-    ("POST", "/api/platform/tenant-users/{tenantUserId:long}/employee-link",
+    ("POST", "/api/platform/tenant-users/{tenantUserId}/employee-link",
       PermissionPolicyNames.TenantPrefix + PlatformPermissionNames.LinkEmployees),
-    ("POST", "/api/platform/tenant-users/{tenantUserId:long}/employee-link/remove",
+    ("POST", "/api/platform/tenant-users/{tenantUserId}/employee-link/remove",
       PermissionPolicyNames.TenantPrefix + PlatformPermissionNames.UnlinkEmployees)
   ];
 

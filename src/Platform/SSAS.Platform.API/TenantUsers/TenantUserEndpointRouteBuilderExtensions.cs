@@ -70,7 +70,7 @@ public static class TenantUserEndpointRouteBuilderExtensions
 
     var group = endpoints.MapGroup("/api/platform").WithTags("Platform Tenant Users");
 
-    group.MapPost("/tenant-users/{tenantUserId:long}/deactivation", DeactivateAsync)
+    group.MapPost("/tenant-users/{tenantUserId}/deactivation", DeactivateAsync)
       .RequirePermission(PlatformPermissionNames.DeactivateUsers)
       .WithName("PlatformTenantUsersDeactivate");
 
@@ -78,7 +78,7 @@ public static class TenantUserEndpointRouteBuilderExtensions
     //
     // Separate from deactivation because restoring an account is a different decision from closing one —
     // the `GL.Drafts.Manage` / `GL.Journals.Post` precedent. Both constants already existed; neither is new.
-    group.MapPost("/tenant-users/{tenantUserId:long}/reactivation", ReactivateAsync)
+    group.MapPost("/tenant-users/{tenantUserId}/reactivation", ReactivateAsync)
       .RequirePermission(PlatformPermissionNames.ReactivateUsers)
       .WithName("PlatformTenantUsersReactivate");
 
@@ -110,10 +110,10 @@ public static class TenantUserEndpointRouteBuilderExtensions
     //
     // **There is no `MapDelete` anywhere in `src/`**, and this is not the task to introduce one. Removal is
     // spelled the way `/manager/remove` and `/holidays/remove` already spell it.
-    group.MapPost("/tenant-users/{tenantUserId:long}/employee-link", LinkEmployeeAsync)
+    group.MapPost("/tenant-users/{tenantUserId}/employee-link", LinkEmployeeAsync)
       .RequirePermission(PlatformPermissionNames.LinkEmployees)
       .WithName("PlatformTenantUsersLinkEmployee");
-    group.MapPost("/tenant-users/{tenantUserId:long}/employee-link/remove", UnlinkEmployeeAsync)
+    group.MapPost("/tenant-users/{tenantUserId}/employee-link/remove", UnlinkEmployeeAsync)
       .RequirePermission(PlatformPermissionNames.UnlinkEmployees)
       .WithName("PlatformTenantUsersUnlinkEmployee");
 

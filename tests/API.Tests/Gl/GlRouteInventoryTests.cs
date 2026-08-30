@@ -33,16 +33,16 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
   [
     ("POST", "/api/gl/accounts", GlPermissionNames.CreateAccounts),
     ("GET", "/api/gl/accounts", GlPermissionNames.ViewAccounts),
-    ("GET", "/api/gl/accounts/{accountId:guid}", GlPermissionNames.ViewAccounts),
-    ("PUT", "/api/gl/accounts/{accountId:guid}", GlPermissionNames.UpdateAccounts),
-    ("POST", "/api/gl/accounts/{accountId:guid}/deactivation", GlPermissionNames.DeactivateAccounts),
-    ("POST", "/api/gl/accounts/{accountId:guid}/activation", GlPermissionNames.DeactivateAccounts),
-    ("GET", "/api/gl/accounts/{accountId:guid}/balance", GlPermissionNames.ViewReports),
+    ("GET", "/api/gl/accounts/{accountId}", GlPermissionNames.ViewAccounts),
+    ("PUT", "/api/gl/accounts/{accountId}", GlPermissionNames.UpdateAccounts),
+    ("POST", "/api/gl/accounts/{accountId}/deactivation", GlPermissionNames.DeactivateAccounts),
+    ("POST", "/api/gl/accounts/{accountId}/activation", GlPermissionNames.DeactivateAccounts),
+    ("GET", "/api/gl/accounts/{accountId}/balance", GlPermissionNames.ViewReports),
 
     ("POST", "/api/gl/fiscal-years", GlPermissionNames.ManagePeriods),
     ("GET", "/api/gl/fiscal-periods", GlPermissionNames.ViewPeriods),
-    ("POST", "/api/gl/fiscal-periods/{fiscalPeriodId:guid}/closure", GlPermissionNames.ClosePeriods),
-    ("POST", "/api/gl/fiscal-periods/{fiscalPeriodId:guid}/reopening", GlPermissionNames.ClosePeriods),
+    ("POST", "/api/gl/fiscal-periods/{fiscalPeriodId}/closure", GlPermissionNames.ClosePeriods),
+    ("POST", "/api/gl/fiscal-periods/{fiscalPeriodId}/reopening", GlPermissionNames.ClosePeriods),
 
     // ---- THE TWO READS, ADDED IN T-098. THE HALF FP-011 NEVER BUILT.
     //
@@ -53,15 +53,15 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
     // **This inventory is where that pairing is visible at a glance**, which is why the permission column
     // exists — a reader can see that the four writes and the two reads are gated differently on purpose.
     ("GET", "/api/gl/journal-drafts", GlPermissionNames.ViewDrafts),
-    ("GET", "/api/gl/journal-drafts/{journalDraftId:guid}", GlPermissionNames.ViewDrafts),
+    ("GET", "/api/gl/journal-drafts/{journalDraftId}", GlPermissionNames.ViewDrafts),
     ("POST", "/api/gl/journal-drafts", GlPermissionNames.ManageDrafts),
-    ("PUT", "/api/gl/journal-drafts/{journalDraftId:guid}", GlPermissionNames.ManageDrafts),
-    ("POST", "/api/gl/journal-drafts/{journalDraftId:guid}/discard", GlPermissionNames.ManageDrafts),
-    ("POST", "/api/gl/journal-drafts/{journalDraftId:guid}/posting", GlPermissionNames.PostJournals),
+    ("PUT", "/api/gl/journal-drafts/{journalDraftId}", GlPermissionNames.ManageDrafts),
+    ("POST", "/api/gl/journal-drafts/{journalDraftId}/discard", GlPermissionNames.ManageDrafts),
+    ("POST", "/api/gl/journal-drafts/{journalDraftId}/posting", GlPermissionNames.PostJournals),
 
     ("GET", "/api/gl/journals", GlPermissionNames.ViewJournals),
-    ("GET", "/api/gl/journals/{journalEntryId:guid}", GlPermissionNames.ViewJournals),
-    ("POST", "/api/gl/journals/{journalEntryId:guid}/reversals", GlPermissionNames.ReverseJournals),
+    ("GET", "/api/gl/journals/{journalEntryId}", GlPermissionNames.ViewJournals),
+    ("POST", "/api/gl/journals/{journalEntryId}/reversals", GlPermissionNames.ReverseJournals),
 
     ("GET", "/api/gl/reports/trial-balance", GlPermissionNames.ViewReports)
   ];
@@ -162,7 +162,7 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
   public void A_posted_journal_exposes_no_mutation_route()
   {
     var underAJournal = host.MappedRoutes()
-      .Where(route => route.Pattern.Contains("/journals/{journalEntryId:guid}", StringComparison.Ordinal))
+      .Where(route => route.Pattern.Contains("/journals/{journalEntryId}", StringComparison.Ordinal))
       .ToArray();
 
     // Without this the two assertions below pass against an empty set (`DEC-L-070`).
@@ -182,7 +182,7 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
       .ToArray();
 
     Assert.All(posts, pattern =>
-      Assert.EndsWith("/journals/{journalEntryId:guid}/reversals", pattern, StringComparison.Ordinal));
+      Assert.EndsWith("/journals/{journalEntryId}/reversals", pattern, StringComparison.Ordinal));
   }
 
   [Fact]
@@ -193,7 +193,7 @@ public sealed class GlRouteInventoryTests(GlApiTestHost host) : IClassFixture<Gl
     // two-aggregate ruling made visible in the URL.
     Assert.Contains(
       host.MappedRoutes(),
-      route => route.Pattern.EndsWith("/journal-drafts/{journalDraftId:guid}/posting", StringComparison.Ordinal));
+      route => route.Pattern.EndsWith("/journal-drafts/{journalDraftId}/posting", StringComparison.Ordinal));
 
     Assert.DoesNotContain(host.MappedRoutes(), route => route.Pattern.EndsWith("/journals/posting", StringComparison.Ordinal));
   }

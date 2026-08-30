@@ -85,33 +85,33 @@ public static class DepartmentEndpointRouteBuilderExtensions
       .RequirePermission(HrPermissionNames.ViewDepartments)
       .WithName("HrDepartmentsSearch");
 
-    group.MapGet("/{departmentId:guid}", GetByIdAsync)
+    group.MapGet("/{departmentId}", GetByIdAsync)
       .RequirePermission(HrPermissionNames.ViewDepartments)
       .WithName("HrDepartmentsGetById");
 
-    group.MapGet("/{departmentId:guid}/children", GetChildrenAsync)
+    group.MapGet("/{departmentId}/children", GetChildrenAsync)
       .RequirePermission(HrPermissionNames.ViewDepartments)
       .WithName("HrDepartmentsChildren");
 
-    group.MapPut("/{departmentId:guid}", UpdateAsync)
+    group.MapPut("/{departmentId}", UpdateAsync)
       .RequirePermission(HrPermissionNames.UpdateDepartments)
       .WithName("HrDepartmentsUpdate");
 
     // ---- HIERARCHY. Two operations, two routes, both Update authority.
-    group.MapPost("/{departmentId:guid}/move", MoveAsync)
+    group.MapPost("/{departmentId}/move", MoveAsync)
       .RequirePermission(HrPermissionNames.UpdateDepartments)
       .WithName("HrDepartmentsMove");
 
-    group.MapPost("/{departmentId:guid}/move-to-root", MoveToRootAsync)
+    group.MapPost("/{departmentId}/move-to-root", MoveToRootAsync)
       .RequirePermission(HrPermissionNames.UpdateDepartments)
       .WithName("HrDepartmentsMoveToRoot");
 
     // ---- MANAGER. Assignment is a replacement, so one route covers assign and reassign.
-    group.MapPost("/{departmentId:guid}/manager", AssignManagerAsync)
+    group.MapPost("/{departmentId}/manager", AssignManagerAsync)
       .RequirePermission(HrPermissionNames.UpdateDepartments)
       .WithName("HrDepartmentsAssignManager");
 
-    group.MapPost("/{departmentId:guid}/manager/remove", RemoveManagerAsync)
+    group.MapPost("/{departmentId}/manager/remove", RemoveManagerAsync)
       .RequirePermission(HrPermissionNames.UpdateDepartments)
       .WithName("HrDepartmentsRemoveManager");
 
@@ -122,11 +122,11 @@ public static class DepartmentEndpointRouteBuilderExtensions
     // ordinary Update authority would let a caller who may only rename a department undo a closure someone
     // with the sensitive permission deliberately made. Same reasoning as HrPermissionNames'
     // DeactivateDepartments rationale — the permission names the capability, not the direction.
-    group.MapPost("/{departmentId:guid}/activate", ActivateAsync)
+    group.MapPost("/{departmentId}/activate", ActivateAsync)
       .RequirePermission(HrPermissionNames.DeactivateDepartments)
       .WithName("HrDepartmentsActivate");
 
-    group.MapPost("/{departmentId:guid}/deactivate", DeactivateAsync)
+    group.MapPost("/{departmentId}/deactivate", DeactivateAsync)
       .RequirePermission(HrPermissionNames.DeactivateDepartments)
       .WithName("HrDepartmentsDeactivate");
 
@@ -157,7 +157,7 @@ public static class DepartmentEndpointRouteBuilderExtensions
         return await next(context);
       });
 
-    group.MapPost("/{employeeId:guid}/change-department", ChangeEmployeeDepartmentAsync)
+    group.MapPost("/{employeeId}/change-department", ChangeEmployeeDepartmentAsync)
       .RequirePermission(HrPermissionNames.UpdateEmployees)
       .WithName("HrEmployeesChangeDepartment");
 

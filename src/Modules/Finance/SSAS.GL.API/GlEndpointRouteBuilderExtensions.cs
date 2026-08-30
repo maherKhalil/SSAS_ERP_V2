@@ -65,15 +65,15 @@ public static class GlEndpointRouteBuilderExtensions
       .RequirePermission(GlPermissionNames.CreateAccounts).WithName("GlAccountsCreate");
     group.MapGet("/accounts", SearchAccountsAsync)
       .RequirePermission(GlPermissionNames.ViewAccounts).WithName("GlAccountsSearch");
-    group.MapGet("/accounts/{accountId:guid}", GetAccountAsync)
+    group.MapGet("/accounts/{accountId}", GetAccountAsync)
       .RequirePermission(GlPermissionNames.ViewAccounts).WithName("GlAccountsGet");
-    group.MapPut("/accounts/{accountId:guid}", RenameAccountAsync)
+    group.MapPut("/accounts/{accountId}", RenameAccountAsync)
       .RequirePermission(GlPermissionNames.UpdateAccounts).WithName("GlAccountsRename");
-    group.MapPost("/accounts/{accountId:guid}/deactivation", DeactivateAccountAsync)
+    group.MapPost("/accounts/{accountId}/deactivation", DeactivateAccountAsync)
       .RequirePermission(GlPermissionNames.DeactivateAccounts).WithName("GlAccountsDeactivate");
-    group.MapPost("/accounts/{accountId:guid}/activation", ActivateAccountAsync)
+    group.MapPost("/accounts/{accountId}/activation", ActivateAccountAsync)
       .RequirePermission(GlPermissionNames.DeactivateAccounts).WithName("GlAccountsActivate");
-    group.MapGet("/accounts/{accountId:guid}/balance", GetAccountBalanceAsync)
+    group.MapGet("/accounts/{accountId}/balance", GetAccountBalanceAsync)
       .RequirePermission(GlPermissionNames.ViewReports).WithName("GlAccountsBalance");
 
     // ---- FISCAL CALENDAR. Company-level (`OD-GL-0004`), so these are company-scoped writes.
@@ -81,22 +81,22 @@ public static class GlEndpointRouteBuilderExtensions
       .RequirePermission(GlPermissionNames.ManagePeriods).WithName("GlFiscalYearsDefine");
     group.MapGet("/fiscal-periods", GetFiscalPeriodsAsync)
       .RequirePermission(GlPermissionNames.ViewPeriods).WithName("GlFiscalPeriodsList");
-    group.MapPost("/fiscal-periods/{fiscalPeriodId:guid}/closure", CloseFiscalPeriodAsync)
+    group.MapPost("/fiscal-periods/{fiscalPeriodId}/closure", CloseFiscalPeriodAsync)
       .RequirePermission(GlPermissionNames.ClosePeriods).WithName("GlFiscalPeriodsClose");
-    group.MapPost("/fiscal-periods/{fiscalPeriodId:guid}/reopening", ReopenFiscalPeriodAsync)
+    group.MapPost("/fiscal-periods/{fiscalPeriodId}/reopening", ReopenFiscalPeriodAsync)
       .RequirePermission(GlPermissionNames.ClosePeriods).WithName("GlFiscalPeriodsReopen");
 
     // ---- DRAFTS. The mutable half (`OD-GL-0007`).
     group.MapPost("/journal-drafts", CreateJournalDraftAsync)
       .RequirePermission(GlPermissionNames.ManageDrafts).WithName("GlJournalDraftsCreate");
-    group.MapPut("/journal-drafts/{journalDraftId:guid}", UpdateJournalDraftAsync)
+    group.MapPut("/journal-drafts/{journalDraftId}", UpdateJournalDraftAsync)
       .RequirePermission(GlPermissionNames.ManageDrafts).WithName("GlJournalDraftsUpdate");
-    group.MapPost("/journal-drafts/{journalDraftId:guid}/discard", DiscardJournalDraftAsync)
+    group.MapPost("/journal-drafts/{journalDraftId}/discard", DiscardJournalDraftAsync)
       .RequirePermission(GlPermissionNames.ManageDrafts).WithName("GlJournalDraftsDiscard");
 
     // Posting is on the DRAFT, because posting is the one-way promotion of that draft into a ledger entry.
     // Placing it under `/journals` would suggest a journal exists before it does.
-    group.MapPost("/journal-drafts/{journalDraftId:guid}/posting", PostJournalDraftAsync)
+    group.MapPost("/journal-drafts/{journalDraftId}/posting", PostJournalDraftAsync)
       .RequirePermission(GlPermissionNames.PostJournals).WithName("GlJournalDraftsPost");
 
     // ================================================================================================
@@ -119,15 +119,15 @@ public static class GlEndpointRouteBuilderExtensions
     // for, in its own words, *"a user who may prepare work for someone else to post"*.
     group.MapGet("/journal-drafts", SearchJournalDraftsAsync)
       .RequirePermission(GlPermissionNames.ViewDrafts).WithName("GlJournalDraftsSearch");
-    group.MapGet("/journal-drafts/{journalDraftId:guid}", GetJournalDraftAsync)
+    group.MapGet("/journal-drafts/{journalDraftId}", GetJournalDraftAsync)
       .RequirePermission(GlPermissionNames.ViewDrafts).WithName("GlJournalDraftsGetById");
 
     // ---- POSTED JOURNALS. Read-only, plus the one route that creates a correction.
     group.MapGet("/journals", SearchJournalsAsync)
       .RequirePermission(GlPermissionNames.ViewJournals).WithName("GlJournalsSearch");
-    group.MapGet("/journals/{journalEntryId:guid}", GetJournalAsync)
+    group.MapGet("/journals/{journalEntryId}", GetJournalAsync)
       .RequirePermission(GlPermissionNames.ViewJournals).WithName("GlJournalsGet");
-    group.MapPost("/journals/{journalEntryId:guid}/reversals", ReverseJournalAsync)
+    group.MapPost("/journals/{journalEntryId}/reversals", ReverseJournalAsync)
       .RequirePermission(GlPermissionNames.ReverseJournals).WithName("GlJournalsReverse");
 
     // ---- REPORTING.

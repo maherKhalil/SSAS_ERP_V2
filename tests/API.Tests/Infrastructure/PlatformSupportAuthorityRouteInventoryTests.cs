@@ -44,16 +44,16 @@ public sealed class PlatformSupportAuthorityRouteInventoryTests(HostWebApplicati
   [
     ("GET", "/api/platform/support/principals/"),
     ("POST", "/api/platform/support/principals/"),
-    ("GET", "/api/platform/support/principals/{principalId:long}"),
-    ("GET", "/api/platform/support/principals/{principalId:long}/assignments"),
-    ("GET", "/api/platform/support/principals/{principalId:long}/permissions"),
+    ("GET", "/api/platform/support/principals/{principalId}"),
+    ("GET", "/api/platform/support/principals/{principalId}/assignments"),
+    ("GET", "/api/platform/support/principals/{principalId}/permissions"),
 
     // ---- THE FOUR AUTHORITY TRANSITIONS. Granting, revoking, disabling and re-enabling a support
     // ---- principal all sit behind the single administer permission — see the vacuity note above.
-    ("POST", "/api/platform/support/principals/{principalId:long}/disable"),
-    ("POST", "/api/platform/support/principals/{principalId:long}/grant"),
-    ("POST", "/api/platform/support/principals/{principalId:long}/reenable"),
-    ("POST", "/api/platform/support/principals/{principalId:long}/revoke")
+    ("POST", "/api/platform/support/principals/{principalId}/disable"),
+    ("POST", "/api/platform/support/principals/{principalId}/grant"),
+    ("POST", "/api/platform/support/principals/{principalId}/reenable"),
+    ("POST", "/api/platform/support/principals/{principalId}/revoke")
   ];
 
   [Fact]

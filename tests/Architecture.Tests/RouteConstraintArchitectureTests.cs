@@ -42,17 +42,59 @@ public sealed class RouteConstraintArchitectureTests
   // a blanket ban with extra steps.
   private static readonly (string Route, string Sibling, string Why)[] Allowed = [];
 
+  // ⚠ A GROUP PREFIX IS A NAMED CONSTANT, NOT A LITERAL, AND BOTH CHECKS READ THE CALL SITE (T-259).
+  //
+  // `MapGroup(RoutePrefix)` carries no string for either check to read. Without resolution the
+  // constraint check cannot see the prefix's pattern at all, and the literal-pattern check reports the
+  // constant as "built rather than written" -- which is a false red: a named constant is exactly how a
+  // prefix SHOULD be written, and it is still a compile-time literal.
+  //
+  // `ApiContractRowGuardTests` already resolves constants this way for the same reason. Substituting
+  // them here makes a group prefix visible to both checks without loosening either.
+  private static readonly Regex ConstantDeclaration = new(
+    @"const\s+string\s+(\w+)\s*=\s*""([^""]*)""", RegexOptions.Compiled);
+
+  private static string WithConstantsResolved(string source)
+  {
+    foreach (Match declaration in ConstantDeclaration.Matches(source))
+    {
+      source = source.Replace(
+        "(" + declaration.Groups[1].Value + ")",
+        "(\"" + declaration.Groups[2].Value + "\")",
+        StringComparison.Ordinal);
+    }
+
+    return source;
+  }
+
   private static readonly Regex ConstrainedParameter = new(
     @"\{[A-Za-z0-9_]+:[^}]+\}", RegexOptions.Compiled);
 
+  // ⚠ `Group` IS IN THIS LIST BECAUSE A GROUP PREFIX IS PART OF EVERY ROUTE UNDER IT (T-259).
+  //
+  // The registration forms actually used in `src/` are `MapGet` (57), `MapPost` (85), `MapPut` (13),
+  // `MapGroup` (15) and `MapHealthChecks` (3). `MapDelete`, `MapPatch`, `MapMethods` and `MapFallback`
+  // are not used at all -- the first two are matched anyway, which costs nothing.
+  //
+  // **`MapGroup` was the gap.** A prefix like `MapGroup("/api/hr/{id:guid}")` would put a constraint on
+  // every route in the group, and neither the constraint check nor the literal-pattern check could see
+  // it. All fifteen prefixes resolve to plain literals today -- eleven written directly and four passed
+  // as a constant through a helper -- so the exposure is zero, which is the cheapest moment to close it.
+  //
+  // ⚠ AND A NEAR-MISS FOR ANYONE GREPPING: `src/` contains 83 bare `.Map(` calls and NOT ONE is a route.
+  // They are `ApiErrorMapper.Map(result.Error)`. A regex widened to bare `Map` would match all 83 and
+  // report a route surface three times its real size.
+  //
+  // `MapHealthChecks("/health")` stays out: it takes no route parameters, so there is nothing for a
+  // constraint to attach to.
   private static readonly Regex MapCall = new(
-    @"\.Map(?:Get|Post|Put|Delete|Patch)\(\s*""([^""]*)""",
+    @"\.Map(?:Get|Post|Put|Delete|Patch|Group)\(\s*""([^""]*)""",
     RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
   // The same call WITHOUT requiring a literal to follow. The gap between the two counts is the whole
   // subject of `Every_route_is_registered_with_a_literal_pattern`.
   private static readonly Regex AnyMapCall = new(
-    @"\.Map(?:Get|Post|Put|Delete|Patch)\s*\(",
+    @"\.Map(?:Get|Post|Put|Delete|Patch|Group)\s*\(",
     RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
   [Fact]
@@ -65,7 +107,7 @@ public sealed class RouteConstraintArchitectureTests
     foreach (var file in EndpointFiles())
     {
       scanned++;
-      var source = File.ReadAllText(file);
+      var source = WithConstantsResolved(File.ReadAllText(file));
 
       foreach (Match map in MapCall.Matches(source))
       {
@@ -138,7 +180,12 @@ public sealed class RouteConstraintArchitectureTests
       // discuss `MapGet` in prose constantly, and a comment mentioning one would count as a registration
       // with no literal after it. But a naive comment stripper would cut `"https://httpstatuses.com/400"`
       // in half at its `//`, so the stripper has to know it is inside a string.
-      var source = WithoutComments(File.ReadAllText(file));
+      var source = WithConstantsResolved(WithoutComments(File.ReadAllText(file)));
+
+      if (GroupPrefixThroughHelper.Contains(Path.GetFileName(file), StringComparer.Ordinal))
+      {
+        continue;
+      }
 
       var all = AnyMapCall.Matches(source).Count;
       var literal = MapCall.Matches(source).Count;
@@ -161,6 +208,51 @@ public sealed class RouteConstraintArchitectureTests
       string.Join("\n  ", offenders) +
       "\n\nWrite the pattern as a literal, or change the constraint guard to understand the construction " +
       "and say here how.");
+  }
+
+  // ⚠ ONE GROUP PREFIX ARRIVES THROUGH A PARAMETER, AND THIS IS THE CASE THE MESSAGE ABOVE ANTICIPATES.
+  //
+  // `PositionEndpointRouteBuilderExtensions` has a private `Group(endpoints, prefix, tag)` helper so that
+  // four route groups -- positions, job grades, salary grades and employee positions -- share one setup
+  // instead of copying it. Its `MapGroup(prefix)` therefore has no literal at the call site.
+  //
+  // **This is a helper factoring out duplication, not a pattern being computed.** Every one of the four
+  // callers passes a `const string`, so the prefixes are still compile-time literals -- they are simply
+  // one hop away. Rewriting it to satisfy the scan would restore four copies of the group setup, which
+  // is moving the artefact to suit the instrument.
+  //
+  // `Every_group_helper_caller_passes_a_constant` is the falsifier: the day a caller computes a prefix,
+  // this exemption stops being true and says so.
+  private static readonly string[] GroupPrefixThroughHelper =
+    ["PositionEndpointRouteBuilderExtensions.cs"];
+
+  [Fact]
+  public void Every_group_helper_caller_passes_a_constant()
+  {
+    foreach (var name in GroupPrefixThroughHelper)
+    {
+      var file = EndpointFiles().SingleOrDefault(path => Path.GetFileName(path) == name);
+      Assert.True(file is not null, $"{name} is exempted but no longer exists.");
+
+      var source = WithoutComments(File.ReadAllText(file!));
+      var constants = ConstantDeclaration.Matches(source)
+        .Select(declaration => declaration.Groups[1].Value)
+        .ToHashSet(StringComparer.Ordinal);
+
+      var calls = Regex.Matches(source, @"Group\(endpoints,\s*(\w+)\s*,");
+      Assert.True(calls.Count >= 4,
+        $"only {calls.Count} calls to the group helper were found in {name}; the exemption is being " +
+        "checked against nothing.");
+
+      foreach (Match call in calls)
+      {
+        var argument = call.Groups[1].Value;
+        Assert.True(constants.Contains(argument),
+          $"{name} passes `{argument}` to the group helper and it is not a `const string`. The prefix is " +
+          "no longer a compile-time literal, so the constraint guard cannot see it and this exemption " +
+          "must go.");
+      }
+    }
   }
 
   // Blanks the CONTENT of `//` and `/* */` comments while stepping over string literals, preserving length

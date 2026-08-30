@@ -541,6 +541,39 @@ than the member.**
 that sentence.** A number taken carefully, about the mechanism you happened to imagine, is the most
 persuasive way to be wrong.
 
+# Principle 16d – Controls Are Not Interchangeable, and a Floor Over a Union Is Half Blind
+
+**⚠ A FLOOR OVER A UNION CANNOT SEE ONE OF ITS MEMBERS COLLAPSE.** Measured 2026-08-30: a guard floored
+`fields.Concat(properties)` as a single number. **Breaking the field walk left the test green** — the
+property walk cleared the floor by itself — **so an offender held in a field would have gone undetected
+while the test reported success.** Floor each member separately. The plant is the only thing that found it,
+**and the defect was in the fix written an hour earlier for exactly this class.**
+
+**The control must match the SHAPE of what it protects:**
+
+| the guard | its control |
+|---|---|
+| a **regex matcher** | `Assert.Matches` on strings it must match, **plus a negative** so the pattern is not merely `.*` |
+| a **name test** | run the same `Name.Contains` for a term that must be present in the same collection |
+| a **type comparison** | floor the **enumerated members**, not the types walked |
+| a **reflected property** | **construct** a known positive and assert the filter selects it |
+
+**⚠ A guard over a legitimately empty set cannot borrow its control from the product.** No declared error code
+opts into detail, so the only way to prove that predicate is still read was to **build** an
+`ApiError(403, …, DetailAllowed: true)` and assert it is selected. **A known positive that does not exist must
+be constructed — and a guard whose subject is legitimately absent is the one most likely to have no control
+at all.**
+
+**⚠ AND ONE DEFECT CAN HIDE ANOTHER: FIXING THE FIRST IS WHAT MAKES THE SECOND OBSERVABLE.** A ban's pattern
+carried a `\b` that could not match `JwtSecurityTokenHandler` — **the canonical type of the family it
+existed to exclude.** Widening it immediately produced a false red on a file whose comment **explains at
+length why it must not take that dependency**: the scan did not strip comments, and **the hole had been
+hiding the prose-blindness behind it**, because the old pattern could not match that name anywhere at all.
+**A fix that surfaces a new failure is evidence the fix worked, not that it broke something.**
+
+**And when a new control fails on its first run, the prior is that the CONTROL is right.** It was written
+against the requirement; the pattern was written against whatever its author had in mind that day.
+
 # Principle 16c – Validate an Instrument Against Its Known Positive Before Trusting Its Negatives
 
 **An instrument that cannot flag its own known positive reports absences it has not earned.**

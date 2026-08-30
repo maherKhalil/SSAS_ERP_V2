@@ -479,14 +479,24 @@ the walk returns nothing), an enumeration over a **fixed type array** the compil
 as much of the answer as finding the broken ones** — of four guards flagged as unprotected on 2026-08-30,
 **two needed nothing**, and adding floors to them would have been ceremony.
 
-**⚠ And put the floor on the POST-FILTER count, because a walk rooted at a directory cannot vanish silently
-— a filter can.** Pointing a walk at a missing `src/PlatformX` throws `DirectoryNotFoundException`; renaming
-a project is caught by an exception, not by an empty result. **The silent failure is always downstream of
-the root**: a changed search pattern, a widened exclusion, a filter on a path segment that no longer
-matches — where every directory still exists and the array comes back empty anyway. That is precisely how
-the `PersistenceArchitectureTests` false green worked: it enumerated from the repository root, which always
-exists, and filtered on a segment. **A floor on the pre-filter count would have looked prudent and caught
-nothing.**
+**⚠ FLOOR THE QUANTITY THE ASSERTION ACTUALLY READS.** Not the files enumerated, not the types loaded — **the
+number the failing assertion is computed from.** `Assert.True(routes >= 120)` where `routes` is what the
+regex matched; `Assert.True(clauses >= 70)` where `clauses` is what the token search found.
+
+**This supersedes an earlier formulation of "floor the post-filter set", and it is strictly better.**
+Post-filter flooring requires you to *identify the filters*, and the identification is the step that goes
+wrong. **Flooring what the assertion reads requires nothing: that quantity is downstream of every filter by
+construction, so filter coverage comes free.** It is also what you naturally write if you ask the right
+question — *could this assertion have meant anything?*
+
+**The cheap test for any floor: if the floored quantity is not the one the failing assertion reads, it is in
+the wrong place.** A root cannot vanish silently and a filter can — pointing a walk at a missing directory
+throws, while a renamed segment empties a predicate with every directory still present — **but you do not
+need to reason about which is which if the floor sits on the asserted quantity.**
+
+**Measured 2026-08-30: five guards floored this way all redden when their real filter is broken** — a
+namespace fragment, a file-extension predicate, a route-matching regex, a token search. **The six guards that
+failed the same probe had no floor at all, so there was nothing for a filter to be downstream of.**
 
 **Prefer a CROSS-CHECK to a floor wherever a second derivation of the set exists.** A floor catches the walk
 collapsing; it **cannot catch one item dropping out** — eleven assemblies clear a floor of eight while the

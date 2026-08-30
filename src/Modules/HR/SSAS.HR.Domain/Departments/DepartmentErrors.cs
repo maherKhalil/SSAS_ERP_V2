@@ -17,10 +17,12 @@ namespace SSAS.HR.Domain.Departments;
 public static class DepartmentErrors
 {
   public static readonly Error InvalidCode =
-    new("Department.InvalidCode", "The department code is invalid.");
+    new("Department.InvalidCode", "The department code is invalid.",
+    Field: "code");
 
   public static readonly Error InvalidName =
-    new("Department.InvalidName", "The department name is invalid.");
+    new("Department.InvalidName", "The department name is invalid.",
+    Field: "name");
 
   public static readonly Error InvalidActor =
     new("Department.InvalidActor", "A trusted lifecycle actor is required.");

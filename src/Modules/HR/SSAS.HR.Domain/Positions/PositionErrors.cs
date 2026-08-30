@@ -18,10 +18,12 @@ public static class PositionErrors
 {
   // ---- POSITION IDENTITY.
   public static readonly Error InvalidCode =
-    new("Position.InvalidCode", "The position code is invalid.");
+    new("Position.InvalidCode", "The position code is invalid.",
+    Field: "code");
 
   public static readonly Error InvalidTitle =
-    new("Position.InvalidTitle", "The position title is invalid.");
+    new("Position.InvalidTitle", "The position title is invalid.",
+    Field: "title");
 
   public static readonly Error InvalidActor =
     new("Position.InvalidActor", "A trusted lifecycle actor is required.");
@@ -32,16 +34,20 @@ public static class PositionErrors
   // separate aggregates, and a refusal that cannot say WHICH ladder rejected the value would be answered
   // identically for two different mistakes.
   public static readonly Error InvalidJobGradeCode =
-    new("Position.InvalidJobGradeCode", "The job grade code is invalid.");
+    new("Position.InvalidJobGradeCode", "The job grade code is invalid.",
+    Field: "code");
 
   public static readonly Error InvalidJobGradeName =
-    new("Position.InvalidJobGradeName", "The job grade name is invalid.");
+    new("Position.InvalidJobGradeName", "The job grade name is invalid.",
+    Field: "name");
 
   public static readonly Error InvalidSalaryGradeCode =
-    new("Position.InvalidSalaryGradeCode", "The salary grade code is invalid.");
+    new("Position.InvalidSalaryGradeCode", "The salary grade code is invalid.",
+    Field: "code");
 
   public static readonly Error InvalidSalaryGradeName =
-    new("Position.InvalidSalaryGradeName", "The salary grade name is invalid.");
+    new("Position.InvalidSalaryGradeName", "The salary grade name is invalid.",
+    Field: "name");
 
   // ---- RANK ORDER (DEC-POS-0006).
   //
@@ -49,7 +55,8 @@ public static class PositionErrors
   // per company and ladder — so its refusal arrives with the handler that translates index violations, in
   // Phase 2, rather than as a constant here that nothing can raise.
   public static readonly Error InvalidRankOrder =
-    new("Position.InvalidRankOrder", "The grade rank order must be a positive number.");
+    new("Position.InvalidRankOrder", "The grade rank order must be a positive number.",
+    Field: "rankOrder");
 
   // ---- THE SALARY BAND (DEC-POS-0016, DEC-POS-0027).
   //
@@ -70,7 +77,8 @@ public static class PositionErrors
 
   // ---- GRADE REFERENCE.
   public static readonly Error InvalidGradeReference =
-    new("Position.InvalidGradeReference", "The grade reference is invalid.");
+    new("Position.InvalidGradeReference", "The grade reference is invalid.",
+    Field: "salaryGradeId");
 
   // ---- LIFECYCLE.
   public static readonly Error InvalidTransition =

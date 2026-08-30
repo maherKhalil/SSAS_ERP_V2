@@ -27,7 +27,14 @@ public sealed class DepartmentApiArchitectureTests
   [Fact]
   public void The_api_layer_never_holds_the_department_read_service()
   {
-    var offenders = HrApiAssembly.GetTypes()
+    // ⚠ FOUR TESTS HERE PASSED OVER AN EMPTY TYPE SET (T-258). The floor is on the assembly's types,
+    // which is what both offender scans read.
+    var hrApiTypes = HrApiAssembly.GetTypes();
+    Assert.True(hrApiTypes.Length >= 10,
+      $"only {hrApiTypes.Length} HR API types were scanned; the assembly reference is wrong or the " +
+      "enumeration collapsed, and an empty offender list below would mean nothing.");
+
+    var offenders = hrApiTypes
       .SelectMany(type => type.GetFields(
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
         .Select(field => (Type: type, Member: field.Name, field.FieldType))
@@ -50,7 +57,12 @@ public sealed class DepartmentApiArchitectureTests
   {
     var forbidden = new[] { typeof(IDepartmentScopeResolver), typeof(DepartmentReadScope) };
 
-    var offenders = HrApiAssembly.GetTypes()
+    var hrApiTypes = HrApiAssembly.GetTypes();
+    Assert.True(hrApiTypes.Length >= 10,
+      $"only {hrApiTypes.Length} HR API types were scanned; an empty offender list below would mean " +
+      "nothing.");
+
+    var offenders = hrApiTypes
       .SelectMany(type => type.GetMethods(
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static |
         BindingFlags.DeclaredOnly))

@@ -97,8 +97,18 @@ public sealed class TenantCutoverFreezeArchitectureTests
     }
 
     // No copy, cache or destructive-cleanup component arrived alongside the freeze.
-    var unexpected = InfrastructureAssembly.GetTypes()
+    // ⚠ FIVE TESTS HERE PASSED OVER AN EMPTY TYPE SET (T-258). The floor is on what was SCANNED —
+    // an empty OFFENDER list is the success condition and can say nothing about whether anything was
+    // looked at. The namespace predicate is what collapses quietly: rename it and every type survives.
+    var tenantStorage = InfrastructureAssembly.GetTypes()
       .Where(type => !type.IsNested && type.Namespace?.Contains("TenantStorage", StringComparison.Ordinal) == true)
+      .ToArray();
+
+    Assert.True(tenantStorage.Length >= 10,
+      $"only {tenantStorage.Length} TenantStorage types were scanned; the namespace predicate has " +
+      "stopped matching and 'no deferred components' below would mean nothing.");
+
+    var unexpected = tenantStorage
       .Where(type => DeferredComponents
         .Any(term => type.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))
       .Select(type => type.FullName)

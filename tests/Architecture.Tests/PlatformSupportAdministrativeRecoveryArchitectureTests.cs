@@ -42,10 +42,16 @@ public sealed class PlatformSupportAdministrativeRecoveryArchitectureTests
     // Phase 4D exposes authority ADMINISTRATION (Register/Grant/Revoke/Disable/Re-enable/read). Genesis and
     // administrative recovery remain an internal bootstrap subsystem with no HTTP surface of its own and are
     // never invoked from a request path — the mutation endpoints must not "repair" authority inline.
+    // ⚠ THREE TESTS HERE PASSED OVER AN EMPTY TYPE SET (T-258). `Assert.DoesNotContain` over an empty
+    // array is vacuously true, so the count is asserted before the names are.
     var apiTypes = typeof(PlatformAuthenticatedResponse).Assembly
       .GetTypes()
       .Select(type => type.Name)
       .ToArray();
+
+    Assert.True(apiTypes.Length >= 20,
+      $"only {apiTypes.Length} Platform API types were scanned; the enumeration collapsed and every " +
+      "`DoesNotContain` below is vacuously true.");
 
     Assert.DoesNotContain("PlatformSupportRecoveryEndpointRouteBuilderExtensions", apiTypes);
     Assert.DoesNotContain("PlatformSupportBootstrapEndpointRouteBuilderExtensions", apiTypes);

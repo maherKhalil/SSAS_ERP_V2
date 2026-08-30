@@ -34,13 +34,36 @@ public sealed class DepartmentApiArchitectureTests
       $"only {hrApiTypes.Length} HR API types were scanned; the assembly reference is wrong or the " +
       "enumeration collapsed, and an empty offender list below would mean nothing.");
 
-    var offenders = hrApiTypes
-      .SelectMany(type => type.GetFields(
-        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
-        .Select(field => (Type: type, Member: field.Name, field.FieldType))
-        .Concat(type.GetProperties(
-          BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
-          .Select(property => (Type: type, Member: property.Name, FieldType: property.PropertyType))))
+    // ⚠ FLOOR THE MEMBERS, NOT THE TYPES (T-263). The floor above proves types were found; the assertion
+    // reads MEMBERS of those types. Wrong binding flags yield an empty member list from a healthy type
+    // list, and `Assert.Empty` then passes having inspected nothing.
+    var fields = hrApiTypes
+      .SelectMany(type => type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+        .Select(field => (Type: type, Member: field.Name, field.FieldType)))
+      .ToArray();
+
+    var properties = hrApiTypes
+      .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+        .Select(property => (Type: type, Member: property.Name, FieldType: property.PropertyType)))
+      .ToArray();
+
+    // ⚠ FLOORED SEPARATELY BECAUSE THEY ARE TWO WALKS, AND A PLANT PROVED ONE FLOOR CANNOT SEE BOTH.
+    //
+    // These were concatenated under a single floor of 20. Breaking the FIELD walk's binding flags left the
+    // property walk healthy, the combined count still cleared 20, and the ban went green -- **a field-held
+    // offender would have gone undetected while this test reported success.** The rule spans fields AND
+    // properties, so both layers need a floor, not their sum.
+    Assert.True(fields.Length >= 5,
+      $"{hrApiTypes.Length} HR API types yielded only {fields.Length} fields; the field walk has collapsed " +
+      "and a field-held offender would not be seen.");
+
+    Assert.True(properties.Length >= 20,
+      $"{hrApiTypes.Length} HR API types yielded only {properties.Length} properties; the property walk " +
+      "has collapsed and a property-held offender would not be seen.");
+
+    var members = fields.Concat(properties).ToArray();
+
+    var offenders = members
       .Where(member => member.FieldType == typeof(IDepartmentReadService))
       .Select(member => $"{member.Type.Name}.{member.Member}")
       .ToArray();
@@ -62,11 +85,23 @@ public sealed class DepartmentApiArchitectureTests
       $"only {hrApiTypes.Length} HR API types were scanned; an empty offender list below would mean " +
       "nothing.");
 
-    var offenders = hrApiTypes
+    // ⚠ FLOOR THE PARAMETERS, NOT THE TYPES (T-263). The assertion reads method PARAMETERS; a type walk
+    // that stays healthy while `DeclaredOnly` or the flags stop yielding methods gives an empty list and a
+    // green ban. `forbidden` is asserted too -- an empty forbidden set makes `Contains` match nothing.
+    Assert.NotEmpty(forbidden);
+
+    var parameters = hrApiTypes
       .SelectMany(type => type.GetMethods(
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static |
         BindingFlags.DeclaredOnly))
       .SelectMany(method => method.GetParameters().Select(parameter => (method, parameter.ParameterType)))
+      .ToArray();
+
+    Assert.True(parameters.Length >= 20,
+      $"{hrApiTypes.Length} HR API types yielded only {parameters.Length} method parameters; the walk has " +
+      "collapsed and the ban below reads nothing.");
+
+    var offenders = parameters
       .Where(entry => forbidden.Contains(entry.ParameterType))
       .Select(entry => $"{entry.method.DeclaringType?.Name}.{entry.method.Name}")
       .ToArray();

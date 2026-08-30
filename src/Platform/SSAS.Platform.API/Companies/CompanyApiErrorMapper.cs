@@ -13,6 +13,22 @@ public static class CompanyApiErrorMapper
   public static readonly ApiError NotFound = new(404, "company.not_found");
   public static readonly ApiError TransitionInvalid = new(409, "company.transition_invalid");
 
+  // ⚠ A PRECONDITION, NOT A CORRECTION (T-268).
+  //
+  // 129 domain codes collapse into `request.invalid` and 128 of them say **fix your input**. This one says
+  // *an active company must be selected before company-scoped operations* -- **you are not in a state
+  // where this input means anything.** The remedy is a different call followed by the same request
+  // unchanged, and a client that cannot tell it from a bad field name cannot offer the company picker.
+  //
+  // The status stays 400: it IS a client error. **The status is the category; the code is the
+  // instruction**, and only the instruction differs.
+  //
+  // Declared here beside the other `company.*` codes rather than in the shared `ApiErrors`, because
+  // `The_shared_api_project_names_no_business_concept` refuses a business noun in BuildingBlocks. **The
+  // repetition across the four mappers is that rule being obeyed** -- the gate refused the shared version
+  // of this very constant.
+  public static readonly ApiError CompanySelectionRequired = new(400, "company.selection_required");
+
   // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
   //
   // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
@@ -70,7 +86,7 @@ public static class CompanyApiErrorMapper
 
       // Request-shaped: a malformed or absent selection is something the caller can fix.
       // `Company.AssignmentInvalid` refuses a caller-supplied company list at `UserCompanyAccess.cs:61`.
-      "Company.SelectionRequired" => ProblemResults.CompanySelectionRequired,
+      "Company.SelectionRequired" => CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ProblemResults.RequestInvalid,
       "Company.AssignmentInvalid" => ProblemResults.RequestInvalid,
       // ---- EXPLICIT, THOUGH IT MATCHES THE DEFAULT (T-093, T-080's precedent).

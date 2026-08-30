@@ -398,17 +398,36 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   // suite's convention — the stub establisher does not read the header, and the REAL one's five-step
   // validation is proven against live state in Integration.Tests. What this layer owns, and what is
   // asserted here, is the answer that reaches the caller.
+  // ---- ⚠ AND THE TWO CONDITIONS ANSWER DIFFERENTLY SINCE T-268, DELIBERATELY.
+  //
+  // Both arrive by the same route and look alike, which is why they are asserted side by side rather than
+  // in separate tests. Only one of them is a **precondition**:
+  //
+  //   `Company.InvalidSelectionFormat` -> `request.invalid`
+  //       The header is malformed. **Fix your input and try again** -- an ordinary validation failure,
+  //       and one of the 129 domain codes that collapse into the generic code.
+  //
+  //   `Company.SelectionRequired`      -> `company.selection_required`
+  //       The header is absent and no company is selected. **You are not in a state where this request
+  //       means anything**: the remedy is a DIFFERENT call -- select a company -- and then this same
+  //       request unchanged. A client that cannot tell it from a malformed field cannot offer the picker.
+  //
+  // Both stay 400. Each is a client error, and the actionable difference is carried by the code, because
+  // **the status is the category and the code is the instruction.** A reader who finds this assertion
+  // changed should be able to see from here that it was intended.
   [Theory]
-  [InlineData("Company.SelectionRequired")]
-  [InlineData("Company.InvalidSelectionFormat")]
-  public async Task D30_A_missing_or_malformed_company_header_is_a_validation_failure(string code)
+  [InlineData("Company.SelectionRequired", "company.selection_required")]
+  [InlineData("Company.InvalidSelectionFormat", "request.invalid")]
+  public async Task D30_A_missing_company_selection_is_a_precondition_and_a_malformed_one_is_not(
+    string code, string expectedWireCode)
   {
     host.CompanyContext.Error = new SSAS.BuildingBlocks.Domain.Error(code, "malformed");
 
     var response = await Send(HttpMethod.Get, Route, ViewToken);
 
+    // Still 400 for both -- the category did not change, only the instruction.
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    Assert.Equal("request.invalid", await DepartmentApiTestHost.ProblemCodeAsync(response));
+    Assert.Equal(expectedWireCode, await DepartmentApiTestHost.ProblemCodeAsync(response));
   }
 
   [Fact]

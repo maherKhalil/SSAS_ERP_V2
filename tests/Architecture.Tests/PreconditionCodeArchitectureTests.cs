@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.RegularExpressions;
 using SSAS.BuildingBlocks.Api.Transport;
 
@@ -60,16 +61,54 @@ public sealed class PreconditionCodeArchitectureTests
       "codes still collapse into it, so the arm regex has stopped matching and the test above proves nothing.");
   }
 
+  // ⚠ THE CONSTANT IS DECLARED FOUR TIMES, SO THE RISK IS DRIFT BETWEEN THEM.
+  //
+  // It cannot live in the shared `ApiErrors`: `The_shared_api_project_names_no_business_concept` refuses a
+  // business noun in BuildingBlocks, and it refused this very constant when it was written there. **So the
+  // repetition is the rule being obeyed** -- and the cost of obeying it is that four declarations can
+  // disagree. One mapper answering `company.selection_requires` or a 409 would be invisible to every other
+  // test, and visible to a caller of exactly one module.
   [Fact]
-  public void The_precondition_code_is_distinct_from_the_generic_one()
+  public void All_four_declarations_of_the_precondition_code_agree_and_differ_from_the_generic_one()
   {
-    Assert.NotEqual(ApiErrors.RequestInvalid.Code, ApiErrors.CompanySelectionRequired.Code);
-    Assert.Equal("company.selection_required", ApiErrors.CompanySelectionRequired.Code);
+    var declared = ModuleApiAssemblies()
+      .SelectMany(assembly => assembly.GetTypes())
+      .SelectMany(type => type.GetFields(BindingFlags.Public | BindingFlags.Static))
+      .Where(field => field.FieldType == typeof(ApiError)
+        && field.Name == "CompanySelectionRequired")
+      .Select(field => (Owner: field.DeclaringType!.Name, Error: (ApiError)field.GetValue(null)!))
+      .ToArray();
 
-    // Same status deliberately: it is a client error either way, and the actionable difference is carried
-    // by the code rather than by the category.
-    Assert.Equal(ApiErrors.RequestInvalid.StatusCode, ApiErrors.CompanySelectionRequired.StatusCode);
+    // The floor reads the quantity the assertions read. Four mappers answer this code; a reflection walk
+    // that found fewer would let 'they all agree' be true of a set too small to disagree.
+    Assert.True(declared.Length >= 4,
+      $"only {declared.Length} declarations of CompanySelectionRequired were found across the module API " +
+      "assemblies; four mappers answer this code, so the walk has degraded.");
+
+    var disagreeing = declared
+      .Where(row => row.Error.Code != "company.selection_required" || row.Error.StatusCode != 400)
+      .Select(row => $"{row.Owner}: {row.Error.StatusCode} {row.Error.Code}")
+      .ToArray();
+
+    Assert.True(disagreeing.Length == 0,
+      "a mapper declares the company precondition differently from the others, so callers of that one " +
+      "module get a different answer for the same condition:\n  " + string.Join("\n  ", disagreeing));
+
+    // Distinct from the generic code, which is the whole point of the item...
+    Assert.NotEqual(ApiErrors.RequestInvalid.Code, declared[0].Error.Code);
+
+    // ...but deliberately the SAME status. It is a client error either way; the actionable difference is
+    // carried by the code, because the code is what a client branches on.
+    Assert.Equal(ApiErrors.RequestInvalid.StatusCode, declared[0].Error.StatusCode);
   }
+
+  private static Assembly[] ModuleApiAssemblies() =>
+    [.. Directory
+      .EnumerateFiles(AppContext.BaseDirectory, "SSAS.*.API.dll")
+      .Select(RepositoryPaths.ProjectName)
+      .Where(name => name is not null)
+      .Distinct(StringComparer.Ordinal)
+      .Select(name => Assembly.Load(name!))];
 
   private const string ArmPattern = "\"([A-Za-z._]+)\"\\s*=>\\s*([A-Za-z.]+)\\s*,";
 

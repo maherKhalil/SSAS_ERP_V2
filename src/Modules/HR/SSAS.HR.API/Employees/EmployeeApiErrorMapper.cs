@@ -34,6 +34,22 @@ public static class EmployeeApiErrorMapper
   public static readonly ApiError NationalIdConflict = new(409, "employee.national_id_conflict");
   public static readonly ApiError TransitionInvalid = new(409, "employee.transition_invalid");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
+
+  // ⚠ A PRECONDITION, NOT A CORRECTION (T-268).
+  //
+  // 129 domain codes collapse into `request.invalid` and 128 of them say **fix your input**. This one
+  // says *an active company must be selected before company-scoped operations* -- **you are not in a
+  // state where this input means anything.** The remedy is a different call followed by the same request
+  // unchanged, and a client that cannot tell it from a bad field name cannot offer the company picker.
+  //
+  // The status stays 400: it IS a client error. **The status is the category; the code is the
+  // instruction**, and only the instruction differs.
+  //
+  // Declared here rather than in the shared `ApiErrors`, for the same reason `CompanyScopeDenied` above
+  // is: `The_shared_api_project_names_no_business_concept` refuses a business noun in BuildingBlocks.
+  // **The repetition across mappers is that rule being obeyed, not duplication** -- the gate refused the
+  // shared version of this very constant.
+  public static readonly ApiError CompanySelectionRequired = new(400, "company.selection_required");
   public static readonly ApiError BranchScopeDenied = new(403, "branch.scope_denied");
   public static readonly ApiError BranchSelectionRequired = new(409, "branch.selection_required");
 
@@ -83,7 +99,7 @@ public static class EmployeeApiErrorMapper
       //
       // A missing or malformed X-Company-Id is a MALFORMED REQUEST. The caller can already see their own
       // header, so saying so discloses nothing — and a generic denial would leave them guessing at a typo.
-      "Company.SelectionRequired" => ApiErrors.CompanySelectionRequired,
+      "Company.SelectionRequired" => CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
 
       // Every VALIDATION outcome collapses to one answer: unauthorized, inactive, wrong tenant and

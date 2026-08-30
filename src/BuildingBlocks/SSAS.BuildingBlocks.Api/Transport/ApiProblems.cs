@@ -80,17 +80,6 @@ public static class ApiErrors
 {
   public static readonly ApiError RequestInvalid = new(400, "request.invalid");
 
-  // ⚠ A PRECONDITION, NOT A CORRECTION (T-268).
-  //
-  // 129 domain codes collapse into `request.invalid`, and 128 of them say **fix your input**. This one
-  // says *an active company must be selected before company-scoped operations* -- **you are not in a
-  // state where this input means anything.** The remedy is a different call followed by the same
-  // request unchanged, and a client that cannot tell this from a bad field name cannot offer the
-  // company picker. It reaches four modules.
-  //
-  // The status stays 400: it IS a client error, the caller did not select a company. **The status is
-  // the category; the code is the instruction**, and the instruction is the part that differs.
-  public static readonly ApiError CompanySelectionRequired = new(400, "company.selection_required");
 
   // ⚠ THREE CODES THAT USED TO BE `request.invalid`, AND THE REASON IS THE CALLER'S NEXT MOVE (T-260).
   //

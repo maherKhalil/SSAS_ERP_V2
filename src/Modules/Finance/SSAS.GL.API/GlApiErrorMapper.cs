@@ -59,6 +59,22 @@ public static class GlApiErrorMapper
   public static readonly ApiError Immutable = new(409, "gl.journal_immutable");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
 
+  // ⚠ A PRECONDITION, NOT A CORRECTION (T-268).
+  //
+  // 129 domain codes collapse into `request.invalid` and 128 of them say **fix your input**. This one
+  // says *an active company must be selected before company-scoped operations* -- **you are not in a
+  // state where this input means anything.** The remedy is a different call followed by the same request
+  // unchanged, and a client that cannot tell it from a bad field name cannot offer the company picker.
+  //
+  // The status stays 400: it IS a client error. **The status is the category; the code is the
+  // instruction**, and only the instruction differs.
+  //
+  // Declared here rather than in the shared `ApiErrors`, for the same reason `CompanyScopeDenied` above
+  // is: `The_shared_api_project_names_no_business_concept` refuses a business noun in BuildingBlocks.
+  // **The repetition across mappers is that rule being obeyed, not duplication** -- the gate refused the
+  // shared version of this very constant.
+  public static readonly ApiError CompanySelectionRequired = new(400, "company.selection_required");
+
   // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
   //
   // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
@@ -125,7 +141,7 @@ public static class GlApiErrorMapper
       "Gl.WritePermissionDenied" => ApiErrors.Forbidden,
       "Gl.CompanyScopeDenied" => CompanyScopeDenied,
       "Company.InvalidSelection" => CompanyScopeDenied,
-      "Company.SelectionRequired" => ApiErrors.CompanySelectionRequired,
+      "Company.SelectionRequired" => CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
       "Company.ContextRequired" => ApiErrors.Forbidden,
 

@@ -21,7 +21,6 @@ public static class ProblemResults
   // Shared transport failures common to every admin feature. Aliases of the shared definitions rather than
   // copies, so Platform and HR cannot drift to different codes for the same condition.
   public static readonly ApiError RequestInvalid = ApiErrors.RequestInvalid;
-  public static readonly ApiError CompanySelectionRequired = ApiErrors.CompanySelectionRequired;
   public static readonly ApiError RowVersionInvalid = ApiErrors.RowVersionInvalid;
   public static readonly ApiError Forbidden = ApiErrors.Forbidden;
   public static readonly ApiError ConcurrencyConflict = ApiErrors.ConcurrencyConflict;

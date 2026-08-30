@@ -21,11 +21,13 @@ public static class LeaveErrors
   // ---- LEAVE TYPES.
   public static readonly Error InvalidLeaveTypeCode = new(
     "Attendance.LeaveTypeCodeInvalid",
-    "A leave type code is required and must be at most 32 characters.");
+    "A leave type code is required and must be at most 32 characters.",
+    Field: "code");
 
   public static readonly Error InvalidLeaveTypeName = new(
     "Attendance.LeaveTypeNameInvalid",
-    "A leave type name is required and must be at most 200 characters.");
+    "A leave type name is required and must be at most 200 characters.",
+    Field: "name");
 
   public static readonly Error InvalidLeaveBehaviour = new(
     "Attendance.LeaveBehaviourInvalid",
@@ -136,7 +138,8 @@ public static class LeaveErrors
 
   public static readonly Error InvalidDecisionNote = new(
     "Attendance.LeaveDecisionNoteInvalid",
-    "A leave decision note must be at most 1000 characters and cannot contain control characters.");
+    "A leave decision note must be at most 1000 characters and cannot contain control characters.",
+    Field: "decisionNote");
 
   // ---- APPROVAL ROUTING (OD-ATT-0007).
   public static readonly Error ApproverRequired = new(

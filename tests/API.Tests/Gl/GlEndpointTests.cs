@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using SSAS.GL.Application.Permissions;
 using SSAS.GL.Application.Reads;
@@ -119,6 +120,47 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // ================================================================================================
   // STRICT READING
   // ================================================================================================
+
+  // ⚠ THE REFUSAL NAMES THE INPUT IT CONCERNS, END TO END (T-269).
+  //
+  // Asserted through a real request rather than on the constant, because the field has to survive four
+  // hops it did not used to make: the value object attaching it to the domain `Error`, the mapper carrying
+  // it onto the `ApiError`, `ApiProblems` choosing to project it, and the extension surviving
+  // serialization. A test on `AccountErrors.InvalidCode` proves none of that.
+  //
+  // `code` and `name` are the whole payload here and both can fail the same way, so **a caller told only
+  // `request.invalid` cannot mark either.** That is the collapse this addresses: 129 domain codes answer
+  // with one wire code, and the field is what makes the answer actionable rather than merely readable.
+  [Fact]
+  public async Task A_refusal_names_the_input_it_concerns()
+  {
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/accounts", host.TokenWith(GlPermissionNames.CreateAccounts),
+      """{"code":"","name":"Receivables"}"""));
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await GlApiTestHost.ProblemCodeAsync(response));
+
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Equal("code", document.RootElement.GetProperty("field").GetString());
+  }
+
+  // And a refusal that concerns NO single input carries no `field` at all -- absent, not null. A client
+  // binding to it would otherwise be told to mark an input called `null`.
+  [Fact]
+  public async Task A_refusal_that_names_no_input_carries_no_field_member()
+  {
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/accounts", host.TokenWith(GlPermissionNames.CreateAccounts),
+      """{"code":"4100","name":"Receivables","surprise":true}"""));
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.False(document.RootElement.TryGetProperty("field", out _));
+  }
 
   [Fact]
   [Trait("Decision", "TS-GL-0026")]

@@ -7,7 +7,8 @@ public static class CalendarErrors
 {
   public static readonly Error InvalidCode = new(
     "Gl.FiscalYearCodeInvalid",
-    "A fiscal year code is required and must be at most 32 characters.");
+    "A fiscal year code is required and must be at most 32 characters.",
+    Field: "code");
 
   public static readonly Error InvalidRange = new(
     "Gl.FiscalYearRangeInvalid",

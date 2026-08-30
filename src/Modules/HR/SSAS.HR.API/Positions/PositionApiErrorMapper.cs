@@ -93,13 +93,13 @@ public static class PositionApiErrorMapper
   // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
   // it and showing them would separate a branch that does not exist from one that is forbidden.
   public static ApiError MapPosition(Error error) =>
-    MapPositionCore(error).Explaining(error.Message);
+    MapPositionCore(error).Explaining(error.Message, error.Field);
 
   public static ApiError MapJobGrade(Error error) =>
-    MapJobGradeCore(error).Explaining(error.Message);
+    MapJobGradeCore(error).Explaining(error.Message, error.Field);
 
   public static ApiError MapSalaryGrade(Error error) =>
-    MapSalaryGradeCore(error).Explaining(error.Message);
+    MapSalaryGradeCore(error).Explaining(error.Message, error.Field);
 
   private static ApiError MapPositionCore(Error error)
   {

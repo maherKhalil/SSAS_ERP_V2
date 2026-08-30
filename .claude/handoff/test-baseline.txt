@@ -14,8 +14,8 @@
 #     produce, so they will appear on the first green PHASE run and persist after it.
 #
 # suite|configuration|total
-API|Debug|926
-Architecture|Debug|593
+API|Debug|928
+Architecture|Debug|596
 Attendance|Debug|81
 Finance|Debug|47
 HR|Debug|326

@@ -28,11 +28,13 @@ public static class JournalErrors
 
   public static readonly Error InvalidDescription = new(
     "Gl.JournalDescriptionInvalid",
-    "A journal description is required and must be at most 512 characters.");
+    "A journal description is required and must be at most 512 characters.",
+    Field: "description");
 
   public static readonly Error InvalidReference = new(
     "Gl.JournalReferenceInvalid",
-    "A journal reference must be at most 128 characters.");
+    "A journal reference must be at most 128 characters.",
+    Field: "reference");
 
   public static readonly Error DraftNotFound = new(
     "Gl.JournalDraftNotFound",

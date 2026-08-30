@@ -10,7 +10,8 @@ public static class AttendancePeriodErrors
 
   public static readonly Error InvalidName = new(
     "Attendance.PeriodNameInvalid",
-    "An attendance period name is required and must be at most 200 characters.");
+    "An attendance period name is required and must be at most 200 characters.",
+    Field: "name");
 
   public static readonly Error InvalidRange = new(
     "Attendance.PeriodRangeInvalid",

@@ -400,9 +400,15 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
       .OrderBy(route => route, StringComparer.Ordinal)
       .ToArray();
 
+    // ⚠ 8 → 5 ON 2026-08-30 (T-236), AND THE GUARD IS WHAT MADE IT DELIBERATE.
+    //
+    // `AttendanceMalformedIdentifierTests` issues a request at every Attendance route taking an identifier
+    // in its path, so three that no test had ever called are now called. **The count came down because
+    // coverage went up, which is the good direction — and this guard refused to let it happen silently.**
+    // That is the whole reason it asserts an exact number rather than a ceiling.
     Assert.True(
-      uncalled.Length == 8,
-      $"{uncalled.Length} live routes are addressed by no test, expected 8. MORE means a route arrived " +
+      uncalled.Length == 5,
+      $"{uncalled.Length} live routes are addressed by no test, expected 5. MORE means a route arrived " +
       "that nothing calls -- the shape that left 25 attendance routes mapped over a container with no " +
       "handlers. FEWER means one was covered and the number should come down deliberately:" +
       Environment.NewLine + string.Join(Environment.NewLine, uncalled));

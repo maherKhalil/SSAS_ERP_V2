@@ -72,11 +72,11 @@ public static class AttendanceEndpointRouteBuilderExtensions
       .RequirePermission(AttendancePermissionNames.ManageCalendars).WithName("AttendanceCalendarsCreate");
     group.MapGet("/calendars", GetCalendarsAsync)
       .RequirePermission(AttendancePermissionNames.ViewCalendars).WithName("AttendanceCalendarsList");
-    group.MapPut("/calendars/{workingCalendarId:guid}", UpdateCalendarAsync)
+    group.MapPut("/calendars/{workingCalendarId}", UpdateCalendarAsync)
       .RequirePermission(AttendancePermissionNames.ManageCalendars).WithName("AttendanceCalendarsUpdate");
-    group.MapPost("/calendars/{workingCalendarId:guid}/holidays", AddHolidayAsync)
+    group.MapPost("/calendars/{workingCalendarId}/holidays", AddHolidayAsync)
       .RequirePermission(AttendancePermissionNames.ManageCalendars).WithName("AttendanceHolidaysAdd");
-    group.MapPost("/calendars/{workingCalendarId:guid}/holidays/remove", RemoveHolidayAsync)
+    group.MapPost("/calendars/{workingCalendarId}/holidays/remove", RemoveHolidayAsync)
       .RequirePermission(AttendancePermissionNames.ManageCalendars).WithName("AttendanceHolidaysRemove");
 
     // The query `REQ-ATT-0003` requires, exposed because clients need the SAME answer the domain uses. A
@@ -90,9 +90,9 @@ public static class AttendanceEndpointRouteBuilderExtensions
       .RequirePermission(AttendancePermissionNames.ManagePeriods).WithName("AttendancePeriodsCreate");
     group.MapGet("/periods", GetPeriodsAsync)
       .RequirePermission(AttendancePermissionNames.ViewPeriods).WithName("AttendancePeriodsList");
-    group.MapPost("/periods/{attendancePeriodId:guid}/close", ClosePeriodAsync)
+    group.MapPost("/periods/{attendancePeriodId}/close", ClosePeriodAsync)
       .RequirePermission(AttendancePermissionNames.ClosePeriods).WithName("AttendancePeriodsClose");
-    group.MapPost("/periods/{attendancePeriodId:guid}/reopen", ReopenPeriodAsync)
+    group.MapPost("/periods/{attendancePeriodId}/reopen", ReopenPeriodAsync)
       .RequirePermission(AttendancePermissionNames.ClosePeriods).WithName("AttendancePeriodsReopen");
 
     // ---- RECORDS. Branch-scoped reads (OD-ATT-0011); no PUT, no DELETE.
@@ -100,7 +100,7 @@ public static class AttendanceEndpointRouteBuilderExtensions
       .RequirePermission(AttendancePermissionNames.ManageRecords).WithName("AttendanceRecordsCreate");
     group.MapGet("/records", GetRecordsAsync)
       .RequirePermission(AttendancePermissionNames.ViewRecords).WithName("AttendanceRecordsList");
-    group.MapPost("/records/{attendanceRecordId:guid}/adjustments", AdjustAttendanceAsync)
+    group.MapPost("/records/{attendanceRecordId}/adjustments", AdjustAttendanceAsync)
       .RequirePermission(AttendancePermissionNames.ManageRecords).WithName("AttendanceRecordsAdjust");
 
     // ---- LEAVE TYPES.
@@ -108,11 +108,11 @@ public static class AttendanceEndpointRouteBuilderExtensions
       .RequirePermission(AttendancePermissionNames.ManageLeaveTypes).WithName("AttendanceLeaveTypesCreate");
     group.MapGet("/leave-types", GetLeaveTypesAsync)
       .RequirePermission(AttendancePermissionNames.ViewLeaveTypes).WithName("AttendanceLeaveTypesList");
-    group.MapPut("/leave-types/{leaveTypeId:guid}", UpdateLeaveTypeAsync)
+    group.MapPut("/leave-types/{leaveTypeId}", UpdateLeaveTypeAsync)
       .RequirePermission(AttendancePermissionNames.ManageLeaveTypes).WithName("AttendanceLeaveTypesUpdate");
-    group.MapPost("/leave-types/{leaveTypeId:guid}/activate", ActivateLeaveTypeAsync)
+    group.MapPost("/leave-types/{leaveTypeId}/activate", ActivateLeaveTypeAsync)
       .RequirePermission(AttendancePermissionNames.ManageLeaveTypes).WithName("AttendanceLeaveTypesActivate");
-    group.MapPost("/leave-types/{leaveTypeId:guid}/deactivate", DeactivateLeaveTypeAsync)
+    group.MapPost("/leave-types/{leaveTypeId}/deactivate", DeactivateLeaveTypeAsync)
       .RequirePermission(AttendancePermissionNames.ManageLeaveTypes).WithName("AttendanceLeaveTypesDeactivate");
 
     // ---- LEAVE REQUESTS. Approve and reject carry the separate sensitive grant.
@@ -120,11 +120,11 @@ public static class AttendanceEndpointRouteBuilderExtensions
       .RequirePermission(AttendancePermissionNames.ManageLeave).WithName("AttendanceLeaveRequestsSubmit");
     group.MapGet("/leave-requests", GetLeaveRequestsAsync)
       .RequirePermission(AttendancePermissionNames.ViewLeave).WithName("AttendanceLeaveRequestsList");
-    group.MapPost("/leave-requests/{leaveRequestId:guid}/approve", ApproveLeaveRequestAsync)
+    group.MapPost("/leave-requests/{leaveRequestId}/approve", ApproveLeaveRequestAsync)
       .RequirePermission(AttendancePermissionNames.ApproveLeave).WithName("AttendanceLeaveRequestsApprove");
-    group.MapPost("/leave-requests/{leaveRequestId:guid}/reject", RejectLeaveRequestAsync)
+    group.MapPost("/leave-requests/{leaveRequestId}/reject", RejectLeaveRequestAsync)
       .RequirePermission(AttendancePermissionNames.ApproveLeave).WithName("AttendanceLeaveRequestsReject");
-    group.MapPost("/leave-requests/{leaveRequestId:guid}/cancel", CancelLeaveRequestAsync)
+    group.MapPost("/leave-requests/{leaveRequestId}/cancel", CancelLeaveRequestAsync)
       .RequirePermission(AttendancePermissionNames.ManageLeave).WithName("AttendanceLeaveRequestsCancel");
 
     // ---- BALANCES. Entitlement is settable; consumed is not (AC-ATT-0040).

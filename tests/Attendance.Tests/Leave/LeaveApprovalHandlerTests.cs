@@ -264,7 +264,6 @@ public sealed class LeaveApprovalHandlerTests
     public string? UserId => "root-admin";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => Company;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

@@ -60,7 +60,6 @@ public sealed class DomainEventDispatcherTests
     public string? UserId => "actor-456";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

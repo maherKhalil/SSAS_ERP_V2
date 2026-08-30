@@ -341,7 +341,6 @@ public sealed class TenantRecoveryActivationSqlServerTests
     public string? UserId => "recovery-activation-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

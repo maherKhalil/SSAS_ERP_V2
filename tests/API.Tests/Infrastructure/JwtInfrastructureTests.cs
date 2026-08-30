@@ -294,6 +294,31 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
     Assert.False((await AuthenticateAsync(token)).Succeeded);
   }
 
+  // ---- THE TENANT PLANE REFUSES `company_id` TOO (ADR-025 decision 4, item 164).
+  // The prohibition names this claim by hand and is binding, and until now the guard existed only on the
+  // PLATFORM plane -- the plane where the claim was never plausible -- and not on the one it names.
+  // This is a NAMED prohibition, not a general out-of-set rejection; the tenant profile still accepts an
+  // unlisted extra claim, which is costed rather than built (item 164).
+  [Fact]
+  public async Task Tenant_token_carrying_company_id_is_rejected()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => claims
+        .Append(new Claim(JwtClaimTypes.CompanyId, "b1b7c1e2-0000-4000-8000-000000000003")).ToList());
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
+  // ---- THE CONTROL: the very same token WITHOUT the claim authenticates, so the refusal above is the
+  // ---- claim's doing and not some unrelated defect in how this token was built.
+  [Fact]
+  public async Task The_same_tenant_token_without_company_id_is_accepted()
+  {
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5));
+
+    Assert.True((await AuthenticateAsync(token)).Succeeded);
+  }
+
   [Fact]
   public async Task Platform_token_with_no_permission_is_rejected()
   {

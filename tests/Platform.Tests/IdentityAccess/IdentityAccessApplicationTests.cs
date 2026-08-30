@@ -405,7 +405,6 @@ public sealed class IdentityAccessApplicationTests
     public string? UserId { get; } = userId;
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

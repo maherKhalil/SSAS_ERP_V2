@@ -449,7 +449,6 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
     public string? UserId => "d7-full-path-test";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

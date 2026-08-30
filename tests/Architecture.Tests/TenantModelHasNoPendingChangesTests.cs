@@ -129,7 +129,6 @@ public sealed class TenantModelHasNoPendingChangesTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

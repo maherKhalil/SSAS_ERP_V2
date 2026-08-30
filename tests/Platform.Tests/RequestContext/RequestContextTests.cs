@@ -12,12 +12,12 @@ public sealed class RequestContextTests
   [Fact]
   public void Current_user_reads_subject_and_name_from_an_authenticated_identity()
   {
-    var companyId = Guid.NewGuid();
+    // `company_id` is deliberately absent: `ADR-025` decision 4 forbids a JWT company claim and
+    // `ICurrentUser.CompanyId` alike. `CompanyScopeClaimArchitectureTests` holds that structurally.
     var accessor = CreateAccessor(CreateAuthenticatedUser(
       new Claim(JwtClaimTypes.Subject, "user-123"),
       new Claim(JwtClaimTypes.Name, "Ada Lovelace"),
       new Claim(JwtClaimTypes.Email, "ada@example.test"),
-      new Claim(JwtClaimTypes.CompanyId, companyId.ToString()),
       new Claim(JwtClaimTypes.SessionId, "session-123"),
       new Claim(JwtClaimTypes.JwtId, "token-123"),
       new Claim(JwtClaimTypes.Role, "TenantAdmin"),
@@ -29,7 +29,6 @@ public sealed class RequestContextTests
     Assert.Equal("user-123", currentUser.UserId);
     Assert.Equal("Ada Lovelace", currentUser.UserName);
     Assert.Equal("ada@example.test", currentUser.Email);
-    Assert.Equal(companyId, currentUser.CompanyId);
     Assert.Equal("session-123", currentUser.SessionId);
     Assert.Equal("token-123", currentUser.TokenId);
     Assert.Equal(["TenantAdmin"], currentUser.Roles);

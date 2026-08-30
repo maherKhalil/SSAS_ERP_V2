@@ -1041,7 +1041,6 @@ public sealed class TenantBackupProviderSqlServerTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

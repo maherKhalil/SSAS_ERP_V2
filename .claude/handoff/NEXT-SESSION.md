@@ -31,8 +31,29 @@ architect has these in the owner's brief.
 **Green and its three completion axes are closed.** `GATE_SCOPE=TASK` runs seven suites, ~3,075 tests, in
 about 72 seconds.
 
-- **Axis 1, documented capability with no endpoint:** decomposed from 67 to **41 owner-gated, 15 already
-  deferred, 9 our own doc errors, 2 real** — *almost entirely the owner's to unlock, not ours to build.*
+- **Axis 1, documented capability with no endpoint:** decomposed 2026-08-29 from 67 to **41 owner-gated,
+  15 already deferred, 9 our own doc errors, 2 real**. ⚠ **That count is stale and its MEMBERS were never
+  recorded — read the correction below before using any of those figures.**
+
+  **⚠ CORRECTED 2026-08-30 (T-276).** **One of the "2 real" is SHIPPED** — FP-001's permission-catalogue
+  read, routed 2026-08-29, `MapGet("/permissions")` in `src`, **the day after the decomposition was
+  published and never reflected here.** **The second is NOT RECOVERABLE**: it lives among the ~50 rows
+  outside FP-001, **and no document annotates those.** Three reconstructions of the original method were
+  tried and rejected.
+
+  ⚠ **Why FP-001's rows survived and the other fifty did not: FP-001 annotates its own
+  `api-contracts.md` inline — 17 `[NOT ROUTED - handler: X]` markers, the only document in the repository
+  with them. The rest were counted HERE, and the members evaporated.** **A fact recorded where the work is
+  stays findable; a fact recorded in a summary becomes a number.**
+
+  **An independent re-derivation on a stated definition** — a route written in an FP `api-contracts.md` as
+  `METHOD /path` with no matching mapped template — gives **44 documented, 15 unmapped: 11 owner-gated
+  (7 on decision 2, 3 on decision 11, 1 on decision 5), 3 our documentation errors, 1 already served on the
+  login response, 0 real.** ⚠ **These numbers are NOT comparable with the 2026-08-29 figures and do not
+  reconcile with them** — the earlier method is unrecoverable, **and claiming agreement would be inventing
+  it.** **Its blind spot is stated: the population is route STRINGS, so a capability documented in prose is
+  outside it entirely, and that is most of them.**
+
 - **Axis 2, endpoints with no behavioural test:** Attendance went **0 → 25 of 25 routes** issued a request;
   product-wide uncalled routes went **63 → 8**, and 8 is now an asserted number rather than a report.
 - **Axis 3, owner decisions:** see below.

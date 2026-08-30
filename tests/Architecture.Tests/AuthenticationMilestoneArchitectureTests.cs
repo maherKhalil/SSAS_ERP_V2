@@ -64,8 +64,22 @@ public sealed class AuthenticationMilestoneArchitectureTests
   [Trait("Scenario", "TS-AUTH-0073")]
   public void Authentication_domain_events_expose_no_password_secret_or_hash_material()
   {
-    var violations = typeof(AuthenticationAccount).Assembly.GetTypes()
+    // ⚠ THE SET IS DISCOVERED BY NAMESPACE, SO IT CAN SILENTLY BECOME EMPTY (T-248).
+    //
+    // The two checks above this one enumerate FIXED type arrays, so the compiler guarantees they are not
+    // empty. **This one filters on a namespace string.** Rename `SSAS.Platform.Domain.Events` and the
+    // filter matches nothing, no property is inspected, and "no event exposes secret material" passes by
+    // examining no events at all — the same shape that let `PersistenceArchitectureTests` pass nine tests
+    // over an empty file walk.
+    var events = typeof(AuthenticationAccount).Assembly.GetTypes()
       .Where(type => typeof(DomainEvent).IsAssignableFrom(type) && type.Namespace == "SSAS.Platform.Domain.Events")
+      .ToArray();
+
+    Assert.True(events.Length >= 5,
+      $"only {events.Length} authentication domain events were discovered, so the namespace filter has " +
+      "stopped matching and the assertion below would pass by inspecting nothing.");
+
+    var violations = events
       .SelectMany(type => type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
         .Where(property => Regex.IsMatch(property.Name, "Password|Secret|Hash|Raw", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         .Select(property => $"{type.Name}.{property.Name}"))
@@ -99,6 +113,18 @@ public sealed class AuthenticationMilestoneArchitectureTests
     Assert.Equal(typeof(SensitiveActionToken), typeof(GeneratedActionToken).GetProperty("SensitiveToken")?.PropertyType);
   }
 
+  // ---- PLANT RECORD (T-248), kept here rather than only in the commit message.
+  //
+  // An audit found this file had no anti-vacuity protection at all. Two controls were added, and each was
+  // observed to fail before it was trusted:
+  //
+  //   * namespace changed to `SSAS.Platform.Domain.EventsX` — the domain-events floor reddens at 0.
+  //   * the `Migrations` exclusion widened to exclude every path — the file-scan floor reddens at 0.
+  //
+  // **The other checks in this file needed nothing, and that is as much the finding as the two that did.**
+  // They enumerate FIXED type arrays — `typeof(AuthenticationAccount).Assembly`, an explicit list of
+  // sensitive output types — which the compiler keeps non-empty. A set the compiler guarantees cannot
+  // collapse silently; a set discovered by namespace or by file pattern can.
   [Fact]
   [Trait("Scenario", "TS-AUTH-0005")]
   [Trait("Scenario", "TS-AUTH-0006")]
@@ -119,6 +145,18 @@ public sealed class AuthenticationMilestoneArchitectureTests
       .Concat(Directory.EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform", "SSAS.Platform.Application"), "*.cs", SearchOption.AllDirectories))
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .ToArray();
+    // ⚠ THE ROOT CANNOT VANISH SILENTLY, BUT THE FILTER CAN — AND ONLY THE SECOND NEEDS GUARDING.
+    //
+    // `Directory.EnumerateFiles` on a directory that does not exist THROWS, so renaming either project is
+    // caught by an exception rather than by an empty result. **That is not true of the filters.** Change
+    // the search pattern, or widen the `Migrations` exclusion, and the walk returns an empty array from
+    // directories that exist — which reads exactly like "no violations".
+    //
+    // So the floor sits on the POST-FILTER count, which is the only quantity that can collapse quietly.
+    Assert.True(platformFiles.Length >= 50,
+      $"only {platformFiles.Length} Platform Domain/Application files were scanned; the filters have " +
+      "stopped matching and 'no deferred types' below would mean nothing.");
+
     const string deferredDeclaration =
       @"\b(?:JwtSecurityToken|JsonWebTokenHandler|X509Certificate2|SymmetricSecurityKey|CookieOptions|HttpContext)\b";
     var deferred = platformFiles

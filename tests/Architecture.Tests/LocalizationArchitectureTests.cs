@@ -159,6 +159,17 @@ public sealed class LocalizationArchitectureTests
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
         !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .ToArray();
+
+    // ⚠ THE ONLY WALK IN THIS FILE THAT CAN COLLAPSE QUIETLY, AND IT GUARDS THE REDIS BAN (T-248).
+    //
+    // Most checks here are reflection over named types, and the two walks above root at directories that
+    // THROW if they vanish. **This one roots at `src`, which always exists, and narrows by extension** —
+    // so a changed suffix filter returns an empty array from a healthy directory and "no Redis anywhere in
+    // production" passes having read no files.
+    Assert.True(productionFiles.Length >= 400,
+      $"only {productionFiles.Length} production files were scanned; the extension filter has stopped " +
+      "matching and the Redis ban below would pass without reading anything.");
+
     Assert.Empty(productionFiles.Where(path => Regex.IsMatch(
       File.ReadAllText(path),
       "StackExchange\\.Redis|IDistributedCache|AddStackExchangeRedisCache",

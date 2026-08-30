@@ -35,6 +35,12 @@ namespace SSAS.Architecture.Tests;
 //
 // In particular, none of these can be made to pass by ADDING A GLOBAL QUERY FILTER: the filter test asserts
 // the opposite, and the scope-parameter tests are about the shape of the API, which a filter never touches.
+// ---- PLANT RECORD (T-249): the floors here were observed to fire.
+//
+// An audit listed this file as having no recorded plant. Collapsing every file walk in it -- changing
+// the search pattern to `*.csx`, so directories still exist and simply match nothing -- reddens two
+// tests. **That is the silent shape**: a walk rooted at a directory THROWS if the directory is gone,
+// so the only failure that passes quietly is downstream of the root.
 public sealed class EmployeeReadScopeArchitectureTests
 {
   private static readonly Assembly HrApplicationAssembly = typeof(IEmployeeReadService).Assembly;

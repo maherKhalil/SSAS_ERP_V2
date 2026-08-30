@@ -75,6 +75,17 @@ public sealed class AuthenticationSessionArchitectureTests
     Assert.Empty(ordinaryStrings);
   }
 
+  // ---- ⚠ THIS TEST NEEDS NO FLOOR, AND THE REASON IS WORTH KNOWING (T-248).
+  //
+  // An audit listed it as a text scan with neither a floor nor a plant. **It turned out to need only the
+  // plant**: `Assert.Equal(ApprovedQueryFilterBypassFiles, bypasses)` compares against a NON-EMPTY expected
+  // list, so a walk that finds nothing produces an empty array and the comparison fails.
+  // **An exact-list assertion is anti-vacuous by construction** in a way `Assert.Empty` never is.
+  //
+  // Planted both ways rather than argued: pointing the root at `src/PlatformX` throws
+  // `DirectoryNotFoundException`, and changing the pattern to `*.csx` — a directory that exists, matching
+  // nothing — reddens the comparison. **The root cannot vanish silently; the filter can; and this
+  // assertion catches the filter anyway.**
   [Fact]
   public void Query_filter_bypass_is_confined_to_explicit_membership_eligibility_paths()
   {

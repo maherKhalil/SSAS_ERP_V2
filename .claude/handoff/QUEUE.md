@@ -19,8 +19,18 @@ coder believing the queue held one item when it held three. **A local path close
 the next, and say which in the following message. Every item here is gated (`src/` + `tests/`) unless
 marked otherwise, so **`DEC-L-007` applies: green gate, merge immediately — no `MERGE` word is required.**
 
-**Refill:** the architect refills at TWO remaining, not at zero. If this file drops to two open items and no
-refill has arrived, **say so and start the highest-value thing you can defend** rather than idling.
+⚠ **AN EMPTY QUEUE IS NOT A REASON TO STOP — IT IS A REASON TO PULL FROM `BACKLOG.md`.** Take the top item,
+start it, and say which one in your next message. **No permission needed.** If the backlog is also empty,
+pick the highest-value thing you can defend, state the reasoning in one line, and start.
+
+**Never send a message whose only content is that you have no work.** If you are reporting an empty queue,
+you should already be working and naming what.
+
+**Refill:** the architect refills at TWO remaining. ⚠ **That rule has now failed ten times, and the reason
+is structural: it fires only when the architect is looking.** A reactive refill always leaves a gap between
+the coder finishing and the architect noticing — and the earlier wording covered *"drops to two with no
+refill"*, which is the case that does not happen, while saying nothing about **zero**, which is the case
+that does. **`BACKLOG.md` is the part that depends on nobody being awake.**
 
 ## ⚠ CORRECTION — ITEM 90 WAS FINISHED, NOT IN FLIGHT. THE WORKING TREE IS CLEAN.
 

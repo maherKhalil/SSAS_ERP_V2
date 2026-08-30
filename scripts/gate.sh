@@ -1502,6 +1502,20 @@ else
   # Debug; dropping the rest would report Integration as having vanished on the next PHASE.
   {
     echo "# Written by scripts/gate.sh on a green run. Do not hand-edit -- see note 7t."
+    echo "#"
+    echo "# WHAT IS NOT HERE, AND WHY (T-254). Ten test projects exist and this file has tracked seven."
+    echo "# That is two separate reasons, not one gap:"
+    echo "#"
+    echo "#   Performance.Tests, UI.Tests -- EMPTY SCAFFOLDS. Each is a .csproj with no source file at"
+    echo "#     all, so there is nothing to count and no gate scope runs them. Their absence is correct"
+    echo "#     and stays correct until somebody writes a test in one."
+    echo "#"
+    echo "#   Integration, and every Release row -- NOT YET WRITTEN. Both are produced only by a green"
+    echo "#     GATE_SCOPE=PHASE run, and none has completed since this file was introduced on"
+    echo "#     2026-08-27 at 13:17; the last full run finished at 11:34 that morning, before the writer"
+    echo "#     existed. Nothing is wrong with the writer -- it carries forward rows a run did not"
+    echo "#     produce, so they will appear on the first green PHASE run and persist after it."
+    echo "#"
     echo "# suite|configuration|total"
     {
       if [ -f "$GATE_BASELINE_FILE" ]; then

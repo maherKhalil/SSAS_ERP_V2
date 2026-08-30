@@ -1,4 +1,18 @@
 # Written by scripts/gate.sh on a green run. Do not hand-edit -- see note 7t.
+#
+# WHAT IS NOT HERE, AND WHY (T-254). Ten test projects exist and this file has tracked seven.
+# That is two separate reasons, not one gap:
+#
+#   Performance.Tests, UI.Tests -- EMPTY SCAFFOLDS. Each is a .csproj with no source file at
+#     all, so there is nothing to count and no gate scope runs them. Their absence is correct
+#     and stays correct until somebody writes a test in one.
+#
+#   Integration, and every Release row -- NOT YET WRITTEN. Both are produced only by a green
+#     GATE_SCOPE=PHASE run, and none has completed since this file was introduced on
+#     2026-08-27 at 13:17; the last full run finished at 11:34 that morning, before the writer
+#     existed. Nothing is wrong with the writer -- it carries forward rows a run did not
+#     produce, so they will appear on the first green PHASE run and persist after it.
+#
 # suite|configuration|total
 API|Debug|907
 Architecture|Debug|583

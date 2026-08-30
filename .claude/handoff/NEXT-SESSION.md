@@ -75,12 +75,20 @@ logic that survives sits in the artefact type that announces itself least** (63 
 (`EmploymentType`) is already half-landed: the migration ships `defaultValue: 0` = `FullTime`, stated as an
 assumption in the migration itself rather than left as an artefact.
 
-**Plus the cadence question, which this loop raised and cannot answer:** 24 minutes is not per-task, **but
-it is comfortably a pre-merge or nightly gate where 44 was not** — and 145 real failures sat unread for
-eight days precisely because it was not. **It is their compute and their time.**
+**Test cadence is NOT on that list and is OURS** — `OWNER-DECISIONS.md`'s own scope section excludes
+*"test shape"* as engineering-owned, and when to run our own suite is inside that. **An earlier draft of
+this file escalated it with the phrasing *"it is their compute and their time"*, which is how an abdication
+reads as deference.** The measured position: **24.2 minutes (T-234 board row 1095, 855 passing)** — not
+per-task, comfortably a pre-merge or nightly gate where 44 minutes was not. **The loop decides it.**
 
 **Three HIS decisions (D1–D3)** settle **130 of the 159 crossing foreign keys**. D1 (is `GeneralStores` a
 shared service?) also decides whether 25 of the 54 clinical rule-views are ours or theirs.
+
+⚠ **AND OWNER DECISIONS LIVE IN TWO PLACES, WHICH IS ITSELF WORTH KNOWING.** `OWNER-DECISIONS.md` holds the
+**eleven ERP entries** and states its own exclusions. **The HIS decisions D1–D3 are in
+`scripts/his-catalogue/MIGRATION-PLAN.md` and appear on neither list**, as does the prior question of
+whether the HIS migration proceeds at all. **A window reading `OWNER-DECISIONS.md` alone will conclude
+there are eleven; there are eleven plus three plus one.**
 
 ---
 

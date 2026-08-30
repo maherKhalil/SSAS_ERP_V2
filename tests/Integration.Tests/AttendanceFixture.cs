@@ -50,11 +50,22 @@ internal sealed class AttendanceFixture : IAsyncDisposable
     return fixture;
   }
 
-  public TenantDbContext CreateContext()
+  public TenantDbContext CreateContext() => CreateContext(loggerFactory: null);
+
+  // ⚠ The logger factory is an OPTIONAL seam and it exists for one question: does EF Core itself log a
+  // failed command? That cannot be settled by reading our Serilog configuration — it is EF's behaviour,
+  // not ours — and it cannot be settled without a real server refusing a real statement.
+  public TenantDbContext CreateContext(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory)
   {
-    var options = new DbContextOptionsBuilder<TenantDbContext>()
-      .UseSqlServer(ConnectionFor(catalog))
-      .Options;
+    var builder = new DbContextOptionsBuilder<TenantDbContext>()
+      .UseSqlServer(ConnectionFor(catalog));
+
+    if (loggerFactory is not null)
+    {
+      builder = builder.UseLoggerFactory(loggerFactory);
+    }
+
+    var options = builder.Options;
 
     return new TenantDbContext(
       options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),

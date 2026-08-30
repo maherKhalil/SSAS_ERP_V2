@@ -1013,6 +1013,19 @@ public sealed class TenantBackupProviderSqlServerTests
       }
       catch (UnauthorizedAccessException)
       {
+        // ⚠ BARE UNTIL T-237, DIRECTLY BENEATH A COMMENT ARGUING THAT A SWALLOW NEEDS A CORRECT REASON.
+        //
+        // T-217 rewrote the `IOException` reason above and did not look two lines down. **A swallow with no
+        // reason is the case that comment is about**, and it survived the pass that fixed its neighbour.
+        //
+        // The reason it should have: **this is the environment the `IOException` note rules OUT for THIS
+        // machine, not everywhere.** T-217 measured that the test user here holds Full control on the
+        // backup folder and can delete a service-account-owned `.bak`. A CI account, or a machine whose
+        // ProgramData ACLs differ, may not — and on such a box the failure is genuinely environmental.
+        //
+        // Swallowed rather than thrown for the same reason as the neighbour: **a cleanup failure must never
+        // replace a real test result.** The artefacts it leaves are recovered by `reap_to_zero` step 6 at
+        // the start of the next gate, which is outside this process and therefore outside this failure.
       }
     }
   }

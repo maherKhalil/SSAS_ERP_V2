@@ -104,6 +104,9 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
       {
         await liveWork;
       }
+      // Draining a task that was just cancelled. The `SqlException` is the CONSEQUENCE of the cancel on
+      // the line above, so reporting it would mean reporting our own teardown as a failure. Narrower than
+      // it looks: anything other than a SqlException still escapes and fails the test.
       catch (SqlException)
       {
       }
@@ -213,6 +216,9 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
         process.Kill(entireProcessTree: true);
       }
     }
+    // ⚠ `HasExited` then `Kill` is a RACE and this is the losing branch, not an error. The process exited
+    // between the check and the kill -- which is the outcome the kill was trying to produce. There is no
+    // way to close the window; the API offers no atomic "kill if running".
     catch (InvalidOperationException)
     {
     }
@@ -388,9 +394,21 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
           Directory.Delete(BackupRoot, recursive: true);
         }
       }
+        // ⚠ TEARDOWN OF A DIRECTORY, AND UNLIKE THE CATALOG ABOVE IT IS NOT RECORDED.
+        //
+        // A file still locked by a process that has not fully exited is the normal case here, and failing
+        // the test for it would report a cleanup race as a product defect. **The leak is not lost**: the
+        // gate reaps stale backup roots at startup, because a recorder at teardown is structurally blind
+        // to a run that died before reaching it.
       catch (IOException)
       {
       }
+        // ⚠ TEARDOWN OF A DIRECTORY, AND UNLIKE THE CATALOG ABOVE IT IS NOT RECORDED.
+        //
+        // A file still locked by a process that has not fully exited is the normal case here, and failing
+        // the test for it would report a cleanup race as a product defect. **The leak is not lost**: the
+        // gate reaps stale backup roots at startup, because a recorder at teardown is structurally blind
+        // to a run that died before reaching it.
       catch (UnauthorizedAccessException)
       {
       }
@@ -402,6 +420,9 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
       {
         await ExecuteAsync(catalog, sql, 300);
       }
+      // Draining a task that was just cancelled. The `SqlException` is the CONSEQUENCE of the cancel on
+      // the line above, so reporting it would mean reporting our own teardown as a failure. Narrower than
+      // it looks: anything other than a SqlException still escapes and fails the test.
       catch (SqlException)
       {
       }

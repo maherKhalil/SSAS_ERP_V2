@@ -339,6 +339,12 @@ internal sealed class TenantCutoverRoutingFlipService(
     catch (Exception)
 #pragma warning restore CA1031
     {
+      // Deliberately nothing. This runs while an earlier failure is already being returned, and the
+      // rollback is best-effort cleanup on the way out — a throw here would replace a caller's precise
+      // refusal with the incidental reason the cleanup could not finish.
+      //
+      // The transaction is disposed by its `using` regardless, so an un-rolled-back transaction ends the
+      // same way; what would be lost is the ORIGINAL error, which is the one worth keeping.
     }
   }
 

@@ -854,3 +854,35 @@ the same name in two schemas.**
 a schema qualifier gets whichever the default schema resolves to, **and the two return different things.**
 Someone must decide which is authoritative before either is rebuilt — **and it is a live ambiguity in the
 running system, not only a migration question.**
+
+### Is anything in the schema calling the seven? (T-234, 2026-08-30)
+
+**No. Zero of the seven Tier-1 procedures is referenced by any other procedure or view.** Measured across
+all 1,347 procedure bodies and 177 view bodies, with each object's own `CREATE` header stripped first.
+
+| procedure | referenced by |
+|---|---|
+| `[dbo].[SPSearch]`, `[Finance].[SPSearch]` | **0** |
+| `[Finance].[SPTransfearData]` | **0** |
+| `[GeneralStores].[GetInvoicePayment]`, `[Pharmacy].[GetInvoicePayment]` | **0** |
+| `[dbo].[DynamicPivotTableInSql]` | **0** |
+| `[Finance].[usp_ENTRY_TP_Header_DetailInsert]` | **0** |
+
+**What that means: the schema does not depend on any of them.** So **either the application calls them
+directly, or they are dead** — and those are the owner's to distinguish, not ours. **It narrows the
+question from the whole estate to one application.**
+
+### ⚠ Three limits, and the third is the one that matters most here
+
+1. **This measures OUR COPY, not their estate.** It cannot show a procedure unused; it shows only that the
+   schema itself does not depend on it. **It does not read as "safe to delete."**
+2. **Application calls are invisible** — the same limit as the dead-code axis, for the same reason.
+3. ⚠ **STATIC REFERENCE ANALYSIS CANNOT SEE DYNAMIC INVOCATION, AND THIS SCHEMA DEMONSTRABLY CONTAINS A
+   MECHANISM FOR IT.** `SPSearch` executes a caller-supplied procedure name — `exec('exec ' + @Description
+   + …)`. **So any procedure in this database can be invoked without appearing in a single static
+   reference, and the procedure that makes that possible is one of the seven being measured.** A zero here
+   is weaker evidence than a zero would normally be, **and it is weaker precisely because of what these
+   procedures are.**
+
+**No remediation is recommended.** A change to a live system we do not have cannot be tested here, and
+**advice we cannot verify is worth less than a measurement we can.**

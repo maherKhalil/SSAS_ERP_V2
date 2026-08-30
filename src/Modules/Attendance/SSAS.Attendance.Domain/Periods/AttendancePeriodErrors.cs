@@ -6,7 +6,8 @@ public static class AttendancePeriodErrors
 {
   public static readonly Error CompanyRequired = new(
     "Attendance.PeriodCompanyRequired",
-    "An attendance period must belong to a company.");
+    "An attendance period must belong to a company.",
+    Field: "companyId");
 
   public static readonly Error InvalidName = new(
     "Attendance.PeriodNameInvalid",

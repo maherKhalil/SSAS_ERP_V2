@@ -6,7 +6,8 @@ public static class AttendanceRecordErrors
 {
   public static readonly Error CompanyRequired = new(
     "Attendance.RecordCompanyRequired",
-    "An attendance record must belong to a company.");
+    "An attendance record must belong to a company.",
+    Field: "companyId");
 
   public static readonly Error PeriodRequired = new(
     "Attendance.RecordPeriodRequired",
@@ -14,7 +15,8 @@ public static class AttendanceRecordErrors
 
   public static readonly Error EmployeeRequired = new(
     "Attendance.RecordEmployeeRequired",
-    "An attendance record must name an employee.");
+    "An attendance record must name an employee.",
+    Field: "employeeId");
 
   public static readonly Error NotFound = new(
     "Attendance.RecordNotFound",
@@ -46,7 +48,8 @@ public static class AttendanceRecordErrors
 
   public static readonly Error AdjustmentNoteRequired = new(
     "Attendance.AdjustmentNoteRequired",
-    "An adjustment must carry a note explaining the correction.");
+    "An adjustment must carry a note explaining the correction.",
+    Field: "note");
 
   public static readonly Error AdjustmentChangesNothing = new(
     "Attendance.AdjustmentChangesNothing",

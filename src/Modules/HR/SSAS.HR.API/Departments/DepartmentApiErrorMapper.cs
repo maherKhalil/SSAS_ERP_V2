@@ -78,7 +78,7 @@ public static class DepartmentApiErrorMapper
       "Department.PermissionDenied" => ApiErrors.Forbidden,
       "Department.CompanyScopeDenied" => CompanyScopeDenied,
       "Company.InvalidSelection" => CompanyScopeDenied,
-      "Company.SelectionRequired" => ApiErrors.RequestInvalid,
+      "Company.SelectionRequired" => ApiErrors.CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
       "Company.ContextRequired" => ApiErrors.Forbidden,
 

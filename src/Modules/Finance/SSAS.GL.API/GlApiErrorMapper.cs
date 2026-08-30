@@ -125,7 +125,7 @@ public static class GlApiErrorMapper
       "Gl.WritePermissionDenied" => ApiErrors.Forbidden,
       "Gl.CompanyScopeDenied" => CompanyScopeDenied,
       "Company.InvalidSelection" => CompanyScopeDenied,
-      "Company.SelectionRequired" => ApiErrors.RequestInvalid,
+      "Company.SelectionRequired" => ApiErrors.CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
       "Company.ContextRequired" => ApiErrors.Forbidden,
 

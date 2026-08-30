@@ -83,7 +83,7 @@ public static class EmployeeApiErrorMapper
       //
       // A missing or malformed X-Company-Id is a MALFORMED REQUEST. The caller can already see their own
       // header, so saying so discloses nothing — and a generic denial would leave them guessing at a typo.
-      "Company.SelectionRequired" => ApiErrors.RequestInvalid,
+      "Company.SelectionRequired" => ApiErrors.CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
 
       // Every VALIDATION outcome collapses to one answer: unauthorized, inactive, wrong tenant and

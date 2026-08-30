@@ -70,7 +70,7 @@ public static class CompanyApiErrorMapper
 
       // Request-shaped: a malformed or absent selection is something the caller can fix.
       // `Company.AssignmentInvalid` refuses a caller-supplied company list at `UserCompanyAccess.cs:61`.
-      "Company.SelectionRequired" => ProblemResults.RequestInvalid,
+      "Company.SelectionRequired" => ProblemResults.CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ProblemResults.RequestInvalid,
       "Company.AssignmentInvalid" => ProblemResults.RequestInvalid,
       // ---- EXPLICIT, THOUGH IT MATCHES THE DEFAULT (T-093, T-080's precedent).

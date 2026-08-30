@@ -5,6 +5,8 @@ using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
+using SSAS.TestSupport.CutoverModel;
+
 namespace SSAS.Integration.Tests;
 
 // ================================================================================================

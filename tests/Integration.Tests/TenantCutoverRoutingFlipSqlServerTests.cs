@@ -18,6 +18,8 @@ using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using Xunit.Abstractions;
 
+using SSAS.TestSupport.CutoverModel;
+
 namespace SSAS.Integration.Tests;
 
 // THE ATOMIC ROUTING FLIP, AGAINST REAL SQL (ADR-020, TS-Storage Phase E4).

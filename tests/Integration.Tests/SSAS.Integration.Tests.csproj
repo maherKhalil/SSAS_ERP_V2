@@ -40,6 +40,7 @@
     </ProjectReference>
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Application\SSAS.Attendance.Application.csproj" />
+    <ProjectReference Include="..\TestSupport\SSAS.TestSupport.CutoverModel\SSAS.TestSupport.CutoverModel.csproj" />
   </ItemGroup>
 
   <!-- The apphost the harness starts is named by the PLATFORM, not by this repository: `.exe` on Windows and

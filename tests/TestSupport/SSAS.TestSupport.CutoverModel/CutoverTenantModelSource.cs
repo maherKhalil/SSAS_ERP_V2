@@ -5,7 +5,7 @@ using SSAS.Payroll.Infrastructure.Persistence;
 using SSAS.HR.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 
-namespace SSAS.Integration.Tests;
+namespace SSAS.TestSupport.CutoverModel;
 
 // ==================================================================================================
 // THE CONTRIBUTOR SET THE HOST REGISTERS, IN ONE PLACE FOR THE CUTOVER TESTS (FP-006C6).
@@ -18,6 +18,18 @@ namespace SSAS.Integration.Tests;
 //
 // A test passing an empty set here would be testing a cutover that cannot see Employee, which is exactly the
 // defect FP-006C6 closes. That is asserted against directly by C6-14 in TenantCutoverCopySqlServerTests.
+//
+// ---- WHY THIS LIVES IN TestSupport RATHER THAN IN A TEST PROJECT (T-253).
+//
+// Six cutover-manifest checks need no database and belong in `Architecture.Tests`, where they run in
+// every gate; they were stranded in the Integration suite, which `GATE_SCOPE=TASK` never runs. They
+// could not follow while this type lived in `Integration.Tests`: moving it there would have made
+// Integration depend on Architecture.Tests, and copying it would have produced the second list this
+// file's own warning is about.
+//
+// **A shared support project is the only arrangement that keeps ONE definition while letting both
+// suites read it**, and `tests/TestSupport/` already existed for exactly this kind of thing.
+
 internal static class CutoverTenantModel
 {
   // The same shape the Host composes: Platform's own tenant entities plus every registered module's

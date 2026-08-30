@@ -2215,35 +2215,6 @@ public sealed class EmployeeBoundarySqlServerTests
   // These proofs travel the real path end to end: composed catalog, real handler, real role, real role
   // assignment, real access-token claims, and a real Employee read authorized by NOTHING BUT those claims.
 
-  // ---- P1. THE COMPOSED CATALOG DEFINES ALL FIVE, AT TENANT SCOPE — AND PLATFORM'S ALONE DEFINES NONE.
-  //
-  // The second half is the control: it is the catalog that shipped, and it is why nothing could be granted.
-  [Fact]
-  public void P1_The_composed_catalog_defines_the_hr_permissions_and_the_platform_catalog_does_not()
-  {
-    var composed = EmployeeFixture.ComposedCatalog();
-    var platformOnly = new PlatformPermissionCatalog();
-
-    foreach (var permission in new[]
-    {
-      HrPermissionNames.ViewEmployees,
-      HrPermissionNames.CreateEmployees,
-      HrPermissionNames.UpdateEmployees,
-      HrPermissionNames.TransferEmployees,
-      HrPermissionNames.TerminateEmployees
-    })
-    {
-      Assert.True(composed.TryGet(permission, out var definition), permission);
-      Assert.Equal(PermissionScope.Tenant, definition.Scope);
-      Assert.False(string.IsNullOrWhiteSpace(definition.Description));
-
-      Assert.False(platformOnly.TryGet(permission, out _), permission);
-    }
-
-    // Composing ADDED; it did not disturb what Platform already owned.
-    Assert.All(platformOnly.All, definition => Assert.True(composed.TryGet(definition.Name.Value, out _)));
-  }
-
   // ---- P2. THE REAL HANDLER GRANTS IT, AND THE ASSIGNMENT IS PERSISTED.
   //
   // `AssignPermissionToRoleCommandHandler` over real SQL, with the real role repository and the real

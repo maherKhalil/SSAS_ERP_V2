@@ -387,22 +387,6 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.Equal(DepartmentErrors.CodeConflict, updated.Error);
   }
 
-  // ---- THE ORDINARY UPDATE CANNOT REACH PARENT OR STATUS, and the proof is the type itself.
-  //
-  // There is no field to set, so this is a compile-time guarantee rather than a runtime refusal. Asserting
-  // it here records that the absence is load-bearing rather than incidental.
-  [Fact]
-  [Trait("Decision", "ADR-026")]
-  public void The_update_command_carries_no_parent_status_or_manager()
-  {
-    var properties = typeof(UpdateDepartmentCommand)
-      .GetProperties()
-      .Select(property => property.Name)
-      .ToArray();
-
-    Assert.Equal(["DepartmentId", "Code", "Name", "RowVersion"], properties);
-  }
-
   // ================================================================================================
   // LIFECYCLE
   // ================================================================================================

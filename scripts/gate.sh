@@ -1237,9 +1237,23 @@ for CFG in $GATE_CONFIGS; do
       # next death comes with a curve. Baselines from the 2026-08-24 measurement: the two heaviest
       # cutover classes peak at 213MB and 239MB alone and 261MB together, and the FULL suite under
       # sixteen parallel collections peaks at 509MB Debug / 555MB Release.
-      if [ -f "$ROOT/scripts/sample-mem.ps1" ]; then
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ROOT/scripts/sample-mem.ps1" \
-          -OutFile "$LOGS/mem-Integration-$CFG.csv" -Tag "Integration-$CFG" -Match "$(basename "$ROOT")" &
+      # ---- ⚠ RELATIVE PATHS, FOR THE SAME REASON AS `--results-directory` ABOVE (T-255).
+      #
+      # `powershell.exe` is a Windows executable, so `-File "/c/Users/..."` depends on MSYS rewriting the
+      # path. With `MSYS_NO_PATHCONV=1` set it does not, and PowerShell refuses to start:
+      # *"The argument '/c/Users/.../sample-mem.ps1' to the -File parameter does not exist."*
+      #
+      # **This one failed LOUDLY where the TRX relocation failed silently, and the difference is the
+      # receiving tool: PowerShell VALIDATES `-File`, while `dotnet --results-directory` ACCEPTS anything
+      # and creates it.** A tool that checks its argument cannot hide the mistake; a tool that constructs
+      # what the argument names buries it. Same defect, opposite blast radius.
+      #
+      # `cd "$ROOT"` happened at the top, so a repo-relative path has nothing to convert under either
+      # setting.
+      if [ -f "scripts/sample-mem.ps1" ]; then
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts/sample-mem.ps1" \
+          -OutFile "${LOGS#"$ROOT"/}/mem-Integration-$CFG.csv" -Tag "Integration-$CFG" \
+          -Match "$(basename "$ROOT")" &
         SAMPLER=$!
       fi
     fi

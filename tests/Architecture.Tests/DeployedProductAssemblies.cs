@@ -43,6 +43,44 @@ public static class DeployedProductAssemblies
       .OrderBy(name => name, StringComparer.Ordinal)
       .ToArray();
 
+  // ==================================================================================================
+  // WHICH DEPLOYED ASSEMBLIES ARE MODULES (item 171) -- A FACT ABOUT THE LAYOUT, NOT A SECOND LIST.
+  // ==================================================================================================
+  //
+  // Item 169 left `ModuleErrorMapping` and `ModuleEnablement` unfixed because their lists are per-module
+  // TYPES, and "which types count as a module" is a convention judgement. Asked the other way round it is
+  // answerable without judgement: **a module is a project under `src/Modules/`.**
+  //
+  // ⚠ THE DIRECTORY NAME IS NOT THE ASSEMBLY PREFIX -- `src/Modules/Finance/` holds the `SSAS.GL.*`
+  // projects -- so the project directory names are read, not the module folder names.
+  //
+  // This is derived from the repository layout rather than written down, which is what stops it being
+  // "the defect wearing a hat": a new module appears here the moment its project directory exists, with
+  // nobody deciding it is a module.
+  public static string[] ModuleProjectNames(string suffix)
+  {
+    var modules = Path.Combine(RepositoryRoot(), "src", "Modules");
+
+    return Directory.EnumerateDirectories(modules)
+      .SelectMany(Directory.EnumerateDirectories)
+      .Select(path => new DirectoryInfo(path).Name)
+      .Where(name => name.EndsWith(suffix, StringComparison.Ordinal))
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+  }
+
+  private static string RepositoryRoot()
+  {
+    var directory = new DirectoryInfo(AppContext.BaseDirectory);
+    while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln")))
+    {
+      directory = directory.Parent;
+    }
+
+    return directory!.FullName;
+  }
+
   public static string[] NamesOf(IEnumerable<Assembly> assemblies) =>
     assemblies
       .Select(assembly => assembly.GetName().Name!)

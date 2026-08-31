@@ -733,6 +733,19 @@ public sealed class ModuleErrorMappingArchitectureTests
   // shipped and had to fix.
   private static Type[]? mapperTypes;
 
+  // ⚠ EVERY MODULE THE BUILD SHIPS CONTRIBUTES MAPPER TYPES (item 171). The list below is hand-written,
+  // so a new module would simply not be scanned and every mapping assertion would stay green over a
+  // product it had stopped covering. "Which assemblies are modules" is read from `src/Modules/`.
+  [Fact]
+  public void Every_module_api_assembly_the_build_ships_contributes_mapper_types()
+  {
+    var shipped = DeployedProductAssemblies.ModuleProjectNames(".API");
+    var scanned = DeployedProductAssemblies.NamesOf(MapperTypes().Select(type => type.Assembly));
+
+    Assert.NotEmpty(shipped);
+    Assert.Empty(shipped.Except(scanned, StringComparer.Ordinal));
+  }
+
   private static Type[] MapperTypes() => mapperTypes ??=
   [
     .. new[]

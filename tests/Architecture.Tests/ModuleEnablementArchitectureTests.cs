@@ -41,6 +41,28 @@ public sealed class ModuleEnablementArchitectureTests
     typeof(AttendanceModuleEnablement).Assembly,
   ];
 
+  // ==================================================================================================
+  // ⚠ THE NAMED LIST ABOVE COVERS EVERY MODULE THE BUILD SHIPS (item 171).
+  // ==================================================================================================
+  //
+  // Naming the four assemblies is deliberate and the comment above says why: a scan returning nothing
+  // would pass vacuously, and naming them catches a module MOVING on the day it moves. **That reasoning
+  // is sound and this does not undo it** -- it closes the other direction, which naming cannot: a module
+  // ADDED and never appended here would drop out silently, and every assertion over the list would stay
+  // green while covering three modules out of five.
+  //
+  // "Which types count as a module" is a convention judgement, so it is not asked. "Which assemblies are
+  // modules" is a fact about the layout -- a project under `src/Modules/` -- and that is what is asked.
+  [Fact]
+  public void Every_module_api_assembly_the_build_ships_is_named_in_the_list()
+  {
+    var shipped = DeployedProductAssemblies.ModuleProjectNames(".API");
+    var named = DeployedProductAssemblies.NamesOf(ModuleApiAssemblies);
+
+    Assert.NotEmpty(shipped);
+    Assert.Empty(shipped.Except(named, StringComparer.Ordinal));
+  }
+
   private static IEnumerable<Type> DescriptorsIn(Assembly assembly) =>
     assembly.GetTypes()
       .Where(type => type is { IsClass: true, IsAbstract: false })

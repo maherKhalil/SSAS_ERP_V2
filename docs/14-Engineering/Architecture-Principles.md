@@ -2856,6 +2856,35 @@ anything can still go wrong.
 `git checkout --` restored it whole. **Commit often enough that a restore is a recovery and not a decision
 about how much to lose.**
 
+## A hand-listed guard excludes everything added after it was written
+
+**Three criteria in one package were unpinned, and all three failed the same way: the guard that should
+have covered them enumerates its subjects BY HAND.** A five-file allowlist. A predicate naming one entity
+type. A test asserting one property of seven.
+
+⚠ **Each was correct when written. None of them says anything about the package added afterwards** — and
+nothing goes red, because a hand-written list cannot notice an omission.
+
+**The cost lands on whoever adds the next package: to be covered, they must find and edit every
+hand-listing guard in the tree, and nobody has that enumeration.** ⚠⚠ **So the criteria get copied across
+packages — they are cheap and they read as intent — and the guards do not.**
+
+**The contrast was in the same sweep: a sibling guard DERIVED its subjects from the composed model, and it
+covers the new package automatically, with nobody touching it.**
+
+**Prefer derivation to enumeration wherever the model can answer.** Where a list is genuinely necessary,
+**assert its SIZE against a derived count**, so that adding a type fails the guard rather than escaping it.
+
+### The specification was copied and the guard was not
+
+⚠ **This is not a near-miss in the usual sense.** Nothing was mislabelled, misread, or over-claimed. **The
+test whose name says *employee* never pretended to cover anything else.** A criterion was written for the
+new package on the model of the old one, and the work behind it was simply not done — **and the criterion
+now asserts that it was.**
+
+**When a package's criteria are derived from a sibling's, check each one against the guard it names, not
+against the sibling's guard.** The wording travels for free; the coverage does not.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

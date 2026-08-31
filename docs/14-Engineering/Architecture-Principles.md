@@ -1472,6 +1472,38 @@ whether a command you could run right now would remove it.**
 spelling to tidy four spellings **makes the grep worse while looking like cleanup** — and the tidying
 reflex fired twice in one turn, in the item that had just warned against it.
 
+
+## Write the heading as a CLAIM, not a LABEL — measured 2026-08-31
+
+**Sampling 46 criteria across the six packages that have a heading/body split: 40 agreed, 5 were narrower
+but compatible, and ONE misled. Heading scanning is safe.** (Bullet and table forms have no split at all —
+the label IS the text — so four packages are structurally immune.)
+
+**But the divergences concentrate, and the concentration names the fixable thing.** Four of the six
+non-agreements come from one package, **including the only misleading one — and that package's headings
+average 2.4 WORDS against another's 6.5, which had no divergences at all.**
+
+⚠ **HEADING LENGTH PREDICTS RELIABILITY.** *Cache coherence* and *Restore default* are LABELS over dense
+bodies. *A mapped identity holding the self permission reads its own records* is a CLAIM — **and a claim
+cannot diverge from a body, because it already IS one.**
+
+**So when writing a criterion, write its heading as the claim it makes.** The cost is a few words; the
+benefit is that the heading and the body cannot drift apart, because there is only one statement.
+
+⚠ **And the usage rule, since the existing headings are not being rewritten: HEADINGS ARE LICENSED FOR
+ORIENTATION AND NOT FOR ESTABLISHING A MAPPING.** The one miss in forty-six was exactly that misuse.
+
+## And a synonym misleads as readily as a heading
+
+⚠⚠ **A criterion required that two employee numbers normalising alike CANNOT BOTH BE CREATED. A test named
+`Employee_numbers_that_normalize_alike_are_equal` matches those words almost exactly — and asserts VALUE
+EQUALITY, which a product can satisfy WHILE HAPPILY PERSISTING BOTH.** The real pin was in a different
+suite entirely, asserting a conflict on the second insert.
+
+**Uniqueness and equality are synonyms in English and opposites in a database.** ⚠ **Both near-misses in
+this sweep — a heading and a synonym — were caught only by reading WHAT THE TEST ASSERTS, never by what it
+is called.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

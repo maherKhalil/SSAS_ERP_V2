@@ -230,4 +230,8 @@ An Employee can be created, retrieved, updated, transferred, and terminated with
 
 ### AC-EMP-0047 — Excluded operations are absent
 
-No route, command, handler, permission, or table exists for rehire, employee documents, import, or export.
+FP-006 introduces no route, command, handler, permission, or table for rehire, employee documents, import, or export.
+
+**Scope corrected 2026-08-31 (architect), from `DEC-EMP-0032`, which this criterion implements.** The sentence previously read *"No route, command, handler, permission, or table **exists**"* — an unqualified product-wide absence, where its own governing decision defers the three requirements **"whole and outside the Employee core slice"** and goes on to describe the obligations **a future import and export must satisfy**. ⚠ **An unscoped ban would have been falsified rather than violated the day FP-009 shipped employee import/export**, and `AC-EMP-0045` and `AC-EMP-0046` — the two criteria immediately above, deferring the same way — both already say *"FP-006 introduces no…"*. The criterion was the odd one out in its own section and stricter than the decision it cites; the scope is restored, not narrowed.
+
+**What asserts it: `No_rehire_operation_exists` (`EmployeeArchitectureTests`) covers the REHIRE clause only.** The documents, import and export clauses are unasserted here **by design** — documents belong to the closed FP-010 and import/export to FP-009, so the guard that would catch a violation belongs with whichever package builds the subject, not with this one.

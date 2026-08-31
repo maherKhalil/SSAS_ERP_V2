@@ -1702,6 +1702,43 @@ question people actually hold is the other one: given this test, what does it pr
 not forgetfulness. **A one-way link looks like a link from the side that has it, so the missing direction is
 invisible to exactly the person who would otherwise add it.**
 
+## An unscoped absence criterion is falsified, not violated
+
+**A criterion read *“No route, command, handler, permission, or table exists for rehire, employee
+documents, import, or export.”* The decision it implements defers those requirements **out of this
+package**, and goes on to describe what a future import and export must satisfy.**
+
+⚠ **So the criterion bans product-wide what its own decision merely places elsewhere.** The day another
+package builds the subject, the criterion becomes **false** — and nothing was violated. **The team that
+did the right thing takes the failure, and the only available fixes are to weaken a guard or to argue with
+a spec that was never meant to say this.**
+
+**The tell is available at writing time and costs one comparison: the two criteria immediately above it,
+deferring the same way, both said *“FP-006 introduces no…”*.** An unscoped absence sitting between
+scoped ones is a slip, not a stricter intent.
+
+### Read a criterion against the decision it cites before accepting its scope
+
+**A criterion is an implementation of a ruling, and it can be stricter than the ruling.** The reflex when
+one looks unsatisfiable is to treat it as a boundary question needing an owner. **Check the citation first:
+here the governing decision was in the same package, already scoped, and settled it outright.**
+
+## The suite that holds a structural claim is chosen by the mechanism, not by the package
+
+**A criterion in the employee package was pinned by a test in the branch-session architecture suite.** A
+search scoped to the feature's own module cannot reach it at any level of effort.
+
+**A structural claim is asserted where the structure lives.** Feature-scoped searching assumes the two
+coincide, and for architecture tests they routinely do not — so run the architecture sweep across the
+whole test tree, then narrow.
+
+### The evidence for architecture-first, and why the confound runs the right way
+
+**Two passes ordered architecture-first averaged 0.86 citations per criterion examined; the three before
+them averaged 0.57.** Small numbers — but **the new method was applied to the leftovers of the old one**,
+the set already demonstrated to resist it. ⚠ **A method that wins on its predecessor's residue is not
+winning on an easier sample**, which is the one confound that would otherwise explain the gap away.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

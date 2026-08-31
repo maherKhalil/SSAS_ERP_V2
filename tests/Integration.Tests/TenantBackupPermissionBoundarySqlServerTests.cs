@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Microsoft.Data.SqlClient;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.TenantStorage;
@@ -164,8 +164,12 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
     // The positive half: the permission the platform actually asks deployment for is SUFFICIENT to observe
     // a backup started by somebody else — a DBA, SQL Agent, or a second platform worker.
     await using var principal = await LowPrivilegePrincipal.CreateAsync(grantVisibility: true);
-    await principal.FillAsync();
 
+    // ⚠ NO FILLER (item 191). 240 MB of it existed ONLY to make a one-shot backup slow enough to catch, and
+    // the looping competitor below removes that need -- measured, not assumed: with an EMPTY database and a
+    // single looping competitor the guard's first hit arrives in 24 ms against a 30 s deadline, and 89.7% of
+    // 90,223 samples saw a backup in flight. The fill bought 97.7% instead, which this test does not need,
+    // for 240 MB of inserts it pays for on every run.
     using var competing = principal.StartCompetingBackup();
 
     await using var connection = await principal.OpenImpersonatedAsync();
@@ -291,20 +295,13 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
       }
     }
 
-    // Enough data that a competing backup lasts long enough to be observed. Batched and checkpointed under
-    // SIMPLE recovery — a single large insert in one transaction exhausted the buffer pool on this host.
-    public async Task FillAsync()
-    {
-      await ExecuteAsync("master", $"ALTER DATABASE [{Catalog}] SET RECOVERY SIMPLE");
-      await ExecuteAsync(Catalog,
-        "CREATE TABLE dbo.Filler (Id int IDENTITY(1,1) NOT NULL, Payload char(8000) NOT NULL)");
-      await ExecuteAsync(Catalog,
-        "DECLARE @batch int = 0; " +
-        "WHILE @batch < 6 BEGIN " +
-        "  INSERT INTO dbo.Filler (Payload) SELECT TOP (5000) REPLICATE('x', 8000) " +
-        "  FROM sys.all_columns AS a CROSS JOIN sys.all_columns AS b; " +
-        "  CHECKPOINT; SET @batch += 1; END", 600);
-    }
+    // `FillAsync` stood here until item 191. It loaded 240 MB so that a ONE-SHOT competing backup would last
+    // long enough to be caught -- data whose only purpose was to lengthen a race. The competitor now loops,
+    // so the observation no longer depends on any single backup's duration and the filler is redundant.
+    //
+    // ⚠ MEASURED BEFORE REMOVING, NOT ASSUMED: empty database, one looping competitor, first hit at 24 ms
+    // against a 30 s deadline. `TenantBackupProviderSqlServerTests` keeps its own separate `FillAsync` and is
+    // untouched -- it is shared with the scheduler fixture and serves a different purpose.
 
     // A connection in the target database whose SECURITY CONTEXT is the low-privilege principal. The
     // connection authenticates as the test's Windows identity and then drops to the impersonated token, so
@@ -356,7 +353,21 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
       start.ArgumentList.Add("-d");
       start.ArgumentList.Add(Catalog);
       start.ArgumentList.Add("-Q");
-      start.ArgumentList.Add($"BACKUP DATABASE [{Catalog}] TO DISK = N'{path}' WITH INIT, CHECKSUM");
+
+      // ⚠ BACKED UP REPEATEDLY, NOT ONCE (item 191). A one-shot competitor made this a race against the
+      // backup's own duration: the guard had to look during the single backup or never. Item 187's PHASE
+      // run lost that race, and `TenantBackupProviderSqlServerTests` had already recorded the diagnosis in
+      // prose -- "a one-shot competitor turns the test into a race it usually loses" -- while backing its
+      // own competitor in a loop since 2026-08-15. The fix went to the file where the symptom appeared and
+      // never to this one.
+      //
+      // The wall-clock cap is ONLY a leak guard for a test host that dies without unwinding. It is
+      // deliberately far longer than any observation, so it never bounds the test; the lifetime is the
+      // caller's, enforced by `using` on the returned child.
+      start.ArgumentList.Add(
+        $"DECLARE @deadline datetime2 = DATEADD(minute, 10, SYSDATETIME()); " +
+        $"WHILE SYSDATETIME() < @deadline BEGIN " +
+        $"BACKUP DATABASE [{Catalog}] TO DISK = N'{path}' WITH INIT, CHECKSUM; END");
 
       return SqlcmdChildProcess.Start(start);
     }

@@ -619,6 +619,15 @@ and it is the one the merge gate skips.**
 fails to compile anywhere — Integration included — reddens it. A compile break cannot merge.** The exposure
 is runtime behaviour and Release-only analysis.
 
+⚠⚠ **AND AS OF 2026-08-31 THE SUITE IS GREEN IN DEBUG — 846 OF 846, THE FIRST GREEN INTEGRATION SINCE
+2026-08-27.** The expired-test fix holds at full-suite scale. **Release is 845 of 846: one named test,
+which is a different order of unknown from *nobody knows what that suite does*.**
+
+⚠ **`test-baseline.txt` STILL HAS NO INTEGRATION OR RELEASE ROWS** — the writer only runs on a green gate,
+and one failing test keeps it red. **One green Release leg closes it.** **The exposure this entry
+describes is unchanged; what has changed is that the unknown is now a single named test rather than a
+whole suite.**
+
 ⚠⚠ **IT IS NO LONGER HYPOTHETICAL. THE INTEGRATION SUITE HAS BEEN RED SINCE BEFORE THIS WORK BEGAN, AND
 EVERY MERGE WENT GREEN OVER IT.** Found 2026-08-31 by the first `GATE_SCOPE=PHASE` run to complete.
 
@@ -740,10 +749,20 @@ instrument* — **fired repeatedly, because it hangs on an action somebody perfo
 item** — an event that exists — and the file's header is rewritten to match, with the inert instruction
 withdrawn rather than repeated louder.
 
-⚠ **WHAT THAT CANNOT FIX, AND WHY THIS IS ON YOUR LIST: THE LAST COMPLETION ALWAYS ENDS SOMEWHERE.** The
-remedy converts *stopped with items queued* into *stopped with an empty queue at last look* — **smaller
-and more honest, and not zero.** **A worker that cannot self-wake needs an EXTERNAL trigger for the final
-gap, and no wording supplies one.**
+⚠⚠ **UPDATED HOURS LATER, AND THE UPDATE IS GOOD NEWS THIS ENTRY DID NOT PREDICT: THE RE-ANCHORING TOOK
+HOLD ON ITS FIRST CYCLE.** The coder read `QUEUE.md` as the closing step of its next turn, **found two
+unstarted items, and began a 69-minute run with no message telling it to.** **First time in the session it
+picked up work from the file rather than from the wire.** ⚠ **The architect's *doorbell* message arrived
+while the item it dispatched was already running — and the architect had, for the third time, called an
+idle that was not one.**
+
+**So the strong claim above is withdrawn.** *Stopped with items queued* is no longer the normal case; the
+file now starts work.
+
+⚠ **WHAT REMAINS, AND IT IS GENUINELY SMALLER: THE LAST COMPLETION STILL ENDS SOMEWHERE.** When the queue
+is empty at that last look, nothing restarts the coder. **A window that cannot self-wake needs an EXTERNAL
+trigger for that final gap, and no wording supplies one.** **The options below still stand — they are just
+buying a smaller thing than this entry first said.**
 
 **What it blocks.** Nothing technical. **It costs you an interruption every time the loop reaches its own
 end, and it has cost you a dozen already.**

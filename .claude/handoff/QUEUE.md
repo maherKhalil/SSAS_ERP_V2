@@ -183,7 +183,7 @@ loop declared itself out of work it was wrong for a reason it could name.
 work; with none queued its only remaining behaviour was to report an empty queue every seventeen minutes.
 **It is re-armed in one call the moment a row is added.**
 
-⚠⚠ **AND BEFORE CLOSING A ROW: VERIFY ITS RESULT FILE IS COMMITTED.** `CODER.md` makes the result file a
+⚠⚠ **AND BEFORE CLOSING A ROW: VERIFY ITS RESULT FILE IS COMMITTED, AND THAT THE CLOSED LIST NAMES THE ROW.** (The second half added 2026-08-31 after eight items closed against a list last updated at 197 — **the same shape as the missing result files, and silent in the same way.**) `CODER.md` makes the result file a
 required step, and **twenty-seven of them across `T-001`…`T-201` were never committed** — 26 with no
 history anywhere. **All three of the ones found in a single day — 177, 179 and `item-176` — would have been
 caught by this one check at the moment the row was closed.**

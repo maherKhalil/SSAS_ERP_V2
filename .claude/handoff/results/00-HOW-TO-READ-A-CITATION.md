@@ -28,6 +28,10 @@ Four such labels exist, and they are the only mappings anybody has:
 | `# T-201 (item 48)` | **item 48 = T-201** |
 | `T-181`'s status line, `ESTABLISH ONLY, item 26` | **item 26 = T-181** |
 
+⚠⚠ **AND THE FOUR LABELS ARE NOT ALL IN THE SAME PLACE. Three are in the file's FIRST-LINE HEADER; the
+fourth is in `T-181`'s STATUS LINE.** **A reader grepping for the header form finds three and concludes
+that is all there is.** **If you go looking for more, search the file bodies, not the headings.**
+
 ⚠ **`item N` is cited for 25 distinct numbers below 152, and only three of them (40, 41, 48) can be
 resolved by the labels above.** The other twenty-two — **1, 4, 5, 8, 9, 10, 16, 24, 25, 47, 56, 64, 90,
 91, 95, 100, 116, 120, 123, 125, 133, 136** — **have no file and no recorded mapping.**

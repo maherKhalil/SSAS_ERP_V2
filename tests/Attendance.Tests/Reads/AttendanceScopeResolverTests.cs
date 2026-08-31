@@ -58,11 +58,7 @@ public sealed class AttendanceScopeResolverTests
 
   // ---- AN EMPTY AUTHORIZED SET REFUSES, rather than degrading to an empty page.
   //
-  // ⚠ **On the COMPANY-ONLY path, and deliberately only there.** On the full path an empty company set
-  // also refuses — but it answers `BranchScopeDenied`, because the factory refuses on either empty set
-  // and the resolver labels that refusal by the check it had just made. **Asserting that here would
-  // cement a diagnosis that names the wrong grant**, so this pins the path whose answer is right and the
-  // other is reported rather than fixed at the keyboard.
+  // On the COMPANY-ONLY path. The full path is the pair below.
   [Fact]
   public async Task An_empty_authorized_company_set_is_refused_rather_than_served_as_an_empty_page()
   {
@@ -71,6 +67,35 @@ public sealed class AttendanceScopeResolverTests
 
     Assert.True(scope.IsFailure);
     Assert.Equal(AttendanceScopeErrors.CompanyScopeDenied, scope.Error);
+  }
+
+  // ---- ⚠⚠ AND ON THE FULL PATH THE REFUSAL NAMES THE GRANT CLASS THAT IS MISSING (item 229).
+  //
+  // `AttendanceReadScope.Create` returns null when EITHER set is empty, and the resolver used to label
+  // every null `BranchScopeDenied` — **sending an operator to grant a BRANCH when the missing grant was
+  // a COMPANY**, against a comment promising the two refusals are distinguishable.
+  //
+  // ⚠ **THE PAIR IS THE TEST, NOT EITHER HALF.** A resolver that answered `CompanyScopeDenied` for every
+  // null would satisfy the first of these perfectly. **Only running both empty sets through the same
+  // path shows the label follows the input.**
+  [Fact]
+  public async Task An_empty_company_set_on_the_full_path_names_the_company_grant()
+  {
+    var scope = await Resolver(companies: [], branches: [BranchA])
+      .ResolveAsync(AttendancePermissionNames.ViewRecords);
+
+    Assert.True(scope.IsFailure);
+    Assert.Equal(AttendanceScopeErrors.CompanyScopeDenied, scope.Error);
+  }
+
+  [Fact]
+  public async Task An_empty_branch_set_on_the_full_path_names_the_branch_grant()
+  {
+    var scope = await Resolver(companies: [CompanyA], branches: [])
+      .ResolveAsync(AttendancePermissionNames.ViewRecords);
+
+    Assert.True(scope.IsFailure);
+    Assert.Equal(AttendanceScopeErrors.BranchScopeDenied, scope.Error);
   }
 
   // ---- IT RE-ASKS EVERY TIME RATHER THAN CACHING. Company access is revocable inside a request.
@@ -92,10 +117,11 @@ public sealed class AttendanceScopeResolverTests
   private static AttendanceScopeResolver Resolver(
     IReadOnlyCollection<string>? permissions = null,
     IReadOnlyList<Guid>? companies = null,
+    IReadOnlyList<Guid>? branches = null,
     ITenantCompanyAccessResolver? companyAccess = null) =>
     new(
       companyAccess ?? new RecordingCompanyAccess(companies ?? [CompanyA]),
-      new StubBranchAccess(),
+      new StubBranchAccess(branches ?? [BranchA]),
       new StubCurrentTenant(),
       new StubCurrentTenantUser(),
       new StubCurrentUser(permissions ?? [AttendancePermissionNames.ViewRecords]));
@@ -124,16 +150,16 @@ public sealed class AttendanceScopeResolverTests
     }
   }
 
-  private sealed class StubBranchAccess : ITenantBranchAccessResolver
+  private sealed class StubBranchAccess(IReadOnlyList<Guid> permitted) : ITenantBranchAccessResolver
   {
     public Task<Result<IReadOnlyList<BranchAccessSummary>>> GetPermittedBranchesAsync(
       Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
       Task.FromResult(Result.Success<IReadOnlyList<BranchAccessSummary>>(
-        [new BranchAccessSummary(BranchA, "BR-A", "Branch A", true)]));
+        permitted.Select(id => new BranchAccessSummary(id, "BR", "Branch", true)).ToArray()));
 
     public Task<Result> AuthorizeBranchAsync(
       Guid tenantId, long tenantUserId, Guid branchId, CancellationToken cancellationToken = default) =>
-      Task.FromResult(branchId == BranchA
+      Task.FromResult(permitted.Contains(branchId)
         ? Result.Success()
         : Result.Failure(new Error("Branch.Denied", "Denied.")));
   }

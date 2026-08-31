@@ -60,6 +60,10 @@ public sealed class CutoverManifestArchitectureTests
   // ---- C6-1 / C6-2. THE MODEL THE CUTOVER PLANS FROM IS THE ONE THE APPLICATION PERSISTS THROUGH.
   [Fact]
   [Trait("Decision", "ADR-020")]
+  // ⚠ CITED BY B18, body-confirmed: the EXACT expected list names both `Employee` and `EmployeeBranchAssignment`, and it is asserted
+  // against the derived plan -- which is what "appears in the declared tenant-owned inventory" means.
+  [Trait("Criterion", "AC-EMP-0037")]
+  [Trait("Criterion", "AC-EMP-0038")]
   public void C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity()
   {
     var composed = CutoverTenantModel.Source.Model;
@@ -140,6 +144,8 @@ public sealed class CutoverManifestArchitectureTests
   // throughout — so the order is a correctness requirement, not a preference.
   [Fact]
   [Trait("Decision", "ADR-020")]
+  // ⚠ CITED BY B18, body-confirmed: Employee after Company AND after Branch, history after Employee -- the criterion verbatim.
+  [Trait("Criterion", "AC-EMP-0039")]
   public void C6_6_Employee_is_ordered_after_company_and_branch_and_history_after_employee()
   {
     var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);

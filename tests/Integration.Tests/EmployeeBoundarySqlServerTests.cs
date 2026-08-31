@@ -660,6 +660,9 @@ public sealed class EmployeeBoundarySqlServerTests
   // ================================================================================================
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the branch moves to the destination AND history length is 2 -- initial assignment plus exactly
+  // one transfer record, which is the criterion's "appends exactly one" half.
+  [Trait("Criterion", "AC-EMP-0031")]
   public async Task A_transfer_moves_the_employee_and_appends_exactly_one_record()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -811,6 +814,8 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- ADR-024 DECISION 12: the narrow recovery out of a deactivated source.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: an administrator transfers an employee OUT of a deactivated source into an authorized branch.
+  [Trait("Criterion", "AC-EMP-0036")]
   public async Task A_tenant_administrator_can_recover_an_employee_from_an_inactive_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -855,6 +860,9 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- TWO SIMULTANEOUS TRANSFERS: exactly one wins, and the history cannot fork.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: first succeeds, second fails, and the branch is the FIRST winner's destination -- one success and
+  // one deterministic conflict.
+  [Trait("Criterion", "AC-EMP-0033")]
   public async Task Two_transfers_from_the_same_rowversion_produce_one_winner()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

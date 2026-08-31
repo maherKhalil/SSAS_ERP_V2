@@ -317,6 +317,8 @@ public sealed class EmployeeDomainTests
   [Fact]
   // ⚠ CITED BY ITEM 218/B18, body-confirmed: ...nor transferred. ⚠ The criterion's "remains retrievable by id" clause is pinned by NONE of the three.
   [Trait("Criterion", "AC-EMP-0015")]
+  // ⚠ CITED BY B18, body-confirmed: the TERMINATED half -- refused with TransferAfterTermination.
+  [Trait("Criterion", "AC-EMP-0034")]
   public void A_terminated_employee_cannot_be_transferred()
   {
     var employee = Stamped();
@@ -346,6 +348,9 @@ public sealed class EmployeeDomainTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the DESTINATION-EQUALS-SOURCE half -- refused with TransferDestinationUnchanged, and
+  // Assert.Single on the assignments proves no record was appended by the refusal.
+  [Trait("Criterion", "AC-EMP-0034")]
   public void A_transfer_to_the_current_branch_is_refused()
   {
     var employee = Stamped();

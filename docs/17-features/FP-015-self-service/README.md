@@ -2,7 +2,7 @@
 package: FP-015
 title: Employee Self Service
 module: Platform + HR + Payroll + Attendance (consumers)
-status: DRAFT — owner decisions unruled. ⚠ NOT specification-only: the self-service routes shipped 2026-08-28 and nine of fourteen acceptance criteria are pinned by named tests (measured T-206, 2026-08-31)
+status: DRAFT — owner decisions unruled. ⚠ NOT specification-only: the self-service routes shipped 2026-08-28, and TWELVE of fourteen acceptance criteria are pinned by named tests — the other two implemented and guaranteed by construction, none unbuilt (measured T-206, completed T-207, 2026-08-31)
 version: 0.1
 date: 2026-08-27
 ---
@@ -27,12 +27,23 @@ FILTERS, never a SUBJECT.*** ⚠ **A package described as specification-only hol
 invariant that has already survived one revision**, strengthened when a second self route made
 `bound.Count == 0` untenable.
 
-**The remaining five criteria are UNMEASURED, NOT UNBUILT.** The measurement matched test NAMES, and name
-matching cannot establish an absence; candidate coverage exists in `EmployeeReadScopeArchitectureTests`,
-`ModuleErrorMappingArchitectureTests`, `AttendanceRouteInventoryTests` and `AttendanceArchitectureTests`,
-unverified criterion by criterion. ⚠ **Neither gap is a criterion whose SUBJECT the product lacks —
-termination appears in 32 HR source files and entitlement in 47 — so both are satisfiable today.**
+**COMPLETED T-207: ALL FIVE REMAINING CRITERIA ARE IMPLEMENTED. NOT ONE WAS UNBUILT.** ⚠ **Nine becomes
+TWELVE PINNED of fourteen** — `AC-SS-0010` and `0011` by `The_link_is_untouched_by_a_refusal`, which is
+**exactly the failure mode `AC-SS-0011` names for itself**; `AC-SS-0012` by `An_ended_employment_does_not_resolve`,
+**whose source names the criterion by id** (T-090, `DEC-L-073`).
 
+⚠ **`AC-SS-0013` and `0014` ARE CALLED NEITHER PINNED NOR UNBUILT, DELIBERATELY.** They are guaranteed by
+construction — the self routes sit inside the group carrying `RequireModule`, and both modules say so in
+source — **but what is NOT asserted is the COMPOSITION: no test says *the SELF route specifically is
+refused when the module is off*.** The gate is proven on a probe route, membership is structural and
+commented, **and their conjunction is inferred.** **What would settle it: one test per module hitting
+`/me/payslips` and `/me/records` on an unentitled tenant — the gate suites already have the harness.**
+
+⚠⚠ **AND THE CANDIDATE FILE LIST THAT T-206 OFFERED WAS WRONG, BY A HOMONYM.**
+`AttendanceRouteInventoryTests`' *Entitlement* is **LEAVE entitlement — days of leave** — **not module
+entitlement.** **The coverage lives in files nobody had named:** `ModuleEnablementGateTests`,
+`ExpiredTenantGateTests`, `UserEmployeeResolverSeamTests`, `EmployeeTerminationAccountClosureTests`.
+**A candidate list built by matching names is itself a name match, and inherits every homonym in it.**
 **The owner-decision half of the status is unchanged and still true: the decisions are unruled.**
 
 ---

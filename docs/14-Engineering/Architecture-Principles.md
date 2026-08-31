@@ -939,6 +939,23 @@ run asked what the code contains. **None asked whether the documents' claims abo
 which is why a four-day-old falsehood in a ratified package survived eight enumerations that all had the
 tree in front of them.
 
+
+## ⚠ A BOUNDARY STATEMENT IS NOT A STATUS CLAIM, AND ONLY THE SECOND DECAYS
+
+**Added 2026-08-31 after a sweep of sixteen packages, because the two look identical out of context and
+confusing them produces false findings in both directions.**
+
+FP-002 says *"Milestone 2 does not implement `AuthenticationSession`, `RefreshTokenRecord`, JWT issuance."*
+⚠ **Read alone that is FP-015's false claim word for word.** **It is immediately followed by a Milestone 3
+boundary that DOES implement them.**
+
+**A BOUNDARY STATEMENT says what a numbered phase excluded, and is true forever because the phase is over.
+A STATUS CLAIM says what the product contains, and is true only until the next commit.**
+
+⚠ **So the sweep recorded FP-002 as making NO status claim rather than a FALSE one** — and it would have
+been wrong either way had it matched on wording alone. **Check what the sentence is ABOUT: a phase, or the
+tree.** **The tell is a date or a milestone number in the subject.**
+
 # Principle 21 – An Undecided Decision Filed as Unbuilt Work Reads as Engineering Debt and Is Not
 
 **"Not implemented" and "nobody has said what this means" look identical in a status table and are
@@ -1310,6 +1327,38 @@ number was wrong, the second is the number.
 **Generalises past criteria:** wherever a thing has a stable identifier and an unstable presentation —
 requirements, error codes, ADR numbers, test names — **key on the identifier and treat the surrounding
 shape as noise.** ⚠ **If your regex mentions punctuation, you are counting layout.**
+
+# Principle 29 – A Test That Claims a Criterion Must Cite It
+
+**Measuring which acceptance criteria a suite actually pins is either free or it costs a day, and the
+difference is one comment.**
+
+**Measured 2026-08-31 on FP-002.** Of 51 criteria, **19 were pinned by tests that CITE the criterion id in
+their body.** Those nineteen took minutes: grep the id, read the assertion, done. ⚠ **The remaining 32
+took a day and did not finish**, because citation is **sufficient** for *pinned* and **not necessary** —
+so their absence proves nothing, and each has to be chased by hand:
+
+- one is an **exact match that never names the criterion** — the assertion is the criterion, reworded;
+- one has near neighbours where **the closest asserts the OPPOSITE scope**;
+- one has no name match at all, **which establishes nothing either way.**
+
+⚠⚠ **SO *32 UNCOVERED* WOULD HAVE BEEN AN ABSENCE CLAIM MADE ON AN INSTRUMENT THAT CANNOT SEE ABSENCE.**
+The honest bucket is **UNRESOLVED**, and it is expensive to leave that way.
+
+**The convention: when a test is the thing that pins an acceptance criterion, name the criterion in the
+test.** A comment is enough. **It costs one line at the moment the mapping is in your head, and it is the
+only moment anybody knows it.**
+
+⚠ **THE ENFORCEABLE HALF, WHICH IS NARROWER AND ALREADY EXISTS: a cited id must RESOLVE.** FP-002's
+measurement carried that control — **no test cites an `AC-AUTH` id the specification lacks** — and without
+it all nineteen would have been worthless, because a citation pointing at a criterion that does not exist
+reads exactly like one that does.
+
+**What is NOT proposed: requiring every test to cite something.** Most tests pin no criterion, and a rule
+demanding otherwise would produce ceremonial citations — **which is worse than none, because it makes the
+grep stop working.**
+
+---
 
 # Related Documents
 

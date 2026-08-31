@@ -2865,6 +2865,14 @@ type. A test asserting one property of seven.
 ⚠ **Each was correct when written. None of them says anything about the package added afterwards** — and
 nothing goes red, because a hand-written list cannot notice an omission.
 
+⚠⚠ **CORRECTED ON MEASUREMENT: THESE LISTS HAD NOT GONE STALE. THEY WERE COMPLETE OVER THEIR OWN
+POPULATIONS — eight of eight commands, twice, and a seven-of-eight whose exemption is documented.** **What
+was narrow was the POPULATION, not the list: the guard's subject is one package's entity, and it always
+was.** **A STALE LIST IS MISSING A MEMBER OF ITS OWN POPULATION; A NARROW GUARD HAS THE WRONG POPULATION.**
+⚠ **Both are cured by deriving, and only the second explains why a sibling package's criteria can be
+written on the model of an existing one while the coverage does not follow.** **Say which you have found —
+reporting a narrow guard as a stale one names a defect that is not there.**
+
 **The cost lands on whoever adds the next package: to be covered, they must find and edit every
 hand-listing guard in the tree, and nobody has that enumeration.** ⚠⚠ **So the criteria get copied across
 packages — they are cheap and they read as intent — and the guards do not.**
@@ -2874,6 +2882,28 @@ covers the new package automatically, with nobody touching it.**
 
 **Prefer derivation to enumeration wherever the model can answer.** Where a list is genuinely necessary,
 **assert its SIZE against a derived count**, so that adding a type fails the guard rather than escaping it.
+
+### And a partition needs its total asserted even when both halves are hand-written
+
+**Two guards divided a set between them: one asserting a property of two members, the other asserting its
+absence for the remaining six. Two plus six is exactly eight, which is the whole set today.** ⚠⚠ **A ninth
+member joins NEITHER list, and both guards stay green.**
+
+**Both halves existed. What was missing was the sentence tying them to the population** — `guarded + exempt
+== total`, derived. **A partition is the one arrangement where completeness is free to assert and easy to
+omit**, because each half looks like a finished guard on its own.
+
+### Derivation cannot promote a structural guard into a behavioural one
+
+**Asking which hand-lists could be derived produced a better answer than the question deserved: two could,
+and the third's list could — while the criterion still could not.**
+
+⚠ **Its second clause is about what a REQUEST does — that identifiers supplied in a body are ignored in
+favour of the caller's own — and no structural guard, however derived, can reach it.**
+
+**So derivation buys survival against new types, and nothing else.** ⚠⚠ **The next package inherits the
+derived guard for free AND STILL OWES THE REQUEST TEST**, and a sweep that reports the guard as derived
+without saying so leaves the behavioural half looking covered.
 
 ### The specification was copied and the guard was not
 

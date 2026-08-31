@@ -74,7 +74,28 @@ the one TASK skips.**
    `A_hard_stale_schema_observation_still_denies_after_connectivity_recovers`,
    `A_successful_connectivity_check_cannot_manufacture_schema_health`
 
-## ⚠ The worst concrete example in the current tree
+## ⚠⚠ CORRECTED BY ITEM 177 — THE EXAMPLE BELOW IS WRONG AS WRITTEN
+
+**Deleting the `.HasFilter(…)` line does NOT produce the defect.** EF Core's SQL Server provider adds
+`[NormalizedNationalId] IS NOT NULL` **by convention** for any unique index over a nullable column.
+Measured in item 177 by removing the declaration and reading the model: **the filter is still there,
+identical.**
+
+**The mechanism and the exposure survive; the one-line example does not.** The reachable form is one step
+further along — **`.HasFilter(null)`**, which explicitly overrides the convention and leaves the index
+unfiltered. Measured the same way: the model then reports `filter=NONE`, and
+`UniqueIndexFilterArchitectureTests` reddens on it.
+
+**So substitute `HasFilter(null)` for "delete the line" throughout the section below.** Everything else
+holds: it compiles, the filter argument is still a raw T-SQL expression nothing type-checks, no TASK suite
+materialises a schema, and the consequence is still that the second employee recorded with no national ID
+is refused.
+
+⚠ **And item 177 closes it**: that guard now makes this class TASK-visible without a database. It was
+built after the enumeration found **no live defect** — 62 unique indexes, 16 filtered, 46 unfiltered,
+**zero** over a nullable column without a filter.
+
+## ⚠ The worst concrete example in the current tree *(read with the correction above)*
 
 **`EmployeeConfiguration.cs:144–149`:**
 

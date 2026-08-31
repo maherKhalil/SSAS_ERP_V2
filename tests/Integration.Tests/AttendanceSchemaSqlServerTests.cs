@@ -3,6 +3,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using Microsoft.EntityFrameworkCore;
+using SSAS.Attendance.Domain.Leave;
 using SSAS.Attendance.Application.Permissions;
 using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Periods;
@@ -236,6 +237,82 @@ public sealed class AttendanceSchemaSqlServerTests
     // And the truth for the employee-date is their SUM — the arithmetic `IAttendanceSummary` performs.
     Assert.Equal(6m, rows.Sum(row => row.WorkedQuantity));
     Assert.Equal(2m, rows.Sum(row => row.UnpaidAbsenceQuantity));
+  }
+
+
+  // ================================================================================================
+  // TWO ATTENDANCE REPOSITORIES, EXECUTED FOR THE FIRST TIME (item 238).
+  // ================================================================================================
+  //
+  // Item 237 measured every production type with coverage. `AttendanceRecordRepository` and
+  // `LeaveBalanceRepository` were two of six query-bearing types with ZERO executed lines -- the product
+  // runs them and no test ever had.
+  //
+  // ⚠ Their siblings in the same file are covered: `WorkingCalendarRepository`,
+  // `AttendancePeriodRepository`, `LeaveTypeRepository` and `LeaveRequestRepository` all execute. **Six
+  // repositories in one file, four exercised and two not** -- which is the coverage-shaped version of
+  // the asymmetry instrument, inside a single source file.
+  [Fact]
+  public async Task The_record_repository_reads_by_id_and_by_employee_period()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    var recordId = await fixture.SeedRecordAsync();
+
+    await using var context = fixture.CreateContext();
+    var repository = new AttendanceRecordRepository(new RepositoryContext(context));
+
+    var byId = await repository.GetByIdAsync(recordId);
+    Assert.NotNull(byId);
+    Assert.Equal(fixture.Employee, byId!.EmployeeId);
+
+    var forPeriod = await repository.GetForEmployeePeriodAsync(fixture.PeriodId, fixture.Employee);
+    Assert.Single(forPeriod);
+
+    // ⚠ THE CONTROL. Both assertions above are satisfied by a repository that ignores its arguments and
+    // returns the only row in the table; an unknown id and a foreign employee must answer empty.
+    Assert.Null(await repository.GetByIdAsync(Guid.NewGuid()));
+    Assert.Empty(await repository.GetForEmployeePeriodAsync(fixture.PeriodId, Guid.NewGuid()));
+  }
+
+  [Fact]
+  public async Task The_leave_balance_repository_finds_a_balance_by_its_four_part_key()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    var employee = Guid.NewGuid();
+    var seeded = await fixture.SeedLeaveAsync(fixture.CompanyA, "BAL", employee);
+
+    await using var context = fixture.CreateContext();
+
+    var balance = LeaveBalance.Create(
+      fixture.CompanyA, employee, seeded.OrdinaryTypeId, 2026, 30m).Value;
+    balance.TenantId = fixture.Tenant;
+    context.Set<LeaveBalance>().Add(balance);
+    await context.SaveChangesAsync();
+
+    var repository = new LeaveBalanceRepository(new RepositoryContext(context));
+
+    Assert.NotNull(await repository.GetByIdAsync(balance.Id));
+    Assert.NotNull(await repository.GetForEmployeeAsync(
+      fixture.CompanyA, employee, seeded.OrdinaryTypeId, 2026));
+
+    // ⚠ THE CONTROL, AND IT IS PER KEY PART. `GetForEmployeeAsync` takes FOUR arguments, and a lookup
+    // that dropped any one of them would still find this row from the other three. Each case below moves
+    // exactly one part.
+    Assert.Null(await repository.GetForEmployeeAsync(
+      Guid.NewGuid(), employee, seeded.OrdinaryTypeId, 2026));
+    Assert.Null(await repository.GetForEmployeeAsync(
+      fixture.CompanyA, Guid.NewGuid(), seeded.OrdinaryTypeId, 2026));
+    Assert.Null(await repository.GetForEmployeeAsync(
+      fixture.CompanyA, employee, seeded.SensitiveTypeId, 2026));
+    Assert.Null(await repository.GetForEmployeeAsync(
+      fixture.CompanyA, employee, seeded.OrdinaryTypeId, 2027));
+  }
+
+  private sealed class RepositoryContext(TenantDbContext context)
+    : SSAS.BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor
+  {
+    public Task<DbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult<DbContext>(context);
   }
 
   // ================================================================================================

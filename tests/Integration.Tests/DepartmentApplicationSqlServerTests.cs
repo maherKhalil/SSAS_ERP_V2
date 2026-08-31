@@ -672,6 +672,137 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.Equal(DepartmentErrors.ManagerTerminated, assigned.Error);
   }
 
+
+  // ================================================================================================
+  // THE TWO HR DIRECTORY SERVICES, EXECUTED FOR THE FIRST TIME (item 238).
+  // ================================================================================================
+  //
+  // ---- WHY THESE TWO FIRST.
+  //
+  // Item 237 measured every production type with coverage and found SIX query-bearing types with ZERO
+  // executed lines. These are two of them, and they are the two the NAME-based proxy MISSED: both appear
+  // in `tests/` only as STRING LITERALS -- `"EmployeeApproverDirectoryService.cs"` in a file-reading
+  // architecture test, and the bare name in a ban list.
+  //
+  // ⚠ **A regex over identifiers cannot tell a type reference from a filename in quotes, so a test that
+  // READS a type's source is indistinguishable from one that RUNS it.** These two had never been run.
+  //
+  // ---- ⚠ AND THE JUSTIFICATION IS A CORRELATION, NOT A PREDICTION.
+  //
+  // The only other types this product has had in that condition were `GlReadService`'s two queries, and
+  // both threw on every call. **Two of two in one small class is a reason to LOOK, not a reason to
+  // EXPECT.** A clean result here is a result: code shown to work is worth what a defect would be.
+  [Fact]
+  public async Task The_placement_directory_answers_placement_standing_and_employment_type()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var employee = await fixture.InsertEmployeeAsync("E-DIR-1");
+
+    var directory = new EmployeePlacementDirectoryService(new DirectoryContext(graph.Context));
+
+    // ---- ALL THREE INTERFACES THE ONE CLASS IMPLEMENTS. It is `IEmployeePlacementDirectory`,
+    // `IEmploymentStandingDirectory` AND `IEmployeeEngagementDirectory`, and a test of one query says
+    // nothing about the other two -- each is its own `context.Set<Employee>()` chain.
+    var placement = await directory.GetPlacementAsync(employee);
+    Assert.NotNull(placement);
+    Assert.Equal(fixture.CompanyA, placement!.CompanyId);
+
+    var standing = await directory.GetStandingAsync(employee);
+    Assert.Equal(SSAS.BuildingBlocks.Tenancy.EmploymentStanding.Current, standing);
+
+    Assert.NotNull(await directory.GetEmploymentTypeAsync(employee));
+
+    // ⚠ THE CONTROL. Every assertion above is satisfied by a directory that answers the same thing for
+    // any input; an unknown employee must answer differently, and `Unknown` rather than a throw is the
+    // contract -- a dangling link is reachable and is not an error.
+    Assert.Null(await directory.GetPlacementAsync(Guid.NewGuid()));
+    Assert.Equal(
+      SSAS.BuildingBlocks.Tenancy.EmploymentStanding.Unknown,
+      await directory.GetStandingAsync(Guid.NewGuid()));
+  }
+
+  // ---- ⚠ THE APPROVER CHAIN IS THE RISKIER OF THE TWO, AND THAT IS WHY IT IS HERE.
+  //
+  // It walks a department tree in a loop, bounded at 50, and joins `DepartmentManager` to `Employee`
+  // through a SUBQUERY. A join built inside a loop is where a translation fault hides, and nothing had
+  // ever asked SQL Server to translate it.
+  [Fact]
+  public async Task The_approver_directory_walks_the_department_tree_to_the_managed_seat()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var parent = await fixture.CreateDepartmentAsync("P", "Parent");
+    var child = await fixture.CreateDepartmentAsync("C", "Child", parent);
+
+    var manager = await fixture.InsertEmployeeAsync("E-MGR");
+    Assert.True((await graph.AssignManager().HandleAsync(new AssignDepartmentManagerCommand(
+      parent, manager, await fixture.RowVersionAsync(parent)))).IsSuccess);
+
+    var reportee = await fixture.InsertEmployeeAsync("E-RPT", department: child);
+
+    var directory = new EmployeeApproverDirectoryService(
+      new DirectoryContext(graph.Context),
+      new DirectoryCompanyAccess(fixture.CompanyA),
+      new DirectoryTenant(fixture.Tenant),
+      new DirectoryTenantUser());
+
+    var chain = await directory.GetApproverChainAsync(fixture.CompanyA, reportee);
+
+    // The reportee's own department has no seat, so the walk must climb to the parent's.
+    var seat = Assert.Single(chain);
+    Assert.Equal(manager, seat.EmployeeId);
+    Assert.Equal(parent, seat.DepartmentId);
+
+    // ⚠ THE CONTROL, AND IT IS THE ONE THAT MATTERS. An authorized company is required, and a caller
+    // without one must be refused rather than served a chain -- an approval authority answered to the
+    // wrong company is worse than none.
+    var unauthorized = new EmployeeApproverDirectoryService(
+      new DirectoryContext(graph.Context),
+      new DirectoryCompanyAccess(Guid.NewGuid()),
+      new DirectoryTenant(fixture.Tenant),
+      new DirectoryTenantUser());
+
+    await Assert.ThrowsAsync<UnauthorizedAccessException>(
+      () => unauthorized.GetApproverChainAsync(fixture.CompanyA, reportee));
+  }
+
+  private sealed class DirectoryContext(TenantDbContext context) : ITenantDbContextAccessor
+  {
+    public Task<DbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult<DbContext>(context);
+  }
+
+  private sealed class DirectoryCompanyAccess(Guid permitted)
+    : SSAS.BuildingBlocks.Tenancy.Companies.ITenantCompanyAccessResolver
+  {
+    public Task<SSAS.BuildingBlocks.Domain.Result<IReadOnlyList<
+      SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>> GetPermittedCompaniesAsync(
+      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success<IReadOnlyList<
+        SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>(
+        [new SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary(permitted, "CODE", "Name")]));
+
+    public Task<SSAS.BuildingBlocks.Domain.Result> AuthorizeCompanyAsync(
+      Guid tenantId, long tenantUserId, Guid companyId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(companyId == permitted
+        ? SSAS.BuildingBlocks.Domain.Result.Success()
+        : SSAS.BuildingBlocks.Domain.Result.Failure(
+          new SSAS.BuildingBlocks.Domain.Error("Company.Denied", "Denied.")));
+  }
+
+  private sealed class DirectoryTenant(Guid tenantId) : ICurrentTenant
+  {
+    public Guid? TenantId => tenantId;
+  }
+
+  private sealed class DirectoryTenantUser : SSAS.BuildingBlocks.Tenancy.ICurrentTenantUser
+  {
+    public long? TenantUserId => 42;
+  }
+
   // ---- ⚠ THE TENANT GUARD REACHES A CHILD ENTITY, NOT ONLY AN AGGREGATE ROOT (item 228, `AC-EMP-0002`).
   //
   // The post-creation `TenantId` guard in `PersistenceDbContext` walks

@@ -552,6 +552,56 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
   // FIXTURE
   // ================================================================================================
 
+
+  // ================================================================================================
+  // THE LAST TWO NEVER-EXECUTED TYPES (item 238).
+  // ================================================================================================
+  //
+  // Item 237 measured every production type with coverage and found six query-bearing types with ZERO
+  // executed lines. `UserCompanyAccessRepository` and `TenantCompanyCurrencyLookup` are the last two, and
+  // this file already builds everything either of them needs -- a `PlatformDbContext`, a
+  // `TenantDbContextFactory` and companies seeded with a base currency.
+  //
+  // ⚠ **Both helpers were already here and PRIVATE.** Nothing was built to reach these types; the seam
+  // existed and no test had walked through it, which is the same shape as
+  // `InternalsVisibleTo("SSAS.Integration.Tests")` sitting unused on three infrastructure assemblies.
+  [Fact]
+  public async Task The_user_company_access_repository_reads_the_grants_for_one_user()
+  {
+    await using var fixture = await CompanyFixture.CreateAsync();
+
+    // ⚠ NO GRANT IS ADDED HERE. The fixture already assigns the normal user to `CompanyA`, and adding
+    // it again is refused by `UX_UserCompanyAccess_TenantId_TenantUserId_CompanyId` -- which is the
+    // uniqueness rule doing its job and the first thing this test found.
+    await using var platform = fixture.PlatformContext(fixture.Tenant);
+    var repository = new UserCompanyAccessRepository(platform);
+
+    Assert.Equal(
+      [fixture.CompanyA],
+      await repository.GetCompanyIdsAsync(fixture.Tenant, fixture.NormalUserId));
+
+    // ⚠ THE CONTROL, PER KEY PART. The query filters on TENANT and USER, and a lookup that dropped
+    // either would still find the row from the other. Each case below moves exactly one.
+    Assert.Empty(await repository.GetCompanyIdsAsync(fixture.OtherTenant, fixture.NormalUserId));
+    Assert.Empty(await repository.GetCompanyIdsAsync(fixture.Tenant, fixture.AdministratorUserId));
+  }
+
+  [Fact]
+  public async Task The_company_currency_lookup_opens_the_tenant_database_and_answers()
+  {
+    await using var fixture = await CompanyFixture.CreateAsync();
+
+    var lookup = new TenantCompanyCurrencyLookup(fixture.TenantContextFactory(fixture.Tenant));
+
+    Assert.Equal("SAR", await lookup.FindBaseCurrencyCodeAsync(fixture.Tenant, fixture.CompanyA));
+
+    // ⚠ THE CONTROLS. The query filters on BOTH company and tenant, and this type is the one place a
+    // currency is resolved ACROSS the tenant boundary -- answering for the wrong tenant's company would
+    // put one tenant's currency on another's money.
+    Assert.Null(await lookup.FindBaseCurrencyCodeAsync(fixture.Tenant, Guid.NewGuid()));
+    Assert.Null(await lookup.FindBaseCurrencyCodeAsync(fixture.Tenant, Guid.Empty));
+  }
+
   private sealed class CompanyFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -858,7 +908,7 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
       return tenant.Id;
     }
 
-    private PlatformDbContext PlatformContext(Guid? tenantId = null)
+    public PlatformDbContext PlatformContext(Guid? tenantId = null)
     {
       var options = new DbContextOptionsBuilder<PlatformDbContext>()
         .UseSqlServer(ConnectionFor(platformCatalog))
@@ -866,7 +916,7 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
       return new PlatformDbContext(options, new TestUser(), new TestTenant(tenantId), new TestClock());
     }
 
-    private TenantDbContextFactory TenantContextFactory(Guid tenantId)
+    public TenantDbContextFactory TenantContextFactory(Guid tenantId)
     {
       var platform = PlatformContext(tenantId);
       return new TenantDbContextFactory(

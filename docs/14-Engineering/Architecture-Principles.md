@@ -1504,6 +1504,28 @@ suite entirely, asserting a conflict on the second insert.
 this sweep — a heading and a synonym — were caught only by reading WHAT THE TEST ASSERTS, never by what it
 is called.**
 
+
+## An unconditional label is not a reading of the result
+
+**A command was written as `grep … ; echo "[empty = no such test]"`. The echo prints whatever the grep
+found.** ⚠ **Three times in one day it announced that a non-empty result was empty — most recently claiming
+a package had no concurrency or deletion test WHILE THE GREP DIRECTLY ABOVE IT LISTED FIVE, two of which
+became citations minutes later.**
+
+⚠⚠ **A LABEL THAT DOES NOT DEPEND ON THE RESULT IS NOT A READING OF THE RESULT.** It is a caption written
+before the evidence arrived, and it wins, because a human eye reads the sentence and not the rows above it.
+
+**This is the same family as a test run against stale binaries reporting `Passed!` after a failed build:
+both produce a CONFIDENT POSITIVE that was never conditioned on anything.** **Absence-shaped failures get
+caught eventually because somebody eventually looks for the thing. A false positive closes the question.**
+
+**Two habits:**
+
+- **Never annotate output you have not seen.** If a summary line is wanted, derive it — `[ -s file ] &&
+  echo FOUND || echo NONE` — **so the words cannot contradict the rows.**
+- ⚠ **When a report says *nothing found*, check whether that sentence was PRINTED or DECIDED.** The two are
+  indistinguishable in a transcript and opposite in meaning.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

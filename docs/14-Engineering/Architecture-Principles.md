@@ -1254,6 +1254,35 @@ commits above was correct in what it did.**
 *measurement* failing to see one member. **This is a REMEDY failing to reach one member — same shape,
 opposite half of the work, and no amount of measuring catches it, because the measurement was never wrong.**
 
+
+## ⚠ The qualification, learned the same day: the SITES are shared, the REMEDY may not be
+
+**Finding every site of a mechanism is the first half. Assuming one fix serves them all is a new way to
+do damage.**
+
+**Immediately after this principle was written, a sweep found a fifth site of the same *a child process
+discards its evidence* mechanism.** The obvious move was to apply the abstraction built for the other
+four. ⚠ **It would have deadlocked.** That helper drains each stream with a single `ReadToEndAsync`,
+which is **incompatible with a line-by-line handshake** — the fifth site blocks on a marker the child
+prints and then keeps running. **Using the fix there would have replaced a pipe-buffer hazard with a
+handshake hazard.**
+
+⚠ **AND THE SEVERITY DIFFERED TOO, WHICH DECIDED IT.** At the four converted sites the lost evidence was
+the difference between *the work finished* and *the process never started* — **a wrong verdict.** At the
+fifth, the verdict is reported as inconclusive either way: **what is lost is the REASON, not the
+correctness.** **A design change to a fixture whose timing was deliberately tuned, to buy the reason for a
+rare inconclusive trial, is not obviously worth it — so it was proposed and not made.**
+
+**So the discipline is two questions, not one:**
+
+1. **Where else does this mechanism live?** — always ask it, at the moment of the fix.
+2. ⚠ **Does the same remedy FIT there, and does the failure cost the same?** — **a site can share the
+   mechanism and deserve a different answer, including none.**
+
+**Record the finding at the site regardless.** The unread output exists; the next reader should learn that
+from the code rather than from a sweep. **Naming what would make the fix worth doing — here, inconclusive
+trials becoming frequent — is what turns a decision not to act into something later readers can revisit.**
+
 ---
 
 # Related Documents

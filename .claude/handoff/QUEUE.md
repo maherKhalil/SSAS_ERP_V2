@@ -271,7 +271,7 @@ Debug and Release identical, `Integration 862` — and `test-baseline.txt` was n
 IMMEDIATELY, and 7 that cannot be cited as they stand.** ⚠ **NO CITATION WAS APPLIED, deliberately — a
 `[Trait]` is a test-file edit and every test edit has gone through a green gate first.**
 
-**STILL UNSEARCHED: `DEP` groups G, H and J — employee membership, authorization, concurrency/cutover.**
+**THE `DEP` SEARCH IS COMPLETE — ALL TEN GROUPS, pass 19, `9cea139`. `DEP` stands at 4 CITED, 33 CITABLE, 10 OPEN** (the three Employee-shaped gaps `0002`/`0044`/`0050`, the product-wide `0008`, three partials, and four unsearchable without a gate). ⚠ **NOTHING FURTHER CAN BE DONE ON `DEP` WITHOUT A GREEN GATE, and that is a state rather than a stall.**
 
 ---
 

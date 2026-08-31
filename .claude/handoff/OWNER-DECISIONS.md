@@ -848,6 +848,48 @@ coverage nobody is producing.**
 
 ---
 
+## 23. ⚠⚠ The trial balance and the GL fiscal-period read threw on every call, and nothing could have noticed — added 2026-08-31 (item 233)
+
+**No decision is asked for. This is the consequence entry 20 predicted, arriving eleven hours later, and
+you should see it.**
+
+**`GlReadService.GetTrialBalanceAsync` and `GlReadService.GetFiscalPeriodsAsync` both ordered by a property
+of a CLIENT-CONSTRUCTED object. EF Core cannot translate an `ORDER BY` over one, so each query threw
+`InvalidOperationException: The LINQ expression … could not be translated` — not slowly, not subtly, but on
+EVERY call.** ⚠ **The trial balance is a financial report.**
+
+**Both are fixed, minimally, each matching a pattern the product already had** — `EmployeeReadService` joins
+into an anonymous type, orders on the ENTITY, pages, and projects last.
+
+### ⚠⚠ Why nothing caught them, and why that is the real entry
+
+**`GlReadService` had never been constructed by any test, in any suite.** Not stubbed-and-verified —
+**never instantiated.** The API fixture registers a stub, and the real registration lives in an
+infrastructure assembly the fixture does not call, so the concrete class was never on any code path a test
+executed.
+
+⚠⚠ **The two modules whose read services were never constructed are the two that carried defects.**
+`EmployeeReadService` is constructed by four tests and is correct. `GlReadService` is constructed by none
+and was wrong twice. **That is not a coincidence; it is the mechanism.**
+
+**And an architecture test asserted that every method of the interface REQUIRES a scope parameter — which
+passes, is total, and says nothing about whether any method can run at all.** ⚠ **A structural guarantee
+reads as behavioural coverage.**
+
+### What has changed as a result
+
+- **Both defects are fixed and now pinned by a test that constructs the real service against a real
+  database** (item 233).
+- **The class was enumerated rather than guessed: all 31 `OrderBy` sites across the six module read
+  services were read. Exactly two ordered over a projected object; both were these.**
+- **The remaining never-constructed service, Attendance's, is being covered in the same item** — and its
+  read path performs a per-row privacy redaction.
+- **A standing control (item 235) asserts that each module's own registration binds the concrete read
+  service, so a stub can never again stand unchallenged unnoticed.**
+
+⚠ **The honest scope statement: this was found because somebody executed the class for the first time. Any
+production type that no test constructs is in the same position, and the count of those is not known.**
+
 ## What is NOT on this list
 
 **Engineering-owned items are excluded** — guard coverage, test shape, the register's floor, inventory

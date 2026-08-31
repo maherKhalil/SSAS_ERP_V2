@@ -2670,6 +2670,39 @@ for it are separate claims**, and conflating them is how a lucky call becomes ev
 
 **Say both: the reason was refuted, the action paid, and here is what it actually bought.**
 
+## A first-execution run reports the first defect, not the count
+
+**A test that constructs a production class for the first time found a query that could not execute. The
+fix let the test reach the next site, which also could not execute.**
+
+⚠ **The second defect was invisible until the first was cleared** — the run stops at the first throw, so
+every later site on the same path is unmeasured. **The number of defects is not observable until the run
+completes clean.**
+
+**So report *at least one*, and say the enumeration is outstanding.** ⚠ **"One defect found" on a path being
+executed for the first time is a statement about where the run stopped, not about what is wrong.**
+
+### And enumerate the class by mechanism before claiming it is closed
+
+**Two defects of one shape were found. The claim that there are exactly two rests on reading all 31 ordering
+sites across the six equivalent services** — not on the two that happened to break. **Only those two order
+over a client-constructed object; the rest order on entity properties, which translate.**
+
+**The correct pattern was already in the product**, in the one service that several tests construct. ⚠ **The
+divergence was not a knowledge gap. It was a feedback gap.**
+
+## Untested and wrong are correlated, and the correlation is the argument
+
+**Six equivalent services. Two had never been constructed by any test. Those two are the two that carried
+defects — one of them twice, in a financial report.**
+
+⚠⚠ **That is not a coincidence to be noted; it is the mechanism, and it converts an argument about coverage
+into a measurement.** A structural test asserted that every method of the interface required the right
+parameter: total, cheap, passing — **and silent about whether any method could run at all.**
+
+**When a population splits into "exercised" and "never exercised", the second half is not a documentation
+debt. It is where the defects are**, and the cost of finding out is one test that constructs the thing.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

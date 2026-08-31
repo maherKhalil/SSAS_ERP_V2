@@ -2974,6 +2974,20 @@ available and never wrong about anything.**
 report demands must name the artefact it was read from — or be left explicitly empty.** *"Integration/Debug
 per `counts.txt`"* and *"leg unknown, not checked"* are both honest; a bare stage name is not.
 
+### ⚠ A truncated identifier is a blank of the same kind, and worse
+
+**The same failure appeared in the other direction two hours later: a search's output was cut mid-token —
+`…refuses_the_next_emplo` — and the name was completed from expectation and committed.** The completion was
+plausible, adjacent, and wrong: the real name ended `_write` where the writer supplied `_read`, which
+reversed a finding.
+
+⚠⚠ **A truncated identifier is worse than an empty field, because a blank invites a question and a
+half-name ANSWERS one.** It arrives looking like a measurement.
+
+**So: WHEN OUTPUT IS TRUNCATED, THE IDENTIFIER IS UNREAD.** Re-run with an extractor that prints whole
+tokens, or widen the cut — **never complete it from what it obviously must say.** The width that truncated
+this one was 140 characters and the name ended at 141.
+
 ## Editing a running script corrupts the run, not the file
 
 **A long job was executing a shell script. The script was edited thirteen minutes in — a valid edit, syntax

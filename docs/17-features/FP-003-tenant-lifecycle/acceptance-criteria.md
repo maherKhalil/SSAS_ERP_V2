@@ -35,7 +35,7 @@ A current `Provisioning` Tenant can be activated once and becomes authentication
 
 Every transition not listed in the approved lifecycle matrix is rejected without changing state or publishing a committed transition event.
 
-### AC-TEN-0007 — Suspension
+### AC-TEN-0007 — Suspension ends authentication eligibility and blocks selection, new sessions and refresh
 
 Suspending an `Active` Tenant makes current authentication eligibility false and blocks subsequent tenant selection, new-session, and refresh eligibility decisions.
 

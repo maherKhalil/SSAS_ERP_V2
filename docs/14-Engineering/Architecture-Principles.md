@@ -2086,6 +2086,44 @@ balances.**
 which to ask where else the mechanism lives.** **When a control is found missing at one site, enumerate the
 sites before fixing the one in front of you.**
 
+## A plant is informative only where the failure is far enough from the defect
+
+**The planting rule — break the code deliberately, confirm the test reddens, restore — has an exemption, and
+it is not laziness.** ⚠ **Where the assertion IS the mechanism, the plant proves nothing.**
+
+**An assertion that a sum is greater than zero passes exactly when the sum is greater than zero.** Breaking
+production so the sum is zero and watching the test redden demonstrates arithmetic, not that the test
+guards anything.
+
+**Plant where the path from the defect to the failure is long enough to be doubted** — a rule enforced three
+layers away, a filter applied downstream, a guard reached by reflection. **Do not plant where the assertion
+and the defect are the same statement**; the result is a tautology with the shape of evidence, and it costs
+the same as a real one.
+
+## The most dangerous name match is the criterion's own wording
+
+**A criterion required a refusal AND that the response name the period concerned. The test is called
+*approval into a closed period is refused and names the period*. Its body asserts the status code and the
+problem code — the condition. Nothing asserts the period.**
+
+⚠ **The name is not careless. It is the criterion's own sentence**, which is why a name search closes the
+criterion as fully pinned in one step and no reviewer feels the need to open the body.
+
+**The tell is available without reading much: the ARRANGEMENT supplies the value the name promises** — the
+period name is constructed three lines above — **and nothing reads it back.** A test that sets up a
+distinguishing value and never asserts on it is either incomplete or the value is decoration.
+
+**Its sibling fourteen lines below asserts exactly the corresponding value.** ⚠ **One file, one convention,
+two criteria of the same shape, one of them complete — so the presence of a convention is not evidence that
+it was followed.**
+
+### And the shape gives a cheap audit
+
+**Tests whose names promise that a message NAMES something are enumerable.** Search the test tree for the
+phrase, read each body, and check that the value the name promises is asserted rather than merely arranged.
+**Ten such names exist here across eight files** — a search and ten bodies, for a shape that no coverage
+measure and no name search can see.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

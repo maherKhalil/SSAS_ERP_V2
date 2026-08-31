@@ -30,6 +30,11 @@ public sealed class DepartmentArchitectureTests
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0051` verbatim -- the two interfaces PRESENT and
+  // `IBranchOwnedEntity` ABSENT, "asserted by an architecture guard so the absence reads as a decision".
+  // The positive `Contains` assertions are its own anti-vacuity control: reflection returning nothing
+  // fails here rather than passing the ban silently.
+  [Trait("Criterion", "AC-DEP-0051")]
   public void Department_is_tenant_and_company_owned_but_never_branch_owned()
   {
     var interfaces = typeof(Department).GetInterfaces();
@@ -97,6 +102,14 @@ public sealed class DepartmentArchitectureTests
   [InlineData(typeof(DepartmentManager))]
   [InlineData(typeof(EmployeeDepartmentAssignment))]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0052` verbatim, INCLUDING ITS INSTRUMENT --
+  // "asserted from the composed EF model rather than from a migration file", and this reads
+  // `ComposedTenantModel().FindEntityType(...)`. The sibling `No_department_type_has_a_property_named_
+  // branch_id` asserts the CLASS, which is the half the criterion explicitly does not ask for.
+  //
+  // `Assert.Contains("TenantId")` and `("CompanyId")` are the anti-vacuity control: a model that stopped
+  // building would fail here rather than satisfy the ban with an empty column list.
+  [Trait("Criterion", "AC-DEP-0052")]
   public void No_department_table_has_a_branch_column(Type clrType)
   {
     var entity = ComposedTenantModel().FindEntityType(clrType);
@@ -241,6 +254,15 @@ public sealed class DepartmentArchitectureTests
   // pattern-matching loosely, so a future `DeleteDepartmentAsync` could not hide behind the exemption.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0032`'s REPOSITORY-METHOD clause. The criterion
+  // bans a physical delete by "API route, command, handler or repository method", and this is the only
+  // one of the four asserted over MEMBERS rather than type names.
+  //
+  // ⚠ Two sibling tests carry the other three: `No_department_delete_command_or_handler_exists`
+  // (commands and handlers) and `HrRouteInventoryTests.The_hr_surface_exposes_no_delete_verb` (the
+  // route). **Three tests in three files for one criterion** -- and enumerating only the two files
+  // named `Department*ArchitectureTests` would have recorded this as PARTLY PINNED.
+  [Trait("Criterion", "AC-DEP-0032")]
   public void The_department_repository_offers_no_delete()
   {
     var methods = typeof(IDepartmentRepository)

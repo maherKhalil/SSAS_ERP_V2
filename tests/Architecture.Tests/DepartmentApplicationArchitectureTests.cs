@@ -180,6 +180,10 @@ public sealed class DepartmentApplicationArchitectureTests
   // EmployeeReadScope carries, and it is only a guarantee while the factory stays internal.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0045` CLAUSE 1 -- "cannot be constructed outside
+  // its resolver". No public constructors on the scope OR on `AuthorizedDepartmentCompanyScope`, and the
+  // `Create` factory is asserted `internal` rather than merely non-public.
+  [Trait("Criterion", "AC-DEP-0045")]
   public void The_department_read_scope_cannot_be_constructed_from_outside_the_application()
   {
     Assert.Empty(typeof(DepartmentReadScope).GetConstructors(BindingFlags.Public | BindingFlags.Instance));
@@ -196,6 +200,13 @@ public sealed class DepartmentApplicationArchitectureTests
   // ---- EVERY READ REQUIRES ONE. There is no overload without it.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0045` CLAUSE 2 -- "no query overload accepts a
+  // request without one". Every method's FIRST parameter is the scope, which is stronger than merely
+  // containing one.
+  //
+  // ⚠ And note what it does NOT say: taking a scope is not APPLYING it. `AC-DEP-0044` is the clause
+  // about predicates actually being composed, and it is a different assertion in a different suite.
+  [Trait("Criterion", "AC-DEP-0045")]
   public void Every_department_read_takes_a_scope()
   {
     foreach (var method in typeof(IDepartmentReadService).GetMethods())
@@ -264,6 +275,11 @@ public sealed class DepartmentApplicationArchitectureTests
   // other half, guarded in DepartmentArchitectureTests.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0032`'s COMMAND and HANDLER clauses. It walks the
+  // HR application assembly for `Department*` types named Delete/Remove. The repository-method and API-
+  // route clauses are asserted elsewhere -- see the note on
+  // `DepartmentArchitectureTests.The_department_repository_offers_no_delete`.
+  [Trait("Criterion", "AC-DEP-0032")]
   public void No_department_delete_command_or_handler_exists()
   {
     var offenders = HrApplicationAssembly.GetTypes()

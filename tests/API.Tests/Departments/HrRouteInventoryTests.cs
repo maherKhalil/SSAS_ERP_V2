@@ -194,6 +194,10 @@ public sealed class HrRouteInventoryTests
   // ⚠ CITED BY ITEM 220: `AC-EMP-0017` bans a delete ENDPOINT for Employee. This asserts it for the WHOLE HR surface, so it is
   // a SUPERSET -- named as one rather than duplicated by a narrower Employee-only test (item 220).
   [Trait("Criterion", "AC-EMP-0017")]
+  // ⚠ CITED BY B18 pass 16: `AC-DEP-0032`'s API-ROUTE clause, and a SUPERSET for the second time. The
+  // criterion bans a delete route for DEPARTMENT; this asserts the whole HR surface mounts no DELETE
+  // verb at all, which covers it and Employee's ban together.
+  [Trait("Criterion", "AC-DEP-0032")]
   public void The_hr_surface_exposes_no_delete_verb()
   {
     var deletes = MappedRoutes()

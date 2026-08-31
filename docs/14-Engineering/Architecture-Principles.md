@@ -2968,6 +2968,40 @@ available and never wrong about anything.**
 report demands must name the artefact it was read from — or be left explicitly empty.** *"Integration/Debug
 per `counts.txt`"* and *"leg unknown, not checked"* are both honest; a bare stage name is not.
 
+## Editing a running script corrupts the run, not the file
+
+**A long job was executing a shell script. The script was edited thirteen minutes in — a valid edit, syntax
+checked, committed. Every expensive stage then passed, and the run died at the very end with a syntax error
+on a line that is syntactically correct.**
+
+⚠⚠ **A shell reads a script INCREMENTALLY, BY BYTE OFFSET. It does not load the file.** An insertion shifts
+every offset after it, so the running interpreter resumes mid-statement and sees a fragment — a condition's
+tail without its `if`.
+
+**The file was never wrong. Exactly one process in the world held the corrupted view, and no static check
+can see it**: the syntax checker reads the file, and the file is fine.
+
+⚠ **And the failure lands at the END, after everything expensive has succeeded, because that is when
+execution finally reaches past the shifted point. It is maximally expensive by construction.**
+
+### A rule you cannot reliably evaluate is not a rule you can follow
+
+**The obvious rule is *do not edit the script while it is running*.** ⚠ **One of the two parties could not
+reliably tell when it was running** — its status check was minutes-granular, and it had recently reported a
+stage it had not measured.
+
+**So the rule that binds is the one that removes the hand from the file: the party who cannot observe the
+run does not edit the script at all.** It writes the change; the party that owns the run applies it,
+between runs. **A rule whose precondition you cannot check is an intention, not a control.**
+
+### And the lock guarded the resource, not the code that reads it
+
+**The gate held an instance lock, so a second gate could not start.** ⚠⚠ **Nothing protected the SCRIPT from
+an editor** — the lock covers the database, the ports, the artefacts, and not the text being interpreted.
+
+**A tool that can be modified while it runs should snapshot itself and execute the copy.** One line at
+startup removes the entire class, and it costs a file copy.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

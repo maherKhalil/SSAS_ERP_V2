@@ -2915,6 +2915,42 @@ now asserts that it was.**
 **When a package's criteria are derived from a sibling's, check each one against the guard it names, not
 against the sibling's guard.** The wording travels for free; the coverage does not.
 
+## A guard's population and its predicate derive independently
+
+**Two guards looked like the same defect: each named a single type where a family exists.** ⚠ **One derives
+in an afternoon and the other must not be derived at all.**
+
+**The POPULATION — which subjects are judged — almost always derives from the model or the assembly.** The
+copy-plan guard names one entity by hand while asking a question every entity can answer: *does this table
+exclude the concurrency token it carries*. Derive the population and the guard simply covers everything.
+
+**The PREDICATE — what is asserted of each subject — derives only if the property is genuinely uniform.**
+The read-scope guard's predicate asserts **exactly one query root** and a **helper located by name**, then
+inspects that helper's text. ⚠⚠ **Two sibling modules were measured and do not have that shape: one has two
+helpers and three inline copies, another has no helper and seven inline sites.** **Deriving the population
+would impose one author's structure on four modules and fail honestly-written code.**
+
+⚠ **The tell is not visible in the shape of the list.** Both are a hand-named subject. The difference is
+whether the assertion would still be TRUE, not merely runnable, for a subject that solved the problem
+differently.
+
+### The predicate fails to generalise when it rules a mechanism rather than a behaviour
+
+**One root, a helper of a given name, three predicates in that helper's body — those are one author's
+CHOICES.** The obligation is that every query is scoped. ⚠⚠ **A guard written against the mechanism can
+only ever have one subject, because the mechanism is a choice and the behaviour is the requirement.**
+
+**So widening a narrow guard has a precondition: rewrite the predicate to state the behaviour, or leave it
+alone.** A guard that names an implementation detail is not narrow by accident; it is narrow by
+construction.
+
+### And check whether the behavioural half already exists before writing a structural one
+
+**A real-database test already proved the property for one path.** That does not retire the structural
+guard — **the behavioural test proves ONE query and the guard proves EVERY query root, including one added
+next year** — but it changes what the guard is for, and it should be cited for what it covers rather than
+left unmentioned.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

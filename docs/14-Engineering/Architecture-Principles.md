@@ -2790,6 +2790,31 @@ when it prints a number. **Say which question it answers, in the report, beside 
 comparison has already been published on the strength of the wrong reading, correct it where it was
 published.
 
+## A measurement validated only where the work happened is validated on the wrong sample
+
+**A sweep reported its progress for sixteen passes with a text search for criterion identifiers in the test
+tree.** ⚠⚠ **That search counts a criterion NAMED IN A COMMENT exactly as it counts one CITED IN A TRAIT.**
+
+**The inflation is not spread evenly, and its distribution is the diagnosis: every package the sweep had
+actually worked through is exactly clean under both counts, and every unit of inflation sits in a package
+nobody has read.** ⚠ **Four packages read as having citations and have precisely zero.**
+
+**The metric was correct wherever anybody had checked it, and wrong everywhere else** — which is why it
+survived sixteen reports. ⚠⚠ **Where a measurement is spot-checked BY DOING THE WORK, the sample is exactly
+the population least able to expose it.** Validate an instrument where nobody has been, or not at all.
+
+### Fix the instrument, not the practice it mismeasures
+
+**One inflating mention was a comment naming a neighbouring criterion to distinguish it from the one under
+test. That comment does real work for the next reader.**
+
+⚠ **The temptation is to ban the practice so the metric reads true.** The metric was the thing that was
+wrong: **count strictly, and keep writing the comment.** A rule that degrades the artefact to flatter the
+measurement has the two backwards.
+
+**And where a strict and a loose count differ, report both.** The gap is itself information — here it named
+the four packages nobody had swept.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

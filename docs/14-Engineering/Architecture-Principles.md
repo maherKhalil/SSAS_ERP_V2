@@ -2113,16 +2113,79 @@ criterion as fully pinned in one step and no reviewer feels the need to open the
 period name is constructed three lines above — **and nothing reads it back.** A test that sets up a
 distinguishing value and never asserts on it is either incomplete or the value is decoration.
 
-**Its sibling fourteen lines below asserts exactly the corresponding value.** ⚠ **One file, one convention,
-two criteria of the same shape, one of them complete — so the presence of a convention is not evidence that
-it was followed.**
+⚠⚠ **CORRECTED 2026-08-31, AND THE CORRECTION IS THE BETTER FINDING.** This section first read: *"Its
+sibling fourteen lines below asserts exactly the corresponding value — one file, one convention, two
+criteria of the same shape, one of them complete, so the presence of a convention is not evidence that it
+was followed."* **That contrast was false.** The sibling asserted a status and a problem code and nothing
+else; **the assertion on the named element lives in a DOMAIN test, one layer down, which constructs the
+error and reads its message.** The comparison crossed two layers without saying so, and it made one
+endpoint look careless beside a diligent neighbour.
+
+⚠ **What was actually true is stronger: NO API test in either file asserted a named subject, because none
+of them could.** The problem document carried a code, a correlation id, a resource key and a field name —
+and a field carries the NAME of an input, never a VALUE. **A refusal that had to say WHICH period, WHICH
+element, WHICH account had no channel to say it through.** Those tests asserted everything that was
+assertable when they were written.
+
+**The audit's rate says the same thing without ambiguity: of eleven such tests, the SEVEN whose promised
+value is a compile-time constant all kept their promise, and the FOUR whose promised value is a runtime one
+did not.** ⚠ **A perfect split along the line of what the transport could carry — which is a fact about the
+transport, not about the authors.**
 
 ### And the shape gives a cheap audit
 
 **Tests whose names promise that a message NAMES something are enumerable.** Search the test tree for the
 phrase, read each body, and check that the value the name promises is asserted rather than merely arranged.
-**Ten such names exist here across eight files** — a search and ten bodies, for a shape that no coverage
+**ELEVEN such names exist here across eight files** (the first count of ten was mine and was short by one — two files carry more than one) — a search and ten bodies, for a shape that no coverage
 measure and no name search can see.
+
+## When a transport gains a field, the backlog it creates is the claims that were previously unsayable
+
+**Eleven tests promised, in their names, that a refusal names the thing it concerns. Seven kept the
+promise; four did not** — ⚠ **and the split is exact: every promised value that is a compile-time constant
+was asserted, and every promised value that is a runtime one was not.**
+
+**The four were not careless.** The problem document carried a code, a correlation id, a resource key and a
+field name, and a field carries the NAME of an input, never a VALUE. **A refusal that had to say which
+period, which element, which account had no channel to say it through.** Those tests asserted everything
+that was assertable when they were written.
+
+⚠⚠ **Then the transport gained a detail field, and nothing came back for them.** **The assertions a new
+capability unblocks are invisible: the tests that want them already exist and already pass.** Nothing is
+red, nothing is reported missing, and no coverage or citation instrument points at the set.
+
+**So a capability change has a second half that nobody schedules.** ⚠ **When a transport, a contract or an
+API gains a field, the work it creates is not only the code that fills it — it is the set of claims that
+were previously unsayable, and that set is discoverable only from the intentions people wrote down while
+they could not act on them.** Test names, comments and criteria are where those intentions are.
+
+### A test that asserts a value must make the value unobtainable from anywhere else
+
+**One of the four assertions could be satisfied without the code under test doing anything right.** The
+fixture named the closed period with the same string as the run's own period, and the handler falls back
+from one to the other — **so a handler ignoring the closed period entirely would have produced the expected
+text.**
+
+**The arrangement had to be changed before the assertion meant anything, and the PLANT is what exposed it:
+the deliberate break did not redden the test.** A plant that fails to fail is not a wasted step; it is the
+step working.
+
+## A stated measurement decays into a licence
+
+**A comment licensed a transport change with a measurement: no message in the product carries a runtime
+value, zero interpolations, zero concatenations. It was true when written. Seven interpolated messages
+exist now, in three files.**
+
+⚠ **The guarantee never rested on it.** The control is a positive allowlist — client errors may explain
+themselves, everything else fails closed — and it would be exactly as safe if every message interpolated.
+**So this is a comment defect, not a security one.**
+
+**It is still worth fixing, and the reason is what comments are FOR.** ⚠ **The paragraph a future author
+reads before adding an error factory now reads as an all-clear about a condition that no longer holds** —
+and the class it warns against, a new refusal shipping detail by default, has stopped being hypothetical.
+
+**Write the licence as the RULE that makes it safe, not as the MEASUREMENT that happened to hold when it
+was written.** A rule is checkable forever; a measurement is true until somebody commits.
 
 # Related Documents
 

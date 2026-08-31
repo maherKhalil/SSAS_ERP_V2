@@ -454,6 +454,10 @@ public sealed class PayrollChainSqlServerTests
   [Fact]
   [Trait("Requirement", "REQ-ATT-0022")]
   [Trait("Decision", "DEC-PAY-0002")]
+  // ⚠ CITED BY B18 pass 13, body-confirmed: `AC-PAY-0020` -- *"the created journal balances: total debits equal total credits"* -- asserted as
+  // `Sum(Debit) == Sum(Credit)`. ⚠ AND ITS OWN CONTROL SITS BESIDE IT: `Sum(Debit) > 0`, without which
+  // a journal with NO LINES would balance trivially and satisfy the criterion.
+  [Trait("Criterion", "AC-PAY-0020")]
   public async Task Attendance_recorded_by_a_supervisor_becomes_money_in_a_posted_general_ledger_journal()
   {
     await using var chain = await ChainFixture.CreateAsync();

@@ -141,6 +141,12 @@ public sealed class PayElementDomainTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0010")]
+  // ⚠ CITED BY B18 pass 13, body-confirmed: TWO criteria, one predicate. `AC-PAY-0011` -- *an employee terminated DURING the period is
+  // included* -- is the "terminated on exactly the first day" case. `AC-PAY-0012` -- *terminated BEFORE
+  // the period begins is not included* -- is the "terminated the day before it began" case.
+  // ⚠ Grouped by MECHANISM: both criteria are the same boundary predicate read from opposite sides.
+  [Trait("Criterion", "AC-PAY-0011")]
+  [Trait("Criterion", "AC-PAY-0012")]
   public void Inclusion_is_a_pure_function_of_dates_at_both_boundaries()
   {
     var period = PayrollTestData.Period();

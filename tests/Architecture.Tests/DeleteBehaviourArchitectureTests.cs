@@ -85,6 +85,9 @@ public sealed class DeleteBehaviourArchitectureTests(ITestOutputHelper output)
   // `SubscriptionPlan` and every other cross-aggregate reference still refuses to cascade, which is the
   // thing the loop was written for and the reason it cannot simply be deleted.
   [Fact]
+  // ⚠ CITED BY ITEM 220: `AC-EMP-0017` bans a CASCADE for Employee and `EmployeeBranchAssignment`. This asserts Restrict for
+  // every reference foreign key in the model, a SUPERSET, with its own Assert.NotEmpty control (item 220).
+  [Trait("Criterion", "AC-EMP-0017")]
   public void Every_reference_foreign_key_still_restricts()
   {
     using var context = PlatformContext();

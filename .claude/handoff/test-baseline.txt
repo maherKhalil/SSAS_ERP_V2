@@ -30,7 +30,7 @@
 # suite|configuration|total
 API|Debug|969
 API|Release|956
-Architecture|Debug|618
+Architecture|Debug|621
 Architecture|Release|618
 Attendance|Debug|81
 Attendance|Release|81

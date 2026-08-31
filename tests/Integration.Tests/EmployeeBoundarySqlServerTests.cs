@@ -131,6 +131,40 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(fixture.BranchA, await fixture.EmployeeBranchAsync(employeeId));
   }
 
+  // ==================================================================================================
+  // ⚠ AC-EMP-0015's THIRD CLAUSE: A TERMINATED EMPLOYEE REMAINS RETRIEVABLE BY ID (item 220).
+  // ==================================================================================================
+  //
+  // The criterion has three parts. *Cannot be updated, activated, deactivated, transferred or deleted* was
+  // already pinned by three domain tests. **This is the part none of them asserted** -- and it is the half
+  // that would break if anyone implemented the refusals by hiding the row instead of refusing the write.
+  //
+  // Read through the PRODUCTION query handler rather than the context, because the criterion is about what
+  // a caller can retrieve, and a `context.Set<Employee>()` read would pass even if the read service
+  // filtered terminated employees out.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0015")]
+  public async Task A_terminated_employee_remains_retrievable_by_id()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T9"));
+    Assert.True(created.IsSuccess);
+
+    Assert.True((await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+      created.Value, DateTimeOffset.UtcNow, EmployeeStatusChangeReason.Resignation,
+      await fixture.RowVersionAsync(created.Value)))).IsSuccess);
+
+    var read = await graph.Get().HandleAsync(new GetEmployeeQuery(created.Value));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(created.Value, read.Value.EmployeeId);
+
+    // ⚠ AND IT IS STILL TERMINATED. Retrievable-but-reported-Active would satisfy the letter of the
+    // criterion and lose the fact the retrieval exists to preserve.
+    Assert.Equal(EmployeeStatus.Terminated, read.Value.Status);
+  }
+
   // ---- Y. CROSS-BRANCH UPDATE AND DELETE ARE REFUSED.
   [Fact]
   public async Task Y_A_cross_branch_employee_update_is_refused()

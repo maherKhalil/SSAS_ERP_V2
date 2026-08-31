@@ -191,6 +191,9 @@ public sealed class HrRouteInventoryTests
   // association ends — and a DELETE would say otherwise. Asserted so the next module inherits the
   // convention instead of relitigating it.
   [Fact]
+  // ⚠ CITED BY ITEM 220: `AC-EMP-0017` bans a delete ENDPOINT for Employee. This asserts it for the WHOLE HR surface, so it is
+  // a SUPERSET -- named as one rather than duplicated by a narrower Employee-only test (item 220).
+  [Trait("Criterion", "AC-EMP-0017")]
   public void The_hr_surface_exposes_no_delete_verb()
   {
     var deletes = MappedRoutes()

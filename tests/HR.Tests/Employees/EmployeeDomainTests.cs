@@ -101,6 +101,8 @@ public sealed class EmployeeDomainTests
   // ---- THE EMPLOYEE NUMBER IS IMMUTABLE. There is no operation, on the aggregate or anywhere else, that
   // changes it after creation.
   [Fact]
+  // ⚠ CITED BY ITEM 218, body-confirmed: no operation can change `EmployeeNumber` after creation -- asserted over the type's MUTATORS, not one call site.
+  [Trait("Criterion", "AC-EMP-0008")]
   public void No_operation_changes_the_employee_number_or_ownership_identifiers()
   {
     // Property accessors are excluded: this asks what OPERATIONS exist, and a getter is not one.
@@ -223,6 +225,8 @@ public sealed class EmployeeDomainTests
 
   // ---- BR-HR-0003.
   [Fact]
+  // ⚠ CITED BY ITEM 218, body-confirmed: `TerminationDate` earlier than `EmploymentDate` is refused -- and the same day is permitted.
+  [Trait("Criterion", "AC-EMP-0010")]
   public void Termination_cannot_precede_employment()
   {
     var employee = NewEmployee();
@@ -251,6 +255,8 @@ public sealed class EmployeeDomainTests
   // ---- INITIAL ASSIGNMENT.
 
   [Fact]
+  // ⚠ CITED BY ITEM 218, body-confirmed: exactly one `EmployeeBranchAssignment`, `SourceBranchId` null -- asserted as `Assert.Single` plus `Assert.Null`.
+  [Trait("Criterion", "AC-EMP-0005")]
   public void Creation_produces_exactly_one_initial_assignment_naming_no_source()
   {
     var employee = Stamped();

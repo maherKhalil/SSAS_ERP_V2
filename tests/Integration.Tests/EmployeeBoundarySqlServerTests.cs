@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
@@ -409,6 +409,12 @@ public sealed class EmployeeBoundarySqlServerTests
   // Two spellings that normalize alike are the same number, and the binary-collated index is what refuses
   // the second under concurrency.
   [Fact]
+  // ⚠ CITED BY ITEM 218, body-confirmed -- AND THE OBVIOUS CANDIDATE WAS THE WRONG ONE.
+  // `AC-EMP-0006` is UNIQUENESS: *"two employee numbers whose `Trim().ToUpperInvariant()` values are
+  // equal CANNOT BOTH BE CREATED"*. `EmployeeDomainTests.Employee_numbers_that_normalize_alike_are_equal`
+  // matches the words and asserts VALUE EQUALITY, which is a different claim. This one creates
+  // " emp-400 " and then "EMP-400" and asserts the second fails with `NumberConflict`.
+  [Trait("Criterion", "AC-EMP-0006")]
   public async Task Employee_numbers_that_normalize_alike_collide()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

@@ -121,9 +121,20 @@ they test is the same field. **Reading `EfUnitOfWork` alone cannot establish tha
    inventory exists to notice is a NINTH, because a new injection is where an aggregate-returning read
    would first arrive.**
 
-   **Not covered:** detached mutation **without** `AsNoTracking` — an entity materialised in one context
-   and mutated against another, or rebuilt from a DTO. **`AsNoTracking` is the searchable form of this
-   hazard, not the only one.**
+   ⚠ **CLOSED ACROSS THE COMPLETE MECHANISM SET 2026-08-31 (item 174).** The set is bounded by EF's own
+   model rather than by what this codebase happens to contain: an entity is tracked exactly while it is in
+   the `ChangeTracker`, entering by a tracking query, `Add`/`Attach`/`Update`/`Remove` or navigation
+   fix-up, and leaving by `Detached`, `Clear()` or disposal — **so an aggregate is untracked by exactly
+   nine mechanisms.** Measured: `AsNoTracking` **203** (none reaching a mutation path);
+   `QueryTrackingBehavior` **0**; `ChangeTracker.Clear` **0**; `EntityState.Detached` **12**, none touching
+   an event-raising type; second contexts confined to design-time factories. ⚠ **`DbSet.Update` — the
+   classic route into this hazard — is never called anywhere in the product**; the five `.Update(` matches
+   are all domain methods. **No mechanism in the set is reachable in production with an event-raising
+   aggregate.**
+
+   **Stated limit:** reachability was judged from **call sites, not execution**, and `tests/` and `tools/`
+   were not swept. **A residual here is a longer chain inside a set already enumerated, not an unknown
+   mechanism.**
 
 2. ⚠ **MEASURED 2026-08-31 (item 172, PR #389) — THE BEHAVIOUR IS WRONG, AND WORSE THAN THE SHAPE
    SUGGESTED. THE COMMIT SUCCEEDS, THE DATA IS WRITTEN, THE CALLER IS TOLD THE COMMAND FAILED, AND THE
@@ -157,6 +168,26 @@ they test is the same field. **Reading `EfUnitOfWork` alone cannot establish tha
    change when this is fixed.** ⚠ **A fix needs BOTH halves of the masking:** removing the rollback from
    the `catch` reddens the masking test **and leaves the disposal test passing**, because `completed` is
    still false and the field is still cleared.
+
+   ### ⚠ FIXED 2026-08-31 (item 173, PR #390) — and one hole remains, named
+
+   **Four parts shipped:** dispatch moved outside the `try`; **`completed` set before the commit attempt**;
+   **each consumer isolated** behind its own `catch`; and the failure **logged at Error with consumer type,
+   event type and correlation id** rather than swallowed. **A fifth was found while fixing and was not in
+   the ruling: cancellation now stops dispatch WITHOUT throwing**, because `ThrowIfCancellationRequested`
+   from that position reports a **committed** command as *cancelled* — the same defect wearing a different
+   exception.
+
+   ⚠ **The ordering change is not what delivers the guarantee, and a plant proved it: moving dispatch back
+   inside the `try` leaves every test green.** With per-consumer catches in place nothing throws from that
+   position. **The guarantee rests on the dispatcher never throwing — a contract nothing enforces.**
+
+   ⚠ **SO ONE HOLE REMAINS: A DISPATCHER THAT THROWS OUTRIGHT STILL REPORTS A COMMITTED COMMAND AS FAILED.**
+   A test injecting exactly that **fails today.** The remedy is a `try`/`catch` around the post-commit
+   dispatch in `EfUnitOfWork`, which requires an `ILogger` threaded through both plane wrappers and 33 test
+   construction sites. **Built, measured and reverted deliberately; being taken as item 175 at phase scope,
+   because 30 of those sites are in a suite the task gate does not run.**
+
 
 
 **Also excluded:** the aggregate under test is a probe rather than a production command handler (real is

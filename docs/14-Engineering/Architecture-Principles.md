@@ -1076,6 +1076,36 @@ meant nothing — the vacuity failure arriving through the specification rather 
 
 ---
 
+# Principle 25 – When Two Fixes Ship Together, Plant Each: the Second May Hide the First
+
+**Ruling two remedies for one defect feels safe. It costs you the ability to say which one you bought.**
+
+**The case.** A committed command was being reported as failed. Two fixes were ruled: **move the dispatch
+outside the `try`**, and **isolate each consumer behind its own `catch`**. Both shipped; twelve tests
+green. ⚠ **Then the first plant reddened NOTHING: moving the dispatch back inside the `try` left every test
+passing.** With per-consumer catches in place **nothing throws from that position**, so the `try` boundary
+makes no observable difference. **The remedy named as the headline was not load-bearing.**
+
+⚠ **AND THE PLANT THAT REDDENS NOTHING IS THE VALUABLE ONE, BECAUSE IT TELLS YOU WHERE THE GUARANTEE
+ACTUALLY LIVES.** Here it lives in the dispatcher never throwing — **a contract nothing enforces.** A test
+injecting a dispatcher that throws outright, which no per-consumer catch can intercept, **failed.** The
+ordering change stops the rollback masking; **it does not stop a dispatch-level exception reaching the
+caller over a durable write.**
+
+**So the rule has two halves:**
+
+- **Plant each fix separately.** A plant that reddens nothing means either the fix is redundant or the
+  guarantee rests somewhere you have not named — **and you cannot tell which without asking.**
+- ⚠ **When a fix turns out to be redundant, find what is doing its job and ask what enforces THAT.** The
+  redundancy is not the finding; **the unguarded contract underneath it is.**
+
+**And a scope surprise is reported, not absorbed.** The remedy for the remaining hole needed a logger
+threaded through **33 test construction sites, 30 of them in a suite the task gate does not run.** It was
+built, measured and **reverted**, and reported as one commit to be taken deliberately — **at phase scope,
+because a diff whose majority lands outside the gate that would be run is a diff nobody verified.**
+
+---
+
 # Related Documents
 
 - All accepted ADRs (001-012)

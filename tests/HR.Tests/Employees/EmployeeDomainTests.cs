@@ -27,6 +27,8 @@ public sealed class EmployeeDomainTests
   // ---- CREATION.
 
   [Fact]
+  // ⚠ CITED BY B18 pass 09 (mechanism search): clause 1 -- creation records `EmployeeStatusChangeReason.Created`.
+  [Trait("Criterion", "AC-EMP-0018")]
   public void A_created_employee_is_active_with_a_server_generated_identity()
   {
     var employee = NewEmployee();
@@ -252,6 +254,8 @@ public sealed class EmployeeDomainTests
 
   // `Created` records a creation and nothing else.
   [Fact]
+  // ⚠ CITED BY B18 pass 09 (mechanism search): clause 2 -- activate/deactivate/terminate require a NON-`Created` reason; using `Created` is refused.
+  [Trait("Criterion", "AC-EMP-0018")]
   public void A_lifecycle_transition_cannot_be_recorded_as_the_hire()
   {
     Assert.Equal(
@@ -365,6 +369,8 @@ public sealed class EmployeeDomainTests
 
   // `InitialAssignment` belongs to creation alone: a transfer must not be able to masquerade as a hire.
   [Fact]
+  // ⚠ CITED BY B18 pass 09 (mechanism search): clause 3 -- transfers require a non-`InitialAssignment` reason; `InvalidTransferReason` refuses it.
+  [Trait("Criterion", "AC-EMP-0018")]
   public void A_transfer_cannot_be_recorded_as_an_initial_assignment()
   {
     var employee = Stamped();

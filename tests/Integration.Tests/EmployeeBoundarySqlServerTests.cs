@@ -483,6 +483,9 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- NATIONAL ID: unique where present, and many absent values remain possible.
   [Fact]
+  // ⚠ CITED BY B18 pass 09 (mechanism search): BOTH clauses in one body: a duplicate national id is refused with `NationalIdConflict`, AND an
+  // employee with NO national id is created successfully -- "uniqueness AND optionality".
+  [Trait("Criterion", "AC-EMP-0009")]
   public async Task A_national_id_is_unique_within_a_company_but_may_be_absent_many_times()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -534,6 +537,9 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18 pass 09: `AC-EMP-0035` clause 3 -- *"no history record is ever updated or
+  // deleted"*. Refused with "Append-only" at the persistence boundary.
+  [Trait("Criterion", "AC-EMP-0035")]
   public async Task A_history_row_cannot_be_updated_or_deleted()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -895,11 +901,18 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- POINT-IN-TIME ATTRIBUTION uses the history, and gives a different answer from the current branch.
   [Fact]
-  // ⚠ CITED BY B18 pass 08, after I recorded `AC-EMP-0035` UNRESOLVED TWICE on a NAME search.
-  // The criterion says the history is *"sufficient to determine the branch effective at any past
-  // instant, as the record with the greatest `EffectiveFromUtc` less than or equal to that instant"* --
-  // and this selects exactly that record and asserts it names BranchA while the CURRENT branch is B.
-  // Found by searching the MECHANISM (`EffectiveFromUtc` ordering), not the name.
+  // ⚠⚠ PARTLY PINNED, AND CORRECTED TWICE (B18 passes 08 and 09). `AC-EMP-0035` HAS FOUR CLAUSES:
+  //
+  //   1. the history is RETURNED IN EFFECTIVE ORDER        -- ⚠ UNASSERTED, and this test is why:
+  //        it calls `.OrderByDescending(...)` ITSELF, so it passes unchanged if the API returns the
+  //        records in arbitrary order. The sort is the test's, not the product's.
+  //   2. sufficient to determine the branch at a past instant -- ✅ THIS TEST.
+  //   3. no history record is ever updated or deleted      -- ✅ `A_history_row_cannot_be_updated_or_deleted`.
+  //   4. current-state reads use `Employee.BranchId`, point-in-time reads use the log -- ✅ this test
+  //        asserts both sides: the current branch from `EmployeeBranchAsync`, the past one from history.
+  //
+  // I first recorded the criterion UNRESOLVED twice on a name search, then PINNED on a mechanism search.
+  // ⚠ Both were wrong in opposite directions, and a citation would have made the second look settled.
   [Trait("Criterion", "AC-EMP-0035")]
   public async Task Point_in_time_attribution_differs_from_the_current_branch()
   {

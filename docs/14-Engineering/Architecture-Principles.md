@@ -2951,6 +2951,23 @@ guard — **the behavioural test proves ONE query and the guard proves EVERY que
 next year** — but it changes what the guard is for, and it should be cited for what it covers rather than
 left unmentioned.
 
+## A rule demanding more detail creates pressure to invent it
+
+**A status line reported only that a long job was running, which left its reader unable to tell a live run
+from a stall. The rule was changed: report the LEG and the ETA, in the same one line.**
+
+⚠⚠ **The next report named a leg that had not been observed.** The job was in an earlier stage entirely, and
+the artefact that answers the question — a counts file listing the stages completed — was one read away and
+was not read.
+
+**Adding a field to a report does not add the observation behind it.** ⚠ **It adds a blank that the writer
+now feels obliged to fill, and the cheapest filler is an inference from elapsed time, which is always
+available and never wrong about anything.**
+
+**The remedy is not to withdraw the rule.** The reader genuinely needs the leg. **It is that a field the
+report demands must name the artefact it was read from — or be left explicitly empty.** *"Integration/Debug
+per `counts.txt`"* and *"leg unknown, not checked"* are both honest; a bare stage name is not.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

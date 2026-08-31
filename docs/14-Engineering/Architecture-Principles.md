@@ -2741,8 +2741,25 @@ covered.
 over-counts coverage, because a name in a test is not an execution.**
 
 ⚠⚠ **The complete instrument for *is this code ever executed* is coverage instrumentation, and nothing else
-is.** Every syntactic proxy answers a different, narrower question — **so report proxies as floors, name the
-instrument that would settle it, and say whether that instrument is available.**
+is.** Every syntactic proxy answers a different, narrower question — **so name the instrument that would
+settle it, and say whether that instrument is available.**
+
+### ⚠⚠ CORRECTED THE SAME NIGHT: THE PROXY WAS NOT A FLOOR, AND CALLING IT ONE WAS WRONG IN BOTH DIRECTIONS
+
+**This section originally said to report such proxies AS FLOORS. Coverage was then run, and the proxy's
+seven was wrong in BOTH directions, with OPPOSITE causes that do not cancel:**
+
+- ⚠ **THREE it called dead are LIVE.** They are registered as `AddScoped<IInterface, Type>()` and executed
+  through the container in end-to-end tests. **The caller names the INTERFACE, the container supplies the
+  type, and the type's own name appears in no test file.** ⚠⚠ **EXECUTION THROUGH A CONTAINER IS NAMELESS.**
+- ⚠ **TWO it called live are dead.** Their names appear in the test tree as **STRING LITERALS** — a filename
+  in a source-reading architecture test, and a bare name in a ban list. ⚠⚠ **A REGEX OVER IDENTIFIERS CANNOT
+  TELL A TYPE REFERENCE FROM A FILENAME IN QUOTES, so a test that READS a type's source is indistinguishable
+  from one that RUNS it.**
+
+**Two error directions with independent causes is not a bound. It is a DIFFERENT MEASUREMENT THAT HAPPENS TO
+CORRELATE**, and describing it as a floor claims a guarantee it never had. ⚠ **Before calling a proxy a
+bound, name the error it CANNOT make — and if both directions are available, it is not a bound in either.**
 
 # Related Documents
 

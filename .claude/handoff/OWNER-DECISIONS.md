@@ -890,6 +890,26 @@ reads as behavioural coverage.**
 ⚠ **The honest scope statement: this was found because somebody executed the class for the first time. Any
 production type that no test constructs is in the same position, and the count of those is not known.**
 
+### ⚠ THE COUNT IS NOW KNOWN — measured the same evening (item 237)
+
+**Coverage instrumentation was run once, across all eight suites, over 2390 types. It was not added to the
+gate, no threshold was set, and no ratio was reported: the question asked was the binary one, WHICH TYPES
+HAVE ZERO EXECUTED LINES.**
+
+**332 have none. 202 of those are legitimate — 194 compiler-generated, 7 design-time factories, 1
+migration. Of the 130 that remain, 61 are transport contracts.** ⚠⚠ **SIX ARE QUERY-BEARING TYPES THAT
+NOTHING IN ANY SUITE EXECUTES:** `AttendanceRecordRepository`, `LeaveBalanceRepository`,
+`EmployeeApproverDirectoryService`, `EmployeePlacementDirectoryService`, `TenantCompanyCurrencyLookup`,
+`UserCompanyAccessRepository`.
+
+**The measurement is validated rather than assumed: the three read services made live earlier that day
+register 20, 2 and 86 hits against `EmployeeReadService`'s 1500, and all three would have read zero that
+morning.**
+
+⚠ **What this does NOT say: that the six are defective.** They are unexecuted — **which is how the two
+defects above survived** — and that is a reason to look, not a prediction. **Queued as item 238, six types
+and then stop.**
+
 ## What is NOT on this list
 
 **Engineering-owned items are excluded** — guard coverage, test shape, the register's floor, inventory

@@ -2246,6 +2246,58 @@ nothing.**
 **Put the control inside the test instead.** Here a negative assertion is paired with a positive one over
 the same reflection query, so a query that returns nothing FAILS rather than passing.
 
+## Enumerate the implementers of a mechanism and compare their guards
+
+**The comparison that found a missing test file between MODULES found a missing assertion between
+AGGREGATES the same day.** One aggregate's tests asserted that no reactivate operation exists on it;
+the sibling aggregate, bound by the same rule, had nothing.
+
+⚠ **So the instrument generalises, and the granularity is a parameter.** Modules, aggregates, handlers,
+endpoints, migrations — **wherever one rule has several implementers, a missing guard is visible only as an
+ASYMMETRY between them.** It is never visible as a failure, and never inside the implementer that lacks it.
+
+**This is the most productive instrument in this record.** Two findings in one day that a name search, a
+citation search and a coverage measure were all structurally incapable of reaching — **because each of them
+reads what was written, and the finding is about what was not.**
+
+## A "nothing else changed" assertion needs a witness that anything changed
+
+**An operation was asserted to leave the company, the branch, the identity fields and the assignment records
+alone.** ⚠ **Every one of those assertions is satisfied perfectly by an operation that returns success and
+does nothing at all.**
+
+**Only asserting that the intended change DID happen separates *changed nothing else* from *changed
+nothing*.** It is the two-sided rule specialised to negative claims, and it is the easiest control to omit,
+because each individual assertion looks like a real check.
+
+### And a count is not an identity check
+
+**The assignment records were compared by the surviving record's destination, not by how many there were.**
+⚠ **A transition that deleted one row and wrote another leaves the count unchanged** — so a count assertion
+passes through exactly the defect the criterion is about.
+
+**Where an assertion can be written over the identity of a thing, prefer it to one written over the number
+of things.**
+
+## Draw the plant from the shape of the code, not the shape of the assertion
+
+**A guard was written generically: every tenant-owned entity whose owner changes after creation is refused.
+The obvious plant is to delete the guard — and it proves almost nothing, because it would redden every test
+of every aggregate at once.**
+
+⚠ **The plant that was used excluded ONE aggregate from the shared check by name.** The new test reddens;
+the sibling aggregate's test stays green. **That proves what the row existed to prove: the test pins the
+rule FOR THIS AGGREGATE, not the guard in general.**
+
+**A generic guard's invited failure is a per-type exclusion, not a deletion** — and it is what a later change
+actually looks like. **The plant should be the mistake the design makes easy, not the one the assertion
+makes obvious.**
+
+### Assert the state as well as the refusal
+
+**A test that only asserts a throw passes on a guard that throws AFTER writing** — a different and worse
+defect than one that does not throw at all, and one a throw-only assertion cannot distinguish.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

@@ -157,6 +157,9 @@ public sealed class EmployeeDomainTests
   // ---- LIFECYCLE.
 
   [Fact]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: walks Active->Inactive->Active->Terminated asserting success at each step, which is the
+  // criterion's listed set.
+  [Trait("Criterion", "AC-EMP-0012")]
   public void The_approved_transitions_are_permitted()
   {
     var employee = NewEmployee();
@@ -201,6 +204,8 @@ public sealed class EmployeeDomainTests
 
   // ---- TERMINATED IS TERMINAL, AND THERE IS NO REHIRE.
   [Fact]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: a `Terminated` employee cannot be activated or deactivated.
+  [Trait("Criterion", "AC-EMP-0015")]
   public void A_terminated_employee_cannot_transition_again()
   {
     var employee = Terminated();
@@ -216,6 +221,8 @@ public sealed class EmployeeDomainTests
   }
 
   [Fact]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: ...nor updated.
+  [Trait("Criterion", "AC-EMP-0015")]
   public void A_terminated_employee_cannot_have_its_profile_updated()
   {
     Assert.Equal(
@@ -308,6 +315,8 @@ public sealed class EmployeeDomainTests
   }
 
   [Fact]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: ...nor transferred. ⚠ The criterion's "remains retrievable by id" clause is pinned by NONE of the three.
+  [Trait("Criterion", "AC-EMP-0015")]
   public void A_terminated_employee_cannot_be_transferred()
   {
     var employee = Stamped();

@@ -74,6 +74,11 @@ public sealed class UnicodeStringPersistenceArchitectureTests
 
   [Fact]
   [Trait("Decision", "ADR-017")]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: `AC-EMP-0011` requires every persisted Employee and `EmployeeBranchAssignment` string column to be
+  // `nvarchar`. This walks the WHOLE tenant model, so it is a SUPERSET of that claim -- Employee is
+  // tenant-owned and cannot escape the walk. Citing the superset is honest; a narrower Employee-only
+  // assertion does not exist and would be weaker if it did.
+  [Trait("Criterion", "AC-EMP-0011")]
   public void Every_persisted_string_in_the_tenant_model_is_unicode()
   {
     // ⚠ The floors prove the model was BUILT and its properties enumerated. They cannot prove

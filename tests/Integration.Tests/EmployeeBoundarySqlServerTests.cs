@@ -514,6 +514,10 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- PHYSICAL DELETE IS PROHIBITED. Termination is retention, not removal.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: asserted against the real `TenantDbContext`: a delete of a seeded Employee is refused, which is
+  // the criterion's "a persisted row survives" half. ⚠ The criterion ALSO bans a delete command,
+  // repository method, permission and endpoint EXISTING -- that structural half is not asserted here.
+  [Trait("Criterion", "AC-EMP-0017")]
   public async Task An_employee_cannot_be_physically_deleted()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -597,6 +601,9 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: creates an Employee, captures its rowversion, mutates, then transfers with the STALE value and
+  // expects a conflict -- the criterion's "a stale value returns a conflict" clause.
+  [Trait("Criterion", "AC-EMP-0019")]
   public async Task A_transfer_with_a_stale_rowversion_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

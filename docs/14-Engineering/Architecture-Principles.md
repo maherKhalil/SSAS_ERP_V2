@@ -1446,6 +1446,32 @@ which this repository has proved go missing twenty-seven at a time.**
 that criterion was written in another item three apart. Neither knew about the other, and the mapping
 existed only in two heads.**
 
+
+## The heading is not the criterion, and a caveat a command can remove is not a scope note
+
+**Two rules from 2026-08-31, both learned by nearly shipping their opposite.**
+
+**`AC-LOC-0019` is headed *Cache coherence*. Its body reads: *version revalidation/eviction observes
+15s/30s/5m/60s bounds and never crosses Tenant/culture.*** A test about post-commit domain-event eviction
+matches the heading perfectly and **has nothing to do with the criterion.** The mapping was published,
+then caught before it was written into the code.
+
+**THE HEADING IS A LABEL. THE BODY IS THE CRITERION.** A heading is chosen for scanning and is as much
+layout as a table row or a trait key — **the same family that produced padded-versus-unpadded keys, four
+criteria formats, four trait keys and a homonym, one level deeper.** ⚠ **Read the body. Every time. A
+heading match is a hypothesis, not a finding.**
+
+**And the counterweight to a day spent praising stated limits:**
+
+⚠ **A CAVEAT A SINGLE COMMAND CAN REMOVE IS NOT A SCOPE NOTE.** A report was about to record that an
+assertion was *inferred*; one command settled it instead. **A limit that exists because nobody spent thirty
+seconds is not honesty — it is unfinished work wearing honesty's clothes.** **Before writing a caveat, ask
+whether a command you could run right now would remove it.**
+
+**A related discipline, from the same item: MATCH THE EXISTING KEY, DO NOT CHOOSE ONE.** Adding a fifth
+spelling to tidy four spellings **makes the grep worse while looking like cleanup** — and the tidying
+reflex fired twice in one turn, in the item that had just warned against it.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

@@ -1526,6 +1526,41 @@ caught eventually because somebody eventually looks for the thing. A false posit
 - ⚠ **When a report says *nothing found*, check whether that sentence was PRINTED or DECIDED.** The two are
   indistinguishable in a transcript and opposite in meaning.
 
+
+## Before writing a guard, look for the one that already exists — and cite it as a superset
+
+**A ruling asked for four structural bans to be asserted. Reading first found THREE OF THE FIVE ALREADY
+GUARDED** — an endpoint ban by a whole-surface route inventory, a cascade ban by a whole-model foreign-key
+test, and a persistence ban already cited. **Only three of the five clauses needed anything new, and the
+new test covered them all.**
+
+⚠ **A DUPLICATED GUARD IS TWO PLACES TO EDIT AND ONE PLACE TO FORGET.** The narrower copy is the one that
+gets updated, the wider one silently stops matching, and both go green.
+
+**So the disposal is: cite the existing guard AS A SUPERSET, and resist writing the narrower version.** A
+whole-model assertion covering your case **asserts more than an aggregate-specific one would**, and
+replacing it with a local copy is a downgrade wearing the costume of precision.
+
+## ⚠ A guard with two reflection paths needs a control per path
+
+**The new ban walks types AND gathers constants — two different reflection paths in one test.** ⚠ **The
+constant-gathering path could return an empty catalog while the type walk works perfectly, and the guard
+would pass over half a population with nothing to show for it.**
+
+**So it ships with a control per path**: the type matcher must find delete-shaped names that DO exist in
+live code, **and the permission catalog must be reachable and non-empty.** ⚠ **One control over a two-path
+guard leaves half of it unmeasured — and the unmeasured half is the one nobody thought to plant.**
+
+## A test can inherit its limit from the criterion rather than owning it
+
+**The ban is NAME-shaped: a method called `PurgeEmployee` satisfies it and violates the intent.** ⚠ **But
+the criterion is itself written in terms of names — *no delete command… exists* — so the test matches the
+criterion's own form.**
+
+**THE LIMIT IS THE CRITERION'S, NOT THE TEST'S** — and that distinction decides who should fix it. **A test
+that is exactly as strong as the thing it pins is correct; making it stronger would be asserting something
+nobody specified.** **Record the limit against the specification, and leave the test alone.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

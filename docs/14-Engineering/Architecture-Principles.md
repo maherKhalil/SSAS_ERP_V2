@@ -1790,6 +1790,62 @@ invented.
 reflection query that silently returns thirty of forty columns still passes a floor of twelve. **A floor
 proves the query found SOMETHING; only a cross-check proves it found EVERYTHING.**
 
+## A sweep with a control on its positive claims has none on its negative ones
+
+**A citation sweep runs a control every pass: every cited id must exist in the specification, and the count
+of dangling citations is reported.** ⚠ **Nothing whatever checks a criterion recorded as UNRESOLVED.**
+
+**So the errors are asymmetric by construction.** A wrong citation is caught by a machine on the next pass.
+**A wrong disposal is accepted on the strength of the reading that produced it, and it is invisible
+afterwards, because *unresolved* and *genuinely unpinned* look identical in the record.**
+
+**The remedy is cheap and belongs before the disposal, not after it: SEARCH THE MECHANISM BEFORE RECORDING
+A CRITERION UNRESOLVED.** The symbol the criterion is about, and its call sites — not only test names.
+
+### The worked example, and why a name search could not have found it
+
+**A criterion said *"the compensation in force on a date is the record with the greatest effective date not
+after it"*. Two tests were found, both asserting what happens OUTSIDE the range, and the criterion was
+recorded unresolved with the reasoning that neither asserts the rule itself.**
+
+⚠ **The pinning test was four lines above them in the same file**, named *the record in force is the latest
+one not after the date* — the criterion almost verbatim, four positive assertions including the boundary
+date. **One command — grep the domain method across the test tree — returns seven call sites, four of them
+positive assertions.**
+
+**The failure is a familiar one wearing new clothes: the observation was TRUE of the tests that were read,
+and the conclusion quantified over the file.** ⚠ **A true statement about the members examined, generalised
+to the set — and a name search could never have corrected it, because the pinning test's name shares no
+significant word with the two that were found.**
+
+### And two boundary tests are only non-vacuous because of the test beside them
+
+**Both of the tests found assert that the resolver returns NOTHING. A function that always returned nothing
+would pass both.** They are sound precisely because the positive case sits beside them.
+
+⚠ **So reading a guard without its neighbours can make a complete pair look like a missing rule** — the
+inverse of the near-miss error, and the same cure: establish what the FILE asserts before concluding what
+it does not.
+
+## The strong controls are two-sided
+
+**A floor asserts a population is at least N before checking its members. A two-sided control asserts both
+that the thing happened and that its counterpart did not** — succeed, then revoke, then fail; or stored AND
+flagged AND surfaced.
+
+⚠ **A two-sided control fails if EITHER side moves. A floor fails only if EVERYTHING does.** Both are worth
+having and they are not interchangeable, and the vocabulary should not blur them: **a floor proves the query
+found something; only a cross-check proves it found everything.**
+
+### Say which kind of claim you are making, before it is tested
+
+**An expectation stated as an expectation cost nothing when it turned out wrong: there was nothing to
+withdraw, and no model was left standing on credit it had not earned.** The same content stated as a
+forecast had previously cost three refutations and an eventual full withdrawal.
+
+**The label is not modesty. It sets in advance what being wrong will cost**, and it can only be applied
+honestly before the result is known.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

@@ -231,7 +231,8 @@ parameter rather than APPLIES it — an instrument reading the cheaper adjacent 
 
 | # | item | status | detail |
 |---|---|---|---|
-| **237** | ⚠⚠ **ANSWER *WHICH PRODUCTION TYPES ARE NEVER EXECUTED* PROPERLY, ONCE, WITH THE ONLY COMPLETE INSTRUMENT — AND THEN PUT THE INSTRUMENT AWAY.** **236 established the proxy's limit in its own words: a NAME is not an EXERCISE, and its seven is a floor.** ⚠ **AND THE COST IS LOWER THAN EITHER OF US THOUGHT: `coverlet.collector` IS ALREADY A `PackageReference` IN EVERY TEST PROJECT AND PINNED AT 6.0.0 IN `Directory.Packages.props`.** **So this is `dotnet test --collect:"XPlat Code Coverage"` plus a parse, not a tooling project.** **DELIVERABLE: the list of production types under `src/` with ZERO covered lines across the whole suite, and nothing else.** **Run it at PHASE scope so Integration counts — a TASK-scope answer would name every Integration-only type as dead and be worse than no answer.** | **OPEN** | ⚠⚠ **CONSTRAINTS, AND THEY ARE THE POINT OF THE ROW: A BINARY, NEVER A PERCENTAGE. Do not add coverage to the gate, do not set a threshold, do not report a ratio — a coverage number as a target is a famously bad instrument and this is not that.** **The question is *which types have zero executed lines*, which is a fact.** ⚠ **EXPECT AND REPORT THE FALSE POSITIVES: generated code, EF configurations, design-time factories, exception types, hosted services and options validators will all appear and most are legitimate. FILTER, then report the QUERY-BEARING and BOUNDARY-BEARING remainder.** **236's seven are the prior — five of them Platform — so say whether coverage agrees with the proxy, because that is also a measurement of the proxy.** **Stoppable: the filtered list IS the deliverable.** |
+
+**Closed 2026-08-31 (late), verified against its commit:** **237** (*coverage run once over 2390 types across all eight suites — a binary per type, no gate change, no threshold, no ratio, instrument put away. 332 with zero executed lines, 202 legitimately so, SIX query-bearing. ⚠⚠ And the proxy check refuted the word FLOOR in both directions: three it called dead are live because EXECUTION THROUGH A CONTAINER IS NAMELESS, and two it called live are dead because a regex cannot tell a type reference from A FILENAME IN QUOTES*, `fcd9724`).
 
 **Closed 2026-08-31 (late), verified against its commit:** **238** (⚠ *six query-bearing types measured dead by coverage, executed once each, and NOTHING WAS WRONG WITH ANY OF THEM — a clean result reported as a result. Re-measured after: 0 → non-zero on all six, so the loop closed with the instrument that opened it. ⚠⚠ And the re-measurement corrected how 237 must be read: async bodies compile into generated state-machine classes that the noise filter strips, so THE BINARY IS SOUND AND THE NUMBER IS NOT A MAGNITUDE*, `ca90d74`).
 
@@ -250,3 +251,25 @@ there; **the single collective statement is the architect's to write.**
 **Division of labour, set by the owner 2026-08-30:** the coder does **coding and testing only**; planning
 and documentation are the architect's. **A docs-shaped item is pushed back, not done.** When something
 found while coding belongs in a document, **report the finding and the architect writes it.**
+
+## Session ended 2026-08-31 (late) — where to pick up
+
+**Verified, not inferred: working tree clean, nothing unpushed, `HEAD` and `origin/ClaudeBranch` both at
+`d08c0ff`, and this table has NO open rows.**
+
+**THE ONE THING TO READ FIRST NEXT SESSION: the citation count is the `[Trait]` count, never a text grep.**
+⚠ **Four packages read as covered and are at ZERO — `POS`, `IAM`, `SUB`, `LOC` — and the strict/loose gap
+(147 against 169) is what names them.** **`B18` carries the rule.**
+
+**PULLABLE, IN THE ORDER I WOULD TAKE THEM:**
+- **`B18` on `DEP`** — 4 of 52, nine of ten mechanism groups NAMED AND UNSEARCHED, so the next pass starts
+  from mechanisms rather than numbers. **`POS` (0 of 68) and `LOC` (0 of 64) are the larger unswept ones.**
+- **`B19`** — a `PHASE` run at the end of a session or after any `src/` change to BuildingBlocks, Platform
+  persistence or a shared context. ⚠ **The last one found eight stale Release baselines nobody had asked
+  about.**
+- **`AC-PAY-0013`'s positive side** — its applicability is asserted from the NEGATIVE by three tests, and
+  *one line per applicable element per included employee* has no multi-employee count assertion anywhere.
+
+⚠ **AND ONE THING IS UNVERIFIED IN THE FIELD: `scripts/gate.sh`'s new condition-4 note.** It fires only on
+a **TASK** run where `src/` changed and NO suite total moved — a PHASE run cannot reach it. **When it first
+appears, read the line and judge whether it says the right thing.**

@@ -1393,6 +1393,19 @@ gate_condition_4 () {
     GATE_C4_NOTE="ok: $MOVED of $COMPARED suite total(s) moved, with $CHANGED non-comment line(s) changed under src/"
   else
     GATE_C4_NOTE="ATTENTION: totals unchanged in all $COMPARED suite(s) while $CHANGED non-comment line(s) under src/ changed -- condition 4 is yours to judge"
+    # ---- ⚠ AND ON TASK THE ATTENTION MUST SAY WHAT IT CANNOT SEE. T-233, 2026-08-31.
+    #
+    # A `src/` fix whose only coverage is an Integration test moves NO total in this scope, because this
+    # scope does not run Integration. Item 233 fixed two GL queries that threw on every call and tripped
+    # this branch with 26 changed lines and seven unmoved totals -- a TRUE POSITIVE for the gate and a
+    # FALSE ALARM for the work.
+    #
+    # Left unqualified that recurs on every such fix forever, and an attention that is usually wrong is an
+    # attention nobody reads. The condition is NOT weakened -- it still fires. It now states its own blind
+    # spot, which is the same correction the baseline header needed at T-196.
+    if [ "$GATE_SCOPE" = "TASK" ]; then
+      GATE_C4_NOTE="$GATE_C4_NOTE; NOTE: this scope did not run Integration, so an unchanged total here cannot see a change whose only coverage is an Integration test -- if that is this change, run GATE_SCOPE=PHASE before trusting it"
+    fi
   fi
 }
 gate_condition_4

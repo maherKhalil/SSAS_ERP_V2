@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
@@ -242,6 +242,10 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  // ⚠ CITED BY ITEM 215, AT THE MOMENT THE MAPPING WAS DISCOVERED. `AC-TEN-0076` -- *"explicitly disabling
+  // a `PlatformSupportPrincipal` revokes that principal's active `PlatformAuthenticationSession`s"* -- was
+  // found while measuring FP-003 and matched against this BODY, not its name.
+  [Trait("AcceptanceCriteria", "AC-TEN-0076")]
   public async Task Disable_revokes_all_active_platform_sessions_of_the_principal_only()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();

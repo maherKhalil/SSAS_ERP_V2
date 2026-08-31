@@ -166,6 +166,11 @@ public sealed class EmployeeTerminationAccountClosureTests : IClassFixture<Emplo
   }
 
   [Fact]
+  // ⚠ CITED BY ITEM 216, AT THE MOMENT THE MAPPING WAS DISCOVERED. `AC-EMP-0014` -- *"`Terminated` is
+  // terminal and preserves the aggregate for history. NO TRANSITION OUT OF `Terminated` EXISTS"* -- and
+  // this asserts exactly that: activate is refused with 409 AND the status is still `Terminated` after.
+  // Matched against the BODY, not the name, which is the discipline item 215 had to learn the hard way.
+  [Trait("Criterion", "AC-EMP-0014")]
   public async Task A_terminated_employee_cannot_be_activated_back_into_the_workforce()
   {
     host.Repository.Employee = StubEmployeeRepository.NewEmployee(EmployeeStatus.Terminated);

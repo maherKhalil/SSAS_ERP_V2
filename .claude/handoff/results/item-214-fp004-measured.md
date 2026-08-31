@@ -43,7 +43,11 @@ predicted would be uniquely testable here** — FP-004 owns
 one test exercises the post-commit dispatch that items 166–174 established **and** the cache invalidation
 it drives.
 
-**Its criterion is `AC-LOC-0019 — Cache coherence`. Uncited.**
+⚠⚠ **CORRECTED BY ITEM 215 — THE CLAIM BELOW WAS A HEADING MATCH AND IS WRONG.** I wrote that this test's
+criterion is `AC-LOC-0019 — Cache coherence`. **Its BODY reads *"version revalidation/eviction observes
+15s/30s/5m/60s bounds and never crosses Tenant/culture"* — timing bounds and isolation, NOT post-commit
+eviction.** The heading said one thing and the criterion said another, and I matched the heading.
+**`AC-LOC-0019` was therefore NOT cited**, and which test satisfies it is unmeasured.
 
 ## ⚠ What this measures, precisely
 

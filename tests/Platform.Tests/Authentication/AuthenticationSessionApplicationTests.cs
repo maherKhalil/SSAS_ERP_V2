@@ -78,6 +78,10 @@ public sealed class AuthenticationSessionApplicationTests
   }
 
   [Fact]
+  // ⚠ CITED BY ITEM 215. `AC-AUTH-0002` -- *"one active membership is selected automatically"* -- was one of
+  // item 208's 32 uncited criteria, found by spot-check and confirmed here against the BODY: one eligible
+  // membership in, `TenantSelectedAutomatically` out, and the tenant matches.
+  [Trait("Acceptance", "AC-AUTH-0002")]
   public async Task Begin_tenant_access_automatically_selects_one_revalidated_membership()
   {
     var fixture = new Fixture();

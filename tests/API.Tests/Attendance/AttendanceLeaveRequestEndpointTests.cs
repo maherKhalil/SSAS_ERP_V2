@@ -89,6 +89,20 @@ public sealed class AttendanceLeaveRequestEndpointTests(AttendanceApiTestHost ho
     using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
     Assert.True(document.RootElement.TryGetProperty("leaveRequestId", out var id));
     Assert.NotEqual(Guid.Empty, id.GetGuid());
+
+    // ---- ⚠ AND IT IS THE REQUEST THAT WAS ACTUALLY CREATED, NOT MERELY A NON-EMPTY GUID.
+    //
+    // `Assert.NotEqual(Guid.Empty, ...)` is satisfied by `Guid.NewGuid()` invented in the projection --
+    // a body that names a row nobody can fetch, under a test name promising it names THE NEW REQUEST.
+    // The stub repository holds the aggregate the handler added, so the identifier has a source to be
+    // compared against rather than a shape to be checked.
+    var created = Assert.Single(host.LeaveRequests.Added);
+    Assert.Equal(created.Id, id.GetGuid());
+
+    // And the Location header points at the same row. The comment above this block has always claimed
+    // the two agree; nothing made them.
+    Assert.Equal(
+      $"/api/attendance/leave-requests/{created.Id}", response.Headers.Location?.ToString());
   }
 
   [Fact]

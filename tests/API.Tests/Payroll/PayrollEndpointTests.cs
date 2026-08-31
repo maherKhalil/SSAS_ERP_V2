@@ -239,27 +239,57 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
 
   [Fact]
   [Trait("Decision", "OD-PAY-0014")]
-  // ⚠ CITED BY B18 pass 14, body-confirmed: ⚠ PARTLY PINNED, and the test NAME is why I checked. The criterion is *"a run whose pay date falls
-  // in a closed fiscal period cannot be approved, AND THE RESPONSE NAMES THE PERIOD"*. The body asserts
-  // 409 and the problem code `payroll.period_closed` -- **the CONDITION, not the period**. Nothing here
-  // asserts which period. Compare `AC-PAY-0021`, whose test really does assert `Contains("HOUSING")`:
-  // the element criterion names its subject, this one does not.
+  // ⚠ CITED BY B18 pass 14 as PARTLY PINNED; FULLY PINNED SINCE T-270. `AC-PAY-0022` is *"a run whose
+  // pay date falls in a closed fiscal period cannot be approved, AND THE RESPONSE NAMES THE PERIOD"*.
+  // The body asserted 409 and `payroll.period_closed` -- the CONDITION -- and nothing said which period.
+  //
+  // ⚠ THE CONTRAST DRAWN IN THE ORIGINAL NOTE WAS WRONG AND IS WORTH KEEPING FOR THAT REASON. It said
+  // `AC-PAY-0021`'s test *"really does assert `Contains("HOUSING")`"*: it does, in
+  // `PayElementDomainTests` -- **at the domain, where the string is constructed.** Comparing an API test
+  // against a domain test made one endpoint look careless when in fact **no API test in this file, or in
+  // `GlEndpointTests`, asserted a named subject at all.** The shape was a layer's, not a test's.
   [Trait("Criterion", "AC-PAY-0022")]
   public async Task Approval_into_a_closed_period_is_refused_and_names_the_period()
   {
     host.ResetToAuthorizedState();
     var run = SeedCalculatedRun();
-    host.Ledger.Window = new PostingWindow(PostingWindowStatus.PeriodClosed, "January 2026");
+    // ⚠ THE FISCAL PERIOD IS DELIBERATELY NOT NAMED "January 2026" -- THE RUN'S OWN PERIOD IS.
+    //
+    // `PeriodClosedForPosting` is handed `window.PeriodName ?? period.Name`, so with the two names equal
+    // a handler that ignored the window entirely and printed the run's own period would satisfy the
+    // assertion below perfectly. **The names have to differ for that assertion to have a subject** -- and
+    // the closed thing is the FISCAL period, which is not the payroll period that shares its month.
+    const string closedFiscalPeriod = "FY2026-P01";
+    host.Ledger.Window = new PostingWindow(PostingWindowStatus.PeriodClosed, closedFiscalPeriod);
 
     var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
       HttpMethod.Post, $"/api/payroll/runs/{run.Id}/approval", host.TokenWith(AllPermissions)));
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("payroll.period_closed", await PayrollApiTestHost.ProblemCodeAsync(response));
+
+    // ---- ⚠ AND THE PERIOD, WHICH IS THE HALF THE NAME PROMISES AND THE CODE CANNOT CARRY.
+    //
+    // `payroll.period_closed` names the CONDITION. `AC-PAY-0022` is that the response names the PERIOD,
+    // and until `ApiError.Detail` existed it could not: the problem document carried `code`,
+    // `correlationId` and `resourceKey` and no message member, so the value was built in
+    // `PayrollErrors.PeriodClosedForPosting` and died at the mapper. **The channel arrived and nothing
+    // came back to assert through it** -- which is why the test name has promised this since it was
+    // written and the body never delivered it.
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Contains(
+      closedFiscalPeriod,
+      document.RootElement.GetProperty("detail").GetString(),
+      StringComparison.Ordinal);
   }
 
   [Fact]
   [Trait("Decision", "OD-PAY-0012")]
+  // `AC-PAY-0021`'s TRANSPORT half. `PayElementDomainTests` pins that the message is BUILT with the
+  // element code; this pins that it SURVIVES to the caller. Two tests, one criterion, and the second
+  // was the one nobody had written.
+  [Trait("Criterion", "AC-PAY-0021")]
   public async Task Approval_with_an_unmapped_element_is_refused_and_names_the_element()
   {
     host.ResetToAuthorizedState();
@@ -270,6 +300,18 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("payroll.element_unmapped", await PayrollApiTestHost.ProblemCodeAsync(response));
+
+    // ---- ⚠ AND THE ELEMENT. THE SAME OMISSION AS THE TEST ABOVE, IN THE SAME FILE.
+    //
+    // `PayElementDomainTests` asserts `Unmapped("HOUSING").Message` contains "HOUSING" -- at the DOMAIN,
+    // where the string is constructed. **That proves the message is built and says nothing about whether
+    // it reaches a caller**, and the mapper, `ShowsDetail` and serialization all sit between the two.
+    // `SeedCalculatedRun(mapAccount: false)` leaves `BASIC` unmapped, so the code the caller must go and
+    // fix is the one asserted here.
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Contains(
+      "BASIC", document.RootElement.GetProperty("detail").GetString(), StringComparison.Ordinal);
   }
 
   [Fact]

@@ -495,6 +495,17 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("gl.account_inactive", await GlApiTestHost.ProblemCodeAsync(response));
+
+    // ---- ⚠ AND THE ACCOUNT, WHICH IS WHAT THE NAME PROMISES.
+    //
+    // Two accounts are on this draft and only one of them is inactive. A refusal carrying the CONDITION
+    // alone sends the poster to check both -- and `AccountErrors.Inactive` has interpolated the code
+    // since it was written, so the only thing missing was an assertion that it survives the mapper and
+    // reaches the body. **`5200`, not `1000`: the assertion discriminates because the arrangement does.**
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Contains(
+      "5200", document.RootElement.GetProperty("detail").GetString(), StringComparison.Ordinal);
   }
 
   // ================================================================================================

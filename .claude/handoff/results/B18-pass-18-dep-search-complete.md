@@ -1,4 +1,6 @@
-# B18 pass 18 — `DEP` groups C, E and I searched. SEARCH ONLY. Nine of ten groups now searched.
+# B18 pass 18 — `DEP` groups C, E and I searched. SEARCH ONLY.
+
+⚠ **CORRECTED after commit: see `AC-DEP-0008` — I completed a truncated identifier from expectation and filed a smaller, wrong finding.**
 
 ⚠⚠ **STILL NO CITATIONS AND NO TEST FILE TOUCHED.** Free memory across this pass's readings: **1719 →
 1296 → 1775**, against a 2048 MB floor. **`DEP` remains 4 of 52 by the strict `[Trait]` count.**
@@ -26,20 +28,40 @@ as they stand.**
 | `AC-DEP-0007` | `An_empty_authorized_company_set_is_refused_rather_than_unfiltered` |
 | `AC-DEP-0009` | ⚠ **SUPERSET** — `CompanyOwnershipBoundarySqlServerTests.Deactivating_the_company_mid_session_refuses_the_next_write` covers **any** company-owned write, departments included |
 
-⚠⚠ **`AC-DEP-0008` IS A GAP, AND IT IS TONIGHT'S SHAPE AGAIN.** The criterion is *revoking the caller's
-company access mid-session refuses the next department **READ** without a restart.*
+⚠⚠ **`AC-DEP-0008` IS A GAP — AND THE FIRST VERSION OF THIS SECTION GOT IT WRONG. CORRECTED BELOW.**
 
-**Recorded search — `mid_session` test names, tree-wide, 9 hits:**
-- **`CompanyOwnershipBoundary…`** — revocation and deactivation refuse the next **WRITE** ⚠ *not a read*
-- **`EmployeeBoundary…`** — ⚠ **`Revoking_company_access_mid_session_refuses_the_next_employee_read`**
-- **no department read equivalent anywhere**
+The criterion is *revoking the caller's company access mid-session refuses the next department **READ**
+without a restart.*
 
-⚠ **`DepartmentScopeResolverTests.The_company_authority_is_consulted_on_every_resolution` proves the
-MECHANISM that makes the criterion true — the resolver re-asks live — but asserts nothing about the next
-read being refused.** *The mechanism is not the claim.*
+### ⚠⚠⚠ THE CORRECTION, AND THE ERROR IS MINE
 
-**So: the mid-session read guard exists for EMPLOYEE and not for DEPARTMENT. Fifth instance today of a
-guard present for a sibling and absent here.**
+**I wrote that `EmployeeBoundarySqlServerTests` carries
+`Revoking_company_access_mid_session_refuses_the_next_employee_READ`.** ⚠ **IT DOES NOT. The test is
+`…refuses_the_next_employee_WRITE`.**
+
+**My grep output was truncated at `refuses_the_next_emplo` and I COMPLETED THE IDENTIFIER FROM
+EXPECTATION RATHER THAN FROM THE TEXT** — and then committed it. ⚠⚠ **That is exactly the defect
+diagnosed in this record two hours earlier, where a status line named a gate leg nobody had measured: a
+field the writer feels obliged to fill, filled with the plausible thing.** **A truncated identifier is a
+blank of the same kind.**
+
+### The real grid — every `mid_session` test name, untruncated
+
+| dimension | read | write |
+|---|---|---|
+| **branch** | ⚠ `R22_Revoking_branch_access_mid_session_narrows_the_next_read` | `Revoking_branch_access_mid_session_refuses_the_next_employee_write` |
+| **company** | ⚠⚠ **NOTHING, FOR ANY MODULE** | four tests, across Employee and CompanyOwnership |
+
+⚠⚠ **So `AC-DEP-0008` is NOT *Employee has it and Department does not*. THE COMPANY×READ CELL IS
+UNASSERTED PRODUCT-WIDE** — and the branch×read cell existing is what proves the shape is REACHABLE
+rather than impossible.
+
+**That is a bigger finding than the one I filed and a different one: three of four cells covered, at a
+scale between "module" and "test name".**
+
+⚠ **And `DepartmentScopeResolverTests.The_company_authority_is_consulted_on_every_resolution` proves the
+MECHANISM that would make the criterion true — the resolver re-asks live — while asserting nothing about
+the next read being refused.** *The mechanism is not the claim.*
 
 ## Group I — reads: `AC-DEP-0047` covered three ways
 
@@ -67,11 +89,15 @@ open rather than claimed.**
 | I reads | **1 citable** (`0047`); `0046` open |
 | ⚠ **G, H, J** | **named and UNSEARCHED** — employee membership, authorization, concurrency/cutover |
 
-## ⚠ The four candidate gaps this sweep has produced, all one shape
+## ⚠ The THREE candidate gaps this sweep has produced, all one shape
 
-**`AC-DEP-0002`** (no `CompanyId` assertion + behavioural clause), **`AC-DEP-0008`** (mid-session read),
-**`AC-DEP-0044`** (predicate guard), **`AC-DEP-0050`** (RowVersion copy exclusion).
+**`AC-DEP-0002`** (no `CompanyId` assertion + behavioural clause), **`AC-DEP-0044`** (predicate guard),
+**`AC-DEP-0050`** (RowVersion copy exclusion).
 
-⚠⚠ **Every one exists for EMPLOYEE and not for DEPARTMENT.** **FP-007 inherited FP-006's criteria and not
+⚠ **THREE, not four.** **`AC-DEP-0008` was in this list and does not belong: it is unasserted
+PRODUCT-WIDE, so it is a different finding rather than an instance of this one.** **The headline is
+stronger for being exact.**
+
+⚠⚠ **Every one of the three exists for EMPLOYEE and not for DEPARTMENT.** **FP-007 inherited FP-006's criteria and not
 its guards** — and `AC-DEP-0034`'s test is the counterexample that shows why: **it derives its population
 from the composed model, so it covered Department without anybody touching it.**

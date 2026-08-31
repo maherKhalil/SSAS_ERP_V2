@@ -183,6 +183,23 @@ loop declared itself out of work it was wrong for a reason it could name.
 work; with none queued its only remaining behaviour was to report an empty queue every seventeen minutes.
 **It is re-armed in one call the moment a row is added.**
 
+⚠⚠ **AND CLOSING A QUEUE IS TWO CLAIMS, NOT ONE. THEY WERE MERGED ONCE, ON THE DAY THIS SECTION WAS
+WRITTEN.** *I am not pulling for something to do* is a statement about **WORK**. *Everything is committed*
+is a statement about **the RECORD**. ⚠ **A session can satisfy the first and fail the second, and it did:
+a result file carrying a correction sat uncommitted for the whole session while both windows called it the
+other's.**
+
+**So before declaring a queue empty: `git status` must be EMPTY, and nothing unpushed. CHECKED, not
+inferred.**
+
+⚠ **AND IF A FILE IN `git status` IS *SOMEBODY ELSE'S*, PROVE IT: `git log <file>` THEN READ THE DIFF.**
+**Both windows commit as the same author in the same worktree, so ownership is unresolvable from git
+metadata — the rule cannot be *check the author*, it has to be *read the content*, which names its own
+item.** **Ten seconds, spent the first time an exclusion is typed.**
+
+⚠ **`git show --stat` after a scoped commit confirms that everything you NAMED landed. It cannot see what
+you never named.** **It is a positive-only control, and an exclusion is invisible to it by construction.**
+
 **When a row appears: the architect writes it here AND sends it. The file is the record, the message is the
 trigger — 186 established that neither does the other's job.**
 

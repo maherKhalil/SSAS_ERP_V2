@@ -1927,6 +1927,49 @@ service defaults the status set when the caller names none. The behaviour is rea
 and the test side cannot tell them apart** — which is why the disposal has to reach the production code
 before it says which one it found.
 
+## The exception gets the guard; the rule runs unasserted
+
+**A criterion said a search with no status filter returns only the current employees. Nothing asserted it.
+The ADJACENT case — that a terminated employee is still retrievable by identifier — had a test, a comment,
+and a criterion reference.**
+
+⚠ **The exception is the memorable case. The rule is the one that runs.** Somebody was once surprised that a
+terminated employee remained reachable, and wrote a guard; nobody was ever surprised that a routine search
+excluded terminated rows, so the behaviour every caller depends on went unasserted.
+
+**The check is cheap and worth making a habit: WHEN A TEST EXISTS FOR THE EXCEPTION, ASK WHAT ASSERTS THE
+RULE.** A guard on the surprising case is evidence that somebody thought about the pair — **and evidence
+that they wrote down only the half they found interesting.**
+
+### A rule applied where it does nothing is how a convention drifts
+
+**A proposal to have every citation name the clause it satisfies was bounded rather than adopted whole: on
+a single-clause criterion, naming the clause restates the criterion's only content.**
+
+**The argument came from this repository's own history. Four trait keys carry criterion ids — `Decision`,
+`Criterion`, `Acceptance`, `AcceptanceCriteria` — and none of them was unreasonable where it was
+introduced.** ⚠ **A convention does not usually drift by being broken. It drifts by being applied
+mechanically in places where it adds a line and no information, until the line is what people copy.**
+
+**Bound the rule to the population that motivated it.** Here: name the clause when the criterion has more
+than one, which is precisely the set where a single citation can silently close several claims.
+
+⚠ **And record where the bound will fail: *single-clause* is itself a judgement — the same judgement that
+missed four claims in a criterion that reads as one sentence.** When the count is arguable, enumerate.
+
+## An anchor chosen by content can land in the wrong structural position
+
+**An insertion matched the right text and landed between an attribute and the declaration it decorated. The
+compiler refused it in seconds.**
+
+**The lesson is not about that language.** ⚠ **Every document edit made from a script uses the same
+mechanism — find a heading, insert before it — and prose has no compiler.** A markdown insertion that lands
+inside a table, between a heading and the paragraph that qualifies it, or after the closing fence of a code
+block, produces a file that renders and is wrong.
+
+**So read the diff for STRUCTURE, not only for content**, and prefer an anchor that is unique and
+structurally unambiguous over one that merely matches.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

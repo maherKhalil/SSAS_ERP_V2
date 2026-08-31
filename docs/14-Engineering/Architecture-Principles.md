@@ -1419,6 +1419,33 @@ that does not compile — **and a green is exactly what a correctly-behaving con
 only when nothing has changed since the last successful build, **and after an edit that is precisely the
 thing you cannot assume.** **It was caught only because the build output was read first.**
 
+
+## The enforceable form: A MEASUREMENT THAT DISCOVERS A MAPPING CITES IT
+
+**Measured across three packages 2026-08-31: FP-002 has 51 criteria and 19 citations, FP-003 has 93 and
+12, FP-004 has 64 and ZERO. Three packages, 208 criteria, thirty-one citations.**
+
+**The convention is not merely inconsistent in its key. It is ABSENT FROM ENTIRE PACKAGES.** And FP-004 is
+heavily tested: **zero cited does not mean zero covered. It means the mapping exists NOWHERE in the
+repository** — not in a trait, not in a comment, not in a result file — **while the tests were plainly
+written by people who knew exactly which criteria they were satisfying.**
+
+**Backfilling by hand reproduces the expensive thing, so the move is forward. But forward on its own hangs
+on no event, and Principle 27 says it will not run.**
+
+**SO THE RULE TAKES AN EVENT THAT EXISTS: WHEN A MEASUREMENT DISCOVERS THAT A TEST PINS A CRITERION, IT
+CITES IT THEN — not later, not in a report.** Not backfill-everything; **cite what you found while you were
+there.** A measurement has already read the assertion and formed the judgement, so **the citation costs one
+line at the only moment anybody holds both halves.**
+
+**The evidence that this is the right event:** three mappings, one per package, were each discovered by a
+spot-check, named in a report, and left uncited. **They cost real work and survive only in result files,
+which this repository has proved go missing twenty-seven at a time.**
+
+**And the first live catch came free: a guard written in one item pinned a criterion cited NOWHERE, while
+that criterion was written in another item three apart. Neither knew about the other, and the mapping
+existed only in two heads.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

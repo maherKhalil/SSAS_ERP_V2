@@ -1127,7 +1127,7 @@ public sealed class TenantBranchLifecycleSqlServerTests
         new TenantAdministratorAuthority(platform),
         new TenantBranchValidator(TenantContextFactory(TenantA)),
         new BranchTopologyGuard(platform),
-        new PlatformUnitOfWork(platform, new NoOpDomainEventDispatcher()),
+        TestUnitOfWork.Platform(platform, new NoOpDomainEventDispatcher()),
         new TestTenant(TenantA), new TestUser(), new TestClock());
     }
 
@@ -1140,7 +1140,7 @@ public sealed class TenantBranchLifecycleSqlServerTests
         new TenantAdministratorAuthority(platform),
         new TenantBranchValidator(TenantContextFactory(TenantA)),
         new BranchTopologyGuard(platform),
-        new PlatformUnitOfWork(platform, new NoOpDomainEventDispatcher()),
+        TestUnitOfWork.Platform(platform, new NoOpDomainEventDispatcher()),
         new TestTenant(TenantA), new TestUser());
     }
 

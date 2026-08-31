@@ -1,12 +1,37 @@
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 using SSAS.BuildingBlocks.Domain;
 
 namespace SSAS.BuildingBlocks.Infrastructure.Persistence;
 
-public sealed class EfUnitOfWork<TDbContext>(TDbContext dbContext, IDomainEventDispatcher domainEventDispatcher) : IUnitOfWork
+public sealed class EfUnitOfWork<TDbContext>(
+  TDbContext dbContext,
+  IDomainEventDispatcher domainEventDispatcher,
+  ILogger<EfUnitOfWork<TDbContext>> logger) : IUnitOfWork
   where TDbContext : PersistenceDbContext
 {
+  // ==================================================================================================
+  // ⚠ THE LAST LINE OF "A COMMITTED COMMAND MUST NOT BE REPORTED AS FAILED" (item 175).
+  // ==================================================================================================
+  //
+  // `DomainEventDispatcher` isolates every consumer and does not throw, so in the normal case nothing
+  // reaches this catch. It exists for that contract being BROKEN -- by a future dispatcher, or by a
+  // failure in dispatch itself rather than in a consumer.
+  //
+  // ⚠ ITEM 173 PROVED THE ORDERING ALONE IS NOT ENOUGH, AND A PLANT THAT REDDENED NOTHING IS WHAT SHOWED
+  // IT. Putting dispatch back inside the `try` changed no test, because the guarantee lived on a contract
+  // nothing enforced rather than on the ordering. A dispatcher throwing OUTRIGHT still reached the caller
+  // over a durable write until this catch existed.
+  //
+  // Both dispatch sites are guarded, not just the transactional one: `SaveChangesAsync` outside a
+  // transaction has also already written by the time it dispatches.
+  private static readonly Action<ILogger, Exception?> LogDispatchFailure = LoggerMessage.Define(
+    LogLevel.Error,
+    new EventId(1, nameof(LogDispatchFailure)),
+    "Domain event dispatch failed after a successful write. The command succeeded and the data is " +
+    "durable; consumers may not have run.");
+
   private IDbContextTransaction? transaction;
 
   public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -16,7 +41,7 @@ public sealed class EfUnitOfWork<TDbContext>(TDbContext dbContext, IDomainEventD
     var changes = await dbContext.SaveChangesAsync(cancellationToken);
     if (transaction is null)
     {
-      await DispatchDomainEventsAsync(cancellationToken);
+      await DispatchAfterCommitAsync(cancellationToken);
     }
 
     return changes;
@@ -67,9 +92,8 @@ public sealed class EfUnitOfWork<TDbContext>(TDbContext dbContext, IDomainEventD
       await currentTransaction.DisposeAsync();
     }
 
-    // Past this point the commit has succeeded. `DispatchAsync` does not throw -- a consumer failure is
-    // logged against its event and consumer type and the command still succeeds.
-    await DispatchDomainEventsAsync(cancellationToken);
+    // Past this point the commit has succeeded, so nothing here may fail the command.
+    await DispatchAfterCommitAsync(cancellationToken);
   }
 
   private async Task RollbackAsync(IDbContextTransaction currentTransaction, CancellationToken cancellationToken)
@@ -84,6 +108,18 @@ public sealed class EfUnitOfWork<TDbContext>(TDbContext dbContext, IDomainEventD
     {
       transaction = null;
       await currentTransaction.DisposeAsync();
+    }
+  }
+
+  private async Task DispatchAfterCommitAsync(CancellationToken cancellationToken)
+  {
+    try
+    {
+      await DispatchDomainEventsAsync(cancellationToken);
+    }
+    catch (Exception exception)
+    {
+      LogDispatchFailure(logger, exception);
     }
   }
 

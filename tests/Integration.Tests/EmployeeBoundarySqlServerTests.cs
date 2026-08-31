@@ -3504,7 +3504,7 @@ public sealed class EmployeeBoundarySqlServerTests
       var handler = new AssignPermissionToRoleCommandHandler(
         new RoleRepository(platform),
         catalog,
-        new PlatformUnitOfWork(platform, new NoOpDispatcher()),
+        TestUnitOfWork.Platform(platform, new NoOpDispatcher()),
         new TestTenant(Tenant),
         new TestUser(),
         new TestClock());
@@ -4449,7 +4449,7 @@ public sealed class EmployeeBoundarySqlServerTests
         new EmployeeFixture.TestTenant(fixture.Tenant));
 
       accessor = new TenantDbContextAccessorShim(provider);
-      unitOfWork = new TenantUnitOfWork(provider, new NoOpDispatcher());
+      unitOfWork = TestUnitOfWork.Tenant(provider, new NoOpDispatcher());
     }
 
     public long SessionId { get; }

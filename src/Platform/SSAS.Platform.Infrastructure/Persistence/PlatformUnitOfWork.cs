@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
@@ -10,9 +11,10 @@ namespace SSAS.Platform.Infrastructure.Persistence;
 
 public sealed class PlatformUnitOfWork(
   PlatformDbContext dbContext,
-  IDomainEventDispatcher domainEventDispatcher) : IPlatformUnitOfWork
+  IDomainEventDispatcher domainEventDispatcher,
+  ILogger<EfUnitOfWork<PlatformDbContext>> logger) : IPlatformUnitOfWork
 {
-  private readonly EfUnitOfWork<PlatformDbContext> inner = new(dbContext, domainEventDispatcher);
+  private readonly EfUnitOfWork<PlatformDbContext> inner = new(dbContext, domainEventDispatcher, logger);
 
   public async Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default)
   {

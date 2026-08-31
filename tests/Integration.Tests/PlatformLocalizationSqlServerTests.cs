@@ -191,7 +191,7 @@ public sealed class PlatformLocalizationSqlServerTests
     var settingsRepository = new TenantLocalizationSettingsRepository(context);
     var overrideRepository = new TenantLocalizationOverrideRepository(context);
     var eligibility = new TenantAuthenticationEligibilityReadService(context);
-    var unitOfWork = new PlatformUnitOfWork(context, dispatcher);
+    var unitOfWork = TestUnitOfWork.Platform(context, dispatcher);
     var currentTenant = new TestCurrentTenant(tenantId);
     var currentUser = new TestCurrentUser();
     var clock = new TestClock();
@@ -317,7 +317,7 @@ public sealed class PlatformLocalizationSqlServerTests
         new TenantLocalizationOverrideRepository(context),
         new TenantAuthenticationEligibilityReadService(context),
         ReadyAuditReadiness.Instance,
-        new PlatformUnitOfWork(context, new RecordingDomainEventDispatcher()),
+        TestUnitOfWork.Platform(context, new RecordingDomainEventDispatcher()),
         GeneratedLocalizationCatalog.Instance,
         new TestCurrentTenant(tenantId),
         new TestCurrentUser(),
@@ -539,7 +539,7 @@ public sealed class PlatformLocalizationSqlServerTests
     var settings = new TenantLocalizationSettingsRepository(context);
     var overrides = new TenantLocalizationOverrideRepository(context);
     var eligibility = new TenantAuthenticationEligibilityReadService(context);
-    var unitOfWork = new PlatformUnitOfWork(context, dispatcher);
+    var unitOfWork = TestUnitOfWork.Platform(context, dispatcher);
     var currentTenant = new TestCurrentTenant(tenantId);
     var currentUser = new TestCurrentUser();
     var clock = new TestClock();
@@ -622,7 +622,7 @@ public sealed class PlatformLocalizationSqlServerTests
       new TenantLocalizationOverrideRepository(context),
       new TenantAuthenticationEligibilityReadService(context),
       ReadyAuditReadiness.Instance,
-      new PlatformUnitOfWork(context, new RecordingDomainEventDispatcher()),
+      TestUnitOfWork.Platform(context, new RecordingDomainEventDispatcher()),
       GeneratedLocalizationCatalog.Instance,
       new TestCurrentTenant(tenantId),
       new TestCurrentUser(),
@@ -651,7 +651,7 @@ public sealed class PlatformLocalizationSqlServerTests
         new TenantLocalizationOverrideRepository(firstContext),
         new TenantAuthenticationEligibilityReadService(firstContext),
         ReadyAuditReadiness.Instance,
-        new PlatformUnitOfWork(firstContext, new RecordingDomainEventDispatcher()),
+        TestUnitOfWork.Platform(firstContext, new RecordingDomainEventDispatcher()),
         GeneratedLocalizationCatalog.Instance,
         new TestCurrentTenant(firstTenantId),
         new TestCurrentUser(),

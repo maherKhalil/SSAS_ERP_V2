@@ -262,7 +262,7 @@ public sealed class PlatformAuthenticationPersistenceTests
       var account = await loginContext.AuthenticationAccounts.AsNoTracking().SingleAsync();
       var tenantEligibility = new TenantAuthenticationEligibilityReadService(loginContext);
       var memberships = new IdentityTenantMembershipReadService(loginContext, tenantEligibility);
-      var unitOfWork = new PlatformUnitOfWork(loginContext, new NoOpDomainEventDispatcher());
+      var unitOfWork = TestUnitOfWork.Platform(loginContext, new NoOpDomainEventDispatcher());
       var sessionRepository = new AuthenticationSessionRepository(loginContext);
       var tokenService = new AuthenticationTokenService();
       var policy = new AuthenticationPolicy();
@@ -504,7 +504,7 @@ public sealed class PlatformAuthenticationPersistenceTests
     async Task<Result<int>> CreateAsync()
     {
       await using var context = database.CreateContext(Guid.NewGuid());
-      var unitOfWork = new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher());
+      var unitOfWork = TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher());
       await using var transaction = await unitOfWork.BeginTransactionAsync();
       var identity = Identity.Create(AuthenticationSubject.Create($"local:{Guid.NewGuid():N}").Value);
       context.Identities.Add(identity);
@@ -658,7 +658,7 @@ public sealed class PlatformAuthenticationPersistenceTests
       new AuthenticationTokenService(),
       new AccessTokenClaimsProvider(context, new PlatformPermissionCatalog()),
       accessTokenIssuer ?? new TestAccessTokenIssuer(),
-      new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()),
+      TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher()),
       new AuthenticationPolicy(),
       database.Clock);
   }
@@ -669,7 +669,7 @@ public sealed class PlatformAuthenticationPersistenceTests
     IAccessTokenIssuer? accessTokenIssuer = null)
   {
     var tenantEligibility = new TenantAuthenticationEligibilityReadService(context);
-    var unitOfWork = new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher());
+    var unitOfWork = TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher());
     var sessionRepository = new AuthenticationSessionRepository(context);
     var tokenService = new AuthenticationTokenService();
     var policy = new AuthenticationPolicy();
@@ -1041,7 +1041,7 @@ public sealed class PlatformAuthenticationPersistenceTests
   private static byte[] RandomHash() => Guid.NewGuid().ToByteArray().Concat(Guid.NewGuid().ToByteArray()).ToArray();
 
   private static Task<Result<int>> SaveAsync(PlatformDbContext context) =>
-    new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
+    TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
 
   private static async Task<IReadOnlyCollection<string>> ReadPlatformTablesAsync(PlatformDbContext context)
   {
@@ -1183,7 +1183,7 @@ public sealed class PlatformAuthenticationPersistenceTests
       new FixedCurrentAuthenticationSession(current),
       new AuthenticationAccountRepository(logoutContext),
       new AuthenticationSessionRepository(logoutContext),
-      new PlatformUnitOfWork(logoutContext, new NoOpDomainEventDispatcher()),
+      TestUnitOfWork.Platform(logoutContext, new NoOpDomainEventDispatcher()),
       database.Clock);
 
     var refreshTask = refresh.HandleAsync(new RefreshAuthenticationSessionCommand(

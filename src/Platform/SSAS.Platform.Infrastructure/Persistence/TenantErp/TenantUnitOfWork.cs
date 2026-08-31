@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,8 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp;
 // calling SaveChanges is already prepared for a failed save.
 public sealed class TenantUnitOfWork(
   ITenantDbContextProvider contextProvider,
-  IDomainEventDispatcher domainEventDispatcher) : ITenantUnitOfWork
+  IDomainEventDispatcher domainEventDispatcher,
+  ILogger<EfUnitOfWork<TenantDbContext>> logger) : ITenantUnitOfWork
 {
   private EfUnitOfWork<TenantDbContext>? inner;
 
@@ -110,7 +112,7 @@ public sealed class TenantUnitOfWork(
 
     // Bound to the SAME scoped context the repositories use, so a save commits exactly the changes they
     // tracked. A second context here would silently discard them.
-    inner = new EfUnitOfWork<TenantDbContext>(context.Value, domainEventDispatcher);
+    inner = new EfUnitOfWork<TenantDbContext>(context.Value, domainEventDispatcher, logger);
     return Result.Success(inner);
   }
 }

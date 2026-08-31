@@ -382,13 +382,13 @@ public sealed class TenantCompanyOrganizationSqlServerTests
     var clock = new TestClock();
     var firstHandler = new CreateCompanyCommandHandler(
       new GatedCompanyRepository(new CompanyRepository(new DirectTenantContextProvider(firstContext)), gate),
-      new TenantUnitOfWork(new DirectTenantContextProvider(firstContext), firstDispatcher),
+      TestUnitOfWork.Tenant(new DirectTenantContextProvider(firstContext), firstDispatcher),
       tenant,
       user,
       clock);
     var secondHandler = new CreateCompanyCommandHandler(
       new GatedCompanyRepository(new CompanyRepository(new DirectTenantContextProvider(secondContext)), gate),
-      new TenantUnitOfWork(new DirectTenantContextProvider(secondContext), secondDispatcher),
+      TestUnitOfWork.Tenant(new DirectTenantContextProvider(secondContext), secondDispatcher),
       tenant,
       user,
       clock);
@@ -500,12 +500,12 @@ public sealed class TenantCompanyOrganizationSqlServerTests
     CompanySqlDatabase.Now).Value;
 
   private static Task<Result<int>> SaveAsync(PlatformDbContext context) =>
-    new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
+    TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
 
   // Goes through the real TenantUnitOfWork so the tenant stream's failure translation — concurrency,
   // unique violation, write failure — is the code under test rather than a test-local reimplementation.
   private static Task<Result<int>> SaveAsync(TenantDbContext context) =>
-    new TenantUnitOfWork(new DirectTenantContextProvider(context), new NoOpDomainEventDispatcher())
+    TestUnitOfWork.Tenant(new DirectTenantContextProvider(context), new NoOpDomainEventDispatcher())
       .SaveChangesAsync();
 
   // Supplies an already-constructed context. Routing itself is proven separately; here the point is the

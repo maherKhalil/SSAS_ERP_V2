@@ -286,7 +286,7 @@ public sealed class PlatformIdentityAccessSqlServerBehaviorTests
   }
 
   private static Task<Result<int>> SaveAsync(PlatformDbContext context) =>
-    new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
+    TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
 
   private sealed class SqlTestDatabase(string connectionString) : IAsyncDisposable
   {

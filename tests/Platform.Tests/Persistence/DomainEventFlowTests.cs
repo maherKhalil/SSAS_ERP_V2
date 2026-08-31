@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -242,6 +243,30 @@ public sealed class DomainEventFlowTests
     Assert.Single(scope.Second!.Received);
   }
 
+  // ==================================================================================================
+  // ⚠ THE ACCEPTANCE CRITERION FOR ITEM 175: A DISPATCHER THAT THROWS OUTRIGHT.
+  // ==================================================================================================
+  //
+  // Item 173 moved dispatch outside the `try` and made the dispatcher non-throwing. **A plant proved the
+  // ordering was not load-bearing**: putting dispatch back inside changed no test, because with
+  // per-consumer catches nothing throws from there. The guarantee lived on a contract nothing enforced.
+  //
+  // This injects a failure NO per-consumer catch can intercept -- the dispatcher itself -- which is the
+  // only way to observe the `catch` in `EfUnitOfWork.DispatchAfterCommitAsync`. It failed before that
+  // catch existed, and it is why the catch exists.
+  [Fact]
+  public async Task A_dispatcher_that_throws_outright_still_does_not_fail_the_committed_command()
+  {
+    await using var scope = await FlowScope.CreateAsync(dispatcher: new ThrowingDispatcher());
+    await using var transaction = await scope.UnitOfWork.BeginTransactionAsync();
+    scope.Context.Set<FlowProbe>().Add(FlowProbe.Announcing("dispatcher throws"));
+    await scope.UnitOfWork.SaveChangesAsync();
+
+    await transaction.CommitAsync();
+
+    Assert.Equal(1, await scope.Context.Set<FlowProbe>().AsNoTracking().CountAsync());
+  }
+
   // ---- ⚠ THE DISPOSAL HALF: A GENUINE COMMIT FAILURE KEEPS ITS OWN EXCEPTION.
   // `completed` is now set BEFORE the attempt, because the unit of work disposes the transaction either
   // way. Previously a failed commit left it false, disposal attempted a rollback that was refused, and in
@@ -284,7 +309,8 @@ public sealed class DomainEventFlowTests
           new StubCorrelation(),
           new StubRequestMetadata(),
           new StubCurrentUser(),
-          Logger));
+          Logger),
+        NullLogger<EfUnitOfWork<PlatformDbContext>>.Instance);
     }
 
     public RecordingConsumer? Second { get; }
@@ -397,6 +423,16 @@ public sealed class DomainEventFlowTests
 
   // Records what the dispatcher actually logged, so "surfaced, not swallowed" is asserted on the message
   // rather than assumed from the absence of an exception.
+  // Throws for a reason no per-consumer catch can intercept, so `EfUnitOfWork`'s own guard is what is
+  // under test rather than the dispatcher's isolation.
+  private sealed class ThrowingDispatcher : IDomainEventDispatcher
+  {
+    public Task DispatchAsync(
+      IReadOnlyCollection<DomainEvent> domainEvents,
+      CancellationToken cancellationToken = default) =>
+      Task.FromException(new InvalidOperationException("dispatcher itself failed"));
+  }
+
   private sealed class RecordingLogger : ILogger<DomainEventDispatcher>
   {
     public List<string> Errors { get; } = [];

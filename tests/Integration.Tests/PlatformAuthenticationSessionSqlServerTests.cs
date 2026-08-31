@@ -389,7 +389,7 @@ public sealed class PlatformAuthenticationSessionSqlServerTests
   private sealed class TestPlatformUnitOfWork(PlatformDbContext context)
     : SSAS.Platform.Application.Abstractions.Persistence.IPlatformUnitOfWork
   {
-    private readonly PlatformUnitOfWork inner = new(context, new NoOpDomainEventDispatcher());
+    private readonly PlatformUnitOfWork inner = TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher());
 
     public Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default) =>
       inner.SaveChangesAsync(cancellationToken);

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -111,7 +112,8 @@ public sealed class PersistenceFoundationTests
 
     var otherTenantId = Guid.NewGuid();
     await using var otherContext = scope.CreateContext(otherTenantId, new RecordingDomainEventDispatcher());
-    var otherUnitOfWork = new EfUnitOfWork<TestPersistenceDbContext>(otherContext, new RecordingDomainEventDispatcher());
+    var otherUnitOfWork = new EfUnitOfWork<TestPersistenceDbContext>(otherContext, new RecordingDomainEventDispatcher(),
+        NullLogger<EfUnitOfWork<TestPersistenceDbContext>>.Instance);
     otherContext.Aggregates.Add(new TestAggregate("tenant-two"));
     await otherUnitOfWork.SaveChangesAsync();
 
@@ -119,7 +121,8 @@ public sealed class PersistenceFoundationTests
     Assert.Single(await otherContext.Aggregates.ToListAsync());
 
     await using var missingTenantContext = scope.CreateContext(null, new RecordingDomainEventDispatcher());
-    var missingTenantUnitOfWork = new EfUnitOfWork<TestPersistenceDbContext>(missingTenantContext, new RecordingDomainEventDispatcher());
+    var missingTenantUnitOfWork = new EfUnitOfWork<TestPersistenceDbContext>(missingTenantContext, new RecordingDomainEventDispatcher(),
+        NullLogger<EfUnitOfWork<TestPersistenceDbContext>>.Instance);
     missingTenantContext.Aggregates.Add(new TestAggregate("missing-tenant"));
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => missingTenantUnitOfWork.SaveChangesAsync());
@@ -159,7 +162,8 @@ public sealed class PersistenceFoundationTests
       Clock = clock;
       TenantId = tenantId;
       Dispatcher = dispatcher;
-      UnitOfWork = new EfUnitOfWork<TestPersistenceDbContext>(context, dispatcher);
+      UnitOfWork = new EfUnitOfWork<TestPersistenceDbContext>(context, dispatcher,
+        NullLogger<EfUnitOfWork<TestPersistenceDbContext>>.Instance);
     }
 
     public TestPersistenceDbContext Context { get; }

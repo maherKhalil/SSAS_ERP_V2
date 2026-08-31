@@ -337,7 +337,7 @@ public sealed class PlatformIdentityAccessPersistenceTests
   }
 
   private static Task<Result<int>> SaveAsync(PlatformDbContext context) =>
-    new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
+    TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
 
   private static async Task<IReadOnlyCollection<string>> ReadPlatformTableNamesAsync(PlatformDbContext context)
   {

@@ -2557,6 +2557,43 @@ changes five sites at once while nothing asserts any of them.**
 safe. **A refactor undertaken to make testing easier, before the tests exist, spends the safety it is
 trying to buy.**
 
+## A distribution of symptoms usually has one cause at the composition point
+
+**Six modules, and a guard was exercised in four of them and not two. Reported as a distribution — four
+covered, two uncovered — it reads as two independent omissions and invites two repairs.**
+
+⚠ **There was one cause: two of the six test hosts compose the module's registration extension and not its
+infrastructure one, so the real implementation is never constructed and the fixture's stub is never
+challenged.** Every number in the distribution follows from that single difference.
+
+**When a population splits unevenly on a property nobody chose, look at what composes its members before
+counting what is missing from each.** ⚠ **N repairs at the symptoms leave the cause in place, and the next
+member added inherits it.**
+
+### And the diagnosis had already been written down, at one site
+
+**One host carried a comment recording that this exact defect had been found there weeks earlier: the
+infrastructure half was never called, so the module's routes were mapped and unreachable, and nothing in
+the folder could tell.**
+
+⚠⚠ **The failure mode was diagnosed, documented, and fixed — at the one site where it was noticed. Nobody
+asked whether the other five had it. Two did.** **A written diagnosis is not a control: it makes the site
+that has it safer and says nothing about the sites that do not, and the clarity of the writing does not
+help, because the people who need it are not reading that file.**
+
+## A reference count cannot separate reflection from exercise
+
+**A census asked which test files name each implementation.** ⚠ **Of one type's four references, two are
+architecture tests that reflect over it; another module's single reference is a route inventory. Neither
+constructs anything.**
+
+**And one module's host composes the real infrastructure and then registers a stub over the top anyway**, so
+even a composition check would have passed while the concrete type stayed unexercised.
+
+⚠ **Mentions, reflections, registrations and exercises all look identical to a grep.** The question worth
+asking is the narrow one — **what constructs this and runs a method on it** — and it usually cannot be
+answered by counting at all.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

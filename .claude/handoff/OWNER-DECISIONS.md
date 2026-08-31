@@ -638,9 +638,29 @@ that nobody therefore knows whether Integration is green — was never drawn.**
 **That is this decision, without a hypothetical: a suite holding 36% of the repository's assertions has
 been failing for days, and the merge rule never looked.**
 
-**The 403 itself is not yet diagnosed** — deliberately not folded into the item that found it — **and it is
-dispatched separately. It may be a product defect or a stale test expectation; this loop has twice found
-the document wrong and the code right, so no assumption is being made.**
+⚠ **DIAGNOSED 2026-08-31, AND THE ANSWER MATTERS TO HOW YOU READ THIS ENTRY: THE PRODUCT IS CORRECT. THE
+TEST IS WRONG — AND IT EXPIRED, LITERALLY, AT 2026-08-30 12:00:00 UTC, ABOUT FIFTEEN HOURS BEFORE THE RUN
+THAT FOUND IT.**
+
+The fixture freezes its clock at **2026-07-31 12:00:00 UTC** and dates the test's CSRF value from a seeded
+expiry of that instant plus the 30-day session idle lifetime. **The service that validates it uses a
+time-limited protector checked against the REAL clock.** Measured in the failing run:
+`csrfExpiry=2026-08-30T12:00:00Z`, `realNow=2026-08-31T03:31:09Z`, `expired=True`. ⚠ **The token was
+genuinely expired and refusing it was exactly right.**
+
+**So this is a TIME BOMB, not a regression** — which is why it bisected to every commit tried, including
+the one this work started from. **Nothing in this stretch of work caused it and nothing in it could have
+prevented it.**
+
+⚠ **DO NOT READ THE RED SUITE AS A BROKEN PRODUCT. Read it as this:** a suite holding 36% of the
+repository's assertions **went unwatched for four days**, and what it was hiding happened to be a test
+defect. **The exposure is unchanged; the luck is that this time it cost nothing.** **The next thing that
+suite hides may not be a test.**
+
+**The diagnosis was reached by instrumenting rather than arguing:** the wire response names
+`authentication.request_rejected` for **both** the refresh and the logout — so not a race — and an echo
+endpoint under the same path prefix proved the transport gate accepted the request (`IsHttps`, origin,
+both cookies, the CSRF header all present), **leaving the CSRF check as the only remaining site.**
 
 ---
 

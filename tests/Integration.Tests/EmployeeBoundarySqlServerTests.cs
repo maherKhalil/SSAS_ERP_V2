@@ -718,6 +718,8 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the UNAUTHORIZED destination clause; branch unchanged after.
+  [Trait("Criterion", "AC-EMP-0032")]
   public async Task A_transfer_to_an_unreachable_destination_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -737,6 +739,8 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the INACTIVE destination clause -- intersected with active branches.
+  [Trait("Criterion", "AC-EMP-0032")]
   public async Task A_transfer_into_an_inactive_destination_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -795,6 +799,9 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ the REVALIDATION clause -- access is revoked BEFORE the save, so this proves the destination is
+  // re-checked inside the transaction rather than trusted from the earlier authorization.
+  [Trait("Criterion", "AC-EMP-0032")]
   public async Task Revoking_destination_branch_access_before_the_transfer_refuses_it()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

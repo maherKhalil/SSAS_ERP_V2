@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
@@ -163,6 +163,10 @@ public sealed class EmployeeReadScopeArchitectureTests
   // the branch authority. A resolver that stopped consulting one of them would have to keep an unused
   // dependency to pass this — and an unused dependency is exactly what a reviewer notices.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the resolver depends on `ICurrentUser`, `ITenantCompanyAccessResolver` AND
+  // `ITenantBranchAccessResolver` -- permission, company scope and branch scope, the three independent
+  // dimensions the criterion names.
+  [Trait("Criterion", "AC-EMP-0040")]
   public void The_scope_resolver_depends_on_all_three_authorization_sources()
   {
     var dependencies = typeof(EmployeeScopeResolver)
@@ -268,6 +272,9 @@ public sealed class EmployeeReadScopeArchitectureTests
   // The tenant filter stays, and this test asserts it stays: tenant is a routing invariant with exactly one
   // value per context, which is the case a filter actually fits.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: asserts no global query filter mentions `CompanyId` or `BranchId` -- the criterion verbatim, and
+  // the criterion itself says "the two architecture guards assert" this.
+  [Trait("Criterion", "AC-EMP-0030")]
   public void No_global_query_filter_scopes_company_or_branch()
   {
     using var context = ComposedTenantContext();
@@ -307,6 +314,10 @@ public sealed class EmployeeReadScopeArchitectureTests
   // Every employee read starts from a single scoped-query method that states tenant, company and branch. A
   // second entry point to the entity set is how one read comes to be written without one of them.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: exactly ONE `Set<Employee>()` in the source, and the scoped query carries explicit `TenantId` and
+  // `scope.Companies.CompanyIds.Contains` predicates -- which is "emits an explicit predicate", asserted
+  // rather than inspected, as the criterion requires.
+  [Trait("Criterion", "AC-EMP-0029")]
   public void Every_employee_read_is_composed_through_one_scoped_query()
   {
     var source = ReadHrCode("SSAS.HR.Infrastructure", "Persistence", "EmployeeReadService.cs");

@@ -1,4 +1,4 @@
-﻿using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Domain;
@@ -190,6 +190,9 @@ public sealed class EmployeeReadScopeTests
   // Unauthorized, inactive and nonexistent are indistinguishable, so the read cannot be used to probe for
   // the existence of a branch identifier.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ `Assert.Equal(unauthorized.Error, unknown.Error)` -- the criterion's word is IDENTICAL, and this
+  // asserts the two errors are the SAME rather than merely both failures.
+  [Trait("Criterion", "AC-EMP-0028")]
   public async Task An_unknown_branch_is_refused_identically_to_an_unauthorized_one()
   {
     var unauthorized = await Resolver(branches: [BranchA]).ResolveAsync(new EmployeeScopeRequest(
@@ -343,6 +346,8 @@ public sealed class EmployeeReadScopeTests
   // Out of scope and nonexistent give the same answer, so the read cannot confirm that an employee exists
   // in a company or branch the caller cannot reach.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: an out-of-scope employee returns `EmployeeErrors.NotFound`.
+  [Trait("Criterion", "AC-EMP-0028")]
   public async Task An_employee_outside_the_scope_is_reported_as_not_found()
   {
     var handler = new GetEmployeeQueryHandler(Resolver(), new RecordingReadService());
@@ -386,6 +391,8 @@ public sealed class EmployeeReadScopeTests
   [InlineData(1, 0, true)]
   [InlineData(1, 201, true)]
   [InlineData(-1, 50, false)]
+  // ⚠ CITED BY B18, body-confirmed: the "rejects out-of-range paging" clause -- a Theory over several bad shapes.
+  [Trait("Criterion", "AC-EMP-0027")]
   public async Task Out_of_range_paging_is_refused(int pageNumber, int pageSize, bool sizeIsTheFault)
   {
     var reads = new RecordingReadService();
@@ -401,6 +408,8 @@ public sealed class EmployeeReadScopeTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the "documented paging defaults" clause -- asserts `PageNumber == 1`.
+  [Trait("Criterion", "AC-EMP-0027")]
   public async Task The_search_defaults_are_the_documented_ones()
   {
     var reads = new RecordingReadService();
@@ -419,6 +428,9 @@ public sealed class EmployeeReadScopeTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the "maxima" clause -- the documented maximum is ACCEPTED, the other side of
+  // out-of-range being refused.
+  [Trait("Criterion", "AC-EMP-0027")]
   public async Task The_maximum_page_size_is_accepted()
   {
     var handler = new SearchEmployeesQueryHandler(Resolver(), new RecordingReadService());

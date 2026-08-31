@@ -15,9 +15,18 @@
 #
 # suite|configuration|total
 API|Debug|956
+API|Release|956
 Architecture|Debug|618
+Architecture|Release|618
 Attendance|Debug|81
+Attendance|Release|81
 Finance|Debug|47
+Finance|Release|47
 HR|Debug|326
+HR|Release|326
+Integration|Debug|848
+Integration|Release|848
 Payroll|Debug|87
+Payroll|Release|87
 Platform|Debug|1101
+Platform|Release|1101

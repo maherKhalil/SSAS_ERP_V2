@@ -28,7 +28,7 @@
 #     it exists to raise. A fix for a misreading, introducing a misreading inside itself.)
 #
 # suite|configuration|total
-API|Debug|967
+API|Debug|969
 API|Release|956
 Architecture|Debug|618
 Architecture|Release|618

@@ -19,6 +19,9 @@ public sealed class PayrollSelfServiceTests : IClassFixture<PayrollApiTestHost>
 {
   private const string Route = "/api/payroll/me/payslips";
 
+  // The administrative counterpart: it names an employee, which is the whole difference.
+  private const string AdministrativeRoute = "/api/payroll/employees/1/payslips";
+
   private readonly PayrollApiTestHost host;
 
   public PayrollSelfServiceTests(PayrollApiTestHost host)
@@ -32,7 +35,6 @@ public sealed class PayrollSelfServiceTests : IClassFixture<PayrollApiTestHost>
   // The caller holds `ViewOwn` and NOT the administrative `Payroll.Payslips.View`. If this ever needed
   // both, the permission would be a scope wearing a permission's name and `OD-SS-0001` would be unbuilt.
   [Fact]
-  [Trait("Criterion", "AC-SS-0004")]
   [Trait("Criterion", "AC-SS-0003")]
   public async Task The_self_permission_alone_reads_the_callers_own_payslips()
   {
@@ -48,7 +50,10 @@ public sealed class PayrollSelfServiceTests : IClassFixture<PayrollApiTestHost>
   // THE CONTROL. Holding neither permission is refused — so the success above is the permission working
   // rather than the route being open.
   [Fact]
-  [Trait("Criterion", "AC-SS-0004")]
+  // ⚠ RE-CITED IN ITEM 211. This carried `AC-SS-0004` -- *a payslip belonging to ANOTHER employee is
+  // unreachable* -- which it does not assert: it sends a caller holding neither permission and expects 403.
+  // Its own comment says what it is, and it is the control for the test above.
+  [Trait("Criterion", "AC-SS-0003")]
   public async Task Without_the_self_permission_the_route_is_refused()
   {
     using var response = await Send(PayrollPermissionNames.ViewRuns);
@@ -112,8 +117,49 @@ public sealed class PayrollSelfServiceTests : IClassFixture<PayrollApiTestHost>
   // longer the thing being asserted.
   [Fact]
   [Trait("Criterion", "AC-SS-0007")]
+  [Trait("Criterion", "AC-SS-0004")]
   public void The_self_route_contract_names_no_employee_on_any_surface() =>
     SelfServiceContractRule.AssertNoSubjectOnAnySurface(host.MappedEndpoint(Route));
+
+  // ==================================================================================================
+  // ⚠ AC-SS-0006 — THE SELF PERMISSION ALONE DOES NOT GRANT ADMINISTRATIVE ACCESS (item 211).
+  // ==================================================================================================
+  //
+  // `AC-SS-0005` is the other direction and was already pinned: an administrator is refused at the SELF
+  // route. **This is its mirror, and it was the one criterion of FP-015 that nothing asserted.**
+  //
+  // Item 210 refused to cite it against a near neighbour: `The_records_self_permission_does_not_open_the_leave_route`
+  // is self-vs-SELF, and `Without_the_self_permission_the_route_is_refused` is absence-of-self. **Neither is
+  // self-vs-ADMINISTRATIVE, and citing one would have made the grep confidently wrong.** So the test was
+  // written instead.
+  //
+  // The administrative route takes an employee id in its path; the self route takes none. **A self
+  // permission that opened this route would be a widening — sight of one's own payslips silently becoming
+  // sight of anyone's.**
+  [Fact]
+  [Trait("Criterion", "AC-SS-0006")]
+  public async Task The_self_permission_alone_does_not_open_the_administrative_route()
+  {
+    using var response = await SendTo(AdministrativeRoute, PayrollPermissionNames.ViewOwnPayslips);
+
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+  }
+
+  // ⚠ THE CONTROL, AND IT IS WHAT MAKES THE REFUSAL ABOVE MEAN SOMETHING. Without it, a mistyped route, a
+  // route that does not exist, or one refused for any other reason would produce the same 403 and the test
+  // would pass while proving nothing about permissions at all.
+  [Fact]
+  [Trait("Criterion", "AC-SS-0006")]
+  public async Task The_administrative_permission_reaches_the_administrative_route()
+  {
+    using var response = await SendTo(AdministrativeRoute, PayrollPermissionNames.ViewPayslips);
+
+    Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+  }
+
+  private Task<HttpResponseMessage> SendTo(string route, params string[] permissions) =>
+    host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Get, route, host.TokenWith(permissions)));
 
   private Task<HttpResponseMessage> Send(params string[] permissions) =>
     host.Client.SendAsync(PayrollApiTestHost.Request(

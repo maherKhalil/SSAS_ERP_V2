@@ -65,16 +65,41 @@ the next read being refused.** *The mechanism is not the claim.*
 
 ## Group I — reads: `AC-DEP-0047` covered three ways
 
-`A_department_member_count_includes_only_employees_in_scope`,
-`An_empty_department_counts_zero_while_an_unscoped_count_would_not`,
-`A_member_count_never_reaches_outside_the_company`.
+### ⚠⚠⚠ SECOND CORRECTION — A MECHANICAL AUDIT FOUND THREE MORE INVENTED NAMES
 
-⚠ **The middle one is the anti-vacuity control, already written: a zero that would be non-zero without
-the scope.**
+**After the `_read`/`_write` correction I audited ALL 42 test identifiers published across passes 16–18
+against `tests/`. FOUR did not exist verbatim — the one already corrected, AND ALL THREE IN THIS
+SECTION.** Every one was truncated by the same `cut -c1-135` and completed from expectation.
+
+| what I published | what exists |
+|---|---|
+| `A_department_member_count_includes_only_employees_in_scope` | `…includes_only_employees_inside_the_callers_scope` |
+| `A_member_count_never_reaches_outside_the_company` | `…outside_the_company_scope` |
+| ⚠ `An_empty_department_counts_zero_while_an_unscoped_count_would_not` | ⚠⚠ **`…while_an_unscoped_caller_counts_null`** |
+
+⚠⚠ **AND THE THIRD ONE'S MEANING WAS WRONG TOO, WHICH IS THE REAL COST.** I glossed it as *"a zero that
+would be non-zero without the scope"*. **The test actually asserts THREE values: a permitted caller reads
+`1` for a populated department and `0` for an empty one, and an UNPERMITTED caller reads `null`.**
+
+⚠ **The control is that `0` and `null` are DIFFERENT ANSWERS — an empty department you may see is not
+confused with a department you may not.** **That is `AC-DEP-0007`'s distinction — *an empty result claims
+something about the DATA, a refusal claims something about the CALLER* — expressed as a COUNT.** **It is
+a better control than I credited, and I described it wrongly BECAUSE I HAD INVENTED THE NAME IT CAME
+FROM.**
+
+**The three real tests:** `A_department_member_count_includes_only_employees_inside_the_callers_scope`,
+`An_empty_department_counts_zero_while_an_unscoped_caller_counts_null`,
+`A_member_count_never_reaches_outside_the_company_scope`.
 
 **`AC-DEP-0046` — candidates found (`An_employee_from_another_branch_of_the_same_company_may_manage`,
 `A_manager_outside_the_callers_branch_scope_is_assigned_but_undisclosed`) but NOT body-confirmed. Left
 open rather than claimed.**
+
+### ⚠ The audit is the durable part
+
+**Checking *the names I remember publishing* would have found none of these three.** ⚠⚠ **A MECHANICAL
+DIFF OF EVERY PUBLISHED IDENTIFIER AGAINST THE SOURCE FOUND ALL FOUR IN ONE RUN, INCLUDING THREE NOBODY
+HAD QUESTIONED.** **An identifier is checkable by machine; a recollection is not.**
 
 ## Where `DEP` stands after three search passes
 

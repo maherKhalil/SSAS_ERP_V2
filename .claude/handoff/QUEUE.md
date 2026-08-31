@@ -212,6 +212,21 @@ you never named.** **It is a positive-only control, and an exclusion is invisibl
 **When a row appears: the architect writes it here AND sends it. The file is the record, the message is the
 trigger — 186 established that neither does the other's job.**
 
+⚠⚠ **AND WHEN A ROW FINISHES, THE SAME TWO ACTS ARE ONE ACT: RECORDING THE RESULT AND STRIKING THE ROW.**
+**Added 2026-08-31 after FIFTEEN completed, committed items — 222 through 236 — were found still marked
+`OPEN`, because the architect had been recording every outcome on the board and in the message thread and
+never in this file.** ⚠ **The rot is invisible from the side that is doing the work: the coder's reports
+were complete, the board was complete, and only THIS file was wrong.**
+
+⚠ **SO THE FILE IS AUTHORITATIVE OVER THE MESSAGE THREAD, BOTH WAYS.** If a dispatch names a row that is
+already committed, **say so and do not redo it** — a message can be stale, and the file plus `git log` is
+what settles it.
+
+⚠⚠ **AND A CHECK OVER THIS TABLE MUST READ THE `OPEN` MARKER, NOT THE ROW PATTERN.** A count of rows
+matching `| **NNN** |` answers *does a row exist*, which is a different question from *is it open*, and the
+two agree right up until they do not. **That is the same defect as a guard asserting a method TAKES a
+parameter rather than APPLIES it — an instrument reading the cheaper adjacent field.**
+
 ---
 
 | # | item | status | detail |

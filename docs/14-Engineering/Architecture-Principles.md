@@ -1846,6 +1846,43 @@ forecast had previously cost three refutations and an eventual full withdrawal.
 **The label is not modesty. It sets in advance what being wrong will cost**, and it can only be applied
 honestly before the result is known.
 
+## Ratifying an unchecked disposal makes it permanent
+
+**A sweep recorded a criterion unresolved. The architect read the report, agreed, and wrote that it should
+stay uncited.** ⚠ **The criterion was pinned, by a test found later with one search.**
+
+**The endorsement is the part worth studying.** A disposal in a report is a reading, and its author will
+revisit it — this one did, twice over, once the method improved. **A disposal repeated by the architect is a
+RULING, and nobody revisits a ruling.** ⚠ **So an unchecked negative claim is durable, and ratifying one
+makes it permanent.**
+
+**The specific error was smaller than it looks and worse than it sounds: the criterion had four clauses, and
+the ratification reasoned about exactly one of them** — *nothing asserts the ORDER, only the scope* — **and
+then disposed of the whole criterion.** ⚠ **Quantify what you actually examined before endorsing an
+absence, or the endorsement covers ground the reasoning never reached.**
+
+### And the ratified clause was right, which is why the citation must stay partial
+
+**The recovered test sorts the history itself before selecting from it, so it would pass unchanged if the
+API returned those records in arbitrary order.** **The *returned in effective order* clause really is
+unasserted — and the new citation's own body is the proof.**
+
+**So the criterion is PARTLY pinned. Recording it as pinned would replace one wrong disposal with another,
+in the opposite direction and with a citation to make it look settled.**
+
+## Improving an instrument converts the old instrument's results into a liability
+
+**A search method was corrected mid-sweep. Two criteria immediately came back wrong.** ⚠ **Every earlier
+result of the old method now carries the same unknown error rate — and the honest statement is that the
+nine remaining unresolved must be ASSUMED wrong at that rate until re-checked.**
+
+**That is a cost of the improvement, not a confession.** ⚠ **The alternative — quietly applying the better
+method going forward — leaves a body of results whose quality nobody can state, and makes the sweep's
+totals a mixture of two methods with no way to tell which produced which row.**
+
+**Name the affected population when you change a method. Here it was nine, and knowing the number is what
+makes the re-check schedulable instead of aspirational.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

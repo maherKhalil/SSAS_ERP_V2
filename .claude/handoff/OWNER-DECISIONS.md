@@ -776,6 +776,23 @@ end, and it has cost you a dozen already.**
 - **Have the architect send on a cadence rather than only on completion** — cheap, and it makes the
   architect the doorbell. **It still fails when the architect's own last turn ends.**
 
+- ⚠ **BUILT 2026-08-31, AND IT IS THE THIRD OPTION: the architect now holds a recurring timer that wakes
+  IT roughly every quarter hour.** On waking it reads origin, the working tree and this repository's queue
+  file; **if the coder is stopped with open rows it sends a doorbell restating each row's scope in full,
+  and if a run is in flight it does nothing.** **The architect is the doorbell, on a cadence rather than
+  only on completion.**
+
+⚠⚠ **AND IT IS NOT PERMANENT, WHICH THE OWNER SHOULD HEAR PLAINLY RATHER THAN DISCOVER: the timer lives
+only in the architect's session. It is not written to disk, it dies when that session exits, and it
+auto-expires after seven days.** **It closes the gap while the loop is running and closes nothing
+afterwards.**
+
+**A genuinely durable fix is outside both windows.** It needs one of: **a scheduled wake attached to the
+coder itself**, or **a supervisor outside both sessions**, or **the owner's own nudge**. ⚠ **Neither
+window can arrange any of the three, and neither has proposed a change to `CLAUDE.md`, settings or
+permissions to get there.** **The choice is the owner's; what has been built is the best available
+approximation and it is labelled as one.**
+
 ⚠ **Nothing here is a request to change `CLAUDE.md`, settings or permissions.** The coder proposed no such
 change and the architect would not carry one; **the remedy above is yours to choose or decline.**
 

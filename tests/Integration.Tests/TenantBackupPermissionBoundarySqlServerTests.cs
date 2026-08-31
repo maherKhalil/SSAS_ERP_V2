@@ -167,35 +167,45 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
     await principal.FillAsync();
 
     using var competing = principal.StartCompetingBackup();
-    try
+
+    await using var connection = await principal.OpenImpersonatedAsync();
+
+    var observed = false;
+    var childLeft = false;
+    var deadline = DateTime.UtcNow.AddSeconds(30);
+    while (DateTime.UtcNow < deadline)
     {
-      await using var connection = await principal.OpenImpersonatedAsync();
-
-      var observed = false;
-      var deadline = DateTime.UtcNow.AddSeconds(30);
-      while (DateTime.UtcNow < deadline)
+      // The PRODUCTION in-flight check, running as the low-privilege principal.
+      if (await SqlServerBackupVisibility.IsBackupInFlightAsync(connection))
       {
-        // The PRODUCTION in-flight check, running as the low-privilege principal.
-        if (await SqlServerBackupVisibility.IsBackupInFlightAsync(connection))
-        {
-          observed = true;
-          break;
-        }
-
-        if (competing.HasExited)
-        {
-          break;
-        }
-
-        await Task.Delay(10);
+        observed = true;
+        break;
       }
 
-      Assert.True(observed,
-        "the low-privilege guard never observed the competing backup, so the permission boundary is unproven");
+      if (competing.HasExited)
+      {
+        childLeft = true;
+        break;
+      }
+
+      await Task.Delay(10);
     }
-    finally
+
+    // ⚠ THE FAILURE HAS TO SAY WHICH OF TWO THINGS HAPPENED (item 189). Leaving the loop on `HasExited` is
+    // equally "the backup finished before we looked" and "`sqlcmd` never started" -- item 187's PHASE run
+    // failed here and could not distinguish them, because the child's stderr was discarded unread.
+    //
+    // Built ONLY on the failure path: an assertion message argument is evaluated even when the assertion
+    // passes, and describing the child kills it.
+    if (!observed)
     {
-      Kill(competing);
+      var reason = childLeft
+        ? "the competing backup process left before the guard ever saw a backup in flight"
+        : "the 30s deadline expired with the competing process still running";
+
+      Assert.Fail(
+        "the low-privilege guard never observed the competing backup, so the permission boundary is " +
+        $"unproven: {reason}.{Environment.NewLine}{await competing.DescribeAsync()}");
     }
   }
 
@@ -207,22 +217,8 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
     return value is null or DBNull ? -1 : Convert.ToInt32(value, CultureInfo.InvariantCulture);
   }
 
-  private static void Kill(System.Diagnostics.Process process)
-  {
-    try
-    {
-      if (!process.HasExited)
-      {
-        process.Kill(entireProcessTree: true);
-      }
-    }
-    // ⚠ `HasExited` then `Kill` is a RACE and this is the losing branch, not an error. The process exited
-    // between the check and the kill -- which is the outcome the kill was trying to produce. There is no
-    // way to close the window; the API offers no atomic "kill if running".
-    catch (InvalidOperationException)
-    {
-    }
-  }
+  // The private `Kill` that stood here moved to `SqlcmdChildProcess.Kill` (item 189), together with its
+  // note that `HasExited` then `Kill` is a race whose losing branch is the outcome the kill wanted.
 
   private sealed class PreopenedConnectionFactory(SqlConnection connection)
     : ITenantDatabaseVerificationConnectionFactory
@@ -332,7 +328,11 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
     }
 
     // A backup issued by a DIFFERENT process entirely, as a DBA or SQL Agent job would be.
-    public System.Diagnostics.Process StartCompetingBackup()
+    //
+    // ⚠ Returns a DRAINED child (item 189): both streams are consumed from the instant it starts, so the
+    // failure above can report what it said and how it left, and so a chatty child cannot wedge on a full
+    // pipe.
+    public SqlcmdChildProcess StartCompetingBackup()
     {
       var path = Path.Combine(BackupRoot, $"competing_{Guid.NewGuid():N}.bak");
       var builder = new SqlConnectionStringBuilder(
@@ -358,7 +358,7 @@ public sealed class TenantBackupPermissionBoundarySqlServerTests
       start.ArgumentList.Add("-Q");
       start.ArgumentList.Add($"BACKUP DATABASE [{Catalog}] TO DISK = N'{path}' WITH INIT, CHECKSUM");
 
-      return System.Diagnostics.Process.Start(start)!;
+      return SqlcmdChildProcess.Start(start);
     }
 
     private static async Task ExecuteAsync(string catalog, string sql, int timeoutSeconds = 120)

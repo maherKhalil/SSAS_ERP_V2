@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using SSAS.Platform.Infrastructure.TenantStorage;
@@ -86,10 +86,16 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
     using var worker = fixture.StartBackupWorker();
     var detected = await fixture.WaitForInFlightDetectionAsync(TimeSpan.FromSeconds(30));
 
-    // Stop the worker regardless of outcome so the fixture can drop the catalog.
-    SessionLossFixture.KillWorker(worker);
+    // Stop the worker regardless of outcome so the fixture can drop the catalog. ⚠ DESCRIBING IT IS THAT
+    // STOP (item 189) -- the kill used to happen here and threw away the one thing a failure needed.
+    var disposition = await worker.DescribeAsync();
 
-    Assert.True(detected, "the in-flight guard did not observe a backup started by another session");
+    if (!detected)
+    {
+      Assert.Fail(
+        "the in-flight guard did not observe a backup started by another session." +
+        $"{Environment.NewLine}{disposition}");
+    }
   }
 
   private sealed class SessionLossFixture : IAsyncDisposable
@@ -141,7 +147,10 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
     // Worker A: an independent PROCESS that takes session-scoped ownership and starts a backup. A separate
     // process is what makes the kill genuinely abrupt — disposing a connection from inside the test would be
     // a graceful close and would answer a weaker question.
-    public Process StartBackupWorker()
+    // ⚠ Returns a DRAINED child (item 189): both streams are consumed from the instant it starts, so a
+    // failing trial can report what the worker said and how it left, and so a chatty child cannot wedge on
+    // a full pipe.
+    public SqlcmdChildProcess StartBackupWorker()
     {
       var path = Path.Combine(backupRoot, $"proof_{Guid.NewGuid():N}.bak");
       var batch =
@@ -170,24 +179,15 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
       start.ArgumentList.Add("-Q");
       start.ArgumentList.Add(batch);
 
-      return Process.Start(start)!;
+      return SqlcmdChildProcess.Start(start);
     }
 
-    public static void KillWorker(Process worker)
-    {
-      try
-      {
-        if (!worker.HasExited)
-        {
-          // Abrupt: no graceful connection close, no server-side KILL. The TCP connection simply vanishes,
-          // which is what a crashing platform worker looks like to SQL Server.
-          worker.Kill(entireProcessTree: true);
-        }
-      }
-      catch (InvalidOperationException)
-      {
-      }
-    }
+    // `KillWorker` stood here until item 189. The kill moved to `SqlcmdChildProcess`, and describing a
+    // worker performs it -- so both callers stop the child exactly as before, and now keep what it said.
+    //
+    // ⚠ THE ABRUPTNESS IS UNCHANGED AND IS THE POINT OF THIS FIXTURE: `Kill(entireProcessTree: true)` with
+    // no graceful connection close and no server-side KILL. The TCP connection simply vanishes, which is
+    // what a crashing platform worker looks like to SQL Server.
 
     public async Task<TrialResult> RunTrialAsync(TimeSpan observationWindow)
     {
@@ -196,7 +196,10 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
       // Wait until the BACKUP is genuinely running before killing anything.
       var observedInFlight = await WaitForInFlightDetectionAsync(TimeSpan.FromSeconds(30));
       var killedDuringBackup = observedInFlight && !worker.HasExited;
-      KillWorker(worker);
+
+      // ⚠ Describing the worker kills it, which is the stop this line always performed -- and it captures
+      // why it left, which every assertion below reports and none of them could before (item 189).
+      var workerDisposition = await worker.DescribeAsync();
 
       var stopwatch = Stopwatch.StartNew();
       TimeSpan? backupGoneAt = null;
@@ -237,7 +240,8 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
         ownershipAt is not null,
         backupRunningAtAcquisition,
         backupGoneAt,
-        ownershipAt);
+        ownershipAt,
+        workerDisposition);
     }
 
     // Drives the PRODUCTION in-flight check, not a copy of it, so the guard the provider actually runs is
@@ -345,11 +349,15 @@ public sealed class TenantBackupSessionLossSqlServerTests(Xunit.Abstractions.ITe
     bool OwnershipReacquired,
     bool BackupStillRunningWhenOwnershipReacquired,
     TimeSpan? BackupGoneAt,
-    TimeSpan? OwnershipAt)
+    TimeSpan? OwnershipAt,
+    // ⚠ What the backup worker said and how it left (item 189). `BackupObservedInFlight = false` used to be
+    // reported with no way to tell "the backup finished first" from "sqlcmd never started".
+    string WorkerDisposition)
   {
     public override string ToString() => string.Create(CultureInfo.InvariantCulture,
       $"inFlight={BackupObservedInFlight}, killedDuringBackup={ClientKilledDuringBackup}, " +
       $"ownershipReacquired={OwnershipReacquired}, backupStillRunningAtAcquisition={BackupStillRunningWhenOwnershipReacquired}, " +
-      $"backupGoneAtMs={BackupGoneAt?.TotalMilliseconds:F0}, ownershipAtMs={OwnershipAt?.TotalMilliseconds:F0}");
+      $"backupGoneAtMs={BackupGoneAt?.TotalMilliseconds:F0}, ownershipAtMs={OwnershipAt?.TotalMilliseconds:F0}") +
+      Environment.NewLine + WorkerDisposition;
   }
 }

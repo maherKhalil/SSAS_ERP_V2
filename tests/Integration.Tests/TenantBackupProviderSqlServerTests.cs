@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -446,8 +446,14 @@ public sealed class TenantBackupProviderSqlServerTests
     // at the source by running two overlapping competitors. One check, one execution, one assertion.
     using var competing = fixture.StartCompetingBackup();
 
-    Assert.True(await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)),
-      "the competing backup never became visible, so the in-flight path was not exercised");
+    // Built only on the failure path (item 189): describing a competitor kills it, and an assertion
+    // message argument is evaluated even when the assertion passes.
+    if (!await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)))
+    {
+      Assert.Fail(
+        "the competing backup never became visible, so the in-flight path was not exercised." +
+        $"{Environment.NewLine}{await competing.DescribeAsync()}");
+    }
 
     var outcome = await fixture.Executor().ExecuteAsync(
       id, TenantDatabaseBackupOperation.SqlServerFull());
@@ -838,7 +844,7 @@ public sealed class TenantBackupProviderSqlServerTests
     public CompetingBackup StartCompetingBackup() =>
       new(StartCompetitor(), StartCompetitor());
 
-    private System.Diagnostics.Process StartCompetitor()
+    private SqlcmdChildProcess StartCompetitor()
     {
       var path = Path.Combine(BackupRoot, $"competing_{Guid.NewGuid():N}.bak");
       var builder = new SqlConnectionStringBuilder(Configured());
@@ -878,7 +884,7 @@ public sealed class TenantBackupProviderSqlServerTests
         $"WHILE SYSDATETIME() < @deadline BEGIN " +
         $"BACKUP DATABASE [{TargetCatalog}] TO DISK = N'{path}' WITH INIT, CHECKSUM; END");
 
-      return System.Diagnostics.Process.Start(start)!;
+      return SqlcmdChildProcess.Start(start);
     }
 
     public async Task<bool> WaitForCompetingBackupAsync(TimeSpan timeout)
@@ -903,37 +909,40 @@ public sealed class TenantBackupProviderSqlServerTests
     // raw processes in a `using` was never sufficient on its own.
     public sealed class CompetingBackup : IDisposable
     {
-      private readonly System.Diagnostics.Process[] processes;
+      private readonly SqlcmdChildProcess[] processes;
 
-      internal CompetingBackup(params System.Diagnostics.Process[] processes) =>
+      internal CompetingBackup(params SqlcmdChildProcess[] processes) =>
         this.processes = processes;
+
+      // What BOTH competitors said and how each left, for an assertion message (item 189). Numbered,
+      // because "one of them died immediately and the other ran fine" is a different diagnosis from
+      // "neither ever started", and an undifferentiated dump cannot tell them apart.
+      public async Task<string> DescribeAsync()
+      {
+        var descriptions = new List<string>(processes.Length);
+
+        for (var index = 0; index < processes.Length; index++)
+        {
+          descriptions.Add(
+            $"competitor {index + 1} of {processes.Length}: " +
+            await processes[index].DescribeAsync().ConfigureAwait(false));
+        }
+
+        return string.Join(Environment.NewLine, descriptions);
+      }
 
       public void Dispose()
       {
         foreach (var process in processes)
         {
-          KillProcess(process);
           process.Dispose();
         }
       }
     }
 
-    public static void KillProcess(System.Diagnostics.Process process)
-    {
-      try
-      {
-        if (!process.HasExited)
-        {
-          process.Kill(entireProcessTree: true);
-        }
-      }
-      // ⚠ `HasExited` then `Kill` is a RACE and this is the losing branch, not an error. The process exited
-      // between the check and the kill -- which is the outcome the kill was trying to produce. There is no
-      // way to close the window; the API offers no atomic "kill if running".
-      catch (InvalidOperationException)
-      {
-      }
-    }
+    // `KillProcess` stood here and its only caller was `CompetingBackup.Dispose`. Both the kill and its
+    // note -- that `HasExited` then `Kill` is a race whose losing branch is the outcome the kill wanted --
+    // moved to `SqlcmdChildProcess` (item 189).
 
     public Task SetRecoveryModelAsync(string model) =>
       ExecuteOnAsync("master", $"ALTER DATABASE [{TargetCatalog}] SET RECOVERY {model}");

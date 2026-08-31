@@ -475,6 +475,10 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
       // "the column is compared with a constant of higher data type precedence". **The first attempt used
       // `IN (0, 1)` and every Attendance integration test failed at catalog creation**, which is the
       // database refusing to build a schema it cannot honour.
+      // ⚠ AND NON-UNICODE LITERALS, WHERE EVERY PLATFORM FILTER USES `N'...'` -- INCONSISTENT, DELIBERATELY
+      // NOT CHANGED (item 180). `Status` is `nvarchar`, so a `varchar` literal is implicitly WIDENED --
+      // `nvarchar` has the higher precedence -- and the filter evaluates identically. Adding `N` would be
+      // tidier and would change nothing, so it is left alone rather than churned. Measured, not assumed.
       .HasFilter("[Status] IN ('Submitted', 'Approved')");
   }
 }

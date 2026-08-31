@@ -57,6 +57,9 @@ public sealed class PayrollArchitectureTests
   [InlineData("SSAS.HR.Domain")]
   [InlineData("SSAS.HR.Application")]
   [InlineData("SSAS.HR.Infrastructure")]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ SUPERSET. The criterion names Payroll and GL specifically; this asserts NO module references
+  // Payroll at all.
+  [Trait("Criterion", "AC-PAY-0025")]
   public void No_other_module_learns_about_payroll(string assemblyName)
   {
     // ---- THE OTHER DIRECTION, AND IT IS NOT SYMMETRY FOR ITS OWN SAKE.
@@ -105,6 +108,11 @@ public sealed class PayrollArchitectureTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ PARTIAL. `AC-PAY-0028` has two halves: *a read scope cannot be SUPPLIED BY THE CALLER*, and *a
+  // request attempting to WIDEN ITS OWN SCOPE is refused*. This asserts the first structurally -- no
+  // public constructors, no factories outside the assembly. The runtime refusal half is pinned by
+  // nothing here, and is recorded rather than implied (B18).
+  [Trait("Criterion", "AC-PAY-0028")]
   public void A_read_scope_cannot_be_constructed_from_outside_its_assembly()
   {
     // The credential stays per-module (`ADR-027` d4 promotion boundary): the VALUE moved to
@@ -207,6 +215,8 @@ public sealed class PayrollArchitectureTests
 
   [Fact]
   [Trait("Decision", "DEC-PAY-0004")]
+  // ⚠ CITED BY B18, body-confirmed: the DECIMAL(19,4) half. A floor of 4 columns is its control.
+  [Trait("Criterion", "AC-PAY-0030")]
   public void Every_monetary_column_is_decimal_19_4()
   {
     var columns = ModelWalk.FlooredProperties(
@@ -233,6 +243,8 @@ public sealed class PayrollArchitectureTests
 
   [Fact]
   [Trait("Decision", "DEC-PAY-0007")]
+  // ⚠ CITED BY B18, body-confirmed: the NVARCHAR half; the DECIMAL half is the test below. A floor of 12 columns is its control.
+  [Trait("Criterion", "AC-PAY-0030")]
   public void Every_payroll_string_column_is_unicode()
   {
     // `Constraints.md` requires Arabic and English. A pay element's name is exactly the field a user writes
@@ -258,6 +270,11 @@ public sealed class PayrollArchitectureTests
 
   [Fact]
   [Trait("Decision", "DEC-PAY-0010")]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ AND THE CRITERION'S COUNT IS STALE. It says "all FIVE payroll tables"; the manifest's exact list
+  // carries SEVEN -- EmployeeCompensation, PayElement, PayElementAssignment, PayrollPeriod, PayrollRun,
+  // PayrollRunDraftLine, PayrollRunLine -- and CutoverManifestArchitectureTests says so in its own
+  // comment. The PROPERTY holds; the NUMBER in the criterion does not.
+  [Trait("Criterion", "AC-PAY-0029")]
   public void Every_payroll_entity_is_tenant_owned_and_therefore_enters_the_cutover_manifest()
   {
     // ---- THE SILENT FAILURE THIS PREVENTS.
@@ -295,6 +312,10 @@ public sealed class PayrollArchitectureTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ SUPERSET. The criterion bans a foreign key to a PLATFORM-DATABASE table; this bans one to ANY
+  // other module's table, which is strictly wider. Cited as the superset rather than shadowed by a
+  // narrower Platform-only copy that would assert less.
+  [Trait("Criterion", "AC-PAY-0031")]
   public void No_payroll_foreign_key_points_at_another_modules_table()
   {
     // A database-level FK across a module boundary would couple the two migration streams and make the

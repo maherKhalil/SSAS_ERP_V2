@@ -2043,6 +2043,49 @@ the record would each have seen a criterion resolved by an argument they could n
 residue lesson: **the order and the grouping of a search are properties of the method, and they decide the
 result more often than the difficulty of what is being searched for.**
 
+## A grouping is a search strategy, not a licence
+
+**Sorting a set of unresolved criteria into mechanism groups before searching is a real improvement: one
+search resolves several criteria that state the same rule from different sides.** ⚠ **It also creates a
+hazard that the ungrouped method did not have.**
+
+**A group is an argument that several criteria SHARE A MECHANISM. Once the search returns a test, the group
+starts to look like a reason to cite that test for every member** — and a criterion that sits in the group
+for a different clause gets cited on evidence that never touched it.
+
+**The discipline is unchanged by the grouping: the group decides the ORDER of the search, and the BODY
+decides the citation.** ⚠ **A group that justifies citations is the name-match problem with extra steps —
+the same false confidence, arrived at by a better route.**
+
+### Stopping with the grouping done costs nothing; stopping mid-search costs the search
+
+**A pass formed seven groups and searched two.** The five unsearched groups are not wasted work: **the next
+pass begins from named mechanisms rather than loose numbers.**
+
+**A partial product that survives the interruption is worth more than a partial search that does not.** The
+grouping is state, written down and re-readable; **a half-finished search lives in the searcher's head and
+evaporates.** ⚠ **Prefer the order of work that leaves a durable artefact at every stopping point** — it is
+the same argument that makes a per-citation activity safe to interrupt, one level up.
+
+## A control arrived at independently four times is a fact about the problem
+
+**Four test authors, in four packages, with no shared vocabulary, wrote the same shape: assert the property,
+then assert something that fails if the population is empty.** A balance assertion beside a *greater than
+zero*; a refusal beside a preceding success; a floor beside a whole-population check.
+
+**That is not a house style, and it does not need a champion.** ⚠ **It is what the problem forces on anybody
+who notices that an empty set satisfies a universal claim perfectly.**
+
+### And the second site of the mechanism usually does not have it
+
+**The same balance equality is asserted in two places. One carries the positive control; the other does not,
+and an empty line set satisfies it — nought equals nought — under a test name promising the journal
+balances.**
+
+⚠ **The fix is one line copied from the other test, and the cheapness is the trap: there is no pause in
+which to ask where else the mechanism lives.** **When a control is found missing at one site, enumerate the
+sites before fixing the one in front of you.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

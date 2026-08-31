@@ -2189,7 +2189,7 @@ was written.** A rule is checkable forever; a measurement is true until somebody
 
 ## An absence at file level is visible only as an asymmetry between peers
 
-**A guard existed in two modules, four times over, and in a third module the test FILE did not exist.** ⚠
+**A guard existed in two modules, four times over, and in a third module the test FILE did not exist.** ⚠ **(Corrected 2026-08-31: *four times over* was counted from test NAMES. Two of the four assert the EMPTY-SET case, not the out-of-set one — see the section below on a mechanism whose two cases are not equally threatening. The file-level asymmetry stands; the equivalence did not.)** ⚠
 **No search over the test tree can find that.** A name search reads names, a citation search reads
 citations, and coverage measures lines that were written — **none of them has anything to read where
 nothing was written.**
@@ -2297,6 +2297,59 @@ makes obvious.**
 
 **A test that only asserts a throw passes on a guard that throws AFTER writing** — a different and worse
 defect than one that does not throw at all, and one a throw-only assertion cannot distinguish.
+
+## A census over mentions can be moved by writing about the subject
+
+**A coverage question was answered by counting which types appeared in test files. Every implementation was
+referenced, so the class looked closed.** ⚠ **Then a commit added a COMMENT naming two of those types in a
+third module's test file, and the census moved — in the direction of looking better covered, on a file that
+asserts nothing about them.**
+
+**A reference count reads prose.** It cannot separate an assertion from an explanation, and **prose is
+exactly where people write about the things they consider important**, so the bias runs toward the subjects
+that most deserve scrutiny.
+
+⚠ **Measure what only the BEHAVIOUR produces.** Here the strong instrument was the error constant the
+refusal returns: a test that does not exercise the refusal cannot name it, and no comment plausibly would.
+**Every real gap was found by that grep, and none by the type-name census.**
+
+### Verifying existence is not verifying equivalence
+
+**Four tests were reported as the same guard in two modules. Their names were checked; two of them arrange
+the empty case, not the out-of-set case, and assert something materially weaker.**
+
+⚠ **The claim *this guard exists here too* is a claim about a BODY.** Checking that a plausible name exists
+answers a different question, and the answer looks identical in a report.
+
+## A mechanism with two cases can have the safe one asserted and the threatening one not
+
+**A scope refusal has two shapes.** An EMPTY authorized set means *this caller reaches nothing*. An
+OUT-OF-SET identifier means *this caller reaches something, and not that*. ⚠ **Only the second is what an
+attempt to widen a scope produces. The first cannot be provoked by a caller at all.**
+
+**A module asserted the first and not the second, under a test name that reads like coverage of the whole
+mechanism** — *refused rather than served an empty page*. **The name is accurate about its own body. It is
+the MECHANISM that has two cases, and nothing in the name says which one is inside.**
+
+⚠ **So when a guard protects against an action, ask what the ATTACKER'S input looks like, and check that
+the test arranges THAT.** A test arranging the degenerate case exercises the same code and proves the wrong
+half.
+
+## When a comment and the code disagree, ask whether the comment describes something worth having
+
+**Two comment-versus-code mismatches in one day resolved in opposite directions, and the test is the same
+question each time.**
+
+**One comment stated a MEASUREMENT — no message in the product carries a runtime value — which had decayed
+into falsehood while the code stayed correct.** **The measurement was never the guarantee: fix the comment.**
+
+**The other states a DESIGN INTENT — that a refusal is distinguishable, so an operator can tell which grant
+is missing — and the code delivers it on one path and not the other.** ⚠ **That is worth having: somebody
+debugging a permissions problem is otherwise sent to grant the wrong thing. Fix the code.**
+
+⚠⚠ **And do not pin the defect while it stands.** A test written against the wrong behaviour, to make the
+suite describe reality, converts a defect into a requirement — and the next person to fix it will have to
+argue with a green test.
 
 # Related Documents
 

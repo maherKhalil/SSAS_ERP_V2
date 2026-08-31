@@ -2761,6 +2761,35 @@ seven was wrong in BOTH directions, with OPPOSITE causes that do not cancel:**
 CORRELATE**, and describing it as a floor claims a guarantee it never had. ⚠ **Before calling a proxy a
 bound, name the error it CANNOT make — and if both directions are available, it is not a bound in either.**
 
+## Check for an unused affordance before building a seam
+
+**Two types could not be reached from a test, apparently for want of a fixture seam. Both were already
+reachable: the fixture held the context and the factory needed, as PRIVATE members.** ⚠ **Nothing had to be
+built. The seam existed and nobody had walked through it.**
+
+**The same day, three infrastructure assemblies were found carrying `InternalsVisibleTo` for the integration
+test project — granted, unused.**
+
+⚠⚠ **An affordance nobody uses is invisible in exactly the way a missing one is**, and the cost of the
+confusion is a build: somebody adds a second seam beside the first, and now there are two.
+
+**So before adding a seam, search for one.** The evidence is cheap — a field, an attribute, an existing
+partial — and the search costs less than the smallest thing you would otherwise write.
+
+### A binary measurement can be sound while its magnitude is meaningless
+
+**A coverage report gave every type a hit count. The counts are not comparable: async method bodies compile
+into generated state-machine classes which the report's noise filter strips, so a type's own entry counts
+little more than its constructor and field initialisers.**
+
+**Never constructed still reads zero, and constructed still reads more than zero** — ⚠ **the binary the
+measurement was taken for is intact, and the number beside it is not a measure of how much ran.**
+
+⚠⚠ **A report that answers one question will be read for the other one it appears to answer**, especially
+when it prints a number. **Say which question it answers, in the report, beside the number** — and if a
+comparison has already been published on the strength of the wrong reading, correct it where it was
+published.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

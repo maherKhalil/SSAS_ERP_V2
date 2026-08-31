@@ -902,9 +902,15 @@ NOTHING IN ANY SUITE EXECUTES:** `AttendanceRecordRepository`, `LeaveBalanceRepo
 `EmployeeApproverDirectoryService`, `EmployeePlacementDirectoryService`, `TenantCompanyCurrencyLookup`,
 `UserCompanyAccessRepository`.
 
-**The measurement is validated rather than assumed: the three read services made live earlier that day
-register 20, 2 and 86 hits against `EmployeeReadService`'s 1500, and all three would have read zero that
-morning.**
+**The measurement is validated rather than assumed: the three read services made live earlier that day all
+register a non-zero count, and all three would have read ZERO that morning.**
+
+⚠⚠ **CORRECTED THE SAME NIGHT (item 238): AN EARLIER VERSION OF THIS LINE QUOTED THE COUNTS — 20, 2 AND 86
+AGAINST ANOTHER SERVICE'S 1500 — AS THOUGH THEY WERE COMPARABLE MAGNITUDES. THEY ARE NOT.** **Async method
+bodies compile into generated state-machine classes, which the report's noise filter strips, so a type's own
+entry counts little more than its constructor and field initialisers.** ⚠ **THE BINARY IS SOUND — never
+constructed reads zero, constructed reads more than zero — AND THE NUMBER IS NOT A MEASURE OF HOW MUCH RAN.**
+Read this entry's figures as presence and absence only.
 
 ⚠ **What this does NOT say: that the six are defective.** They are unexecuted — **which is how the two
 defects above survived** — and that is a reason to look, not a prediction. **Queued as item 238, six types

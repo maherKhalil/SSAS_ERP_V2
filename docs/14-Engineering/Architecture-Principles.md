@@ -1385,6 +1385,40 @@ ATTRIBUTE THAT CARRIES IT.** The id is the invariant; the trait key is the layou
 recorded test CLASSES and a citation needs METHOD granularity, **deriving it is re-measuring — and
 re-measuring under a backfill's name is how a wrong citation gets written.**
 
+
+## ⚠ A mention in a comment is not a claim — and there is a FOURTH key
+
+**Refined 2026-08-31 by applying the principle rather than theorising about it.**
+
+**Measuring FP-003, the split that matters is between an id a `[Trait]` CLAIMS and an id a comment merely
+MENTIONS.** Twelve criteria are claimed; **one more is named in prose and asserts nothing about it.** ⚠ **A
+method that counted mentions would have reported thirteen — and thirteen would have been wrong in the
+direction that flatters the suite.** **Count claims; list mentions separately.**
+
+⚠⚠ **AND A FOURTH TRAIT KEY EXISTS — `AcceptanceCriteria`, alongside `Acceptance`, `Criterion` and
+`Decision`. FOUR KEYS FOR ONE RELATIONSHIP.** This is the fifth time in one day that a thing with a stable
+identifier and an unstable wrapper produced a plausible wrong number: padded versus unpadded keys, four
+criteria layouts, three trait keys, a homonym, and now a fourth key. ⚠ **Every one of them returned a
+NUMBER rather than an error.** **Key on the id text. Always. The wrapper is never the thing.**
+
+
+## ⚠⚠ THE MOST DANGEROUS VOID PLANT: A CONFIDENT GREEN FROM A BUILD THAT NEVER HAPPENED
+
+**Four ways a plant can fail to be evidence were recorded across this codebase, and all four produce an
+ABSENCE:** a revert to nothing because the file was never staged; a project the incremental build never
+recompiled; a probe inserted into a nested scope (`CS0106`); a rename that would not compile.
+
+⚠⚠ **THE FIFTH PRODUCES A POSITIVE, AND IT IS WORSE.** A `// PLANT` comment was inserted before a
+`.WithName(…)` continuation, **breaking the fluent chain — `CS1002`. The build FAILED. `dotnet test
+--no-build` then ran the PREVIOUS binaries and reported `Passed! 7`.**
+
+**The plant did not merely fail to redden. It returned a green from a build that never happened**, on code
+that does not compile — **and a green is exactly what a correctly-behaving control looks like.**
+
+⚠ **STANDING RULE: AFTER ANY EDIT, READ THE BUILD RESULT BEFORE THE TEST RESULT.** `--no-build` is safe
+only when nothing has changed since the last successful build, **and after an edit that is precisely the
+thing you cannot assume.** **It was caught only because the build output was read first.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

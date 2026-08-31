@@ -72,6 +72,8 @@ public sealed class EmployeeBoundarySqlServerTests
   // authorizer's call site is reached, because no production entity implemented the interface. Asserting the
   // resulting BranchId would prove the value; only observing the INVOCATION proves the wiring.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the criterion is literally titled "V:" and this is test V.
+  [Trait("Criterion", "AC-EMP-0020")]
   public async Task V_Creating_a_real_employee_invokes_the_branch_write_authorizer_and_stamps_the_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -92,6 +94,9 @@ public sealed class EmployeeBoundarySqlServerTests
   // Quietly correcting it would hide the attempt, which is the whole reason a supplied value is CONFIRMED
   // rather than trusted.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: criterion "W:" -- REFUSED, NOT SILENTLY REWRITTEN, and the `EmployeeCountAsync() == 0`
+  // assertion is what makes it the former rather than the latter.
+  [Trait("Criterion", "AC-EMP-0021")]
   public async Task W_A_spoofed_branch_on_employee_create_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -114,6 +119,8 @@ public sealed class EmployeeBoundarySqlServerTests
   // Proven at the BOUNDARY, independently of the update contract omitting the field: both defences exist and
   // this is the one that holds even if a future caller reaches the entity another way.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: criterion "X:".
+  [Trait("Criterion", "AC-EMP-0022")]
   public async Task X_An_ordinary_update_cannot_change_an_employees_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -167,6 +174,8 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- Y. CROSS-BRANCH UPDATE AND DELETE ARE REFUSED.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: criterion "Y:" -- the UPDATE half.
+  [Trait("Criterion", "AC-EMP-0023")]
   public async Task Y_A_cross_branch_employee_update_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -185,6 +194,8 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: criterion "Y:" -- the DELETE half. The criterion names both, so it takes both tests.
+  [Trait("Criterion", "AC-EMP-0023")]
   public async Task Y_A_cross_branch_employee_delete_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -293,6 +304,9 @@ public sealed class EmployeeBoundarySqlServerTests
   // ================================================================================================
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: creates successfully, revokes the branch assignment, then fails -- and the leading success is
+  // its own control, so the refusal is the revocation rather than a boundary that refuses everything.
+  [Trait("Criterion", "AC-EMP-0024")]
   public async Task Revoking_branch_access_mid_session_refuses_the_next_employee_write()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -309,6 +323,9 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the administrator holds NO branch-access rows, creates successfully on implicit scope, and
+  // fails once the authority is revoked -- which is exactly "removes implicit branch scope".
+  [Trait("Criterion", "AC-EMP-0025")]
   public async Task Revoking_administrator_authority_mid_session_removes_implicit_branch_scope()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -326,6 +343,8 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: succeeds, company assignment revoked, next operation fails, employee count unchanged.
+  [Trait("Criterion", "AC-EMP-0026")]
   public async Task Revoking_company_access_mid_session_refuses_the_next_employee_write()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

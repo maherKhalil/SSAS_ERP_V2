@@ -1193,6 +1193,35 @@ analysis, not compilation.
 
 ---
 
+# Principle 27 – An Instruction Attached to a Non-Event Has Nothing to Fire On
+
+**A process rule only runs if it hangs on an action somebody actually performs.** Rules attached to states,
+to moods, or to the absence of activity **do not run at all** — and they fail silently, because nobody can
+point at the moment they were skipped.
+
+**The case, measured from inside the loop that suffered it.** A queue file carried the instruction *read
+this before going idle.* ⚠ **Going idle is not an action anybody takes: there is no moment where a worker
+decides to stop — the turn simply ends.** Over an entire working session the file was opened **twice**,
+both times because a message told the reader to open it. **The instruction had nothing to fire on.**
+
+**Three lines below it sat a rule that worked: *grep the results trail before building any instrument.***
+**That one hangs on an action somebody performs, and it fired repeatedly.** The difference is not wording,
+emphasis or placement. **It is whether the trigger exists.**
+
+**The repair is not a louder instruction. It is re-anchoring to a real event:** *reading the queue is the
+LAST STEP OF COMPLETING AN ITEM.* Completing an item is something that happens; going idle is not.
+
+⚠ **Apply this to every process rule you write:** name the action it hangs on. **If you cannot name one, it
+will not run**, however prominent, however agreed. **A reader can accept a rule completely and still never
+execute it, because agreement is not a trigger.**
+
+**And know the residual honestly.** Re-anchoring here converts *stopped with work outstanding* into
+*stopped with an empty queue at last look* — **smaller and more honest, and still not zero, because the
+last completion always ends somewhere.** ⚠ **A worker that cannot self-wake needs an external trigger for
+the final gap, and no rewording supplies one. Say so rather than implying the rule closed it.**
+
+---
+
 # Related Documents
 
 - All accepted ADRs (001-012)

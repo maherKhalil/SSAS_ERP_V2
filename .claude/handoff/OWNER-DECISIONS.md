@@ -1,6 +1,6 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-**20 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), four measured on 2026-08-30 (16-19), and one on 2026-08-31 (20)**. ⚠ **Entry 17 is WITHDRAWN in place and struck: the dispatcher it said did not exist had existed for a month.** Each
+**21 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), four measured on 2026-08-30 (16-19), and one on 2026-08-31 (20)**. ⚠ **Entry 17 is WITHDRAWN in place and struck: the dispatcher it said did not exist had existed for a month.** Each
 carries **what it is**, **the measured facts**, **what it blocks**, and **the options**. Where the call is
 genuinely the owner's there is no recommendation.
 
@@ -708,6 +708,57 @@ what they were for before anything is removed.
 rather than executed assertions, so a `[Theory]` multiplies at run time — **the comparison between suites
 is fair but no figure is exact** — and the Release half is taken from the gate's own header rather than
 from a Release-only analysis run.
+
+---
+
+## 21. ⚠ The coder cannot restart itself, and no wording fixes the last gap — added 2026-08-31 (T-186, measured from inside the loop)
+
+**What it is.** You have flagged *coder idle* **more than a dozen times this session.** Every diagnosis
+until now was the architect's, made from outside the coder's process, **and two of three were wrong.**
+Item 186 asked the coder to instrument its own loop instead. **The answer is structural and it is not
+either window's fault.**
+
+**The measured facts, in the coder's own terms.**
+
+- ⚠ **`QUEUE.md` IS A MAILBOX WITH NO DOORBELL.** It is durable, authoritative and immune to the message
+  transport — **and nothing reads it on its own.** **Only a delivered message starts a turn.** A ruling
+  that reaches the file but not the wire leaves the file saying *work outstanding* while the coder is
+  stopped: **from the architect's side the queue is full; from the coder's, nothing happened.**
+- **It had read that file TWICE in the entire session**, both times because a message said to.
+- **A turn ends when it emits its final summary. Reporting to the architect is a tool call and does not end
+  it.** ⚠ **Nothing sits between *item complete* and *turn over* — there is no step where the queue is
+  consulted, because there is no step there at all.**
+- **Messages arriving mid-turn are seen and acted on. Mid-turn delivery is NOT the failure.**
+- ⚠ **It cannot self-wake. No timer, no poll. Only inbound input starts a turn.**
+
+⚠ **AND THE FILE'S OWN INSTRUCTION COULD NOT EXECUTE.** It said *read this before going idle* — **going
+idle is not an action anybody takes; the turn simply ends.** **An instruction attached to a non-event has
+nothing to fire on.** The rule three lines below it — *grep the results trail before building any
+instrument* — **fired repeatedly, because it hangs on an action somebody performs.**
+
+**What has been done without you.** The coder made reading the queue **the last step of completing an
+item** — an event that exists — and the file's header is rewritten to match, with the inert instruction
+withdrawn rather than repeated louder.
+
+⚠ **WHAT THAT CANNOT FIX, AND WHY THIS IS ON YOUR LIST: THE LAST COMPLETION ALWAYS ENDS SOMEWHERE.** The
+remedy converts *stopped with items queued* into *stopped with an empty queue at last look* — **smaller
+and more honest, and not zero.** **A worker that cannot self-wake needs an EXTERNAL trigger for the final
+gap, and no wording supplies one.**
+
+**What it blocks.** Nothing technical. **It costs you an interruption every time the loop reaches its own
+end, and it has cost you a dozen already.**
+
+**The options.**
+
+- **Leave it.** You nudge when you notice. **Now with the honest expectation that this is irreducible from
+  inside, not a discipline problem either window can drill away.**
+- **Give the coder a scheduled wake** — anything that starts a turn on a timer would let it re-read the
+  queue unprompted. **Neither window can arrange this; it is a change to how the coder is run.**
+- **Have the architect send on a cadence rather than only on completion** — cheap, and it makes the
+  architect the doorbell. **It still fails when the architect's own last turn ends.**
+
+⚠ **Nothing here is a request to change `CLAUDE.md`, settings or permissions.** The coder proposed no such
+change and the architect would not carry one; **the remedy above is yours to choose or decline.**
 
 ---
 

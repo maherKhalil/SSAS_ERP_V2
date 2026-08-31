@@ -204,6 +204,77 @@ public sealed class EmployeeDomainTests
       employee.Deactivate(EmployeeStatusChangeReason.Administrative, "a", Guid.NewGuid(), Now).Error.Code);
   }
 
+  // ---- ⚠ THE ENABLEMENT PAIR CHANGES THE STATUS AND NOTHING ELSE (`AC-EMP-0013`).
+  //
+  // The transitions themselves are asserted above. **The clauses that DISTINGUISH this criterion from
+  // `AC-EMP-0012` are the ones about what does NOT move**: neither half changes company, branch or any
+  // identity field, and neither writes a branch-assignment record.
+  //
+  // Nothing asserted them. `Deactivate` and `Activate` both delegate to `ApplyTransition`, which assigns
+  // `Status`, `StatusChangeReasonCode`, `StatusChangedUtc` and `StatusChangedBy` and touches nothing else
+  // — so the criterion holds **by construction**, and held before this test existed. What was missing is
+  // the assertion that would notice if a later transition started stamping the current branch, which is
+  // the plausible mistake: `Transfer` writes an assignment row, and an enablement that "kept the history
+  // consistent" by doing the same would look reasonable in review.
+  //
+  // ⚠ **THE STATUS ASSERTIONS ARE THE CONTROL, NOT DECORATION.** Every *unchanged* assertion below is
+  // satisfied perfectly by a `Deactivate` that returns success and does nothing at all. **Only checking
+  // that the status DID move separates "changed nothing else" from "changed nothing".**
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0013")]
+  public void Neither_half_of_the_enablement_pair_touches_ownership_identity_or_assignments()
+  {
+    var employee = Stamped();
+
+    // ⚠ And the arrangement control: the aggregate HAS an assignment to preserve. Against an employee
+    // with none, "the count did not change" is 0 == 0 and holds however the transition behaves.
+    var assignment = Assert.Single(employee.BranchAssignments);
+    var destination = assignment.DestinationBranchId;
+
+    void AssertOnlyTheStatusMoved()
+    {
+      Assert.Equal(Tenant, employee.TenantId);
+      Assert.Equal(Company, employee.CompanyId);
+      Assert.Equal(BranchA, employee.BranchId);
+      Assert.Equal("EMP-1", employee.EmployeeNumber.Value);
+      Assert.Equal(Hired, employee.EmploymentDate);
+
+      // The record, not merely the count: a transition that removed one row and wrote another would
+      // leave the count alone.
+      Assert.Equal(destination, Assert.Single(employee.BranchAssignments).DestinationBranchId);
+    }
+
+    Assert.True(employee.Deactivate(
+      EmployeeStatusChangeReason.Administrative, "a", Guid.NewGuid(), Now).IsSuccess);
+    Assert.Equal(EmployeeStatus.Inactive, employee.Status);
+    AssertOnlyTheStatusMoved();
+
+    Assert.True(employee.Activate(
+      EmployeeStatusChangeReason.Administrative, "a", Guid.NewGuid(), Now).IsSuccess);
+    Assert.Equal(EmployeeStatus.Active, employee.Status);
+    AssertOnlyTheStatusMoved();
+  }
+
+  // ---- ⚠ AND THE PAIR IS A PAIR: NO SEPARATE REACTIVATE OPERATION EXISTS (`AC-EMP-0013`).
+  //
+  // A created Employee is already `Active`, so re-enablement IS activation and a second concept would be
+  // a second way to reach the same state — with its own guard to get wrong.
+  //
+  // ⚠ **`CompanyDomainTests` has asserted exactly this for `Company` since it was written:
+  // `Assert.Null(typeof(Company).GetMethod("Reactivate"))`.** **The same mechanism, on a sibling
+  // aggregate, and nobody wrote the Employee half** — which is the second time this sweep has found a
+  // guard present for one aggregate and absent for this one.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0013")]
+  public void No_separate_reactivate_operation_exists()
+  {
+    Assert.Null(typeof(Employee).GetMethod("Reactivate"));
+
+    // The control: reflection over this type really does see its operations, so the null above is an
+    // absence rather than a lookup that finds nothing whatever it is asked for.
+    Assert.NotNull(typeof(Employee).GetMethod("Activate"));
+  }
+
   // ---- TERMINATED IS TERMINAL, AND THERE IS NO REHIRE.
   [Fact]
   // ⚠ CITED BY ITEM 218/B18, body-confirmed: a `Terminated` employee cannot be activated or deactivated.

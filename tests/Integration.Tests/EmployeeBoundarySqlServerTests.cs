@@ -283,6 +283,42 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(fixture.CompanyA, await fixture.EmployeeCompanyAsync(employeeId));
   }
 
+  // ---- ⚠ C-C2. AND THE SAME HOLDS ON THE TENANT DIMENSION — `AC-EMP-0002`'s THIRD CLAUSE.
+  //
+  // The criterion has three: `TenantId` is never accepted from the wire; a persisted Employee whose
+  // `TenantId` does not match the trusted tenant is rejected; **and a post-creation `TenantId` change is
+  // rejected.** The first two were asserted; the third was asserted for `Company` and for `TenantUser`
+  // and **not for this aggregate.**
+  //
+  // ⚠ **The guard in `PersistenceDbContext` is dimension-generic** — it walks
+  // `ChangeTracker.Entries<ITenantOwnedEntity>()` and throws on any Modified entry whose `TenantId`
+  // property is modified — **so it almost certainly held for Employee, and "almost certainly" is the
+  // distance between PINNED and UNGUARDED.** A generic guard is exactly the kind that a later
+  // aggregate-specific configuration can exclude an entity from without any test noticing.
+  //
+  // Mirrors `CC` deliberately, one dimension over, so the pair reads as one boundary rather than two
+  // unrelated tests.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0002")]
+  public async Task CC2_An_ordinary_update_cannot_change_an_employees_tenant()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-CC2", fixture.BranchA);
+
+    var graph = fixture.Graph(fixture.BranchA);
+    await using var context = await graph.ContextAsync();
+    var employee = await context.Set<Employee>().SingleAsync(candidate => candidate.Id == employeeId);
+
+    employee.TenantId = Guid.NewGuid();
+
+    var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    Assert.Contains("Tenant ownership cannot be changed", refusal.Message, StringComparison.Ordinal);
+
+    // ⚠ And the row is untouched. Without this the test passes on a guard that throws AFTER writing,
+    // which is a different and worse defect than one that does not throw at all.
+    Assert.Equal(fixture.Tenant, await fixture.EmployeeTenantAsync(employeeId));
+  }
+
   // ---- C-D. CROSS-COMPANY UPDATE AND DELETE ARE REFUSED.
   [Fact]
   public async Task CD_A_cross_company_employee_update_is_refused()
@@ -3952,6 +3988,9 @@ public sealed class EmployeeBoundarySqlServerTests
 
     public async Task<Guid?> EmployeeCompanyAsync(Guid employeeId) =>
       await ScalarGuidAsync("Employees", "CompanyId", "EmployeeId", employeeId);
+
+    public async Task<Guid?> EmployeeTenantAsync(Guid employeeId) =>
+      await ScalarGuidAsync("Employees", "TenantId", "EmployeeId", employeeId);
 
     public async Task<int> EmployeeCountAsync() => await CountAsync("Employees");
 

@@ -88,6 +88,30 @@ internal static class SqlServerBackupEvidence
       "AND DATEADD(second, DATEDIFF(second, GETDATE(), GETUTCDATE()), bs.backup_finish_date) > @since";
 
     command.Parameters.Add("@database", SqlDbType.NVarChar, 128).Value = databaseName;
+
+    // ==============================================================================================
+    // ⚠ `Char`, NOT `NVarChar`, AND DELIBERATELY SO. DO NOT "FIX" THIS TO MATCH THE LINE ABOVE.
+    // ==============================================================================================
+    //
+    // It compares against `msdb.dbo.backupset.type`, a Microsoft-owned system column that IS `char(1)`.
+    // Matching it avoids an implicit conversion of the COLUMN side of the predicate, which would cost the
+    // index and change nothing else.
+    //
+    // ---- ⚠ WHY THIS IS NOT A HOLE IN THE UNICODE BAN.
+    //
+    // `UnicodeStringPersistenceArchitectureTests.Every_persisted_string_in_the_tenant_model_is_unicode`
+    // (and its platform twin) require every string column THIS SYSTEM PERSISTS to be Unicode, because a
+    // non-Unicode column substitutes '?' silently and the data is gone at write time. **These parameters
+    // persist nothing.** They are ADO parameters in a read against a SYSTEM database whose schema
+    // Microsoft owns, so they fall outside that guard's subject rather than escaping it — the guard walks
+    // the EF model, and none of this is in it.
+    //
+    // ---- PROVENANCE, because a rationale should say where it came from.
+    //
+    // Recovered by item 200 from `codex/sqlserver-unicode-enforcement` (`1abde84`, 2026-08-15), the commit
+    // that added the Unicode guard itself. **The guard landed and this explanation did not**, leaving two
+    // bare `SqlDbType.Char` sites beside `NVarChar` neighbours for months — exactly the shape a later
+    // Unicode sweep converts into an implicit conversion while believing it is removing an oversight.
     command.Parameters.Add("@type", SqlDbType.Char, 1).Value = typeCode;
     command.Parameters.Add("@platformArtifact", SqlDbType.NVarChar, 320).Value =
       PlatformArtifactPattern(tenantDatabaseId, operation);
@@ -153,6 +177,16 @@ internal static class SqlServerBackupEvidence
 
     command.Parameters.Add("@database", SqlDbType.NVarChar, 128).Value = databaseName;
     command.Parameters.Add("@device", SqlDbType.NVarChar, 260).Value = devicePath;
+
+    // ⚠ `Char`, NOT `NVarChar`, AND DELIBERATELY SO — THE SECOND OF TWO SUCH SITES (item 200). It compares
+    // against `msdb.dbo.backupset.type`, a Microsoft-owned system column that IS `char(1)`; matching it
+    // avoids an implicit conversion of the COLUMN side of the predicate.
+    //
+    // **It is outside the Unicode ban rather than an exception to it**: `Every_persisted_string_in_the_…
+    // _model_is_unicode` governs string columns this system PERSISTS, and an ADO parameter in a read
+    // against a system database persists nothing. Stated here in full rather than as a cross-reference,
+    // because whoever "tidies" this line will be reading THIS line. Recovered from
+    // `codex/sqlserver-unicode-enforcement` (`1abde84`) — see the fuller note at the first site.
     command.Parameters.Add("@type", SqlDbType.Char, 1).Value = typeCode;
 
     SqlServerBackupEvidenceRecord? record;

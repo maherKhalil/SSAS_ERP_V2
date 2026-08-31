@@ -59,6 +59,15 @@ public sealed class CommentCitationGuardTests
     // CLASSIFIER FAULT: a permission NAME in lowercase-dotted form, which `FileLike` cannot tell from a
     // filename. Tightening the pattern to exclude it would also exclude real lowercase filenames.
     "payroll.payslip.view.self",
+
+    // CLASSIFIER FAULT: a SQL SERVER SYSTEM COLUMN in lowercase-dotted form -- database.schema.table.column
+    // -- which `FileLike` cannot tell from a filename, exactly as with the permission name above. Cited at
+    // two sites in `SqlServerBackupEvidence.cs` (item 200) to record why one ADO parameter is `Char` and
+    // not `NVarChar`: it matches this column's own `char(1)` type and so avoids an implicit conversion of
+    // the column side of the predicate. ⚠ **The citation is load-bearing** -- it is what stops a future
+    // Unicode sweep "fixing" a deliberate exception -- so removing it to satisfy the classifier would cost
+    // more than recording the fault here.
+    "msdb.dbo.backupset.type",
   };
 
   [Fact]

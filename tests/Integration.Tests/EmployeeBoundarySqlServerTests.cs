@@ -482,6 +482,53 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   // ---- NATIONAL ID: unique where present, and many absent values remain possible.
+  // ==================================================================================================
+  // ⚠ AC-EMP-0016 — SEARCH EXCLUDES TERMINATED BY DEFAULT (B18 pass 10).
+  // ==================================================================================================
+  //
+  // Recorded as a candidate gap in pass 09, then established as IMPLEMENTED AND UNASSERTED:
+  // `EmployeeReadService.DefaultStatuses = [Active, Inactive]`, applied when the caller names no status.
+  //
+  // ⚠ WHY NO EXISTING TEST REACHED IT. `The_search_defaults_are_the_documented_ones` asserts
+  // `Assert.Null(LastCriteria.Statuses)` -- **the handler passes NO FILTER**, which is the correct
+  // behaviour at that layer and says nothing about what the read service then does. **The default is not
+  // "exclude terminated", it is "no filter"**, and those coincide only because a layer further down makes
+  // them coincide. That layer had no test.
+  //
+  // The adjacent half was already guarded: `A_terminated_employee_remains_retrievable_by_id` proves a
+  // terminated employee is still reachable BY ID. ⚠ **So the pair had its exception asserted and its rule
+  // -- the one the read service performs silently on EVERY search -- not.**
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0016")]
+  public async Task A_search_without_a_status_filter_excludes_terminated_employees()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var active = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-S1"));
+    var terminated = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-S2"));
+    Assert.True(active.IsSuccess);
+    Assert.True(terminated.IsSuccess);
+
+    Assert.True((await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+      terminated.Value, DateTimeOffset.UtcNow, EmployeeStatusChangeReason.Resignation,
+      await fixture.RowVersionAsync(terminated.Value)))).IsSuccess);
+
+    // NO status filter supplied -- the criterion's subject.
+    var page = await graph.Search().HandleAsync(new SearchEmployeesQuery(
+      new EmployeeScopeRequest(
+        EmployeeCompanyScopeMode.CurrentCompany,
+        EmployeeBranchScopeMode.SelectedAuthorizedBranches,
+        [fixture.BranchA])));
+
+    Assert.True(page.IsSuccess, page.IsFailure ? page.Error.Code : null);
+
+    // ⚠ BOTH SIDES. The active one present is what stops this passing on an empty page, which a
+    // terminated-absent assertion alone would allow.
+    Assert.Contains(page.Value.Items, item => item.EmployeeId == active.Value);
+    Assert.DoesNotContain(page.Value.Items, item => item.EmployeeId == terminated.Value);
+  }
+
   [Fact]
   // ⚠ CITED BY B18 pass 09 (mechanism search): BOTH clauses in one body: a duplicate national id is refused with `NationalIdConflict`, AND an
   // employee with NO national id is created successfully -- "uniqueness AND optionality".

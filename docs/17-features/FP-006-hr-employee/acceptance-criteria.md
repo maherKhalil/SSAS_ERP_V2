@@ -17,6 +17,18 @@ milestone: Milestone 1
 
 Creating a valid Employee generates a nonempty Guid `EmployeeId`, adopts the trusted current `TenantId`, adopts the trusted `CompanyId` from the validated company context, receives a server-stamped `BranchId` from the trusted branch execution context, stores the normalized employee number and trimmed name, and begins in `Active`.
 
+⚠ **THIS CRITERION IS A ROLL-UP, NOT AN INDEPENDENT CLAIM (noted 2026-08-31, architect).** Every clause in
+it — the identifier, the trusted tenant, the trusted company, the server-stamped branch, the normalized
+number, the initial state — **is specified again, on its own, in a criterion below.** It exists to state the
+creation outcome as one sentence, and it asserts nothing that those criteria do not.
+
+**So it is deliberately left uncited by the citation sweep, and that is the correct disposal rather than a
+gap.** Citing it on any one test would present a summary as a single assertion; citing it on all of them
+would repeat what the clause-level criteria already say. ⚠ **A criterion that indexes other criteria is
+verified by verifying them.** **The clause-by-clause mapping as at 2026-08-31 is in the B18 pass-12 result
+file; it is not repeated here, because a list of test names in a specification goes stale the first time
+somebody renames one.**
+
 ### AC-EMP-0002 — Trusted tenant only
 
 `TenantId` is never accepted from the route, body, header, claim, or query string. A persisted Employee whose `TenantId` does not match the trusted current tenant is rejected, and a post-creation `TenantId` change is rejected.

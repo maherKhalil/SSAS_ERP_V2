@@ -2006,6 +2006,43 @@ dimension is the entire point. **The criterion is about what a CALLER sees.**
 followed to a channel.** The hazard is a property of the path, not of the text — **and the check is one
 search: find where the string is written, not where it is thrown.**
 
+## A criterion that indexes other criteria is verified by verifying them
+
+**One criterion stated the whole creation outcome in a sentence: a nonempty identifier, a trusted tenant, a
+trusted company, a stamped branch, a normalized number, an initial state.** ⚠ **Every one of those clauses
+is specified again, on its own, in a criterion below it.**
+
+**It cannot be cited honestly.** Attaching it to one test presents a summary as a single assertion;
+attaching it to six repeats what the six already say. **Left visibly uncited with the reason recorded, it
+is accurate. Given a manufactured mapping, the totals look better and the record is worse.**
+
+**Mark the roll-up in the specification, so the next reader does not re-derive this.** ⚠ **And mark it
+WITHOUT listing the test names: say where the mapping lives and when it was made.** A list of test names
+inside a specification goes stale the first time somebody renames one — **the durable half belongs in the
+document, the perishable half in the dated artefact.**
+
+### An untested member of a generically-guarded set
+
+**A guard was written over a dimension rather than a type, and it is asserted for two aggregates and not
+for a third.** The guard almost certainly holds for the third: nothing in it is type-specific.
+
+⚠ **That is neither *pinned* nor *unguarded*, and both of those labels would be a lie in a different
+direction.** *Partly pinned* is the accurate one, and the remedy is usually one more case in the theory
+that already exists rather than a new test.
+
+## Close a set of criteria together when they share a mechanism
+
+**The last six criteria of a package were closed in one pass rather than one at a time, and a single search
+resolved the same clause in three of them** — they state one prohibition over three dimensions, and the
+command they constrain has one parameter list.
+
+⚠ **Examined serially, that search would have been re-derived three times, and three separate readers of
+the record would each have seen a criterion resolved by an argument they could not see the shape of.**
+
+**The grouping is by MECHANISM, not by number or by adjacency.** It is the constructive form of the
+residue lesson: **the order and the grouping of a search are properties of the method, and they decide the
+result more often than the difficulty of what is being searched for.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

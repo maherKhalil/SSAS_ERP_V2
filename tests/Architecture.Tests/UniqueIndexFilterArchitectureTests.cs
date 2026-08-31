@@ -22,10 +22,17 @@ namespace SSAS.Architecture.Tests;
 //
 //     .IsUnique().HasFilter("[NormalizedNationalId] IS NOT NULL")
 //
-// ⚠ **AND THAT FILTER IS A RAW T-SQL STRING, SO NOTHING TYPE-CHECKS IT.** Item 176 measured the
-// consequence: no TASK-gate suite ever materialises a schema, so deleting that line compiles, keeps every
-// model-shape assertion green, and merges. **This is the assertion that makes the worst known TASK-gate
-// blind spot visible without a database.**
+// ---- ⚠ AND WHAT THIS GUARD CATCHES IS NARROWER THAN IT LOOKS, WHICH ITEM 176 GOT WRONG.
+//
+// **DELETING that line changes nothing.** EF Core's SQL Server provider adds
+// `[NormalizedNationalId] IS NOT NULL` BY CONVENTION for any unique index over a nullable column --
+// measured: with the declaration removed the model still carries the identical filter. Item 176 named
+// that deletion as the worst example of a change merging green under `DEC-L-007`; it was wrong, and the
+// correction is recorded there.
+//
+// **What DOES reach the defect is explicit suppression -- `HasFilter(null)`** -- which overrides the
+// convention and leaves the index unfiltered. Measured the same way, and it reddens this guard. So the
+// hazard is real, the mechanism is real, and the reachable form is one line further along than reported.
 //
 // ---- WHAT IS READ, AND FROM WHERE.
 //

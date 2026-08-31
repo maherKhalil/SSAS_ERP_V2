@@ -92,7 +92,18 @@ public sealed class EfUnitOfWork<TDbContext>(
       await currentTransaction.DisposeAsync();
     }
 
-    // Past this point the commit has succeeded, so nothing here may fail the command.
+    // ==============================================================================================
+    // ⚠ THIS ORDERING IS STILL NOT LOAD-BEARING, AND IS KEPT FOR A STRUCTURAL REASON (item 175).
+    // ==============================================================================================
+    //
+    // Measured twice, by plant. With `DispatchAfterCommitAsync`'s catch in place, moving this call back
+    // INSIDE the `try` above changes no test: the catch swallows the failure, so the outer `catch` never
+    // sees it and never rolls back a committed transaction. **Behaviourally the two are identical today.**
+    //
+    // It is kept because the guarantee then rests on TWO things instead of one. If that catch were ever
+    // narrowed to a specific exception type -- the ordinary way a broad catch gets "tidied" -- dispatch
+    // inside the `try` would resurrect the rollback-masking of item 172, while dispatch outside it
+    // structurally cannot. **Redundant against today's code, not against tomorrow's edit.**
     await DispatchAfterCommitAsync(cancellationToken);
   }
 

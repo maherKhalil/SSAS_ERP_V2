@@ -1099,7 +1099,35 @@ public sealed class PlatformAuthenticationPersistenceTests
       ConnectionString = connectionString;
     }
 
-    public MutableClock Clock { get; } = new(new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero));
+    // ==============================================================================================
+    // ⚠ ANCHORED TO THE RUN, NOT TO A DATE (item 184). THIS FIXTURE HAD A FUSE.
+    // ==============================================================================================
+    //
+    // It was frozen at 2026-07-31 12:00. Everything seeded from it inherits that instant, including the
+    // refresh-token expiry at `Clock.UtcNow + DefaultSessionIdleLifetime` -- 30 days -- which
+    // `Concurrent_http_refresh_and_logout_...` hands to `AuthenticationCsrfService.Create`.
+    //
+    // **That service protects with a TIME-LIMITED data protector, which judges expiry against the REAL
+    // clock.** So the CSRF token expired at 2026-07-31 + 30 days = 2026-08-30 12:00 UTC, and from that
+    // moment the test failed for everyone, permanently, with no code change. Item 182 measured it:
+    // `csrfExpiry=2026-08-30T12:00Z, realNow=2026-08-31T03:31Z, expired=True`.
+    //
+    // ---- ⚠ WHY THIS AND NOT A LATER FIXED DATE.
+    //
+    // A later frozen instant RESETS THE FUSE; it does not remove it. Anchoring to the run removes it:
+    // every seeded expiry is `run + 30 days`, so there is no date at which this breaks. **One clock feeds
+    // the whole seed, which is what production does** -- the defect was two clocks, not a wrong date.
+    //
+    // ---- WHAT WAS NOT AVAILABLE.
+    //
+    // Substituting the protector's clock would be better still, keeping determinism AND removing the
+    // dependency. `ITimeLimitedDataProtector` exposes only `Protect`/`Unprotect`; the implementation is
+    // internal and reads `DateTimeOffset.UtcNow`. **There is no public seam**, and enforcing expiry in our
+    // own code instead would weaken a security mechanism to suit a test.
+    //
+    // Nothing here asserts an absolute date and this clock is never advanced, so anchoring changes no
+    // assertion -- only which instant the relative offsets hang from.
+    public MutableClock Clock { get; } = new(DateTimeOffset.UtcNow);
     public string ConnectionString { get; }
 
     public static async Task<SqlTestDatabase> CreateAsync(bool migrate = true)

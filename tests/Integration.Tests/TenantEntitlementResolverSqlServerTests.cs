@@ -155,7 +155,7 @@ public sealed class TenantEntitlementResolverSqlServerTests
     public async Task<SSAS.Platform.Application.Subscriptions.TenantEntitlementSnapshot> ReadAsync(Guid tenantId)
     {
       await using var context = CreateContext();
-      return await new TenantEntitlementReader(context).ReadAsync(tenantId, CancellationToken.None);
+      return await new TenantEntitlementReader(context, new TestClock()).ReadAsync(tenantId, CancellationToken.None);
     }
 
     public async Task<Guid> SeedTenantAsync()

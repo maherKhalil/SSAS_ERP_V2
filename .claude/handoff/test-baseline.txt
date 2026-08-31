@@ -15,9 +15,9 @@
 #
 # suite|configuration|total
 API|Debug|956
-Architecture|Debug|606
+Architecture|Debug|618
 Attendance|Debug|81
 Finance|Debug|47
 HR|Debug|326
 Payroll|Debug|87
-Platform|Debug|1100
+Platform|Debug|1101

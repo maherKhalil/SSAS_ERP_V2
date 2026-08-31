@@ -672,6 +672,44 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.Equal(DepartmentErrors.ManagerTerminated, assigned.Error);
   }
 
+  // ---- ⚠ THE TENANT GUARD REACHES A CHILD ENTITY, NOT ONLY AN AGGREGATE ROOT (item 228, `AC-EMP-0002`).
+  //
+  // The post-creation `TenantId` guard in `PersistenceDbContext` walks
+  // `ChangeTracker.Entries<ITenantOwnedEntity>()`, and **42 types declare that interface: 26 aggregate
+  // roots and 16 child entities.** ⚠ **All three types asserted before this — `Company`, `TenantUser`,
+  // `Employee` — are AGGREGATE ROOTS.** A guard that had walked only roots would have passed every one
+  // of them, and every further per-type test drawn from the same class.
+  //
+  // **So the untested population was structural, not a list of thirty-nine names**, and one test on a
+  // child closes the class. `DepartmentManager` is the subject because it is the child that is NOT
+  // append-only: ⚠ **`TenantDbContext.SaveChangesAsync` runs `PreventAppendOnlyMutation` BEFORE
+  // `base.SaveChangesAsync`, so on `EmployeeBranchAssignment` the append-only refusal wins and a test
+  // there would have thrown for the wrong reason.** The message assertion is what makes that visible.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0002")]
+  public async Task A_child_entitys_tenant_cannot_be_changed_after_it_is_written()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var department = await fixture.CreateDepartmentAsync("A", "Alpha");
+    var employee = await fixture.InsertEmployeeAsync("E-0001");
+
+    Assert.True((await graph.AssignManager().HandleAsync(new AssignDepartmentManagerCommand(
+      department, employee, await fixture.RowVersionAsync(department)))).IsSuccess);
+
+    var context = graph.Context;
+    var manager = await context.Set<DepartmentManager>().SingleAsync();
+
+    manager.TenantId = Guid.NewGuid();
+
+    var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+
+    // ⚠ The MESSAGE, not merely the throw. Three guards can refuse a save on this context and only one
+    // of them is the subject; a bare `ThrowsAsync` would pass on any of them.
+    Assert.Contains("Tenant ownership cannot be changed", refusal.Message, StringComparison.Ordinal);
+  }
+
   // ---- AN EMPLOYEE FROM ANOTHER BRANCH OF THE SAME COMPANY IS ELIGIBLE.
   //
   // Branch is not consulted at all. A department spans the branches of its company, so requiring the

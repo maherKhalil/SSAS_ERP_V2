@@ -619,32 +619,40 @@ and it is the one the merge gate skips.**
 fails to compile anywhere — Integration included — reddens it. A compile break cannot merge.** The exposure
 is runtime behaviour and Release-only analysis.
 
-⚠ **THE WORST CONCRETE EXAMPLE — CORRECTED 2026-08-31 BEFORE YOU READ IT, AND THE CORRECTION MAKES IT
-WEAKER. READ THIS PARAGRAPH RATHER THAN THE ONE IT REPLACES.**
+⚠⚠ **IT IS NO LONGER HYPOTHETICAL. THE INTEGRATION SUITE HAS BEEN RED SINCE BEFORE THIS WORK BEGAN, AND
+EVERY MERGE WENT GREEN OVER IT.** Found 2026-08-31 by the first `GATE_SCOPE=PHASE` run to complete.
 
-**The first version of this entry said: delete `EmployeeConfiguration`'s
-`.HasFilter("[NormalizedNationalId] IS NOT NULL")` line and the defect ships. ⚠ THAT IS FALSE. EF Core's SQL
-Server provider ADDS THAT FILTER BY CONVENTION for any unique index over a nullable column** — measured by
-removing the declaration and reading the built model, where the filter is still present and identical.
-**The platform was already defending this, and the example claimed a hole where a convention stood.**
+`PlatformAuthenticationPersistenceTests.Concurrent_http_refresh_and_logout_use_validated_transport_and_sql_serialization`
+**fails 1 of 846 — a logout answering `403 Forbidden` where `204 No Content` is expected. It fails in both
+the Debug and the Release legs, and it is DETERMINISTIC rather than a race.**
 
-**The reachable form is one step further along: `.HasFilter(null)`, which EXPLICITLY OVERRIDES the
-convention.** Measured the same way — the model then reports no filter at all. **With that substitution
-every other claim holds: it compiles, the argument is still an expression nothing type-checks, no TASK
-suite materialises a schema, and the consequence is still that the second employee recorded with no
-national id is refused at insert** — for a field that is optional by design. The only assertion in the
-repository that notices is Integration's
-`A_national_id_is_unique_within_a_company_but_may_be_absent_many_times`.
+**Bisected rather than guessed**, running that one test at each point in a separate worktree: it fails at
+the pre-175 commit, at the pre-164 commit, **and at `112cb31` — the commit this whole stretch of work
+started from.** ⚠ **So it is nobody's change from this loop, and it predates all of it.**
 
-⚠ **BUT BE CLEAR ABOUT WHAT THE CORRECTION COSTS THIS DECISION: `HasFilter(null)` IS A DELIBERATE ACT,
-WHERE DELETING A LINE IS AN ACCIDENT.** A far less likely mistake. **So this example no longer carries the
-decision, and what does is the class rather than the instance:** 36% of the repository's assertions,
-**no TASK suite ever opening a connection**, and the six behaviours below that only Integration can check.
-**The example is kept, corrected, because it is the one place the abstract exposure was made concrete —
-and because a decision that quietly drops its own worst case is worth less than one that says it shrank.**
+**And the repository already said why nobody knew.** `test-baseline.txt`, in its own words: *Integration,
+and every Release row — NOT YET WRITTEN. Both are produced only by a green `GATE_SCOPE=PHASE` run, and none
+has completed since this file was introduced on 2026-08-27.* ⚠ **The FACT was recorded. The IMPLICATION —
+that nobody therefore knows whether Integration is green — was never drawn.**
 
-**How it was found is the reason to trust the rest:** the window building the guard PLANTED THE DELETION
-and **the guard stayed green.** It reported the plant rather than the guard.
+**That is this decision, without a hypothetical: a suite holding 36% of the repository's assertions has
+been failing for days, and the merge rule never looked.**
+
+**The 403 itself is not yet diagnosed** — deliberately not folded into the item that found it — **and it is
+dispatched separately. It may be a product defect or a stale test expectation; this loop has twice found
+the document wrong and the code right, so no assumption is being made.**
+
+---
+
+**The earlier example, kept because the trajectory matters.** This entry first claimed that deleting
+`EmployeeConfiguration`'s `.HasFilter("[NormalizedNationalId] IS NOT NULL")` would ship a data defect. **That was
+false** — EF Core's SQL Server provider supplies that filter **by convention** for any unique index over a
+nullable column, measured by removing the declaration and reading the built model. **The reachable form is
+`.HasFilter(null)`, which explicitly overrides the convention**, and with that substitution every other
+claim held — but `HasFilter(null)` is a **deliberate act** where deleting a line is an accident, **so the
+example had already stopped carrying this decision before the real one arrived.** ⚠ **Evidence went
+hypothetical → weakened → actual, and all three states are on the record, because a decision that shows
+only its strongest moment is not one you can weigh.**
 
 **Classes only Integration catches**, named from its own test names rather than from categories: scoped
 uniqueness *including absence many times*; `rowversion` optimistic concurrency; migration refusal against
@@ -669,10 +677,12 @@ it is expensive.**
   rule over the area where TASK is structurally blind, at the cost of a ~24-minute gate on those changes.
 - **Run Integration on every merge.** Closes it completely; makes every merge cost the full run.
 
-⚠ **A related fact you should have even though it is not part of this decision: `Performance.Tests` and
-`UI.Tests` contain ZERO source files** — a `.csproj` each and nothing else, verified excluding build
-output. **Their names assert coverage that does not exist**, and a reader taking the solution's test
-projects as an inventory would conclude this product has performance and UI tests. Backlogged as `B17`.
+**A related fact, WEAKER THAN THIS ENTRY FIRST CLAIMED.** `Performance.Tests` and `UI.Tests` contain zero
+source files — a `.csproj` each. **This entry first said their names assert coverage that does not exist.**
+⚠ **They are in fact recorded and deliberate: `test-baseline.txt` names both as EMPTY SCAFFOLDS and says
+*their absence is correct and stays correct until somebody writes a test in one.*** **So it is a known
+placeholder, not an unnoticed gap, and it needs nothing from you.** `B17` is retained only to establish
+what they were for before anything is removed.
 
 **Measurement caveats, stated by the window that made it:** assertion counts are `Assert.*` **call sites**
 rather than executed assertions, so a `[Theory]` multiplies at run time — **the comparison between suites

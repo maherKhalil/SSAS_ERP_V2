@@ -13,6 +13,11 @@ public sealed class CompensationDomainTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0003")]
+  // ⚠ CITED BY B18 pass 08, after I recorded `AC-PAY-0002` UNRESOLVED in pass 07 and was wrong.
+  // Four POSITIVE assertions, including the boundary date itself (`Apr` -> 2000), which is what makes
+  // "not after" inclusive. I read the two `Assert.Null` edge cases seven lines BELOW this and
+  // concluded nothing asserted the rule -- a true statement about two tests, generalised to the file.
+  [Trait("Criterion", "AC-PAY-0002")]
   public void The_record_in_force_is_the_latest_one_not_after_the_date()
   {
     var history = new[]

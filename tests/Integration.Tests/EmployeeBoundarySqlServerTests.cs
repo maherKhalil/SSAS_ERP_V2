@@ -895,6 +895,12 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- POINT-IN-TIME ATTRIBUTION uses the history, and gives a different answer from the current branch.
   [Fact]
+  // ⚠ CITED BY B18 pass 08, after I recorded `AC-EMP-0035` UNRESOLVED TWICE on a NAME search.
+  // The criterion says the history is *"sufficient to determine the branch effective at any past
+  // instant, as the record with the greatest `EffectiveFromUtc` less than or equal to that instant"* --
+  // and this selects exactly that record and asserts it names BranchA while the CURRENT branch is B.
+  // Found by searching the MECHANISM (`EffectiveFromUtc` ordering), not the name.
+  [Trait("Criterion", "AC-EMP-0035")]
   public async Task Point_in_time_attribution_differs_from_the_current_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

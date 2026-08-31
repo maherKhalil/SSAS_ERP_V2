@@ -2645,6 +2645,31 @@ test could ever have covered it** — the behaviour only exists against a real d
 verification cost moves with it.** Recognise that at the time, or the most carefully written code in a
 module ends up the least tested.
 
+## Schedule the full run on a cadence, not on a hypothesis
+
+**A long run was queued to catch a named regression. The regression turned out not to be constructible — the
+suite substitutes a stub for the component that changed — so the search settled the question and the run
+was, on its stated grounds, unnecessary.**
+
+⚠⚠ **It found something else: eight baselines for the second build configuration were stale, and nothing had
+compared the configurations in eight generations of the suite. There was no drift — and that is a result
+nobody could have stated beforehand.**
+
+**The merge gate runs one configuration and excludes the slowest suite. So the property the two-configuration
+split exists to verify is precisely the one the merge gate structurally cannot see**, and it degrades
+silently, because nothing that runs on every merge has any opinion about it.
+
+⚠ **A run queued on a hypothesis is only ever scheduled when somebody has a hypothesis.** The value of a
+periodic full run is in the questions nobody thought to ask — **which is exactly the value a
+justification-driven schedule can never capture.**
+
+### A correct action on a refuted premise earns no credit for the premise
+
+**The row was right and its stated reason was wrong.** ⚠ **The value of an action and the justification given
+for it are separate claims**, and conflating them is how a lucky call becomes evidence for a bad method.
+
+**Say both: the reason was refuted, the action paid, and here is what it actually bought.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

@@ -376,6 +376,45 @@ guard should find something.** The one above found `TenantCutoverRoutingFlipServ
 whose reason lived on a `#pragma warning disable` line where no reader looks. A guard that finds nothing on
 its first run has not yet been shown to work.
 
+
+## ⚠ The converse, 2026-08-31 — ask whether the failure is CONSTRUCTIBLE before demanding a guard
+
+**A guard must be refusable. The corollary is that some invariants must NOT be guarded, because nothing
+can break them from outside.**
+
+**The case.** A filtered unique index over `AccountActionToken [Purpose, TenantId?, TenantUserId?]` filters
+on `[TenantUserId] IS NOT NULL` and never mentions `TenantId?`. **Read alone that is the defect shape.** It
+is correct because the aggregate admits exactly two bindings — Invitation with both set, PasswordReset with
+neither. **The instruction given was: establish whether a test pins that invariant, and if nothing does,
+pin it.**
+
+⚠ **Nothing pins it, and nothing should.** The type does not defend the rule at run time — **it makes the
+violation unconstructible.** There are exactly two public factories: one takes `Guid tenantId, long
+tenantUserId` — **non-nullable value types, both mandatory** — and the other takes neither. No public
+rehydrate, restore or update; the remaining constructors are private. **A test asserting *a mixed binding
+throws* cannot be written without reflection, because no caller can produce the input.**
+
+**A test would assert a runtime rejection. The signatures make the input impossible.** ⚠ **Writing that
+test would create a check that cannot fail for the reason it claims to test — the thing this principle
+exists to ban, arriving through an instruction to add a guard.**
+
+**So the question to ask first is not *is this pinned?* but *can this be broken from outside?***
+
+- **If yes — guard it, refusably.**
+- **If no — say so, and identify what a change to the impossibility would look like.** Here it is widening
+  a parameter to a nullable type: **a deliberate signature edit the compiler forces someone to write out.**
+
+⚠ **And when the dependent thing cannot be made to redden, guard the DEPENDENCY.** The index cannot check
+its own correctness. **A reflection test asserting those two parameters are non-nullable value types can** —
+no parsing, no exception list, and it reddens exactly when the property the index rests on is weakened.
+**Guard the thing the dependency rests on**, the same move as *guard the escape, not the query*.
+
+**Residual, and worth stating whenever a type-system argument is used:** the ORM materialises through a
+private parameterless constructor and private setters, **so a row already in the database with an invalid
+binding would load without complaint.** ⚠ **The guarantee is a property of the WRITE PATH, not of the
+TABLE** — sound while the write path is the only writer, and live the day an import or a second writer is
+added.
+
 # Principle 15 – Locating and Measuring Must Not Share a Text
 
 **A source-scanning check does two different things: it LOCATES a construct, and it MEASURES a property of

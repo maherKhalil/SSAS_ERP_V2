@@ -13,9 +13,16 @@ namespace SSAS.BuildingBlocks.Api.Transport;
 // reading the constant.** 129 distinct domain codes collapse into `request.invalid` alone, and a caller
 // seeing it could not tell a bad page size from an unknown property.
 //
-// Passing the message as RFC 7807 `detail` fixes that, and it is safe because **no message carries a
-// runtime value** — measured across `src/`: zero interpolations, zero concatenations, zero variables.
-// There is nothing in a message that was not written by hand into a constant.
+// Passing the message as RFC 7807 `detail` fixes that, and it is safe because of the RULE below, not
+// because of anything true of today's messages: **`ShowsDetail` is a positive allowlist on 4xx minus
+// 401/403.** A 4xx message is addressed to the caller by construction — it tells them what THEY did
+// wrong — so **it would be exactly as safe if every message in the product interpolated a runtime
+// value.** Nothing here depends on a census of the messages that happen to exist.
+//
+// ⚠ **WRITTEN AS THE RULE ON PURPOSE.** An earlier version of this paragraph licensed the change with a
+// MEASUREMENT — *no message carries a runtime value, zero interpolations across `src/`* — and see the
+// note beside `ShowsDetail` for what became of it. **A rule is checkable forever; a measurement is true
+// until somebody commits.**
 //
 // ---- ⚠ EXCEPT ON 401 AND 403, WHERE IT FAILS CLOSED.
 //
@@ -43,9 +50,28 @@ public sealed record ApiError(
   // injects `TenantStorage.Unavailable` — *"no route to the tenant database"* — and asserts the body never
   // says `tenant database`. A 500 sailed straight through the 401/403 check and leaked it.
   //
-  // The safety measurement that licensed this change was *no message carries a runtime value*: true, and
-  // **it answered the wrong question.** The risk is not data interpolated into a message, it is a message
-  // that describes our own infrastructure — and a hand-written constant does that perfectly well.
+  // ---- ⚠⚠ THE MEASUREMENT THAT LICENSED THIS IS NOW FALSE, AND IT NEVER CARRIED THE GUARANTEE.
+  //
+  // The original licence was *no message carries a runtime value — zero interpolations, zero
+  // concatenations, zero variables across `src/`.* **It was true when it was written. It is false now:
+  // SEVEN interpolated domain messages exist, across three `*Errors.cs` files** — and they are not
+  // homogeneous, which matters more than the count.
+  //
+  // **THREE interpolate an internal status enum** — `PayrollErrors`'s recalculate, approve and post
+  // transition messages. ⚠ **FOUR interpolate a CALLER-SUPPLIED IDENTIFIER**: an account code, a pay
+  // element code (twice), and a fiscal period name.
+  //
+  // ⚠ **The population is domain `Error` messages, which is what `Explaining` carries.** Two interpolated
+  // `InvalidOperationException` texts also exist in `TenantStorageBootstrapService`; they are outside it
+  // because they are startup failures that reach a caller only as a 500, and a 500 shows no detail.
+  //
+  // **Kept rather than deleted, because it is part of why this design is what it is** — and because the
+  // recount is the evidence for the paragraph above. Two of those three are asserted end to end at the
+  // wire precisely BECAUSE the value travels, which is the feature working.
+  //
+  // ⚠ **AND THE MEASUREMENT ANSWERED THE WRONG QUESTION EVEN WHILE IT WAS TRUE.** The risk is not data
+  // interpolated into a message, it is a message that describes our own infrastructure — and a
+  // hand-written constant does that perfectly well.
   //
   // So the classes divide by **who the message is for**. A 4xx tells callers what THEY did wrong, and the
   // message is addressed to them. A 5xx says something broke on OUR side: that message is for an operator,

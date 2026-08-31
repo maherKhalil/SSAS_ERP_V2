@@ -2478,6 +2478,42 @@ actually happen?**
 a STRONGER guarantee than the guard does** — structural rather than procedural — **and recording them as
 untested would misdescribe the safest members of the set as the riskiest.**
 
+## Taking a parameter is not applying it
+
+**An architecture test reflects over a read interface and asserts that every method REQUIRES a scope
+parameter. It passes, it is cheap, it is total over the interface — and it says nothing about whether any
+method ever USES the scope it is handed.**
+
+⚠⚠ **The concrete implementations of two of those interfaces are referenced by no test file and constructed
+in no test host.** The stub registered by the API fixture is never displaced, because the real registration
+lives in an infrastructure assembly the fixture does not call. **The line that filters by the caller's
+authorized companies has never executed under test.**
+
+**A structural guarantee reads as behavioural coverage, and it is the cheapest kind to write** — which is
+exactly why it accumulates around the mechanisms people are most anxious about. ⚠ **Where a guard is
+enforced by a value flowing through a method, the signature is the arrangement and the filter is the
+subject; a test that stops at the signature has tested the arrangement.**
+
+### The concrete class, not the interface, is the population
+
+**An interface can be asserted, reflected over, stubbed and satisfied while its only production
+implementation is untouched.** When asking whether a mechanism is tested, **enumerate the concrete types and
+ask which of them a test ever constructs** — and compare across peers, because the module that has none
+looks identical, from inside, to the module that has four.
+
+## Search before waiting
+
+**A run was queued to catch a named regression. The regression could not be produced: the suite substitutes
+a stub for the component that was changed, so the changed code never executes there.**
+
+⚠ **Ranking a risk is not checking it.** Twice in one session a risk was ranked by what it would cost if it
+happened, without the one question that settles whether it can happen at all — **and the second time was
+within an hour of writing that rule down.**
+
+⚠⚠ **Knowing a failure mode confers no immunity from it. The habit that works is procedural: before waiting
+on a hypothesis, spend the one search that would refute it.** A refuted hypothesis costs a minute; a
+believed one costs the wait, and then costs again when the clean result is read as evidence of safety.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

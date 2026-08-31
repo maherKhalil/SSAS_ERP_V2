@@ -1593,6 +1593,48 @@ Terminated` added to the production existence check — **literally the mistake 
 **A plant that is the real error proves the test guards the real error; a plant invented for the occasion
 proves only that the test can fail.**
 
+
+## The more convincing the name match, the more it needs the body read
+
+**Four criteria were titled `V:`, `W:`, `X:`, `Y:`. Four tests were named `V_…`, `W_…`, `X_…`, `Y_…`, and
+the file's own section comments repeated the letters.** A deliberate, exact, four-way correspondence —
+⚠ **and it existed ONLY as a shared prefix, where nothing can query it.**
+
+**The reading was done anyway, and the rule is the reason:** *a letter is a name, and the discipline does
+not get suspended because the name looks convincing.*
+
+⚠ **THE FOUR NEAR-MISSES IN THIS SWEEP ALL TURNED ON A NAME — a heading naming a different subject, a
+synonym meaning the opposite, a test of another aggregate, and a rule proven in the wrong state.** **The
+temptation to skip the body scales with how good the name looks, and the name is exactly what has been
+wrong every time.**
+
+**The reading paid here too: one test asserts the create throws AND that the row count is still zero —
+which is what makes the behaviour *refused* rather than *silently rewritten*, the exact distinction its
+criterion draws. A name match would have missed that the second assertion is the point.**
+
+## A control that is a step in the arrangement cannot drift away from what it controls
+
+**Three revocation tests each carry their own anti-vacuity control without naming it one: each CREATES
+SUCCESSFULLY FIRST, then revokes, then fails** — so the refusal is provably the revocation **rather than a
+boundary that refuses everything.**
+
+⚠ **A separate control test can be deleted, renamed or left behind when the thing it controls moves. A
+control built into the arrangement travels with it.** Where the shape allows it, **prefer the arrangement.**
+
+**The strongest of the three first asserts the actor holds ZERO scope rows, so the create that succeeds is
+PROVABLY running on implicit scope** — the criterion's actual subject, established rather than assumed.
+
+## Defer a forecast, do not withdraw it, when it fails in the safe direction
+
+**A prediction that the yield would fall was contradicted: 0.40, then 0.60, then 0.70.** ⚠ **The cause was
+visible rather than guessed — the criteria in that range are exactly what one test file was written
+against — so the forecast was DEFERRED rather than withdrawn, and the range where it should bite was
+named.**
+
+***Not yet* and *no* are different answers.** **Saying which costs nothing at the time and everything
+later, because a forecast quietly dropped after one good result is indistinguishable from one that was
+never made.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

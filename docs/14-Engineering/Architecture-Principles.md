@@ -2570,6 +2570,19 @@ challenged.** Every number in the distribution follows from that single differen
 counting what is missing from each.** ⚠ **N repairs at the symptoms leave the cause in place, and the next
 member added inherits it.**
 
+### ⚠ And finding ONE cause is not finding THE cause (added an hour later, on a counterexample)
+
+**The very next check found a second cause for the same symptom.** Two of the three uncovered members were
+uncovered because their host never composed the real registration; **the third composes it correctly and
+then registers a stub over the top.**
+
+⚠⚠ **A single remedy aimed at the first cause would have left a third of the population untouched WHILE
+LOOKING COMPLETE** — which is worse than the two-repairs reading it replaced, because a cause that explains
+most of a distribution is convincing enough to stop the search.
+
+**So the rule has two halves: look for the shared cause, and then CHECK IT EXPLAINS EVERY MEMBER.** A member
+it does not explain is not noise; it is the second cause.
+
 ### And the diagnosis had already been written down, at one site
 
 **One host carried a comment recording that this exact defect had been found there weeks earlier: the

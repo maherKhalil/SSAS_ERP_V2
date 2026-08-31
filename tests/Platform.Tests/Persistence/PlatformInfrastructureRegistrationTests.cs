@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -59,6 +60,9 @@ public sealed class PlatformInfrastructureRegistrationTests
   public void Platform_persistence_is_module_qualified_scoped_and_uses_one_context_per_scope()
   {
     var services = new ServiceCollection();
+    // `DomainEventDispatcher` logs consumer failures (item 173), so the container needs logging —
+    // every real host registers it, and without it this composition is not the one that ships.
+    services.AddLogging();
     services.AddSingleton<ICurrentUser, TestRequestContext>();
     services.AddSingleton<ICurrentTenant, TestRequestContext>();
     services.AddSingleton<ICorrelationContext, TestRequestContext>();

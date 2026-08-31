@@ -619,18 +619,32 @@ and it is the one the merge gate skips.**
 fails to compile anywhere — Integration included — reddens it. A compile break cannot merge.** The exposure
 is runtime behaviour and Release-only analysis.
 
-⚠ **THE WORST CONCRETE EXAMPLE, IN THE TREE TODAY.** `EmployeeConfiguration.cs` declares the national-id
-index `.IsUnique().HasFilter("[NormalizedNationalId] IS NOT NULL")`, with a comment citing `BR-HR-0002`.
-**Delete the `.HasFilter(...)` line.** It **compiles** — the filter is a raw T-SQL string literal and
-nothing type-checks it. The model still builds, so **every model-shape assertion still passes.** No TASK
-suite creates a schema, **so no TASK test can observe an index at all. The gate goes green and `DEC-L-007`
-merges it immediately.**
+⚠ **THE WORST CONCRETE EXAMPLE — CORRECTED 2026-08-31 BEFORE YOU READ IT, AND THE CORRECTION MAKES IT
+WEAKER. READ THIS PARAGRAPH RATHER THAN THE ONE IT REPLACES.**
 
-**And the consequence is a data defect, not a cosmetic one.** SQL Server treats NULLs as **equal** in a
-unique index, so without the filter **the second employee recorded with no national id is refused** — and
-national id is optional. ⚠ **Every tenant recording a second employee without one fails at insert.** The
-only assertion in the repository that notices is Integration's
+**The first version of this entry said: delete `EmployeeConfiguration`'s
+`.HasFilter("[NormalizedNationalId] IS NOT NULL")` line and the defect ships. ⚠ THAT IS FALSE. EF Core's SQL
+Server provider ADDS THAT FILTER BY CONVENTION for any unique index over a nullable column** — measured by
+removing the declaration and reading the built model, where the filter is still present and identical.
+**The platform was already defending this, and the example claimed a hole where a convention stood.**
+
+**The reachable form is one step further along: `.HasFilter(null)`, which EXPLICITLY OVERRIDES the
+convention.** Measured the same way — the model then reports no filter at all. **With that substitution
+every other claim holds: it compiles, the argument is still an expression nothing type-checks, no TASK
+suite materialises a schema, and the consequence is still that the second employee recorded with no
+national id is refused at insert** — for a field that is optional by design. The only assertion in the
+repository that notices is Integration's
 `A_national_id_is_unique_within_a_company_but_may_be_absent_many_times`.
+
+⚠ **BUT BE CLEAR ABOUT WHAT THE CORRECTION COSTS THIS DECISION: `HasFilter(null)` IS A DELIBERATE ACT,
+WHERE DELETING A LINE IS AN ACCIDENT.** A far less likely mistake. **So this example no longer carries the
+decision, and what does is the class rather than the instance:** 36% of the repository's assertions,
+**no TASK suite ever opening a connection**, and the six behaviours below that only Integration can check.
+**The example is kept, corrected, because it is the one place the abstract exposure was made concrete —
+and because a decision that quietly drops its own worst case is worth less than one that says it shrank.**
+
+**How it was found is the reason to trust the rest:** the window building the guard PLANTED THE DELETION
+and **the guard stayed green.** It reported the plant rather than the guard.
 
 **Classes only Integration catches**, named from its own test names rather than from categories: scoped
 uniqueness *including absence many times*; `rowversion` optimistic concurrency; migration refusal against

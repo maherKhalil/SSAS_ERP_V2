@@ -1118,14 +1118,26 @@ like one statement.
 configuration means at the database level is asserted in exactly one suite — 36% of the repository's
 assertions — and it is the suite the merge gate skips.**
 
-⚠ **THE SHARP EDGE IS THE RAW STRING LITERAL.** A unique index carries
-`.HasFilter("[NormalizedNationalId] IS NOT NULL")`. **Delete that call and it compiles** — the filter is raw
-T-SQL and nothing type-checks it. **The model still builds, so every model-shape assertion still passes;
-no gate-run suite creates a schema, so nothing can observe an index at all.** The gate goes green.
+⚠ **THE SHARP EDGE IS THE RAW STRING LITERAL — with a correction that sharpens it further.** A unique
+index carries `.HasFilter("[NormalizedNationalId] IS NOT NULL")`. **Deleting that call changes nothing: EF
+Core's SQL Server provider adds the same filter BY CONVENTION for any unique index over a nullable
+column** — measured by removing the declaration and reading the built model. ⚠ **Writing
+`.HasFilter(null)` DOES remove it, because that explicitly overrides the convention**, and the model then
+reports no filter at all.
+
+**Either way the point stands: it compiles, the argument is an expression nothing type-checks, the model
+still builds so every model-shape assertion passes, and no gate-run suite creates a schema, so nothing
+observes an index.** The gate goes green.
 
 **And the consequence is a data defect.** SQL Server treats NULLs as **equal** in a unique index, so
 without the filter **the second row with a NULL in that column is refused** — for a column that is
 optional by design.
+
+⚠ **The correction is itself the principle's best evidence.** It was found because the guard's author
+**planted the deletion and the guard stayed green** — and reported the plant rather than trusting it.
+**A convention that silently supplies what a declaration omits is invisible to source reading and visible
+only in the built model: `IIndex.GetFilter()` returns what will be CREATED, not what was WRITTEN.**
+**Read the model, not the source, for anything a framework may supply on your behalf.**
 
 **The rule this yields, which is more general than schemas:**
 

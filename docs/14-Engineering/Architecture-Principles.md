@@ -2703,6 +2703,47 @@ parameter: total, cheap, passing — **and silent about whether any method could
 **When a population splits into "exercised" and "never exercised", the second half is not a documentation
 debt. It is where the defects are**, and the cost of finding out is one test that constructs the thing.
 
+## A zero from an instrument never observed to fire is worth nothing
+
+**A sweep reported that a defect class is empty across the whole tree: 109 candidate sites, four flagged,
+all four verified as correct code.** ⚠ **That result is only meaningful because the same scanner was run
+against the source as it stood BEFORE the two real defects were fixed, and it flagged both.**
+
+**Every null result needs that step.** A scanner with a broken pattern, a wrong path, or a silent exclusion
+reports exactly the same clean sweep as a working one — **and the clean sweep is the outcome everybody
+wanted, so nobody looks twice.**
+
+**Version control makes the control cheap: the pre-fix source is one command away, and a defect that was
+real yesterday is the best possible known positive.**
+
+### And a one-off sweep is not a guard
+
+**The scanner's precision on a clean tree was zero true positives and four false ones.** ⚠⚠ **Shipped as a
+permanent check it would meet every future reader with four failures that are all correct code — and the
+natural response to a wrong failure is to weaken or delete the check.**
+
+**The stronger reason not to ship it is that the behavioural control already exists.** A query that cannot
+execute now fails a test that runs it against a real database. ⚠ **A source-shaped guard would duplicate a
+behavioural one at worse precision** — and the two are not interchangeable: **the parser approximates what
+the test demonstrates.**
+
+**Answer the question once, record the answer, and let the artefact go.** A guard is a different artefact
+with a different bar, and it earns its place by precision on the tree it will actually run against.
+
+## A name is not an exercise, and a proxy's floor should be reported as a floor
+
+**A census asked which production types no test constructs, using a syntactic search for construction. It
+missed every type built with a target-typed `new(...)`** — including three the previous item had just
+covered.
+
+**Recounted with a deliberately generous test — a type is seen if its name appears anywhere in the test tree
+— the residue fell from 41 to 7.** ⚠ **The generosity is the point: the number is a FLOOR, and it still
+over-counts coverage, because a name in a test is not an execution.**
+
+⚠⚠ **The complete instrument for *is this code ever executed* is coverage instrumentation, and nothing else
+is.** Every syntactic proxy answers a different, narrower question — **so report proxies as floors, name the
+instrument that would settle it, and say whether that instrument is available.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

@@ -1,6 +1,6 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-**21 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), four measured on 2026-08-30 (16-19), and one on 2026-08-31 (20)**. ⚠ **Entry 17 is WITHDRAWN in place and struck: the dispatcher it said did not exist had existed for a month.** Each
+**22 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), four measured on 2026-08-30 (16-19), and one on 2026-08-31 (20)**. ⚠ **Entry 17 is WITHDRAWN in place and struck: the dispatcher it said did not exist had existed for a month.** Each
 carries **what it is**, **the measured facts**, **what it blocks**, and **the options**. Where the call is
 genuinely the owner's there is no recommendation.
 
@@ -806,6 +806,45 @@ approximation and it is labelled as one.**
 
 ⚠ **Nothing here is a request to change `CLAUDE.md`, settings or permissions.** The coder proposed no such
 change and the architect would not carry one; **the remedy above is yours to choose or decline.**
+
+---
+
+## 22. Two test categories are declared in the standards, scaffolded, and never built — added 2026-08-31 (T-199)
+
+⚠ **THIS BLOCKS NOTHING AND *LEAVE IT* IS A LEGITIMATE ANSWER. It is here because the alternative is that
+it goes stale on a board, and because the disposal is a decision about a STANDARDS DOCUMENT rather than
+about two files.**
+
+**What it is.** `Performance.Tests` and `UI.Tests` are each a `.csproj` with **no source file at all.**
+
+**The measured facts.** Both were created in `28fcc62` *milstone 01* on 2026-07-30 — the initial
+scaffolding commit — **alongside six siblings, all eight test projects at once. Six were populated; these
+two never were, and each has exactly ONE commit touching it: its creation.** The `.csproj` files are
+boilerplate and record no intent: no `ProjectReference`, no benchmark or browser package.
+
+⚠ **BUT THE INTENT IS DOCUMENTED AND STILL STANDING.** `Solution-Structure.md` lists both in the intended
+tree beside `Architecture.Tests`, which is green and real. **`Development-Standards.md` names *UI Tests*
+and *Performance Tests* as CATEGORIES**, under *every critical business workflow shall be covered by
+automated tests.*
+
+**So: a plan written down, scaffolded, never executed, and never withdrawn.** Both sit in the solution, so
+**every build builds two empty assemblies, in both configurations on a PHASE run.**
+
+⚠ **WHY ENGINEERING HAS NOT SIMPLY DELETED THEM, AND IT IS NOT DEFERENCE: deleting them while leaving the
+standards in place would leave a REQUIREMENT WITH NOTHING NAMED TO SATISFY IT.** The next reader would
+find a standard with no home, rather than a home with no content — **and an empty project is at least a
+visible claim.**
+
+**What it blocks.** Nothing. **The cost is two empty assemblies per build and a standard that names
+coverage nobody is producing.**
+
+**The options.**
+
+- **Leave it.** The claim stays visible and unmet, which is the honest current state. **Costs two empty
+  assemblies per build.**
+- **Withdraw the categories from `Development-Standards.md` and `Solution-Structure.md`, then remove the
+  projects.** Ends the claim. ⚠ **The documents must go first, or the requirement outlives its home.**
+- **Keep the standard and fill one of them.** The only option that makes the documents true.
 
 ---
 

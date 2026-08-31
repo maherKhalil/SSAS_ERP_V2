@@ -1635,6 +1635,36 @@ named.**
 later, because a forecast quietly dropped after one good result is indistinguishable from one that was
 never made.**
 
+
+## A forecast has two halves, and they can fail separately
+
+**A prediction was made that a yield rate would fall as the work moved from domain tests to architecture
+tests.** The shift happened exactly as predicted. **The rate did not fall.**
+
+**So the MECHANISM was right and the CONSEQUENCE was wrong** — and the correct disposal is to **withdraw
+the consequence, keep the mechanism, and say which is which.**
+
+**The reason the consequence inverted is worth more than the forecast: AN ARCHITECTURE TEST IS EASIER TO
+CITE THAN A DOMAIN TEST, BECAUSE IT HAS TO SAY WHAT STRUCTURAL CLAIM IT MAKES.** A name like
+`Employee_is_ordered_after_company_and_branch_and_history_after_employee` states its criterion almost
+verbatim; `A_transfer_moves_the_employee_and_appends_exactly_one_record` **can mean three things.**
+
+**The practical consequence: when mapping tests to specifications, START WITH THE ARCHITECTURE SUITE.**
+
+**And the discipline generalises past forecasts. When a prediction fails, separate WHAT YOU EXPECTED TO
+HAPPEN from WHY YOU EXPECTED IT TO MATTER.** Dropping both is how a useful model gets discarded with a
+wrong conclusion attached to it; **keeping both is how a wrong conclusion survives on a good model credit.**
+
+## Cite one test twice rather than splitting a single assertion
+
+**Two criteria were both pinned by one test, because the assertion is a single exact expected list naming
+both entities.** **Splitting it would have produced two tests each asserting half of one list — weaker than
+the one that exists, and asserting something nobody specified.**
+
+**This is the mirror of the superset disposal.** A superset cites one broad guard for a narrower criterion;
+this cites one test for two criteria. **Neither is a compromise. Both are refusals to manufacture a shape
+the code does not have, in order to make a mapping look tidier than the thing it maps.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

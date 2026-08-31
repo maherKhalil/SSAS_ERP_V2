@@ -1883,6 +1883,50 @@ totals a mixture of two methods with no way to tell which produced which row.**
 **Name the affected population when you change a method. Here it was nine, and knowing the number is what
 makes the re-check schedulable instead of aspirational.**
 
+## Naming a failure mode confers no immunity from it
+
+**A message corrected another window's error — reading one test, finding a clause absent from it, and
+concluding nothing asserted that clause — and made the identical error two sentences later, about a
+different clause of the same criterion.** ⚠ **The diagnosis was correct, current, and the author's own. It
+did not fire.**
+
+**A criterion with four clauses is four claims. Every disposal that treats it as one is right or wrong by
+luck**, and the luck runs out silently, because a single citation makes the whole criterion look settled.
+
+**The instance is worth keeping precisely because nothing was missing from the process:** the rule existed,
+was written down, was being applied to somebody else's work in the same breath. **What was missing was an
+instrument, and no amount of understanding substitutes for one.**
+
+## A negative claim cannot be controlled, but it can be made cheap to re-check
+
+**The sweep's positive claims are challenged mechanically on every pass. Its negative claims — a criterion
+recorded UNRESOLVED — are challenged by nothing.** ⚠ **The one over-claim that was caught was caught by a
+SECOND READER disagreeing with a citation, and that does not scale: it worked because a single criterion
+happened to draw two readers' attention.**
+
+**Two measures do not replace the reader, and are worth taking anyway, because both convert the cost of
+BEING the second reader from *read everything again* into *re-run one command*.**
+
+**One: a disposal records the search that produced it** — the symbol, the command, the number of hits — so
+a later reader falsifies it by re-execution rather than by re-reading. **A negative claim with no recorded
+method is unfalsifiable in practice, whatever its author intended.**
+
+**Two: a citation names the CLAUSE it satisfies, not only the criterion.** ⚠ **Under that rule the
+over-claim here was not possible to write down: closing a four-clause criterion would have required naming
+the clause whose only evidence was a sort the TEST performed itself.** The enumeration stays a judgement —
+this automates nothing — **but it converts a silent over-claim into an explicit one, and an explicit
+judgement is the thing a later reader can disagree with.**
+
+### An implemented-and-unasserted clause looks exactly like a missing one from the test side
+
+**A criterion said a search with no status filter returns only the active and inactive. The handler asserts
+it passes NO filter at all — so the exclusion, if it happens, happens downstream.** ⚠ **It does: the read
+service defaults the status set when the caller names none. The behaviour is real and nothing asserts it.**
+
+**The distinction is not academic. A missing behaviour is a defect and a missing assertion is a test gap,
+and the test side cannot tell them apart** — which is why the disposal has to reach the production code
+before it says which one it found.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

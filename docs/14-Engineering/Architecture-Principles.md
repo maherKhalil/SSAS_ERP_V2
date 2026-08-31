@@ -2607,6 +2607,44 @@ even a composition check would have passed while the concrete type stayed unexer
 asking is the narrow one — **what constructs this and runs a method on it** — and it usually cannot be
 answered by counting at all.
 
+## A negative assertion needs a neighbour that stays positive
+
+**A privacy redaction was to be tested two ways: the privileged caller sees the sensitive value, the
+unprivileged one does not.** ⚠ **Both are satisfied by a service that redacts EVERYTHING for the
+unprivileged caller.**
+
+**The assertion that separates *redacts the sensitive one* from *redacts* is a third: a NON-sensitive row in
+the SAME response stays visible.** The rule the code states is that sensitivity is a property of the TYPE
+rather than of the REQUEST — **and only a mixed response can assert that at all.**
+
+**Generalising: where a rule discriminates between members, the test needs both kinds present at once.** ⚠
+**A test that arranges only the members that should be suppressed cannot distinguish a discriminating rule
+from a blanket one**, and the blanket one usually looks safer, so nothing prompts the question.
+
+### And the exemption is the clause a well-meaning change breaks
+
+**One route deliberately does NOT redact: the protection exists for the subject of the record, and on that
+route the subject is the caller. The permission that gates the administrative view is one no ordinary
+employee holds, so applying the same rule there would redact a person's own medical absence from
+themselves.**
+
+⚠⚠ **It is ruled, it has a written rationale, and nothing asserts it.** **A future change reading *redact
+sensitive types unless the caller is an administrator* would sound safer and would be adopted without
+argument** — right up to the point where an employee's own sick leave shows as a nameless gap.
+
+**Assert the exemptions of a protective rule as deliberately as the rule.** The failure they prevent is
+invisible to everyone except the person harmed by it.
+
+### Care in the implementation can put a behaviour beyond every cheap suite
+
+**The redaction is applied in the SQL projection rather than after materialization, so that the value never
+crosses the wire or reaches a query log.** ⚠ **That decision is right, and it is exactly why no in-memory
+test could ever have covered it** — the behaviour only exists against a real database.
+
+**When an implementation is careful in a way that moves it below the seam the fast tests run at, the
+verification cost moves with it.** Recognise that at the time, or the most carefully written code in a
+module ends up the least tested.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

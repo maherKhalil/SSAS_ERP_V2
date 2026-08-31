@@ -163,6 +163,8 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
 
   [Fact]
   [Trait("Decision", "OD-PAY-0009")]
+  // ⚠ CITED BY B18 pass 14, body-confirmed: the criterion verbatim -- a caller holding every OTHER payroll permission is refused 403.
+  [Trait("Criterion", "AC-PAY-0016")]
   public async Task Approval_is_refused_to_a_caller_holding_every_other_payroll_permission()
   {
     // The sensitive act is its own grant. This is the separation-of-duties claim made testable: someone who
@@ -237,6 +239,12 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
 
   [Fact]
   [Trait("Decision", "OD-PAY-0014")]
+  // ⚠ CITED BY B18 pass 14, body-confirmed: ⚠ PARTLY PINNED, and the test NAME is why I checked. The criterion is *"a run whose pay date falls
+  // in a closed fiscal period cannot be approved, AND THE RESPONSE NAMES THE PERIOD"*. The body asserts
+  // 409 and the problem code `payroll.period_closed` -- **the CONDITION, not the period**. Nothing here
+  // asserts which period. Compare `AC-PAY-0021`, whose test really does assert `Contains("HOUSING")`:
+  // the element criterion names its subject, this one does not.
+  [Trait("Criterion", "AC-PAY-0022")]
   public async Task Approval_into_a_closed_period_is_refused_and_names_the_period()
   {
     host.ResetToAuthorizedState();
@@ -299,6 +307,11 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
     // `BR-GL-0001` refuses it and the defect is Payroll's.
     var posted = host.Ledger.LastPosted!;
     Assert.Equal(posted.Lines.Sum(line => line.Debit), posted.Lines.Sum(line => line.Credit));
+
+    // ⚠ WITHOUT THIS, AN EMPTY LINE SET SATISFIES THE LINE ABOVE PERFECTLY: 0 == 0, under a test name that
+    // promises the journal BALANCES. `PayrollChainSqlServerTests` has carried this second assertion since it
+    // was written; this site had the equality copied and the control left behind.
+    Assert.True(posted.Lines.Sum(line => line.Debit) > 0m);
   }
 
   // ⚠ THE SIBLING OF THE TEST BELOW, AND IT WAS A 500 UNTIL T-198.

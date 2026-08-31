@@ -46,6 +46,9 @@ public sealed class EmployeeReadScopeTests
   // company and branch in the tenant — and grants NO operation. An administrator who was never given the HR
   // permission cannot read an employee, and the scope they would have had is irrelevant to that.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the administrator alone is refused with `ReadPermissionDenied` -- "grants scope, NEVER operations",
+  // which is the whole of the criterion's second half.
+  [Trait("Criterion", "AC-EMP-0041")]
   public async Task Tenant_administration_does_not_grant_the_employee_read()
   {
     var resolver = Resolver(

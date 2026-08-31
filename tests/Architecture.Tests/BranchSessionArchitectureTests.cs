@@ -67,6 +67,8 @@ public sealed class BranchSessionArchitectureTests
   // ---- D. THE TOKEN CARRIES NO BRANCH. A claim would be a second source of truth that can go stale
   // between issue and use, and the durable session already answers authoritatively.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: no `BranchId` is carried as a token claim -- the criterion's first clause, asserted structurally.
+  [Trait("Criterion", "AC-EMP-0042")]
   public void No_branch_identifier_is_carried_as_an_access_token_claim()
   {
     foreach (var claims in new[] { typeof(AccessTokenClaims), typeof(PlatformAccessTokenClaims) })

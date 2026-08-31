@@ -126,6 +126,8 @@ public sealed class EmployeeArchitectureTests
   // exact shape Phase 3 approved, so this test still fails if Employee grows a department surface nobody
   // agreed to.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: no position or manager property on the aggregate -- the deferral asserted structurally.
+  [Trait("Criterion", "AC-EMP-0045")]
   public void Employee_has_no_position_or_manager_and_exactly_one_department_property()
   {
     var properties = typeof(Employee)
@@ -228,6 +230,9 @@ public sealed class EmployeeArchitectureTests
   // Automatic per-company numbering is deferred (DEC-EMP-0011): the number is a required INPUT, so a future
   // generator is additive rather than a redesign.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: BOTH clauses: no generator type exists, AND the create parameter is a required non-optional
+  // string, which is "supplied by the caller at creation".
+  [Trait("Criterion", "AC-EMP-0046")]
   public void No_employee_number_generator_exists()
   {
     var types = HrDomainAssembly.GetTypes().Concat(HrInfrastructureAssembly.GetTypes())
@@ -249,6 +254,10 @@ public sealed class EmployeeArchitectureTests
 
   // Rehire is deferred: there is no transition out of Terminated and no operation named for one.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ PARTIAL. `AC-EMP-0047` bans route, command, handler, permission AND table for rehire, employee
+  // documents, import AND export. This asserts the REHIRE clause only. The documents, import and export
+  // clauses are pinned by nothing here -- recorded rather than implied (B18).
+  [Trait("Criterion", "AC-EMP-0047")]
   public void No_rehire_operation_exists()
   {
     Assert.DoesNotContain(
@@ -303,6 +312,9 @@ public sealed class EmployeeArchitectureTests
   // ---- ONLY THE TRANSFER COMMAND NAMES A BRANCH, and it names the DESTINATION only: the source is the
   // record's current branch, never something a request may assert.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: only the transfer command carries a branch and only the DESTINATION -- so the channel cannot be
+  // opened from a create or update DTO, which is the criterion's subject.
+  [Trait("Criterion", "AC-EMP-0043")]
   public void Only_the_transfer_command_names_a_branch_and_only_the_destination()
   {
     var parameters = typeof(TransferEmployeeCommand).GetConstructors().Single()

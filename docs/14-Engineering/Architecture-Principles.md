@@ -2988,6 +2988,19 @@ half-name ANSWERS one.** It arrives looking like a measurement.
 tokens, or widen the cut — **never complete it from what it obviously must say.** The width that truncated
 this one was 140 characters and the name ended at 141.
 
+### ⚠⚠ And a display limit becomes a MEASUREMENT the moment the output is counted
+
+**The same defect appeared once more, in its fourth form and in the other direction: a search was piped
+through `head -5` and its result reported as five sites. There are six.** The sixth was a distinct entity
+that the output never showed.
+
+⚠ **`head`, `cut`, `-First`, `| head -3` are all RENDERING decisions, and none of them announces itself in
+the number that comes out.** A truncated line loses a name; a truncated result set loses a member — **and
+the second is worse, because a partial list still looks like a list.**
+
+**IF THE OUTPUT WAS LIMITED, THE COUNT IS UNREAD.** Re-run with `wc -l` or an aggregate, and never report
+the rows you happened to display.
+
 ## Editing a running script corrupts the run, not the file
 
 **A long job was executing a shell script. The script was edited thirteen minutes in — a valid edit, syntax

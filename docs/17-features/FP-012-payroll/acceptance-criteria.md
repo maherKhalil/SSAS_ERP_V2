@@ -12,7 +12,7 @@ than leaving orphans.
 |---|---|---|
 | `AC-PAY-0001` | Creating a compensation record for an employee stores it with its effective date and does not alter any prior record. | `REQ-PAY-0001` |
 | `AC-PAY-0002` | The compensation in force on a date is the record with the greatest effective date not after it. | `REQ-PAY-0001` |
-| `AC-PAY-0003` | No compensation value is readable through any HR endpoint or stored on any HR table. | `REQ-PAY-0002` |
+| `AC-PAY-0003` | No **employee** compensation value is readable through any HR endpoint or stored on any HR table. **The salary band is the ruled exception — see the note below.** | `REQ-PAY-0002` |
 | `AC-PAY-0004` | An amount outside the employee's salary grade band is accepted and recorded, and the out-of-band condition is surfaced to the caller. | `REQ-PAY-0006` — **`OD-PAY-0004` RULED opt. 1** — informational |
 | `AC-PAY-0005` | Compensation granted in one company is not readable from another. | `REQ-PAY-0002`, `OD-PAY-0005` |
 
@@ -105,3 +105,28 @@ the criterion itself cites.**
 
 **`TS-PAY-0028` carried the same number and is corrected with it — the count was in two places, so it was
 already going stale in one.**
+
+---
+
+## ⚠ `AC-PAY-0003` clause 2 said more than it meant (corrected 2026-08-31, architect)
+
+**It read *"No compensation value is … stored on any HR table"*, and as literally worded it is FALSE.**
+
+**Measured over the mechanism rather than by name: the entire HR domain declares `decimal` in exactly one
+file. `SalaryBand.MinimumAmount`, `.MidpointAmount` and `.MaximumAmount` are the only monetary properties
+in HR, owned by `SalaryGrade` through its band. No `Amount`, `Salary`, `Pay`, `Rate` or `Wage` property
+exists on any other HR type.**
+
+⚠⚠ **So HR does store amounts, and it is supposed to. `DEC-POS-0023` draws the line the criterion meant:
+a band is a STRUCTURAL definition of what a JOB pays, not a record of what a PERSON is paid.** The clause
+is corrected to say *employee* compensation, which is what it has always been enforcing.
+
+**Why this matters beyond the wording: a criterion that is false as read invites two bad outcomes** — a
+test written to its letter fails against correct code and gets "fixed" by deleting the salary band, or the
+clause is quietly ignored and stops guarding anything at all.
+
+⚠ **And the guard behind it was narrower still.** `No_position_command_carries_a_compensation_value_or_headcount`
+inspects POSITION MUTATION COMMANDS only: a future `Employee.BaseSalary` property would pass it — wrong
+type, wrong package, not a command. **The mechanism-shaped guard, walking the HR domain's declared
+properties and allowing the band by name with `DEC-POS-0023` cited, is the one that catches what this
+criterion exists to prevent.**

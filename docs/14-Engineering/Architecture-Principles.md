@@ -2514,6 +2514,49 @@ within an hour of writing that rule down.**
 on a hypothesis, spend the one search that would refute it.** A refuted hypothesis costs a minute; a
 believed one costs the wait, and then costs again when the clean result is read as evidence of safety.
 
+## Assert the exclusions, or they are re-derived as suspected defects
+
+**Three reads in a module deliberately carry no company predicate: the chart of accounts is tenant-level by
+ruling, and the entity has no company column at all.** ⚠ **They were nearly reported as a cross-company
+leak, and were saved by one check.**
+
+**A silent exclusion has no evidence attached to it.** The next reader sees a guard applied in five places
+and absent in three, and the natural conclusion is the wrong one — **and the natural remedy for the wrong
+conclusion is to add a predicate to correct code.**
+
+⚠⚠ **So assert the exclusion positively: the second company SEES the shared row.** It costs one case, it is
+two-sided by construction, and it converts *nobody filtered here* into *filtering here is forbidden*, which
+is what the ruling actually says.
+
+### A comment that explains a decision does not decay like one that states a measurement
+
+**The type carried a comment saying exactly why it is tenant-owned and not company-owned, ending: *a reader
+who sees only the absent `CompanyId` will not see that difference, which is why it is stated here*.** **It
+worked, on the first reader who needed it.**
+
+**Set against the same day's comments that had gone stale, stated a measurement that was no longer true, or
+promised a distinction the code did not make** — ⚠ **the difference is that this one explains a DECISION and
+its consequence.** A decision's rationale stays true while the decision stands; a description of the world
+is true until somebody commits.
+
+## Count the sites, not the methods
+
+**Six methods applied one guard, and it looked like one risk. There are five sites: two shared helpers, and
+three hand-written copies of the same predicate.** ⚠ **A test through either helper says nothing whatever
+about the copies.**
+
+**And in the neighbouring module there is no helper at all — every predicate inline.** **The unit that a
+test covers is the SITE, and the unit a reader counts is usually the method.**
+
+### Verify before consolidating, not the other way round
+
+**The obvious response to three copies is to extract them, and it would make the test cheaper.** ⚠ **It also
+changes five sites at once while nothing asserts any of them.**
+
+**Verify first, consolidate after** — and then the tests that exist are exactly what makes the consolidation
+safe. **A refactor undertaken to make testing easier, before the tests exist, spends the safety it is
+trying to buy.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

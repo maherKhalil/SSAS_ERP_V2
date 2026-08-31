@@ -1,6 +1,6 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-**19 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), and three measured on 2026-08-30 (16-18)**. Each
+**20 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), four measured on 2026-08-30 (16-19), and one on 2026-08-31 (20)**. ⚠ **Entry 17 is WITHDRAWN in place and struck: the dispatcher it said did not exist had existed for a month.** Each
 carries **what it is**, **the measured facts**, **what it blocks**, and **the options**. Where the call is
 genuinely the owner's there is no recommendation.
 
@@ -592,6 +592,80 @@ knowing during an incident, and not a finding.
 **Not examined, so that this entry is not read as a clean bill:** whether the upstream limiter is deployed
 (not knowable from the repository), and **MFA on this surface — not looked for either way, and whether it
 should carry a second factor is a product decision rather than a measurement.**
+
+## 20. ⚠ 36% of what this repository asserts never runs before a merge — added 2026-08-31 (T-176, measured)
+
+**What it is.** `DEC-L-007` — your rule — says a gated task with a **green gate merges immediately**. The
+gate at `GATE_SCOPE=TASK` **excludes `Integration.Tests` by design.** Nobody had measured what that
+excludes.
+
+**The measured facts.**
+
+```
+Integration.Tests      3,724 of 10,457 assertions  = 36% of everything the repository asserts
+                       68 files, 772 facts         TASK runs NONE of it
+Release configuration  a different analyzer set    TASK runs Debug only
+                       the gate's own header records the first Release run exposing CA1826
+                       that Debug had never shown
+```
+
+⚠ **The structural reason is sharper than the count: NO TASK SUITE EVER MATERIALISES A REAL SCHEMA.** 144
+`EnsureCreated`/`Migrate` calls in Integration against **eight** across all seven TASK suites — and the TASK
+suites naming `UseSqlServer` point at `"Server=model-only;Database=none"`. **A model is built; a connection is never
+opened.** So **everything the mapping layer MEANS at the database level is asserted in exactly one suite,
+and it is the one the merge gate skips.**
+
+**What TASK does still catch, so this is not overstated:** it builds the whole solution, **so a change that
+fails to compile anywhere — Integration included — reddens it. A compile break cannot merge.** The exposure
+is runtime behaviour and Release-only analysis.
+
+⚠ **THE WORST CONCRETE EXAMPLE, IN THE TREE TODAY.** `EmployeeConfiguration.cs` declares the national-id
+index `.IsUnique().HasFilter("[NormalizedNationalId] IS NOT NULL")`, with a comment citing `BR-HR-0002`.
+**Delete the `.HasFilter(...)` line.** It **compiles** — the filter is a raw T-SQL string literal and
+nothing type-checks it. The model still builds, so **every model-shape assertion still passes.** No TASK
+suite creates a schema, **so no TASK test can observe an index at all. The gate goes green and `DEC-L-007`
+merges it immediately.**
+
+**And the consequence is a data defect, not a cosmetic one.** SQL Server treats NULLs as **equal** in a
+unique index, so without the filter **the second employee recorded with no national id is refused** — and
+national id is optional. ⚠ **Every tenant recording a second employee without one fails at insert.** The
+only assertion in the repository that notices is Integration's
+`A_national_id_is_unique_within_a_company_but_may_be_absent_many_times`.
+
+**Classes only Integration catches**, named from its own test names rather than from categories: scoped
+uniqueness *including absence many times*; `rowversion` optimistic concurrency; migration refusal against
+live data; database-level cascade from a **raw** delete bypassing EF; routing/cutover atomicity under
+concurrent change; schema health surviving connectivity churn.
+
+**What engineering is doing without you, so this decision is smaller than it looks.** ⚠ **The specific hole
+is being closed rather than the rule being changed:** item 177 builds a structural guard — a unique index
+over a nullable column must carry a NULL filter — which runs under TASK and reddens on exactly the deletion
+above. **It also enumerates the 45 unique indexes that carry no filter today, because if any is over a
+nullable column that is a live defect and not a hypothetical one.** Item 178 measures the Release half,
+which was stated from the gate's header and not measured.
+
+**What it blocks.** Nothing today. **It is a standing exposure, and it is the kind that is invisible until
+it is expensive.**
+
+**The options.**
+
+- **Leave `DEC-L-007` as it is.** Defensible once 177 lands: the worst known class becomes TASK-visible,
+  and a compile break already cannot merge. **The residual is whatever nobody has thought to guard.**
+- **Require `GATE_SCOPE=PHASE` for changes touching persistence configuration or migrations** — a narrow
+  rule over the area where TASK is structurally blind, at the cost of a ~24-minute gate on those changes.
+- **Run Integration on every merge.** Closes it completely; makes every merge cost the full run.
+
+⚠ **A related fact you should have even though it is not part of this decision: `Performance.Tests` and
+`UI.Tests` contain ZERO source files** — a `.csproj` each and nothing else, verified excluding build
+output. **Their names assert coverage that does not exist**, and a reader taking the solution's test
+projects as an inventory would conclude this product has performance and UI tests. Backlogged as `B17`.
+
+**Measurement caveats, stated by the window that made it:** assertion counts are `Assert.*` **call sites**
+rather than executed assertions, so a `[Theory]` multiplies at run time — **the comparison between suites
+is fair but no figure is exact** — and the Release half is taken from the gate's own header rather than
+from a Release-only analysis run.
+
+---
 
 ## What is NOT on this list
 

@@ -1106,6 +1106,42 @@ because a diff whose majority lands outside the gate that would be run is a diff
 
 ---
 
+# Principle 26 – What Is Never Materialised Is Never Checked
+
+**A test suite that builds a model but never opens a connection asserts what the mapping SAYS, never what
+it MEANS.** The two are different, and the gap is invisible because both live in the same file and read
+like one statement.
+
+**Measured 2026-08-31.** Across the seven suites the task gate runs, there are **eight**
+`EnsureCreated`/`Migrate` calls; the suites that name `UseSqlServer` point at
+`"Server=model-only;Database=none"`. **Integration alone holds 144.** ⚠ **So everything the persistence
+configuration means at the database level is asserted in exactly one suite — 36% of the repository's
+assertions — and it is the suite the merge gate skips.**
+
+⚠ **THE SHARP EDGE IS THE RAW STRING LITERAL.** A unique index carries
+`.HasFilter("[NormalizedNationalId] IS NOT NULL")`. **Delete that call and it compiles** — the filter is raw
+T-SQL and nothing type-checks it. **The model still builds, so every model-shape assertion still passes;
+no gate-run suite creates a schema, so nothing can observe an index at all.** The gate goes green.
+
+**And the consequence is a data defect.** SQL Server treats NULLs as **equal** in a unique index, so
+without the filter **the second row with a NULL in that column is refused** — for a column that is
+optional by design.
+
+**The rule this yields, which is more general than schemas:**
+
+- ⚠ **Any configuration expressed as a string the compiler does not parse — a SQL filter, a connection
+  fragment, a route template in a literal, a JSON path, a regex — is checked by NOTHING until the thing it
+  configures is actually built.** Type-checking, model-shape tests and architecture guards all pass over
+  it unchanged.
+- **So a structural guard over the CONFIGURATION is worth having even where an integration test already
+  covers the behaviour** — because the structural one runs where the integration one does not.
+
+**What still holds, so this is not overstated:** the task gate builds the whole solution, **so a change
+that fails to compile anywhere cannot merge.** The exposure is runtime behaviour and configuration-only
+analysis, not compilation.
+
+---
+
 # Related Documents
 
 - All accepted ADRs (001-012)

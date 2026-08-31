@@ -1285,6 +1285,32 @@ trials becoming frequent — is what turns a decision not to act into something 
 
 ---
 
+
+## ⚠⚠ Count the IDENTIFIER, not the LAYOUT — 2026-08-31
+
+**The same principle at the level of documents. An identifier is an invariant; the shape it sits in is an
+accident, and counting the shape gives a plausible zero.**
+
+**Fourteen packages record acceptance criteria in at least FOUR layouts.** Table rows in three packages;
+markdown headings in six; ⚠ **bullet lists in three more — FP-002, FP-007 and FP-008, holding 171 criteria
+between them**; and two whose identifiers match none of those patterns at all.
+
+⚠ **A grep for table rows reported *0 criteria* for eleven packages. A grep for headings would have
+reported 0 for the bullet three. Neither errors. Both look like an answer.** And the architect published
+the two-format story one turn before a third and fourth were found — **in the item that existed to warn
+about exactly this.**
+
+**The measurement that works is FORMAT-BLIND: count distinct `AC-[A-Z]+-[0-9]+` identifiers. Layout cannot
+hide an identifier.** **607 across the fourteen packages.**
+
+⚠ **And even the closest layout undercounts: one package has 93 headings and 94 identifiers.** **THE
+LAYOUT CENSUS IS A DIAGNOSIS; THE IDENTIFIER COUNT IS THE MEASUREMENT** — the first tells you why a naive
+number was wrong, the second is the number.
+
+**Generalises past criteria:** wherever a thing has a stable identifier and an unstable presentation —
+requirements, error codes, ADR numbers, test names — **key on the identifier and treat the surrounding
+shape as noise.** ⚠ **If your regex mentions punctuation, you are counting layout.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

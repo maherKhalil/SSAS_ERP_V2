@@ -2,11 +2,40 @@
 package: FP-015
 title: Employee Self Service
 module: Platform + HR + Payroll + Attendance (consumers)
-status: DRAFT — owner decisions unruled; specification only, no code
+status: DRAFT — owner decisions unruled. ⚠ NOT specification-only: the self-service routes shipped 2026-08-28 and nine of fourteen acceptance criteria are pinned by named tests (measured T-206, 2026-08-31)
 version: 0.1
 date: 2026-08-27
 ---
 
+## ⚠⚠ CORRECTED 2026-08-31 (T-205, T-206) — THE *NO CODE* CLAIM WAS TRUE WHEN WRITTEN AND FALSE THE NEXT DAY
+
+**This front matter read `specification only, no code`, dated 2026-08-27.** ⚠ **`GET /me/records`,
+`GET /me/leave-requests` and `GET /me/payslips` are live, and `git blame` dates all three to
+2026-08-28.** **The scope this package defines — *an authenticated identity reading its own records,
+across the modules that deferred it* — shipped the day after the claim was written.**
+
+**This is the second package in this repository whose implementation-status claim was falsified within
+twenty-four hours**, after FP-014's *No code and no schema*. **Both were written deliberately and
+precisely, which is exactly why nobody re-read them.** See **Principle 20**: an implementation-status
+claim is re-derived, never inherited.
+
+⚠ **AND THE CLAIM UNDERSTATED THE PRODUCT TWICE.** Not merely that code exists — **nine of fourteen
+acceptance criteria are pinned by named tests, two of them STRUCTURALLY: the route binds no subject, so
+another employee's records are unreachable rather than forbidden.** **And `AC-SS-0007` is carried by a
+shared `SelfServiceContractRule`, generalised across modules in T-089 — *a self-service route may bind
+FILTERS, never a SUBJECT.*** ⚠ **A package described as specification-only holds a live architectural
+invariant that has already survived one revision**, strengthened when a second self route made
+`bound.Count == 0` untenable.
+
+**The remaining five criteria are UNMEASURED, NOT UNBUILT.** The measurement matched test NAMES, and name
+matching cannot establish an absence; candidate coverage exists in `EmployeeReadScopeArchitectureTests`,
+`ModuleErrorMappingArchitectureTests`, `AttendanceRouteInventoryTests` and `AttendanceArchitectureTests`,
+unverified criterion by criterion. ⚠ **Neither gap is a criterion whose SUBJECT the product lacks —
+termination appears in 32 HR source files and entitlement in 47 — so both are satisfiable today.**
+
+**The owner-decision half of the status is unchanged and still true: the decisions are unruled.**
+
+---
 ## Provenance of the documents added 2026-08-30 — all five re-verified
 
 Five design documents reached this package on 2026-08-30 from a branch opened **2026-08-27** and unmerged for

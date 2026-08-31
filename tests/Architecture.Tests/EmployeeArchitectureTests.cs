@@ -274,6 +274,10 @@ public sealed class EmployeeArchitectureTests
   // Omission at the contract level is the first of two protections; the shared write boundaries are the
   // second. This pins the first, which is the one a reviewer cannot see from the boundary code.
   [Fact]
+  // ⚠ CITED BY B18 pass 12, body-confirmed: clause 1 -- `tenantId`, `companyId`, `branchId`, `employeeNumber` and `status` are ABSENT from the
+  // update contract. Clause 2, that updating a `Terminated` employee is refused, is asserted by
+  // `A_terminated_employee_cannot_have_its_profile_updated`.
+  [Trait("Criterion", "AC-EMP-0007")]
   public void The_update_command_carries_no_ownership_or_status()
   {
     var parameters = typeof(UpdateEmployeeProfileCommand).GetConstructors().Single()
@@ -295,6 +299,13 @@ public sealed class EmployeeArchitectureTests
   // The CREATE command carries no ownership either: tenant, company and branch all come from the trusted
   // execution context, so the question never reaches the boundary.
   [Fact]
+  // ⚠ CITED BY B18 pass 12, body-confirmed: the CONTRACT clause of three criteria at once -- the create command carries no Tenant, Company or
+  // Branch parameter, so none can be "accepted from the route, body, header, claim or query string".
+  // ⚠ PARTIAL for `0002`: its second clause -- a post-creation `TenantId` change is rejected -- is
+  // asserted for Company and TenantUser but NOT for Employee (searched S3, S5, S6).
+  [Trait("Criterion", "AC-EMP-0002")]
+  [Trait("Criterion", "AC-EMP-0003")]
+  [Trait("Criterion", "AC-EMP-0004")]
   public void The_create_command_carries_no_ownership()
   {
     var parameters = typeof(CreateEmployeeCommand).GetConstructors().Single()

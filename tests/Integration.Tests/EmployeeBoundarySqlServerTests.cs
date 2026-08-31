@@ -74,6 +74,9 @@ public sealed class EmployeeBoundarySqlServerTests
   [Fact]
   // ⚠ CITED BY B18, body-confirmed: the criterion is literally titled "V:" and this is test V.
   [Trait("Criterion", "AC-EMP-0020")]
+  // ⚠ CITED BY B18 pass 12, body-confirmed: the STAMPING clause -- an employee created without naming a branch is stamped with the trusted
+  // one, and the authorizer is provably reached. Already cited for `AC-EMP-0020`; one test, two criteria.
+  [Trait("Criterion", "AC-EMP-0004")]
   public async Task V_Creating_a_real_employee_invokes_the_branch_write_authorizer_and_stamps_the_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

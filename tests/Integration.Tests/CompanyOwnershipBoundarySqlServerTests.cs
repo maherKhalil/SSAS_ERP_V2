@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +56,9 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
   // ---- A. AN ADDED COMPANY-OWNED ENTITY IS STAMPED WITH THE TRUSTED COMPANY, and the authorizer is
   // genuinely reached on the real save path — not merely available to be called.
   [Fact]
+  // ⚠ CITED BY B18 pass 12, body-confirmed: the "adopted only from the validated company context" clause: the authorizer is called and the
+  // stored company is the trusted one.
+  [Trait("Criterion", "AC-EMP-0003")]
   public async Task An_added_company_owned_entity_is_stamped_with_the_trusted_company()
   {
     await using var fixture = await CompanyFixture.CreateAsync();
@@ -101,6 +104,9 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
   // Quietly correcting it would hide the attempt, which is the whole reason a supplied value is CONFIRMED
   // rather than trusted.
   [Fact]
+  // ⚠ CITED BY B18 pass 12, body-confirmed: ⚠ the criterion's exact words -- "refused rather than SILENTLY REWRITTEN" -- and the probe
+  // confirms no row was written under the spoofed company.
+  [Trait("Criterion", "AC-EMP-0003")]
   public async Task A_spoofed_company_on_create_is_refused_rather_than_rewritten()
   {
     await using var fixture = await CompanyFixture.CreateAsync();

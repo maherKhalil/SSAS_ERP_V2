@@ -20,6 +20,16 @@ public sealed class PayrollCalculatorTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0008")]
+  // ⚠ CITED BY B18 pass 15, body-confirmed: ⚠ PARTLY PINNED, and the clause names matter here.
+  //
+  // `AC-PAY-0026` is *"a payslip returns the stored lines FOR ONE EMPLOYEE IN ONE RUN, and the lines SUM
+  // EXACTLY to the stated total"*. **This asserts the SUM clause only** -- the lines add to
+  // `TotalEarnings + TotalDeductions` and the net is their difference.
+  //
+  // ⚠ The RETRIEVAL clause belongs to `PayrollReadService.GetPayslipAsync(scope, runId, employeeId)`, and
+  // **nothing constructs that class in any suite** -- so the filter that makes a payslip one employee's
+  // and one run's is pinned by nothing. Recorded rather than implied, and queued as its own item.
+  [Trait("Criterion", "AC-PAY-0026")]
   public void The_payslip_adds_up_because_the_total_is_the_sum_of_rounded_lines()
   {
     // ---- THE INVARIANT THE ROUNDING RULING EXISTS TO PROTECT.
@@ -73,6 +83,15 @@ public sealed class PayrollCalculatorTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0007")]
+  // ⚠ CITED BY B18 pass 15, body-confirmed: BOTH CLAUSES of `AC-PAY-0009`.
+  //
+  // Clause 1 -- *elements are evaluated in ascending calculation order* -- is asserted where the order is
+  // LOAD-BEARING rather than decorative: `PercentageOfGrossToDate` reads the earnings accumulated so far,
+  // so the levy seeing basic + bonus = 5000 and producing 500 is only possible if it ran third.
+  //
+  // ⚠ Clause 2 -- *and a line records the order used* -- is the `Sequence` comparison on the last line.
+  // It is a separate claim from clause 1 and would be missed by a reader who stopped at the amount.
+  [Trait("Criterion", "AC-PAY-0009")]
   public void Elements_evaluate_in_ascending_order_and_a_later_one_sees_an_earlier_result()
   {
     // `PercentageOfGrossToDate` is the behaviour that makes ordering load-bearing rather than decorative:

@@ -60,6 +60,16 @@ public sealed class PayrollArchitectureTests
   // ⚠ CITED BY B18, body-confirmed: ⚠ SUPERSET. The criterion names Payroll and GL specifically; this asserts NO module references
   // Payroll at all.
   [Trait("Criterion", "AC-PAY-0025")]
+  // ⚠ CITED BY B18 pass 15: ⚠ PARTLY PINNED, clause 1 only, and by SUPERSET.
+  //
+  // `AC-PAY-0003` clause 1 is *no EMPLOYEE compensation value is readable through any HR endpoint*. The
+  // three HR assemblies are among the six this theory walks, and an assembly that cannot reference
+  // `SSAS.Payroll.*` cannot expose a compensation type through any endpoint at all.
+  //
+  // ⚠ Clause 2 -- *or stored on any HR table* -- is NOT this test. It is an assembly-reference ban, and a
+  // pay column on an HR table would need no reference to Payroll whatever. See
+  // `No_employee_compensation_value_is_declared_in_hr` for that half.
+  [Trait("Criterion", "AC-PAY-0003")]
   public void No_other_module_learns_about_payroll(string assemblyName)
   {
     // ---- THE OTHER DIRECTION, AND IT IS NOT SYMMETRY FOR ITS OWN SAKE.

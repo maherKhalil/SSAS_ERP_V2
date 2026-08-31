@@ -123,6 +123,10 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
   // THE BLEED TEST (BR-PAY-0010, OD-PAY-0016)
   // ================================================================================================
 
+  // ⚠ CITED BY B18 pass 15, body-confirmed: the criterion verbatim, BOTH halves. A caller holding seven
+  // HR permissions and no payroll permission is refused 403 on compensation, compensation/current AND
+  // payslips -- the theory covers the two nouns the criterion names rather than one of them.
+  [Trait("Criterion", "AC-PAY-0027")]
   [Theory]
   [InlineData("/api/payroll/employees/44444444-4444-4444-4444-444444444444/compensation")]
   [InlineData("/api/payroll/employees/44444444-4444-4444-4444-444444444444/compensation/current")]

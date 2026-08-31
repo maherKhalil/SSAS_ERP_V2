@@ -2403,6 +2403,44 @@ test was ever reached.
 identity is**, and the cheapest identity available is usually the message. **Otherwise the test passes
 whenever anything at all refuses, which on a well-guarded path is nearly always.**
 
+## Test at the level the mechanism operates at
+
+**A guard over 42 entity types looked untestable as a set, because every aggregate assigns its keys and
+invariants through a factory with a different signature. Constructing 42 valid aggregates is a project;
+that is what made a grid of hand-written tests look unavoidable.**
+
+⚠⚠ **The guard never sees an aggregate. It inspects a TRACKED ENTRY.** So the test enumerates the types
+from the model, creates each without running any constructor, attaches it, and moves the owning
+identifier — **and the construction rules that dominated the estimate are simply not the test's problem.**
+
+**Before accepting that a mechanism can only be tested per-instance, ask what it actually reads.** A rule
+that operates on a representation — an entry, a descriptor, a model node, a serialized form — can be tested
+against that representation, and the population then costs one loop.
+
+### A path with several guards can only test the last one if you enter below the others
+
+**Three times in two days a test went green, or would have, because an EARLIER boundary refused first:** a
+missing company context refusing before the tenant guard; an append-only check refusing before the
+ownership check; and, at 35 types, most of them refusing on company-ownership before reaching the rule
+under test.
+
+⚠ **On a well-guarded path, *something threw* is almost always true.** Enter at the layer where the rule
+under test is the first thing that can refuse — here a test-only context on the base class — **or assert the
+refusal's identity so that the wrong guard is a failure rather than a pass.** Both were needed: the plant
+that excluded one type failed with a DATABASE error, and only the message assertion turned that into red.
+
+## A restore restores to the baseline, and the baseline is not your work
+
+**A plant script broke the code, ran the test, and restored the file — to HEAD. The uncommitted fix the
+plant existed to validate went with it.** ⚠ **The next plant's *anchor matched nothing* abort is the only
+reason anybody noticed; otherwise the run would have measured ORIGINAL code and the result file would have
+described a fix that was no longer in the tree.**
+
+**The rule — stage the file before planting — was already written down, and had been applied to test files
+and not to the source fix.** ⚠⚠ **A rule adopted in one lane and not carried across is the same failure as
+a fix applied at one of two sites sharing a mechanism**, and it is quiet in the same way: the lane where it
+was applied keeps working, so nothing signals the lane where it was not.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

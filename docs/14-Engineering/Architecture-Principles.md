@@ -2351,6 +2351,58 @@ debugging a permissions problem is otherwise sent to grant the wrong thing. Fix 
 suite describe reality, converts a defect into a requirement — and the next person to fix it will have to
 argue with a green test.
 
+## Membership in a rule is decided by its premise, not by a signature that resembles it
+
+**A population was built by searching for methods named `Activate` and `Deactivate`. It was wrong in both
+directions — two members had one method and not the other, two more were missed — and the deeper error was
+not the pattern.**
+
+**The rule was *no separate reactivate operation exists*, and its stated reasoning is that a created entity
+is ALREADY ACTIVE.** ⚠ **An entity created in a pending state, carrying all three methods, is CORRECT to
+have a reactivate: its premise is false, so the conclusion does not apply to it.** A signature search cannot
+see that, and a signature search is what most population questions start as.
+
+⚠⚠ **And matching the SHAPE of a rule is not membership in it.** One aggregate matched exactly — created
+active, no reactivate — and is still out, because its activation methods are deliberately unconditional and
+its package's criteria say nothing about lifecycle. **Where the shape fits and no rule claims it, the
+missing thing is a CRITERION, not a test.**
+
+### A correction is a claim like any other
+
+**The correction to that population was itself incomplete in both halves.** ⚠ **Re-running the enumeration
+is cheap and it is the only thing that settles it; accepting a correction because it corrects YOUR error is
+the same deference that let the original stand.**
+
+## The gap can be a structural class rather than a list of names
+
+**A guard applied to an interface with 42 declaring types, three of which were asserted. The obvious remedy
+is a grid: 39 more tests.**
+
+⚠⚠ **The 42 divide into 26 aggregate roots and 16 CHILD entities, and all three asserted types are roots. A
+guard that walked only roots would pass every one of them — and every further per-type test drawn from that
+same class.** **The risk was never per-type. It was one `if`, one class, one test on a member of the class
+nobody had tested.**
+
+**So before filling a grid, ask what the members have in common that could make the whole column pass at
+once.** ⚠ **A per-member sweep over a population that shares a failure mode measures the same thing N times
+and finds nothing the first member did not.**
+
+### And choose the member that isolates the mechanism
+
+**The child chosen was the one NOT covered by a second guard.** On the others, an append-only check runs
+first and the save is refused for a different reason — **the test would have gone green while proving
+nothing about the rule it names.**
+
+## A test of WHICH mechanism refuses must assert the refusal's identity, not its type
+
+**A test asserting only that an operation throws went green on the wrong guard.** Three guards sit on the
+path; the arrangement was missing a company context, so the company guard refused before the guard under
+test was ever reached.
+
+⚠ **In a test whose entire subject is which mechanism fires, the exception TYPE is not the assertion — the
+identity is**, and the cheapest identity available is usually the message. **Otherwise the test passes
+whenever anything at all refuses, which on a well-guarded path is nearly always.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

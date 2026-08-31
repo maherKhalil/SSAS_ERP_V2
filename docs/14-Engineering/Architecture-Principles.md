@@ -2187,6 +2187,65 @@ and the class it warns against, a new refusal shipping detail by default, has st
 **Write the licence as the RULE that makes it safe, not as the MEASUREMENT that happened to hold when it
 was written.** A rule is checkable forever; a measurement is true until somebody commits.
 
+## An absence at file level is visible only as an asymmetry between peers
+
+**A guard existed in two modules, four times over, and in a third module the test FILE did not exist.** ⚠
+**No search over the test tree can find that.** A name search reads names, a citation search reads
+citations, and coverage measures lines that were written — **none of them has anything to read where
+nothing was written.**
+
+**The only instrument that reaches it is a comparison across peers: enumerate the implementations of a
+mechanism, then ask which of them has a test at all.** ⚠ **Absence shows up as an ASYMMETRY, never as a
+failure.**
+
+### And the module that argued hardest had asserted the least
+
+**The untested module is the one whose own source comment states the stakes most strongly — that elsewhere
+a forgeable scope is an authorization defect, and here it is a personal-data breach.**
+
+⚠ **The strength of a stated rationale is not evidence of coverage, and it may be worse than neutral:
+writing the paragraph feels like discharging the duty.** **Where a comment argues hardest for a guard, check
+hardest for the guard.**
+
+### Defence in depth hides which layer is actually doing the work
+
+**An inner read applied both the authorized set and the caller's requested company, which alone narrows to
+the empty set — an empty success, not a refusal, and precisely what the module's own comment argues
+against. It is harmless only because an outer resolver rejects the request first.**
+
+⚠ **So the refusal has two guards and the degradation has none.** **When two layers cover one behaviour,
+the test worth writing is the one that pins the layer that would be WRONG on its own** — because that is
+the layer a future refactor removes without noticing.
+
+## A silent no-match makes a plant look like proof of vacuity
+
+**Three plant attempts matched nothing and three test runs reported green. Read as *the plant did not redden
+the test*, that is evidence the new assertions are worthless — and the correct response to it would have
+been to delete them.**
+
+⚠ **The cause was mechanical: newline-delimited anchors against a file stored with carriage returns.
+Single-line anchors had worked all day; the first MULTI-LINE anchor silently matched nothing.**
+
+**Two habits saved three real assertions, and both are nearly free:**
+
+- ⚠ **The edit script ABORTS unless it matches exactly once.** A script that used a forgiving replace and
+  shrugged would have reported success while changing nothing.
+- ⚠ **The instrument's output was read before the experiment's.** Both lines were on the same screen; the
+  ORDER they were read in decided the outcome.
+
+**A stale binary makes a plant look like it PASSED. A silent no-match makes a plant look like it PROVED
+NOTHING. Both are quiet, and both die to the same habit: confirm the instrument acted before believing what
+it reported.**
+
+### A plant that does not compile is void
+
+**Where the deliberate break cannot be made to build — it would require changing a signature the test's own
+helper depends on — there is no plant to run, and pretending otherwise produces a green run that means
+nothing.**
+
+**Put the control inside the test instead.** Here a negative assertion is paired with a positive one over
+the same reflection query, so a query that returns nothing FAILS rather than passing.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

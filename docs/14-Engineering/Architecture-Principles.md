@@ -1561,6 +1561,38 @@ criterion's own form.**
 that is exactly as strong as the thing it pins is correct; making it stronger would be asserting something
 nobody specified.** **Record the limit against the specification, and leave the test alone.**
 
+
+## A test can assert the right rule in the wrong STATE
+
+**Three near-misses in this sweep were about identity — a heading that named a different subject, a synonym
+that meant the opposite, a test of another aggregate entirely. The fourth is subtler and harder to see.**
+
+**A criterion required that a terminated employee's national ID stays reserved. A national-ID uniqueness
+test already existed and refused a duplicate.** ⚠ **It uses TWO LIVE EMPLOYEES — so it establishes the
+constraint between actives and CANNOT SEE WHETHER TERMINATION RELEASES THE VALUE.** Same subject, same
+rule, **a state the criterion cares about and the test never reaches.**
+
+⚠ **And releasing it is the PLAUSIBLE mistake:** a terminated row looks like one that no longer needs its
+identifiers. **The criterion exists because someone might reasonably do the wrong thing — and the existing
+test would have stayed green while they did.**
+
+**So when matching a test to a criterion, check the STATE the criterion is about, not only the rule it
+names.** A rule proven in one state says nothing about another.
+
+## Design the test so a pass can only come from the thing under test
+
+**The new test creates an employee, terminates it, then creates a second with a DIFFERENT employee number
+and the SAME national ID.** ⚠ **The differing number is the whole design: it makes the national ID the only
+thing that can refuse the create, so a pass cannot come from the number constraint.**
+
+**Without that, a green proves *something* refused the insert and leaves you to guess which.** **A test
+that can pass for two reasons has measured neither.**
+
+⚠ **And take the plant from the failure mode rather than inventing one:** here it was `&& Status !=
+Terminated` added to the production existence check — **literally the mistake the clause exists to catch.**
+**A plant that is the real error proves the test guards the real error; a plant invented for the occasion
+proves only that the test can fail.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

@@ -3022,6 +3022,38 @@ an editor** — the lock covers the database, the ports, the artefacts, and not 
 **A tool that can be modified while it runs should snapshot itself and execute the copy.** One line at
 startup removes the entire class, and it costs a file copy.
 
+## Audit identifiers by machine; a recollection is not an instrument
+
+**Two records were checked for invented test names. One author re-read the names they REMEMBERED
+publishing and found none. The other extracted every published identifier and diffed it against the source,
+and found four wrong out of forty-two.**
+
+⚠⚠ **The memory check cannot work, and not because memory is weak.** The identifiers that are wrong are
+precisely the ones that read perfectly — a plausible completion or a small mutation survives rereading by
+construction, because it is what the reader expects to see.
+
+**The check is one pass: pull every backticked identifier out of the published record, concatenate the
+source tree, and report the ones that do not appear verbatim.** ⚠ **It needs no judgement, no recollection,
+and no knowledge of which entries were risky.**
+
+### Two ways to publish a name that does not exist
+
+**COMPLETION.** A search's output is truncated mid-token and the writer finishes it from expectation. The
+result is adjacent and can reverse a finding — `_write` supplied as `_read`.
+
+**MUTATION.** The writer capitalises part of an identifier for emphasis, inside the quoting that promises it
+is verbatim. The name still reads correctly and no longer matches anything.
+
+⚠ **Both produce a citation a reader greps and does not find, which is the only property that matters.**
+**Inside the quoting, verbatim; put the emphasis outside it.**
+
+### And a name that matches nothing is unusable whatever the cause
+
+**The audit surfaces renamed tests and invented ones identically, and that is a feature.** A published
+identifier that resolves to nothing cannot be checked by the next reader — **whether it was wrong when
+written or right until somebody renamed the test is a separate question, and the record is broken either
+way.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

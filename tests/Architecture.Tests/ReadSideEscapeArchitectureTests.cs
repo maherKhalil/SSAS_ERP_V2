@@ -36,7 +36,8 @@ public sealed class ReadSideEscapeArchitectureTests
     typeof(SSAS.Attendance.Infrastructure.Persistence.WorkingCalendarConfiguration).Assembly,
     typeof(SSAS.GL.Infrastructure.Persistence.AccountConfiguration).Assembly,
     typeof(SSAS.Payroll.Infrastructure.Persistence.PayElementConfiguration).Assembly,
-    typeof(SSAS.Platform.Infrastructure.Identity.ActionTokenService).Assembly
+    typeof(SSAS.Platform.Infrastructure.Identity.ActionTokenService).Assembly,
+    typeof(SSAS.BuildingBlocks.Infrastructure.Persistence.DomainEventDispatcher).Assembly
   ];
 
   private static readonly Assembly[] Application =
@@ -45,7 +46,8 @@ public sealed class ReadSideEscapeArchitectureTests
     typeof(SSAS.Attendance.Application.Approval.LeaveApprovalRouter).Assembly,
     typeof(SSAS.GL.Application.Accounts.CreateAccountCommandHandler).Assembly,
     typeof(SSAS.Payroll.Application.Compensation.RecordCompensationCommandHandler).Assembly,
-    typeof(SSAS.Platform.Application.Authentication.AuthenticationPolicy).Assembly
+    typeof(SSAS.Platform.Application.Authentication.AuthenticationPolicy).Assembly,
+    typeof(SSAS.BuildingBlocks.Application.Abstractions.Identity.ICurrentUser).Assembly
   ];
 
   private static readonly string[] ReadSideSuffixes = ["ReadService", "DirectoryService", "RosterService"];
@@ -61,6 +63,26 @@ public sealed class ReadSideEscapeArchitectureTests
     "EmployeeRosterService",
     "PositionReadService"
   ];
+
+  // ==================================================================================================
+  // ⚠ CONTROL THREE: THE ASSEMBLY LIST ABOVE COVERS EVERY PRODUCT ASSEMBLY THE TEST BUILD DEPLOYS.
+  // ==================================================================================================
+  //
+  // The two lists above are hand-written. A new module's assembly would not appear in them, nothing would
+  // fail, and every assertion in this file would stay green over a product it had stopped covering.
+  //
+  // ⚠ A FLOOR CANNOT CATCH THIS. `The_read_side_population_is_not_empty_and_contains_what_the_census_found`
+  // counts read services across the whole union -- a new module contributing three of them, all unscanned,
+  // leaves the count above its floor. **A floor over a union cannot see one member of the union collapse.**
+  // Only a comparison against an independently derived list of assemblies can.
+  [Fact]
+  public void The_scanned_assemblies_cover_every_deployed_application_and_infrastructure_assembly()
+  {
+    var deployed = DeployedProductAssemblies.NamesWithSuffix(".Application", ".Infrastructure");
+    var scanned = DeployedProductAssemblies.NamesOf(Infrastructure.Concat(Application));
+
+    Assert.Empty(deployed.Except(scanned, StringComparer.Ordinal));
+  }
 
   // ---- THE GUARD.
   [Fact]

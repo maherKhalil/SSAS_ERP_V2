@@ -48,6 +48,9 @@ public sealed class CompensationDomainTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0003")]
+  // ⚠ CITED BY B18, body-confirmed: the earlier record keeps its amount AND its effective date after a second is recorded -- "does not
+  // alter any prior record".
+  [Trait("Criterion", "AC-PAY-0001")]
   public void Recording_a_change_leaves_every_earlier_record_intact()
   {
     // The whole reason a past run can be reproduced. There is no update path to test, and that absence is
@@ -85,6 +88,9 @@ public sealed class CompensationDomainTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0004")]
+  // ⚠ CITED BY B18, body-confirmed: all three clauses: the amount is STORED, `WasOutsideGradeBand` is true, and an observation is
+  // surfaced -- "accepted and recorded, and the out-of-band condition is surfaced to the caller".
+  [Trait("Criterion", "AC-PAY-0004")]
   public void An_out_of_band_amount_is_recorded_and_warned_never_refused()
   {
     // The band is INFORMATIONAL. Promoting it to a control would change what `DEC-POS-0027` said a band is,

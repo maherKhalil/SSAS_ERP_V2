@@ -16,6 +16,8 @@ public sealed class PayrollRunLifecycleTests
 
   [Fact]
   [Trait("Decision", "REQ-PAY-0010")]
+  // ⚠ CITED BY B18, body-confirmed: the first half -- `Payroll.RunNotApprovable`.
+  [Trait("Criterion", "AC-PAY-0015")]
   public void A_draft_run_cannot_be_approved_without_being_calculated()
   {
     var run = PayrollTestData.Run(Guid.NewGuid());
@@ -30,6 +32,8 @@ public sealed class PayrollRunLifecycleTests
 
   [Fact]
   [Trait("Decision", "REQ-PAY-0010")]
+  // ⚠ CITED BY B18, body-confirmed: the second half -- `Payroll.RunNotPostable`. The criterion names both gates, so it takes both tests.
+  [Trait("Criterion", "AC-PAY-0015")]
   public void A_calculated_run_cannot_be_posted_without_being_approved()
   {
     var run = Calculated();
@@ -42,6 +46,9 @@ public sealed class PayrollRunLifecycleTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0011")]
+  // ⚠ CITED BY B18, body-confirmed: `Assert.Single(run.DraftLines)` after a second calculation -- "replaces the previous line set
+  // ENTIRELY", which a mere success assertion would not establish.
+  [Trait("Criterion", "AC-PAY-0014")]
   public void Recalculation_is_free_before_approval_and_replaces_the_whole_line_set()
   {
     var run = Calculated();

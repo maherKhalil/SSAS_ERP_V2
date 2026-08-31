@@ -6,6 +6,8 @@ namespace SSAS.Payroll.Tests.Elements;
 public sealed class PayElementDomainTests
 {
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: no writable code property exists -- asserted over the TYPE, so no call site can be the exception.
+  [Trait("Criterion", "AC-PAY-0007")]
   public void An_element_code_cannot_be_changed_after_creation()
   {
     // Following `Account`'s precedent rather than re-deriving it: a code is a business identifier that pay
@@ -109,6 +111,9 @@ public sealed class PayElementDomainTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ the refusal message contains "HOUSING", the element's own code -- which is the criterion's
+  // "the response NAMES the element" half, not merely that it refused.
+  [Trait("Criterion", "AC-PAY-0021")]
   public void An_unmapped_element_names_itself_in_the_refusal()
   {
     // `OD-PAY-0012` put the mapping check at APPROVAL, and a refusal saying only "a pay element is unmapped"

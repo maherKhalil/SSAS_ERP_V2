@@ -1665,6 +1665,43 @@ the one that exists, and asserting something nobody specified.**
 this cites one test for two criteria. **Neither is a compromise. Both are refusals to manufacture a shape
 the code does not have, in order to make a mapping look tidier than the thing it maps.**
 
+## A residue is evidence about the search, not about what is left
+
+**A sweep set aside the criteria it could not resolve and called them the residue. The next pass resolved
+six of seven, at the highest rate of the whole sweep.** They were never the hard remainder; **they were the
+part a wrong search order had skipped.**
+
+⚠ **The word does the damage. Calling a leftover set the *residue* attributes its difficulty to the items,
+when the only thing actually demonstrated is that one method failed on them.** A forecast built on that
+word then predicts the tail will be slow, and cannot see that the tail is slow only while the method is.
+
+**So when a remainder resists, change the search before concluding anything about the remainder.** Here the
+change was a ruling written the previous day - start from the architecture suite - and applying it for the
+first time resolved three of the seven in one command.
+
+### And withdrawing a model needs a stopping rule, or the split becomes unfalsifiable
+
+**The same forecast was refuted twice before and survived both times by keeping its mechanism and dropping
+its consequence.** That is the honest disposal, and it is recorded a section above. **On the third
+refutation it was withdrawn entirely - mechanism included - because a model that gets a fresh consequence
+after every failure is being fitted to the number rather than tested against it.**
+
+⚠ **A prediction has two halves that can fail separately; that licenses ONE careful split, not a standing
+right to keep the half you like.** **Decide in advance how many corrections the model gets, or it will
+never be wrong about anything.**
+
+## A pointer only counts in the direction somebody reads
+
+**Two criteria named their own tests in prose: *verified by executable architecture guards*, *the two
+architecture guards assert*. The tests named no criterion at all.**
+
+⚠ **The link existed and was still useless, because it runs from the specification to the test, and the
+question people actually hold is the other one: given this test, what does it prove somebody promised?**
+
+**This is the strongest form of the citation case so far, precisely because somebody TRIED.** The failure is
+not forgetfulness. **A one-way link looks like a link from the side that has it, so the missing direction is
+invisible to exactly the person who would otherwise add it.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

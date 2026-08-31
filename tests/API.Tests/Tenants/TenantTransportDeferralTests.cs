@@ -44,7 +44,12 @@ public sealed class TenantTransportDeferralTests(HostWebApplicationFactory facto
   private const string PlatformPrefix = "/api/platform";
 
   [Fact]
-  [Trait("Decision", "AC-TEN-0020")]
+  // ⚠ CITES `AC-TEN-0092`, NOT ONLY `AC-TEN-0020` (item 213). `0020` is the milestone SCOPE statement and
+  // is broad; **`0092` is the criterion this test actually pins** -- *"`Platform.Tenants.View`/`Manage`/
+  // `Lifecycle` HTTP endpoints remain Phase 5 and are not exposed merely because..."*. It was uncited until
+  // item 213 read FP-003's criteria and found the guard and the criterion had been written independently.
+  [Trait("Acceptance", "AC-TEN-0092")]
+  [Trait("Acceptance", "AC-TEN-0020")]
   public void The_deferred_tenant_registry_transport_is_not_mapped()
   {
     var mapped = Routes()
@@ -85,7 +90,7 @@ public sealed class TenantTransportDeferralTests(HostWebApplicationFactory facto
   // `AuthenticationEndpointRouteBuilderExtensions`, `CompanyEndpointRouteBuilderExtensions` and
   // `TenantUserEndpointRouteBuilderExtensions`.
   [Fact]
-  [Trait("Decision", "AC-TEN-0020")]
+  [Trait("Acceptance", "AC-TEN-0092")]
   public void The_enumeration_sees_the_platform_transports_that_do_exist()
   {
     var patterns = Routes()

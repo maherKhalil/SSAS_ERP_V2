@@ -256,6 +256,25 @@ there; **the single collective statement is the architect's to write.**
 and documentation are the architect's. **A docs-shaped item is pushed back, not done.** When something
 found while coding belongs in a document, **report the finding and the architect writes it.**
 
+## ⚠ Session state 2026-09-01 (early) — FOUR ROWS OPEN, ALL BLOCKED ON ONE THING
+
+**239, 240, 241 and 242 are open and NONE is abandoned. THE GATE'S MEMORY FLOOR HAS NOT CLEARED SINCE
+~00:50: readings from both windows range 1296–1957 MB against a floor of 2048, and the two largest
+reclaimable blocks are the owner's browser and its embedded webviews.** ⚠ **Our own eleven `claude`
+processes hold ~1.2 GB and cannot be returned without ending the sessions doing the work.**
+
+**WHAT IS DONE AND UNVERDICTED: a full PHASE run passed all sixteen legs at 00:40 and then died with no
+verdict, because the architect edited `scripts/gate.sh` WHILE IT WAS RUNNING.** **The counts survive —
+Debug and Release identical, `Integration 862` — and `test-baseline.txt` was never written.**
+
+**WHAT IS READY THE MOMENT A GATE GOES GREEN: passes 16–18 name 26 `DEP` criteria a gated pass can cite
+IMMEDIATELY, and 7 that cannot be cited as they stand.** ⚠ **NO CITATION WAS APPLIED, deliberately — a
+`[Trait]` is a test-file edit and every test edit has gone through a green gate first.**
+
+**STILL UNSEARCHED: `DEP` groups G, H and J — employee membership, authorization, concurrency/cutover.**
+
+---
+
 ## Session ended 2026-08-31 (late) — where to pick up
 
 **Verified, not inferred: working tree clean, nothing unpushed, `HEAD` and `origin/ClaudeBranch` both at

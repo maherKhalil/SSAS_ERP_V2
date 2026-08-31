@@ -2883,6 +2883,12 @@ covers the new package automatically, with nobody touching it.**
 **Prefer derivation to enumeration wherever the model can answer.** Where a list is genuinely necessary,
 **assert its SIZE against a derived count**, so that adding a type fails the guard rather than escaping it.
 
+⚠⚠ **AND THE PREFERENCE IS NOW A MEASUREMENT RATHER THAN A TASTE.** In one package, four criteria were
+written on a sibling package's model. **Three of them name guards that hand-list their subjects, and none of
+those three travelled. The fourth names a guard that DERIVES its population from the composed model, and it
+covered the new package without anybody touching it.** **Three against one, in the same specification, on the
+same day.**
+
 ### And a partition needs its total asserted even when both halves are hand-written
 
 **Two guards divided a set between them: one asserting a property of two members, the other asserting its

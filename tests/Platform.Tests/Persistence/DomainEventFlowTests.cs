@@ -159,6 +159,66 @@ public sealed class DomainEventFlowTests
     Assert.Single(untracked.DomainEvents);
   }
 
+  // ==================================================================================================
+  // ⚠ A CONSUMER THAT THROWS AFTER THE COMMIT HAS ALREADY SUCCEEDED (item 172).
+  // ==================================================================================================
+  //
+  // `EfUnitOfWork.CommitAsync` saves, commits, THEN dispatches -- all inside one `try`. A consumer that
+  // throws therefore reaches a `catch` that calls `RollbackAsync` on an ALREADY-COMMITTED transaction.
+  //
+  // These tests establish what actually happens, rather than what the shape suggests. The second is the
+  // one that matters: the data is written and the caller is told the command failed.
+  [Fact]
+  public async Task A_consumer_that_throws_after_commit_loses_its_exception_to_a_rollback_failure()
+  {
+    await using var scope = await FlowScope.CreateAsync(throwOnDispatch: true);
+    var transaction = await scope.UnitOfWork.BeginTransactionAsync();
+    scope.Context.Set<FlowProbe>().Add(FlowProbe.Announcing("committed then thrown"));
+    await scope.UnitOfWork.SaveChangesAsync();
+
+    var fromCommit = await Assert.ThrowsAnyAsync<Exception>(() => transaction.CommitAsync());
+
+    // ⚠ NOT the consumer's exception. The `catch` calls `RollbackAsync` on the already-committed
+    // transaction, THAT throws, and the provider error replaces the consumer failure before `throw;` is
+    // ever reached. Asserted on shape rather than on the SQLite wording, which is provider-specific.
+    Assert.DoesNotContain("consumer failed after commit", fromCommit.Message, StringComparison.Ordinal);
+    Assert.Contains("transaction", fromCommit.Message, StringComparison.OrdinalIgnoreCase);
+  }
+
+  // ---- ⚠ AND DISPOSING THE TRANSACTION THEN THROWS A SECOND TIME, MASKING THE FIRST.
+  // `CommitAsync` threw before setting `completed`, so `DisposeAsync` believes the transaction is still
+  // open and rolls back -- but `EfUnitOfWork`'s `finally` has already cleared its field, so the rollback
+  // is refused. In an `await using` block this exception REPLACES whatever the body was propagating.
+  [Fact]
+  public async Task Disposing_after_that_failure_throws_again_and_masks_the_first_exception()
+  {
+    await using var scope = await FlowScope.CreateAsync(throwOnDispatch: true);
+    var transaction = await scope.UnitOfWork.BeginTransactionAsync();
+    scope.Context.Set<FlowProbe>().Add(FlowProbe.Announcing("masked"));
+    await scope.UnitOfWork.SaveChangesAsync();
+    await Assert.ThrowsAsync<InvalidOperationException>(() => transaction.CommitAsync());
+
+    var fromDispose = await Assert.ThrowsAsync<InvalidOperationException>(
+      async () => await transaction.DisposeAsync());
+
+    Assert.Equal("The transaction is no longer active.", fromDispose.Message);
+  }
+
+  // ---- ⚠ AND THE COMMIT STUCK. THE CALLER SAW TWO FAILURES AND THE ROW IS IN THE DATABASE.
+  [Fact]
+  public async Task The_row_is_committed_even_though_the_caller_saw_a_failure()
+  {
+    await using var scope = await FlowScope.CreateAsync(throwOnDispatch: true);
+    var transaction = await scope.UnitOfWork.BeginTransactionAsync();
+    scope.Context.Set<FlowProbe>().Add(FlowProbe.Announcing("durable"));
+    await scope.UnitOfWork.SaveChangesAsync();
+    await Assert.ThrowsAsync<InvalidOperationException>(() => transaction.CommitAsync());
+
+    var rows = await scope.Context.Set<FlowProbe>().AsNoTracking().CountAsync();
+
+    Assert.Equal(1, rows);
+  }
+
   private sealed class FlowScope : IAsyncDisposable
   {
     private readonly SqliteConnection connection;
@@ -183,7 +243,9 @@ public sealed class DomainEventFlowTests
 
     public EfUnitOfWork<PlatformDbContext> UnitOfWork { get; }
 
-    public static async Task<FlowScope> CreateAsync()
+    public Exception? Observed { get; set; }
+
+    public static async Task<FlowScope> CreateAsync(bool throwOnDispatch = false)
     {
       var connection = new SqliteConnection("Data Source=:memory:");
       await connection.OpenAsync();
@@ -201,7 +263,7 @@ public sealed class DomainEventFlowTests
       await context.Database.ExecuteSqlRawAsync(
         "CREATE TABLE FlowProbes (Id TEXT NOT NULL PRIMARY KEY, Note TEXT NOT NULL);");
 
-      return new FlowScope(connection, context, new RecordingConsumer());
+      return new FlowScope(connection, context, new RecordingConsumer { Throws = throwOnDispatch });
     }
 
     public async ValueTask DisposeAsync()
@@ -254,6 +316,8 @@ public sealed class DomainEventFlowTests
   {
     public List<(DomainEvent Event, DomainEventDispatchMetadata Metadata)> Received { get; } = [];
 
+    public bool Throws { get; init; }
+
     public Task HandleAsync(
       DomainEvent domainEvent,
       DomainEventDispatchMetadata metadata,
@@ -261,7 +325,9 @@ public sealed class DomainEventFlowTests
     {
       Received.Add((domainEvent, metadata));
 
-      return Task.CompletedTask;
+      return Throws
+        ? Task.FromException(new InvalidOperationException("consumer failed after commit"))
+        : Task.CompletedTask;
     }
   }
 

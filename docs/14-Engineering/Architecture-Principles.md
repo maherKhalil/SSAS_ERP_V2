@@ -574,6 +574,33 @@ hiding the prose-blindness behind it**, because the old pattern could not match 
 **And when a new control fails on its first run, the prior is that the CONTROL is right.** It was written
 against the requirement; the pattern was written against whatever its author had in mind that day.
 
+
+## ⚠ Second instance, 2026-08-31 — and the better question is not whether the list is floored
+
+Fourteen files in `tests/` build an assembly, project or module list **by hand.** Asking *"is it floored?"*
+sorted them badly. ⚠ **THE QUESTION THAT SORTS THEM IS: WOULD A NEW MODULE BE MISSING FROM THIS LIST?**
+Most are single-area by subject, or derive their population from types rather than a named array. **Three
+are module-shaped** — per-module API assemblies, per-module enablement types, per-module Application and
+Infrastructure assemblies — **and all three carried floors over their TYPE populations while none was
+cross-checked against the assembly set.**
+
+⚠ **A floor cannot catch this, and that is the whole point.** The read-side guard's floor counts across the
+**whole union**, so a new module contributing three unscanned services **still clears 20.** **A FLOOR OVER A
+UNION CANNOT SEE ONE MEMBER OF THE UNION COLLAPSE** — it is not merely half blind, it is blind in exactly
+the direction the product grows.
+
+**The known positive was real rather than planted, which is the strongest kind.** A control comparing the
+scanned list against the assemblies the build actually ships **failed on its first run**, naming two
+assemblies the guard had never scanned. Its author's account: *"I wrote that list by naming the five
+modules I was thinking about"* — **the failure the item existed to close, found in the guard that named
+it.**
+
+⚠ **And the source of truth matters more than the comparison.** The check reads the **build output
+directory**, not `GetReferencedAssemblies()`. **The compiler omits a reference whose types are never used**,
+so a project referencing a new module but touching none of its types would report it missing — **and the
+check would agree with the stale list for the wrong reason.** A control that can be satisfied by the same
+defect it tests for is worse than none.
+
 # Principle 16e – A Load-Bearing Control Must Say What It Holds Up
 
 **A control can exist, work, and still be one refactor from deletion — because nothing records that anything
@@ -984,6 +1011,45 @@ that excludes the wrong files produces a smaller, entirely correct answer to a q
 different reason: read services hand over DTOs, not aggregates.** **A false premise under a true
 conclusion is the more dangerous of the two, because nothing fails until someone reasons from the
 premise** — and it was caught only by an independent check aimed at a different question.
+
+# Principle 24 – Enumerate the Mechanism, Not the Names
+
+**A search for names cannot be complete, because you cannot enumerate the names you did not think of.
+A search for the MECHANISM can be, because a language offers a finite number of ways to do the thing.**
+
+**The case.** The question was which of 61 interface members are reached without a compile-time reference —
+by reflection, container resolution or serialization. **Searching for the members' names was tried and is
+worthless:** `TenantId` matches **2,236** string literals, almost all EF column names in configurations and
+migrations; `CompanyId` 1,188; `EmployeeId` 392. **A name search cannot tell `ICurrentUser.CompanyId` from
+a `CompanyId` column.**
+
+⚠ **Enumerating the MECHANISM closed it in one pass.** `src/` and `tools/` contain **exactly four dynamic
+member-access sites** — a `GetMethod(nameof(...))` on a *private* method of a concrete class, its `.Invoke`,
+and two `JsonElement.GetProperty` calls **which are JSON document lookups, not .NET reflection at all**.
+`InvokeMember`, `CreateDelegate`, `GetMembers`, `GetInterface`: **zero.** **None targets an interface
+member.** The answer is *none*, and it is measured rather than inferred.
+
+**Why the mechanism set is closeable and the name set is not:** the ways to reach a member without naming
+it in code are enumerable from the runtime's API surface. **The things someone might have called a member
+are not.**
+
+⚠ **And a control over a mechanism search must validate the SEARCH, not the thing being searched.** The
+known positive used here was a genuinely reflective private method — **deliberately not one of the 61** —
+because without it *"zero dynamic sites"* is indistinguishable from *"the search looked in the wrong
+place."*
+
+## ⚠ The corollary that caught me: a specified control can have no subject
+
+I required *"validate against a member known to be DI-resolved."* ⚠ **No such member exists, and cannot.**
+**A container resolves TYPES; it never calls interface MEMBERS.** It constructs `Foo` for `IFoo`, and every
+`foo.Bar()` afterwards is an ordinary compile-time reference any probe sees. **"DI-resolved" is a blind
+spot for types and not for members.**
+
+**So the right response to an impossible control is to say the question was wrong, not to approximate it.**
+A control invented to satisfy a specification, over a subject that does not exist, would have passed and
+meant nothing — the vacuity failure arriving through the specification rather than through the code.
+
+---
 
 # Related Documents
 

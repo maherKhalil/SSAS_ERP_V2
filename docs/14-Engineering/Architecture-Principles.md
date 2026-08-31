@@ -1222,6 +1222,40 @@ the final gap, and no rewording supplies one. Say so rather than implying the ru
 
 ---
 
+# Principle 28 – A Fix Belongs at Every Site of the Mechanism, Not at the Site of the Symptom
+
+**When two places share a mechanism and only one of them hurts, the repair goes to the one that hurt.**
+The other keeps the defect, and keeps it *invisibly*, because nobody has a symptom to attach to it.
+
+**The case, and it is this repository doing it to itself, three times.** Two integration tests need the
+same fact: that a database backup is in flight while a permission check runs. One closes that window **by
+construction** — a time-bounded loop and two overlapping competitors, with a comment recording **0 misses
+in 506,102 samples.** The other closes it **by probability**: one competitor, one backup, and 240 MB of
+filler data whose only purpose is to make the backup slow enough to be caught.
+
+⚠ **Both competitors were written in the SAME COMMIT, and one was already a loop while the other was a
+bare one-shot.** A later commit made the loop time-bounded — *a fixed count was an elapsed-time dependence
+hiding inside the loop.* A later one still added the second overlapping competitor. **The one-shot site
+received none of the three.**
+
+**And its own sibling states the diagnosis in prose: *a one-shot competitor turns the test into a race it
+usually loses.*** The knowledge was present, committed, and adjacent for two weeks. **What was absent was
+anyone asking where else the mechanism lived.**
+
+**The check, and it costs one grep:** when you fix something, **name the mechanism rather than the file,
+and find every site of it.** *Where else does this pattern occur?* — asked at the moment of the fix, when
+the mechanism is loaded in your head and never afterwards.
+
+⚠ **The tell that you are about to make this mistake: the fix is easy and obviously correct.** An easy
+fix produces no pause, and the pause is where the question would have been asked. **Every one of the three
+commits above was correct in what it did.**
+
+**Related, and the reason this is its own principle rather than a note under 16d:** union collapse is a
+*measurement* failing to see one member. **This is a REMEDY failing to reach one member — same shape,
+opposite half of the work, and no amount of measuring catches it, because the measurement was never wrong.**
+
+---
+
 # Related Documents
 
 - All accepted ADRs (001-012)

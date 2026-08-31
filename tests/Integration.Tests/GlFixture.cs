@@ -6,6 +6,8 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.GL.Domain.Accounts;
 using SSAS.GL.Domain.Calendar;
 using SSAS.GL.Domain.Journals;
+using SSAS.GL.Application.Permissions;
+using SSAS.GL.Application.Reads;
 using SSAS.GL.Infrastructure.Persistence;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -35,6 +37,10 @@ internal sealed class GlFixture : IAsyncDisposable
 
   public Guid CompanyA { get; } = Guid.NewGuid();
 
+  // The second company exists so a scope authorized for ONE of them can be shown not to reach the other
+  // (item 233). Nothing before it needed one, which is why `CompanyA` was named `CompanyA` and stood alone.
+  public Guid CompanyB { get; } = Guid.NewGuid();
+
   public DateTimeOffset EntryDate { get; } = new(2026, 6, 15, 0, 0, 0, TimeSpan.Zero);
 
   public static async Task<GlFixture> CreateAsync()
@@ -44,7 +50,11 @@ internal sealed class GlFixture : IAsyncDisposable
     return fixture;
   }
 
-  public TenantDbContext CreateContext()
+  public TenantDbContext CreateContext() => CreateContext(CompanyA);
+
+  // The company the WRITE boundary will authorize. Seeding under `CompanyB` needs a context authorized for
+  // `CompanyB`: `ApplyCompanyRulesAsync` refuses the save otherwise, which is the boundary working.
+  public TenantDbContext CreateContext(Guid company)
   {
     var options = new DbContextOptionsBuilder<TenantDbContext>()
       .UseSqlServer(ConnectionFor(catalog))
@@ -52,9 +62,73 @@ internal sealed class GlFixture : IAsyncDisposable
 
     return new TenantDbContext(
       options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
-      companyAuthorizer: new GrantingCompanyAuthorizer(CompanyA),
+      companyAuthorizer: new GrantingCompanyAuthorizer(company),
       modelContributors: [new GlTenantModelContributor()]);
   }
+
+  // ---- THE CHART IS SHARED AND THE MONEY IS NOT, SO THE ACCOUNTS ARE SEEDED ONCE (item 233).
+  //
+  // `OD-GL-0003` ruled the chart TENANT-level: `Account` is `ITenantOwnedEntity` and deliberately not
+  // `ICompanyOwnedEntity`, and carries no `CompanyId` at all. Seeding an account per company would
+  // misrepresent the model and make the tenant-level reads look company-scoped.
+  public async Task<(Guid Debit, Guid Credit)> SeedSharedAccountsAsync()
+  {
+    await using var context = CreateContext();
+
+    var debitAccount = Account.Create("1000", "Cash").Value;
+    var creditAccount = Account.Create("4100", "Receivables").Value;
+    context.Set<Account>().AddRange(debitAccount, creditAccount);
+    await context.SaveChangesAsync();
+
+    return (debitAccount.Id, creditAccount.Id);
+  }
+
+  // One company's worth of every company-owned read subject: a fiscal year, a posted journal and a draft.
+  public async Task<GlSeededCompany> SeedCompanySubjectsAsync(
+    Guid company, string reference, Guid debitAccount, Guid creditAccount)
+  {
+    await using var context = CreateContext(company);
+
+    var year = FiscalYear.Create(
+      $"FY-{reference}",
+      new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      [($"FY-{reference}", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+    year.CompanyId = company;
+    context.Set<FiscalYear>().Add(year);
+    await context.SaveChangesAsync();
+
+    var posted = JournalDraft.Create(EntryDate, $"Posted {reference}", reference).Value;
+    posted.CompanyId = company;
+    posted.ReplaceLines([(debitAccount, 100m, 0m, "debit"), (creditAccount, 0m, 100m, "credit")]);
+
+    var period = year.Periods.First();
+    var entry = JournalEntry.Post(posted, year.Id, period.Id, reference);
+    context.Set<JournalEntry>().Add(entry);
+
+    var draft = JournalDraft.Create(EntryDate, $"Draft {reference}", reference).Value;
+    draft.CompanyId = company;
+    draft.ReplaceLines([(debitAccount, 50m, 0m, "debit"), (creditAccount, 0m, 50m, "credit")]);
+    context.Set<JournalDraft>().Add(draft);
+
+    await context.SaveChangesAsync();
+
+    return new GlSeededCompany(entry.Id, draft.Id, year.Id);
+  }
+
+  // Returns the CONCRETE type deliberately: the point of item 233 is that `GlReadService` had never been
+  // constructed, and a helper typed to the interface would read as one more place the interface is met.
+  public static GlReadService Reads(TenantDbContext context) => new(new SingleGlContext(context));
+
+  // The REAL resolver over a stubbed company authority. `GlReadScope`'s factory is internal precisely so a
+  // test cannot forge one.
+  public GlScopeResolver Resolver(params Guid[] permitted) =>
+    new(
+      new GrantingCompanyAccess(permitted),
+      new FixtureTenant(Tenant),
+      new FixtureTenantUser(),
+      new PermittedUser());
 
   // Seeds a posted journal the way POSTING does — through the internal factory, from a balanced draft —
   // so the row under test is the row the product would have written.
@@ -116,6 +190,7 @@ internal sealed class GlFixture : IAsyncDisposable
     await MasterAsync($"CREATE DATABASE [{catalog}]");
     await MigrateAsync();
     await SeedCompanyAsync(CompanyA, "CMPA");
+    await SeedCompanyAsync(CompanyB, "CMPB");
   }
 
   private async Task MigrateAsync()
@@ -221,6 +296,60 @@ internal sealed class GlFixture : IAsyncDisposable
   // what is under test is the APPEND-ONLY refusal, which the boundary applies before any of this.
   //
   // The same shape as HR's `GrantingHierarchyLock` in the API host, for the same reason.
+  // The company authority the RESOLVER reads -- distinct from `GrantingCompanyAuthorizer`, which is the
+  // WRITE boundary's. One decides what may be saved, the other what may be seen.
+  private sealed class GrantingCompanyAccess(IReadOnlyList<Guid> permitted)
+    : SSAS.BuildingBlocks.Tenancy.Companies.ITenantCompanyAccessResolver
+  {
+    public Task<SSAS.BuildingBlocks.Domain.Result<IReadOnlyList<
+      SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>> GetPermittedCompaniesAsync(
+      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success<IReadOnlyList<
+        SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>(
+        permitted.Select(id =>
+          new SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
+
+    public Task<SSAS.BuildingBlocks.Domain.Result> AuthorizeCompanyAsync(
+      Guid tenantId, long tenantUserId, Guid companyId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(permitted.Contains(companyId)
+        ? SSAS.BuildingBlocks.Domain.Result.Success()
+        : SSAS.BuildingBlocks.Domain.Result.Failure(
+          new SSAS.BuildingBlocks.Domain.Error("Company.Denied", "Denied.")));
+  }
+
+  private sealed class FixtureTenantUser : SSAS.BuildingBlocks.Tenancy.ICurrentTenantUser
+  {
+    public long? TenantUserId => 42;
+  }
+
+  // `FixtureUser` holds no permissions, which is right for the schema tests: they never resolve a scope.
+  // The resolver refuses before it reaches the company dimension without the read permission.
+  private sealed class PermittedUser : ICurrentUser
+  {
+    public string? UserId => Actor;
+
+    public string? UserName => Actor;
+
+    public string? Email => null;
+
+    public string? SessionId => null;
+
+    public string? TokenId => null;
+
+    public IReadOnlyCollection<string> Roles => [];
+
+    public IReadOnlyCollection<string> Permissions =>
+      [GlPermissionNames.ViewJournals, GlPermissionNames.ViewDrafts,
+       GlPermissionNames.ViewAccounts, GlPermissionNames.ViewPeriods, GlPermissionNames.ViewReports];
+  }
+
+  private sealed class SingleGlContext(TenantDbContext context)
+    : SSAS.BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor
+  {
+    public Task<DbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult<DbContext>(context);
+  }
+
   private sealed class GrantingCompanyAuthorizer(Guid companyId) : ICompanyWriteAuthorizer
   {
     public Task<SSAS.BuildingBlocks.Domain.Result<Guid>> AuthorizeCurrentCompanyAsync(
@@ -238,3 +367,5 @@ internal sealed class GlFixture : IAsyncDisposable
     public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
   }
 }
+
+internal sealed record GlSeededCompany(Guid PostedJournalId, Guid DraftId, Guid FiscalYearId);

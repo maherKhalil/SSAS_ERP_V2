@@ -3,6 +3,7 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using Microsoft.EntityFrameworkCore;
+using SSAS.Attendance.Application.Permissions;
 using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Periods;
 using SSAS.Attendance.Domain.Records;
@@ -236,4 +237,99 @@ public sealed class AttendanceSchemaSqlServerTests
     Assert.Equal(6m, rows.Sum(row => row.WorkedQuantity));
     Assert.Equal(2m, rows.Sum(row => row.UnpaidAbsenceQuantity));
   }
+
+  // ================================================================================================
+  // THE COMPANY PREDICATE AND THE SENSITIVITY REDACTION, AGAINST THE REAL READ SERVICE (item 233).
+  // ================================================================================================
+  //
+  // ---- WHY THIS DID NOT EXIST, AND WHY THE REASON DIFFERS FROM PAYROLL'S AND GL'S.
+  //
+  // `AttendanceReadService` was constructed by no test in any suite. Unlike Payroll and GL, the cause was
+  // NOT a host that skips `AddAttendanceInfrastructure` -- this host calls it. The host then registers
+  // `AddSingleton<IAttendanceReadService>(Reads)`, an explicit stub, and last registration wins.
+  //
+  // One symptom, two causes. A single remedy aimed at composition would have left this module untouched
+  // while looking complete.
+  //
+  // ---- ⚠ THE REDACTION IS BELOW THE SEAM EVERY FAST SUITE RUNS AT, AND THAT IS NOT AN ACCIDENT.
+  //
+  // `maySeeSensitive` is resolved ONCE before the projection so redaction cannot depend on evaluation
+  // order, and the redaction happens IN THE SQL PROJECTION so the value never crosses the wire or reaches
+  // a query log. Both decisions are right, and both are exactly what put the behaviour where only a real
+  // database can observe it. The verification cost moved with the care.
+  //
+  // ---- FOUR CLAUSES, NAMED, PLUS THE COMPANY PREDICATE.
+  [Fact]
+  public async Task A_leave_read_is_company_scoped_and_redacts_only_the_sensitive_type()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+
+    var employee = Guid.NewGuid();
+    var a = await fixture.SeedLeaveAsync(fixture.CompanyA, "AAA", employee);
+    await fixture.SeedLeaveAsync(fixture.CompanyB, "BBB", employee, monthOffset: 6);
+
+    await using var context = fixture.CreateContext();
+
+    // ---- THE COMPANY PREDICATE. Company B's id is passed with a scope authorized for A, which isolates
+    // the SCOPE predicate from the PARAMETER.
+    var privileged = AttendanceFixture.Reads(context, fixture.Resolver(true, fixture.CompanyA));
+
+    var own = await privileged.GetLeaveRequestsAsync(fixture.CompanyA, employee);
+    Assert.True(own.IsSuccess, own.IsFailure ? own.Error.Code : null);
+    Assert.Equal(2, own.Value.Count);
+
+    var others = await privileged.GetLeaveRequestsAsync(fixture.CompanyB, employee);
+    Assert.True(others.IsSuccess, others.IsFailure ? others.Error.Code : null);
+    Assert.Empty(others.Value);
+
+    // ---- CLAUSE 1: a caller WITH `ViewSensitive` sees WHICH TYPE.
+    var seen = own.Value.Single(view => view.LeaveTypeId == a.SensitiveTypeId);
+    Assert.Equal("AAA-SICK", seen.LeaveTypeCode);
+    Assert.False(seen.IsTypeRedacted);
+
+    // ---- CLAUSE 2: a caller WITHOUT it still gets THE ROW, redacted.
+    //
+    // This is the half that matters. A service that dropped the row entirely would satisfy every
+    // "cannot see the type" assertion while destroying the fact that the person is away at all.
+    var ordinaryCaller = AttendanceFixture.Reads(context, fixture.Resolver(false, fixture.CompanyA));
+
+    var restricted = await ordinaryCaller.GetLeaveRequestsAsync(fixture.CompanyA, employee);
+    Assert.True(restricted.IsSuccess, restricted.IsFailure ? restricted.Error.Code : null);
+    Assert.Equal(2, restricted.Value.Count);
+
+    var redacted = restricted.Value.Single(view => view.LeaveTypeId == a.SensitiveTypeId);
+    Assert.Null(redacted.LeaveTypeCode);
+    Assert.Null(redacted.LeaveTypeName);
+    Assert.True(redacted.IsTypeRedacted);
+
+    // ---- CLAUSE 3: the ORDINARY type stays visible IN THE SAME RESPONSE.
+    //
+    // Without this, a service that redacted EVERY row for an unprivileged caller passes clauses 1 and 2
+    // both. Sensitivity is a property of the TYPE, not of the REQUEST, and only both kinds present at
+    // once can tell a discriminating rule from a blanket one.
+    var stillVisible = restricted.Value.Single(view => view.LeaveTypeId == a.OrdinaryTypeId);
+    Assert.Equal("AAA-ANN", stillVisible.LeaveTypeCode);
+    Assert.False(stillVisible.IsTypeRedacted);
+
+    // ---- CLAUSE 4: THE SELF-SERVICE EXEMPTION, WHICH IS A RULING AND NOT AN OVERSIGHT.
+    //
+    // `GetLeaveRequestsForEmployeeAsync` passes `maySeeSensitive: true` deliberately: the party the
+    // redaction protects is the SUBJECT, and on this route the subject IS the caller. `ViewSensitive` is
+    // an administrative grant no plain employee holds, so applying the rule here would hide a person's
+    // own sick leave from themselves as a nameless gap in their own list.
+    //
+    // It is the clause a well-meaning change breaks, because "redact unless the caller is an
+    // administrator" sounds like the safer rule. The caller below holds NO sensitive permission.
+    var scope = await fixture.Resolver(false, fixture.CompanyA)
+      .ResolveCompanyOnlyAsync(AttendancePermissionNames.ViewLeave);
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+
+    var mine = await ordinaryCaller.GetLeaveRequestsForEmployeeAsync(scope.Value, employee);
+    Assert.True(mine.IsSuccess, mine.IsFailure ? mine.Error.Code : null);
+
+    var ownSensitive = mine.Value.Single(view => view.LeaveTypeId == a.SensitiveTypeId);
+    Assert.Equal("AAA-SICK", ownSensitive.LeaveTypeCode);
+    Assert.False(ownSensitive.IsTypeRedacted);
+  }
+
 }

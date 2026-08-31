@@ -6,6 +6,9 @@ using Microsoft.EntityFrameworkCore;
 using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Periods;
 using SSAS.Attendance.Domain.Records;
+using SSAS.Attendance.Application.Permissions;
+using SSAS.Attendance.Application.Reads;
+using SSAS.Attendance.Domain.Leave;
 using SSAS.Attendance.Infrastructure.Persistence;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -37,6 +40,10 @@ internal sealed class AttendanceFixture : IAsyncDisposable
 
   public Guid CompanyA { get; } = Guid.NewGuid();
 
+  // The second company exists so a scope authorized for ONE of them can be shown not to reach the other
+  // (item 233).
+  public Guid CompanyB { get; } = Guid.NewGuid();
+
   public Guid Employee { get; } = Guid.NewGuid();
 
   public Guid BranchId { get; } = Guid.NewGuid();
@@ -51,6 +58,57 @@ internal sealed class AttendanceFixture : IAsyncDisposable
   }
 
   public TenantDbContext CreateContext() => CreateContext(loggerFactory: null);
+
+  // ---- LEAVE, UNDER ONE COMPANY, WITH BOTH KINDS OF TYPE PRESENT (item 233).
+  //
+  // A SENSITIVE type and an ORDINARY one, each with a request, because the redaction rule discriminates
+  // between them: a test arranging only the sensitive one cannot tell a discriminating rule from a
+  // blanket one, and the blanket one looks safer so nothing prompts the question.
+  // ⚠ `monthOffset` exists because `UX_AttendanceLeaveRequests_Employee_Range_Active` is unique on
+  // EMPLOYEE and RANGE and is NOT company-qualified: one person cannot be on leave twice at once,
+  // whichever company the request belongs to. The same employee under both companies is what makes the
+  // company predicate the only discriminator, so the RANGES move instead of the person.
+  public async Task<AttendanceSeededLeave> SeedLeaveAsync(
+    Guid company, string prefix, Guid employeeId, int monthOffset = 0)
+  {
+    await using var context = CreateContext(company);
+
+    var sensitive = LeaveType.Create(
+      company, prefix + "-SICK", prefix + " Sick", LeaveBehaviour.PaidFromBalance, true).Value;
+    var ordinary = LeaveType.Create(
+      company, prefix + "-ANN", prefix + " Annual", LeaveBehaviour.PaidFromBalance, false).Value;
+    context.Set<LeaveType>().AddRange(sensitive, ordinary);
+    await context.SaveChangesAsync();
+
+    var sensitiveRequest = LeaveRequest.Submit(
+      company, employeeId, sensitive.Id,
+      new DateOnly(2026, 3, 2).AddMonths(monthOffset),
+      new DateOnly(2026, 3, 3).AddMonths(monthOffset), 2m).Value;
+    var ordinaryRequest = LeaveRequest.Submit(
+      company, employeeId, ordinary.Id,
+      new DateOnly(2026, 4, 6).AddMonths(monthOffset),
+      new DateOnly(2026, 4, 7).AddMonths(monthOffset), 2m).Value;
+    context.Set<LeaveRequest>().AddRange(sensitiveRequest, ordinaryRequest);
+    await context.SaveChangesAsync();
+
+    return new AttendanceSeededLeave(sensitive.Id, ordinary.Id, sensitiveRequest.Id, ordinaryRequest.Id);
+  }
+
+  // Returns the CONCRETE type deliberately: the point of item 233 is that `AttendanceReadService` had
+  // never been constructed. `InternalsVisibleTo("SSAS.Integration.Tests")` has been on this assembly all
+  // along -- the seam was opened and nobody walked through it.
+  public static AttendanceReadService Reads(TenantDbContext context, IAttendanceScopeResolver resolver) =>
+    new(new SingleAttendanceContext(context), resolver);
+
+  // The REAL resolver. `sensitive` decides whether the caller holds `Attendance.Leave.ViewSensitive`,
+  // which is the only difference between clauses 1 and 2.
+  public AttendanceScopeResolver Resolver(bool sensitive, params Guid[] permitted) =>
+    new(
+      new GrantingCompanyAccess(permitted),
+      new GrantingBranchAccess(BranchId),
+      new FixtureTenant(Tenant),
+      new FixtureTenantUser(),
+      new PermittedUser(sensitive));
 
   // ⚠ The logger factory is an OPTIONAL seam and it exists for one question: does EF Core itself log a
   // failed command? That cannot be settled by reading our Serilog configuration — it is EF's behaviour,
@@ -71,6 +129,21 @@ internal sealed class AttendanceFixture : IAsyncDisposable
       options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
       branchAuthorizer: new GrantingBranchAuthorizer(BranchId),
       companyAuthorizer: new GrantingCompanyAuthorizer(CompanyA),
+      modelContributors: [new AttendanceTenantModelContributor()]);
+  }
+
+  // The company the WRITE boundary will authorize. Seeding under `CompanyB` needs a context authorized for
+  // `CompanyB`: `ApplyCompanyRulesAsync` refuses the save otherwise, which is the boundary working.
+  public TenantDbContext CreateContext(Guid company)
+  {
+    var options = new DbContextOptionsBuilder<TenantDbContext>()
+      .UseSqlServer(ConnectionFor(catalog))
+      .Options;
+
+    return new TenantDbContext(
+      options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
+      branchAuthorizer: new GrantingBranchAuthorizer(BranchId),
+      companyAuthorizer: new GrantingCompanyAuthorizer(company),
       modelContributors: [new AttendanceTenantModelContributor()]);
   }
 
@@ -122,6 +195,7 @@ internal sealed class AttendanceFixture : IAsyncDisposable
     await MasterAsync($"CREATE DATABASE [{catalog}]");
     await MigrateAsync();
     await SeedCompanyAsync(CompanyA, "CMPA");
+    await SeedCompanyAsync(CompanyB, "CMPB");
     await SeedBranchAsync();
   }
 
@@ -251,6 +325,74 @@ internal sealed class AttendanceFixture : IAsyncDisposable
     public IReadOnlyCollection<string> Permissions => [];
   }
 
+  private sealed class GrantingCompanyAccess(IReadOnlyList<Guid> permitted)
+    : SSAS.BuildingBlocks.Tenancy.Companies.ITenantCompanyAccessResolver
+  {
+    public Task<SSAS.BuildingBlocks.Domain.Result<IReadOnlyList<
+      SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>> GetPermittedCompaniesAsync(
+      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success<IReadOnlyList<
+        SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>(
+        permitted.Select(id =>
+          new SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
+
+    public Task<SSAS.BuildingBlocks.Domain.Result> AuthorizeCompanyAsync(
+      Guid tenantId, long tenantUserId, Guid companyId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(permitted.Contains(companyId)
+        ? SSAS.BuildingBlocks.Domain.Result.Success()
+        : SSAS.BuildingBlocks.Domain.Result.Failure(
+          new SSAS.BuildingBlocks.Domain.Error("Company.Denied", "Denied.")));
+  }
+
+  private sealed class GrantingBranchAccess(Guid branchId)
+    : SSAS.BuildingBlocks.Tenancy.Branches.ITenantBranchAccessResolver
+  {
+    public Task<SSAS.BuildingBlocks.Domain.Result<IReadOnlyList<
+      SSAS.BuildingBlocks.Tenancy.Branches.BranchAccessSummary>>> GetPermittedBranchesAsync(
+      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success<IReadOnlyList<
+        SSAS.BuildingBlocks.Tenancy.Branches.BranchAccessSummary>>(
+        [new SSAS.BuildingBlocks.Tenancy.Branches.BranchAccessSummary(branchId, "BR", "Branch", true)]));
+
+    public Task<SSAS.BuildingBlocks.Domain.Result> AuthorizeBranchAsync(
+      Guid tenantId, long tenantUserId, Guid branch, CancellationToken cancellationToken = default) =>
+      Task.FromResult(branch == branchId
+        ? SSAS.BuildingBlocks.Domain.Result.Success()
+        : SSAS.BuildingBlocks.Domain.Result.Failure(
+          new SSAS.BuildingBlocks.Domain.Error("Branch.Denied", "Denied.")));
+  }
+
+  private sealed class FixtureTenantUser : SSAS.BuildingBlocks.Tenancy.ICurrentTenantUser
+  {
+    public long? TenantUserId => 42;
+  }
+
+  private sealed class PermittedUser(bool sensitive) : ICurrentUser
+  {
+    public string? UserId => Actor;
+
+    public string? UserName => Actor;
+
+    public string? Email => null;
+
+    public string? SessionId => null;
+
+    public string? TokenId => null;
+
+    public IReadOnlyCollection<string> Roles => [];
+
+    public IReadOnlyCollection<string> Permissions => sensitive
+      ? [AttendancePermissionNames.ViewLeave, AttendancePermissionNames.ViewSensitiveLeave]
+      : [AttendancePermissionNames.ViewLeave];
+  }
+
+  private sealed class SingleAttendanceContext(TenantDbContext context)
+    : SSAS.BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor
+  {
+    public Task<DbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult<DbContext>(context);
+  }
+
   private sealed class FixtureTenant(Guid tenantId) : ICurrentTenant
   {
     public Guid? TenantId => tenantId;
@@ -287,3 +429,6 @@ internal sealed class AttendanceFixture : IAsyncDisposable
       Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success(companyId));
   }
 }
+
+internal sealed record AttendanceSeededLeave(
+  Guid SensitiveTypeId, Guid OrdinaryTypeId, Guid SensitiveRequestId, Guid OrdinaryRequestId);

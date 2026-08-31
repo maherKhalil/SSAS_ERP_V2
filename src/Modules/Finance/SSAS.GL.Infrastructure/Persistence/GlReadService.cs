@@ -90,16 +90,27 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
       years = years.Where(year => year.CompanyId == requested);
     }
 
+    // ---- ⚠ ORDERED BEFORE PROJECTING, AND THE ORDER OF THOSE TWO IS NOT A STYLE CHOICE.
+    //
+    // This ordered by `StartUtc` ON THE PROJECTED `FiscalPeriodListItem`, and EF Core cannot translate an
+    // ORDER BY over a client-constructed object: the whole query threw
+    // "The LINQ expression ... could not be translated" at runtime, on every call. **It was found the
+    // first time anything constructed this class** -- see the item 233 test -- because `GlReadService`
+    // had never been instantiated in any suite.
+    //
+    // Ordering on the ENTITY and projecting afterwards produces the same rows in the same order and
+    // translates to a plain ORDER BY on the column.
     return await years
-      .SelectMany(year => year.Periods, (year, period) => new FiscalPeriodListItem(
-        period.Id,
-        year.Id,
-        year.Code,
-        period.Name,
-        period.StartUtc,
-        period.EndUtc,
-        period.Status == FiscalPeriodStatus.Open))
-      .OrderBy(period => period.StartUtc)
+      .SelectMany(year => year.Periods, (year, period) => new { Year = year, Period = period })
+      .OrderBy(row => row.Period.StartUtc)
+      .Select(row => new FiscalPeriodListItem(
+        row.Period.Id,
+        row.Year.Id,
+        row.Year.Code,
+        row.Period.Name,
+        row.Period.StartUtc,
+        row.Period.EndUtc,
+        row.Period.Status == FiscalPeriodStatus.Open))
       .ToListAsync(cancellationToken);
   }
 
@@ -373,13 +384,23 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
         TotalDebits = group.Sum(line => line.Debit),
         TotalCredits = group.Sum(line => line.Credit)
       })
+      // ---- ⚠ ORDERED ON THE ENTITY, PROJECTED AFTERWARDS. THE SAME DEFECT AS `GetFiscalPeriodsAsync`.
+      //
+      // This ordered by `Code` on the projected `TrialBalanceRow`, and EF Core cannot translate an ORDER
+      // BY over a client-constructed object: the query threw "The LINQ expression ... could not be
+      // translated" on every call. `NormalizedCode` is the ordering column the account search already
+      // uses, and it is a mapped scalar rather than a value-converted one.
+      //
+      // **Both instances were found the first time anything constructed this class** (item 233), and
+      // `EmployeeReadService` has always had the correct shape -- join, order on the ENTITY, project last.
       .Join(
         context.Set<Account>().AsNoTracking(),
         row => row.AccountId,
         account => account.Id,
-        (row, account) => new TrialBalanceRow(
-          account.Id, account.Code.Value, account.Name.Value, row.TotalDebits, row.TotalCredits))
-      .OrderBy(row => row.Code)
+        (row, account) => new { Account = account, row.TotalDebits, row.TotalCredits })
+      .OrderBy(row => row.Account.NormalizedCode)
+      .Select(row => new TrialBalanceRow(
+        row.Account.Id, row.Account.Code.Value, row.Account.Name.Value, row.TotalDebits, row.TotalCredits))
       .ToListAsync(cancellationToken);
 
     return new TrialBalance(rows);

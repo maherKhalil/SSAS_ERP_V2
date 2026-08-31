@@ -6,6 +6,8 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.GL.Domain.Accounts;
 using SSAS.GL.Domain.Calendar;
 using SSAS.GL.Domain.Journals;
+using SSAS.GL.Application.Permissions;
+using SSAS.GL.Application.Reads;
 using SSAS.GL.Infrastructure.Persistence;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -345,6 +347,101 @@ public sealed class GlSchemaSqlServerTests
 
       await Assert.ThrowsAnyAsync<DbUpdateException>(() => context.SaveChangesAsync());
     }
+  }
+
+
+  // ================================================================================================
+  // THE COMPANY PREDICATE, PER SITE, AGAINST THE REAL READ SERVICE (item 233).
+  // ================================================================================================
+  //
+  // ---- WHY THIS DID NOT EXIST.
+  //
+  // `GlReadService` was constructed by no test in any suite. The GL API host registers a stub and never
+  // calls `AddGlInfrastructure`, so the concrete class -- and every `scope.CompanyIds.Contains(...)` in
+  // it -- had never executed. Two GL API tests assert
+  // `A_caller_with_no_authorized_company_is_refused_rather_than_served_an_empty_page`, and both arrange
+  // an EMPTY set: that is *this caller reaches nothing*, which a caller cannot provoke. An OUT-OF-SET
+  // company is *this caller reaches something, and not that*, and it is the one an attack produces.
+  //
+  // ---- PER SITE, NOT PER METHOD. SEVEN COMPANY-SCOPED SITES ACROSS SIX METHODS.
+  //
+  // `GlReadService` shares no predicate helper at all -- every one is written out inline -- so a case per
+  // method would still leave sites unproven where one method carries two queries.
+  //
+  // ---- AND THREE READS CARRY NO COMPANY PREDICATE, WHICH IS CORRECT AND IS ASSERTED POSITIVELY.
+  //
+  // `OD-GL-0003` ruled the chart TENANT-level: `Account` is deliberately not `ICompanyOwnedEntity` and
+  // has no `CompanyId` to filter by. A silent exclusion has no evidence attached to it and the next
+  // reader concludes a leak -- the natural remedy for which is to add a predicate to correct code. The
+  // cases below turn *nobody filtered here* into *filtering here is forbidden*, by asserting that a scope
+  // for company B sees the SAME account.
+  [Fact]
+  public async Task A_scope_authorized_for_one_company_reads_none_of_the_others_rows()
+  {
+    await using var fixture = await GlFixture.CreateAsync();
+
+    var accounts = await fixture.SeedSharedAccountsAsync();
+    var a = await fixture.SeedCompanySubjectsAsync(fixture.CompanyA, "AAA", accounts.Debit, accounts.Credit);
+    var b = await fixture.SeedCompanySubjectsAsync(fixture.CompanyB, "BBB", accounts.Debit, accounts.Credit);
+
+    await using var context = fixture.CreateContext();
+    var reads = GlFixture.Reads(context);
+
+    var scope = await fixture.Resolver(fixture.CompanyA).ResolveAsync(GlPermissionNames.ViewJournals);
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+    Assert.Equal([fixture.CompanyA], scope.Value.CompanyIds);
+
+    var from = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    var to = new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    // ---- SITE 1: GetFiscalPeriodsAsync.
+    Assert.NotEmpty(await reads.GetFiscalPeriodsAsync(scope.Value, fixture.CompanyA));
+    Assert.Empty(await reads.GetFiscalPeriodsAsync(scope.Value, fixture.CompanyB));
+
+    // ---- SITE 2: SearchJournalsAsync. Company B's id is passed with an A-only scope, which isolates the
+    // SCOPE predicate from the PARAMETER.
+    Assert.Single(await reads.SearchJournalsAsync(scope.Value, fixture.CompanyA, null, null, null));
+    Assert.Empty(await reads.SearchJournalsAsync(scope.Value, fixture.CompanyB, null, null, null));
+
+    // ---- SITE 3: GetJournalAsync. No company parameter: the id alone must not reach.
+    Assert.NotNull(await reads.GetJournalAsync(scope.Value, a.PostedJournalId));
+    Assert.Null(await reads.GetJournalAsync(scope.Value, b.PostedJournalId));
+
+    // ---- SITE 4: SearchJournalDraftsAsync.
+    Assert.Single(await reads.SearchJournalDraftsAsync(scope.Value, fixture.CompanyA, null, null, null));
+    Assert.Empty(await reads.SearchJournalDraftsAsync(scope.Value, fixture.CompanyB, null, null, null));
+
+    // ---- SITE 5: GetJournalDraftAsync.
+    Assert.NotNull(await reads.GetJournalDraftAsync(scope.Value, a.DraftId));
+    Assert.Null(await reads.GetJournalDraftAsync(scope.Value, b.DraftId));
+
+    // ---- SITE 6: GetAccountBalanceAsync's ENTRY query.
+    //
+    // The account is tenant-wide and both companies posted 100 to it. A balance of 100 rather than 200 is
+    // the whole claim: the chart is shared and the money is not.
+    var balance = await reads.GetAccountBalanceAsync(scope.Value, accounts.Debit, from, to);
+    Assert.NotNull(balance);
+    Assert.Equal(100m, balance!.TotalDebits);
+
+    // ---- SITE 7: GetTrialBalanceAsync.
+    var trialA = await reads.GetTrialBalanceAsync(scope.Value, fixture.CompanyA, from, to);
+    Assert.NotEmpty(trialA.Rows);
+
+    var trialB = await reads.GetTrialBalanceAsync(scope.Value, fixture.CompanyB, from, to);
+    Assert.Empty(trialB.Rows);
+
+    // ---- AND THE THREE TENANT-LEVEL READS, ASSERTED POSITIVELY FROM BOTH COMPANIES.
+    var scopeB = await fixture.Resolver(fixture.CompanyB).ResolveAsync(GlPermissionNames.ViewAccounts);
+    Assert.True(scopeB.IsSuccess, scopeB.IsFailure ? scopeB.Error.Code : null);
+
+    Assert.Equal(2, (await reads.SearchAccountsAsync(scope.Value, null, null)).Count);
+    Assert.Equal(2, (await reads.SearchAccountsAsync(scopeB.Value, null, null)).Count);
+
+    Assert.NotNull(await reads.GetAccountAsync(scope.Value, accounts.Debit));
+    Assert.NotNull(await reads.GetAccountAsync(scopeB.Value, accounts.Debit));
+
+    // The same account, reached from the company that did NOT create it. Filtering here is forbidden.
+    Assert.NotNull(await reads.GetAccountBalanceAsync(scopeB.Value, accounts.Debit, from, to));
   }
 
   // ================================================================================================

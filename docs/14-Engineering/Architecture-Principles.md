@@ -2441,6 +2441,43 @@ and not to the source fix.** ⚠⚠ **A rule adopted in one lane and not carried
 a fix applied at one of two sites sharing a mechanism**, and it is quiet in the same way: the lane where it
 was applied keeps working, so nothing signals the lane where it was not.
 
+## Classify by the observed behaviour, not by a prediction of it
+
+**A test had to separate the entities a guard protects from those it never sees. The first version predicted
+the split from metadata — is this property part of the PRIMARY key — and was wrong, because *part of a key*
+also covers alternate keys and identifying foreign keys.** ⚠ **The test then failed on a property it had
+already classified as ordinary.**
+
+**The version that works asks the mechanism.** Attempt the change; if the framework refuses before the guard
+is reachable, that type is in the other class. ⚠⚠ **A classification derived from the mechanism's own answer
+cannot miss a case nobody thought of; a predicate over metadata is a HYPOTHESIS about the mechanism, and it
+fails exactly where understanding is thinnest.**
+
+**This is *assert the identity, not the type* one layer up: ask what happened, not what should have.**
+
+### Where a test classifies, assert the partition as well as flooring the population
+
+**A floor stops a population silently emptying. It does not stop one BRANCH swallowing all of it.** A test
+that checks a guard for some types and excuses others passes perfectly if every type drifts into the
+excused branch.
+
+⚠ **`guarded + excused == total`, asserted, closes that** — and it is not a hypothetical risk here: four of
+seven members sit in the excused branch today.
+
+## Rank by whether the failure is constructible, not by what it would cost
+
+**Four types were nominated as the highest-consequence members of a population, on the grounds that a change
+of owner on an authorization row is the worst version of the defect.** ⚠ **Two of them cannot suffer it:
+their owning identifier is part of a key, so the change is refused before the guard is a question.**
+
+**The consequence was ranked and the CONSTRUCTIBILITY was not.** ⚠⚠ **A guard demanded for a failure nobody
+can build is a cost with no benefit, and the check is one question asked before the ranking: can this
+actually happen?**
+
+**It is also worth stating in the other direction: the key-immutable types are not a coverage gap. They hold
+a STRONGER guarantee than the guard does** — structural rather than procedural — **and recording them as
+untested would misdescribe the safest members of the set as the riskiest.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

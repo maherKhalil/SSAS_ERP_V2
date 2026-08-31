@@ -619,14 +619,25 @@ and it is the one the merge gate skips.**
 fails to compile anywhere — Integration included — reddens it. A compile break cannot merge.** The exposure
 is runtime behaviour and Release-only analysis.
 
-⚠⚠ **AND AS OF 2026-08-31 THE SUITE IS GREEN IN DEBUG — 846 OF 846, THE FIRST GREEN INTEGRATION SINCE
-2026-08-27.** The expired-test fix holds at full-suite scale. **Release is 845 of 846: one named test,
-which is a different order of unknown from *nobody knows what that suite does*.**
+⚠⚠ **UPDATED AGAIN, AND THE ACUTE HALF IS CLOSED: THE FIRST GREEN PHASE GATE RAN ON 2026-08-31 —
+`[GATE GREEN — all eight suites, Debug and Release]`, INTEGRATION 848/848 IN BOTH CONFIGURATIONS.** The
+one named test is fixed and confirmed **in the configuration that failed it**, and the total moved from
+846 to 848 **because two capture controls were added — nothing was removed, weakened or skipped to reach
+green.**
 
-⚠ **`test-baseline.txt` STILL HAS NO INTEGRATION OR RELEASE ROWS** — the writer only runs on a green gate,
-and one failing test keeps it red. **One green Release leg closes it.** **The exposure this entry
-describes is unchanged; what has changed is that the unknown is now a single named test rather than a
-whole suite.**
+⚠ **AND `test-baseline.txt` GAINED ITS ROWS: 7 → 16.** **For the first time since 2026-08-27 this
+repository has a recorded expectation for the Integration suite and the Release configuration.**
+
+⚠⚠ **WHICH EXPOSED THE CONSEQUENCE NOBODY HAD DRAWN: condition 4 skips any suite with no baseline row, so
+for four days IT COMPARED SEVEN OF SIXTEEN SUITE/CONFIGURATION PAIRS** — and reported that only as a
+count. **It compares all sixteen from the next run on**, and the gate's header now says so and tells a
+reader to read the *suite total(s) checked* number rather than the word `ok`.
+
+**WHAT THIS DOES AND DOES NOT CHANGE FOR YOUR DECISION.** ⚠ **The structural exposure is unchanged: 36% of
+the repository's assertions still do not run before a merge, and no TASK suite still ever materialises a
+schema.** **What has changed is that the suite is now KNOWN GREEN and has a recorded baseline, so the next
+divergence is detectable rather than invisible.** **The options below are unchanged; they are now a choice
+about keeping a known-good suite watched, rather than about discovering what an unwatched one contains.**
 
 ⚠⚠ **IT IS NO LONGER HYPOTHETICAL. THE INTEGRATION SUITE HAS BEEN RED SINCE BEFORE THIS WORK BEGAN, AND
 EVERY MERGE WENT GREEN OVER IT.** Found 2026-08-31 by the first `GATE_SCOPE=PHASE` run to complete.

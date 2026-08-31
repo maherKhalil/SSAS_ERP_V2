@@ -2,7 +2,7 @@
 package: FP-015
 title: Employee Self Service
 module: Platform + HR + Payroll + Attendance (consumers)
-status: DRAFT — owner decisions unruled. ⚠ NOT specification-only: the self-service routes shipped 2026-08-28, and TWELVE of fourteen acceptance criteria are pinned by named tests — the other two implemented and guaranteed by construction, none unbuilt (measured T-206, completed T-207, 2026-08-31)
+status: DRAFT — owner decisions unruled. ⚠ NOT specification-only: the self-service routes shipped 2026-08-28, and ALL FOURTEEN acceptance criteria are pinned by named tests (measured T-206, completed T-207, composition asserted T-209, 2026-08-31)
 version: 0.1
 date: 2026-08-27
 ---
@@ -32,7 +32,9 @@ TWELVE PINNED of fourteen** — `AC-SS-0010` and `0011` by `The_link_is_untouche
 **exactly the failure mode `AC-SS-0011` names for itself**; `AC-SS-0012` by `An_ended_employment_does_not_resolve`,
 **whose source names the criterion by id** (T-090, `DEC-L-073`).
 
-⚠ **`AC-SS-0013` and `0014` ARE CALLED NEITHER PINNED NOR UNBUILT, DELIBERATELY.** They are guaranteed by
+⚠ **`AC-SS-0013` and `0014` WERE HELD AT *NEITHER PINNED NOR UNBUILT* UNTIL T-209 ASSERTED THE
+COMPOSITION — `SelfServiceModuleGateTests`, four tests. The package is now FOURTEEN OF FOURTEEN.**
+The reasoning that held them open is kept because it is the useful part: They are guaranteed by
 construction — the self routes sit inside the group carrying `RequireModule`, and both modules say so in
 source — **but what is NOT asserted is the COMPOSITION: no test says *the SELF route specifically is
 refused when the module is off*.** The gate is proven on a probe route, membership is structural and

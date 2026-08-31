@@ -1360,6 +1360,31 @@ grep stop working.**
 
 ---
 
+
+## ⚠⚠ And the grep must be KEY-AGNOSTIC — search the ID, not the attribute
+
+**Learned within the hour of adopting this principle, on the principle itself.**
+
+**Three trait keys in this repository carry criterion ids:** `[Trait("Acceptance", …)]` with **56** uses,
+`[Trait("Criterion", …)]` with **24**, and `[Trait("Decision", …)]` with **23**. ⚠ **A grep on any ONE key
+finds about a third of them** — and a measurement that had looked at one package's convention concluded a
+second package cited nothing, when **seven of its fourteen already did.**
+
+⚠ **THE PRINCIPLE SURVIVES; THE INSTRUMENT DOES NOT. Search the ID TEXT — `AC-[A-Z]+-[0-9]+` — NOT THE
+ATTRIBUTE THAT CARRIES IT.** The id is the invariant; the trait key is the layout, and this is Principle
+24's rule arriving one level down: **if your regex mentions the wrapper, you are counting the wrapper.**
+
+**Two corollaries paid for the same day:**
+
+- ⚠ **Adding a citation must never REPLACE one.** A test found citing what looks like the wrong criterion
+  is **reported, not corrected** — rewriting a recorded mapping on a reading of a name is invention.
+- ⚠ **Where no test asserts the criterion, SKIP AND LIST IT.** Citing the nearest neighbour makes the grep
+  **confidently wrong**, which is strictly worse than the silence it replaces.
+
+**And a backfill that would require re-deriving the mapping is not a backfill.** Where a prior measurement
+recorded test CLASSES and a citation needs METHOD granularity, **deriving it is re-measuring — and
+re-measuring under a backfill's name is how a wrong citation gets written.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

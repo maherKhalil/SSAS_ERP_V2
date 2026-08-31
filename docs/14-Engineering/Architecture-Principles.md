@@ -1739,6 +1739,57 @@ them averaged 0.57.** Small numbers — but **the new method was applied to the 
 the set already demonstrated to resist it. ⚠ **A method that wins on its predecessor's residue is not
 winning on an easier sample**, which is the one confound that would otherwise explain the gap away.
 
+## A criterion can be wrong in either direction, and the ruling it cites is the fixed point
+
+**Two acceptance criteria were corrected on the same day, in opposite directions, and both were settleable
+from the decision printed in their own third column.**
+
+- **One stated an ABSENCE WIDER THAN ITS RULING**: it banned a subject product-wide where the decision
+  merely deferred that subject out of the package.
+- **One stated a COUNT NARROWER THAN ITS RULING**: it said *“all five tables”* where the decision says
+  *“every tenant-owned entity”*, and the package had since grown to seven.
+
+⚠ **A criterion is an IMPLEMENTATION of a ruling, and an implementation can be wrong.** The reflex on
+finding one that does not match the code is to treat the code as suspect, or to escalate the criterion as
+a boundary question. **Look at the ruling first. It is the fixed point, the lookup costs one search, and in
+both of these cases it settled the matter outright.**
+
+### A counted form of a universal ruling has a shelf life the ruling does not
+
+**The correction was NOT to write *seven*.** Seven goes stale exactly as five did. **When the governing
+decision is a universal — *every tenant-owned entity joins the manifest* — a criterion that counts the
+members has converted something permanent into something dated, and gained nothing by it.**
+
+⚠ **The failure it produces is worse than a plain error: the property still holds, so nothing breaks, and a
+reader auditing the criterion against the code finds a mismatch WITHOUT ANY WAY TO TELL WHICH SIDE IS
+WRONG.** Note that the guard here was count-free all along — **the specification was the weaker artefact,
+not the test.**
+
+## Prior work is a liability when its perishable half is the half you need
+
+**A package was recommended as the cheapest place to start because a prior item had already measured it.
+The measurement is what made it expensive:** 23 of its 54 criteria are *correctly* uncitable — most of
+them because nothing implements them yet — **so the work begins by re-establishing which 23 to skip.**
+
+⚠ **Those are absence claims, the class that rots first**, in a package that had gained code the day after
+a document called it unimplemented. **A prior split reduces cost only if it can be trusted WITHOUT
+re-checking. Otherwise it is not a head start; it is an extra step, with a plausible answer already written
+into it.**
+
+**The alternative chosen instead was smaller and completable — and a package that can be CLOSED is worth
+more than a bigger one that cannot, because the closing is what converts a sweep into a fact.**
+
+### A floor catches the collapse, not the drift
+
+**A second test suite, by a different author with no shared vocabulary, reached the
+control-inside-the-arrangement pattern independently — asserting a population is at least twelve before
+checking every member of it.** That convergence is the best evidence the pattern is discovered rather than
+invented.
+
+⚠ **Recorded with its limit, which the pattern's other instances do not share: these are FLOORS.** A
+reflection query that silently returns thirty of forty columns still passes a floor of twelve. **A floor
+proves the query found SOMETHING; only a cross-check proves it found EVERYTHING.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

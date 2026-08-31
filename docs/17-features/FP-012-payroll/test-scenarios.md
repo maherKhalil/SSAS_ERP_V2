@@ -59,7 +59,7 @@ guessed). *API* — `tests/API.Tests`. *Arch* — `tests/Architecture.Tests`. *I
 | `TS-PAY-0025` | Amounts round-trip at four decimal places without loss. | `AC-PAY-0030` | Integration |
 | `TS-PAY-0026` | No foreign key crosses from a payroll table to the Platform database. | `AC-PAY-0031` | Integration |
 | `TS-PAY-0027` | A posted run's lines cannot be updated or deleted through the context. | `AC-PAY-0017` | Integration |
-| `TS-PAY-0028` | The five payroll tables appear in the E3 manifest and a real cutover carries payroll data for the moved tenant only. | `AC-PAY-0029` | Integration |
+| `TS-PAY-0028` | Every tenant-owned payroll table appears in the E3 manifest and a real cutover carries payroll data for the moved tenant only. | `AC-PAY-0029` | Integration |
 | `TS-PAY-0029` | Posting produces exactly one balanced journal in the fiscal period containing the pay date. | `AC-PAY-0019`, `AC-PAY-0020` | Integration |
 | `TS-PAY-0030` | A run whose pay date falls in a closed period is refused at approval, naming the period. | `AC-PAY-0022` | Integration |
 | `TS-PAY-0031` | Closing a period cannot be undone by any payroll operation. | `AC-PAY-0023` | Integration |

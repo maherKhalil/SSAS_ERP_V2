@@ -63,7 +63,7 @@ than leaving orphans.
 
 | ID | Criterion | Verifies |
 |---|---|---|
-| `AC-PAY-0029` | All five payroll tables appear in the E3 cutover manifest, and a tenant cutover carries payroll data. | `DEC-PAY-0010` |
+| `AC-PAY-0029` | **Every tenant-owned payroll table** appears in the E3 cutover manifest, and a tenant cutover carries payroll data. **See the note below on the count this criterion used to carry.** | `DEC-PAY-0010` |
 | `AC-PAY-0030` | Every persisted payroll string column is `nvarchar`, and every monetary column is `decimal(19,4)`. | `DEC-PAY-0004`, `DEC-PAY-0007` |
 | `AC-PAY-0031` | No foreign key crosses from a payroll table to a Platform-database table. | `DEC-PAY-0008` |
 
@@ -78,3 +78,30 @@ test that encodes a guess as a requirement.
 
 **`OD-PAY-0008` is RULED (option 1),** so `AC-PAY-0026` — the lines sum to the total — is now a criterion
 that must pass rather than one whose passability depended on a ruling.
+
+---
+
+## ⚠ `AC-PAY-0029` carried a count, and the count had gone stale (corrected 2026-08-31, architect)
+
+**It read *“All **five** payroll tables appear in the E3 cutover manifest”*. The manifest's expected list
+carries **seven** — `EmployeeCompensation`, `PayElement`, `PayElementAssignment`, `PayrollPeriod`,
+`PayrollRun`, `PayrollRunDraftLine`, `PayrollRunLine` — and `CutoverManifestArchitectureTests` says so in
+its own comment: *“SEVEN from Payroll (FP-012)”*.**
+
+⚠ **The property held and the number did not**, which is the bad failure mode: a reader auditing the
+criterion against the manifest finds a mismatch **and cannot tell which side is wrong**. Nothing was
+violated; the package simply grew two tables past a number written when it had five.
+
+⚠⚠ **And the fix is not to write *seven*, because seven rots the same way.** `DEC-PAY-0010` — the decision
+this criterion implements — is stated as a **property**: *“Every tenant-owned entity joins the E3
+manifest.”* **The criterion was a COUNTED form of a UNIVERSAL ruling, and the count is the only part that
+could go out of date.** The property form is restored, so the criterion now survives the eighth table.
+**The guard was always count-free and is unaffected: it asserts the composed count minus the excluded set,
+so a new table that forgets the test moves the left side and the assertion fails.**
+
+**Same correction as `AC-EMP-0047` the same day, in the other shape: that one was an absence written wider
+than its ruling, this one a count written narrower than its ruling. Both were settleable from the decision
+the criterion itself cites.**
+
+**`TS-PAY-0028` carried the same number and is corrected with it — the count was in two places, so it was
+already going stale in one.**

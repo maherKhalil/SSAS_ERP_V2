@@ -2815,6 +2815,47 @@ measurement has the two backwards.
 **And where a strict and a loose count differ, report both.** The gap is itself information — here it named
 the four packages nobody had swept.
 
+## A diagnostic's remedy ages faster than its detection
+
+**A precondition check aborted a run: free memory below a calibrated floor, exit before any suite started,
+with the message citing the historical incident that motivated the floor.** ⚠ **The detection was exact.
+The advice — *quiet the box (editors, browsers)* — named the wrong culprit.**
+
+**The actual cause was eighteen compiler build servers holding about a gigabyte, accumulated across thirty
+builds in one long session, doing precisely what they are designed to do.** One command released them, and
+they respawn on the next build.
+
+⚠⚠ **A detection measures the world; a remedy assumes WHO IS STANDING IN IT.** The floor still measures
+correctly long after it was written. The advice was written for somebody sitting at a workstation with a
+browser open, and the only kind of session that now runs this gate has been building all day.
+
+**So when a diagnostic fires and its advice does not fit, the check is usually still right.** Fix the
+sentence, keep the threshold — and prefer advice that names a mechanism over advice that names a habit.
+
+### And a session can exhaust its own preconditions
+
+**The work itself was the cause.** Thirty builds is a normal day's activity, and its accumulated cost
+surfaced as an environment failure at the moment the longest job of the day tried to start.
+
+⚠ **Anything that accumulates per action and is released only on demand will eventually block the action
+that needs the most of it** — and it will do so at the worst moment by construction, because that action is
+the one with the largest requirement.
+
+## Opening a file for writing destroys it before the content is computed
+
+**A script rebuilt a record file as `open(path, "w").write(header + read(other))`. The inner read failed.
+The file had already been truncated: 1909 lines to zero.**
+
+⚠ **`open(path, "w")` truncates on the CALL, not on the WRITE.** Every expression that computes the content
+runs afterwards, and any failure in it leaves an empty file where the original was.
+
+**Build the content first, then open.** Two statements instead of one, and the file is never open while
+anything can still go wrong.
+
+⚠⚠ **What made it a near-miss rather than a loss was that the file's last content was COMMITTED**, so
+`git checkout --` restored it whole. **Commit often enough that a restore is a recovery and not a decision
+about how much to lose.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

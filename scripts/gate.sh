@@ -1037,6 +1037,17 @@ reap_to_zero () {
   if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ] && [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then
     echo "!!! ABORT ($CFG): PRECONDITION FAILURE -- only ${FREE_MB} MB free, floor is ${MEMORY_FLOOR_MB} MB."
     echo "!!! This is NOT a suite failure. Quiet the box (editors, browsers) and run again."
+    # ---- ⚠ AND IN A LONG SESSION THE BROWSER IS USUALLY NOT THE CULPRIT. T-239, 2026-08-31.
+    #
+    # MSBuild and Roslyn keep BUILD SERVERS alive between builds, by design. A session that builds thirty
+    # times accumulates them: eighteen `dotnet.exe` holding ~1.1 GB was what aborted this gate, and
+    # `dotnet build-server shutdown` took it to three processes and returned ~500 MB, above the floor.
+    #
+    # They respawn on the next build, so this is fully reversible and costs one cold compile. The line
+    # above is right for a workstation and names the wrong culprit for an agent session that has been
+    # building all day -- which is the only kind of session this gate now runs in.
+    echo "!!! In a long session, try: dotnet build-server shutdown -- MSBuild/Roslyn servers accumulate"
+    echo "!!! across builds and can hold ~1 GB. They respawn; the cost is one cold compile."
     echo "!!! On 2026-08-24 both Integration legs died with no TRX at 14 MB and 92 MB free."
     exit 5
   fi

@@ -24,8 +24,11 @@ branch retained deliberately*. **The method survives the case whose answer was k
 `agent/T-163…`, `T-167…`, `T-169…`, `T-181…`, `T-185…` each carry exactly one absent file:
 `.claude/handoff/results/T-nnn.md`.
 
-⚠ **That looked like a systematic loss of the handoff record and is not.** The live trail holds **139
-`T-nnn.md` files spanning T-001…T-201 — with 149 numbers missing inside that range.** Five branch-held
+⚠ **That looked like a systematic loss of the handoff record and is not.** ⚠ **CORRECTED BY ITEM 203 — THE
+FIGURES BELOW WERE WRONG.** The live trail holds **137** `T-nnn.md` files spanning T-001…T-201, with **64**
+numbers missing inside that range — not 139 and 149. I compared a zero-padded list against unpadded output,
+so almost every number read as absent. **The conclusion is unchanged — five of 64 is still a small fraction
+and closes nothing — but the trail is far less sparse than reported here.** Five branch-held
 files are **five of 149 gaps**, and their immediate neighbours are absent too (T-162, T-164, T-166, T-168,
 T-170, T-182, T-184, T-186 — none present).
 

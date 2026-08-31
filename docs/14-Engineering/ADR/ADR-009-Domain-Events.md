@@ -125,8 +125,39 @@ they test is the same field. **Reading `EfUnitOfWork` alone cannot establish tha
    and mutated against another, or rebuilt from a DTO. **`AsNoTracking` is the searchable form of this
    hazard, not the only one.**
 
-2. **A consumer that throws after commit** propagates into `CommitAsync`'s catch, which then calls
-   `RollbackAsync` on an already-committed transaction. **What that does is not established.**
+2. ⚠ **MEASURED 2026-08-31 (item 172, PR #389) — THE BEHAVIOUR IS WRONG, AND WORSE THAN THE SHAPE
+   SUGGESTED. THE COMMIT SUCCEEDS, THE DATA IS WRITTEN, THE CALLER IS TOLD THE COMMAND FAILED, AND THE
+   CONSUMER'S EXCEPTION IS DESTROYED ON THE WAY OUT.** Four steps, each exercised:
+
+   1. the consumer throws;
+   2. the `catch` calls `RollbackAsync` on the **already-committed** transaction, **that** throws, and the
+      provider error propagates instead — **`throw;` is never reached**, so what surfaces is *"This
+      SqliteTransaction has completed; it is no longer usable."* **The consumer's message never reaches
+      the caller at all;**
+   3. `CommitAsync` threw **before** setting `completed`, so **disposal believes the transaction is open
+      and rolls back again** — refused, because the `finally` already cleared the field. **In an
+      `await using` block that exception REPLACES whatever the body was propagating;**
+   4. **the row is in the database throughout.**
+
+   ⚠ **The caller being told *failed* after a durable write is the defect, and it outranks the rollback
+   question: a caller told the command failed may retry an operation that already happened.** The masking
+   is the second defect and is **what makes the first undiagnosable** — an operator sees a
+   transaction-provider error naming neither the consumer, nor the event, nor the fact that the commit
+   succeeded.
+
+   **Ruled, and from this ADR's own reasoning rather than from preference.** Dispatch happens *after*
+   commit deliberately, because an event announcing rolled-back work is worse than no event. ⚠ **The
+   symmetric statement is that a COMMITTED write must not be reported as failed — so a consumer failure
+   must not fail the command.** It must not be swallowed either: the one registered consumer invalidates a
+   cache, and a silent failure there is a stale cache nobody sees. **It is surfaced as itself — logged
+   with correlation id, event type and consumer type — and the command succeeds.** **Consumer isolation is
+   part of the same fix: a throw currently abandons the remaining consumers.** Being done under item 173.
+
+   **The three tests pin CURRENT behaviour, not correct behaviour, and say so at their declaration. They
+   change when this is fixed.** ⚠ **A fix needs BOTH halves of the masking:** removing the rollback from
+   the `catch` reddens the masking test **and leaves the disposal test passing**, because `completed` is
+   still false and the field is still cleared.
+
 
 **Also excluded:** the aggregate under test is a probe rather than a production command handler (real is
 everything the event passes *through*), and the store is SQLite — this exercises the mechanism, not the

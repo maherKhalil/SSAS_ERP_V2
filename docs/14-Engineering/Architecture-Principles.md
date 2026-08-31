@@ -601,6 +601,31 @@ so a project referencing a new module but touching none of its types would repor
 check would agree with the stale list for the wrong reason.** A control that can be satisfied by the same
 defect it tests for is worse than none.
 
+
+## ⚠ Third instance, 2026-08-31 — a comparison between two hand-maintained sets is blind to anything added to both
+
+The two guards that already existed over the module lists compare a **named list** against a **declared
+set**. They fire when a module is **removed** from one and still named by the other. ⚠ **A module ADDED
+moves BOTH SIDES OF THE COMPARISON TOGETHER, and is invisible to them.** Union collapse again — this time
+not inside one union but **between two lists that grow and shrink in step.**
+
+⚠ **And the fix does not make the hand-written lists redundant, which is the part worth keeping.** Naming a
+module explicitly **catches a module MOVING, where a scan would pass vacuously.** Naming **cannot catch a
+module ADDED.** **Two directions, two mechanisms, and neither substitutes for the other** — the instinct to
+replace the list with the scan would have traded one blind spot for the opposite one.
+
+**What closed it was a predicate the filesystem already enforces:** a module is a project under
+`src/Modules/`, read from the layout at test time, so a new module appears **the moment its directory
+exists, with nobody deciding it is one.** The non-modules are **siblings of that directory, not entries in
+an exclusion list.** ⚠ **When a control needs a convention, look for one the repository layout already
+commits to before writing one down.**
+
+⚠ **And the trap inside that fix, which is the general lesson: THE DIRECTORY NAME IS NOT THE ASSEMBLY
+PREFIX.** `src/Modules/Finance/` holds the `SSAS.GL.*` projects. **A predicate keyed on the module folder
+name would have reported `SSAS.GL.API` as not-a-module and PASSED WHILE MISSING A MODULE** — the exact
+failure the control exists to catch, **arriving through the control built to catch it.** Read the project
+directory names, not the group directory.
+
 # Principle 16e – A Load-Bearing Control Must Say What It Holds Up
 
 **A control can exist, work, and still be one refactor from deletion — because nothing records that anything

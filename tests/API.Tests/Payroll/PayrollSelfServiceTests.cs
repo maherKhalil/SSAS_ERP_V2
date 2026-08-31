@@ -33,6 +33,7 @@ public sealed class PayrollSelfServiceTests : IClassFixture<PayrollApiTestHost>
   // both, the permission would be a scope wearing a permission's name and `OD-SS-0001` would be unbuilt.
   [Fact]
   [Trait("Criterion", "AC-SS-0004")]
+  [Trait("Criterion", "AC-SS-0003")]
   public async Task The_self_permission_alone_reads_the_callers_own_payslips()
   {
     using var response = await Send(PayrollPermissionNames.ViewOwnPayslips);

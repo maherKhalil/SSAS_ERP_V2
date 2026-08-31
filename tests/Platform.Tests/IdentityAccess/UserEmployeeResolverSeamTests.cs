@@ -86,6 +86,7 @@ public sealed class UserEmployeeResolverSeamTests
   // trusted from the tracked instance.
   [Fact]
   [Trait("Criterion", "AC-SS-0011")]
+  [Trait("Criterion", "AC-SS-0010")]
   public async Task The_link_is_untouched_by_a_refusal()
   {
     await using var scope = await SeamScope.CreateAsync(EmploymentStanding.Ended);

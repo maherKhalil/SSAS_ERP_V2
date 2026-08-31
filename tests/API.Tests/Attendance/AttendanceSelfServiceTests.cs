@@ -78,6 +78,7 @@ public sealed class AttendanceSelfServiceTests : IClassFixture<AttendanceApiTest
   // (`OD-ATT-0011`) and leave is not.
   [Fact]
   [Trait("Criterion", "REQ-SS-0004")]
+  [Trait("Criterion", "AC-SS-0001")]
   public async Task The_records_self_permission_alone_reads_the_callers_own_records()
   {
     var response = await Send(RecordsRoute, AttendancePermissionNames.ViewOwnRecords);
@@ -103,6 +104,7 @@ public sealed class AttendanceSelfServiceTests : IClassFixture<AttendanceApiTest
   // future edit quietly giving the leave route a real branch and filtering on a column the type lacks.
   [Fact]
   [Trait("Criterion", "REQ-SS-0004")]
+  [Trait("Criterion", "AC-SS-0001")]
   public async Task The_leave_self_permission_alone_reads_the_callers_own_leave()
   {
     var response = await Send(LeaveRoute, AttendancePermissionNames.ViewOwnLeave);
@@ -188,6 +190,7 @@ public sealed class AttendanceSelfServiceTests : IClassFixture<AttendanceApiTest
   // nothing", and why it lives in one place across the two modules.
   [Theory]
   [Trait("Criterion", "AC-SS-0007")]
+  [Trait("Criterion", "AC-SS-0002")]
   [InlineData(RecordsRoute)]
   [InlineData(LeaveRoute)]
   public void The_self_route_contract_names_no_employee_on_any_surface(string route) =>

@@ -1970,6 +1970,42 @@ block, produces a file that renders and is wrong.
 **So read the diff for STRUCTURE, not only for content**, and prefer an anchor that is unique and
 structurally unambiguous over one that merely matches.
 
+## The right test, the same code path, a different property
+
+**A criterion required that a refusal disclose nothing about the ownership dimension it enforced. An
+existing test drove the same handler, through the same code path, with the same exception type — and
+asserted the status code and the correlation id.** ⚠ **It never asserted what the body does NOT contain,
+and absence was the entire content of the criterion.**
+
+**The existing test is not weak. It is about something else.** Every earlier near-miss in this record was a
+wrong subject, a wrong state, or a convincing name over a narrower body. **This one is the right event and
+the wrong property, which no amount of reading test NAMES can distinguish.**
+
+⚠ **And it is why coverage cannot find these: both tests execute the same line.** The path was fully
+covered while the claim was entirely unasserted. **The only instrument that reaches it is reading the
+criterion and asking what it FORBIDS — a question a passing test never raises.**
+
+### A claim about absence needs a test written for absence
+
+**A test that asserts what a response contains cannot speak to what it must not contain**, and the two look
+identical in every report that counts tests, lines, or branches.
+
+**When a criterion's content is a prohibition, the test has to name the thing that must not appear** — and
+then assert something POSITIVE alongside it, or an empty response satisfies the prohibition perfectly.
+
+## One string, two audiences, and only one of them is the criterion's subject
+
+**A boundary threw with a message naming the dimension it enforced. That looked like a disclosure hazard
+and was reported as one.** ⚠ **The message never reaches a caller: the handler maps the exception to a
+generic title and writes THAT, never the exception's own text.**
+
+**The message is correct where it lives.** Developers read it in test failures and logs, where naming the
+dimension is the entire point. **The criterion is about what a CALLER sees.**
+
+⚠ **So a true observation about a string implies nothing about disclosure until the string has been
+followed to a channel.** The hazard is a property of the path, not of the text — **and the check is one
+search: find where the string is written, not where it is thrown.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

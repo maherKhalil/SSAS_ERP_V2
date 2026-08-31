@@ -577,6 +577,11 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // Termination retains the record, its identifiers and its history.
   [Fact]
+  // ⚠ CITED BY ITEM 221. `AC-EMP-0015`'s third clause -- *"its employee number and national ID remain
+  // reserved within the company"* -- and this already pinned the NUMBER half before the clause was
+  // ever noticed: it terminates EMP-1000 and asserts a re-creation of the same number FAILS.
+  // The national-ID half needed a new test, immediately below.
+  [Trait("Criterion", "AC-EMP-0015")]
   public async Task Termination_retains_the_employee_and_its_history()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -597,6 +602,38 @@ public sealed class EmployeeBoundarySqlServerTests
     // The number stays reserved: a terminated employee still occupies it.
     var reuse = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-1000"));
     Assert.True(reuse.IsFailure);
+  }
+
+  // ==================================================================================================
+  // ⚠ AC-EMP-0015's NATIONAL-ID RESERVATION — THE HALF THE NUMBER TEST DOES NOT COVER (item 221).
+  // ==================================================================================================
+  //
+  // The clause reserves TWO identifiers: *"its employee number and national ID remain reserved within the
+  // company"*. The test above pins the number. **Nothing pinned the national ID after termination.**
+  //
+  // A uniqueness test for national ID exists and uses two LIVE employees, so it proves the constraint
+  // holds between actives. ⚠ **It cannot see whether termination releases the value** -- and releasing it
+  // is the plausible implementation mistake, because a terminated employee looks like a row that no
+  // longer needs its identifiers.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0015")]
+  public async Task A_terminated_employees_national_id_remains_reserved()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-1100", nationalId: "NID-9"));
+    Assert.True(created.IsSuccess);
+
+    Assert.True((await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+      created.Value, DateTimeOffset.UtcNow, EmployeeStatusChangeReason.Resignation,
+      await fixture.RowVersionAsync(created.Value)))).IsSuccess);
+
+    // A DIFFERENT employee number, so the only thing that can refuse this is the national ID.
+    var reuse = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-1101", nationalId: "nid-9"));
+
+    Assert.True(reuse.IsFailure);
+    Assert.Equal(EmployeeErrors.NationalIdConflict.Code, reuse.Error.Code);
   }
 
   // ================================================================================================

@@ -647,6 +647,11 @@ public sealed class PositionSchemaSqlServerTests
   // an update that cannot happen.
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
+  // ⚠ CITED BY 269: `AC-POS-0048`'s COLUMN clause — *`EmployeePositionAssignment` has no `RowVersion`
+  // column.* Asserted at the schema, paired with `EmployeeBoundarySqlServerTests.P7_...` for the
+  // serialization clause. The aggregates being asserted to HAVE one in the same test is the control: an
+  // absence proven beside a presence cannot be a query that sees no rowversions anywhere.
+  [Trait("Criterion", "AC-POS-0048")]
   public async Task The_aggregates_carry_a_rowversion_and_the_history_does_not()
   {
     await using var fixture = await PositionFixture.CreateAsync();

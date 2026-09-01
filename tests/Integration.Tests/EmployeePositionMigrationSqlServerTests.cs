@@ -206,6 +206,13 @@ public sealed class EmployeePositionMigrationSqlServerTests
   // construction: this migration refuses on a populated database, so it has no moment in which to author a
   // row — which stops being true the day someone adds a backfill path, exactly the change the comments
   // anticipate. Before this test, nothing would have failed.
+  //
+  // ⚠⚠ IS THIS REDUNDANT WITH THE DATABASE'S OWN CONSTRAINTS? NO, AND THE PLANT MEASURED WHY. A first
+  // attempt authored the row with invented identifiers and `FK_Positions_Companies_CompanyId` ABORTED THE
+  // MIGRATION OUTRIGHT — so a CARELESS backfill already fails loudly without this test. What the foreign
+  // key cannot see is a WELL-FORMED one: a row per existing company, valid in every column, breaking
+  // nothing. That is the version a competent maintainer harmonising FP-007 and FP-008 would write, it is
+  // the version the corrected plant models, and it is the only version this test exists for.
   [Fact]
   [Trait("Decision", "OD-POS-001")]
   [Trait("Criterion", "AC-POS-0065")]

@@ -369,6 +369,15 @@ public sealed class CutoverManifestArchitectureTests
   // So the change is a correctness fix at four sites and diagnosability everywhere else, and the file is
   // uniform because a mixed convention is what let the distinction go unexamined for as long as it did.
   [Trait("Criterion", "AC-DEP-0034")]
+  // ⚠ CITED BY 269: `AC-POS-0053` — *the derived copy order places EVERY GRADE before Position, Position
+  // before Employee, and Employee before every assignment table.* All of it is here: SalaryGrade < JobGrade
+  // < Position < Employee, and both Position and Employee before `EmployeePositionAssignment`.
+  //
+  // The comment below is the reason this ordering needs asserting at all rather than being left to a
+  // fixture: every link in the grade chain is a NULLABLE foreign key, so a wrong order fails only for the
+  // rows that happen to use the reference. A populated-fixture test would pass or fail on what it seeded;
+  // this asserts the ORDER itself.
+  [Trait("Criterion", "AC-POS-0053")]
   public void C6_15_The_copy_order_places_every_principal_before_its_dependents()
   {
     var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);

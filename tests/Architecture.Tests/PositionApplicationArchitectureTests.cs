@@ -78,6 +78,14 @@ public sealed class PositionApplicationArchitectureTests
   // token exists to lose.
   [Fact]
   [Trait("Requirement", "NFR-POS-0302")]
+  // ⚠ CITED BY 269: `AC-POS-0047`'s UNIVERSAL quantifier — *EVERY position and grade mutation*. Its partner
+  // `PositionApplicationSqlServerTests.A_stale_row_version_is_refused_on_every_family` proves the REFUSAL
+  // behaves correctly but exercises one mutation per family; this enumerates the mutation commands and
+  // asserts each carries the token, which is the only leg that scales to a command added tomorrow.
+  //
+  // Note the exclusion is principled and stated: creates are skipped because there is nothing yet to be
+  // stale about, so the filter is not narrowing the population to make the assertion pass.
+  [Trait("Criterion", "AC-POS-0047")]
   public void Every_position_mutation_of_an_existing_record_requires_a_row_version()
   {
     foreach (var command in MutationCommands.Where(type =>

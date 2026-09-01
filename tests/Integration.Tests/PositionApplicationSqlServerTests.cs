@@ -380,6 +380,18 @@ public sealed class PositionApplicationSqlServerTests
   [InlineData("JobGrades")]
   [InlineData("SalaryGrades")]
   [Trait("Requirement", "NFR-POS-0302")]
+  // ⚠ CITED BY 269: `AC-POS-0047`'s APPLICATION clause, across all three families rather than one.
+  //
+  // ⚠⚠ *EVERY … MUTATION* IS NOT WHAT THIS PROVES, AND THE DIFFERENCE MATTERS: this exercises ONE mutation
+  // per family. The universal half is
+  // `PositionApplicationArchitectureTests.Every_position_mutation_of_an_existing_record_requires_a_row_
+  // version`, which enumerates the mutation commands and asserts each carries the token — a structural
+  // claim over the whole set that a behavioural test could only sample. Cited as a pair.
+  //
+  // The criterion's `409` is a TRANSPORT claim this cannot reach; searched `PositionEndpointTests` for a
+  // stale-token conflict assertion and did not find one, so that clause is recorded as unlocated rather
+  // than absent.
+  [Trait("Criterion", "AC-POS-0047")]
   public async Task A_stale_row_version_is_refused_on_every_family(string table)
   {
     await using var fixture = await PositionAppFixture.CreateAsync();

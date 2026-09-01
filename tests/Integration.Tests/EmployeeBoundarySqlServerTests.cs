@@ -2434,6 +2434,16 @@ public sealed class EmployeeBoundarySqlServerTests
   // finds no row to update and appends nothing — which is what stops two history rows describing one move.
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
+  // ⚠ CITED BY 269: `AC-POS-0048`'s CONCURRENCY clause — *two concurrent position changes for one employee
+  // serialize on `Employee.RowVersion` with exactly one winner.* The comment above states the mechanism the
+  // criterion names: the assignment record has no token of its own, so the serialization point is the
+  // EMPLOYEE's, and the loser appends nothing — which is what stops two history rows describing one move.
+  //
+  // The criterion's other clause — *`EmployeePositionAssignment` has NO `RowVersion` column* — is asserted
+  // at the schema by `PositionSchemaSqlServerTests.The_aggregates_carry_a_rowversion_and_the_history_does_
+  // not` and structurally by `PositionApplicationArchitectureTests.The_append_only_assignment_carries_no_
+  // row_version`. The absence is the REASON the serialization works, so the two clauses are one argument.
+  [Trait("Criterion", "AC-POS-0048")]
   public async Task P7_Two_concurrent_position_changes_leave_one_winner_and_one_history_row()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

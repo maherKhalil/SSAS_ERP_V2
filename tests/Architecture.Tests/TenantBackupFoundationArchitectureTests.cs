@@ -60,16 +60,23 @@ public sealed class TenantBackupFoundationArchitectureTests
     {
       var names = type.GetProperties().Select(property => property.Name).ToArray();
       Assert.Contains("TenantDatabaseId", names);
-      Assert.DoesNotContain("TenantId", names);
+      // ⚠ `TenantId` is compile-checked against the type that legitimately HAS it (252). Renaming the
+      // property on the assignment now breaks this build instead of silently emptying the assertion.
+      Assert.DoesNotContain(nameof(TenantDatabaseAssignment.TenantId), names);
+
+      // ⚠⚠ AND THIS ONE STAYS A STRING, WHICH IS NOT AN OVERSIGHT. `TenantDatabaseAssignmentId` IS A
+      // DATABASE COLUMN NAME, NOT A CLR MEMBER — the property is `Id`, mapped by
+      // `TenantDatabaseAssignmentConfiguration:27`. There is no symbol to `nameof`, so no compile-time
+      // form of this assertion exists and the literal is the honest expression of it.
       Assert.DoesNotContain("TenantDatabaseAssignmentId", names);
     }
 
     // Recovery readiness lives on the physical database row, never duplicated onto assignments.
     var assignmentProperties = typeof(TenantDatabaseAssignment).GetProperties()
       .Select(property => property.Name).ToArray();
-    Assert.DoesNotContain("RecoveryReadinessStatus", assignmentProperties);
-    Assert.DoesNotContain(assignmentProperties, name => name.Contains("Backup", StringComparison.Ordinal));
-    Assert.DoesNotContain(assignmentProperties, name => name.Contains("Recovery", StringComparison.Ordinal));
+    Assert.DoesNotContain(nameof(TenantDatabase.RecoveryReadinessStatus), assignmentProperties);
+    Assert.DoesNotContain(assignmentProperties, name => name.Contains(Names.Backup, StringComparison.Ordinal));
+    Assert.DoesNotContain(assignmentProperties, name => name.Contains(Names.Recovery, StringComparison.Ordinal));
   }
 
   [Fact]
@@ -96,13 +103,13 @@ public sealed class TenantBackupFoundationArchitectureTests
     var recoveryMethods = typeof(ITenantDatabaseRecoveryReadinessWriter).GetMethods()
       .Select(method => method.Name).ToArray();
     Assert.Contains("RecordRecoveryReadinessAsync", recoveryMethods);
-    Assert.DoesNotContain(recoveryMethods, name => name.Contains("Connectivity", StringComparison.Ordinal));
-    Assert.DoesNotContain(recoveryMethods, name => name.Contains("Schema", StringComparison.Ordinal));
-    Assert.DoesNotContain(recoveryMethods, name => name.Contains("Migration", StringComparison.Ordinal));
+    Assert.DoesNotContain(recoveryMethods, name => name.Contains(Names.Connectivity, StringComparison.Ordinal));
+    Assert.DoesNotContain(recoveryMethods, name => name.Contains(Names.Schema, StringComparison.Ordinal));
+    Assert.DoesNotContain(recoveryMethods, name => name.Contains(Names.Migration, StringComparison.Ordinal));
 
     // And the health writer gained no recovery method.
     var healthMethods = typeof(ITenantDatabaseHealthWriter).GetMethods().Select(method => method.Name).ToArray();
-    Assert.DoesNotContain(healthMethods, name => name.Contains("Recovery", StringComparison.Ordinal));
+    Assert.DoesNotContain(healthMethods, name => name.Contains(Names.Recovery, StringComparison.Ordinal));
 
     // No generic all-dimension writer anywhere in Infrastructure.
     var forbidden = new[] { "RecordAllHealthAsync", "RecordHealthAsync", "UpdateHealthAsync" };
@@ -149,8 +156,8 @@ public sealed class TenantBackupFoundationArchitectureTests
     // The routing record the gate reads carries no recovery field either, so it could not consult one.
     var routeProperties = typeof(TenantDatabaseAssignmentRecord).GetProperties()
       .Select(property => property.Name).ToArray();
-    Assert.DoesNotContain(routeProperties, name => name.Contains("Recovery", StringComparison.Ordinal));
-    Assert.DoesNotContain(routeProperties, name => name.Contains("Backup", StringComparison.Ordinal));
+    Assert.DoesNotContain(routeProperties, name => name.Contains(Names.Recovery, StringComparison.Ordinal));
+    Assert.DoesNotContain(routeProperties, name => name.Contains(Names.Backup, StringComparison.Ordinal));
   }
 
   [Fact]
@@ -446,4 +453,57 @@ public sealed class TenantBackupFoundationArchitectureTests
   {
     public DateTimeOffset UtcNow => new(2026, 8, 14, 12, 0, 0, TimeSpan.Zero);
   }
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE ABSENCE PREDICATES CAN MATCH WHERE THE CONCERN ACTUALLY LIVES (252).
+  // ================================================================================================
+  //
+  // Every `DoesNotContain(names, name => name.Contains("X"))` above PASSES WHEN THE PREDICATE MATCHES
+  // NOTHING, so none of them can distinguish *the assignment carries no backup field* from *I misspelled
+  // "Backup"*. Measured on this shape elsewhere in the suite: a literal planted as `"Departmentt"`
+  // returned PASSED, 6 of 6.
+  //
+  // ---- ⚠⚠ NEITHER OF THE USUAL REMEDIES APPLIES TO AN ABSENCE-OF-NAME ASSERTION.
+  //
+  // `nameof` is IMPOSSIBLE BY CONSTRUCTION — you cannot `nameof` a member whose whole point is that it must
+  // not exist. And a floor is IRRELEVANT: `name.Contains("Backupp")` matches nothing over a fully populated
+  // array exactly as happily as over an empty one. A floor closes vacuity; this is not vacuity.
+  //
+  // ---- SO THE FRAGMENTS ARE SHARED CONSTANTS, AND THE WITNESS IS REAL CODE RATHER THAN A STUB.
+  //
+  // ⚠ A control carrying its OWN copy of each fragment would prove nothing — a typo at a call site would
+  // leave it passing. These are the SAME symbols the assertions use, so a misspelt constant fails here and
+  // a misspelt call site is `CS0117`.
+  //
+  // ⚠⚠ AND THE WITNESS IS THE TYPE THE CONCERN WAS MOVED TO, WHICH MAKES THIS STRONGER THAN A SPELLING
+  // CHECK: it asserts the dimension lives THERE AND NOT HERE. A synthetic control would prove only that
+  // the fragment is spelled consistently; this one also fails if the product renames the real thing.
+  private static class Names
+  {
+    public const string Backup = "Backup";
+    public const string Connectivity = "Connectivity";
+    public const string Migration = "Migration";
+    public const string Recovery = "Recovery";
+    public const string Schema = "Schema";
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void Every_absence_predicate_can_match_where_the_concern_actually_lives()
+  {
+    // Recovery and backup live on the physical database row — which is what the assignment must NOT carry.
+    var database = typeof(TenantDatabase).GetProperties().Select(property => property.Name).ToArray();
+
+    Assert.Contains(database, name => name.Contains(Names.Recovery, StringComparison.Ordinal));
+    Assert.Contains(database, name => name.Contains(Names.Backup, StringComparison.Ordinal));
+
+    // Connectivity, schema and migration live on the HEALTH writer — which is what the recovery-readiness
+    // writer must NOT be able to express. One method per dimension is the rule those assertions enforce.
+    var health = typeof(ITenantDatabaseHealthWriter).GetMethods().Select(method => method.Name).ToArray();
+
+    Assert.Contains(health, name => name.Contains(Names.Connectivity, StringComparison.Ordinal));
+    Assert.Contains(health, name => name.Contains(Names.Schema, StringComparison.Ordinal));
+    Assert.Contains(health, name => name.Contains(Names.Migration, StringComparison.Ordinal));
+  }
+
 }

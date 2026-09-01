@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.HR.Domain.Employees;
+using SSAS.HR.Domain.Departments;
+using SSAS.HR.Domain.Positions;
 using SSAS.HR.Domain.ImportExport;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using SSAS.Platform.Domain.Branches;
@@ -96,18 +98,18 @@ public sealed class CutoverManifestArchitectureTests
         "Branch",
         "CalendarHoliday",
         "Company",
-        "Department",
-        "DepartmentManager",
+        nameof(Department),
+        nameof(DepartmentManager),
         "Employee",
         "EmployeeBranchAssignment",
         "EmployeeCompensation",
-        "EmployeeDepartmentAssignment",
-        "EmployeeExportRun",
-        "EmployeeImportRun",
-        "EmployeePositionAssignment",
+        nameof(EmployeeDepartmentAssignment),
+        nameof(EmployeeExportRun),
+        nameof(EmployeeImportRun),
+        nameof(EmployeePositionAssignment),
         "FiscalPeriod",
         "FiscalYear",
-        "JobGrade",
+        nameof(JobGrade),
         "JournalDraft",
         "JournalDraftLine",
         "JournalEntry",
@@ -122,8 +124,8 @@ public sealed class CutoverManifestArchitectureTests
         "PayrollRun",
         "PayrollRunDraftLine",
         "PayrollRunLine",
-        "Position",
-        "SalaryGrade",
+        nameof(Position),
+        nameof(SalaryGrade),
         "WorkingCalendar"
       ],
       derived);
@@ -247,17 +249,17 @@ public sealed class CutoverManifestArchitectureTests
     Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Employee));
     Assert.DoesNotContain(
       contributorFree.Value, table => table.EntityName == nameof(EmployeeBranchAssignment));
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "Department");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "DepartmentManager");
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Department));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(DepartmentManager));
     Assert.DoesNotContain(
-      contributorFree.Value, table => table.EntityName == "EmployeeDepartmentAssignment");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "SalaryGrade");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "JobGrade");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "Position");
+      contributorFree.Value, table => table.EntityName == nameof(EmployeeDepartmentAssignment));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(SalaryGrade));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(JobGrade));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Position));
     Assert.DoesNotContain(
-      contributorFree.Value, table => table.EntityName == "EmployeePositionAssignment");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "EmployeeImportRun");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "EmployeeExportRun");
+      contributorFree.Value, table => table.EntityName == nameof(EmployeePositionAssignment));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(EmployeeImportRun));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(EmployeeExportRun));
 
     // ---- EIGHTEEN MODULE TABLES MISSING, AND ONLY PLATFORM'S COMPANY AND BRANCH LEFT.
     //
@@ -308,10 +310,20 @@ public sealed class CutoverManifestArchitectureTests
   // presence would break the plan. Absence of the cause is not a demonstration of the effect, and
   // the reason for `DEC-DEP-0022` therefore rests on an argument rather than on a test.
   //
-  // One more thing worth a reader's eye: the entity names here are `nameof(Company)`,
-  // `nameof(Employee)`, `nameof(Branch)` -- but "Department" and "DepartmentManager" are STRING
-  // LITERALS. Renaming those two types would leave this test compiling and silently asserting
-  // about entities that no longer exist under those names.
+  // ---- AND A CORRECTION TO WHAT THIS COMMENT SAID WHEN IT WAS WRITTEN.
+  //
+  // It claimed the string literals here would "silently assert about entities that no longer exist".
+  // THAT WAS WRONG ABOUT THIS TEST. `PositionOf` ends in `Assert.True(index >= 0, "... is absent from
+  // the copy manifest entirely.")`, so a renamed entity REDDENS THIS TEST with a message naming it.
+  //
+  // The literals were replaced with `nameof` anyway, across all nine entity types in this file, and the
+  // reason is elsewhere -- the sites where a rename really is silent are the NEGATIVE assertions:
+  // `Assert.DoesNotContain(..., table => table.EntityName == "X")` and the `Assert.Null(... ShortName()
+  // == "X")` at the foot of this file. A renamed entity makes those predicates match nothing, and a
+  // `DoesNotContain` that matches nothing PASSES. Green, asserting nothing.
+  //
+  // So the change is a correctness fix at four sites and diagnosability everywhere else, and the file is
+  // uniform because a mixed convention is what let the distinction go unexamined for as long as it did.
   [Trait("Criterion", "AC-DEP-0034")]
   public void C6_15_The_copy_order_places_every_principal_before_its_dependents()
   {
@@ -331,20 +343,20 @@ public sealed class CutoverManifestArchitectureTests
     }
 
     // Company and Branch are Platform's, and everything HR-owned depends on one or both.
-    Assert.True(PositionOf(nameof(Company)) < PositionOf("Department"));
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(Department)));
     Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(Employee)));
     Assert.True(PositionOf(nameof(Branch)) < PositionOf(nameof(Employee)));
 
     // ---- THE FP-007 PHASE 3 EDGE. This is the one the new foreign key created.
     Assert.True(
-      PositionOf("Department") < PositionOf(nameof(Employee)),
+      PositionOf(nameof(Department)) < PositionOf(nameof(Employee)),
       "Departments must be copied before Employees: Employee.DepartmentId is a required foreign key.");
 
     // The two tables that depend on BOTH must come after both.
-    Assert.True(PositionOf("Department") < PositionOf("DepartmentManager"));
-    Assert.True(PositionOf(nameof(Employee)) < PositionOf("DepartmentManager"));
-    Assert.True(PositionOf("Department") < PositionOf("EmployeeDepartmentAssignment"));
-    Assert.True(PositionOf(nameof(Employee)) < PositionOf("EmployeeDepartmentAssignment"));
+    Assert.True(PositionOf(nameof(Department)) < PositionOf(nameof(DepartmentManager)));
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(DepartmentManager)));
+    Assert.True(PositionOf(nameof(Department)) < PositionOf(nameof(EmployeeDepartmentAssignment)));
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(EmployeeDepartmentAssignment)));
 
     Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(EmployeeBranchAssignment)));
 
@@ -357,19 +369,19 @@ public sealed class CutoverManifestArchitectureTests
     // happened to use the reference. Asserting the ORDER catches it regardless of what the fixture
     // populates.
     Assert.True(
-      PositionOf("SalaryGrade") < PositionOf("JobGrade"),
+      PositionOf(nameof(SalaryGrade)) < PositionOf(nameof(JobGrade)),
       "Salary grades must be copied before job grades: JobGrade.SalaryGradeId is a foreign key.");
     Assert.True(
-      PositionOf("JobGrade") < PositionOf("Position"),
+      PositionOf(nameof(JobGrade)) < PositionOf(nameof(Position)),
       "Job grades must be copied before positions: Position.JobGradeId is a foreign key.");
 
     // The history depends on BOTH Employee and Position, so it must come after both.
-    Assert.True(PositionOf("Position") < PositionOf("EmployeePositionAssignment"));
-    Assert.True(PositionOf(nameof(Employee)) < PositionOf("EmployeePositionAssignment"));
+    Assert.True(PositionOf(nameof(Position)) < PositionOf(nameof(EmployeePositionAssignment)));
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(EmployeePositionAssignment)));
 
-    Assert.True(PositionOf(nameof(Company)) < PositionOf("Position"));
-    Assert.True(PositionOf(nameof(Company)) < PositionOf("JobGrade"));
-    Assert.True(PositionOf(nameof(Company)) < PositionOf("SalaryGrade"));
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(Position)));
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(JobGrade)));
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(SalaryGrade)));
 
     // ---- THE FP-008 PHASE 3 EDGE. This is the one the new foreign key created.
     //
@@ -381,7 +393,7 @@ public sealed class CutoverManifestArchitectureTests
     // The obligation's other half moved in the same commit: `data-model.md`'s "not ordered against
     // Employee" caveat is gone, because the assertion and the claim became true together.
     Assert.True(
-      PositionOf("Position") < PositionOf(nameof(Employee)),
+      PositionOf(nameof(Position)) < PositionOf(nameof(Employee)),
       "Positions must be copied before Employees: Employee.PositionId is a required foreign key.");
 
     // ================================================================================================
@@ -392,10 +404,10 @@ public sealed class CutoverManifestArchitectureTests
     // neither lengthens the dependency chain. Both carry a company foreign key, which is the only edge
     // they have and the only ordering claim provable about them.
     Assert.True(
-      PositionOf(nameof(Company)) < PositionOf("EmployeeImportRun"),
+      PositionOf(nameof(Company)) < PositionOf(nameof(EmployeeImportRun)),
       "Companies must be copied before import runs: EmployeeImportRun.CompanyId is a foreign key.");
     Assert.True(
-      PositionOf(nameof(Company)) < PositionOf("EmployeeExportRun"),
+      PositionOf(nameof(Company)) < PositionOf(nameof(EmployeeExportRun)),
       "Companies must be copied before export runs: EmployeeExportRun.CompanyId is a foreign key.");
 
     // ---- AND NEITHER RUN RECORD IS ORDERED AGAINST Employee, DELIBERATELY AND PERMANENTLY.
@@ -422,6 +434,6 @@ public sealed class CutoverManifestArchitectureTests
     Assert.Null(
       CutoverTenantModel.Source.Model.FindEntityType(typeof(SSAS.HR.Domain.Positions.Position))!
         .GetForeignKeys()
-        .FirstOrDefault(key => key.PrincipalEntityType.ShortName() == "Department"));
+        .FirstOrDefault(key => key.PrincipalEntityType.ShortName() == nameof(Department)));
   }
 }

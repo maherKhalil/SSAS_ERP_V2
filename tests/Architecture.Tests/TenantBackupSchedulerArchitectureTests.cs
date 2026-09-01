@@ -106,6 +106,8 @@ public sealed class TenantBackupSchedulerArchitectureTests
     // Restore verification is Phase D; the platform deletes no artifacts in V1 at all (ADR-022 §16).
     var forbidden = new[] { "Restore", "VerifyOnly", "Delete", "Purge", "Retention", "Prune", "Sweep" };
 
+    var examined = 0;
+
     foreach (var type in SchedulerTypes())
     {
       foreach (var method in type.GetMethods(
@@ -118,11 +120,27 @@ public sealed class TenantBackupSchedulerArchitectureTests
           continue;
         }
 
+        examined++;
+
         Assert.DoesNotContain(
           forbidden,
           fragment => method.Name.Contains(fragment, StringComparison.Ordinal));
       }
     }
+
+    // ⚠ ANTI-VACUITY ON WHAT SURVIVED THE SKIP, NOT ON THE COLLECTION (256). `SchedulerTypes()` is a
+    // hard-coded pair of `typeof()`s and cannot go empty, so a floor there would prove nothing — but
+    // `DeclaredOnly` means a refactor that moved these methods onto a base class would leave the inner
+    // loop with nothing to inspect, and every assertion above would hold trivially.
+    //
+    // THE GUARD'S OWN NAME IS THE TELL: *adds no restore, retention or deletion capability* IS TRIVIALLY
+    // TRUE OF A TYPE WITH NO METHODS. That is the shape found in the model scope guard, where every
+    // assertion sat inside a `continue` nothing counted past.
+    Assert.True(
+      examined >= 4,
+      $"only {examined} scheduler methods survived the skip; `DeclaredOnly` is finding almost nothing, so " +
+      "this guard is asserting that an empty set contains no deletion verbs rather than that the scheduler " +
+      "has none");
   }
 
   [Fact]

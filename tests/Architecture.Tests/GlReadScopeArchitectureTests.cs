@@ -35,6 +35,32 @@ namespace SSAS.Architecture.Tests;
 // fired falsely here on day one. This matches `.CompanyId`, THE COLUMN THE QUERY MUST PRODUCE, because
 // that is the thing the rule is actually about.
 //
+// ---- ⚠⚠⚠ THIS RULE IS NARROWER THAN IT READS. DO NOT COPY IT INTO ANOTHER MODULE UNCHANGED.
+//
+// It holds for GL because every company-owned read here is ONE SHAPE: a selection over an unbounded set.
+// ⚠ IT WAS DRY-RUN ACROSS ALL SEVEN MODULE READ SERVICES BEFORE BEING WRITTEN, AND IT WOULD HAVE FIRED ON
+// FIVE CORRECT READS — one in `EmployeeReadService`, one in `DepartmentReadService`, three in
+// `PayrollReadService`. All five were read. All five are correct.
+//
+// Those five RESOLVE A ROW BY AN IDENTIFIER THE CALLER ALREADY HOLDS, obtained from a read that was itself
+// scoped — `.Where(period => period.Id == run.PayrollPeriodId)`, or a join on `employee.DepartmentId`.
+// That is a DIFFERENT SHAPE, not a weaker version of this one, and a guard that treated them alike would
+// have fired on five correct reads on its first run. A false alarm on a scope guard is how a scope guard
+// gets switched off.
+//
+// ⚠⚠ AND THE HONEST FORM OF THE DIFFERENCE IS A COST JUDGEMENT, NOT A CATEGORY. BOTH SIDES REST ON AN
+// INVARIANT. The two sites this guard fixed were safe only because the application never writes a
+// cross-company reversal — an invariant about the writing code. The five are safe only because the
+// identifier came from a scoped read — an invariant about the calling code. NO FOREIGN KEY IN THIS SCHEMA
+// ENFORCES COMPANY CONSISTENCY, so a corrupt row defeats either. What separates them is HOW CHEAPLY THE
+// INVARIANT IS VIOLATED AND WHAT THE PREDICATE COSTS: the reversal subqueries were reachable by ANY row in
+// the tenant and the predicate cost two lines while excluding nothing, whereas the five need a corrupt row
+// inside the caller's own company.
+//
+// ⚠ AND *THE IDENTIFIER CAME FROM A SCOPED READ* IS NOT ENFORCEABLE HERE AT ALL: it is a property of the
+// DATA FLOW WITHIN A REQUEST, which no source-text guard at this layer can see. That is why the carve-out
+// is written down here as a MEASURED OBSERVATION rather than encoded as an exemption.
+//
 // ---- ⚠⚠⚠ WHAT THIS CANNOT COVER.
 //
 // AN ARCHITECTURE GUARD ASSERTS THE SHAPE OF A QUERY AND NEVER THAT THE SHAPE WAS APPLIED AT RUNTIME. It

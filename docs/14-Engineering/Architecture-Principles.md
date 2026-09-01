@@ -3133,7 +3133,27 @@ measurement behind it, not a failed one.
 **Write the disclaimer while the elegance is fresh**, in the same paragraph as the finding, rather than
 after somebody has drawn the conclusion it invites.
 
-## A sentinel must be outside the domain it stands in for
+## A fallback must fail toward the safe outcome for ITS OWN consumer
+
+⚠⚠⚠ **THIS SECTION FIRST READ *A SENTINEL MUST BE OUTSIDE THE DOMAIN IT STANDS IN FOR*, AND ONE LINE OF THE FILE THAT PROMPTED IT REFUTES THAT RULE.** Two consecutive lines, one variable, two different fallbacks: `${LEFT:-?}` for the message and `${LEFT:-1}` for the branch. **`1` is squarely inside the domain of a catalog count, and it is CORRECT** — an unmeasured reap must read as *not clean* and abort. **The rule as written would have flagged the best line in the function.**
+
+**THE RULE IS ABOUT DIRECTION, NOT DOMAIN: the fallback must be chosen so that an UNMEASURED value produces the SAFE OUTCOME FOR THAT PARTICULAR CONSUMER.**
+
+- **For a DISPLAY, the safe outcome is *say you do not know*** — so an out-of-domain sentinel is right, and
+  that is where the ten correct uses in that file live.
+- **For a BRANCH there is no out-of-domain value**, so pick the in-domain one that fails TOWARD the guard:
+  a count that must be zero defaults to one; a check for interlopers defaults to *some*; a floor on free
+  memory defaults to ABOVE the floor.
+
+⚠⚠ **THE SAME VARIABLE CAN NEED TWO DIFFERENT FALLBACKS IN TWO CONSECUTIVE LINES**, and that is not
+inconsistency — it is two consumers with two safe directions.
+
+⚠ **And the last case inverts what the two readers of this file first assumed: the safe fallback for an
+unmeasured memory reading is NOT zero.** Zero aborts the run the floor exists to protect, on no evidence.
+**The same rule that makes an unmeasured catalog count ABORT makes an unmeasured memory reading PROCEED,
+because the consumers differ.**
+
+### The old formulation, kept because it names where to look
 
 **A script measures things by running a command and defaulting the result when it comes back empty. Ten of
 those defaults use a value that could never be a real reading — a question mark where a count belongs — and

@@ -3217,6 +3217,35 @@ successful measurement*.
 harness.** Run both sides every time: the unmeasured path AND a real value. **And extract the block from
 the patched file verbatim — a demonstration of retyped code proves nothing about what ships.**
 
+## Measure the defect in the unpatched code first
+
+**A fix was written for a check that reports success when its own measurement fails. Before applying it,
+the author extracted the check verbatim from the UNPATCHED source, injected a failure, and recorded what it
+printed: the same reassuring note as the healthy case, in all three variants.**
+
+⚠⚠ **Without that step the fix proves nothing.** Patch first, show the new code printing *not compared*, and
+there is no evidence the old code did anything different — **the new message could have been right for an
+unrelated reason, and nobody would ever know the old one was wrong.**
+
+**THE BEFORE-MEASUREMENT IS THE CONTROL.** A fix demonstrated only after the fact belongs to the same class
+as a guard nobody has watched fail: plausible, green, and unexamined.
+
+### Run the healthy case beside the failing one, every time
+
+**If the failing run and the working run print the same thing, the fix has not worked** — and that is
+precisely what the unpatched code did. ⚠ **A demonstration of the failure path alone cannot distinguish a
+repaired check from an unchanged one.**
+
+### And a presence check is not a success check
+
+**The function already refused to claim in three cases — no totals captured, no tool on the path, no
+merge-base.** ⚠⚠ **The missing case is the one where the tool EXISTS, the base EXISTS, and the command still
+fails.** The safe vocabulary was already there; only this path was routed to *ok*.
+
+**Where a check verifies that something is available before using it, ask separately whether the use
+succeeded.** Availability and success are different measurements, and the second is the one the result
+depends on.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

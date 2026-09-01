@@ -3257,6 +3257,106 @@ depends on.
 
 ---
 
+---
+
+## An argument from necessity cannot be wrong, which is why it proves nothing
+
+**When a code path cannot be reached by any ordinary test, the case for a stand-in instrument writes
+itself: *this is the only thing that reaches it.* That sentence is true and it is worthless as evidence,
+because it would be equally true of a bad model.** An argument from **necessity** establishes that the
+stand-in is the only option; it says nothing about whether the stand-in is **accurate**. Those are
+different claims and the first is routinely accepted in place of the second.
+
+**Worked instance, 2026-09-01.** The gate's memory-precondition abort could not be exercised without
+genuinely exhausting the machine, so its behaviour was demonstrated by extracting the block and running it
+against injected values. The justification on the record was *the only instrument that reaches this code*.
+That night the real path fired for the first time, on a genuinely full box — **and the demonstration had
+predicted the production output exactly: same lines, same order, different numbers.**
+
+**The model was accurate. But nothing available at the time it was trusted established that**, and it could
+have been checked only by the event it existed to substitute for.
+
+**What follows:**
+
+- **Say which argument you are making.** *Nothing else reaches this path* is a statement about coverage.
+  *This reproduces what the path does* is a statement about fidelity, and it needs its own support —
+  usually that the stand-in executes the **same text** rather than a transcription of it.
+- ⚠ **When the real event finally occurs, check the stand-in against it and record the result.** This is
+  the only occasion on which the fidelity claim is testable, it arrives without warning, and it is
+  ordinarily spent celebrating that the path worked.
+- **One confirmation on one path is not a general verification.** Five other demonstrated paths remain
+  unobserved. What the confirmation buys is that the *practice* of extracting and injecting has been shown
+  once to model the real thing — which is worth more than it looks, because the practice is what gets
+  reused.
+
+## A diagnostic earns its keep by changing a decision, not by reading well
+
+**A message that improves on its predecessor and leaves the reader doing the same thing is decoration.**
+The test is counterfactual: name the action the old output would have produced and the action the new one
+produces, and check that they differ.
+
+**Worked instance, 2026-09-01.** Three aborts on the same precondition had been indistinguishable in the
+output, and each one invited the same response — retry, or run `dotnet build-server shutdown`. One of those
+shutdowns was run three times for nothing. Two discriminators were added: the **spread** across five
+samples, and the **count of live test processes**. On their first real firing they reported a 19 MB spread
+and three processes, which together say *the box is genuinely full and there is nothing idle to reclaim* —
+**so the run was not restarted, where every earlier abort had been.**
+
+⚠ **The value was not the better-worded abort. It was forty minutes not spent reaching the same wall, and a
+question escalated to the owner instead of retried a fourth time.** Where a diagnostic cannot name the
+decision it changes, it is a candidate for deletion rather than improvement.
+
+---
+
+---
+
+## Every check we run is positive-only: none of them can see work that was planned and dropped
+
+**A gate verifies what was written. A commit message reports what was applied. A diff shows what changed.
+All three take the artefact as given and ask whether it is sound — and not one of them can ask whether it
+is COMPLETE against an intention held outside the tree.** Work that was planned and silently dropped
+produces a green gate, an accurate commit message, and a clean diff.
+
+**Worked instance, 2026-09-01.** A citation batch planned eighteen criteria and wrote seventeen. The commit
+message said seventeen, so **the record was accurate and the intent was not** — and the discrepancy existed
+only between the plan and the tree. Every instrument in the pipeline reported success, correctly. **The one
+thing that found it was recounting the tree against the specification.**
+
+**The same mechanism, at a different scale, on the same day:** a `git show --stat` check used to confirm
+that nothing of one window's work had been lost could only confirm the files it named, and so could not see
+an uncommitted file nobody had thought to name. **A positive-only instrument surveys a list you supply and
+reports on its members; the members you failed to supply are indistinguishable from members that do not
+exist.**
+
+**What follows:**
+
+- ⚠ **A batch reports the population, then the count, then the difference** — *18 planned, 17 written, and
+  here is the one* — rather than the count alone. A bare count is consistent with any omission.
+- **The completeness check must derive its population from an INDEPENDENT source**: the specification, the
+  route table, the model — never from the same list the work was drawn from. Re-reading your own plan
+  confirms only that you read it.
+- **Report an omission you found yourself, in the artefact.** It costs a comment and it is the only
+  evidence that the recount is being run at all.
+
+## Absence of the cause is not a demonstration of the effect
+
+**A criterion of the form *X must fail with E* is not satisfied by a test asserting that X is not present.**
+The absence test says the bad state does not exist today; the criterion says the system RESPONDS to the bad
+state. **Nothing about today's shape establishes what happens when the shape changes — which is the only
+occasion the criterion is about.**
+
+**Worked instance, 2026-09-01.** A cutover criterion required that a model carrying a direct manager foreign
+key be shown to fail with `CutoverCopyOrderUndecidable`. The nearest test asserts the foreign key's
+absence. **The design decision resting on that criterion therefore rests on an argument rather than a
+test**, and the test's own comment says it cannot do more.
+
+⚠ **The move that resolves this is the one validated the same night on the gate's abort paths: CONSTRUCT
+THE STATE THE PRODUCTION CODE WILL NOT PRODUCE, AND RUN THE REAL CODE AGAINST IT.** Injection is what
+reaches a path the system is designed never to enter. Where the code under test genuinely cannot accept a
+constructed input, that is itself the finding — say **documented, not tested**, and stop calling it covered.
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

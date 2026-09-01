@@ -524,6 +524,114 @@ public sealed class PositionApplicationArchitectureTests
     Assert.DoesNotContain(referenced, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
   }
 
+  // ---- AND THE SAME RULE OVER EVERY HR ASSEMBLY, NOT THREE OF THEM (`AC-POS-0060`, `AC-POS-0067`, 269).
+  //
+  // ⚠ THE TEST ABOVE CHECKS `SSAS.HR.Application`. Two others check `SSAS.HR.Domain` and the repository
+  // assembly. `SSAS.HR.API` — WHICH IS THE ASSEMBLY BOTH CRITERIA NAME — WAS CHECKED BY NOTHING. Three of
+  // four boundaries guarded is not a decision, it is an omission: whoever wrote them understood the rule.
+  //
+  // So this enumerates rather than adding a fourth instance. Three assemblies is not every HR assembly, in
+  // the same way three families was not every mutation for `AC-POS-0047` — and a hand-written fourth would
+  // leave the identical defect one assembly further out.
+  //
+  // ⚠⚠ THE ALLOWED SET IS EMPTY, AND THAT IS VERIFIED RATHER THAN ASSUMED. I read all five HR `.csproj`
+  // files: Domain, Contracts, Application, Infrastructure and API. NONE references Platform — Infrastructure
+  // reaches the tenant plane through `SSAS.BuildingBlocks.Tenancy`, not through Platform, which is the case
+  // one would expect to need an exemption. There is therefore no exemption list, and if one is ever needed
+  // it must be written here WITH ITS GROUNDS rather than appearing as the shape of a filter.
+  //
+  // THE FAILURE NAMES THE ASSEMBLY. An enumeration that reported only "something references Platform" over
+  // five candidates would make a red worse than useless, so offenders are collected as `assembly -> reference`.
+  [Fact]
+  [Trait("Decision", "ADR-012")]
+  [Trait("Criterion", "AC-POS-0060")]
+  [Trait("Criterion", "AC-POS-0067")]
+  public void No_hr_assembly_references_a_platform_assembly()
+  {
+    // LOADED BY TYPE, never by name: a renamed assembly then fails to compile rather than silently
+    // dropping out of the population.
+    (string Name, Assembly Assembly)[] hrAssemblies =
+    [
+      ("SSAS.HR.Domain", typeof(SSAS.HR.Domain.Positions.Position).Assembly),
+      ("SSAS.HR.Contracts", typeof(SSAS.HR.Contracts.Employment.IEmployeeRoster).Assembly),
+      ("SSAS.HR.Application", HrApplicationAssembly),
+      ("SSAS.HR.Infrastructure", typeof(SSAS.HR.Infrastructure.Persistence.HrTenantModelContributor).Assembly),
+      ("SSAS.HR.API", typeof(SSAS.HR.API.Departments.DepartmentApiErrorMapper).Assembly)
+    ];
+
+    // POPULATION CONTROL. Five is every project under `src/Modules/HR`; a sixth added without being
+    // enumerated here is the failure this whole test exists to stop recurring.
+    Assert.Equal(5, hrAssemblies.Length);
+
+    // And each entry really is the assembly its label claims, so the labels in a failure can be trusted.
+    foreach (var (name, assembly) in hrAssemblies)
+    {
+      Assert.Equal(name, assembly.GetName().Name);
+    }
+
+    // ⚠ PREDICATE CONTROL, in the spirit of `Every_absence_predicate_can_match_something` below: prove the
+    // filter RECOGNISES a Platform assembly when it sees one. Without this, a wrong prefix makes `offenders`
+    // empty by construction and the ban holds over nothing.
+    Assert.StartsWith(
+      "SSAS.Platform",
+      typeof(SSAS.Platform.Domain.Companies.Company).Assembly.GetName().Name,
+      StringComparison.Ordinal);
+
+    var used = hrAssemblies
+      .SelectMany(entry => entry.Assembly.GetReferencedAssemblies()
+        .Select(reference => $"{entry.Name} -> {reference.Name}"))
+      .Where(pair => pair.Contains("-> SSAS.Platform", StringComparison.Ordinal))
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Empty(used);
+
+    // ================================================================================================
+    // ⚠⚠ AND THE PROJECT FILES, BECAUSE THE ASSERTION ABOVE CANNOT SEE WHAT THE CRITERION FORBIDS.
+    // ================================================================================================
+    //
+    // `AC-POS-0067` says *a build in which `HR.API` CAN SEE `SSAS.Platform.Domain` fails this criterion
+    // REGARDLESS OF WHAT IT READS.* ⚠ `GetReferencedAssemblies()` cannot assert that: the C# compiler
+    // OMITS a reference no type actually uses, so an unused `ProjectReference` is invisible in the emitted
+    // metadata. MEASURED, NOT ASSUMED — adding the forbidden `ProjectReference` to `SSAS.HR.API.csproj`
+    // left the assembly-level assertion above GREEN, and that plant is what sent me here.
+    //
+    // The three pre-existing boundary guards — over HR.Domain, HR.Application and the repository assembly —
+    // share the same bound: each measures DOES USE, none measures CAN SEE. That is a bound on the
+    // instrument, not a defect in them.
+    //
+    // So the declared dependency is read from the project files, which is where "can see" is decided.
+    var projects = Directory
+      .GetFiles(Path.Combine(RepositoryRootDirectory(), "src", "Modules", "HR"), "*.csproj",
+        SearchOption.AllDirectories)
+      .OrderBy(path => path, StringComparer.Ordinal)
+      .ToArray();
+
+    // The same population control, from the other direction: five projects on disk, five enumerated above.
+    Assert.Equal(hrAssemblies.Length, projects.Length);
+
+    // ⚠ MATCHED ON THE ELEMENT, NOT ON THE NAME. A bare `Contains("SSAS.Platform")` reported
+    // `SSAS.HR.Domain` as an offender on a clean tree — because a COMMENT in that project file cites
+    // `SSAS.Platform.Domain` as a naming precedent. Prose is not a dependency, and the population control
+    // above is what surfaced the false positive before this shipped.
+    // ⚠ `RepositoryPaths.ProjectNameFromFile`, NOT `Path.GetFileNameWithoutExtension` — which
+    // `RepositoryPathPortabilityTests` bans outright in this suite, and which reddened this test on its
+    // first gate run. The ban is a BLANKET one on purpose: the framework helper is correct for a path the
+    // filesystem produced and wrong for an MSBuild `Include` attribute, and the two are indistinguishable
+    // at a glance. My use was the correct kind; complying is still right, because an exemption would
+    // reintroduce exactly the judgement whose unreliability created the rule.
+    var declared = projects
+      .Select(path => (Project: RepositoryPaths.ProjectNameFromFile(path), Lines: File.ReadAllLines(path)))
+      .Where(entry => entry.Lines.Any(line =>
+        line.Contains("ProjectReference", StringComparison.Ordinal) &&
+        line.Contains("SSAS.Platform", StringComparison.Ordinal)))
+      .Select(entry => $"{entry.Project} declares a Platform ProjectReference")
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Empty(declared);
+  }
+
   // ---- NO REFLECTION-BASED PERMISSION DISCOVERY IN THE POSITION SLICE.
   [Fact]
   [Trait("Decision", "ADR-012")]

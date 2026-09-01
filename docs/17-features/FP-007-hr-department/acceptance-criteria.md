@@ -148,11 +148,40 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
     a department whose `NormalizedCode` is `UNASSIGNED`.** **The summary cell in `decisions-approved.md` read
     *Option A, fail-loud*, which attached D's characteristic behaviour to A's letter and made this criterion
     undecidable from the documents; corrected there.**
-  - **WHAT IS ASSERTED TODAY (searched 2026-09-01):** `Employee.DepartmentId` is `.IsRequired()` in the model
-    and the domain refuses with `EmployeeErrors.DepartmentRequired` (two domain tests). ⚠ **THE COLUMN'S NOT
-    NULL IS ASSERTED BY NOTHING — the only schema-suite mention is a FIXTURE COMMENT explaining why seeded
-    employees need a department, and A FIXTURE THAT RELIES ON A CONSTRAINT IS NOT A TEST THAT ASSERTS IT.**
-    Neither the back-fill nor the collision rule is asserted at all.
+  - ⚠⚠⚠ **RETRACTED IN FULL 2026-09-01, architect. THE NOTE THAT STOOD HERE WAS FALSE ON EVERY COUNT AND IT
+    WAS WRITTEN THE SAME DAY.** It read: *the column's NOT NULL is asserted by nothing — the only schema-suite
+    mention is a fixture comment… neither the back-fill nor the collision rule is asserted at all.* **ALL
+    THREE CLAIMS ARE WRONG.** `tests/Integration.Tests/EmployeeDepartmentMigrationSqlServerTests.cs` (dated
+    2026-08-30, so it predated the search) holds **twelve tests**, verified at file and line:
+    - **NOT NULL** — `The_department_column_is_not_nullable_after_the_migration:205` seeds a legacy employee,
+      runs the real migration, then queries `INFORMATION_SCHEMA.COLUMNS` at `:214` for `IS_NULLABLE` on
+      `tenant.Employees.DepartmentId` and asserts `NO`. **The criterion's exact claim, against the real schema
+      after the real migration** — not a fixture comment.
+    - **BACK-FILL** — five, including two negative controls:
+      `One_legacy_employee_is_mapped_to_one_new_department_with_one_history_row:60`,
+      `Many_legacy_employees_in_one_company_share_exactly_one_new_department:99`,
+      `Each_affected_company_gets_its_own_unassigned_department:128`,
+      `Only_companies_with_legacy_employees_are_affected:160`,
+      `A_company_with_no_legacy_employees_gets_no_unassigned_department:47`.
+    - **COLLISION** — three: `An_existing_unassigned_department_stops_the_migration_and_changes_nothing:267`
+      asserts the throw, the actionable message, **and the no-partial-state half** (the customer department
+      untouched, `DepartmentCountAsync == 1` so no suffixed duplicate, no history rows, employee unchanged);
+      plus `A_collision_in_one_company_leaves_every_other_company_untouched:322` and the control
+      `An_unassigned_department_in_an_unaffected_company_does_not_block_the_migration:343`.
+
+    ⚠⚠ **THE MECHANISM OF MY ERROR IS PRINTED IN THE FALSE NOTE'S OWN WORDING: *the only SCHEMA-SUITE
+    mention*. THE SEARCH WAS SCOPED TO THE SCHEMA SUITE AND THE MIGRATION TESTS LIVE IN A DIFFERENTLY-NAMED
+    FILE. THE INSTRUMENT COUNTED WHAT IT COULD SEE AND NAMED ITS OWN SCOPE INSIDE THE ANSWER**, where it read
+    as emphasis rather than as a limit.
+
+    ⚠⚠⚠ **AND A FALSE ABSENCE IN AN ACCEPTANCE CRITERION IS MORE DANGEROUS THAN A FALSE PRESENCE, BECAUSE OF
+    THE REMEDY IT INVITES: WRITING TESTS THAT ALREADY EXIST.** Those duplicates would have passed, and passing
+    duplicates look exactly like progress. **Every other finding in this sweep was a criterion that read as
+    covered and was not; this one read as uncovered and is covered comprehensively.**
+
+  - **WHAT THIS CRITERION ACTUALLY NEEDS: CITATIONS, NOT TESTS.** The file carries **zero**
+    `[Trait("Criterion", …)]` attributes, so none of that coverage is mechanically answerable. Cited on the
+    **set**, per the rule set on `AC-DEP-0029`: a criterion covered only by a set is cited on the set.
 
 ## Authorization
 

@@ -228,6 +228,11 @@ public sealed class PositionScopeResolverTests
   [InlineData(HrPermissionNames.ViewPositions)]
   [InlineData(HrPermissionNames.ViewJobGrades)]
   [InlineData(HrPermissionNames.ViewSalaryGrades)]
+  // ⚠ CITED BY 269: `AC-POS-0008` — *a caller whose authorized company set resolves empty is refused; NO
+  // READ RETURNS UNFILTERED RESULTS.* The second half is why "refused" is the right assertion and an empty
+  // result set would be the wrong one: an empty result claims something about the DATA, a refusal claims
+  // something about the CALLER, and only the second is true here.
+  [Trait("Criterion", "AC-POS-0008")]
   public async Task An_empty_authorized_company_set_is_refused_rather_than_unfiltered(string permission)
   {
     var resolver = Resolver(permissions: [permission], companies: []);

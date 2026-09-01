@@ -19,6 +19,11 @@ public sealed class PositionApplicationSqlServerTests
   // ================================================================================================
   [Fact]
   [Trait("Requirement", "FR-POS-0201")]
+  // ⚠ CITED BY 269: `AC-POS-0001` — *creating a position with a code and a title produces an `Active`
+  // position whose `TenantId` and `CompanyId` match the caller's trusted context.* All three clauses are
+  // here, and the TENANT one is the load-bearing part: the tenant was never in the command, so the row
+  // count filtered by `TenantId` proves the BOUNDARY stamped it rather than the caller supplying it.
+  [Trait("Criterion", "AC-POS-0001")]
   public async Task A_created_position_is_active_and_carries_the_stamped_ownership()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -46,6 +51,14 @@ public sealed class PositionApplicationSqlServerTests
   // ---- A SECOND POSITION WHOSE CODE NORMALIZES ALIKE IS REFUSED (BRULE-POS-0004).
   [Fact]
   [Trait("Rule", "BRULE-POS-0004")]
+  // ⚠ CITED BY 269 ON THE SET: `AC-POS-0003` has three clauses across three layers and this is the
+  // APPLICATION one — a normalized duplicate is refused. The `409` is
+  // `PositionEndpointTests`' conflict assertion, and *the refusal comes from the UNIQUE INDEX UNDER
+  // CONCURRENT CREATION, not only from a prior read* is
+  // `PositionSchemaSqlServerTests.Two_concurrent_inserts_of_one_code_leave_exactly_one_row`. This test
+  // alone cannot distinguish an index refusal from a pre-read refusal — which is the exact distinction
+  // the criterion was written to demand.
+  [Trait("Criterion", "AC-POS-0003")]
   public async Task A_duplicate_normalized_position_code_is_refused_within_the_company()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -61,6 +74,10 @@ public sealed class PositionApplicationSqlServerTests
   // ---- THE SAME CODE IN ANOTHER COMPANY IS NOT A CONFLICT. Uniqueness is per company, not per tenant.
   [Fact]
   [Trait("Rule", "BRULE-POS-0004")]
+  // ⚠ CITED BY 269: `AC-POS-0004`. Paired with the schema-level
+  // `The_same_position_code_is_free_in_a_second_company`, which proves the INDEX permits it rather than the
+  // handler declining to look — the two are different claims and the index is the one that binds.
+  [Trait("Criterion", "AC-POS-0004")]
   public async Task The_same_position_code_is_free_in_another_company()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -133,6 +150,11 @@ public sealed class PositionApplicationSqlServerTests
   // distinction the previous test cannot make.
   [Fact]
   [Trait("Rule", "BRULE-POS-0011")]
+  // ⚠ CITED BY 269: `AC-POS-0011` — *a position may not reference a grade belonging to another company.*
+  // The comment above is the reason this and not its neighbour: the grade GENUINELY EXISTS, so the refusal
+  // is attributable to the company check rather than to a lookup miss. `A_grade_that_does_not_exist_is_
+  // refused_as_an_invalid_reference` cannot make that distinction and is not cited here.
+  [Trait("Criterion", "AC-POS-0011")]
   public async Task A_grade_from_another_company_is_refused()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -517,6 +539,16 @@ public sealed class PositionApplicationSqlServerTests
   // A distinct refusal would confirm the position exists in a company the caller may not see.
   [Fact]
   [Trait("Rule", "BRULE-POS-0002")]
+  // ⚠ CITED BY 269: `AC-POS-0007` — *reading a position outside the caller's authorized scope returns
+  // `404`, NOT `403`.* This carries the INDISTINGUISHABILITY half and carries it properly: it does not
+  // merely assert `PositionNotFound`, it seeds a REAL position in another company and asserts its error
+  // EQUALS the error for an identifier that does not exist at all. Asserting the code alone would pass
+  // against a handler that answered `NotFound` for a reason the caller could still distinguish.
+  //
+  // The HTTP half — that this surfaces as `404` and never `403` — is `PositionEndpointTests`, whose own
+  // arrangement uses an UNKNOWN identifier rather than a foreign-company one. So the two layers carry
+  // different halves and neither is the whole criterion: status there, indistinguishability here.
+  [Trait("Criterion", "AC-POS-0007")]
   public async Task A_position_outside_the_company_scope_is_indistinguishable_from_absent()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();

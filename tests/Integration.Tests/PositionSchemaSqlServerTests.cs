@@ -107,6 +107,11 @@ public sealed class PositionSchemaSqlServerTests
   [InlineData("JobGrades")]
   [InlineData("SalaryGrades")]
   [Trait("Decision", "DEC-POS-0002")]
+  // ⚠ CITED BY 269: `AC-POS-0006`'s SCHEMA clause — *`tenant.Positions` has no column referencing
+  // `tenant.Employees`.* The other clause, *a created position has no employee reference OF ANY KIND*, is
+  // `PositionDomainTests.The_position_aggregate_has_no_reference_to_any_employee`, which reads the CLR
+  // type. A column and a property are different claims and neither implies the other.
+  [Trait("Criterion", "AC-POS-0006")]
   public async Task No_position_aggregate_table_references_an_employee(string table)
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -348,6 +353,10 @@ public sealed class PositionSchemaSqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0004` at the INDEX. Paired with the application-level
+  // `The_same_position_code_is_free_in_another_company` — the handler permitting it and the index
+  // permitting it are different facts, and the index is the one that binds a direct write.
+  [Trait("Criterion", "AC-POS-0004")]
   public async Task The_same_position_code_is_free_in_a_second_company()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -381,6 +390,12 @@ public sealed class PositionSchemaSqlServerTests
   // the index rather than in application logic that a race can step around.
   [Fact]
   [Trait("Decision", "DEC-POS-0007")]
+  // ⚠ CITED BY 269: `AC-POS-0003`'s HARDEST clause — *the refusal comes from the UNIQUE INDEX UNDER
+  // CONCURRENT CREATION, NOT ONLY FROM A PRIOR READ.* Only a genuinely concurrent pair can distinguish
+  // those two: a sequential duplicate is refused by the pre-read and proves nothing about the index. The
+  // application-level refusal is `PositionApplicationSqlServerTests.A_duplicate_normalized_position_code_
+  // is_refused_within_the_company` and the `409` is in `PositionEndpointTests`.
+  [Trait("Criterion", "AC-POS-0003")]
   public async Task Two_concurrent_inserts_of_one_code_leave_exactly_one_row()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -495,6 +510,11 @@ public sealed class PositionSchemaSqlServerTests
   // CHECK CONSTRAINTS AND REFERENTIAL BEHAVIOUR
   // ================================================================================================
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0005` at the DATABASE — a blank or whitespace-only title or code is refused
+  // even by a write that bypasses the application entirely. The domain half is
+  // `PositionDomainTests.An_invalid_code_is_refused` / `An_invalid_title_is_refused`. Both are needed: the
+  // domain refuses what the application can express, the check constraint refuses what SQL can.
+  [Trait("Criterion", "AC-POS-0005")]
   public async Task A_blank_code_or_title_is_refused_by_the_database()
   {
     await using var fixture = await PositionFixture.CreateAsync();

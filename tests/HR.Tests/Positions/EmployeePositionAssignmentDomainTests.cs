@@ -166,7 +166,7 @@ public sealed class EmployeePositionAssignmentDomainTests
   [Fact]
   public void The_record_carries_no_row_version()
   {
-    Assert.Null(typeof(EmployeePositionAssignment).GetProperty("RowVersion"));
+    Assert.Null(typeof(EmployeePositionAssignment).GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion)));
   }
 
   // NO EffectiveToUtc. Closing an interval would mean UPDATING the previous row, which is precisely the
@@ -187,8 +187,8 @@ public sealed class EmployeePositionAssignmentDomainTests
     Assert.Contains("ITenantOwnedEntity", interfaces);
     Assert.Contains("ICompanyOwnedEntity", interfaces);
     Assert.Contains("IAppendOnlyEntity", interfaces);
-    Assert.DoesNotContain("IBranchOwnedEntity", interfaces);
-    Assert.Null(typeof(EmployeePositionAssignment).GetProperty("BranchId"));
+    Assert.DoesNotContain(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity), interfaces);
+    Assert.Null(typeof(EmployeePositionAssignment).GetProperty(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity.BranchId)));
   }
 
   // ---- THE FACTORY PROTECTION ITSELF (DEC-POS-0008).

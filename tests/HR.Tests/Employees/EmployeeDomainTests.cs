@@ -268,7 +268,7 @@ public sealed class EmployeeDomainTests
   [Trait("Criterion", "AC-EMP-0013")]
   public void No_separate_reactivate_operation_exists()
   {
-    Assert.Null(typeof(Employee).GetMethod("Reactivate"));
+    Assert.Null(typeof(Employee).GetMethod(nameof(SSAS.HR.Domain.Positions.JobGrade.Reactivate)));
 
     // The control: reflection over this type really does see its operations, so the null above is an
     // absence rather than a lookup that finds nothing whatever it is asked for.
@@ -514,7 +514,7 @@ public sealed class EmployeeDomainTests
       .Where(method => method.DeclaringType == type && !method.IsSpecialName));
 
     // No RowVersion, no Modified pair, no EffectiveToUtc.
-    Assert.Null(type.GetProperty("RowVersion"));
+    Assert.Null(type.GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion)));
     Assert.Null(type.GetProperty("ModifiedUtc"));
     Assert.Null(type.GetProperty("EffectiveToUtc"));
 

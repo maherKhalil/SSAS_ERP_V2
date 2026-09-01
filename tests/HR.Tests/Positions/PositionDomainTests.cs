@@ -335,8 +335,8 @@ public sealed class PositionDomainTests
 
     Assert.Contains("ITenantOwnedEntity", interfaces);
     Assert.Contains("ICompanyOwnedEntity", interfaces);
-    Assert.DoesNotContain("IBranchOwnedEntity", interfaces);
-    Assert.Null(typeof(Position).GetProperty("BranchId"));
+    Assert.DoesNotContain(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity), interfaces);
+    Assert.Null(typeof(Position).GetProperty(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity.BranchId)));
   }
 
   // ---- THE CYCLE TRAP (DEC-POS-0002). One convenience column breaks cutover for every tenant.
@@ -356,7 +356,7 @@ public sealed class PositionDomainTests
   [Fact]
   public void The_position_aggregate_has_no_department_reference()
   {
-    Assert.Null(typeof(Position).GetProperty("DepartmentId"));
+    Assert.Null(typeof(Position).GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.DepartmentId)));
   }
 
   private static Result<Position> CreatePosition(

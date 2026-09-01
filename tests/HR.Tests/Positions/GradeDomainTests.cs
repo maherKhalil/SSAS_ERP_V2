@@ -339,8 +339,8 @@ public sealed class GradeDomainTests
 
     Assert.Contains("ITenantOwnedEntity", interfaces);
     Assert.Contains("ICompanyOwnedEntity", interfaces);
-    Assert.DoesNotContain("IBranchOwnedEntity", interfaces);
-    Assert.Null(type.GetProperty("BranchId"));
+    Assert.DoesNotContain(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity), interfaces);
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity.BranchId)));
   }
 
   // ================================================================================================
@@ -354,7 +354,7 @@ public sealed class GradeDomainTests
   [Fact]
   public void A_salary_grade_holds_no_reference_to_a_job_grade()
   {
-    Assert.Null(typeof(SalaryGrade).GetProperty("JobGradeId"));
+    Assert.Null(typeof(SalaryGrade).GetProperty(nameof(SSAS.HR.Domain.Positions.Position.JobGradeId)));
     Assert.NotNull(typeof(JobGrade).GetProperty("SalaryGradeId"));
   }
 

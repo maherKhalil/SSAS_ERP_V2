@@ -181,6 +181,43 @@ public sealed class DepartmentScopeResolverTests
     Assert.Equal(3, access.Calls);
   }
 
+  // ---- AND RE-ASKING IS NOT THE SAME AS HONOURING THE NEW ANSWER (`AC-DEP-0008`, 265).
+  //
+  // ⚠ THE TEST ABOVE COUNTS CALLS. `Assert.Equal(3, access.Calls)` proves the authority is CONSULTED three
+  // times and would pass, unchanged, against a resolver that asked, ignored the reply, and served a set
+  // captured on the first call. Consulting an authority and OBEYING it are two claims, and only the first
+  // was asserted. This is the second.
+  //
+  // THE REVOCATION IS OF THE CALLER'S OWN COMPANY, AND THE SET IS LEFT NON-EMPTY ON PURPOSE. Setting it to
+  // `[]` would refuse for the reason `AC-DEP-0007` already owns -- an empty set -- and this test would
+  // silently become a second copy of that one. `[CompanyB]` means the authority still answers with a real
+  // grant; it simply no longer covers the company this caller established.
+  //
+  // NO NEW TOKEN: one resolver instance, one established company context, asked twice. That is the
+  // "without requiring a new token" clause, and it is carried by reusing `resolver` rather than by any
+  // assertion -- rebuilding it between the two calls would prove nothing about a live session.
+  //
+  // ANTI-VACUITY: the FIRST resolution is asserted to SUCCEED. Without that leg a resolver that refused
+  // every read would pass this test perfectly while asserting nothing whatever about revocation.
+  [Fact]
+  [Trait("Criterion", "AC-DEP-0008")]
+  public async Task Revoking_company_access_mid_session_refuses_the_next_department_read()
+  {
+    var access = new RecordingCompanyAccess([CompanyA]);
+    var resolver = Resolver(companyAccess: access);
+
+    var before = await resolver.ResolveAsync(new DepartmentScopeRequest());
+    Assert.True(before.IsSuccess, before.IsFailure ? before.Error.Code : null);
+    Assert.Equal([CompanyA], before.Value.Companies.CompanyIds);
+
+    access.Permitted = [CompanyB];
+
+    var after = await resolver.ResolveAsync(new DepartmentScopeRequest());
+
+    Assert.True(after.IsFailure);
+    Assert.Equal(DepartmentErrors.CompanyScopeDenied, after.Error);
+  }
+
   // ================================================================================================
   // WHAT THE RESOLVER DELIBERATELY DOES NOT CONSULT
   // ================================================================================================
@@ -223,13 +260,18 @@ public sealed class DepartmentScopeResolverTests
   {
     public int Calls { get; private set; }
 
+    // SETTABLE, so a test can REVOKE BETWEEN TWO CALLS on one resolver. Company access is revocable inside
+    // a session's lifetime, and a stub fixed at construction cannot express the only state that matters:
+    // the authority giving a DIFFERENT answer the second time it is asked.
+    public IReadOnlyList<Guid> Permitted { get; set; } = permitted;
+
     public Task<Result<IReadOnlyList<CompanyAccessSummary>>> GetPermittedCompaniesAsync(
       Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default)
     {
       Calls++;
 
       return Task.FromResult(Result.Success<IReadOnlyList<CompanyAccessSummary>>(
-        permitted.Select(id => new CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
+        Permitted.Select(id => new CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
     }
 
     public Task<Result> AuthorizeCompanyAsync(
@@ -237,7 +279,7 @@ public sealed class DepartmentScopeResolverTests
     {
       Calls++;
 
-      return Task.FromResult(permitted.Contains(companyId)
+      return Task.FromResult(Permitted.Contains(companyId)
         ? Result.Success()
         : Result.Failure(new Error("Company.Denied", "Denied.")));
     }

@@ -220,6 +220,17 @@ public sealed class HrRouteInventoryTests
   // criterion bans a delete route for DEPARTMENT; this asserts the whole HR surface mounts no DELETE
   // verb at all, which covers it and Employee's ban together.
   [Trait("Criterion", "AC-DEP-0032")]
+  // ⚠ CITED BY 269: `AC-POS-0027`'s TRANSPORT clause — *the composed HTTP surface exposes no `DELETE`
+  // verb.* A SUPERSET for the third time in this file, on the same grounds as the two above.
+  //
+  // ⚠⚠ THE CRITERION'S FIRST CLAUSE IS NOT THIS TEST: *no route, HANDLER, OR REPOSITORY METHOD deletes a
+  // position or a grade* is a claim about application and persistence code that a route scan cannot reach.
+  // The nearest asserted neighbours are
+  // `PositionSchemaSqlServerTests.Deleting_a_referenced_grade_or_position_is_refused`, which proves the
+  // DATABASE refuses it, and `PositionApplicationArchitectureTests.No_position_family_offers_a_delete_or_
+  // manage_permission`, which proves nobody could be authorised to. Neither asserts the absence of a
+  // delete METHOD, so this criterion is cited in part.
+  [Trait("Criterion", "AC-POS-0027")]
   public void The_hr_surface_exposes_no_delete_verb()
   {
     var deletes = MappedRoutes()

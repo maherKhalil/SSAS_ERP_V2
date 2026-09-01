@@ -272,6 +272,19 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
   // The two together entail the criterion. Neither alone puts a deactivated company and a
   // department in the same assertion, and no test does.
   [Trait("Criterion", "AC-DEP-0009")]
+  // ⚠ CITED BY 269 FOR `AC-POS-0010` ON THE SAME TERMS. The entailment is: this test asserts the RULE for
+  // company-owned entities, and `PositionDomainTests.The_position_aggregate_is_tenant_and_company_owned_
+  // and_never_branch_owned` asserts that Position IS one. Neither alone carries the criterion, and no test
+  // puts a deactivated company and a Position in the same assertion.
+  //
+  // ⚠⚠ BOTH LINKS ARE EXECUTABLE, WHICH IS WHY THIS IS CITED AND `AC-POS-0055` IS NOT. There the second
+  // premise — that a `Position → Employee` key forms a cycle — is a READING of the model that nothing
+  // reddens if it stops being true. Here, if Position ceased to be company-owned, its classification test
+  // goes red. Cite the set when every link is asserted; annotate covered-by-mechanism when a link is argued.
+  //
+  // And SHARED IS NOT INCIDENTAL: this reddens for exactly one reason — company deactivation stopped
+  // refusing writes — which is the criterion itself, for every company-owned entity at once.
+  [Trait("Criterion", "AC-POS-0010")]
   public async Task Deactivating_the_company_mid_session_refuses_the_next_write()
   {
     await using var fixture = await CompanyFixture.CreateAsync();

@@ -237,6 +237,13 @@ public sealed class PositionApplicationSqlServerTests
   // what makes the reference safe: without it an Active position would be left aimed at an Inactive grade.
   [Fact]
   [Trait("Decision", "DEC-POS-0013")]
+  // ⚠ CITED BY 269: `AC-POS-0029` — *a grade with `Active` positions referencing it may not be deactivated,
+  // AND DEACTIVATION DOES NOT CASCADE TO THEM.* Both clauses matter and the second is the one a refusal
+  // test would normally omit: a grade deactivation that refused AND silently deactivated the positions
+  // would satisfy the first half. ⚠ AND THE ASYMMETRY WITH `AC-POS-0028` IS THE POINT — a POSITION with
+  // holders MAY be deactivated, a GRADE with active positions MAY NOT. Two lifecycle rules that look alike
+  // and are opposite, which is why each is cited separately rather than as one lifecycle claim.
+  [Trait("Criterion", "AC-POS-0029")]
   public async Task A_job_grade_with_an_active_position_cannot_be_deactivated()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -300,6 +307,18 @@ public sealed class PositionApplicationSqlServerTests
   // repository question asked beyond the load, and the aggregate refuses only the second attempt.
   [Fact]
   [Trait("Decision", "OD-POS-005")]
+  // ⚠ CITED BY 269: `AC-POS-0028`'s HANDLER clause — deactivation SUCCEEDS and is reversible. ⚠⚠ NOTE WHAT
+  // IT DOES NOT CONTAIN: this position has NO INCUMBENTS, because `PositionAppFixture` cannot seed an
+  // employee. The comment above still says the employee half "cannot be written until Phase 3", and Phase 3
+  // has since landed — the obligation was discharged ELSEWHERE, in
+  // `EmployeeBoundarySqlServerTests.P8_A_position_deactivated_before_the_change_is_refused_and_after_it_is_
+  // retained`, which is where an employee and a deactivated position coexist.
+  //
+  // So the criterion is a set of three: this (handler succeeds), P8 (incumbent retains it), and
+  // `PositionDomainTests.Deactivation_cannot_consult_incumbents_because_it_is_given_nothing_to_consult`
+  // (the handler's behaviour cannot depend on incumbents), which is what lets the first two entail a
+  // criterion neither states.
+  [Trait("Criterion", "AC-POS-0028")]
   public async Task Deactivating_a_position_asks_no_dependent_question_and_is_reversible()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();

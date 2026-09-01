@@ -21,6 +21,11 @@ public sealed class PositionDomainTests
   private const string Actor = "tester";
 
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0023` — *a newly created position is `Active`.* Distinct from `AC-POS-0001`,
+  // which is about the OWNERSHIP a create stamps and is cited on the integration test: this is the
+  // aggregate's own initial state, and a mapping that persisted a different status would break 0001's test
+  // while leaving this one true. Two claims about one moment, at two layers.
+  [Trait("Criterion", "AC-POS-0023")]
   public void A_valid_position_is_created_active_and_ungraded()
   {
     var position = CreatePosition("ACC-SR", "Senior Accountant");
@@ -315,7 +320,20 @@ public sealed class PositionDomainTests
   // The assertion is structural rather than behavioural because there is nothing behavioural to observe:
   // the guarantee is that `Deactivate` takes only an actor, an event id and a time, so it CANNOT consult
   // incumbents even if a later edit wanted it to.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0028`, AND IT IS THE LINK THAT CLOSES THE ENTAILMENT. The criterion says
+  // deactivation succeeds WITH INCUMBENTS, and no test puts the handler and an incumbent in one assertion —
+  // the handler case has none, and the incumbent case (`EmployeeBoundarySqlServerTests.P8_...`) deactivates
+  // by raw SQL. What makes the pair entail the criterion is THIS: `Deactivate`'s signature admits no
+  // dependent set, so its behaviour CANNOT vary with incumbents. An executable premise, not an argued one.
+  //
+  // It also carries the criterion's last clause — *the API exposes no `position.has_incumbents` refusal
+  // BECAUSE NO OPERATION RAISES ONE.* ⚠ An absence-of-name claim is normally unassertable, and this one is
+  // reachable only because the absence is STRUCTURAL: a method that cannot consult incumbents cannot raise
+  // a refusal about them. Searched and confirmed the identifier appears in `docs/` and in this comment
+  // alone — nowhere in `src/`.
   [Fact]
+  [Trait("Criterion", "AC-POS-0028")]
   public void Deactivation_cannot_consult_incumbents_because_it_is_given_nothing_to_consult()
   {
     var parameters = typeof(Position)
@@ -329,6 +347,13 @@ public sealed class PositionDomainTests
 
   // ---- OWNERSHIP CLASSIFICATION (DEC-POS-0001). The absence is asserted, not assumed.
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0010`'s SECOND PREMISE. The criterion — *deactivating the company mid-session
+  // refuses the next position write* — is entailed by two asserted facts, not by one test:
+  // `CompanyOwnershipBoundarySqlServerTests.Deactivating_the_company_mid_session_refuses_the_next_write`
+  // asserts the RULE for company-owned entities (against a derived probe, not against Position), and this
+  // asserts that POSITION IS ONE. Neither alone carries it, and no test puts a deactivated company and a
+  // Position in the same assertion.
+  [Trait("Criterion", "AC-POS-0010")]
   public void The_position_aggregate_is_tenant_and_company_owned_and_never_branch_owned()
   {
     var interfaces = typeof(Position).GetInterfaces().Select(type => type.Name).ToArray();

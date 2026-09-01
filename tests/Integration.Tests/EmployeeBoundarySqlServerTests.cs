@@ -2421,6 +2421,25 @@ public sealed class EmployeeBoundarySqlServerTests
   // which a deactivated position quietly acquires a new holder.
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
+  // ⚠ CITED BY 269: `AC-POS-0028`'s INCUMBENT clause — *deactivating a position with incumbents succeeds,
+  // AND EVERY INCUMBENT RETAINS IT.* Order two is that assertion: the employee still holds the position
+  // after it is deactivated underneath them. ⚠ AND THIS IS THE ONLY TEST IN THE PRODUCT WHERE A DEACTIVATED
+  // POSITION HAS A HOLDER AT ALL — `PositionAppFixture` cannot seed an employee, so the position suite
+  // cannot express an incumbent.
+  //
+  // Order one is `AC-POS-0025`'s change half — *an `Inactive` position refuses a new employee, on creation
+  // and ON POSITION CHANGE ALIKE.*
+  //
+  // ⚠⚠ THE 0028 CITATION IS A SET OF THREE AND NO MEMBER IS HONEST ALONE, because no test puts the HANDLER
+  // and an INCUMBENT in one assertion. This deactivates by RAW SQL, so it cannot show the handler permits
+  // it; `PositionApplicationSqlServerTests.Deactivating_a_position_asks_no_dependent_question_and_is_
+  // reversible` shows the handler succeeds but has NO incumbents; and what closes the entailment is
+  // `PositionDomainTests.Deactivation_cannot_consult_incumbents_because_it_is_given_nothing_to_consult`,
+  // which is STRUCTURAL — `Deactivate` takes only an actor, an event id and a time, so its behaviour
+  // cannot depend on incumbents. All three links are executable, which is why this is cited as a set
+  // rather than annotated covered-by-mechanism.
+  [Trait("Criterion", "AC-POS-0025")]
+  [Trait("Criterion", "AC-POS-0028")]
   public async Task P8_A_position_deactivated_before_the_change_is_refused_and_after_it_is_retained()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

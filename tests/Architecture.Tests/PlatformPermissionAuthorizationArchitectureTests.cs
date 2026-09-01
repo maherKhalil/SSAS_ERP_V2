@@ -59,7 +59,12 @@ public sealed class PlatformPermissionAuthorizationArchitectureTests
     // L4: principal status is a separate platform-plane state; the principal carries no SecurityVersion, so a
     // platform-only Disable can never bump a version (that would kill tenant access). AC-TEN-0068.
     var principal = typeof(PlatformSupportPrincipal);
-    Assert.Null(principal.GetProperty("SecurityVersion"));
-    Assert.Null(principal.GetField("SecurityVersion", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
+    // ⚠ Bound to `AuthenticationAccount.SecurityVersion` (258): the tenant-plane account that DOES carry
+    // the version, same context, same kind. `GetProperty`/`GetField` return null for a member that is
+    // absent AND for one that is misspelt, so the bare strings asserted nothing a typo could not satisfy.
+    Assert.Null(principal.GetProperty(nameof(SSAS.Platform.Domain.Authentication.AuthenticationAccount.SecurityVersion)));
+    Assert.Null(principal.GetField(
+      nameof(SSAS.Platform.Domain.Authentication.AuthenticationAccount.SecurityVersion),
+      BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
   }
 }

@@ -515,7 +515,7 @@ public sealed class EmployeeDomainTests
 
     // No RowVersion, no Modified pair, no EffectiveToUtc.
     Assert.Null(type.GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion)));
-    Assert.Null(type.GetProperty("ModifiedUtc"));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc)));
     Assert.Null(type.GetProperty("EffectiveToUtc"));
 
     // Only the ownership interfaces may set anything, and only what the persistence layer stamps.

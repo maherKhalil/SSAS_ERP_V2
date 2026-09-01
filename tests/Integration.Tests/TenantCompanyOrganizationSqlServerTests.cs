@@ -37,7 +37,13 @@ public sealed class TenantCompanyOrganizationSqlServerTests
     var entity = context.Model.FindEntityType(typeof(Company));
     Assert.NotNull(entity);
     Assert.NotNull(entity.GetQueryFilter());
-    Assert.Null(entity.FindProperty("CompanyId"));
+    // ⚠⚠ THE SAME WORD ON BOTH LINES MEANS TWO DIFFERENT THINGS, AND ONLY ONE CONVERTS (258).
+    //
+    // Here it is a CLR PROPERTY NAME — `Company` carries no company dimension — so it binds to the contract
+    // that defines that dimension. Below it is a DATABASE COLUMN NAME, the column `Company.Id` maps to, and
+    // a symbol there would assert about the C# member while the subject is the column. Check what is being
+    // SEARCHED before converting what is being MATCHED.
+    Assert.Null(entity.FindProperty(nameof(SSAS.BuildingBlocks.Domain.ICompanyOwnedEntity.CompanyId)));
     Assert.Equal("CompanyId", entity.FindProperty(nameof(Company.Id))?.GetColumnName());
     Assert.True(entity.FindProperty(nameof(Company.RowVersion))?.IsConcurrencyToken);
     Assert.Equal("rowversion", entity.FindProperty(nameof(Company.RowVersion))?.GetColumnType());

@@ -22,7 +22,12 @@ public sealed class EmployeePositionAssignmentDomainTests
   private const string Actor = "tester";
 
   // ---- THE INITIAL RECORD IS THE ONE WITH NO SOURCE, AND NOTHING ELSE IDENTIFIES IT.
+  // ⚠ CITED BY 269: `AC-POS-0033` — *the initial assignment record has a null `SourcePositionId`, AND NO
+  // OTHER RECORD DOES.* This is the first clause. The second is carried by `A_change_record_carries_both_
+  // ends` below, which asserts a CHANGE record always has one — the two together are the criterion, and
+  // this one alone would be satisfied by a model where every record had a null source.
   [Fact]
+  [Trait("Criterion", "AC-POS-0033")]
   public void The_initial_record_has_a_null_source()
   {
     var destination = Guid.NewGuid();
@@ -38,7 +43,11 @@ public sealed class EmployeePositionAssignmentDomainTests
     Assert.Null(record.Value.ReasonText);
   }
 
+  // ⚠ CITED BY 269: `AC-POS-0033`'s *AND NO OTHER RECORD DOES* clause. A change record always carries a
+  // source, so the null one identifies the initial record uniquely — which is the property the criterion
+  // states and the reason nothing else needs a marker column.
   [Fact]
+  [Trait("Criterion", "AC-POS-0033")]
   public void A_change_record_carries_both_ends()
   {
     var source = Guid.NewGuid();

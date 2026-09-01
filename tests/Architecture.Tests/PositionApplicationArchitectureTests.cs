@@ -100,12 +100,42 @@ public sealed class PositionApplicationArchitectureTests
 
   // The append-only assignment record carries none, because it is never updated (`DEC-POS-0021`). Asserted
   // rather than assumed: adding one would suggest the history is editable.
+  //
+  // ⚠ CITED BY 269 FOR TWO CRITERIA. `AC-POS-0037` — *the entity implements `IAppendOnlyEntity` and the
+  // guard that asserts append-only entities carry no `RowVersion` covers it* — and `AC-POS-0057`, which is
+  // the ownership classification. Both are named by the criteria and both are now asserted here.
+  //
+  // ⚠⚠ STRENGTHENED BY 269, APPLYING A LESSON THIS REPOSITORY ALREADY LEARNED ELSEWHERE. This read
+  // `GetProperty("RowVersion")` with a BARE STRING and no positive. `Type.GetProperty` returns null for a
+  // property that is ABSENT and for one that is MISSPELT, so a rename left it green over a lookup that
+  // could not hit. `JournalDomainTests.A_posted_journal_has_no_row_version_and_a_draft_does` fixed exactly
+  // this in item 258 and its comment states the reason; the Position analogue never received the fix.
+  // Both halves are now bound to a compiled symbol, and the POSITIVE is what proves the lookup can hit.
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
+  [Trait("Criterion", "AC-POS-0037")]
+  [Trait("Criterion", "AC-POS-0057")]
   public void The_append_only_assignment_carries_no_row_version()
   {
+    var interfaces = typeof(SSAS.HR.Domain.Positions.EmployeePositionAssignment).GetInterfaces();
+
+    // `AC-POS-0037`'s first clause, and `AC-POS-0057`: tenant- and company-owned, append-only, and NOT
+    // branch-owned. The absence is asserted beside the presences, so it cannot be a lookup over nothing.
+    Assert.Contains(typeof(SSAS.BuildingBlocks.Domain.IAppendOnlyEntity), interfaces);
+    Assert.Contains(typeof(SSAS.BuildingBlocks.Domain.ITenantOwnedEntity), interfaces);
+    Assert.Contains(typeof(SSAS.BuildingBlocks.Domain.ICompanyOwnedEntity), interfaces);
+    Assert.DoesNotContain(typeof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity), interfaces);
+
+    // THE NEGATIVE, bound to a symbol rather than a string.
     Assert.Null(
-      typeof(SSAS.HR.Domain.Positions.EmployeePositionAssignment).GetProperty("RowVersion"));
+      typeof(SSAS.HR.Domain.Positions.EmployeePositionAssignment)
+        .GetProperty(nameof(SSAS.HR.Domain.Positions.Position.RowVersion)));
+
+    // THE POSITIVE CONTROL, on the same name: `Position` DOES carry one, so the lookup above is proven
+    // capable of finding a property called that. Without this line a rename makes the negative vacuous.
+    Assert.NotNull(
+      typeof(SSAS.HR.Domain.Positions.Position)
+        .GetProperty(nameof(SSAS.HR.Domain.Positions.Position.RowVersion)));
   }
 
   // ================================================================================================
@@ -599,6 +629,13 @@ public sealed class PositionApplicationArchitectureTests
     // The three pre-existing boundary guards — over HR.Domain, HR.Application and the repository assembly —
     // share the same bound: each measures DOES USE, none measures CAN SEE. That is a bound on the
     // instrument, not a defect in them.
+    //
+    // ⚠⚠ AND THE STRONGER PROPERTY IS THE RIGHT ONE, STATED HERE BECAUSE *the emitted-reference check
+    // already covers this* IS EXACTLY THE ARGUMENT A LATER CLEANUP WILL MAKE. A declared-but-unused
+    // reference is LATENT CAPABILITY: the `.csproj` edit is already merged, the friction is already gone,
+    // and the next developer reaching for a Platform type meets nothing in the way. The emitted-reference
+    // assertion fires only AFTER that coupling exists. **`can see` catches the capability; `does use`
+    // catches the consequence** — and by then the boundary has already been crossed once.
     //
     // So the declared dependency is read from the project files, which is where "can see" is decided.
     var projects = Directory

@@ -3607,6 +3607,46 @@ local check structurally could not see.
 
 ---
 
+---
+
+## A scope predicate is owed by the entity's ownership classification, not by the module's preference
+
+**Every tenant entity already declares what it is scoped by — `ITenantOwnedEntity`, `ICompanyOwnedEntity`,
+`IBranchOwnedEntity`.** That declaration is an obligation on every read path that reaches the entity:
+**for each dimension the entity declares, the query composes an explicit predicate on that dimension.**
+`ADR-025` decision 10 rejects a global company filter because a filter pinned to one company makes
+authorized multi-company reads unexpressible — **so the predicate must be EXPLICIT rather than ambient, and
+that is the whole reason the obligation exists.**
+
+**Measured 2026-09-01.** Seven module read services; **all seven compose explicit tenant and company
+predicates and none calls `IgnoreQueryFilters`.** Attendance additionally composes branch — **not a module
+preference, a consequence of what its entities declare.** ⚠ **Nothing is broken and nothing holds any of
+it in place: exactly one acceptance criterion in the whole documentation tree requires this, and it belongs
+to the module whose guard was written last.**
+
+⚠⚠ **A GUARD WITH NO STATED OBLIGATION IS A RULE INVENTED BY WHOEVER WROTE THE TEST**, and it is
+indistinguishable from a specified one until somebody looks for the criterion and finds nothing. The most
+elaborate scope guard in this repository was enforcing a rule written down nowhere.
+
+**Deriving the obligation from the ownership interfaces settles both halves at once: the population is
+every read path reaching a declaring entity, and the required dimensions are whatever that entity
+declares.** Nobody has to state a per-module rule, and no module can be given one it did not already owe.
+
+### ⚠⚠⚠ ANCHOR ON WHAT THE CODE MUST PRODUCE, NOT ON HOW IT NAMES WHAT PRODUCES IT
+
+**A guard for this rule must match the COLUMN — `TenantId`, `CompanyId`, `BranchId` — and never the local
+variable that carries the scope.** Two services bind `scope.Companies.CompanyIds`; another binds
+`resolved.Value.TenantId` and `readScope.TenantId`. **A matcher keyed to the first spelling reports the
+third as having no tenant predicate at all, and it has three.**
+
+⚠ **That mistake was made while MEASURING and caught before it shipped. Had it shipped inside the guard it
+would have fired falsely on day one — and a false alarm in a report costs a correction, while a false alarm
+in a guard costs the guard**, because a guard that cries wolf is switched off and takes its whole class
+with it. **Strip comments before matching, too:** three read services open with a comment containing the
+SQL predicate verbatim, and a text guard would be satisfied by the prose while the query composed nothing.
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

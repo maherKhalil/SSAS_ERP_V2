@@ -127,6 +127,27 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
   `DepartmentManagers` after Employee. A model in which `Department` holds a direct manager foreign key is
   asserted to make the plan fail with `CutoverCopyOrderUndecidable`, so the reason for `DEC-DEP-0022` is
   recorded executably and cannot be undone by accident.
+  - ⚠⚠ **STATUS 2026-09-01 — COVERED BY MECHANISM, NOT BY THIS CRITERION'S OWN WORDING. NOT CITED, AND
+    THAT IS DELIBERATE.** **Clause 1 is asserted** by
+    `C6_15_The_copy_order_places_every_principal_before_its_dependents`, which builds the plan with both
+    entities present and asserts each ordering the clause names.
+    **Clause 2 — that a model carrying a direct manager foreign key FAILS — is asserted for the MECHANISM
+    and not for Department.** `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`, added
+    2026-09-01) proves the planner returns `CutoverCopyOrderUndecidable` for a foreign-key cycle among
+    tenant-owned entities, isolated from the two unrelated conditions sharing that error value by a matched
+    acyclic control that must pass.
+  - ⚠ **WHAT REMAINS ARGUED RATHER THAN TESTED: that Department with a direct manager foreign key produces
+    such a cycle.** That step is a reading of the model, not an execution. **`DEC-DEP-0022`'s reason is
+    therefore TESTED MECHANISM PLUS ARGUED SHAPE**, which is stronger than the *"verified in source"* it
+    rested on before and is not what this criterion asks for.
+  - **WHY IT STOPS HERE, RECORDED SO IT IS NOT REDISCOVERED:** the Department-shaped test needs a project
+    that references both `SSAS.HR.Domain` and `SSAS.Platform.Infrastructure`, and **`Architecture.Tests` is
+    the only one.** `Platform.Tests` must not gain a reference to `SSAS.HR.Domain` — **Platform is the layer
+    HR depends on, and adding the reverse edge to fit a test inverts the direction the module guards
+    exist to protect.** ⚠⚠ **And a contributor placed in `Architecture.Tests` would inject a foreign-key
+    cycle into a model FIVE unrelated guards reason over — which is worse than a moved entity count,
+    because a moved count is loud and a cycle is not.** See backlog `B25`; if that is ever done on its own
+    merits, this becomes available again.
 - **AC-DEP-0049** — A real cutover carries departments, department managers, employees and branch history, and
   source and destination counts agree for every one of them.
 - **AC-DEP-0050** — Department's `RowVersion` is excluded from the copy projection.

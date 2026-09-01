@@ -65,3 +65,12 @@ append-only either, so the whole immutability story changes shape.
 **`BR-ATT-0008` deserves a note on enforcement.** It is stated as a rule, but it is best enforced
 mechanically: `TS-ATT-0027` asserts that **no column in any Attendance table is `decimal(19,4)`**. A rule
 that a test can check is a rule; a rule only a reviewer can check is a hope.
+
+⚠⚠⚠ **CORRECTED 2026-09-01, AND THIS PARAGRAPH IS THE SHARPEST INSTANCE IN THE SWEEP: `TS-ATT-0027` RETURNS
+ZERO FILES IN `tests/`, IN A SENTENCE WHOSE NEXT CLAUSE SAYS A RULE ONLY A REVIEWER CAN CHECK IS A HOPE.**
+⚠ **AND THE RULE IS NOT A HOPE — THE TEST EXISTS UNDER ANOTHER NAME:**
+`AttendanceSchemaSqlServerTests.No_attendance_column_uses_the_money_type_and_every_quantity_is_decimal_9_2`
+(`tests/Integration.Tests/AttendanceSchemaSqlServerTests.cs:62`), which counts `sys.columns` for
+`precision = 19 AND scale = 4` under `tenant.Attendance%` and asserts zero. **Its comment carries this
+paragraph's closing sentence verbatim** — the test was written from this text, and only the identifier was
+never carried across.

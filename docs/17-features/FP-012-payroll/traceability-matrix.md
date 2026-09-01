@@ -59,6 +59,12 @@ check is mechanical: a scenario absent from this matrix is an orphan whether or 
 requirements are reachable at all. Its absence in FP-011 meant every GL write route returned
 `400 request.invalid` while every layer beneath was correct.
 
+⚠⚠ **CORRECTED 2026-09-01 — `TS-PAY-0016` RETURNS ZERO FILES IN `tests/`, AND THE REACHABILITY PROPERTY IS
+ASSERTED:** `PayrollRouteInventoryTests` holds `The_payroll_route_surface_is_exactly_the_documented_inventory`,
+`Every_payroll_route_requires_a_permission` and `Every_route_requires_the_permission_the_inventory_names`
+(`tests/API.Tests/Payroll/PayrollRouteInventoryTests.cs:58`, `:76`, `:90`). **The paragraph's argument stands;
+the identifier is what does not resolve.**
+
 ## Conventions carried without a requirement of their own
 
 | Decision | Where it binds | Verified by |

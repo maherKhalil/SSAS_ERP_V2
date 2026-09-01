@@ -103,6 +103,13 @@ date: 2026-08-23
 
 > `TS-GL-0023` is a *domain* test and it is the cheapest high-value test in this list: it proves the
 > "empty means everything" bug is unrepresentable rather than merely absent.
+>
+> ⚠⚠ **CORRECTED 2026-09-01 — `TS-GL-0023` RETURNS ZERO FILES IN `tests/`, AND THE PROPERTY IS ASSERTED
+> ANYWAY:** `GlArchitectureTests.An_empty_company_set_cannot_produce_a_scope`
+> (`tests/Architecture.Tests/GlArchitectureTests.cs:136`), **whose own comment carries this paragraph's
+> sentence almost verbatim.** ⚠ **The test was clearly written FROM this text and the scenario id was never
+> carried into it — which is the whole shape of this defect class: the work was done and only the pointer
+> is dead.**
 
 ## Transport
 

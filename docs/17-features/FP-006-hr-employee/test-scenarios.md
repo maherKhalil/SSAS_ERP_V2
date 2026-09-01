@@ -147,3 +147,10 @@ Milestone 1 implements `TS-EMP-0001` through `TS-EMP-0133` where the correspondi
 All API scenarios (`TS-EMP-0090` … `TS-EMP-0102`) are part of Milestone 1 because Employee delivers its HTTP transport in this package.
 
 The B1 closure scenarios (`TS-EMP-0060` … `TS-EMP-0063`), the revocation scenarios (`TS-EMP-0064` … `TS-EMP-0066`), the two architecture guards (`TS-EMP-0110`, `TS-EMP-0111`), and the copy scenarios (`TS-EMP-0130` … `TS-EMP-0133`) are **carried obligations from earlier slices** and are not optional. They discharge commitments recorded in `ADR-023` (LOW-1 and decision 22), `ADR-025` (decision 10), and `ADR-020`, none of which any existing code or test records.
+
+⚠⚠⚠ **CORRECTED 2026-09-01 — THE CLOSING CLAUSE IS AN ABSENCE CLAIM AND IT HAS ROTTED. `ADR-025`
+DECISION 10 IS NOW RECORDED BY TWO TESTS:** `EmployeeReadScopeArchitectureTests.No_global_query_filter_scopes_company_or_branch`
+and `CompanyOwnershipArchitectureTests.The_company_dimension_adds_no_global_query_filter`. **The sentence was
+probably true when written; an absence claim about a growing tree is false the moment someone acts, and
+nothing here re-checks it.** ⚠ **The other two commitments have not been re-checked as part of this
+correction and are NOT asserted either way.**

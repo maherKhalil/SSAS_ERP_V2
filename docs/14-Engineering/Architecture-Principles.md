@@ -3759,6 +3759,43 @@ from: **report how many survive classification per file, not how many matched.**
 
 ---
 
+---
+
+## A lookup whose miss value is what the assertion expects — and the precondition that bounds it
+
+**`Assert.Null(type.GetProperty("RowVersion"))` passes when the property does not exist AND when the name
+is misspelt, and the assertion cannot tell those apart. THE MISS AND THE EXPECTATION ARE THE SAME VALUE,
+SO THE ASSERTION IS SATISFIED BY ITS OWN FAILURE TO LOOK PROPERLY.**
+
+**It is neither of the other two shapes: the collection is not searched, so it is not an absence-of-name
+assertion, and nothing is empty, so it is not vacuity.** The general form reaches well past tests: **any API
+where *not found* and *the answer you wanted* are the same value cannot distinguish a correct answer from a
+failed question.**
+
+⚠⚠⚠ **AND IT HAS A PRECONDITION: THE LOOKUP MUST RETURN A MISS VALUE RATHER THAN THROW.**
+`Type.GetProperty` returns null; **`JsonElement.GetProperty` THROWS `KeyNotFoundException`.** **Same method
+name, opposite miss semantics** — so a typo against the second fails loudly and is safe by construction.
+**A matcher keyed on the method NAME cannot tell them apart; only the API's behaviour decides.**
+
+⚠⚠ **AND THE CONVERSION CAN STRENGTHEN THE ASSERTION RATHER THAN MERELY PROTECT IT.** A test asserting two
+hashes are **not PUBLIC** properties used bare strings — and reflection with default binding flags finds
+only public members, so the miss meant *not public*, indistinguishable from *no such member* and from *I
+misspelt it*. **Both members existed, as `internal`.** Binding the name to the real member makes the
+symbol prove EXISTENCE while the miss proves NON-PUBLICITY: **both halves of the claim checked, where
+before neither was.**
+
+**So the questions at such a site, in order:**
+
+1. **Does this lookup THROW on a miss?** If it throws, the site is safe and needs nothing.
+2. **Does the thing named exist anywhere?** Search for the VALUE, never for a declaration shape — a
+   declaration-shaped matcher encodes an assumption about how the member is declared, and `internal`
+   members are invisible to one that expects `public`.
+3. ⚠ **Is the candidate the same KIND of thing?** A value search finds candidates and does not rank them:
+   a transport DTO carrying a same-named `string?` will appear before the entity's concurrency token, and
+   **a wrong witness that compiles is worse than no witness.**
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

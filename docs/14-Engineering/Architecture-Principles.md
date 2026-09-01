@@ -3100,6 +3100,39 @@ decided, and the second treats the first's having decided as the evidence.
 **The remedy is not more caution. It is that a claim which stops work must be stated as a claim, with its
 scope, so that it can be contradicted by the same kind of measurement that produced it.**
 
+## A warning addressed to somebody else is invisible in the file that contains it
+
+**A script's header carries an explicit note about a shell hazard: a pipeline loses its exit status unless
+the calling shell sets a particular option.** ⚠⚠ **Nine hundred lines later, the same script builds its most
+important measurement through exactly that construct, and the only mention of the option anywhere in the
+file is the warning itself.**
+
+**The mechanism of the miss is better than forgetfulness.** ⚠ **The advice was correctly aimed OUTWARD —
+at whoever invokes this script — so it never presented itself as a question about THIS file.** A warning
+about how others should call you does not read as a warning about how you call others.
+
+**So when a file documents a hazard, search the file for the hazard.** The note is evidence that somebody
+understood it once, which makes the file MORE likely to contain an instance, not less — the author was
+thinking about that failure while writing in that style.
+
+### And silence needs every mechanism; the fix needs all of them
+
+**Three separate things had to be true for a failed measurement to be invisible: the error text discarded,
+the exit status discarded, and an empty result converted to a value worse than any real reading.**
+
+⚠ **Fixing one leaves the other two.** Capturing the error text still leaves a pipeline that reports success
+on failure, and a fallback that turns a partial read into an unconditional abort. **Where silence is
+produced by a chain, the repair is the whole chain or none of it.**
+
+### A finding gets more dangerous as it gets more elegant
+
+**Three mechanisms stacked in three consecutive lines is a satisfying result.** ⚠⚠ **That is precisely the
+moment it will be attached to the nearest unexplained incident** — and the incident here had a real
+measurement behind it, not a failed one.
+
+**Write the disclaimer while the elegance is fresh**, in the same paragraph as the finding, rather than
+after somebody has drawn the conclusion it invites.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

@@ -293,6 +293,26 @@ public sealed class CutoverManifestArchitectureTests
   // than producing a wrong order.
   [Fact]
   [Trait("Decision", "ADR-020")]
+  // CITED BY B18 pass 21 for `AC-DEP-0034`, BOUNDED TO THE CLAUSES IT ACTUALLY CARRIES.
+  //
+  // The criterion has two halves. This test carries the first entirely: the plan BUILDS with
+  // Department and DepartmentManagers present (`Assert.True(plan.IsSuccess)`), and every ordering
+  // the criterion names is asserted here -- Company before Department, Department before Employee,
+  // and DepartmentManager after both.
+  //
+  // THE SECOND HALF IS ASSERTED BY NOTHING. The criterion also says *a model in which Department
+  // holds a direct manager foreign key is asserted to make the plan fail with
+  // `CutoverCopyOrderUndecidable`* -- a NEGATIVE model, built deliberately and shown to fail.
+  // `DepartmentArchitectureTests.Department_holds_no_foreign_key_to_employee` is the nearest thing
+  // and its own comment says what it cannot do: it asserts the foreign key's ABSENCE, not that its
+  // presence would break the plan. Absence of the cause is not a demonstration of the effect, and
+  // the reason for `DEC-DEP-0022` therefore rests on an argument rather than on a test.
+  //
+  // One more thing worth a reader's eye: the entity names here are `nameof(Company)`,
+  // `nameof(Employee)`, `nameof(Branch)` -- but "Department" and "DepartmentManager" are STRING
+  // LITERALS. Renaming those two types would leave this test compiling and silently asserting
+  // about entities that no longer exist under those names.
+  [Trait("Criterion", "AC-DEP-0034")]
   public void C6_15_The_copy_order_places_every_principal_before_its_dependents()
   {
     var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);

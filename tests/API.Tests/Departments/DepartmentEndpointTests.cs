@@ -376,6 +376,9 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   }
 
   [Fact]
+  // CITED BY B18 pass 21: `AC-DEP-0027` at the API layer, mapping the refusal to a conflict. See
+  // `Deactivation_is_refused_while_an_active_child_remains` in the department SQL suite.
+  [Trait("Criterion", "AC-DEP-0027")]
   public async Task D29_Deactivating_a_department_with_active_children_is_refused()
   {
     host.Repository.HasActiveChildren = true;

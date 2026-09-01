@@ -428,6 +428,16 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 21, body-confirmed: the criterion verbatim, at the application layer.
+  // `D29_Deactivating_a_department_with_active_children_is_refused` is the same rule at the API
+  // layer -- the pair is what shows the refusal is the domain's and not a request-validation
+  // convention, the same argument as `AC-DEP-0028`'s two layers.
+  //
+  // OMITTED FROM BATCH 2 BY MISTAKE. It was body-confirmed in pass 17 and named in the batch-2
+  // plan, and it did not reach the script that applied it: eighteen criteria were planned and
+  // seventeen were written. The commit reported seventeen, so the record was accurate and the
+  // INTENT was not -- which is only visible by recounting the tree rather than reading the plan.
+  [Trait("Criterion", "AC-DEP-0027")]
   public async Task Deactivation_is_refused_while_an_active_child_remains()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();

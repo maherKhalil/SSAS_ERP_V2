@@ -780,6 +780,13 @@ public sealed class TenantCutoverCopySqlServerTests(
   // database is not. Everything below is read back from the destination database with raw SQL.
   [Fact]
   [Trait("Decision", "ADR-020")]
+  // ⚠ CITED BY 265: `AC-DEP-0049`'s FIRST clause only — *a real cutover CARRIES departments, department
+  // managers, employees and branch history*. The second clause, *source and destination counts agree for
+  // every one of them*, is NOT asserted here for departments or managers: this test's seed leaves both of
+  // those tables EMPTY. It is carried by
+  // `C6_The_department_tables_reconcile_row_for_row_across_a_real_cutover`, and NEITHER CITATION IS HONEST
+  // ALONE — the same rule `AC-DEP-0029` set.
+  [Trait("Criterion", "AC-DEP-0049")]
   public async Task C6_3_To_C6_10_A_real_cutover_carries_the_employee_and_its_whole_history()
   {
     await using var fixture = await CopyFixture.CreateAsync(template);
@@ -934,6 +941,80 @@ public sealed class TenantCutoverCopySqlServerTests(
     Assert.Single(await fixture.SourceEmployeesAsync(fixture.TenantA));
     Assert.Single(await fixture.SourceEmployeesAsync(fixture.TenantB));
     Assert.Equal(staying.EmployeeId, (await fixture.SourceEmployeesAsync(fixture.TenantB)).Single().EmployeeId);
+  }
+
+  // ================================================================================================
+  // AC-DEP-0049's SECOND CLAUSE — THE COUNTS ACTUALLY AGREE, FOR THE DEPARTMENT TABLES
+  // ================================================================================================
+  //
+  // ⚠⚠ THE TEST ABOVE ASSERTS THAT `DepartmentManager` AND `EmployeeDepartmentAssignment` APPEAR IN THE
+  // COPIED-TABLES LIST WHILE BOTH ARE EMPTY AT THE SOURCE. `SeedEmployeeStoryAsync` inserts one Department
+  // and no rows at all in the other two, so no test has ever copied a row of either. The manifest entry is
+  // derived from the model, so it is REAL — and it is not EVIDENCE. A copier that silently dropped every
+  // manager assignment and the entire employee department history passes that test completely, because
+  // `TablesCopied` counts TABLES rather than rows.
+  //
+  // THAT IS THE VACUITY SHAPE ONE LEVEL BELOW THE ASSERTION: the collection is non-empty, the table is
+  // present, and the data the criterion is about does not exist. In production the failure it hides is
+  // silent data loss during a Shared→Dedicated cutover — and it is the history rows, the ones that cannot
+  // be reconstructed afterwards, because the employee row survives and says only where they are NOW.
+  //
+  // THE COUNTS ARE READ FROM THE TWO DATABASES, NEVER FROM THE COPY REPORT, which is the copier's own
+  // account of its own work.
+  //
+  // AND THE CO-TENANT IS SEEDED IDENTICALLY. Without it "the destination holds the right number of rows"
+  // would also be true of a copy that took everything.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  // ⚠ CITED BY 265: `AC-DEP-0049`'s SECOND clause — *source and destination counts agree*. Paired with
+  // `C6_3_To_C6_10`, which carries the first. Neither citation is honest alone.
+  [Trait("Criterion", "AC-DEP-0049")]
+  public async Task C6_The_department_tables_reconcile_row_for_row_across_a_real_cutover()
+  {
+    string[] tables = ["Departments", "DepartmentManagers", "EmployeeDepartmentAssignments"];
+
+    await using var fixture = await CopyFixture.CreateAsync(template);
+
+    var moving = await fixture.SeedEmployeeStoryAsync(fixture.TenantA, "RECA");
+    await fixture.SeedDepartmentGraphAsync(fixture.TenantA, moving, "RECA");
+
+    var staying = await fixture.SeedEmployeeStoryAsync(fixture.TenantB, "RECB");
+    await fixture.SeedDepartmentGraphAsync(fixture.TenantB, staying, "RECB");
+
+    var operationId = await fixture.BeginAndFreezeAsync();
+
+    var copied = await fixture.CopyService().CopyAsync(operationId);
+    Assert.True(copied.IsSuccess, copied.IsFailure ? copied.Error.Code : null);
+
+    var source = new Dictionary<string, int>(StringComparer.Ordinal);
+    var target = new Dictionary<string, int>(StringComparer.Ordinal);
+
+    foreach (var table in tables)
+    {
+      source[table] = await fixture.SourceTenantRowsAsync(table, fixture.TenantA);
+      target[table] = await fixture.TargetTenantRowsAsync(table, fixture.TenantA);
+
+      // THE ANTI-VACUITY LEG. Without it every assertion below is satisfied by 0 == 0, which is precisely
+      // the defect this test exists to close. Greater than ONE, not merely non-zero: one row cannot
+      // distinguish a copy from a copy that moved a single row and stopped.
+      Assert.True(
+        source[table] > 1,
+        $"[tenant].[{table}] holds {source[table]} row(s) for the moving tenant, so this test would " +
+        "prove nothing about whether they were carried.");
+    }
+
+    // Compared as DICTIONARIES so a failure names the table that disagrees rather than only a number.
+    Assert.Equal(source, target);
+
+    // ---- AND THE CO-TENANT DID NOT TRAVEL, in the same three tables.
+    foreach (var table in tables)
+    {
+      Assert.True(
+        await fixture.SourceTenantRowsAsync(table, fixture.TenantB) > 1,
+        $"[tenant].[{table}] holds too few co-tenant rows for the leakage control to mean anything.");
+
+      Assert.Equal(0, await fixture.TargetTenantRowsAsync(table, fixture.TenantB));
+    }
   }
 
   // ---- RESUME. THE HR TABLES PARTICIPATE IN IDEMPOTENT RE-RUN.
@@ -1636,6 +1717,95 @@ public sealed class TenantCutoverCopySqlServerTests(
       }
 
       await command.ExecuteNonQueryAsync();
+    }
+
+    // ---- THE DEPARTMENT GRAPH, SEEDED ON TOP OF A STORY AND NEVER INSIDE IT (`AC-DEP-0049`, 265).
+    //
+    // ⚠ THIS IS DELIBERATELY NOT PART OF `SeedEmployeeStoryAsync`. Five tests share that seed, one of them
+    // the co-tenant LEAKAGE CONTROL. Adding manager and department-history rows there would silently
+    // re-scope all five: the control would begin making a claim about manager leakage that nobody wrote,
+    // nobody reviewed and nobody planted for -- and it would be green either way, so nothing would say
+    // which claim it was making. `TablesCopied == 35` would also need re-deriving.
+    //
+    // MORE THAN ONE ROW IN EVERY TABLE, because a single row cannot tell COPIED from COPIED ONE.
+    public async Task SeedDepartmentGraphAsync(Guid tenantId, EmployeeStory story, string prefix)
+    {
+      // Two ADDITIONAL departments, so this tenant holds three including the story's own.
+      var second = Guid.NewGuid();
+      var third = Guid.NewGuid();
+
+      foreach (var (departmentId, code) in new[] { (second, $"{prefix}D2"), (third, $"{prefix}D3") })
+      {
+        await ExecuteAsync(SourceCatalog, $"""
+          INSERT INTO [tenant].[Departments]
+            ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName],
+             [ParentDepartmentId], [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc],
+             [CreatedBy], [ModifiedUtc], [ModifiedBy])
+          VALUES
+            ('{departmentId}', '{tenantId}', '{story.CompanyId}', N'{code}', N'{code}',
+             N'Department {code}', N'DEPARTMENT {code}', NULL, N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
+             SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+          """);
+      }
+
+      // TWO MANAGER ROWS. The primary key is the DepartmentId, so two managers means two DEPARTMENTS
+      // managed by this employee rather than two managers of one department.
+      foreach (var departmentId in new[] { story.DepartmentId, second })
+      {
+        await ExecuteAsync(SourceCatalog, $"""
+          INSERT INTO [tenant].[DepartmentManagers]
+            ([DepartmentId], [TenantId], [CompanyId], [EmployeeId], [AssignedUtc], [AssignedBy],
+             [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
+          VALUES
+            ('{departmentId}', '{tenantId}', '{story.CompanyId}', '{story.EmployeeId}',
+             SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(),
+             N'{Actor}');
+          """);
+      }
+
+      // THREE HISTORY ROWS: the initial placement, which has no source, and two moves. This is the record
+      // that cannot be reconstructed if a cutover drops it -- the employee's row survives and says only
+      // where they are NOW.
+      foreach (var (source, destination) in new (Guid?, Guid)[]
+      {
+        (null, story.DepartmentId),
+        (story.DepartmentId, second),
+        (second, third)
+      })
+      {
+        await ExecuteAsync(SourceCatalog, $"""
+          INSERT INTO [tenant].[EmployeeDepartmentAssignments]
+            ([EmployeeDepartmentAssignmentId], [TenantId], [CompanyId], [EmployeeId],
+             [SourceDepartmentId], [DestinationDepartmentId], [EffectiveFromUtc], [ChangedBy],
+             [CreatedUtc], [CreatedBy])
+          VALUES
+            ('{Guid.NewGuid()}', '{tenantId}', '{story.CompanyId}', '{story.EmployeeId}',
+             {(source is null ? "NULL" : $"'{source}'")}, '{destination}', SYSDATETIMEOFFSET(),
+             N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+          """);
+      }
+    }
+
+    // ---- ONE TENANT'S ROWS IN ONE TABLE, ON EITHER SIDE.
+    //
+    // The reconciliation `AC-DEP-0049` asks for is a comparison of TWO DATABASES. It cannot be served by
+    // the copy report: that is the copier's own account of what it did, and asking it whether it copied
+    // everything is asking the subject to mark its own work.
+    public Task<int> SourceTenantRowsAsync(string table, Guid tenantId) =>
+      TenantRowsAsync(SourceCatalog, table, tenantId);
+
+    public Task<int> TargetTenantRowsAsync(string table, Guid tenantId) =>
+      TenantRowsAsync(TargetCatalog, table, tenantId);
+
+    private static async Task<int> TenantRowsAsync(string catalog, string table, Guid tenantId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = $"SELECT COUNT(*) FROM [tenant].[{table}] WHERE [TenantId] = @TenantId";
+      command.Parameters.AddWithValue("@TenantId", tenantId);
+
+      return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
     }
 
     public Task<IReadOnlyList<EmployeeRow>> SourceEmployeesAsync(Guid? tenantId) =>

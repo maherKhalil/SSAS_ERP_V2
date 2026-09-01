@@ -1721,6 +1721,41 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(0, await fixture.DepartmentHistoryRowCountAsync());
   }
 
+  // ---- AND REACTIVATION RESTORES THE ABILITY TO RECEIVE THEM (`AC-DEP-0031`).
+  //
+  // ⚠⚠ `D2` AND `D6` ASSERT ONLY THE REFUSAL, AND A GUARD THAT OVER-FIRED WOULD PASS BOTH. Both use
+  // `DepartmentAInactive`, a seed that is never reactivated — so a rule that refused employees into a
+  // department that had EVER been inactive, rather than one that IS inactive, satisfies them completely
+  // and breaks this criterion silently.
+  //
+  // ⚠ THE REFUSAL BELOW IS THE PRECONDITION, NOT DECORATION. Without it the success afterwards is
+  // indistinguishable from a department that was never blocking, and the test would prove nothing about
+  // reactivation. Same department throughout; the ONLY thing that changes between the two attempts is the
+  // status.
+  [Fact]
+  [Trait("Criterion", "AC-DEP-0031")]
+  public async Task D2b_Reactivating_a_department_restores_its_ability_to_receive_employees()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var department = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPR", active: false);
+
+    var refused = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-D2B1", department: department));
+
+    Assert.True(refused.IsFailure, "the department is inactive, so this must not have been accepted");
+    Assert.Equal(EmployeeErrors.DepartmentInactive.Code, refused.Error.Code);
+
+    await fixture.ReactivateDepartmentAsync(department);
+
+    var created = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-D2B2", department: department));
+
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+    Assert.Equal(department, await fixture.EmployeeDepartmentAsync(created.Value));
+  }
+
   // A department in ANOTHER company. Reported absent rather than refused, so employee creation cannot be
   // used to probe which departments exist outside the caller's company.
   [Fact]
@@ -4333,6 +4368,19 @@ public sealed class EmployeeBoundarySqlServerTests
       await ExecuteAsync($"""
         UPDATE [tenant].[Departments]
         SET [Status] = N'Inactive', [StatusChangedUtc] = SYSDATETIMEOFFSET(), [StatusChangedBy] = N'{Actor}',
+            [ModifiedUtc] = SYSDATETIMEOFFSET(), [ModifiedBy] = N'{Actor}'
+        WHERE [DepartmentId] = '{departmentId}'
+        """);
+    }
+
+    // The mirror of the deactivation above, and direct for the same reason: this is an ARRANGE step, and
+    // the department lifecycle handlers are exercised by `DepartmentApplicationSqlServerTests`. What is
+    // under test HERE is the EMPLOYEE side's response to the resulting status.
+    public async Task ReactivateDepartmentAsync(Guid departmentId)
+    {
+      await ExecuteAsync($"""
+        UPDATE [tenant].[Departments]
+        SET [Status] = N'Active', [StatusChangedUtc] = SYSDATETIMEOFFSET(), [StatusChangedBy] = N'{Actor}',
             [ModifiedUtc] = SYSDATETIMEOFFSET(), [ModifiedBy] = N'{Actor}'
         WHERE [DepartmentId] = '{departmentId}'
         """);

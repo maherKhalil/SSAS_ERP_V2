@@ -516,6 +516,82 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.Equal(DepartmentErrors.InvalidTransition, again.Error);
   }
 
+  // ---- DEACTIVATION DOES NOT REQUIRE AN EMPTY DEPARTMENT (`AC-DEP-0026`).
+  //
+  // ⚠⚠ THE "SUCCEEDS" HALF WAS ASSERTED BY NOTHING, AND THE TEST THAT LOOKS LIKE IT CANNOT ASSERT IT.
+  // `D14_An_employee_stays_in_a_department_that_is_deactivated_afterwards` covers the NO-EVICTION half,
+  // but it deactivates BY RAW SQL against the table. So if this handler ever grew a
+  // `HasAssignedEmployeesAsync` refusal to match its `HasActiveChildrenAsync` one, D14 WOULD STILL PASS —
+  // it never invokes the handler — and `AC-DEP-0027`'s test seeds no employees to notice.
+  //
+  // This drives the real handler with a member present, which is the over-fire control for that refusal.
+  [Fact]
+  [Trait("Decision", "ADR-026")]
+  [Trait("Criterion", "AC-DEP-0026")]
+  public async Task Deactivation_succeeds_with_assigned_employees_who_keep_their_department()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var department = await fixture.CreateDepartmentAsync("MEM", "With Members");
+    await fixture.InsertEmployeeAsync("EMP-0026", department: department);
+
+    var deactivated = await graph.Deactivate().HandleAsync(
+      new DeactivateDepartmentCommand(department, await fixture.RowVersionAsync(department)));
+
+    Assert.True(deactivated.IsSuccess, deactivated.IsFailure ? deactivated.Error.Code : null);
+    Assert.Equal(DepartmentStatus.Inactive, await fixture.StatusAsync(department));
+
+    // NO CASCADE AND NO EVICTION. The member is where they were; deactivating an org unit is not a
+    // transfer, and moving people as a side effect would rewrite where they work.
+    Assert.Equal(1, await fixture.ScalarAsync(
+      $"SELECT COUNT(*) FROM [tenant].[Employees] WHERE [DepartmentId] = '{department}'"));
+
+    // And still readable through the real read handler rather than only present in the table.
+    var read = await graph.Get().HandleAsync(new GetDepartmentQuery(department));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(DepartmentStatus.Inactive, read.Value.Status);
+  }
+
+  // ---- AN INACTIVE DEPARTMENT IS STILL READABLE AND STILL LISTED (`AC-DEP-0030`).
+  //
+  // ⚠ THE LIST HALF IS THE ONE WORTH ASSERTING. A read service that quietly filtered `Inactive` out of
+  // the DEFAULT search would satisfy every other department test — the refusal tests never list, and the
+  // paging tests use active rows — while making a deactivated department unfindable in the UI that has to
+  // offer it for reactivation. So this searches with NO status filter and asserts it comes back.
+  [Fact]
+  [Trait("Decision", "ADR-026")]
+  [Trait("Criterion", "AC-DEP-0030")]
+  public async Task An_inactive_department_is_still_readable_and_still_listed_marked_inactive()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var active = await fixture.CreateDepartmentAsync("KEEP", "Stays Active");
+    var department = await fixture.CreateDepartmentAsync("GONE", "Goes Inactive");
+
+    Assert.True((await graph.Deactivate().HandleAsync(
+      new DeactivateDepartmentCommand(department, await fixture.RowVersionAsync(department)))).IsSuccess);
+
+    var read = await graph.Get().HandleAsync(new GetDepartmentQuery(department));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(DepartmentStatus.Inactive, read.Value.Status);
+
+    // ⚠⚠ NO STATUS FILTER — the default list, which is what a caller gets without asking.
+    var listed = await graph.Search().HandleAsync(new SearchDepartmentsQuery());
+
+    Assert.True(listed.IsSuccess, listed.IsFailure ? listed.Error.Code : null);
+
+    var row = Assert.Single(listed.Value.Items, item => item.DepartmentId == department);
+    Assert.Equal(DepartmentStatus.Inactive, row.Status);
+
+    // ANTI-VACUITY: the active one is still listed too, so this is not a list that collapsed to one row
+    // or to one status — the assertion above would hold trivially over a single-row result.
+    Assert.Contains(listed.Value.Items, item => item.DepartmentId == active);
+  }
+
   // ================================================================================================
   // MANAGER
   // ================================================================================================

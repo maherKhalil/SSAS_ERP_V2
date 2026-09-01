@@ -509,6 +509,47 @@ public sealed class CutoverManifestArchitectureTests
   // `CutoverCopyOrderUndecidable`, and redden `C6_1_C6_2` — which asserts `plan.IsSuccess`. But that test
   // reddens for any of thirty-five unrelated reasons, so its failure attributes to nothing.
   // INCIDENTAL PROTECTION IS PROTECTION; IT IS NOT AN ASSERTION OF THE CRITERION.
+  // ---- `AC-POS-0056`, AND THE CRITERION NAMES ITS OWN INSTRUMENT (269).
+  //
+  // *`Position` does not implement `IBranchOwnedEntity`, and THE COMPOSED EF MODEL contains no `BranchId`
+  // column on any table this package introduces. THE ASSERTION READS THE COMPOSED MODEL, NOT MIGRATION
+  // FILES.*
+  //
+  // ⚠ THREE THINGS CAN DISAGREE AND ONLY ONE OF THEM IS THE CRITERION'S SUBJECT. `PositionDomainTests`
+  // asserts the CLR TYPE has no branch member; `PositionSchemaSqlServerTests` asserts the DATABASE has no
+  // branch column. Neither is the MODEL — and a SHADOW PROPERTY configured in a `ModelBuilder` appears in
+  // the model with no C# property to reveal it, which is exactly the gap between those two checks.
+  //
+  // Written after finding `DepartmentArchitectureTests.No_department_table_has_a_branch_column`, which
+  // carries `AC-DEP-0052` — the same criterion with the noun swapped — and whose comment makes the same
+  // point: the class-level sibling is *the half the criterion explicitly does not ask for*.
+  //
+  // `TenantId` and `CompanyId` are the anti-vacuity control, copied from that test: a model that stopped
+  // building, or an entity that vanished from it, fails here rather than satisfying the ban with an empty
+  // column list.
+  [Theory]
+  [InlineData(typeof(SSAS.HR.Domain.Positions.Position))]
+  [InlineData(typeof(JobGrade))]
+  [InlineData(typeof(SalaryGrade))]
+  [InlineData(typeof(SSAS.HR.Domain.Positions.EmployeePositionAssignment))]
+  [Trait("Decision", "DEC-POS-0020")]
+  [Trait("Criterion", "AC-POS-0056")]
+  public void No_position_table_has_a_branch_column_in_the_composed_model(Type clrType)
+  {
+    var entity = CutoverTenantModel.Source.Model.FindEntityType(clrType);
+
+    Assert.NotNull(entity);
+
+    var columns = entity!.GetProperties().Select(property => property.Name).ToArray();
+
+    // COMPILE-CHECKED against the type that legitimately HAS it: as a bare string this would assert
+    // nothing the day `BranchId` was renamed, because a position would not carry the old name either.
+    Assert.DoesNotContain(nameof(SSAS.HR.Domain.Employees.Employee.BranchId), columns);
+
+    Assert.Contains("TenantId", columns);
+    Assert.Contains("CompanyId", columns);
+  }
+
   [Fact]
   [Trait("Decision", "DEC-POS-0002")]
   [Trait("Criterion", "AC-POS-0017")]

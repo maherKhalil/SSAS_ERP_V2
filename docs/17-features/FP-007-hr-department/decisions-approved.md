@@ -23,7 +23,7 @@ version: 1.0
 | `DEC-DEP-0001` | Department ownership | **CLOSED** (`OD-DEP-002`, 2026-08-20) — recommendation adopted |
 | `DEC-DEP-0005` | Hierarchy representation | **ENGINEERING-SETTLED** |
 | `DEC-DEP-0006` | Acyclicity invariant | **ENGINEERING-SETTLED** |
-| `DEC-DEP-0009` | `BR-HR-0005` enforcement | **CLOSED** (`OD-DEP-001`, 2026-08-20) — Option A, fail-loud |
+| `DEC-DEP-0009` | `BR-HR-0005` enforcement | **CLOSED** (`OD-DEP-001`, 2026-08-20) — **Option A**; the migration back-fills an `UNASSIGNED` department. ⚠ **CORRECTED 2026-09-01: this cell read *Option A, fail-loud*, and *fail-loud* IS OPTION D's DESCRIPTION IN `AC-DEP-0039` — so the summary named one option's letter with another's behaviour.** **The fail-loud rule belongs ONLY to the UNASSIGNED-collision case in the amendment below, not to the strategy.** |
 | `DEC-DEP-0014` | `BR-HR-0007` scope | **CLOSED** (`OD-DEP-003`, 2026-08-20) — reading (iii) adopted |
 | `DEC-DEP-0016` | Department history | **CLOSED** (`OD-DEP-004`, 2026-08-20) — deferral reversed |
 | `DEC-DEP-0019` | Department read visibility | **CLOSED** (`OD-DEP-005`, 2026-08-20) — recommendation adopted |

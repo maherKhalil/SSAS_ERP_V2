@@ -21,8 +21,8 @@ version: 1.0
 
 | Rule | Decision | Acceptance criteria | Test scenarios | Status |
 |---|---|---|---|---|
-| `BR-HR-0005` — one department per employee | `DEC-DEP-0009`, `DEC-DEP-0010` | AC-DEP-0033, AC-DEP-0039 | TS-DEP-0020, TS-DEP-0041 | **OPEN — `OD-DEP-001`.** Realized for new employees; existing rows undecided |
-| `BR-HR-0007` — no self-management | `DEC-DEP-0014` | AC-DEP-0023 | TS-DEP-0039 | **OPEN — `OD-DEP-003`.** Partially realizable at best; the personal reporting line has no field and no requirement |
+| `BR-HR-0005` — one department per employee | `DEC-DEP-0009`, `DEC-DEP-0010` | AC-DEP-0033, AC-DEP-0039 | TS-DEP-0020, TS-DEP-0041 | ⚠⚠ **CORRECTED 2026-09-01 — THIS CELL SAID *OPEN — `OD-DEP-001`* AND THAT DECISION WAS CLOSED ON 2026-08-20.** `decisions-approved.md` records **Option A adopted**: the migration creates one `UNASSIGNED` department per company holding legacy Employees and assigns them to it, failing loudly and transactionally only if such a department already exists. **A matrix that reports a settled decision as OPEN tells its reader the owner still owes an answer they have already given.** |
+| `BR-HR-0007` — no self-management | `DEC-DEP-0014` | AC-DEP-0023 | TS-DEP-0039 | ⚠⚠ **CORRECTED 2026-09-01 — THIS CELL SAID *OPEN — `OD-DEP-003`* AND THAT DECISION WAS CLOSED ON 2026-08-20 (`decisions-approved.md`: reading (iii) adopted).** **Second stale-OPEN cell in this table, same closure date, found in the same pass — so this was a TABLE that went stale rather than a cell.** Partially realizable at best; the personal reporting line has no field and no requirement |
 | `BR-HR-0008` — no circular hierarchies | `DEC-DEP-0006` | AC-DEP-0012, AC-DEP-0013, AC-DEP-0017 | TS-DEP-0025, TS-DEP-0026, TS-DEP-0028, TS-DEP-0031, TS-DEP-0032 | **Realized** |
 | `BR-HR-0009` — inactive departments receive nobody | `DEC-DEP-0012` | AC-DEP-0028, AC-DEP-0029 | TS-DEP-0015, TS-DEP-0016 | **Realized** |
 | `BR-PLT-0002` — company isolation | `DEC-DEP-0001` | AC-DEP-0006, AC-DEP-0011, AC-DEP-0019 | TS-DEP-0008, TS-DEP-0012, TS-DEP-0034 | **Realized** |

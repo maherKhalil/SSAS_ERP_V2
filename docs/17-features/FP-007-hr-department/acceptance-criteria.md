@@ -97,6 +97,20 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 - **AC-DEP-0039 (OD)** — The `OD-DEP-001` strategy actually chosen is implemented, and its terminal state is
   asserted: under A, no employee has a null department after migration; under B or C, the follow-up migration
   exists and is named; under D, the migration fails loudly if any null remains.
+  - ⚠⚠ **RESOLVED 2026-09-01 — THE STRATEGY IS OPTION A, SO THE TERMINAL STATE TO ASSERT IS *NO EMPLOYEE HAS
+    A NULL DEPARTMENT AFTER MIGRATION*.** `decisions-approved.md`'s amendment closing `OD-DEP-001` on
+    2026-08-20 adopts A explicitly: one `UNASSIGNED` department per company holding legacy Employees, those
+    Employees assigned to it, one initial history row each.
+  - ⚠⚠⚠ **THE *FAIL-LOUD* CLAUSE IS NOT OPTION D ARRIVING BY THE BACK DOOR — IT IS A SEPARATE RULE ABOUT A
+    DIFFERENT CONDITION.** The migration fails loudly and transactionally **only if the company ALREADY holds
+    a department whose `NormalizedCode` is `UNASSIGNED`.** **The summary cell in `decisions-approved.md` read
+    *Option A, fail-loud*, which attached D's characteristic behaviour to A's letter and made this criterion
+    undecidable from the documents; corrected there.**
+  - **WHAT IS ASSERTED TODAY (searched 2026-09-01):** `Employee.DepartmentId` is `.IsRequired()` in the model
+    and the domain refuses with `EmployeeErrors.DepartmentRequired` (two domain tests). ⚠ **THE COLUMN'S NOT
+    NULL IS ASSERTED BY NOTHING — the only schema-suite mention is a FIXTURE COMMENT explaining why seeded
+    employees need a department, and A FIXTURE THAT RELIES ON A CONSTRAINT IS NOT A TEST THAT ASSERTS IT.**
+    Neither the back-fill nor the collision rule is asserted at all.
 
 ## Authorization
 

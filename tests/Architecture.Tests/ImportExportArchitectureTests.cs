@@ -152,8 +152,8 @@ public sealed class ImportExportArchitectureTests
 
     // The Modified pair is absent from the model too, not merely unset on the type: this record is never
     // modified, so a column for it would be permanently equal to its created counterpart.
-    Assert.Null(entity.FindProperty("ModifiedUtc"));
-    Assert.Null(entity.FindProperty("ModifiedBy"));
+    Assert.Null(entity.FindProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc)));
+    Assert.Null(entity.FindProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedBy)));
 
     // Employee carries a real rowversion, so the exclusion above is a distinction rather than a default.
     Assert.Contains(

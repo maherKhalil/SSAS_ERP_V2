@@ -20,8 +20,12 @@ public sealed class PlatformSupportAuthorityArchitectureTests
     foreach (var type in new[] { typeof(PlatformSupportPrincipal), typeof(PlatformPermissionAssignment) })
     {
       Assert.DoesNotContain(typeof(ITenantOwnedEntity), type.GetInterfaces());
-      Assert.Null(type.GetProperty("TenantId"));
-      Assert.Null(type.GetProperty("CompanyId"));
+      // ⚠ A LOOKUP WHOSE MISS IS THE ASSERTED VALUE (258). `GetProperty` returns null for a name that
+      // does not exist AND for one that is misspelt. Bound to the ownership contracts that DEFINE these
+      // dimensions, so the assertion says "this type carries neither dimension" in the vocabulary that
+      // declares them.
+      Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.ITenantOwnedEntity.TenantId)));
+      Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.ICompanyOwnedEntity.CompanyId)));
     }
   }
 
@@ -161,7 +165,7 @@ public sealed class PlatformSupportAuthorityArchitectureTests
 
     var refreshRecord = typeof(PlatformRefreshTokenRecord);
     Assert.DoesNotContain(typeof(ITenantOwnedEntity), refreshRecord.GetInterfaces());
-    Assert.Null(refreshRecord.GetProperty("TenantId"));
+    Assert.Null(refreshRecord.GetProperty(nameof(SSAS.BuildingBlocks.Domain.ITenantOwnedEntity.TenantId)));
     Assert.NotNull(refreshRecord.GetProperty(nameof(PlatformRefreshTokenRecord.PlatformAuthenticationSessionId)));
   }
 

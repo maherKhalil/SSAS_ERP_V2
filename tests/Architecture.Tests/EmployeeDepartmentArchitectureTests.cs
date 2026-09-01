@@ -75,8 +75,8 @@ public sealed class EmployeeDepartmentArchitectureTests
     // No EffectiveToUtc: closing an interval means UPDATING the previous row, which is the history mutation
     // this model exists to prevent. The interval is derived by ordering.
     Assert.Null(type.GetProperty("EffectiveToUtc"));
-    Assert.Null(type.GetProperty("ModifiedUtc"));
-    Assert.Null(type.GetProperty("ModifiedBy"));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc)));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedBy)));
   }
 
   // ---- THE FACTORIES ARE INTERNAL, so nothing outside the domain assembly can fabricate a history row.

@@ -213,7 +213,7 @@ public sealed class GlArchitectureTests
     var entity = ComposedModel().FindEntityType(typeof(Account));
 
     Assert.NotNull(entity);
-    Assert.Null(entity!.FindProperty("CompanyId"));
+    Assert.Null(entity!.FindProperty(nameof(SSAS.BuildingBlocks.Domain.ICompanyOwnedEntity.CompanyId)));
     Assert.NotNull(entity.FindProperty(nameof(ITenantOwnedEntity.TenantId)));
   }
 
@@ -230,7 +230,7 @@ public sealed class GlArchitectureTests
       var entity = model.FindEntityType(type);
 
       Assert.NotNull(entity);
-      Assert.Null(entity!.FindProperty("BranchId"));
+      Assert.Null(entity!.FindProperty(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity.BranchId)));
     }
   }
 
@@ -287,13 +287,17 @@ public sealed class GlArchitectureTests
     foreach (var type in new[] { typeof(Account), typeof(SSAS.GL.Domain.Calendar.FiscalYear),
       typeof(SSAS.GL.Domain.Calendar.FiscalPeriod), typeof(JournalDraft) })
     {
-      Assert.NotNull(model.FindEntityType(type)!.FindProperty("RowVersion"));
+      Assert.NotNull(model.FindEntityType(type)!.FindProperty(nameof(Account.RowVersion)));
     }
 
     // An append-only type carrying one would advertise a mutation that cannot happen.
     foreach (var type in new[] { typeof(JournalEntry), typeof(JournalLine) })
     {
-      Assert.Null(model.FindEntityType(type)!.FindProperty("RowVersion"));
+      // ⚠⚠ BOTH HALVES BOUND, NOT JUST THIS ONE (258). The positive above and this negative shared a bare
+      // string: a RENAME broke the positive loudly, but A TYPO AT THIS SITE ALONE left the positive green
+      // and this one passing over a lookup that could never hit. A companion elsewhere does not protect the
+      // individual site.
+      Assert.Null(model.FindEntityType(type)!.FindProperty(nameof(Account.RowVersion)));
     }
   }
 

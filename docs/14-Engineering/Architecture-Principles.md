@@ -3577,6 +3577,36 @@ exemption red. Proven by planting exactly that removal.
 
 ---
 
+---
+
+## An instrument that skips work reports on the work it did, not on the work you asked about
+
+**Three instances in one session, and in every one the missing step was UPSTREAM of the thing being
+measured while the output still looked like a result** — not like an error, not like nothing, **like an
+answer.** That is what makes the family dangerous.
+
+- **An incremental build reporting success for code it never recompiled.** MSBuild skipped an up-to-date
+  project, so a warning that exists in the source was never re-emitted. Happened twice: once while
+  confirming a compiler diagnostic, once while checking a file clean that the gate then reddened on
+  `CA1859`.
+- ⚠ **A plant that broke the build, so the test never ran — and the ABSENT `Failed!` line read as *the
+  plant did not fire*.** A false record of "this guard is vacuous" was one step away.
+
+**RULES, ABOUT THE INSTRUMENT RATHER THAN ABOUT REMEMBERING:**
+
+- ⚠⚠ **A TARGETED BUILD IS NOT EVIDENCE ABOUT WARNINGS.** Only `--no-incremental`, or the gate, builds
+  honestly enough to answer that question. `dotnet build -v q` is not a warning check.
+- ⚠ **AN ABSENT FAILURE LINE IS NOT A PASSING TEST.** Grep for the POSITIVE result — the line naming that
+  test — and never infer from the absence of one.
+- **If a deliberate break makes the code uncompilable, ask whether the test needs the build at all.** A
+  test that reads source text runs correctly under `--no-build`.
+
+**And the standing consequence: the zero-warning gate reads as bureaucracy right up to the moment it is
+the only instrument in the loop that builds honestly.** It found, twice in one session, something a faster
+local check structurally could not see.
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

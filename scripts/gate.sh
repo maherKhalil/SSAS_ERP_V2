@@ -1516,22 +1516,58 @@ gate_condition_4 () {
   # NON-COMMENT LINES ONLY, AND THAT IS WHAT MAKES THIS SHIPPABLE. Measured over 200 merges: 45
   # touched src/, 44 added a new [Fact]/[Theory], and the ONE that did not was 19 added lines that
   # were entirely a comment block. With this filter that false positive disappears.
-  CHANGED=$(git diff "$BASE" -- src/ 2>/dev/null \
+  # ---- ⚠ THE COUNT AND THE MEASUREMENT ARE SEPARATED, BECAUSE `wc -l` CANNOT FAIL. 242(D), 2026-09-01.
+  #
+  # This was `CHANGED=$(git diff ... | grep | grep | wc -l)` with a `${CHANGED:-0}` after it, and that
+  # fallback was DEAD CODE: a pipeline ending in `wc -l` prints "0" when everything upstream fails, so
+  # the value is never empty and the default never fires. Tested rather than reasoned about --
+  # `nosuchcmd | grep -E '^[+-]' | wc -l` yields "0", where `powershell-that-fails | tr -d` yields "".
+  #
+  # A FALLBACK CATCHES AN ABSENT VALUE AND A COUNTER GUARANTEES THE VALUE IS NEVER ABSENT. So the
+  # failure had to be caught where it happens: `git` runs on its own, its status is kept, and only then
+  # is the output counted. The pipe still discards a status -- this script sets `set -u` and not
+  # `pipefail` -- but the only commands left in it are greps and `wc`, whose failure is not the risk.
+  #
+  # ⚠ AND THE SAFE VOCABULARY WAS ALREADY IN THIS FUNCTION, THREE LINES ABOVE: no suite totals, no git
+  # on PATH, no merge-base -- each refuses to claim. What was missing is the case where git EXISTS, the
+  # base EXISTS, and the command still fails. A PRESENCE CHECK IS NOT A SUCCESS CHECK, and the gap is
+  # exactly where the failure produced a plausible number instead of an obvious absence.
+  #
+  # THE SAFE DIRECTION HERE IS "not compared", NOT "ok". A failed measurement previously reported
+  # "ok: no non-comment change under src/", which is condition 4 passing itself on no evidence -- the
+  # permissive silent skip this check exists to prevent, inside the check. "not compared" is printed at
+  # the verdict by the case statement below, so it cannot be quiet either.
+  local DIFF_OUT DIFF_RC
+  DIFF_OUT=$(git diff "$BASE" -- src/ 2>/dev/null)
+  DIFF_RC=$?
+  if [ "$DIFF_RC" -ne 0 ]; then
+    GATE_C4_NOTE="not compared: 'git diff $BASE -- src/' exited $DIFF_RC, so the changed-line count is UNMEASURED -- which is not the same as zero"
+    return
+  fi
+  CHANGED=$(printf '%s\n' "$DIFF_OUT" \
     | grep -E '^[+-]' | grep -vE '^[+-]{3}' \
     | grep -vE '^[+-][[:space:]]*(//|\*|/\*|$)' | wc -l | tr -d '[:space:]')
-  CHANGED=${CHANGED:-0}
 
   # UNTRACKED FILES ARE INVISIBLE TO `git diff`, AND A NEW SOURCE FILE IS THE COMMONEST NEW CODE.
   # This was found by planting one: the check reported "no non-comment change under src/" over a new
   # .cs file full of executable code. That is the permissive, silent-skip failure this check exists to
   # avoid, inside the check itself -- and reading the code would not have found it, because the line
   # that was wrong is the line that looks right.
-  local UNTRACKED
-  UNTRACKED=$(git ls-files --others --exclude-standard -- src/ 2>/dev/null \
+  # Same treatment, and the stake is higher: this half exists BECAUSE a planted new source file was
+  # reported as "no non-comment change". If `git ls-files` fails, every untracked file becomes invisible
+  # and the count reads as zero -- reinstating exactly the hole this block was added to close.
+  local UNTRACKED UNTRACKED_LIST UNTRACKED_RC
+  UNTRACKED_LIST=$(git ls-files --others --exclude-standard -- src/ 2>/dev/null)
+  UNTRACKED_RC=$?
+  if [ "$UNTRACKED_RC" -ne 0 ]; then
+    GATE_C4_NOTE="not compared: 'git ls-files --others -- src/' exited $UNTRACKED_RC, so a new source file would be invisible and the count would read as zero"
+    return
+  fi
+  UNTRACKED=$(printf '%s\n' "$UNTRACKED_LIST" \
     | while IFS= read -r f; do
-        [ -f "$f" ] && grep -vE '^[[:space:]]*(//|\*|/\*|$)' "$f" 2>/dev/null
+        [ -n "$f" ] && [ -f "$f" ] && grep -vE '^[[:space:]]*(//|\*|/\*|$)' "$f" 2>/dev/null
       done | wc -l | tr -d '[:space:]')
-  CHANGED=$(( CHANGED + ${UNTRACKED:-0} ))
+  CHANGED=$(( CHANGED + UNTRACKED ))
 
   if [ ! -f "$GATE_BASELINE_FILE" ]; then
     GATE_C4_NOTE="not compared: no baseline yet at ${GATE_BASELINE_FILE#$ROOT/} (it is written on the first green run)"

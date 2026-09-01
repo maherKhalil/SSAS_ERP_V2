@@ -201,6 +201,11 @@ public sealed class DepartmentDomainTests
 
   // ---- HIERARCHY: THE ONE CASE PHASE 1 DECIDES.
   [Fact]
+  // CITED BY B18 pass 22: `AC-DEP-0012`'s DOMAIN layer -- setting a department as its own parent is
+  // refused. Three layers carry this criterion and the third is the one that matters:
+  // `A_department_cannot_become_its_own_parent` at the application layer, and
+  // `A_department_cannot_be_its_own_parent_even_in_raw_sql` at the DATABASE.
+  [Trait("Criterion", "AC-DEP-0012")]
   public void A_department_cannot_be_its_own_parent()
   {
     var department = CreateDepartment("SALES", "Sales").Value;

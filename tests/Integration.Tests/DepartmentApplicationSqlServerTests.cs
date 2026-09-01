@@ -199,6 +199,9 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 22: `AC-DEP-0012` at the APPLICATION layer. See the domain sibling and, for the
+  // clause that earlier passes recorded as unresolved, the raw-SQL test in the schema suite.
+  [Trait("Criterion", "AC-DEP-0012")]
   public async Task A_department_cannot_become_its_own_parent()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -973,6 +976,23 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // alone. Instead the caller is told that a manager IS assigned and nothing more.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 22 for `AC-DEP-0046`, BOUNDED, and the bound is the population rather than the
+  // rule. The criterion is *a caller authorized for one branch sees departments whose MEMBERS are all
+  // in another branch*. This test's narrow reader IS branch-scoped and DOES see the department -- its
+  // own comment states the rule verbatim: *the DEPARTMENT is visible, company-scoped visibility is the
+  // approved rule* -- so the RULE is asserted here and nowhere else.
+  //
+  // ⚠ WHAT IS NOT ASSERTED IS THE POPULATION. The out-of-scope person here is the MANAGER, not a
+  // member. Recorded search: the department SQL suite holds exactly two branch-named tests, this one
+  // and `An_employee_from_another_branch_of_the_same_company_may_manage`, and the second is about
+  // manager ASSIGNMENT across branches rather than department VISIBILITY. No test places ordinary
+  // members in another branch and reads the department from a narrow caller.
+  //
+  // ⚠⚠ AND `An_employee_from_another_branch_...` WAS THE CANDIDATE AN EARLIER PASS OFFERED FOR THIS
+  // CRITERION. Reading its body refuted it: it asserts that assignment SUCCEEDS, which is a different
+  // claim in the same area -- the same adjacency that put a branch-disclosure test under
+  // `AC-DEP-0023`'s self-membership ban.
+  [Trait("Criterion", "AC-DEP-0046")]
   public async Task A_manager_outside_the_callers_branch_scope_is_assigned_but_undisclosed()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();

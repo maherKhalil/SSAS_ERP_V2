@@ -152,6 +152,16 @@ public sealed class DepartmentSchemaSqlServerTests
   // this proves the half that has a database guarantee, and nothing more.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 22 -- `AC-DEP-0012`'s SECOND CLAUSE, VERBATIM INCLUDING ITS INSTRUMENT. The
+  // criterion names the constraint: *the database check constraint `CK_Departments_ParentIsNotSelf`
+  // refuses it as well when attempted directly in SQL*. This test bypasses every handler with a raw
+  // UPDATE and asserts the SqlException message contains that exact name.
+  //
+  // ⚠ EARLIER PASSES RECORDED THIS CLAUSE AS UNRESOLVED -- *whether a CHECK CONSTRAINT is asserted
+  // separately is unsearched* -- because they searched the DOMAIN and APPLICATION suites. The answer
+  // was in the SCHEMA suite, which is exactly where `AC-DEP-0024`'s answer was too. A criterion whose
+  // clause names a database object is answered by the suite that talks to the database.
+  [Trait("Criterion", "AC-DEP-0012")]
   public async Task A_department_cannot_be_its_own_parent_even_in_raw_sql()
   {
     await using var fixture = await DepartmentFixture.CreateAsync();

@@ -2494,8 +2494,18 @@ public sealed class EmployeeBoundarySqlServerTests
   // which is STRUCTURAL — `Deactivate` takes only an actor, an event id and a time, so its behaviour
   // cannot depend on incumbents. All three links are executable, which is why this is cited as a set
   // rather than annotated covered-by-mechanism.
+  // ⚠ ALSO CITED BY 269: `AC-POS-0050` — *assigning an employee to a position that is CONCURRENTLY
+  // deactivated either refuses or succeeds against the pre-deactivation state; it NEVER produces an
+  // employee holding an inactive position.* Order one is the refusal branch and order two is the
+  // succeeds-against-pre-deactivation-state branch, so both permitted outcomes are exercised and the
+  // forbidden third — an employee ending up on an inactive position they did not already hold — is
+  // excluded by the pair rather than by either alone.
+  //
+  // The comment above names the mechanism the criterion depends on: the handler reads the destination
+  // INSIDE ITS OWN TRANSACTION, which is what makes the interleave decidable rather than racy.
   [Trait("Criterion", "AC-POS-0025")]
   [Trait("Criterion", "AC-POS-0028")]
+  [Trait("Criterion", "AC-POS-0050")]
   public async Task P8_A_position_deactivated_before_the_change_is_refused_and_after_it_is_retained()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

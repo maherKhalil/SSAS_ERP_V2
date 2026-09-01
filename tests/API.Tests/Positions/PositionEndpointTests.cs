@@ -415,6 +415,11 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
   }
 
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0061`'s WIRE half. The name states the criterion and the assertion is on the
+  // CODE, not the status — a 409 alone cannot distinguish the two indexes, which is the whole criterion.
+  // The application half is
+  // `PositionApplicationSqlServerTests.A_grade_code_conflict_and_a_rank_conflict_are_distinguishable`.
+  [Trait("Criterion", "AC-POS-0061")]
   public async Task A_duplicate_job_grade_rank_is_a_rank_conflict_not_a_code_conflict()
   {
     host.JobGradeRepository.RankTaken = true;

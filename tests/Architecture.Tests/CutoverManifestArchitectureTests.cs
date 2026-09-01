@@ -66,6 +66,13 @@ public sealed class CutoverManifestArchitectureTests
   // against the derived plan -- which is what "appears in the declared tenant-owned inventory" means.
   [Trait("Criterion", "AC-EMP-0037")]
   [Trait("Criterion", "AC-EMP-0038")]
+  // ⚠ CITED BY 269: `AC-POS-0052` — *every new table is present in the derived E3 copy manifest WITHOUT ANY
+  // HAND-MAINTAINED REGISTRATION, and the exact-list assertion names all of them.* Both clauses are here
+  // and they pull in opposite directions, which is the point: the first half of this test DERIVES the set
+  // from the composed model (no registration), and the second asserts the derived set equals a literal list
+  // (a human sees a new one). `Position`, `JobGrade`, `SalaryGrade` and `EmployeePositionAssignment` are
+  // all named in it.
+  [Trait("Criterion", "AC-POS-0052")]
   public void C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity()
   {
     var composed = CutoverTenantModel.Source.Model;

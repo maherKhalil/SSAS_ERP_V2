@@ -450,6 +450,14 @@ public sealed class PositionApplicationSqlServerTests
   // about the rank rather than about the code.
   [Fact]
   [Trait("Rule", "BRULE-POS-0007")]
+  // ⚠ CITED BY 269: `AC-POS-0061` — *a grade unique-constraint violation is distinguished correctly between
+  // the code index and the rank-order index; A RANK COLLISION DOES NOT ANSWER `job_grade.code_conflict`.*
+  //
+  // Both collisions are provoked in ONE test, which is what makes the claim a DISTINCTION rather than two
+  // separate refusals: a handler mapping every unique-index violation to the code conflict would pass a
+  // code-only test and fail here. The wire half is
+  // `PositionEndpointTests.A_duplicate_job_grade_rank_is_a_rank_conflict_not_a_code_conflict`.
+  [Trait("Criterion", "AC-POS-0061")]
   public async Task A_grade_code_conflict_and_a_rank_conflict_are_distinguishable()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();

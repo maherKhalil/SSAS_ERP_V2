@@ -256,7 +256,19 @@ public sealed class PositionDomainTests
   }
 
   // ---- LIFECYCLE.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0024`'s STAMPING clause — *deactivating and reactivating a position records
+  // `StatusChangedUtc` and `StatusChangedBy` ON EACH TRANSITION.* Both directions are exercised with
+  // DIFFERENT actors and times, which is what makes "on each transition" a claim: a single transition, or
+  // two with the same actor, would pass while a second transition that failed to re-stamp went unnoticed.
+  //
+  // ⚠⚠ The criterion's other clause — *and BOTH DIRECTIONS require `HR.Positions.Deactivate`* — is a
+  // permission claim this cannot reach. It is carried by `HrRouteInventoryTests.The_hr_route_inventory_is_
+  // exactly_as_ruled`, whose exact pairing lists activate AND deactivate against `DeactivatePositions`;
+  // that test is cited for `AC-DEP-0040` and `AC-POS-0027` and I am not adding a third criterion to it,
+  // because the pairing it asserts is the whole HR surface rather than this criterion's subject.
   [Fact]
+  [Trait("Criterion", "AC-POS-0024")]
   public void Deactivating_and_reactivating_records_who_and_when()
   {
     var position = CreatePosition("ACC-SR", "Senior Accountant").Value;

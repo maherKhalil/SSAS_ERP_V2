@@ -346,3 +346,20 @@ ALL BLOCKED ON ONE THING* and was true for about two hours.** **Left in place an
 edited, because the correction — that TASK work was never blocked — is the finding, and deleting the false
 claim would delete the evidence for it.** **A reader must take the LAST session-state block, and this line
 is here to say so.**
+
+---
+
+## `264` — OPEN. Re-run 263's plant against the rest of the population that can redden
+
+**WHY:** `b1393c4` proved `D6b` detects the source-inactive defect and reported the nine reddenable tests as
+a **census**. That enumeration was scoped to `EmployeeBoundarySqlServerTests`. **`EmployeeApiTestHost.cs:228`
+registers the real `ChangeEmployeeDepartmentCommandHandler` in DI and five API tests drive it over HTTP.**
+
+**DO:** re-apply the same source-inactive plant, run `tests/API.Tests` — **fast, not Integration** — and report
+whether any of `A6e`/`A6f`/`A6g`/`A6h`/`A6i` reddens. Sweep `tests/` for callers by **TYPE**
+(`ChangeEmployeeDepartmentCommandHandler`, `ChangeEmployeeDepartmentCommand`), **never by receiver name**.
+Restore with `git checkout HEAD --` and verify `git diff HEAD --quiet -- src/`.
+
+⚠ **THE EXPECTED ANSWER IS *NOTHING REDDENS*, AND THAT IS THE POINT — *I expect none* IS THE STATE THE CENSUS
+EXISTED TO REPLACE.** **If `A6e` reddens, `D6b` is not the sole owner of the behaviour and the citation is
+blurred; better to know before it hardens.** **Do not amend `b1393c4` and do not touch the test.**

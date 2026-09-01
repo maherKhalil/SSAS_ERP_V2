@@ -1139,3 +1139,50 @@ a peer window cannot overrule either the decision or the code.**
 
 **NOTHING IS BEING BUILT OR DELETED UNTIL YOU ANSWER. NO TEST WILL BE WRITTEN FOR IT** — a test would harden
 whichever side happened to be tested.
+
+---
+
+## 26 — Thirteen tenant tables can be dropped from a cutover and the copier reports success
+
+**Raised 2026-09-01 by the architect, out of `266`. This is a data-loss exposure, not a test-coverage item.**
+
+**WHAT IS MEASURED.** `AC-DEP-0049`'s plants dropped one table at a time from the derived copy manifest:
+`DepartmentManager` — **the copy returned SUCCESS**, 2 rows became 0. `EmployeeDepartmentAssignment` —
+**SUCCESS**, 3 rows became 0. `Department` — **the copy FAILED**, loudly, before any count comparison.
+
+**WHY THE THIRD ONE FAILED IS THE WHOLE FINDING.** `Employees` holds a NOT NULL foreign key to `Departments`,
+so the database itself refused. **Nothing points into the other two.** ⚠ **A TABLE NO FOREIGN KEY REFERENCES
+CAN VANISH FROM A CUTOVER WITH NO CONSTRAINT COMPLAINING.**
+
+**THE POPULATION, FROM THE COMPOSED EF MODEL: 17 OF THE 35 COPIED ENTITIES HAVE ZERO INBOUND FOREIGN KEYS,
+AND 13 OF THOSE HAVE NEVER HAD A ROW COPIED BY ANY TEST.**
+
+| Module | Exposed and never exercised |
+|---|---|
+| **Finance / GL** | `FiscalPeriod`, `JournalDraftLine`, **`JournalLine`** |
+| **Payroll** | `OneOffPayment`, `PayElementAssignment`, `PayrollRunDraftLine`, **`PayrollRunLine`** |
+| **Attendance** | `AttendanceRecord`, `CalendarHoliday`, `LeaveBalance`, `LeaveRequest` |
+| **HR** | `EmployeeImportRun`, `EmployeePositionAssignment` |
+
+⚠⚠⚠ **`JournalLine` IS THE GENERAL LEDGER'S DETAIL. `PayrollRunLine` IS THE PAYSLIP DETAIL.** The predicate
+selects almost exclusively **line, assignment, balance and record** tables — ⚠ **precisely the data that
+cannot be reconstructed from what survives, because a header row with no lines still reads as a valid
+header.** A dropped employee is noticed in a day; a ledger with headers and no lines is noticed at the audit,
+with the source database already gone.
+
+**WHAT IS *NOT* CLAIMED.** **We have NOT found the copier dropping anything in production.** The plants
+injected the defect. What is established is that **for thirteen tables including the ledger and the payslips,
+nothing would tell us if it did** — and that the copier returns success when it happens.
+
+**THE RECOMMENDATION (the coder's, and the architect agrees).** **Do not write thirteen seeded fixtures.**
+They close thirteen tables and rot the moment a new module adds a fourteenth. **Reconcile a per-table SOURCE
+count against the TARGET inside the copier's own validation** — that closes all 35 at once and every future
+entity for free, with nothing to maintain.
+
+⚠ **WHY IT IS YOURS.** It is a production change to the engine that migrates tenants between databases, and
+**a reconciliation that is too strict fails cutovers that would have succeeded, which is its own outage.**
+Scope, risk appetite and timing are yours. **One open question is being read now (`267`): whether the existing
+report's row counts come from the target or are the copier's own account of its own work — if the latter, the
+fix is reading the target rather than new plumbing.**
+
+**NOTHING IS BEING BUILT. No `Platform.Infrastructure` change is queued to the coder.**

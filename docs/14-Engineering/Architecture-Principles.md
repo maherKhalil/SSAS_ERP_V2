@@ -3357,6 +3357,54 @@ constructed input, that is itself the finding — say **documented, not tested**
 
 ---
 
+---
+
+## A negative assertion is only as good as the proof that its predicate can match
+
+**`Assert.DoesNotContain(xs, x => x.Name == "Foo")` passes in two situations: the thing is genuinely
+absent, and the predicate matches nothing at all.** The assertion cannot tell them apart, and neither can
+the reader — **both are zero matches, and both are green.** The same holds for `Assert.Null` over a
+`FirstOrDefault`, `Assert.Empty` over a `Where`, and `Assert.False` over an `Any`. **Every negative
+assertion over a predicate has a failure mode in which it asserts nothing and reports success.**
+
+**Measured, 2026-09-01, and proven rather than argued.** One entity name in the cutover suite was planted
+as a misspelling — `"Departmentt"` — and the suite returned **PASSED, 6 of 6, zero failures**. A rename, a
+typo, a moved namespace or a renamed property all produce that state silently.
+
+⚠⚠ **The near-miss is what makes this class hard to find.** Nine other sites in the same file compared
+entity names through a helper ending in `Assert.True(index >= 0, …)`, and **those redden correctly** — so a
+spot-check of the file meets the loud sites first and concludes it is safe. **Two independent reviewers
+described that file's literals as failing silently; it was true of four sites and false of nine.** The
+mixture is the hazard, not the presence of literals.
+
+**Two remedies, and the first is strictly better:**
+
+1. ⚠ **Make a wrong name a COMPILE ERROR** — `nameof`, a typed reference, an enum member. It needs no
+   maintenance, cannot go stale, and turns the whole class into a build failure.
+2. **Where the predicate must stay dynamic, add a POSITIVE COMPANION** proving it matches in the case
+   where the subject IS present. Without one, the negative test is an unfalsifiable claim.
+
+**This is the anti-vacuity control at the scale of a single assertion** — the same defect as a derived
+population with no floor, and the same remedy. **Do not report a negative assertion as defective merely
+for being negative: the defect is a predicate that nothing proves can match.**
+
+## When a ruling turns on a mechanism, first ask what fraction of the population goes through it
+
+**Converting a question of taste into a measurable one is the right move and it is not sufficient — the
+measurement still has to be aimed at the population rather than at a mechanism inside it.**
+
+**Worked instance, 2026-09-01.** A change was scoped on a single question: *does this helper throw for an
+unknown name, or return a sentinel?* — with a stated consequence for each answer. **The helper throws, so
+the rule returned the narrow scope.** ⚠ **But only nine of the seventeen sites went through that helper at
+all, and four of the remaining eight carried the entire defect.** The procedure was sound and the answer
+was wrong, because **a question about one mechanism cannot bound a population whose members do not all use
+it — and the coverage of the mechanism was never asked for.**
+
+⚠ **One clause fixes it: name the mechanism, then ask what fraction of the sites go through it, before
+letting the answer decide anything.** It costs one enumeration, and here it inverted the ruling.
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

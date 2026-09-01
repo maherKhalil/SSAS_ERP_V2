@@ -3180,6 +3180,43 @@ ADMITS is the failure it was built to prevent.** ⚠ **When auditing this class,
 severity** — and note that the permissive one is the harder to notice precisely because nothing ever
 complains.
 
+## A demonstration requirement is a design check, not a verification step
+
+**A fix was specified for five sites: change a fallback so an unmeasured value fails toward safety. The
+requirement attached to it was that each fix must DEMONSTRATE its unmeasured path — force the measurement
+to fail and show the new behaviour.**
+
+⚠⚠⚠ **The requirement fired before a line of the fix was written, and it changed the answer.** Three of the
+five fallbacks are **unreachable**: those pipelines end in a counter that prints a number even when
+everything upstream fails, so the default has never executed and never can.
+
+**Without the requirement, three sites would have been "fixed" by changing a default that cannot run** —
+shipped, reviewed, and permanently reassuring. ⚠ **The demonstration would simply have been impossible to
+write, and that impossibility is the signal.**
+
+**So ask for the demonstration when the change is SPECIFIED, not when it is reviewed.** A fix whose
+correctness cannot be shown is usually a fix aimed at the wrong mechanism.
+
+### And the real defect at those sites is the opposite shape
+
+**A fallback catches an EMPTY value. A counter in the pipeline guarantees the value is never empty** — it
+manufactures a legitimate-looking zero out of a failed upstream, and the exit status that would have
+revealed it is discarded by the pipe.
+
+⚠ **No fallback can catch a value that is never absent.** Where a pipeline ends in something that always
+produces output, the only remedy is to keep the exit status; the two defects look identical in the source
+and have no remedy in common.
+
+### The harness is an instrument and can be wrong in the same way
+
+**The first extraction of one block ended one line short and could not run at all, returning the same
+failure code on both the good and the bad case** — which momentarily read as *the guard fires even on a
+successful measurement*.
+
+⚠⚠ **A demonstration that exercises only the failure path cannot tell a working guard from a broken
+harness.** Run both sides every time: the unmeasured path AND a real value. **And extract the block from
+the patched file verbatim — a demonstration of retyped code proves nothing about what ships.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

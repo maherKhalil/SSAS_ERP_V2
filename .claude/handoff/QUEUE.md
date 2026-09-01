@@ -271,7 +271,7 @@ Debug and Release identical, `Integration 862` — and `test-baseline.txt` was n
 IMMEDIATELY, and 7 that cannot be cited as they stand.** ⚠ **NO CITATION WAS APPLIED, deliberately — a
 `[Trait]` is a test-file edit and every test edit has gone through a green gate first.**
 
-**THE `DEP` SEARCH IS COMPLETE — ALL TEN GROUPS, pass 19, `9cea139`. `DEP` stands at 4 CITED, 33 CITABLE, 10 OPEN** (the three Employee-shaped gaps `0002`/`0044`/`0050`, the product-wide `0008`, three partials, and four unsearchable without a gate). ⚠ **NOTHING FURTHER CAN BE DONE ON `DEP` WITHOUT A GREEN GATE, and that is a state rather than a stall.**
+**THE `DEP` SEARCH IS COMPLETE — ALL TEN GROUPS, pass 19, `9cea139`. `DEP` stands at 4 CITED, 33 CITABLE, 10 OPEN** (the three Employee-shaped gaps `0002`/`0044`/`0050`, the product-wide `0008`, three partials, and four unsearchable without a gate). ⚠⚠⚠ **CORRECTED 2026-09-01: THAT SENTENCE WAS FALSE WHEN WRITTEN. THE MEMORY FLOOR APPLIES ONLY WHEN INTEGRATION IS IN SCOPE — `gate.sh:1037` tests `GATE_INTEGRATION_IN_SCOPE = 1` FIRST — so a `GATE_SCOPE=TASK` RUN NEVER REACHES IT.** **Only 239, the PHASE run, is blocked. The 33 citations, 241 and 242 are TASK-gated and were available throughout.** ⚠ **Caveat stated rather than discovered: a citation landing in `tests/Integration.Tests` merges without its suite running — `DEC-L-007`'s documented exposure, and how every Integration test merged tonight.**
 
 ---
 

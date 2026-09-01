@@ -669,6 +669,61 @@ public sealed class PositionApplicationArchitectureTests
     Assert.Empty(declared);
   }
 
+  // ---- THE POSITION SURFACE ANSWERS IN ITS OWN NAMESPACES (`AC-POS-0059`, 269).
+  //
+  // ⚠⚠ THE CRITERION IS WRITTEN MORE STRICTLY THAN THE PRODUCT, AND THE STRICT READING WOULD REDDEN ON
+  // CORRECT CODE. It says position errors answer in `position.*` / `job_grade.*` / `salary_grade.*` AND
+  // NEVER in `employee.*` or `department.*`. The mapper declares EIGHTEEN errors and seventeen match those
+  // three prefixes — the eighteenth is `CompanyScopeDenied = "company.scope_denied"`, which is DELIBERATE:
+  // `PositionErrors`' own header records that scope refusals are answered by the Platform boundaries with
+  // their generic errors and are never restated in the module's vocabulary.
+  //
+  // So the assertion is the criterion's ENFORCEABLE half — the two forbidden namespaces — plus a positive
+  // that the position family is actually represented. A guard written to the literal first clause would
+  // fail on a design decision, which is the false positive that gets guards deleted.
+  //
+  // ⚠⚠ AND THE FORBIDDEN CASE IS NOT HYPOTHETICAL — IT HAS HAPPENED IN THIS CODEBASE. `PositionApiErrorMapper`'s
+  // own header records it: *`DEC-DEP-0026` … a shared table once answered a DEPARTMENT MANAGER CONFLICT
+  // with `employee.number_conflict`, because its only unique-constraint arm had been written for the
+  // employee-number pre-check.* That is exactly this ban's subject, in the sibling feature, already once.
+  // The pressure is not inferred from a comment explaining a non-action — it is a recorded defect.
+  [Fact]
+  [Trait("Decision", "ADR-023")]
+  [Trait("Criterion", "AC-POS-0059")]
+  public void No_position_api_error_answers_in_the_employee_or_department_namespace()
+  {
+    var errors = typeof(SSAS.HR.API.Positions.PositionApiErrorMapper)
+      .GetFields(BindingFlags.Public | BindingFlags.Static)
+      .Where(field => field.FieldType == typeof(SSAS.BuildingBlocks.Api.Transport.ApiError))
+      .Select(field => (
+        field.Name,
+        Code: ((SSAS.BuildingBlocks.Api.Transport.ApiError)field.GetValue(null)!).Code))
+      .ToArray();
+
+    // POPULATION CONTROL. An empty or collapsed reflection walk satisfies every ban below.
+    Assert.Equal(18, errors.Length);
+
+    // THE CLAIM: never the neighbouring modules' namespaces. Naming a `department.*` or `employee.*` code
+    // here would make a position refusal indistinguishable from another aggregate's.
+    var offenders = errors
+      .Where(entry =>
+        entry.Code.StartsWith("employee.", StringComparison.Ordinal) ||
+        entry.Code.StartsWith("department.", StringComparison.Ordinal))
+      .Select(entry => $"{entry.Name} = '{entry.Code}'")
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Empty(offenders);
+
+    // ⚠ POSITIVE CONTROL, AND IT CARRIES THE CRITERION'S FIRST CLAUSE IN THE FORM THE PRODUCT SUPPORTS:
+    // all three position-family namespaces are represented, so the ban above is not holding over a set
+    // that answers in no namespace at all.
+    foreach (var prefix in new[] { "position.", "job_grade.", "salary_grade." })
+    {
+      Assert.Contains(errors, entry => entry.Code.StartsWith(prefix, StringComparison.Ordinal));
+    }
+  }
+
   // ---- NO REFLECTION-BASED PERMISSION DISCOVERY IN THE POSITION SLICE.
   [Fact]
   [Trait("Decision", "ADR-012")]

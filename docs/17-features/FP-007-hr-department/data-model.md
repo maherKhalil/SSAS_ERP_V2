@@ -186,3 +186,16 @@ There is precedent for declining a convenient foreign key on classification grou
 `EmployeeBranchAssignment` no branch FK, and `C6_12_The_assignment_has_no_branch_foreign_key` records that the
 convenience was declined rather than overlooked. This decision is recorded the same way, as `AC-DEP-0034` and
 `TS-DEP-0044` — not as prose.
+
+⚠⚠⚠ **CORRECTED 2026-09-01, AND THE PARAGRAPH ABOVE WAS THE SHARPEST INSTANCE OF ITS OWN SUBJECT: IT CLAIMS
+THE DECISION IS RECORDED *NOT AS PROSE*, AND IT IS PROSE ABOUT A TEST THAT DOES NOT EXIST.** The precedent it
+cites is real — `C6_12_The_assignment_has_no_branch_foreign_key` is an executed test. **`TS-DEP-0044` is not:
+it is an APPROVED, UNIMPLEMENTED scenario**, and `AC-DEP-0034`'s second clause was carried by nothing until
+2026-09-01.
+
+**WHAT IS TRUE TODAY:** `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`) proves the
+copy planner returns `CutoverCopyOrderUndecidable` for a foreign-key cycle among tenant-owned entities,
+isolated from the two unrelated conditions that share that error value by a matched acyclic control.
+⚠ **That `Department` carrying a direct manager foreign key WOULD produce such a cycle is still argued from
+the model, not executed** — see `AC-DEP-0034`, which carries the bound, and backlog `B25` for why the
+Department-shaped test has no project it can live in.

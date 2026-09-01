@@ -290,3 +290,18 @@ FP-007 found this in design review rather than in a red nightly, and `TS-DEP-004
 executably. The equivalent assertion for Position — a constructed model with a direct incumbent foreign key
 must fail with `CutoverCopyOrderUndecidable` — is `TS-POS-0044`, and it should be written before the schema
 is, for the same reason.
+
+⚠⚠⚠ **CORRECTED 2026-09-01 — THE FIRST SENTENCE IS FALSE AND FP-008'S DESIGN RESTED ON IT. `TS-DEP-0044`
+NEVER EXISTED.** It is an approved, unimplemented FP-007 scenario, so **this document justified its own
+decision by citing another feature's executable assertion, which had never been written — and then named its
+own equivalent, `TS-POS-0044`, which was also never written.** A decision resting on a test, and a second
+decision resting on the first.
+
+⚠⚠ **AND THE SECOND SENTENCE'S ORDERING WAS NOT HONOURED: it says `TS-POS-0044` *should be written before
+the schema is*. The schema exists and the test does not.** The sentence was honest — future tense, correctly
+— and nothing checked it, which is the difference between a plan and a guard.
+
+**WHAT IS TRUE TODAY:** `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`, 2026-09-01)
+proves the planner returns `CutoverCopyOrderUndecidable` for a foreign-key cycle among tenant-owned
+entities. ⚠ **The Position-specific claim — that a direct incumbent foreign key produces such a cycle —
+remains unasserted, and `TS-POS-0044` remains unimplemented.**

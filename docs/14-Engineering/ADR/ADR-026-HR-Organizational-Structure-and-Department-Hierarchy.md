@@ -224,7 +224,7 @@ enforced, the honest record is that it is open.**
 
 | Risk | Mitigation |
 |---|---|
-| A future entity adds a mutual foreign key and breaks cutover again | `TS-DEP-0044` asserts the failure mode executably: a constructed model with the direct manager FK must fail with `CutoverCopyOrderUndecidable` |
+| A future entity adds a mutual foreign key and breaks cutover again | ⚠⚠ **CORRECTED 2026-09-01 — THIS ROW NAMED A TEST THAT DID NOT EXIST, AND HAS DONE SINCE IT WAS WRITTEN.** `TS-DEP-0044` is an APPROVED, UNIMPLEMENTED scenario (`FP-007 test-scenarios.md`); it asserted nothing. **What exists today is `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`, 2026-09-01), which proves THE MECHANISM: the copy planner returns `CutoverCopyOrderUndecidable` for a foreign-key cycle among tenant-owned entities, isolated by a matched acyclic control that must pass.** ⚠ **It does NOT assert that any particular entity's shape produces such a cycle — that step is still read from the model. So this risk is mitigated AT THE MECHANISM LEVEL, and a future entity adding a mutual foreign key is caught only if someone runs the cutover, not by a guard naming that entity.** |
 | `OD-DEP-001` chooses a nullable interim and nobody remediates | `AC-DEP-0039` requires the follow-up migration to exist and be named; option C is recommended against explicitly |
 | Department ownership is later found to need branch scope | Would require amending this ADR and `ADR-024`. The guard in decision 2 ensures the change is deliberate rather than accidental |
 

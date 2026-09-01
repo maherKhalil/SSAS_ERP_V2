@@ -1000,6 +1000,27 @@ still buys is the thing a targeted run cannot give: **Debug-versus-Release confi
 whole-suite baseline.** ⚠ **It does NOT block confirming or fixing a specific defect, and this entry
 should not be read as saying it does.**
 
+### ⚠⚠⚠ AMENDED AGAIN 2026-09-01 — THE THIRD NARROWING, AND IT CHANGES WHAT IS BEING ASKED
+
+**RELEASE WAS NEVER BLOCKED. THE SEVEN NON-INTEGRATION SUITES RUN IN 75 SECONDS** — a 12-second
+`--no-incremental` solution build plus 63 seconds of tests, **3243 tests, all green, and every count
+identical to Debug.** Measured, not estimated; the build was verified fresh rather than assumed.
+
+⚠ **SO THE REMAINING QUESTION IS ENTIRELY ABOUT INTEGRATION-IN-RELEASE: 862 tests, the only part that
+touches SQL Server, and essentially the whole of the 51-minute figure this entry was written around.**
+**Seventy-five seconds buys the other three quarters of the suite in both configurations.**
+
+⚠⚠ **AND THE BOX IS BUSY RATHER THAN SMALL. 862 MB free of 15,287 — and roughly 7.2 GB of that is
+interactive desktop applications** (an editor at ~3.2 GB across 16 processes, browsers at ~3.0 GB across
+two families, this loop's own sessions at ~1.0 GB). **`dotnet build-server shutdown` reclaims a further
+~520 MB and has not been run — it was offered twice and left as the owner's call.**
+
+**SO THE DECISION IS SMALLER THAN THIS ENTRY ORIGINALLY PUT IT.** It is not *is this machine large enough*.
+It is: **is it acceptable that the full sixteen-leg matrix runs only when the desktop is quiet?** ⚠ **The
+options are now closing some applications before a phase run, accepting quiet-hours-only for the Integration
+half alone, or spending on memory — and the third buys the least it ever has, because the part that was
+assumed expensive turns out to cost 75 seconds.**
+
 ### ⚠ One thing tonight proved that no green run could have
 
 **The abort path fired in production for the first time, and its output was exactly what the offline

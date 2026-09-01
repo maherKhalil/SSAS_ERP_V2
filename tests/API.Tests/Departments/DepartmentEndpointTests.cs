@@ -75,6 +75,11 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   }
 
   [Fact]
+  // ⚠ CITED BY 265: `AC-DEP-0002`, the `companyId` half. This test was the UNCITED evidence that showed the
+  // criterion was wrong — the behaviour was already asserted; it was the specification that was stale.
+  // Paired with `D5b`, which carries `tenantId`: the two are independent entries in a per-call-site
+  // allowlist, so neither covers the other.
+  [Trait("Criterion", "AC-DEP-0002")]
   public async Task D5_Create_rejects_an_undeclared_field()
   {
     const string body = """
@@ -99,13 +104,14 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   // The value names a DIFFERENT tenant from the host's own, so what is refused is the cross-tenant
   // assertion the criterion is about and not merely a malformed field.
   //
-  // ⚠ UNCITED ON PURPOSE, AND THIS IS NOT AN OVERSIGHT. `AC-DEP-0002` currently says body identifiers are
-  // *IGNORED, NOT HONOURED* and that such a request *produces a department in the caller's own tenant*.
-  // The product does neither — it REFUSES with 400 — so citing 0002 here would attach a criterion to a
-  // test that contradicts its stated behaviour. `AC-DEP-0035`, in the same document, states the opposite
-  // disposition for the same class of undeclared field, and the code implements 0035's rule. The citation
-  // lands on this test and on `D5` once the architect has corrected 0002 and `TS-DEP-0002` (265).
+  // ⚠ CITED BY 265 ONLY AFTER THE CRITERION WAS CORRECTED (`b679214`). `AC-DEP-0002` used to say body
+  // identifiers are *IGNORED, NOT HONOURED* and that such a request *produces a department in the caller's
+  // own tenant* — and the product does NEITHER, it REFUSES with 400. Citing it then would have attached a
+  // criterion to a test contradicting its stated behaviour. `AC-DEP-0035`, in the SAME document, stated the
+  // opposite disposition for the same class of undeclared field and the code implements 0035's rule: the
+  // specification disagreed with itself and the implementation picked the safer side.
   [Fact]
+  [Trait("Criterion", "AC-DEP-0002")]
   public async Task D5b_Create_rejects_an_undeclared_tenant_id()
   {
     const string body = """

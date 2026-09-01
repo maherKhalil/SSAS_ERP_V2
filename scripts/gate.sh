@@ -1004,7 +1004,23 @@ reap_to_zero () {
 #    would send someone hunting for a defect in the tests. See note 7a in the header for the incident.
   local FREE_MB
   FREE_MB=$(powershell.exe -NoProfile -Command     "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB,0)"     2>/dev/null | tr -d '[:space:]')
-  FREE_MB=${FREE_MB:-0}
+  # ---- UNMEASURED IS NOT ZERO. 242, 2026-09-01.
+  #
+  # This sampler CAN return empty: if `powershell.exe` fails, `tr` is handed nothing, the `2>/dev/null`
+  # discards the error text, and the pipe discards the exit status because this script sets `set -u` and
+  # not `pipefail`. `${FREE_MB:-0}` then read as "zero megabytes free" -- a value below every floor,
+  # produced by no measurement at all, and indistinguishable in the abort text from a genuinely full box.
+  #
+  # The fallback must fail toward the safe outcome FOR THIS CONSUMER, and here that is PROCEEDING.
+  # Aborting on no evidence destroys the 25-minute run the floor exists to protect, which is the very
+  # failure the floor was built to prevent. Contrast `${LEFT:-1}` below, where the same rule gives the
+  # opposite value because an unmeasured reap must stop.
+  if [ -z "$FREE_MB" ]; then
+    echo "!!! UNMEASURED ($CFG): free physical memory could not be read. PROCEEDING WITHOUT THE FLOOR."
+    echo "!!! If this run dies, the cause may be the condition nobody could measure. That is NOT a suite"
+    echo "!!! failure -- see note 7a before reading a red suite into it."
+    FREE_MB=$((MEMORY_FLOOR_MB + 1))
+  fi
 
   # ---- THE FLOOR APPLIES WHERE ITS EVIDENCE CAME FROM: RUNS THAT INCLUDE INTEGRATION.
   #
@@ -1061,7 +1077,16 @@ reap_to_zero () {
   HOSTS=$(powershell.exe -NoProfile -Command \
     "(Get-CimInstance Win32_Process | Where-Object { \$_.Name -eq 'testhost.exe' -and \$_.CommandLine -like '*$(basename "$ROOT")*' } | Measure-Object).Count" \
     2>/dev/null | tr -d '[:space:]')
-  HOSTS=${HOSTS:-0}
+  # ---- UNMEASURED IS NOT ZERO, AND HERE THE SAFE DIRECTION IS THE OPPOSITE ONE. 242.
+  #
+  # Same pipeline shape as the memory sampler and the same three silencing mechanisms, but this guard
+  # protects an ACT rather than protecting against one: the comment above says reaping now "would drop
+  # catalogs that are in use". An unmeasured zero said "no sibling suite is live" and let the reap run.
+  if [ -z "$HOSTS" ]; then
+    echo "!!! ABORT ($CFG): could not determine whether sibling testhost processes are running."
+    echo "!!! Reaping blind would drop catalogs another run may hold. NOT a suite failure -- note 7a."
+    exit 2
+  fi
   if [ "$HOSTS" -ne 0 ]; then
     echo "!!! ABORT ($CFG): $HOSTS testhost process(es) running -- a sibling suite is live."
     echo "!!! Reaping now would drop catalogs that are in use. Serialise the runs."
@@ -1080,7 +1105,19 @@ reap_to_zero () {
   PROTECTED=$(sqlcmd -S localhost -E -C -h -1 -W -Q \
     "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.databases WHERE name LIKE 'SSAS[_]%' AND (name NOT LIKE 'SSAS[_]%[_]%' OR name LIKE '%PROD%' OR name LIKE '%LIVE%')" \
     2>/dev/null | head -1 | tr -d '[:space:]')
-  if [ "${PROTECTED:-0}" != "0" ]; then
+  # ---- UNMEASURED IS NOT ZERO, AND THIS IS THE MOST EXPENSIVE OF THE FOUR. 242.
+  #
+  # The DROP below is `WHERE name LIKE 'SSAS[_]%'` with no test-shape condition of its own, wrapped in
+  # TRY/CATCH with its output discarded. THIS COUNT IS THE ONLY THING BETWEEN IT AND A PRODUCTION-NAMED
+  # CATALOG. An unmeasured zero read as "nothing to protect" and let the drop proceed.
+  if [ -z "$PROTECTED" ]; then
+    echo "!!! ABORT ($CFG): could not count catalogs matching the test prefix but not the test shape."
+    echo "!!! The reap drops every SSAS_ database and this count is the only thing that narrows it."
+    echo "!!! Refusing to drop on an unmeasured guard. NOT a suite failure -- note 7a."
+    exit 3
+  fi
+
+  if [ "$PROTECTED" != "0" ]; then
     echo "!!! ABORT ($CFG): $PROTECTED catalog(s) match the test prefix but do not look like test catalogs."
     exit 3
   fi
@@ -1214,7 +1251,18 @@ for CFG in $GATE_CONFIGS; do
   # The suites still run: a warning does not invalidate a test result, and stopping here would trade
   # one true report for another. It is RED, and the run still says everything it knows.
   BUILD_WARNINGS=$(grep -m1 -oE '[0-9]+ Warning\(s\)' "$LOGS/build-$CFG.log" | awk '{print $1}')
-  if [ "${BUILD_WARNINGS:-0}" != "0" ]; then
+  # ---- UNMEASURED IS NOT ZERO. 242.
+  #
+  # `grep -m1 -oE '[0-9]+ Warning\(s\)'` is empty when the pattern is ABSENT, which is not the same as a
+  # build that emitted none -- MSBuild prints "0 Warning(s)" and that matches. So empty means the log was
+  # missing, truncated, or its format changed, and `${BUILD_WARNINGS:-0}` reported a clean count nobody
+  # read. Verified 2026-09-01 that the pattern does match today: build-Debug.log holds exactly one
+  # occurrence, reading "0 Warning(s)". This guard is what makes that keep being true.
+  if [ -z "$BUILD_WARNINGS" ]; then
+    echo "!!! WARNINGS ($CFG): no 'N Warning(s)' line found in build-$CFG.log. The count is UNMEASURED,"
+    echo "!!! not zero, so DEC-L-008 condition 1 cannot be evidenced. This gate is RED."
+    GATE_FAILED=1
+  elif [ "$BUILD_WARNINGS" != "0" ]; then
     echo "!!! WARNINGS ($CFG): $BUILD_WARNINGS -- DEC-L-008 condition 1 is zero. This gate is RED."
     grep -E ": warning [A-Z]+[0-9]+" "$LOGS/build-$CFG.log" | sort -u | head -20
     GATE_FAILED=1

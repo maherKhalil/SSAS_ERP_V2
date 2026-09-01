@@ -114,8 +114,29 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
   // The bleed test. A caller holding every HR permission EXCEPT the one this route demands must still be
   // refused — which is what catches a route wired to the wrong constant, the defect no happy-path test
   // notices because the happy path grants everything.
+  //
+  // ⚠ CITED BY 269 FOR TWO CRITERIA, AND THE DERIVED POPULATION IS WHY.
+  //
+  // `AC-POS-0041` — *each permission authorizes exactly its own operations AND NO OTHER; a caller holding
+  // `HR.Positions.View` cannot create, update or deactivate.* The "no other" half is the hard one, and it
+  // is carried here by SUBTRACTION: `AllHrPermissions()` reads every constant off `HrPermissionNames`
+  // reflectively and this grants all of them EXCEPT the one the route demands. A per-permission assertion
+  // could not do this — it would have to enumerate the permissions that must NOT work, which is the open
+  // set, and it would go stale the day a permission is added. This cannot.
+  //
+  // `AC-POS-0042` — *permission bleed proven in BOTH directions.* Both are here because `AllRoutes` carries
+  // the employee-prefix routes too: a POSITION route granted every other permission (which includes every
+  // `HR.Employees.*`) is refused, AND `change-position` granted every other permission (which includes
+  // every `HR.Positions.*`) is refused. One theory, both directions, neither by a separate hand-written case.
+  //
+  // ⚠⚠ THE BOUND, STATED SO IT IS NOT MISTAKEN FOR MORE: the PERMISSION axis is derived and cannot go
+  // stale; the ROUTE axis is the hand-written `AllRoutes` list. A route added to the product and to
+  // `HrRouteInventoryTests`' exact inventory but NOT to `AllRoutes` is pinned for its pairing and never
+  // probed for bleed. The inventory makes a new route visible; it does not add it here.
   [Theory]
   [MemberData(nameof(AllRoutes))]
+  [Trait("Criterion", "AC-POS-0041")]
+  [Trait("Criterion", "AC-POS-0042")]
   public async Task Every_route_refuses_a_caller_holding_every_other_hr_permission(
     string method, string path, string permission, string? body)
   {

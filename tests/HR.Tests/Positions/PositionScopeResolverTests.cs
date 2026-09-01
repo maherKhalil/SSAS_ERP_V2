@@ -45,8 +45,17 @@ public sealed class PositionScopeResolverTests
   // `Platform.Tenant.Administer` widens the COMPANY dimension — an administrator reaches every active
   // company in the tenant — and grants NO operation. An administrator who was never given the HR permission
   // cannot read a position, and the scope they would have had is irrelevant to that.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0044`, THE CLAUSE THIS CAN REACH — *`Platform.Tenant.Administer` … grants none
+  // of these permissions.* The criterion's other clause, *widens company scope*, is NOT asserted here: the
+  // generous `companies: [CompanyA, CompanyB]` above is ARRANGEMENT, not an assertion, and the widening is
+  // a Platform behaviour (`ADR-025` d8) proven against real SQL by the administrator company-access tests
+  // in `CompanyOwnershipBoundarySqlServerTests`. Cited for the half it carries, with the half it cannot.
+  //
+  // The write half is the Theory below, over all nine write permissions in all three families.
   [Fact]
   [Trait("Decision", "ADR-025")]
+  [Trait("Criterion", "AC-POS-0044")]
   public async Task Tenant_administration_alone_does_not_grant_the_position_read()
   {
     var resolver = Resolver(
@@ -72,6 +81,10 @@ public sealed class PositionScopeResolverTests
   [InlineData(HrPermissionNames.UpdateSalaryGrades)]
   [InlineData(HrPermissionNames.DeactivateSalaryGrades)]
   [Trait("Decision", "ADR-025")]
+  // ⚠ CITED BY 269: `AC-POS-0044`'s write half, paired with the read test above. Nine inline cases rather
+  // than one, because "grants no write" is a claim about every write permission and a single case would
+  // prove it of whichever one happened to be chosen.
+  [Trait("Criterion", "AC-POS-0044")]
   public async Task Tenant_administration_alone_grants_no_position_write(string permission)
   {
     var resolver = Resolver(permissions: ["Platform.Tenant.Administer"], companies: [CompanyA]);
@@ -107,8 +120,19 @@ public sealed class PositionScopeResolverTests
   // The most important row is the last: a caller holding EVERY position and job grade permission still
   // cannot obtain a `SalaryGradeReadScope`. That separation is the reason `HR.SalaryGrades.View` exists —
   // reading the organization chart must not also disclose the pay structure.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0045` — *`HR.SalaryGrades.View` is a distinct permission; holding
+  // `HR.Positions.View` ALONE does not read salary amounts.* This is the criterion's literal sentence. Two
+  // siblings carry the rest of the claim and all three are cited: the next test proves it survives a caller
+  // holding EVERY position and job-grade permission plus the salary WRITE permission, and the one after
+  // proves the CONVERSE — `HR.SalaryGrades.View` alone grants only the salary scope, so the separation is
+  // not merely "positions do not reach pay" but a genuine partition.
+  //
+  // Each carries its own positive control: the position scope is asserted to SUCCEED before the two grade
+  // scopes are asserted to fail, so a resolver refusing everything cannot pass.
   [Fact]
   [Trait("Decision", "DEC-POS-0018")]
+  [Trait("Criterion", "AC-POS-0045")]
   public async Task The_position_view_permission_grants_neither_grade_ladder()
   {
     var resolver = Resolver(permissions: [HrPermissionNames.ViewPositions]);
@@ -126,6 +150,9 @@ public sealed class PositionScopeResolverTests
 
   [Fact]
   [Trait("Decision", "DEC-POS-0018")]
+  // ⚠ CITED BY 269: `AC-POS-0045`'s strongest leg — *ALONE* stretched to its limit. Nine permissions,
+  // including the salary WRITE permission, and the pay band is still not readable.
+  [Trait("Criterion", "AC-POS-0045")]
   public async Task Every_position_and_job_grade_permission_together_still_discloses_no_pay_band()
   {
     var resolver = Resolver(permissions:
@@ -153,6 +180,10 @@ public sealed class PositionScopeResolverTests
 
   [Fact]
   [Trait("Decision", "DEC-POS-0018")]
+  // ⚠ CITED BY 269: `AC-POS-0045`'s CONVERSE. Without this leg the criterion is satisfied by a permission
+  // that grants nothing at all; with it, `HR.SalaryGrades.View` is proven to be a real permission granting
+  // exactly one scope. *Distinct* is a two-way claim.
+  [Trait("Criterion", "AC-POS-0045")]
   public async Task The_salary_grade_view_permission_grants_only_the_salary_grade_scope()
   {
     var resolver = Resolver(permissions: [HrPermissionNames.ViewSalaryGrades]);

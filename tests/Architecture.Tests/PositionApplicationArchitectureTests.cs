@@ -106,8 +106,19 @@ public sealed class PositionApplicationArchitectureTests
   //
   // A Position is not branch-owned, so branch scope does not decide whether one is VISIBLE. The resolver
   // takes no branch dependency at all, which is a stronger statement than "it does not call one".
+  //
+  // ⚠ CITED BY 269: `AC-POS-0046` HAS THREE CLAUSES AND THIS IS THE SECOND — *carries no branch scope*.
+  // The other two are in this file: *cannot be constructed outside its resolver* is
+  // `No_position_read_scope_can_be_constructed_from_outside_the_application`, and *no read method omits it*
+  // is `Every_position_read_takes_its_own_scope_as_the_first_parameter`. All three are cited; no one of
+  // them is honest alone.
+  //
+  // Note this asserts the SCOPE TYPES' properties AND the resolver's constructor parameters — two claims,
+  // because a scope with no branch property served by a resolver that takes a branch resolver would satisfy
+  // the letter of the first while reintroducing the dimension.
   [Fact]
   [Trait("Decision", "DEC-POS-0020")]
+  [Trait("Criterion", "AC-POS-0046")]
   public void No_position_scope_carries_a_branch_dimension()
   {
     foreach (var scopeType in new[]
@@ -139,6 +150,11 @@ public sealed class PositionApplicationArchitectureTests
   [InlineData(typeof(SalaryGradeReadScope))]
   [InlineData(typeof(AuthorizedPositionCompanyScope))]
   [Trait("Decision", "DEC-POS-0020")]
+  // ⚠ CITED BY 269: `AC-POS-0046`'s FIRST clause — *cannot be constructed outside its resolver*. Asserts
+  // both halves of that: no public constructor AND the `Create` factory is internal. `Assert.NotNull` on
+  // the factory is the control — without it, a renamed factory would make `GetMethod` return null and the
+  // internal-ness assertion would never run.
+  [Trait("Criterion", "AC-POS-0046")]
   public void No_position_read_scope_can_be_constructed_from_outside_the_application(Type scopeType)
   {
     Assert.Empty(scopeType.GetConstructors(BindingFlags.Public | BindingFlags.Instance));
@@ -161,6 +177,10 @@ public sealed class PositionApplicationArchitectureTests
   [InlineData(typeof(IJobGradeReadService), typeof(JobGradeReadScope))]
   [InlineData(typeof(ISalaryGradeReadService), typeof(SalaryGradeReadScope))]
   [Trait("Decision", "DEC-POS-0018")]
+  // ⚠ CITED BY 269: `AC-POS-0046`'s THIRD clause — *no read method omits it*. `Assert.NotEmpty(methods)` is
+  // the anti-vacuity control and it is load-bearing: `Assert.Equal` inside a `foreach` over an empty method
+  // set passes, so an interface that lost its reads would satisfy this test perfectly without it.
+  [Trait("Criterion", "AC-POS-0046")]
   public void Every_position_read_takes_its_own_scope_as_the_first_parameter(
     Type readService, Type expectedScope)
   {
@@ -249,8 +269,29 @@ public sealed class PositionApplicationArchitectureTests
   //
   // NAMING THEM IS NOT REGISTERING THEM. FP-006P's failure was constants defined nowhere the
   // role-assignment path could see, so no role could hold one and every endpoint refused every caller.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0043`, THIS PACKAGE'S HALF — *every permission this package names is defined in
+  // the composed catalog and can be granted to a role.* This test carries the package-specific part: the
+  // twelve position-family names are offered, and the exact counts refuse a thirteenth arriving quietly.
+  //
+  // ⚠⚠ IT DOES NOT CARRY THE CRITERION'S STATED FAILURE MODE — *a name present in `HrPermissionNames` but
+  // ABSENT FROM THE CATALOG fails this criterion.* A thirteenth CONSTANT that was never contributed leaves
+  // the catalog at 23 and passes here. I filed that as a gap and was WRONG: it is asserted, module-wide, by
+  // `ModulePermissionContributionArchitectureTests.The_hr_contribution_derives_from_the_single_code_owned_
+  // name_set`, which reflects every literal off `HrPermissionNames` and does `Assert.Equal(constants,
+  // contributed)` — SET EQUALITY, so a constant with no catalog entry reddens and so does the reverse.
+  //
+  // And *the COMPOSED catalog* half — resolved from the real host container rather than from a contributor
+  // constructed in a test — is `EndpointPermissionCatalogJoinTests.Every_permission_an_endpoint_requires_
+  // is_defined_by_the_composed_catalog`, which joins every route's required permission against the
+  // container's `IPermissionCatalog` and asserts the required set is non-empty first.
+  //
+  // Neither of those is cited: both are module- or product-wide and a criterion trait on them would read as
+  // a position-specific assertion. Same reasoning as `AC-DEP-0043` next door, which cites the package test
+  // and names the join in prose.
   [Fact]
   [Trait("Decision", "DEC-POS-0018")]
+  [Trait("Criterion", "AC-POS-0043")]
   public void Position_permissions_are_contributed_explicitly_and_completely()
   {
     var offered = new HrPermissionCatalogContributor().Permissions

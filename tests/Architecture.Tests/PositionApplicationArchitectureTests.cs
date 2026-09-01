@@ -388,6 +388,14 @@ public sealed class PositionApplicationArchitectureTests
   // ================================================================================================
   [Fact]
   [Trait("Rule", "BRULE-POS-0012")]
+  // ⚠ CITED BY 269: `AC-POS-0027`'s COMMAND AND HANDLER clause — *no route, handler, or repository method
+  // deletes a position or a grade.* The route half is `HrRouteInventoryTests.The_hr_surface_exposes_no_
+  // delete_verb`. The bound worth stating: this scans TYPE NAMES in `SSAS.HR.Application`, so a repository
+  // METHOD named `Delete` on a type not so named, in `SSAS.HR.Infrastructure`, is outside it.
+  //
+  // Its absence predicates are backed by `Every_absence_predicate_can_match_something` below, which is the
+  // known-positive control for this whole file.
+  [Trait("Criterion", "AC-POS-0027")]
   public void No_position_delete_command_or_handler_exists()
   {
     var offenders = HrApplicationAssembly.GetTypes()
@@ -410,6 +418,16 @@ public sealed class PositionApplicationArchitectureTests
   // exists to carry it.
   [Fact]
   [Trait("Decision", "OD-POS-006")]
+  // ⚠ CITED BY 269: `AC-POS-0063` — *no `Employee.ManagerId` is introduced, and no
+  // `Position.ReportsToPositionId`.* This carries the POSITION half over the command surface, and it bans
+  // three spellings — `ReportsTo`, `Parent`, `Manager` — rather than the one the criterion names, which is
+  // what stops the rule being satisfied by renaming the field.
+  //
+  // ⚠ ITS PREDICATES ARE NOT SELF-VERIFYING AND THE FILE KNOWS IT: every literal used here is proven to
+  // MATCH SOMETHING by `Every_absence_predicate_can_match_something`, which holds a control type carrying
+  // one property per banned term and asserts each literal finds it. Without that, a typo in `Names.Manager`
+  // makes this pass over everything. That control is what makes the citation worth having.
+  [Trait("Criterion", "AC-POS-0063")]
   public void No_position_command_expresses_a_reporting_line()
   {
     foreach (var command in MutationCommands)
@@ -436,6 +454,22 @@ public sealed class PositionApplicationArchitectureTests
   // first failed.
   [Fact]
   [Trait("Decision", "DEC-POS-0023")]
+  // ⚠ CITED BY 269 FOR TWO CRITERIA, over the COMMAND surface.
+  //
+  // `AC-POS-0062` — *no salary, wage, rate or compensation value is stored anywhere in this package.* The
+  // `tenant.Employees` half of that criterion is a SCHEMA claim, carried by the position schema suite's
+  // column checks; this is the application half.
+  //
+  // `AC-POS-0064` — *no headcount, establishment or vacancy column exists.* The second clause, *any number
+  // of employees may hold one position*, is not asserted here: it is a statement about permitted DATA and
+  // needs two employees sharing a position. Searched the employee boundary suite's P-series and the
+  // position application suite for such an arrangement and did not locate one — recorded as a search.
+  //
+  // ⚠ The comment above is the reason the ban is not simply "Salary": matching on that alone would forbid
+  // `SalaryGradeId`, which is the STRUCTURAL POINTER the package requires, and the named exemption list is
+  // asserted rather than assumed. That is how this guard first failed.
+  [Trait("Criterion", "AC-POS-0062")]
+  [Trait("Criterion", "AC-POS-0064")]
   public void No_position_command_carries_a_compensation_value_or_headcount()
   {
     foreach (var command in MutationCommands.Where(type =>

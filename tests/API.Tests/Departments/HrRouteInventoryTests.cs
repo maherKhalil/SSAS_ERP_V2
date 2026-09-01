@@ -225,11 +225,18 @@ public sealed class HrRouteInventoryTests
   //
   // ⚠⚠ THE CRITERION'S FIRST CLAUSE IS NOT THIS TEST: *no route, HANDLER, OR REPOSITORY METHOD deletes a
   // position or a grade* is a claim about application and persistence code that a route scan cannot reach.
-  // The nearest asserted neighbours are
-  // `PositionSchemaSqlServerTests.Deleting_a_referenced_grade_or_position_is_refused`, which proves the
-  // DATABASE refuses it, and `PositionApplicationArchitectureTests.No_position_family_offers_a_delete_or_
-  // manage_permission`, which proves nobody could be authorised to. Neither asserts the absence of a
-  // delete METHOD, so this criterion is cited in part.
+  //
+  // ⚠⚠⚠ CORRECTED, SAME SWEEP: THIS COMMENT ORIGINALLY SAID THE NEAREST NEIGHBOURS WERE ONLY THE SCHEMA
+  // REFUSAL AND THE PERMISSION ABSENCE, AND THAT NEITHER ASSERTED THE ABSENCE OF A DELETE METHOD. THAT WAS
+  // WRONG. `PositionApplicationArchitectureTests.No_position_delete_command_or_handler_exists` scans the HR
+  // application assembly for any Position/JobGrade/SalaryGrade type named `Delete` or `Remove` and asserts
+  // the set is empty — which is the COMMAND and HANDLER half, executably. It is cited for this criterion.
+  //
+  // What genuinely remains is narrower than I first wrote: that scan is over TYPE NAMES in
+  // `SSAS.HR.Application`, so a repository METHOD named `Delete` on a type not so named, in
+  // `SSAS.HR.Infrastructure`, is outside it. Supporting neighbours:
+  // `PositionSchemaSqlServerTests.Deleting_a_referenced_grade_or_position_is_refused` (the DATABASE refuses
+  // it) and `No_position_family_offers_a_delete_or_manage_permission` (nobody could be authorised to).
   [Trait("Criterion", "AC-POS-0027")]
   public void The_hr_surface_exposes_no_delete_verb()
   {

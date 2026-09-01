@@ -83,6 +83,11 @@ public sealed class PlatformAuthenticationSessionSqlServerTests
       "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='platform' AND TABLE_NAME='AuthenticationSessions'");
     Assert.Contains("TenantId", tenantSession);
     Assert.Contains("TenantUserId", tenantSession);
+    // ⚠ THESE STAY STRINGS ON PURPOSE (252). The collection is DATABASE COLUMN NAMES read from
+    // `INFORMATION_SCHEMA`, not CLR members. A `nameof` here would assert about the C# property while the
+    // subject is the COLUMN, and the two coincide only by mapping convention — so the check would look
+    // stronger while quietly testing something else. The EF model is the witness for database vocabulary,
+    // and reaching for it is a cost judgement per site rather than an impossibility.
     Assert.DoesNotContain("PlatformSupportPrincipalId", tenantSession);
     Assert.DoesNotContain("SecurityPlane", tenantSession);
 

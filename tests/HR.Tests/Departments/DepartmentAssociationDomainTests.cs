@@ -221,9 +221,14 @@ public sealed class DepartmentAssociationDomainTests
 
     // No concurrency state, because the record is never updated; concurrent changes serialize on
     // Employee.RowVersion instead. No Modified pair, because it is never modified.
-    Assert.DoesNotContain("RowVersion", properties);
-    Assert.DoesNotContain("ModifiedUtc", properties);
-    Assert.DoesNotContain("ModifiedBy", properties);
+    // ⚠ EACH BOUND TO THE THING THAT LEGITIMATELY HAS IT (252). Concurrency serializes on
+    // `Employee.RowVersion`, which this record therefore must not carry; and the Modified pair comes from
+    // `IAuditableEntity`, WHICH THIS RECORD DELIBERATELY DOES NOT IMPLEMENT — so the interface's own member
+    // names are the right way to say what must be absent. As bare strings, renaming any of the three left
+    // this searching for a word nothing produces any more: green, and asserting nothing.
+    Assert.DoesNotContain(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion), properties);
+    Assert.DoesNotContain(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc), properties);
+    Assert.DoesNotContain(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedBy), properties);
 
     // And no EffectiveToUtc: closing an interval would mean UPDATING the previous row.
     Assert.DoesNotContain("EffectiveToUtc", properties);

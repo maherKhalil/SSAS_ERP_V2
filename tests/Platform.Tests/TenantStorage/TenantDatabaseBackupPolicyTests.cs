@@ -32,7 +32,9 @@ public sealed class TenantDatabaseBackupPolicyTests
     // existing here (ADR-022 §4, compliance rule 11).
     var properties = typeof(TenantDatabaseBackupPolicy).GetProperties().Select(property => property.Name);
 
-    Assert.DoesNotContain("RecoveryReadinessStatus", properties);
+    // ⚠ THE WITNESS IS THE PHYSICAL DATABASE ROW (252). `TenantDatabase` carries recovery readiness; the
+    // POLICY must not duplicate it. Compile-checking against it keeps the two halves of that rule together.
+    Assert.DoesNotContain(nameof(TenantDatabase.RecoveryReadinessStatus), properties);
     Assert.DoesNotContain("Protected", properties);
   }
 

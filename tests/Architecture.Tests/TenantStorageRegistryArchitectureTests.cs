@@ -472,6 +472,16 @@ public sealed class TenantStorageRegistryArchitectureTests
     Assert.Contains(nameof(ITenantDatabaseHealthWriter.RecordConnectivityAsync), methods);
     Assert.Contains(nameof(ITenantDatabaseHealthWriter.RecordSchemaAsync), methods);
 
+    // ---- ⚠⚠⚠ THE LINE ABOVE USES `nameof` AND THE LINE BELOW USES A STRING. BOTH ARE CORRECT (252).
+    //
+    // DO NOT "NORMALISE" THESE. THE POSITIVE NAMES SOMETHING THAT EXISTS, so a symbol is available and a
+    // rename should break the build. THE NEGATIVE NAMES AN ABSENCE, AND AN ABSENCE HAS NO SYMBOL —
+    // `RecordHealthAsync` is precisely the method that must never come back, so there is nothing to
+    // `nameof`. Converting it would require inventing the member this test exists to forbid.
+    //
+    // Going the other way is no better: dropping the positive to a bare string would let a rename of
+    // `RecordSchemaAsync` leave it searching for a dead word, green, asserting nothing.
+    //
     // No general-purpose "write whatever you like" entry point remains.
     Assert.DoesNotContain("RecordHealthAsync", methods);
   }

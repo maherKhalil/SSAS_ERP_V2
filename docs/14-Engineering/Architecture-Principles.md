@@ -3634,6 +3634,28 @@ local check structurally could not see.
 
 ## A scope predicate is owed by the entity's ownership classification, not by the module's preference
 
+⚠⚠⚠ **CORRECTED 2026-09-01, ON CONTACT WITH THE FIRST MODULE IT WAS APPLIED TO — AS FIRST WRITTEN THIS
+PRINCIPLE DEMANDED AN EXPLICIT PREDICATE FOR *EVERY* DECLARED DIMENSION, AND THAT IS HALF NOISE. THE
+OBLIGATION FALLS ONLY ON DIMENSIONS WITH NO GLOBAL FILTER.**
+
+**Verified: `PersistenceDbContext.ConfigureTenantFilter<TEntity> where TEntity : ITenantOwnedEntity`
+applies `HasQueryFilter(entity => CurrentTenantId.HasValue && entity.TenantId == CurrentTenantId.Value)`,
+and it is the ONLY `HasQueryFilter` in `src/`.** So:
+
+- **TENANT is covered globally** — an explicit tenant predicate is NOT owed, and demanding one would have
+  fired on correct code in the first module the rule met.
+- ⚠ **COMPANY and BRANCH have no global filter — `ADR-025` decision 10 rejects one for company, which is
+  the very reason this obligation exists — so those predicates are owed by the query or they do not exist.**
+
+⚠⚠ **AND THE TENANT DIMENSION IS STILL GUARDED, BY A DIFFERENT ASSERTION: THE GLOBAL FILTER IS DEFEASIBLE,
+BECAUSE `IgnoreQueryFilters()` REMOVES IT.** That is why a complete scope guard has exactly two halves —
+**the composed predicate for the unfiltered dimensions, and the absence of `IgnoreQueryFilters` for the
+filtered one** — and why both existing guards were written with two tests rather than one.
+
+**The error was mine and its shape is worth naming: I DERIVED THE OBLIGATION FROM WHAT THE ENTITY DECLARES
+AND NEVER ASKED WHAT THE INFRASTRUCTURE ALREADY PROVIDES.** A declaration states what must hold; it does
+not state who holds it.
+
 **Every tenant entity already declares what it is scoped by — `ITenantOwnedEntity`, `ICompanyOwnedEntity`,
 `IBranchOwnedEntity`.** That declaration is an obligation on every read path that reaches the entity:
 **for each dimension the entity declares, the query composes an explicit predicate on that dimension.**

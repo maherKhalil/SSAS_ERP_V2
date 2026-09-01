@@ -3724,6 +3724,31 @@ constant matches something.**
   never exercise the thing under test.
 - **And the control is floored on its own size**, because it is the same trap one level down.
 
+
+### ⚠⚠⚠ AMENDED — THE POSITIVE/NEGATIVE ASYMMETRY SPLITS IN TWO, AND THEY LOOK IDENTICAL ON THE PAGE
+
+**A file carrying `nameof` on a positive assertion and a bare string on a negative one, a few lines apart,
+is TWO DIFFERENT SITUATIONS and only one of them is correct.**
+
+- ⚠ **STRUCTURAL, AND RIGHT: the negative names an ABSENCE.** There is nothing to reference, because the
+  whole point is that the thing must not exist. The asymmetry is forced and a consistency pass over it
+  would break the positive or invent a fiction for the negative.
+- ⚠⚠ **UNFINISHED, AND WRONG: the negative names a dimension that EXISTS ELSEWHERE.** A property absent
+  from *this* type but declared on an interface or another aggregate HAS a witness — the negative can take
+  a compile-checked reference and simply had not.
+
+**Worked instance, 2026-09-01.** One test asserted a concurrency token PRESENT on four types and ABSENT on
+two, **all six with the same bare string, four lines apart, inside one test.** A rename breaks the positive
+loudly, **so the pair reads as self-protecting — and it is not: a typo at the NEGATIVE site alone leaves
+the positive green and the negative passing over a lookup that could never hit.**
+
+⚠⚠⚠ **THAT IS *A COMPANION ELSEWHERE DOES NOT PROTECT THE INDIVIDUAL SITE* IN THE ONE CONFIGURATION THAT
+LOOKS LIKE A COUNTEREXAMPLE: same file, same literal, same test, adjacent lines.** If proximity ever
+protected a site, it would protect that one. It does not.
+
+**So the question is never *is this file consistent* but ALWAYS: DOES THE THING THIS NEGATIVE NAMES EXIST
+ANYWHERE? If yes, bind it. If no, the string is correct and the reason belongs at the site.**
+
 **An absence assertion whose vocabulary nothing proves can match is UNFALSIFIABLE BY CONSTRUCTION.** It is
 not a weak test; it is not a test.
 

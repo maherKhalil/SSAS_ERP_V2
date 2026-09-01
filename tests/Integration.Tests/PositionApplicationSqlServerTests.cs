@@ -115,6 +115,15 @@ public sealed class PositionApplicationSqlServerTests
   // the first clause alone. This is also the POSITIVE control for `AC-POS-0011` and `AC-POS-0016` next
   // door — without a case where a grade reference SUCCEEDS, those refusals are consistent with a handler
   // that refuses every grade.
+  // ⚠ ALSO CITED BY 269: `AC-POS-0012` — *a grade is created with a code, a name and a `RankOrder`, and
+  // READS BACK WITH ALL THREE.* Line 122 creates `("G7", "Grade 7", 70)` and the three assertions below
+  // read all three back after a real round trip. `TS-POS-0014` is that scenario.
+  //
+  // ⚠⚠ The read-back is through the POSITION's nested grade block rather than a direct `GetJobGrade`, which
+  // is if anything the stronger reading: the criterion's *reads back* is satisfied by the projection a
+  // caller actually receives, and a grade whose fields survived creation but were dropped by the read model
+  // would fail here and pass a direct-fetch test.
+  [Trait("Criterion", "AC-POS-0012")]
   [Trait("Criterion", "AC-POS-0015")]
   public async Task A_position_may_reference_an_active_grade_in_its_own_company()
   {

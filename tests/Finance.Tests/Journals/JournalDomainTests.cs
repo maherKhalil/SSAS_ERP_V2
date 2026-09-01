@@ -270,7 +270,9 @@ public sealed class JournalEntryDomainTests
   {
     // RowVersion on an append-only type would advertise a mutation that cannot happen and invite someone to
     // write the update path it implies.
-    Assert.Null(typeof(JournalEntry).GetProperty("RowVersion"));
-    Assert.NotNull(typeof(JournalDraft).GetProperty("RowVersion"));
+    // ⚠ BOTH HALVES BOUND (258). They shared a bare string: a rename broke the positive loudly, but a typo
+    // at the NEGATIVE alone left the positive green and this one passing over a lookup that could not hit.
+    Assert.Null(typeof(JournalEntry).GetProperty(nameof(JournalDraft.RowVersion)));
+    Assert.NotNull(typeof(JournalDraft).GetProperty(nameof(JournalDraft.RowVersion)));
   }
 }

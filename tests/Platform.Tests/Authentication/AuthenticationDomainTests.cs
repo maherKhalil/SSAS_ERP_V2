@@ -228,8 +228,18 @@ public sealed class AuthenticationDomainTests
   [Trait("Scenario", "TS-AUTH-0056")]
   public void Credential_and_action_token_hashes_are_not_public_aggregate_properties()
   {
-    Assert.Null(typeof(AuthenticationAccount).GetProperty("PasswordHash"));
-    Assert.Null(typeof(AccountActionToken).GetProperty("SecretHash"));
+    // ⚠⚠⚠ THE ASSERTION IS ABOUT VISIBILITY, NOT EXISTENCE, AND THE STRINGS HID THAT (258).
+    //
+    // Both members DO exist — `AuthenticationAccount.PasswordHash` and `AccountActionToken.SecretHash` are
+    // `internal`. `GetProperty` with default binding flags finds only PUBLIC members, so null here means
+    // "not public", which is exactly what this test's name claims.
+    //
+    // As bare strings it could not tell that from "no such member" or "I misspelt it" — the miss value and
+    // the asserted value are the same. `nameof` PROVES THE MEMBER EXISTS and the null PROVES IT IS NOT
+    // PUBLIC, so the two halves of the claim are now both checked. Visible here because
+    // `SSAS.Platform.Domain` grants `InternalsVisibleTo` to this assembly.
+    Assert.Null(typeof(AuthenticationAccount).GetProperty(nameof(AuthenticationAccount.PasswordHash)));
+    Assert.Null(typeof(AccountActionToken).GetProperty(nameof(AccountActionToken.SecretHash)));
   }
 
   private static AuthenticationAccount CreatePendingAccount() =>

@@ -217,7 +217,10 @@ public sealed class CompanyDomainTests
     var active = CreateInStatus(CompanyStatus.Active);
     Assert.True(active.Activate(CompanyStatusChangeReason.Administrative, "actor", Guid.NewGuid(), Now).IsFailure);
 
-    Assert.Null(typeof(Company).GetMethod("Reactivate"));
+    // ⚠ Bound to `Branch.Reactivate` (258): same context, same kind — a `Result`-returning reactivation on
+    // a Platform aggregate. `GetMethod` returns null for a method that does not exist AND for a misspelt
+    // one, so the bare string could not tell "Company has no reactivation" from "I typed it wrong".
+    Assert.Null(typeof(Company).GetMethod(nameof(SSAS.Platform.Domain.Branches.Branch.Reactivate)));
   }
 
   [Theory]

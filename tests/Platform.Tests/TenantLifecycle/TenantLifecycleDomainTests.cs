@@ -277,8 +277,12 @@ public sealed class TenantLifecycleDomainTests
 
     Assert.DoesNotContain(methods, name => name.Contains("Delete", StringComparison.OrdinalIgnoreCase));
     Assert.DoesNotContain(typeof(SSAS.BuildingBlocks.Domain.ITenantOwnedEntity), typeof(Tenant).GetInterfaces());
+    // ⚠ `UpdateName` STAYS A STRING: a value search finds it NOWHERE in `src/`, so it names a method no
+    // type declares and no witness can exist. The residual is real — a wrong word there is caught by
+    // nothing. `Rename` DOES exist, on `Branch` in this same context and with the same kind (a
+    // `Result`-returning rename on an aggregate), so it is bound.
     Assert.Null(typeof(Tenant).GetMethod("UpdateName"));
-    Assert.Null(typeof(Tenant).GetMethod("Rename"));
+    Assert.Null(typeof(Tenant).GetMethod(nameof(SSAS.Platform.Domain.Branches.Branch.Rename)));
   }
 
   private static Tenant CreateTenant(string code = "ACME", string name = "Acme Trading")

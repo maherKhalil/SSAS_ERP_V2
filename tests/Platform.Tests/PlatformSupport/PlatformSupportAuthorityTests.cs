@@ -39,8 +39,8 @@ public sealed class PlatformSupportAuthorityTests
   {
     Assert.DoesNotContain(typeof(ITenantOwnedEntity), typeof(PlatformSupportPrincipal).GetInterfaces());
     Assert.DoesNotContain(typeof(ITenantOwnedEntity), typeof(PlatformPermissionAssignment).GetInterfaces());
-    Assert.Null(typeof(PlatformSupportPrincipal).GetProperty("TenantId"));
-    Assert.Null(typeof(PlatformPermissionAssignment).GetProperty("TenantId"));
+    Assert.Null(typeof(PlatformSupportPrincipal).GetProperty(nameof(SSAS.BuildingBlocks.Domain.ITenantOwnedEntity.TenantId)));
+    Assert.Null(typeof(PlatformPermissionAssignment).GetProperty(nameof(SSAS.BuildingBlocks.Domain.ITenantOwnedEntity.TenantId)));
   }
 
   [Theory]

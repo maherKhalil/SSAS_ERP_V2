@@ -150,8 +150,13 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
       query = query.Where(entry => entry.Reference == trimmed);
     }
 
+    // ⚠ COMPANY-SCOPED TOO (255). `JournalEntry` is `ICompanyOwnedEntity` and there is no global company
+    // filter, so a tenant-only predicate here reads every company's reversals. It excludes nothing
+    // legitimate — a reversal always carries its original's `CompanyId` — but without it a row created by
+    // raw SQL or a future handler could flip `IsReversed` on a journal from a company the caller cannot see.
     var reversals = context.Set<JournalEntry>().AsNoTracking()
-      .Where(candidate => candidate.TenantId == scope.TenantId);
+      .Where(candidate => candidate.TenantId == scope.TenantId
+        && scope.CompanyIds.Contains(candidate.CompanyId));
 
     return await query
       .OrderByDescending(entry => entry.EntryDateUtc)
@@ -177,8 +182,13 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
 
     var accounts = context.Set<Account>().AsNoTracking();
+    // ⚠ COMPANY-SCOPED TOO (255). `JournalEntry` is `ICompanyOwnedEntity` and there is no global company
+    // filter, so a tenant-only predicate here reads every company's reversals. It excludes nothing
+    // legitimate — a reversal always carries its original's `CompanyId` — but without it a row created by
+    // raw SQL or a future handler could flip `IsReversed` on a journal from a company the caller cannot see.
     var reversals = context.Set<JournalEntry>().AsNoTracking()
-      .Where(candidate => candidate.TenantId == scope.TenantId);
+      .Where(candidate => candidate.TenantId == scope.TenantId
+        && scope.CompanyIds.Contains(candidate.CompanyId));
 
     return await context.Set<JournalEntry>().AsNoTracking()
       .Where(entry => entry.TenantId == scope.TenantId

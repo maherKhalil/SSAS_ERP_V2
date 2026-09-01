@@ -43,6 +43,18 @@ public sealed class EmployeePositionMigrationSqlServerTests
   // everything — including the case it is meant to allow.
   [Fact]
   [Trait("Decision", "DEC-POS-0026")]
+  // ⚠ CITED BY 269: `AC-POS-0038`'s OUTCOME clause — *`Employees.PositionId` is NOT NULL in the first
+  // migration that creates it.* The absent DEFAULT CONSTRAINT is the sharper of the two assertions and the
+  // comment above says why: the scaffolded `defaultValue` form would leave one behind, so its absence
+  // proves the accommodation was REMOVED rather than merely unused.
+  //
+  // ⚠⚠ CITED IN PART, AND THE LIMIT IS STATED AS A SEARCH RATHER THAN AS AN ABSENCE. The criterion also
+  // says *no transitional nullable phase, no later `ALTER COLUMN`, and no backfill `UPDATE`* — claims about
+  // the MIGRATION'S CONTENTS, which an end-state check cannot distinguish: add-nullable-then-backfill-then-
+  // alter produces exactly the schema asserted here. I searched `tests/` for any read of the
+  // `AddEmployeePosition` migration source and for `AlterColumn` assertions and found only this file's own
+  // constant naming the migration. If such a scan exists elsewhere I did not reach it.
+  [Trait("Criterion", "AC-POS-0038")]
   public async Task An_empty_employee_table_admits_the_migration_and_gets_a_required_column()
   {
     await using var fixture = await PositionMigrationFixture.CreateAsync();
@@ -62,6 +74,14 @@ public sealed class EmployeePositionMigrationSqlServerTests
   [Fact]
   [Trait("Scenario", "TS-POS-0043")]
   [Trait("Decision", "DEC-POS-0026")]
+  // ⚠ CITED BY 269: `AC-POS-0039`'s DIAGNOSIS clause. The criterion enumerates what the failure must name —
+  // the database, the row count, the decision, and the one remedy — and each is a separate `Assert.Contains`
+  // here rather than one loose message check. That matters: the criterion says *a migration that reaches a
+  // CONSTRAINT VIOLATION instead of this diagnosis FAILS this criterion*, so asserting only that it threw
+  // would pass on exactly the outcome the criterion forbids.
+  //
+  // `Do NOT edit this migration` is asserted too, which is the remedy's negative half.
+  [Trait("Criterion", "AC-POS-0039")]
   public async Task A_database_holding_employees_refuses_the_migration_with_the_recorded_decision()
   {
     await using var fixture = await PositionMigrationFixture.CreateAsync();
@@ -100,6 +120,19 @@ public sealed class EmployeePositionMigrationSqlServerTests
   [Fact]
   [Trait("Scenario", "TS-POS-0043")]
   [Trait("Decision", "DEC-POS-0026")]
+  // ⚠ CITED BY 269 FOR TWO CRITERIA.
+  //
+  // `AC-POS-0039`'s WRITES-NOTHING clause, and it refutes each forbidden accommodation by name: no column
+  // at all (not nullable, not defaulted), no foreign key, the employee row still present and unmodified —
+  // *supplies a default*, *deletes rows*, *skips the column* and *degrades to nullable* are four failure
+  // modes and this distinguishes them from success individually.
+  //
+  // `AC-POS-0040`'s BEFORE-ANY-DDL clause. ⚠ The column being ABSENT rather than present-and-rolled-back is
+  // what separates *the check ran first* from *the check ran late and the transaction saved us* — the
+  // criterion explicitly refuses the second, and only the absent column tells them apart. The unrecorded
+  // migration row is the same distinction at the history table.
+  [Trait("Criterion", "AC-POS-0039")]
+  [Trait("Criterion", "AC-POS-0040")]
   public async Task A_refused_migration_leaves_the_schema_and_the_employees_exactly_as_they_were()
   {
     await using var fixture = await PositionMigrationFixture.CreateAsync();
@@ -128,6 +161,19 @@ public sealed class EmployeePositionMigrationSqlServerTests
   // that permanently condemns the database.
   [Fact]
   [Trait("Decision", "DEC-POS-0026")]
+  // ⚠ CITED BY 269: `AC-POS-0040`'s EVERY-TIME clause — *it runs PER TENANT DATABASE, EVERY TIME the
+  // migration runs, not once at design time.* A refusal followed by a successful run is the only shape that
+  // separates a live STATE CHECK from a LATCH that condemns the database permanently, and both outcomes
+  // are asserted in one test so neither can be an artefact of a fresh fixture.
+  //
+  // ⚠⚠ AND ON `AC-POS-0065` — *no `UNASSIGNED` row of any kind exists after the migration.* I am NOT citing
+  // it, and I am recording the SEARCH rather than the absence. Nothing here counts `Positions`, `JobGrades`,
+  // `SalaryGrades` or `EmployeePositionAssignments` rows after a migration; every row count I found in
+  // `PositionSchemaSqlServerTests` is in a test that inserted those rows itself; and `UNASSIGNED` appears in
+  // `src/Modules/HR` only inside comments, all of which say the DEPARTMENT migration backfilled one and
+  // this one does not. So the criterion looks true by construction — this migration REFUSES rather than
+  // backfilling — but that is an entailment from the refusal tests, not an assertion anyone wrote.
+  [Trait("Criterion", "AC-POS-0040")]
   public async Task A_database_emptied_after_a_refusal_migrates_on_the_next_run()
   {
     await using var fixture = await PositionMigrationFixture.CreateAsync();

@@ -1021,6 +1021,27 @@ options are now closing some applications before a phase run, accepting quiet-ho
 half alone, or spending on memory — and the third buys the least it ever has, because the part that was
 assumed expensive turns out to cost 75 seconds.**
 
+### ⚠⚠ AND ONE NARROW RE-STRENGTHENING, 2026-09-01 — A CORRECT TEST CANNOT LAND UNTIL A PHASE RUN HAPPENS
+
+**Earlier this entry's blocking claim was withdrawn as overstated, because targeted verification turned out
+to be available. That withdrawal stands.** But there is now a specific artefact that cannot merge:
+
+**A guard asserting that the tracked test-count baseline's Debug and Release rows agree is BUILT, CORRECT,
+AND RED** — red because the baseline's Release rows are stale, which is exactly what it exists to detect.
+**Landing it would block the branch for everyone; hand-editing the rows would erase the evidence; inverting
+it to a pending state would be a test weakened to green a gate.** ⚠ **The only clean path is a green PHASE
+run first, and PHASE cannot start: 1,391 MB free against a 2,048 MB pre-leg floor.**
+
+**So the honest form is narrower than *work is blocked* and larger than nothing: ONE SPECIFIC CORRECT TEST
+IS UNMERGEABLE UNTIL THE FULL MATRIX CAN RUN ONCE.** Its green half — asserting that no test is compiled
+out by configuration, which is the premise the other half rests on — lands independently.
+
+⚠ **AND THE FLOOR IS NOT ARBITRARY AND WAS NOT ARGUED WITH: `gate.sh:470` records BOTH Integration legs
+exiting 127 with no results file at all when the box reached 14 MB free, noting that the instant-of-exit
+sample looked healthy — *which is exactly what a memory kill looks like from outside*. And `:483` records
+that the lowest healthy mid-leg reading ever seen is 550 MB and is explicitly NOT a threshold, because two
+samples were once generalised into a band the next run halved.**
+
 ### ⚠ One thing tonight proved that no green run could have
 
 **The abort path fired in production for the first time, and its output was exactly what the offline

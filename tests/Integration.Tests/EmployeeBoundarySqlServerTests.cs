@@ -2443,7 +2443,22 @@ public sealed class EmployeeBoundarySqlServerTests
   // at the schema by `PositionSchemaSqlServerTests.The_aggregates_carry_a_rowversion_and_the_history_does_
   // not` and structurally by `PositionApplicationArchitectureTests.The_append_only_assignment_carries_no_
   // row_version`. The absence is the REASON the serialization works, so the two clauses are one argument.
+  // ⚠ ALSO CITED BY 269: `AC-POS-0049` — *the model admits no state in which one employee has two current
+  // positions.* `test-scenarios.md` maps `TS-POS-0057` to `AC-POS-0048` AND `AC-POS-0049`, and its wording
+  // is *no second current position exists afterwards*, which is what `Assert.Equal(first, EmployeePosition)`
+  // asserts here: the loser's destination is not held.
+  //
+  // ⚠⚠ AND THE CLOSURE IS A TYPE, AS IT WAS FOR `AC-POS-0050`. `Employee.PositionId` is a SINGLE COLUMN and
+  // `EmployeePositionAsync` returns one `Guid`, so "holds the winner's position" and "holds no second
+  // position" are the same assertion — there is no representable state for a second one to occupy.
+  // `requirements.md` NFR-POS-0306 says exactly that: *not because a check rejects it, but because a single
+  // column cannot express it.*
+  //
+  // So the criterion needs no structural test: the CONSTRUCTIBLE violation is the concurrent one, and that
+  // is what this asserts. A guard against a second position COLUMN would be a guard against a pressure
+  // nobody has ever felt.
   [Trait("Criterion", "AC-POS-0048")]
+  [Trait("Criterion", "AC-POS-0049")]
   public async Task P7_Two_concurrent_position_changes_leave_one_winner_and_one_history_row()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

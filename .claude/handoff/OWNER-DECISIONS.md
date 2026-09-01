@@ -1,20 +1,31 @@
 # Open decisions for the owner — assembled 2026-08-28 (T-130)
 
-**22 items** that engineering cannot settle on its own — **eleven ERP (1-11), four HIS (12-15), four measured on 2026-08-30 (16-19), and one on 2026-08-31 (20)**. ⚠ **Entry 17 is WITHDRAWN in place and struck: the dispatcher it said did not exist had existed for a month.** Each
-carries **what it is**, **the measured facts**, **what it blocks**, and **the options**. Where the call is
-genuinely the owner's there is no recommendation.
+**24 entries, 23 of them live** — **eleven ERP (1-11), four HIS (12-15), four measured on 2026-08-30
+(16-19), four on 2026-08-31 (20-23), and one on 2026-09-01 (24)**. ⚠ **Entry 17 is WITHDRAWN in place and
+struck: the dispatcher it said did not exist had existed for a month.** Each carries **what it is**, **the
+measured facts**, **what it blocks**, and **the options**. Where the call is genuinely the owner's there is
+no recommendation.
 
-⚠ **This count is derived from the headings, not incremented.** The line it replaces said *"Nine items"*
-while the file held eleven — **the header is a second summary of the body, and it went stale the moment an
-entry was appended without it.**
+⚠ **This count is derived from the headings, not incremented** — `grep -c "^## [0-9]\+\."` on this file,
+re-run on 2026-09-01, then one subtracted for the struck entry.
+
+⚠⚠ **AND IT WAS STALE AGAIN WHEN THIS WAS REWRITTEN, WHICH IS THE SECOND TIME AND THE FIRST TIME WITH THE
+WARNING ALREADY ABOVE IT.** The line said *"22 items"* while the file held 24, **and its own breakdown
+enumerated only 20** — so it disagreed with the body AND with itself, three entries after the note
+explaining exactly how that happens was added. **A note describing a failure mode confers no immunity from
+it; the derivation has to be RE-RUN, and nothing here makes anyone re-run it.** The only real fix is that
+appending an entry and re-deriving this line are ONE ACT.
 
 **12-15 were added 2026-08-30 because they existed only in `scripts/his-catalogue/MIGRATION-PLAN.md`** — a
 window reading this file alone would have concluded there were eleven decisions when there are fifteen.
 **Their analysis stays in the plan and is pointed at rather than copied**; what lives here is the question
 and what it costs.
 
-**Every number here was re-verified against the tree today.** Three items had moved since they were
-recorded, and one had moved enough to change what the decision is about. Those are marked ⚠ **CHANGED**.
+⚠ **Entries 1-15 were re-verified against the tree on 2026-08-30** — three had moved since they were
+recorded, and one had moved enough to change what the decision is about; those are marked ⚠ **CHANGED**.
+**16-24 have not been re-verified since the day each was added**, which is in each heading. **The word this
+line used to carry was *today*, with no date and no scope** — an undated re-verification claim ages into a
+false one at midnight and cannot be checked by the reader it is aimed at.
 
 ---
 
@@ -915,6 +926,70 @@ Read this entry's figures as presence and absence only.
 ⚠ **What this does NOT say: that the six are defective.** They are unexecuted — **which is how the two
 defects above survived** — and that is a reason to look, not a prediction. **Queued as item 238, six types
 and then stop.**
+
+## 24. ⚠⚠ The machine can no longer finish a full PHASE run, and this is now measured rather than suspected — added 2026-09-01 (item 242, four attempts)
+
+**The decision needed: raise the memory available to the box, lower `MEMORY_FLOOR_MB` from 2048, or accept
+that the full-matrix gate runs only when the machine happens to be quiet.** This is an owner decision
+because every option spends something that is not ours to spend — money, safety margin, or confidence in
+the gate.
+
+### The numbers, all from tonight
+
+| | |
+|---|---|
+| `MEMORY_FLOOR_MB` | **2048** |
+| free at the abort | **1599 MB** (median of 5 samples) |
+| **spread across those 5 samples** | ⚠ **19 MB** |
+| dotnet/testhost processes at the abort | **3** |
+| Debug leg, this run | **fully green, Integration 862 passed** |
+| Debug leg duration | ⚠ **37m56s**, against **26m09s** on the previous run |
+| `min_free` during the Debug leg | ⚠ **271 MB** |
+| `peak_testhost_ws` | 837 MB |
+| consecutive PHASE attempts without a verdict | ⚠ **4** |
+
+### ⚠ What is NOT wrong: the code
+
+**Every leg that has ever completed has completed green.** The one full run that finished
+(`e7f29dd`) passed all sixteen legs, 4122 tests per configuration. Tonight's Debug leg passed including the
+862 Integration tests. **There is no failing test behind any of these four attempts.** The gate is stopping
+on the machine, not on the product.
+
+### ⚠⚠ Why this is a measurement and not a guess, which it was not until tonight
+
+**Until tonight the three reasons a run could abort were indistinguishable in the output**, and the
+response to each was a retry. Two discriminators added this week answered on their first real firing:
+
+- **A 19 MB spread across five samples.** A volatile box — one where the reading happened to catch a
+  trough — shows a wide spread. 19 MB says the samples agree: **the box is genuinely full, and the abort is
+  correct rather than unlucky.** A retry would meet the same wall.
+- **Three dotnet/testhost processes.** The usual remedy, `dotnet build-server shutdown`, reclaims memory
+  held by idle build servers. **Three processes means there is nothing idle to reclaim** — a fact measured
+  by hand six hours earlier, at the cost of running the shutdown for nothing, and now automated.
+
+**The two independent instruments agree**: the abort says the box is full, and the Debug leg's 37m56s
+against 26m09s says the same thing from the other side.
+
+### The options, with what each costs
+
+| option | cost | what it buys |
+|---|---|---|
+| **More memory on the box** | money; nothing else | the gate runs on demand again — the only option that fixes the cause |
+| **Lower `MEMORY_FLOOR_MB`** | ⚠ **the floor is what stops Integration from being killed mid-suite**; a run that dies at 90% wastes 40 minutes and reports nothing | nothing, if the memory genuinely is not there |
+| **Accept quiet-hours-only** | the gate stops being available when it is wanted, which is when someone is working | no spend |
+| **Cut Integration out of PHASE** | ⚠ the 862 Integration tests are the only ones that touch SQL Server; without them PHASE tests less than it claims to | a run that always finishes |
+
+**Engineering's read, not a decision:** the floor is doing its job and lowering it converts a clean refusal
+into a random mid-suite death. **The measurement says the memory is not there; no amount of gate wording
+creates it.**
+
+### ⚠ One thing tonight proved that no green run could have
+
+**The abort path fired in production for the first time, and its output was exactly what the offline
+demonstration predicted — same lines, same order, different numbers.** Those demonstrations were justified
+as "the only instrument that reaches this code", **which is an argument from necessity and cannot be
+wrong**. Tonight it was checked against the real event and held. **It is one confirmation on one of six
+paths, not a general verification** — but the reasoning behind trusting the harness is no longer untested.
 
 ## What is NOT on this list
 

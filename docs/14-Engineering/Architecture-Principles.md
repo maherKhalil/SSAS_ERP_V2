@@ -3450,6 +3450,40 @@ planner did not detect the cycle* — a false product defect in the exact area u
 
 ---
 
+---
+
+## Before changing a guard that blocks you, ask whether the change would be right if the work did not exist
+
+**Editing a guard to unblock your own work is the shape that destroys guards, and it is indistinguishable
+at the moment of writing from correcting a guard that is genuinely wrong.** The distinction is not the
+diff; it is the counterfactual. ⚠ **ASK: WOULD THIS CHANGE BE RIGHT IF THE BLOCKED WORK DID NOT EXIST?**
+Answer it on grounds that never mention the blocked work, or do not make the change.
+
+**Worked instance, 2026-09-01.** An entity census discovered its contributors by enumerating every
+matching assembly in its own output directory — **which included the test assembly it lives in.** The first
+test in the tree ever to define a contributor added two entities to the composed model and reddened the
+guard.
+
+**Two answers that never mention the blocked work:**
+
+- **The population disagrees with the name.** *The composed tenant model* is what production composes; a
+  contributor defined by a test double is not part of it.
+- ⚠⚠ **The guard had been passing on an absence rather than on its logic.** The population was wrong from
+  the day it was written, and no member of the wrong part existed. **A guard whose correctness rests on
+  nobody having yet done a legal thing is already broken; the first person to do it merely reveals it.**
+
+**And the property that makes the narrowing safe rather than an accommodation: IT REMOVES ZERO PRODUCTION
+COVERAGE.** No production entity lives in a test assembly, so the guard's actual job is untouched. **Where
+a proposed narrowing would remove real coverage, the counterfactual test fails and the answer is to move
+the new work, not the guard.**
+
+⚠⚠ **The refusal is the other half, and it leaves no artefact.** The cheapest green available was to raise
+the expected count — **making the alarm accommodate the thing it exists to catch** — and it was declined.
+**A commit that was not made is invisible to every instrument in the pipeline, so a refusal has to be
+written down or it did not happen.**
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

@@ -201,6 +201,45 @@ public sealed class CutoverManifestArchitectureTests
     Assert.DoesNotContain("RowVersion", assignments.Columns);
   }
 
+  // ---- C6-7 FOR THE DEPARTMENT, AND IT IS A SEPARATE TEST ON PURPOSE (`AC-DEP-0050`, 265).
+  //
+  // ⚠⚠ THE TEST ABOVE IS NAMED *the employee rowversion is excluded from the copy projection* AND IS ABOUT
+  // `Employee`. It also covers `EmployeeBranchAssignment`, which carries no rowversion at all. IT NEVER
+  // MENTIONS `Department` — and `Department` DOES declare one (`Department.cs:113`), so the exclusion is a
+  // real claim about a real column that nothing asserted. A criterion whose nearest test is about a
+  // different entity is the shape `D14` had for `AC-DEP-0026`, found twice in one feature.
+  //
+  // ⚠ SEPARATE RATHER THAN AN EXTRA LINE ABOVE, SO ATTRIBUTION SURVIVES A FAILURE. Folded into `C6_7`, a
+  // regression in either entity would redden one test and the name would say "employee" either way.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  [Trait("Criterion", "AC-DEP-0050")]
+  public void C6_7b_The_department_rowversion_is_excluded_from_the_copy_projection()
+  {
+    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+
+    Assert.True(plan.IsSuccess, plan.IsFailure ? plan.Error.Code : null);
+
+    var departments = Assert.Single(plan.Value, table => table.EntityName == nameof(Department));
+
+    // ANTI-VACUITY, AND IT IS THE HALF THAT MATTERS. If `Department` carried no rowversion, the exclusion
+    // below would hold for the wrong reason — nothing to exclude rather than something excluded — and this
+    // guard would pass over a model that had quietly dropped the concurrency token.
+    var model = CutoverTenantModel.Source.Model.FindEntityType(typeof(Department));
+
+    Assert.NotNull(model);
+    Assert.Contains(
+      model!.GetProperties(),
+      property => property.IsConcurrencyToken && property.ValueGenerated == ValueGenerated.OnAddOrUpdate);
+
+    // It is the TARGET's concurrency state. Copying the source's bytes would hand the new database a token
+    // describing a different database's history.
+    Assert.DoesNotContain(nameof(Department.RowVersion), departments.Columns);
+
+    // And the columns really were enumerated — an empty projection excludes everything trivially.
+    Assert.NotEmpty(departments.Columns);
+  }
+
   // ---- C6-12. THE HISTORY STILL CARRIES NO BRANCH FOREIGN KEY.
   //
   // ADR-024 classifies the assignment as company-owned but NOT branch-owned: it names a source and a

@@ -139,8 +139,8 @@ public sealed class PlatformSupportAuthorityArchitectureTests
     })
     {
       var parameters = type.GetConstructors().Single().GetParameters();
-      Assert.Contains(parameters, parameter => parameter.ParameterType.Name == "IPlatformAuthenticationSessionRepository");
-      Assert.DoesNotContain(parameters, parameter => parameter.ParameterType.Name == "IAuthenticationSessionRepository");
+      Assert.Contains(parameters, parameter => parameter.ParameterType == typeof(SSAS.Platform.Application.Abstractions.Persistence.IPlatformAuthenticationSessionRepository));
+      Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(SSAS.Platform.Application.Abstractions.Persistence.IAuthenticationSessionRepository));
       Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(bool) || parameter.ParameterType == typeof(string));
     }
   }
@@ -150,7 +150,7 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   {
     var session = typeof(PlatformAuthenticationSession);
     Assert.DoesNotContain(typeof(ITenantOwnedEntity), session.GetInterfaces());
-    Assert.DoesNotContain(session.GetInterfaces(), contract => contract.Name == "ICompanyOwnedEntity");
+    Assert.DoesNotContain(typeof(ICompanyOwnedEntity), session.GetInterfaces());
     foreach (var forbidden in new[] { "TenantId", "TenantUserId", "CompanyId" })
     {
       Assert.Null(session.GetProperty(forbidden));

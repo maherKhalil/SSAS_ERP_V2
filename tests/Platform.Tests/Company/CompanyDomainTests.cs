@@ -370,7 +370,7 @@ public sealed class CompanyDomainTests
 
     Assert.Contains(typeof(ITenantOwnedEntity), interfaces);
     Assert.Contains(typeof(IAuditableEntity), interfaces);
-    Assert.DoesNotContain(interfaces, contract => contract.Name == "ICompanyOwnedEntity");
+    Assert.DoesNotContain(typeof(ICompanyOwnedEntity), interfaces);
     Assert.DoesNotContain(
       typeof(Company).GetMethods().Select(method => method.Name),
       name => name.Contains("Delete", StringComparison.OrdinalIgnoreCase));

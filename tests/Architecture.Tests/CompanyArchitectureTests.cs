@@ -19,7 +19,15 @@ public sealed class CompanyArchitectureTests
 
     Assert.Contains(typeof(ITenantOwnedEntity), interfaces);
     Assert.Contains(typeof(IAuditableEntity), interfaces);
-    Assert.DoesNotContain(interfaces, contract => contract.Name == "ICompanyOwnedEntity");
+    // ⚠ TYPED, NOT NAMED (252). This was `contract.Name == "ICompanyOwnedEntity"`, which passes when the
+    // predicate matches NOTHING — so a typo in the name asserted nothing and still reported PASSED. That
+    // was measured on this pattern, not argued. As a `typeof` a wrong name is CS0246 at build time.
+    //
+    // ⚠⚠ DO NOT APPLY THIS TO THE `type.Name == "ICompanyOwnedEntity"` BELOW — IT IS DELIBERATE. That one
+    // resolves the interface by REFLECTION OVER `ITenantOwnedEntity`'S ASSEMBLY in order to assert WHICH
+    // ASSEMBLY DECLARES IT; a `typeof` there binds at compile time and would assert nothing about location.
+    // Its `Assert.NotNull` is the companion proving that lookup can match.
+    Assert.DoesNotContain(typeof(ICompanyOwnedEntity), interfaces);
   }
 
   // ---- SUPERSEDED PREMISE, RETAINED PROTECTION (FP-006C1).

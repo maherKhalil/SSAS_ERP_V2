@@ -3647,6 +3647,48 @@ SQL predicate verbatim, and a text guard would be satisfied by the prose while t
 
 ---
 
+---
+
+## Three remedies, one control at three levels — and an absence assertion admits only the third
+
+**Every negative assertion needs proof that it COULD have failed. Which proof is available depends on the
+assertion's shape, and the three are not interchangeable:**
+
+- **A FLOOR proves the COLLECTION can be non-empty** — for a negative assertion over a collection that may
+  legitimately be empty.
+- **A COMPILE-TIME REFERENCE proves the IDENTIFIER exists** — `nameof`, `typeof`, an enum member — for a
+  thing that must be PRESENT and is named by a string.
+- ⚠⚠⚠ **A MATCHED CONTROL proves the VOCABULARY CAN MATCH** — for a thing that must be **ABSENT**, and it
+  is the only one of the three that works there.
+
+**Worked instance, 2026-09-01.** Thirteen assertions asserting that no property name contains a given
+substring. ⚠ **A compile-time reference is IMPOSSIBLE BY CONSTRUCTION — you cannot take `nameof` a property
+whose entire point is that it must not exist.** And **a floor is irrelevant: a misspelt substring matches
+nothing over a fully populated collection exactly as happily as over an empty one. A FLOOR CLOSES VACUITY,
+AND THIS IS NOT VACUITY.** The collection was a hard-coded array of `typeof()`s that could not go empty.
+
+**The remedy that works: hoist every literal to a shared constant, and add one control asserting each
+constant matches something.**
+
+- ⚠⚠ **THE CONTROL MUST USE THE SAME SYMBOLS THE ASSERTIONS USE.** A control carrying its own copy of each
+  literal proves nothing — misspell the assertion site and the control sails on. With shared symbols, a
+  misspelt constant fails the control and a misspelt call site fails to compile. **Two failure directions,
+  one from a test and one from the compiler, neither reachable by the other.**
+- ⚠ **THE CONTROL MUST FAIL FOR THE REASON THE ASSERTION COULD FAIL, NOT MERELY FAIL.** Where the predicate
+  is a substring match, the control's members carry a suffix — one that only ever matched whole names would
+  never exercise the thing under test.
+- **And the control is floored on its own size**, because it is the same trap one level down.
+
+**An absence assertion whose vocabulary nothing proves can match is UNFALSIFIABLE BY CONSTRUCTION.** It is
+not a weak test; it is not a test.
+
+⚠⚠ **AND CLASSIFY BY REMEDY, NEVER BY SYMPTOM.** A sweep that ranked files by "negative assertion with no
+floor" put this file second — **and it survived classification at 0 of 13 for that hole and 13 of 13 for a
+different one.** A candidate list whose highest-ranked member survives at zero is not a number to reason
+from: **report how many survive classification per file, not how many matched.**
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

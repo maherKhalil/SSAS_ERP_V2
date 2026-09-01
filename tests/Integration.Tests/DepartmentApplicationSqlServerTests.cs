@@ -54,6 +54,12 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // WITHOUT THE COMPANY HIERARCHY LOCK THIS TEST FAILS. That is the point of it.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17, body-confirmed: the criterion verbatim -- two concurrent re-parent
+  // operations that would TOGETHER form a cycle cannot both succeed.
+  //
+  // Its control is already written beside it: `Two_concurrent_legal_moves_both_succeed`. Without
+  // that pair, a lock that refused every concurrent move would satisfy this test perfectly.
+  [Trait("Criterion", "AC-DEP-0017")]
   public async Task Two_concurrent_moves_cannot_jointly_create_a_cycle()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -149,6 +155,10 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // is B, not A. Only walking the whole chain upward finds A.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17, body-confirmed: `AC-DEP-0013` is *given A -> B -> C, moving A beneath C
+  // is refused*. `The_cycle_check_walks_an_arbitrarily_deep_chain` generalises the same claim past
+  // the three-node case the criterion states.
+  [Trait("Criterion", "AC-DEP-0013")]
   public async Task A_department_cannot_be_moved_beneath_its_own_grandchild()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -206,6 +216,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // A legal move carries the whole subtree with it. Descendants are never detached.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17: moving a department carries its descendants with it.
+  [Trait("Criterion", "AC-DEP-0014")]
   public async Task Moving_a_department_carries_its_subtree()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -246,6 +258,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // ---- CROSS-COMPANY AND INACTIVE PARENTS, over real rows.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17: a proposed parent belonging to another company is refused.
+  [Trait("Criterion", "AC-DEP-0011")]
   public async Task A_parent_from_another_company_is_refused()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -263,6 +277,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17: moving a department beneath an Inactive parent is refused.
+  [Trait("Criterion", "AC-DEP-0015")]
   public async Task An_inactive_parent_is_refused()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -310,6 +326,10 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17, body-confirmed. The arrangement creates "sales" and then "SALES", so it
+  // discriminates on NORMALIZATION -- which is the criterion's own word. A duplicate in the same
+  // casing would have proven a weaker claim.
+  [Trait("Criterion", "AC-DEP-0003")]
   public async Task A_duplicate_normalized_code_is_refused_within_the_company()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -328,6 +348,9 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17, body-confirmed: the criterion verbatim, and the necessary counterpart to
+  // `AC-DEP-0003` -- uniqueness scoped to the company rather than the tenant.
+  [Trait("Criterion", "AC-DEP-0004")]
   public async Task The_same_code_is_free_in_another_company()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -1022,6 +1045,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // resolver, which is where the DECISION is proven.
   [Fact]
   [Trait("Decision", "ADR-025")]
+  // CITED BY B18 pass 18: reading a department outside the caller's authorized company scope.
+  [Trait("Criterion", "AC-DEP-0006")]
   public async Task A_department_in_an_unauthorized_company_is_not_found()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();

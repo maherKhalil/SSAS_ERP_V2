@@ -108,6 +108,10 @@ public sealed class DepartmentScopeResolverTests
 
   // ---- AN EMPTY AUTHORIZED SET REFUSES. It never degrades to unfiltered.
   [Fact]
+  // CITED BY B18 pass 18: a caller whose authorized company set resolves empty is refused rather
+  // than served an unfiltered read. An empty result claims something about the DATA; a refusal
+  // claims something about the CALLER, and only the second is true here.
+  [Trait("Criterion", "AC-DEP-0007")]
   public async Task An_empty_authorized_company_set_is_refused_rather_than_unfiltered()
   {
     var resolver = Resolver(companies: []);

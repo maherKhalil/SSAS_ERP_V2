@@ -223,6 +223,14 @@ public sealed class DepartmentApplicationArchitectureTests
   // reflection is one nobody decided to grant.
   [Fact]
   [Trait("Decision", "ADR-012")]
+  // CITED BY B18 pass 16, body-confirmed: the CONTRIBUTOR half of `AC-DEP-0043` -- every constant
+  // declared in `HrPermissionNames` is offered, and the criterion's own parenthetical about
+  // FP-006P's failure is this test's own comment.
+  //
+  // The criterion also says *the composed IPermissionCatalog*, which this does not read. That half
+  // is `EndpointPermissionCatalogJoinTests.Every_permission_an_endpoint_requires_is_defined_by_the_
+  // composed_catalog`, resolved from the real host container -- a different suite entirely.
+  [Trait("Criterion", "AC-DEP-0043")]
   public void Department_permissions_are_contributed_explicitly_and_completely()
   {
     var offered = new HrPermissionCatalogContributor().Permissions

@@ -162,8 +162,11 @@ public sealed class AttendanceTransportContractTests
   {
     var names = typeof(UpdateLeaveTypeRequest).GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.DoesNotContain("Code", names);
-    Assert.DoesNotContain("Behaviour", names);
+    // ⚠ COMPILE-CHECKED AGAINST THE TYPE THAT LEGITIMATELY CARRIES THEM (252). As bare strings these
+    // asserted nothing the day someone renamed `Code` on the create request: the update request would not
+    // contain the OLD name either, so the test passed while the immutability rule went unchecked.
+    Assert.DoesNotContain(nameof(CreateLeaveTypeRequest.Code), names);
+    Assert.DoesNotContain(nameof(CreateLeaveTypeRequest.Behaviour), names);
   }
 
   // ---- A DECISION CANNOT CHANGE WHAT IS BEING DECIDED.
@@ -190,9 +193,12 @@ public sealed class AttendanceTransportContractTests
   {
     var names = typeof(AdjustAttendanceRequest).GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.DoesNotContain("CompanyId", names);
-    Assert.DoesNotContain("EmployeeId", names);
-    Assert.DoesNotContain("AttendanceDate", names);
+    // ⚠ THE WITNESS IS THE SIBLING THAT LEGITIMATELY NAMES ALL THREE (252). `RecordAttendanceRequest`
+    // carries company, employee and date; the adjustment must carry none of them. Compile-checking against
+    // it makes the two halves of that rule inseparable — rename one and this stops building.
+    Assert.DoesNotContain(nameof(RecordAttendanceRequest.CompanyId), names);
+    Assert.DoesNotContain(nameof(RecordAttendanceRequest.EmployeeId), names);
+    Assert.DoesNotContain(nameof(RecordAttendanceRequest.AttendanceDate), names);
   }
 
   // ---- THE ATTENDANCE REQUEST NAMES NO PERIOD.
@@ -205,7 +211,8 @@ public sealed class AttendanceTransportContractTests
   {
     var names = typeof(RecordAttendanceRequest).GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.Contains("AttendanceDate", names);
-    Assert.DoesNotContain("AttendancePeriodId", names);
+    Assert.Contains(nameof(RecordAttendanceRequest.AttendanceDate), names);
+    Assert.DoesNotContain(
+      nameof(SSAS.Attendance.Application.Periods.CloseAttendancePeriodCommand.AttendancePeriodId), names);
   }
 }

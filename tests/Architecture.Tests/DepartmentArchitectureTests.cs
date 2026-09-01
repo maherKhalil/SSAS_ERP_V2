@@ -89,7 +89,10 @@ public sealed class DepartmentArchitectureTests
       .Select(property => property.Name)
       .ToArray();
 
-    Assert.DoesNotContain("BranchId", properties);
+    // ⚠ COMPILE-CHECKED AGAINST THE TYPE THAT LEGITIMATELY HAS IT (252). `Employee` is branch-owned and
+    // Department is not; as a bare string this asserted nothing the day `BranchId` was renamed, because the
+    // department would not carry the OLD name either and the test would pass having checked a dead word.
+    Assert.DoesNotContain(nameof(SSAS.HR.Domain.Employees.Employee.BranchId), properties);
   }
 
   // ---- AND NO BranchId COLUMN REACHES THE COMPOSED MODEL.
@@ -118,7 +121,7 @@ public sealed class DepartmentArchitectureTests
 
     var columns = entity!.GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.DoesNotContain("BranchId", columns);
+    Assert.DoesNotContain(nameof(SSAS.HR.Domain.Employees.Employee.BranchId), columns);
     Assert.Contains("TenantId", columns);
     Assert.Contains("CompanyId", columns);
   }
@@ -190,7 +193,11 @@ public sealed class DepartmentArchitectureTests
 
     var columns = department.GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.DoesNotContain("ManagerEmployeeId", columns);
+    // ⚠ THE WITNESS IS THE READ MODEL, AND THE CONTRAST IS THE POINT (252). `DepartmentDetail` exposes
+    // `ManagerEmployeeId` legitimately — the association is projected into it — while the DEPARTMENT TABLE
+    // must never carry that column, because that is the ADR-026 decision 7 split. Compile-checking against
+    // the read model makes the two halves of that rule move together.
+    Assert.DoesNotContain(nameof(SSAS.HR.Application.Departments.Reads.DepartmentDetail.ManagerEmployeeId), columns);
   }
 
   // The association table is a dependent of BOTH and a principal of NEITHER, which is what keeps the graph

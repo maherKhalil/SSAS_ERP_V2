@@ -264,6 +264,18 @@ public sealed class GlJournalPoster(
 
   // A QUERY. No transaction, no write, no reservation — see the contract's own comment on why this exists
   // and what it deliberately does not promise.
+  //
+  // ---- ⚠ AND IT TAKES NO POSTING FENCE, WHICH IS CORRECT AND NOT AN OMISSION (249).
+  //
+  // After 249 two of this type's three public methods take `IFiscalPeriodPostingLock` and this one does
+  // not, so a reader will reasonably wonder whether it was missed. IT WAS NOT. The fence exists to make a
+  // period's state hold from a READ to a WRITE inside one transaction; this method writes nothing and
+  // promises nothing. `PayrollRunCommandHandlers` records the consequence on its side: the window
+  // inspected at approval IS NOT A RESERVATION, so a period may close between this answer and the
+  // posting, and `PostAsync` answering `PeriodClosed` is the honest outcome when it does.
+  //
+  // ⚠⚠ FENCING THIS WOULD BE WORSE THAN USELESS: it would hold a shared lock across a read that grants
+  // nothing, making the answer look like a promise it cannot keep.
   public async Task<PostingWindow> InspectPostingWindowAsync(
     Guid companyId, DateTimeOffset entryDateUtc, CancellationToken cancellationToken = default)
   {

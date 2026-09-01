@@ -96,9 +96,9 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
 
     foreach (var (method, path) in AuthorityRoutes())
     {
-    using var request = Request(method, path);
+      using var request = Request(method, path);
 
-    var response = await Client.SendAsync(request);
+      var response = await Client.SendAsync(request);
 
       if (response.StatusCode != HttpStatusCode.Unauthorized)
       {
@@ -125,10 +125,10 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
     // A valid tenant token that (illegally) carries the platform permission name still lacks
     // security_plane=platform, so the platform handler must refuse it. Tenant authority cannot reach
     // platform authority administration.
-    using var request = Request(method, path);
-    request.Headers.Authorization = new("Bearer", SignToken(TenantClaims(PlatformPermissionNames.AdministerPlatformSupport)));
+      using var request = Request(method, path);
+      request.Headers.Authorization = new("Bearer", SignToken(TenantClaims(PlatformPermissionNames.AdministerPlatformSupport)));
 
-    var response = await Client.SendAsync(request);
+      var response = await Client.SendAsync(request);
 
       if (response.StatusCode != HttpStatusCode.Forbidden)
       {
@@ -154,10 +154,10 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
     {
     // Valid platform plane, but only a non-administrative PlatformSupport permission: authenticated yet
     // unauthorized. Reads are gated by Administer too (DEC-TEN-0025), so this must fail on GET as well.
-    using var request = Request(method, path);
-    request.Headers.Authorization = new("Bearer", SignToken(PlatformClaims(PlatformPermissionNames.ViewTenants)));
+      using var request = Request(method, path);
+      request.Headers.Authorization = new("Bearer", SignToken(PlatformClaims(PlatformPermissionNames.ViewTenants)));
 
-    var response = await Client.SendAsync(request);
+      var response = await Client.SendAsync(request);
 
       if (response.StatusCode != HttpStatusCode.Forbidden)
       {
@@ -182,12 +182,12 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
     foreach (var (method, path) in AuthorityRoutes())
     {
     // security_plane=platform plus a forbidden tenant_id: StrictAccessTokenValidator fails the token itself.
-    using var request = Request(method, path);
-    var claims = PlatformClaims(PlatformPermissionNames.AdministerPlatformSupport);
-    claims.Add(new Claim(JwtClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
-    request.Headers.Authorization = new("Bearer", SignToken(claims));
+      using var request = Request(method, path);
+      var claims = PlatformClaims(PlatformPermissionNames.AdministerPlatformSupport);
+      claims.Add(new Claim(JwtClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
+      request.Headers.Authorization = new("Bearer", SignToken(claims));
 
-    var response = await Client.SendAsync(request);
+      var response = await Client.SendAsync(request);
 
       if (response.StatusCode != HttpStatusCode.Unauthorized)
       {
@@ -269,17 +269,17 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
   private static List<Claim> PlatformClaims(string permission)
   {
     var claims = BaseClaims().ToList();
-    claims.Add(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform));
-    claims.Add(new Claim(JwtClaimTypes.Permission, permission));
+      claims.Add(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform));
+      claims.Add(new Claim(JwtClaimTypes.Permission, permission));
     return claims;
   }
 
   private static List<Claim> TenantClaims(string permission)
   {
     var claims = BaseClaims().ToList();
-    claims.Add(new Claim(JwtClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
-    claims.Add(new Claim(JwtClaimTypes.TenantUserId, "22"));
-    claims.Add(new Claim(JwtClaimTypes.Permission, permission));
+      claims.Add(new Claim(JwtClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
+      claims.Add(new Claim(JwtClaimTypes.TenantUserId, "22"));
+      claims.Add(new Claim(JwtClaimTypes.Permission, permission));
     return claims;
   }
 

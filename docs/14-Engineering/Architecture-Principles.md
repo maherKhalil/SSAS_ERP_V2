@@ -3405,6 +3405,51 @@ letting the answer decide anything.** It costs one enumeration, and here it inve
 
 ---
 
+---
+
+## When the error cannot name its cause, difference against a matched control
+
+**One `Error` value raised from three unrelated conditions is a merge of three diagnoses performed at the
+throw site.** No assertion downstream can undo it: a test that observes the value proves *something* went
+wrong and is read as proving *the specific thing* went wrong. **That gap between what is proven and what is
+read is the whole defect, and it is invisible in a green suite.**
+
+**Worked instance, 2026-09-01.** A copy planner raised the same error for *no primary key*, *no tenant
+column*, and *the foreign-key cycle* — and only the cycle was the behaviour five production design
+decisions rested on.
+
+⚠⚠ **THE TEST WAS BUILT BY DIFFERENCING INSTEAD OF BY ASSERTING.** Two probe entities were made identical
+in every property the other two conditions test — primary key, copyable columns, tenant column — **differing
+by exactly one foreign key.** The acyclic one is asserted to SUCCEED; the cyclic one to fail.
+
+⚠ **THE CONTROL'S PASS IS THE LOAD-BEARING HALF.** If either confounding condition could fire for these
+entities, the control would fail too — **so its success is what excludes them.** The failing test alone
+proves nothing; the pair proves it. **State the bound in the file: the other two sites remain unexercised,
+and this file must not be read as closing them.**
+
+## A harness defect can wear the costume of the finding
+
+**The worst kind of broken test is not one that fails wrongly — it is one whose failure looks exactly like
+the product defect it was written to detect.** The correct conclusion and the false one produce the same
+red, and the false one is the interesting result, so it is the one that gets reported.
+
+**Worked instance, 2026-09-01.** A first attempt used one contributor type carrying a boolean flag to
+produce two different models. **The model cache is keyed on the ordered set of contributor TYPES, not
+instances** — so both variants shared one cache signature and the second test received the first's model.
+**It passed alone and failed after its control**: silent, order-dependent, and its symptom read as *the
+planner did not detect the cycle* — a false product defect in the exact area under investigation.
+
+- ⚠ **The prohibition was already written down.** The contributor interface forbids varying a mapping by
+  ambient state, **and a constructor flag is ambient state**; the cache factory's own comment predicted
+  this failure verbatim. **Read the commentary attached to the mechanism before instrumenting it.**
+- ⚠⚠ **Run a new test BOTH with its neighbours AND alone, and record that you did.** Order-dependence is
+  what this class produces, and a control that only ever runs beside its partner cannot reveal that the
+  partner is what makes it pass.
+- **When a test reports the finding you were hoping for, suspect the harness before publishing.** Here the
+  hoped-for finding and the harness bug were the same colour.
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

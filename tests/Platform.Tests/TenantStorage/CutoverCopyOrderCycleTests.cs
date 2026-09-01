@@ -44,8 +44,20 @@ namespace SSAS.Platform.Tests.TenantStorage;
 // what makes the cyclic failure attributable to the cycle: if `:99` or `:111` could fire for these
 // entities, the control would fail too.
 //
-// ⚠ `:99` AND `:111` REMAIN UNEXERCISED. This file asserts one of the three sites. The other two are
-// still reachable only by reading, and nobody should read this file as having closed them.
+// ⚠ `:99` AND `:111` ARE NOW EXERCISED, AND THE SENTENCE THAT SAID OTHERWISE IS REPLACED RATHER THAN
+// LEFT TO GO QUIETLY FALSE (261). They no longer share this error value: `:99` returns
+// `CutoverTableNotCopyable` and `:111` returns `CutoverTableNotTenantScoped`, each asserted below by its
+// own probe model. The old value's MESSAGE — *the tenant model contains a foreign-key cycle* — was FALSE
+// at both sites, so an operator was handed a wrong diagnosis rather than a vague one.
+//
+// ⚠⚠ WHAT IS STILL NOT COVERED, STATED SO THIS FILE IS NOT READ AS HAVING CLOSED MORE THAN IT HAS:
+// `:99` fires on `key is null || columns.Count == 0` and only the FIRST disjunct is exercised. A mapped
+// table with a key and NO COPYABLE COLUMNS is not constructed here.
+//
+// ⚠⚠⚠ AND THE DIFFERENCING ARGUMENT ABOVE STAYS, BECAUSE A DISTINCT ERROR VALUE DOES NOT REPLACE A
+// MATCHED CONTROL. The acyclic control is what makes the cyclic failure attributable to the cycle rather
+// than to a probe that could not be described; distinguishing the values narrows what a failure can mean,
+// it does not prove the probes were well formed.
 // ---- ⚠⚠ WHY THIS LIVES IN `Platform.Tests` AND NOT IN `Architecture.Tests`. 244, 2026-09-01.
 //
 // It was written in `Architecture.Tests` first and turned that suite RED — not through any fault of its
@@ -179,5 +191,97 @@ public sealed class CutoverCopyOrderCycleTests
 
     Assert.True(plan.IsFailure, "a mutual foreign key must not produce a copy order");
     Assert.Equal(TenantStorageErrors.CutoverCopyOrderUndecidable, plan.Error);
+  }
+
+  // ================================================================================================
+  // THE OTHER TWO SITES, EACH WITH ITS OWN MODEL (261).
+  // ================================================================================================
+  //
+  // ⚠ ONE CONTRIBUTOR TYPE PER MODEL, for the reason recorded above: `TenantModelCacheKeyFactory` keys
+  // EF's model cache on the ORDERED SET OF CONTRIBUTOR TYPES, so two models sharing a contributor type
+  // are one model, silently and order-dependently.
+
+  // Keyless: `Describe` needs a primary key to define an ordered walk, and this has none.
+  private sealed class KeylessProbe : ITenantOwnedEntity
+  {
+    public Guid TenantId { get; set; }
+
+    public string Payload { get; set; } = string.Empty;
+  }
+
+  // Tenant-owned by CONTRACT but with `TenantId` left unmapped. ⚠ This is the only way `:111` is
+  // reachable at all: `Build` already restricts itself to `ITenantOwnedEntity` implementers, so every
+  // table reaching that check HAS the property — it fires only when a model declines to map it.
+  private sealed class UnmappedTenantProbe : ITenantOwnedEntity
+  {
+    public Guid Id { get; set; }
+
+    public Guid TenantId { get; set; }
+  }
+
+  private sealed class KeylessProbeContributor : ITenantModelContributor
+  {
+    public void Configure(ModelBuilder modelBuilder) =>
+      modelBuilder.Entity<KeylessProbe>(entity =>
+      {
+        entity.HasNoKey();
+        entity.ToTable("KeylessProbe", "tenant");
+      });
+  }
+
+  private sealed class UnmappedTenantProbeContributor : ITenantModelContributor
+  {
+    public void Configure(ModelBuilder modelBuilder) =>
+      modelBuilder.Entity<UnmappedTenantProbe>(entity =>
+      {
+        entity.ToTable("UnmappedTenantProbe", "tenant");
+        entity.HasKey(probe => probe.Id);
+        entity.Ignore(probe => probe.TenantId);
+      });
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void A_tenant_owned_table_without_a_primary_key_is_not_copyable()
+  {
+    var model = new ComposedTenantModelSource([new KeylessProbeContributor()]).Model;
+
+    // ANTI-VACUITY, AND IT IS THE WHOLE ATTRIBUTION. If the probe never entered the model, `Build` would
+    // fail — or succeed — for reasons that have nothing to do with a missing key, and this test would
+    // report the right error for the wrong cause.
+    var probe = model.FindEntityType(typeof(KeylessProbe));
+    Assert.NotNull(probe);
+    Assert.Null(probe!.FindPrimaryKey());
+    Assert.NotNull(probe.GetTableName());
+
+    var plan = TenantCutoverCopyPlan.Build(model);
+
+    Assert.True(plan.IsFailure, "a table with no primary key has no deterministic copy order");
+
+    // ⚠ THE POINT OF 261: this is NOT the cycle value. Before the split both answered
+    // `CutoverCopyOrderUndecidable`, whose message sent the operator to look for a foreign-key cycle in a
+    // model that has exactly one table and no foreign keys at all.
+    Assert.Equal(TenantStorageErrors.CutoverTableNotCopyable, plan.Error);
+    Assert.NotEqual(TenantStorageErrors.CutoverCopyOrderUndecidable, plan.Error);
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void A_tenant_owned_table_with_no_mapped_tenant_column_is_not_tenant_scoped()
+  {
+    var model = new ComposedTenantModelSource([new UnmappedTenantProbeContributor()]).Model;
+
+    // ANTI-VACUITY: the probe must be present, keyed, and genuinely missing its tenant column — otherwise
+    // the failure below is attributable to something else.
+    var probe = model.FindEntityType(typeof(UnmappedTenantProbe));
+    Assert.NotNull(probe);
+    Assert.NotNull(probe!.FindPrimaryKey());
+    Assert.Null(probe.FindProperty(nameof(ITenantOwnedEntity.TenantId)));
+
+    var plan = TenantCutoverCopyPlan.Build(model);
+
+    Assert.True(plan.IsFailure, "a tenant-owned table with no tenant column cannot be filtered to a tenant");
+    Assert.Equal(TenantStorageErrors.CutoverTableNotTenantScoped, plan.Error);
+    Assert.NotEqual(TenantStorageErrors.CutoverCopyOrderUndecidable, plan.Error);
   }
 }

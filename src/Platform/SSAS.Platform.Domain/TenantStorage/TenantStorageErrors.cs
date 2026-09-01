@@ -542,6 +542,32 @@ public static class TenantStorageErrors
   // The tenant model contains a foreign-key cycle, so no safe insertion order exists. Reported rather than
   // resolved by disabling constraints: turning off referential integrity to make a copy fit is how a copy
   // silently produces a database the application cannot trust.
+  // ---- ⚠⚠⚠ THREE VALUES, NOT ONE, AND THE MESSAGE BELOW WAS FALSE FOR TWO OF THEM (261).
+  //
+  // `TenantCutoverCopyPlan` used to return `CutoverCopyOrderUndecidable` from three places. Only the third
+  // is a cycle. The other two are PER-TABLE modelling faults in a DIFFERENT METHOD with a DIFFERENT RETURN
+  // TYPE — so an operator hitting either was told *the tenant model contains a foreign-key cycle* and sent
+  // to hunt a cycle that does not exist. THAT IS A WRONG DIAGNOSIS, NOT A VAGUE ONE.
+  //
+  // ⚠ The name stays with the cycle deliberately: five production comments cite
+  // `CutoverCopyOrderUndecidable` AS the cycle reason, and all five were read against this split and are
+  // still true. A discriminator would have left the name meaning one of three things and made every one of
+  // them ambiguous.
+  public static readonly Error CutoverTableNotCopyable =
+    new(
+      "TenantStorage.CutoverTableNotCopyable",
+      "A tenant-owned table has no primary key, or no copyable columns, so its rows cannot be compared " +
+      "or copied in a deterministic order. Give the entity a primary key in its model configuration.");
+
+  // ⚠ Reachable only as a deliberate modelling fault: `Build` already restricts itself to
+  // `ITenantOwnedEntity` implementers, so every table reaching this check HAS a `TenantId` property. This
+  // fires when a model maps such an entity while leaving that property UNMAPPED.
+  public static readonly Error CutoverTableNotTenantScoped =
+    new(
+      "TenantStorage.CutoverTableNotTenantScoped",
+      "A tenant-owned table has no mapped TenantId column, so its rows cannot be filtered to one tenant. " +
+      "Map TenantId for that entity in its model configuration.");
+
   public static readonly Error CutoverCopyOrderUndecidable =
     new("TenantStorage.CutoverCopyOrderUndecidable", "The tenant model contains a foreign-key cycle, so a safe copy order cannot be established.");
 

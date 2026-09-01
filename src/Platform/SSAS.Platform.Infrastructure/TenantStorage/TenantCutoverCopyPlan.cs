@@ -96,7 +96,7 @@ internal static class TenantCutoverCopyPlan
     {
       // Exact validation is defined as an ordered walk over the primary key; without one there is no
       // deterministic order and therefore no exact comparison to make.
-      return Result.Failure<TenantCutoverTablePlan>(TenantStorageErrors.CutoverCopyOrderUndecidable);
+      return Result.Failure<TenantCutoverTablePlan>(TenantStorageErrors.CutoverTableNotCopyable);
     }
 
     var keyColumns = key.Properties
@@ -108,7 +108,7 @@ internal static class TenantCutoverCopyPlan
     var tenantColumn = entity.FindProperty(nameof(ITenantOwnedEntity.TenantId))?.GetColumnName(store);
     if (tenantColumn is null)
     {
-      return Result.Failure<TenantCutoverTablePlan>(TenantStorageErrors.CutoverCopyOrderUndecidable);
+      return Result.Failure<TenantCutoverTablePlan>(TenantStorageErrors.CutoverTableNotTenantScoped);
     }
 
     return Result.Success(new TenantCutoverTablePlan(

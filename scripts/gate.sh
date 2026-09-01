@@ -574,6 +574,7 @@ mkdir -p "$LOGS"
 # keeps its absolute form, because there is nothing relative to make it.
 LOGS_ARG="${LOGS#"$ROOT"/}"
 GATE_FAILED=0
+GATE_CFG_DONE=""
 
 # ---- CONDITION 4's BASELINE. See note 7t. T-059.
 #
@@ -1102,9 +1103,36 @@ reap_to_zero () {
     echo "--- free physical memory before $CFG: ${FREE_MB} MB (no floor: Integration is not in scope; ${FREE_NOTE})"
   fi
 
+  # ---- THE FLOOR IS CHECKED AGAIN LATER, AND THE RUN SAYS SO UP FRONT. 242(C), 2026-09-01.
+  #
+  # ⚠ THIS PREDICTS NOTHING. It does not estimate future free memory and must not: this box moved
+  # 800 MB in ten minutes and 2 GB in seconds on 2026-09-01, so any forecast would refuse runs that
+  # would have succeeded. The per-leg check stays the sufficient condition.
+  #
+  # What it does is state a fact the run already knows and the operator usually does not: under PHASE
+  # the Release leg re-checks this floor roughly 25 minutes from now, and passing here is not passing
+  # that. Three attempts on 2026-09-01 spent the Debug leg in full before learning it at minute 25.
+  if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ] && [ -z "${GATE_CFG_DONE:-}" ]; then
+    case "$GATE_CONFIGS" in
+      *\ *) echo "--- note: the floor is re-checked before EACH configuration ($GATE_CONFIGS). Passing"
+            echo "---       here does not carry to the next one, which is checked after this leg runs." ;;
+    esac
+  fi
+
   if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ] && [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then
     echo "!!! ABORT ($CFG): PRECONDITION FAILURE -- only ${FREE_MB} MB free, floor is ${MEMORY_FLOOR_MB} MB."
+    echo "!!! Evidence: ${FREE_NOTE}."
     echo "!!! This is NOT a suite failure. Quiet the box (editors, browsers) and run again."
+    # ---- ⚠ AND SAY WHAT ALREADY PASSED, BECAUSE THE EXPENSIVE PART IS USUALLY BEHIND US. 242(C).
+    #
+    # This abort fires BEFORE a configuration, which under PHASE means after every earlier
+    # configuration has finished -- 25 minutes of Integration among them. Exiting 5 with no verdict
+    # made that read as a total loss on 2026-09-01 when the whole Debug leg was green.
+    if [ -n "${GATE_CFG_DONE:-}" ]; then
+      echo "!!! ALREADY COMPLETED THIS RUN: ${GATE_CFG_DONE}. Those suites RAN and their results stand"
+      echo "!!! in this log -- read them. Only ${CFG} is missing, and the gate has no verdict because a"
+      echo "!!! verdict covers every configuration in scope."
+    fi
     # ---- ⚠ AND IN A LONG SESSION THE BROWSER IS USUALLY NOT THE CULPRIT. T-239, 2026-08-31.
     #
     # MSBuild and Roslyn keep BUILD SERVERS alive between builds, by design. A session that builds thirty
@@ -1114,6 +1142,23 @@ reap_to_zero () {
     # They respawn on the next build, so this is fully reversible and costs one cold compile. The line
     # above is right for a workstation and names the wrong culprit for an agent session that has been
     # building all day -- which is the only kind of session this gate now runs in.
+    # ---- ⚠ AND THE PROCESS COUNT SAYS WHICH ADVICE APPLIES. 242(C), 2026-09-01.
+    #
+    # MEASURED BOTH WAYS ON ONE NIGHT: 18 `dotnet` processes, and `build-server shutdown` returned
+    # ~500 MB and cleared the floor. 3 processes, and the same command returned NOTHING -- 1785 to
+    # 1732 MB, which is noise -- because the box was genuinely occupied by an editor at 2.6 GB.
+    # Without this number both aborts read identically and invite the same wrong fix.
+    GATE_DOTNET_N=$(powershell.exe -NoProfile -Command       "(Get-Process dotnet,testhost -ErrorAction SilentlyContinue | Measure-Object).Count"       2>/dev/null | tr -d '[:space:]')
+    case "$GATE_DOTNET_N" in
+      '' | *[!0-9]*) GATE_DOTNET_N="" ;;
+    esac
+    if [ -n "$GATE_DOTNET_N" ]; then
+      echo "!!! dotnet/testhost processes right now: ${GATE_DOTNET_N}. MANY (10+) means build servers are"
+      echo "!!! holding the memory and the shutdown below will return it. FEW (under 5) means the box is"
+      echo "!!! genuinely occupied and the shutdown will free nothing -- look at what else is running."
+    else
+      echo "!!! dotnet/testhost process count: UNMEASURED, so it cannot say which of the two below applies."
+    fi
     echo "!!! In a long session, try: dotnet build-server shutdown -- MSBuild/Roslyn servers accumulate"
     echo "!!! across builds and can hold ~1 GB. They respawn; the cost is one cold compile."
     echo "!!! On 2026-08-24 both Integration legs died with no TRX at 14 MB and 92 MB free."
@@ -1435,6 +1480,13 @@ for CFG in $GATE_CONFIGS; do
   done
 
   echo "=== catalogs after $CFG: $(reap_count)"
+
+  # ---- WHAT HAS ALREADY COMPLETED, SO A LATER ABORT CAN NAME IT. 242(C), 2026-09-01.
+  #
+  # A precondition abort before Release exits 5 with no verdict, and on 2026-09-01 that discarded a
+  # fully green Debug leg -- Integration included, 862 passed in 24m47s. The results were in the log
+  # and nothing said so, so the run read as a total loss when three quarters of it had succeeded.
+  GATE_CFG_DONE="${GATE_CFG_DONE}${GATE_CFG_DONE:+ }$CFG"
 done
 
 # ---- THE VERDICT NAMES ITS SCOPE. `DEC-L-045`.

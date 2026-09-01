@@ -1819,7 +1819,11 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
   }
 
+  // `AC-DEP-0029`'s FIRST clause. The second — changing OUT of one succeeds — is `D6b` below, and the
+  // criterion is only covered by the pair: a rule refusing any change TOUCHING an inactive department
+  // satisfies this test alone.
   [Fact]
+  [Trait("Criterion", "AC-DEP-0029")]
   public async Task D6_A_change_into_an_inactive_department_is_refused_and_appends_nothing()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1835,6 +1839,54 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(EmployeeErrors.DepartmentInactive.Code, changed.Error.Code);
     Assert.Equal(fixture.DepartmentA, await fixture.EmployeeDepartmentAsync(created.Value));
     Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  // ---- AND OUT OF ONE SUCCEEDS (`AC-DEP-0029`'s SECOND CLAUSE).
+  //
+  // `D6` above covers the first clause. The second was asserted by nothing, and the two are not the same
+  // rule: an implementation that refused ANY change TOUCHING an inactive department — rather than any
+  // change INTO one — passes `D6` completely and strands every member of a closed department permanently.
+  //
+  // ⚠⚠ THE SEED IS THE WHOLE DESIGN. The home department is ACTIVE FIRST AND DEACTIVATED AFTERWARDS,
+  // never `DepartmentAInactive`. A rule refusing movement involving a department that had EVER been
+  // inactive would satisfy a permanently-inactive seed and break this criterion silently — the same trap
+  // `D2` and `D6` sit in, which is why `AC-DEP-0031` needed the same treatment.
+  //
+  // ⚠ AND THE REFUSAL BELOW IS THE PRECONDITION, NOT DECORATION. If `DeactivateDepartmentAsync` ever
+  // silently failed, the move that follows would just be a move out of an ACTIVE department — which `D4`
+  // already covers — and this test would pass having asserted nothing about inactivity. Proving it through
+  // the product's OWN refusal is stronger than reading the column back, because it is the same rule the
+  // move has to survive.
+  [Fact]
+  [Trait("Criterion", "AC-DEP-0029")]
+  public async Task D6b_A_change_OUT_of_an_inactive_department_succeeds()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var home = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPH", active: true);
+    var destination = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPE", active: true);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D6B", department: home));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    await fixture.DeactivateDepartmentAsync(home);
+
+    // PRECONDITION: `home` really is inactive now, proved by the product refusing an arrival into it.
+    var arrival = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D6B2", department: home));
+
+    Assert.True(arrival.IsFailure, "the home department is not inactive, so the move below proves nothing");
+    Assert.Equal(EmployeeErrors.DepartmentInactive.Code, arrival.Error.Code);
+
+    // THE CLAIM. Departing is not arriving, and closing an org unit must not strand the people in it.
+    var changed = await graph.ChangeDepartment().HandleAsync(new ChangeEmployeeDepartmentCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value), "Reorg", "Home closed"));
+
+    Assert.True(changed.IsSuccess, changed.IsFailure ? changed.Error.Code : null);
+    Assert.Equal(destination, await fixture.EmployeeDepartmentAsync(created.Value));
+
+    // And the move was RECORDED — a success that appended nothing would lose where the person had been.
+    Assert.Equal(2, await fixture.DepartmentHistoryCountForAsync(created.Value));
   }
 
   [Fact]

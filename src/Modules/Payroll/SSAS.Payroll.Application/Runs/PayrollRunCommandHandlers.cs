@@ -657,7 +657,7 @@ public sealed class PostPayrollRunCommandHandler(
       {
         JournalPostingStatus.PeriodClosed => Result.Failure(PayrollErrors.PeriodClosedForPosting(outcome.PeriodName ?? period.Name)),
         JournalPostingStatus.PeriodStateChanging => Result.Failure(PayrollErrors.LedgerPostingRetryable),
-        JournalPostingStatus.PeriodNotFound => Result.Failure(PayrollErrors.LedgerRefusedPosting),
+        JournalPostingStatus.PeriodNotFound => Result.Failure(PayrollErrors.LedgerHasNoFiscalPeriod),
         JournalPostingStatus.AccountUnavailable => Result.Failure(PayrollErrors.LedgerRefusedPosting),
         JournalPostingStatus.Unbalanced => Result.Failure(PayrollErrors.LedgerRefusedPosting),
         JournalPostingStatus.ReversalTargetUnavailable => Result.Failure(PayrollErrors.LedgerRefusedPosting),
@@ -791,7 +791,7 @@ public sealed class ReversePayrollRunCommandHandler(
       {
         JournalPostingStatus.PeriodClosed => Result.Failure<Guid>(PayrollErrors.PeriodClosedForPosting(outcome.PeriodName ?? "the reversal period")),
         JournalPostingStatus.PeriodStateChanging => Result.Failure<Guid>(PayrollErrors.LedgerPostingRetryable),
-        JournalPostingStatus.PeriodNotFound => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
+        JournalPostingStatus.PeriodNotFound => Result.Failure<Guid>(PayrollErrors.LedgerHasNoFiscalPeriod),
         JournalPostingStatus.AccountUnavailable => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
         JournalPostingStatus.Unbalanced => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
         JournalPostingStatus.ReversalTargetUnavailable => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),

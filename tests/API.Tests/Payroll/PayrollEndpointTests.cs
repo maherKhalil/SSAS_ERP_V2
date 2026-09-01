@@ -335,6 +335,40 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
     Assert.Null(run.JournalEntryId);
   }
 
+  // ---- 254. AN UNDEFINED CALENDAR IS NOT A LEDGER REFUSAL, AND THE OPERATOR'S REMEDY DIFFERS.
+  //
+  // `JournalPostingStatus.PeriodNotFound` used to answer `payroll.ledger_refused` — the same code as
+  // `AccountUnavailable` above. ⚠ THE TWO REMEDIES ARE OPPOSITE: one says investigate a rejected posting,
+  // the other says define the fiscal year. The generic code sent the operator to the wrong one.
+  //
+  // 409 and not 404 on purpose: the request is well formed and the run is postable, and the same body
+  // succeeds unchanged once Finance defines the year. Its approval-time namesake `FiscalPeriodNotFound`
+  // answers a generic 404, which this deliberately does not reuse.
+  [Fact]
+  public async Task A_posting_with_no_fiscal_period_is_distinguished_from_a_ledger_refusal()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedApprovedRun();
+    host.Ledger.PostOutcome = JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/posting", host.TokenWith(AllPermissions)));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+    // THE WHOLE POINT: a DIFFERENT code from `A_ledger_refusal_at_posting_refuses_the_transition`
+    // above, which answers `payroll.ledger_refused` for `AccountUnavailable`. Both are 409, so the
+    // STATUS alone would not have distinguished them and the code is what carries the remedy.
+    //
+    // ⚠ Read once. The response content is a stream, and a second `ProblemCodeAsync` on the same
+    // response throws on an empty body rather than returning the code again.
+    Assert.Equal("payroll.fiscal_period_undefined", await PayrollApiTestHost.ProblemCodeAsync(response));
+
+    // The run is untouched either way — distinguishing the message must not change the transition.
+    Assert.Equal(PayrollRunStatus.Approved, run.Status);
+    Assert.Null(run.JournalEntryId);
+  }
+
   [Fact]
   public async Task A_successful_posting_records_the_journal_and_the_journal_balances()
   {

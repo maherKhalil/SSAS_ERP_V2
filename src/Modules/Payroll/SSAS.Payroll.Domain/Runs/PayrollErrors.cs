@@ -114,6 +114,22 @@ public static class PayrollErrors
     "Payroll.LedgerPostingRetryable",
     "The fiscal period's state is being changed right now, so this run was not posted. Try posting it again.");
 
+  // ---- 254. NO FISCAL PERIOD COVERS THE DATE, WHICH IS NOT THE SAME AS A REFUSAL.
+  //
+  // `JournalPostingStatus.PeriodNotFound`'s own comment is the argument for this member: *distinct from
+  // closed, because the operator's remedy is different: define the calendar rather than reopen a period.*
+  // Collapsed into the generic refusal, that remedy is unreachable — "the ledger refused this posting"
+  // tells an operator to investigate a posting that was never attempted against any period.
+  //
+  // ⚠ IT IS NOT `FiscalPeriodNotFound`, WHICH ALREADY EXISTS AND IS DELIBERATELY NOT REUSED. That one is
+  // the APPROVAL-time calendar check, it says "cannot be approved", and it maps to a GENERIC 404 that
+  // `PayrollEndpointTests` already pins as a poor answer. Reusing it would carry both defects into a new
+  // site and put an approval message on a posting failure.
+  public static readonly Error LedgerHasNoFiscalPeriod = new(
+    "Payroll.LedgerHasNoFiscalPeriod",
+    "No fiscal period covers this date, so no ledger entry was made. Define the fiscal year that covers " +
+    "it, then try again.");
+
   public static readonly Error LedgerRefusedPosting = new(
     "Payroll.LedgerRefusedPosting",
     "The ledger refused this posting, so the run has not been posted.");

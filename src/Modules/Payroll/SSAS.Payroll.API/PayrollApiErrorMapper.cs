@@ -63,6 +63,7 @@ public static class PayrollApiErrorMapper
   public static readonly ApiError ElementUnmapped = new(409, "payroll.element_unmapped");
   public static readonly ApiError RunStateInvalid = new(409, "payroll.run_state_invalid");
   public static readonly ApiError LedgerRefused = new(409, "payroll.ledger_refused");
+  public static readonly ApiError FiscalPeriodUndefined = new(409, "payroll.fiscal_period_undefined");
   public static readonly ApiError NothingToCalculate = new(422, "payroll.nothing_to_calculate");
   public static readonly ApiError AttendancePeriodOpen = new(409, "payroll.attendance_period_open");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
@@ -188,6 +189,13 @@ public static class PayrollApiErrorMapper
 
       // 249. The ledger was busy, not refusing: 409 and retry, never 500.
       "Payroll.LedgerPostingRetryable" => Conflict,
+      // ---- 254. 409, NOT THE 404 ITS APPROVAL-TIME NAMESAKE ANSWERS.
+      //
+      // The request is well formed and the run is postable; the world is not ready. The same body
+      // succeeds unchanged once Finance defines the fiscal year, which is the distinction `Conflict`
+      // carries and `NotFound` does not — and its sibling `Payroll.FiscalPeriodClosed` is 409 for the
+      // same reason.
+      "Payroll.LedgerHasNoFiscalPeriod" => FiscalPeriodUndefined,
       "Payroll.LedgerRefusedPosting" => LedgerRefused,
       "Payroll.LedgerRefusedReversal" => LedgerRefused,
 

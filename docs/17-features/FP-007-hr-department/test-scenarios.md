@@ -17,7 +17,7 @@ unit test over a fake proves the handler and not the rule.
 | ID | Layer | Scenario | AC |
 |---|---|---|---|
 | TS-DEP-0001 | S | Create a root department; tenant and company are stamped from context, and it is `Active` | AC-DEP-0001, AC-DEP-0025 |
-| TS-DEP-0002 | S | **Negative control.** A create request carrying another tenant's `TenantId` produces a department in the caller's tenant, not the named one | AC-DEP-0002 |
+| TS-DEP-0002 | S | A create request carrying `tenantId` or `companyId` in the body is **refused** with `400 request.invalid` and produces no department. Witnessed for **both** names, because the `fields` allowlist at `DepartmentEndpointRouteBuilderExtensions.cs:181-186` is a per-field dictionary and the two can diverge independently. ⚠⚠ **CORRECTED 2026-09-01, architect — this read *Negative control. A create request carrying another tenant's `TenantId` produces a department in the caller's tenant, not the named one*, which is UNIMPLEMENTABLE AGAINST STRICT BINDING: the request never binds, so there is no department to inspect. It was labelled a NEGATIVE CONTROL while asserting a POSITIVE OUTCOME, and a control that cannot be written is one nobody notices is missing.** See `AC-DEP-0002`. | AC-DEP-0002 |
 | TS-DEP-0003 | S | Duplicate normalized code in the same company is refused | AC-DEP-0003 |
 | TS-DEP-0004 | S | Two concurrent creates of the same code: exactly one succeeds, and the loser's refusal originates in the unique index | AC-DEP-0003 |
 | TS-DEP-0005 | S | Codes differing only by case or surrounding whitespace collide | AC-DEP-0003 |

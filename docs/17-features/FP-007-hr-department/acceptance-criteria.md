@@ -13,8 +13,27 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 
 - **AC-DEP-0001** — Creating a department with a code, a name and no parent produces an `Active` root
   department whose `TenantId` and `CompanyId` match the caller's trusted context.
-- **AC-DEP-0002** — `TenantId` and `CompanyId` supplied in the request body are ignored, not honoured. A
-  request naming another tenant's identifiers produces a department in the caller's own tenant.
+- **AC-DEP-0002** — `TenantId` and `CompanyId` supplied in the request body are **refused**, not honoured and
+  not silently ignored: the request is rejected with `400 request.invalid`, and no department is produced.
+
+  > ⚠⚠ **CORRECTED 2026-09-01, architect. This read *are ignored, not honoured… produces a department in the
+  > caller's own tenant*, and THE PRODUCT DOES NEITHER — IT REFUSES.** Strict binding at
+  > `StrictRequestReader.cs:41` returns null for any property absent from the `fields` dictionary; the
+  > dictionary at `DepartmentEndpointRouteBuilderExtensions.cs:181-186` is exactly
+  > `code / name / parentDepartmentId`; a null request becomes `ApiErrors.RequestInvalid` → `400` at
+  > `:190-193`. **The behaviour was already asserted and uncited** —
+  > `API.Tests/Departments/DepartmentEndpointTests.cs:78` `D5_Create_rejects_an_undeclared_field` posts a body
+  > carrying `companyId` and asserts `400` + `request.invalid`.
+  >
+  > ⚠⚠⚠ **AND THIS DOCUMENT CONTRADICTED ITSELF: `AC-DEP-0035` STATES THE OPPOSITE DISPOSITION FOR THE SAME
+  > CLASS OF UNDECLARED FIELD — *the field is not accepted there, and a request containing it is REJECTED
+  > RATHER THAN SILENTLY IGNORED*.** Same file, same problem, opposite rules, **and the product implements
+  > `0035`'s.** So this was never a criterion the code merely outgrew: **the specification disagreed with
+  > itself and the implementation picked the safer side.** Each criterion reads perfectly well alone, which
+  > is why neither reader caught it until both were held together.
+  >
+  > **`TS-DEP-0002` inherited the defect and is corrected with it** — it was written as a control asserting a
+  > department IS produced in the caller's tenant, which is not implementable against strict binding.
 - **AC-DEP-0003** — A second department with a code that normalizes to an existing code in the same company is
   refused with `409`, and the refusal comes from the unique index under concurrent creation, not only from a
   prior read.

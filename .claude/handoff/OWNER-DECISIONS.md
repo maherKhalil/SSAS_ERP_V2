@@ -983,6 +983,23 @@ against 26m09s says the same thing from the other side.
 into a random mid-suite death. **The measurement says the memory is not there; no amount of gate wording
 creates it.**
 
+### ⚠⚠⚠ AMENDED 2026-09-01 — TWO THINGS CHANGED AFTER THIS ENTRY WAS WRITTEN, AND THEY PULL OPPOSITE WAYS
+
+**FIRST, THE COST OF LEAVING THIS UNANSWERED IS NOW CONCRETE RATHER THAN GENERAL.** A confirmed
+correctness gap on the journal posting path was found tonight — a journal can be committed into an
+accounting period that was closed after the posting transaction read it. **Its regression test is
+Integration-scoped, which is the suite this decision blocks.**
+
+⚠⚠ **SECOND, AND IT LARGELY UNDOES THE FIRST: A SINGLE FILTERED INTEGRATION TEST RUNS ON THIS BOX IN
+ABOUT 21 SECONDS.** That was measured, not assumed — the gap above was confirmed by exactly such a run.
+**The memory floor is a GATE PRECONDITION, not a physical limit**, and the two windows had been treating
+them as the same thing.
+
+**So targeted verification is available today and the full sixteen-leg matrix is not.** What this decision
+still buys is the thing a targeted run cannot give: **Debug-versus-Release configuration drift, and the
+whole-suite baseline.** ⚠ **It does NOT block confirming or fixing a specific defect, and this entry
+should not be read as saying it does.**
+
 ### ⚠ One thing tonight proved that no green run could have
 
 **The abort path fired in production for the first time, and its output was exactly what the offline

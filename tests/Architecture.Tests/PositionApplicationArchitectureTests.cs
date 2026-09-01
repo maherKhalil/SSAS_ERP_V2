@@ -48,9 +48,9 @@ public sealed class PositionApplicationArchitectureTests
     {
       var properties = command.GetProperties().Select(property => property.Name).ToArray();
 
-      Assert.DoesNotContain(properties, name => name.Contains("Tenant", StringComparison.Ordinal));
-      Assert.DoesNotContain(properties, name => name.Contains("Branch", StringComparison.Ordinal));
-      Assert.DoesNotContain(properties, name => name.Contains("Department", StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Tenant, StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Branch, StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Department, StringComparison.Ordinal));
     }
   }
 
@@ -67,8 +67,8 @@ public sealed class PositionApplicationArchitectureTests
   {
     var properties = command.GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.DoesNotContain(properties, name => name.Contains("Status", StringComparison.Ordinal));
-    Assert.DoesNotContain(properties, name => name.Contains("Company", StringComparison.Ordinal));
+    Assert.DoesNotContain(properties, name => name.Contains(Names.Status, StringComparison.Ordinal));
+    Assert.DoesNotContain(properties, name => name.Contains(Names.Company, StringComparison.Ordinal));
   }
 
   // ---- EVERY MUTATION OF AN EXISTING RECORD CARRIES A ROW VERSION (NFR-POS-0302, DEC-POS-0021).
@@ -115,7 +115,7 @@ public sealed class PositionApplicationArchitectureTests
     {
       var properties = scopeType.GetProperties().Select(property => property.Name).ToArray();
 
-      Assert.DoesNotContain(properties, name => name.Contains("Branch", StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Branch, StringComparison.Ordinal));
     }
 
     var resolverParameters = typeof(PositionScopeResolver)
@@ -125,7 +125,7 @@ public sealed class PositionApplicationArchitectureTests
       .Select(parameter => parameter.ParameterType.Name)
       .ToArray();
 
-    Assert.DoesNotContain(resolverParameters, name => name.Contains("Branch", StringComparison.Ordinal));
+    Assert.DoesNotContain(resolverParameters, name => name.Contains(Names.Branch, StringComparison.Ordinal));
   }
 
   // ---- AND NO SCOPE CAN BE FABRICATED.
@@ -367,9 +367,9 @@ public sealed class PositionApplicationArchitectureTests
     {
       var properties = command.GetProperties().Select(property => property.Name).ToArray();
 
-      Assert.DoesNotContain(properties, name => name.Contains("ReportsTo", StringComparison.Ordinal));
-      Assert.DoesNotContain(properties, name => name.Contains("Parent", StringComparison.Ordinal));
-      Assert.DoesNotContain(properties, name => name.Contains("Manager", StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.ReportsTo, StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Parent, StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Manager, StringComparison.Ordinal));
     }
   }
 
@@ -399,13 +399,13 @@ public sealed class PositionApplicationArchitectureTests
         .ToArray();
 
       Assert.DoesNotContain(properties, name =>
-        name.Contains("Amount", StringComparison.Ordinal) ||
-        name.Contains("Salary", StringComparison.Ordinal) ||
-        name.Contains("Wage", StringComparison.Ordinal) ||
-        name.Contains("Pay", StringComparison.Ordinal) ||
-        name.Contains("Rate", StringComparison.Ordinal) ||
-        name.Contains("Headcount", StringComparison.Ordinal) ||
-        name.Contains("Seat", StringComparison.Ordinal));
+        name.Contains(Names.Amount, StringComparison.Ordinal) ||
+        name.Contains(Names.Salary, StringComparison.Ordinal) ||
+        name.Contains(Names.Wage, StringComparison.Ordinal) ||
+        name.Contains(Names.Pay, StringComparison.Ordinal) ||
+        name.Contains(Names.Rate, StringComparison.Ordinal) ||
+        name.Contains(Names.Headcount, StringComparison.Ordinal) ||
+        name.Contains(Names.Seat, StringComparison.Ordinal));
     }
 
     // And the salary grade commands carry EXACTLY the three amounts and no fourth money field.
@@ -492,4 +492,103 @@ public sealed class PositionApplicationArchitectureTests
 
     throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
   }
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE ABSENCE PREDICATES CAN MATCH SOMETHING (252).
+  // ================================================================================================
+  //
+  // Every `Assert.DoesNotContain(names, name => name.Contains("X"))` in this file PASSES WHEN THE
+  // PREDICATE MATCHES NOTHING, so it cannot distinguish *no command carries X* from *I misspelled X*.
+  // Measured on this exact shape elsewhere in the suite: one literal planted as `"Departmentt"` returned
+  // PASSED, 6 of 6.
+  //
+  // ---- ⚠⚠ NEITHER STANDARD REMEDY WORKS FOR AN ABSENCE-OF-NAME ASSERTION, WHICH IS WHY THIS IS ODD.
+  //
+  // `nameof` is UNAVAILABLE BY CONSTRUCTION — you cannot `nameof` a property whose whole point is that it
+  // must not exist. And a floor on the collection does not help either: `name.Contains("Tenantt")` matches
+  // nothing over a fully populated array just as happily as over an empty one. A floor closes vacuity;
+  // this is not vacuity.
+  //
+  // ---- SO THE LITERAL IS SHARED, AND THE CONTROL BELOW PROVES IT MATCHES.
+  //
+  // ⚠ A control carrying its OWN copy of each literal would prove nothing — a typo at a call site would
+  // leave the control passing. The constants are the SAME symbols the assertions use, so:
+  //
+  //   * misspell a constant  -> `Every_absence_predicate_can_match_something` FAILS
+  //   * misspell at a site   -> unknown identifier, and it does not compile
+  //
+  // `Marker` is appended so the control's property names are not identical to the constants: the predicate
+  // under test is a SUBSTRING match, and a control that only ever matched whole names would not exercise it.
+  private static class Names
+  {
+    public const string Amount = "Amount";
+    public const string Branch = "Branch";
+    public const string Company = "Company";
+    public const string Department = "Department";
+    public const string Headcount = "Headcount";
+    public const string Manager = "Manager";
+    public const string Parent = "Parent";
+    public const string Pay = "Pay";
+    public const string Rate = "Rate";
+    public const string ReportsTo = "ReportsTo";
+    public const string Salary = "Salary";
+    public const string Seat = "Seat";
+    public const string Status = "Status";
+    public const string Tenant = "Tenant";
+    public const string Wage = "Wage";
+  }
+
+  private sealed class NameControl
+  {
+    public string AmountMarker { get; set; } = string.Empty;
+    public string BranchMarker { get; set; } = string.Empty;
+    public string CompanyMarker { get; set; } = string.Empty;
+    public string DepartmentMarker { get; set; } = string.Empty;
+    public string HeadcountMarker { get; set; } = string.Empty;
+    public string ManagerMarker { get; set; } = string.Empty;
+    public string ParentMarker { get; set; } = string.Empty;
+    public string PayMarker { get; set; } = string.Empty;
+    public string RateMarker { get; set; } = string.Empty;
+    public string ReportsToMarker { get; set; } = string.Empty;
+    public string SalaryMarker { get; set; } = string.Empty;
+    public string SeatMarker { get; set; } = string.Empty;
+    public string StatusMarker { get; set; } = string.Empty;
+    public string TenantMarker { get; set; } = string.Empty;
+    public string WageMarker { get; set; } = string.Empty;
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-POS-0001")]
+  public void Every_absence_predicate_can_match_something()
+  {
+    var control = typeof(NameControl).GetProperties().Select(property => property.Name).ToArray();
+
+    // Anti-vacuity for the control itself, which is otherwise the same trap one level down.
+    Assert.Equal(15, control.Length);
+
+    foreach (var literal in new[]
+    {
+      Names.Amount,
+      Names.Branch,
+      Names.Company,
+      Names.Department,
+      Names.Headcount,
+      Names.Manager,
+      Names.Parent,
+      Names.Pay,
+      Names.Rate,
+      Names.ReportsTo,
+      Names.Salary,
+      Names.Seat,
+      Names.Status,
+      Names.Tenant,
+      Names.Wage,
+    })
+    {
+      Assert.Contains(
+        control,
+        name => name.Contains(literal, StringComparison.Ordinal));
+    }
+  }
+
 }

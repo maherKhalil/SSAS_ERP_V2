@@ -1502,7 +1502,7 @@ done
 # is worded to claim only the first.
 GATE_C4_NOTE=""
 gate_condition_4 () {
-  local REF=${GATE_INTEGRATION_REF:-origin/ClaudeBranch} BASE CHANGED MOVED=0 COMPARED=0 KEY OLD NEW
+  local REF=${GATE_INTEGRATION_REF:-origin/ClaudeBranch} BASE CHANGED MOVED=0 COMPARED=0 KEY OLD NEW BASELINE_AT_BASE
   [ -s "$LOGS/counts.txt" ] || { GATE_C4_NOTE="not compared: no suite totals were captured"; return; }
   command -v git >/dev/null 2>&1 || { GATE_C4_NOTE="not compared: no git on PATH"; return; }
   BASE=$(git merge-base HEAD "$REF" 2>/dev/null) || true
@@ -1574,10 +1574,31 @@ gate_condition_4 () {
     return
   fi
 
+  # ---- ⚠⚠⚠ THE BASELINE IS READ AS AT $BASE, NOT FROM THE WORKING TREE. TWO CLOCKS, MEASURED 2026-09-01.
+  #
+  # The two halves of this condition used to span DIFFERENT INTERVALS. `CHANGED` is `git diff "$BASE"`, so
+  # it spans base..WORKING TREE. `OLD` came from the working-tree baseline -- WHICH EVERY GREEN RUN
+  # OVERWRITES at the end of this script.
+  #
+  # So on the SECOND green run of the same state, `OLD` was the total THIS state had already produced,
+  # `MOVED` was necessarily 0, `CHANGED` was still large, and the ATTENTION fired AS A FALSE ALARM BY
+  # CONSTRUCTION. ⚠ THE CONDITION GOT LESS RELIABLE THE MORE OFTEN THE GATE WAS RUN -- the more diligent
+  # the window, the more false attentions it saw. Observed on item 261: one run printed "ok: 1 of 7 moved"
+  # and the next printed ATTENTION over the same commit, and `Platform|Debug` 1103->1105 lands inside
+  # `f4586fa` itself, which is what made the second reading wrong rather than the first.
+  #
+  # Reading the baseline at $BASE makes both halves span ONE interval. Note 7t's rule is unchanged and NOT
+  # weakened: this fixes the reference point, never the threshold.
+  BASELINE_AT_BASE="$LOGS/baseline-at-base.txt"
+  if ! git show "$BASE:${GATE_BASELINE_FILE#$ROOT/}" > "$BASELINE_AT_BASE" 2>/dev/null; then
+    GATE_C4_NOTE="not compared: ${GATE_BASELINE_FILE#$ROOT/} does not exist at the merge-base $BASE, so there is no same-interval reference to compare against -- WHICH IS NOT THE SAME AS UNCHANGED"
+    return
+  fi
+
   while IFS='|' read -r P C N; do
     [ -n "$P" ] || continue
     KEY="$P|$C"
-    OLD=$(grep -m1 "^$KEY|" "$GATE_BASELINE_FILE" 2>/dev/null | cut -d'|' -f3)
+    OLD=$(grep -m1 "^$KEY|" "$BASELINE_AT_BASE" 2>/dev/null | cut -d'|' -f3)
     [ -n "$OLD" ] || continue          # a suite with no baseline row cannot be compared, only recorded
     COMPARED=$((COMPARED+1))
     NEW="$N"
@@ -1591,7 +1612,7 @@ gate_condition_4 () {
   elif [ "$MOVED" -gt 0 ]; then
     GATE_C4_NOTE="ok: $MOVED of $COMPARED suite total(s) moved, with $CHANGED non-comment line(s) changed under src/"
   else
-    GATE_C4_NOTE="ATTENTION: totals unchanged in all $COMPARED suite(s) while $CHANGED non-comment line(s) under src/ changed -- condition 4 is yours to judge"
+    GATE_C4_NOTE="ATTENTION: totals unchanged in all $COMPARED suite(s) SINCE THE MERGE-BASE, while $CHANGED non-comment line(s) under src/ changed OVER THAT SAME INTERVAL -- condition 4 is yours to judge"
     # ---- ⚠ AND ON TASK THE ATTENTION MUST SAY WHAT IT CANNOT SEE. T-233, 2026-08-31.
     #
     # A `src/` fix whose only coverage is an Integration test moves NO total in this scope, because this

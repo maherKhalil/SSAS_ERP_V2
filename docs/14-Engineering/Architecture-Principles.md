@@ -3506,6 +3506,49 @@ merits, and not in the path of the work that found it.**
 
 ---
 
+---
+
+## A population predicate must not contain the property under test
+
+**A derived population is the right answer to a hand-written list — but the derivation has a failure mode
+the list does not have: if the selection predicate shares a term with the assertion, MEMBERSHIP BECOMES
+CONDITIONAL ON COMPLIANCE.** The check then examines only the members that already pass, and a member
+carrying the defect is not merely missed — **it is excluded by the defect itself.**
+
+**Worked instance, 2026-09-01.** A guard was built to assert that every handler which reads a fiscal period
+opens its transaction BEFORE the read. The population was derived as *types that open a transaction and
+read a fiscal period.* ⚠ **That set cannot contain a handler which reads a period and fails to open a
+transaction**, which is exactly the defect the guard exists to find. Three members were found and all three
+passed. **A fourth type, in a file the derivation did reach, reads a period and opens no transaction at
+all** — invisible to the check by construction.
+
+**The shape is easy to miss because the predicate reads as a scoping decision.** *Only handlers that do X*
+sounds like relevance; it is relevance only when X is independent of the assertion. Here X WAS the
+assertion.
+
+- ⚠ **State the population as the SUBJECT of the rule, never as its satisfaction.** *Reads a fiscal period
+  and writes* is the subject; *opens a transaction and reads a fiscal period* is the subject filtered by
+  compliance.
+- **An exclusion BY REASON is sound and belongs in the file** — a handler that reads no period is outside
+  the rule, and saying so is what makes the boundary reviewable. **An exclusion by the property under test
+  is not an exclusion; it is a blind spot with a justification attached.**
+- ⚠⚠ **The test: name a member the predicate would exclude, and ask whether it would be defective.** If a
+  defective member could not be in the set, the set is wrong.
+
+## Every conditional subset of a derived population needs its own floor
+
+**A floor on the derived population proves the derivation found something. It says nothing about a branch
+that applies to only some members.** Where an assertion is guarded by a condition — *check the ordering
+only where this call is made* — **the condition can come to match nothing, and the branch then applies to
+zero members and passes.**
+
+⚠ **The population floor does not cover this: it counts members, not members that reach the branch.**
+Conditioning is usually correct — a member with no reason to make a call should not be asserted against —
+so the remedy is not to remove the condition but to floor the subset it selects. **A conditional assertion
+is one that can quietly stop applying, and only a count of the members that exercise it will say so.**
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

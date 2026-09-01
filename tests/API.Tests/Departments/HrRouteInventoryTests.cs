@@ -92,6 +92,20 @@ public sealed class HrRouteInventoryTests
   // constructible and would not be seen here. Nothing pushes toward it and no guard is proposed; it is
   // recorded as the edge of the instrument rather than as a gap.
   [Trait("Criterion", "AC-DEP-0040")]
+  // ⚠ ALSO CITED BY 269: `AC-POS-0058`'s HARNESS half — *routes and handlers stand 1:1; the exact route
+  // inventory matches.* The exact set equality is what makes it 1:1 in both directions.
+  //
+  // ⚠⚠ CITED IN PART, AND THE MISSING HALF IS NAMED AS A SEARCH. The criterion says the inventory matches
+  // in the module harness AND THE HOST COMPOSITION, and *a route reachable in one and not the other fails
+  // this criterion.* `MappedRoutes()` reads the three HR harnesses only. I searched `API.Tests` for a
+  // Host-side HR route inventory — `PlatformRouteInventory.Under(HostWebApplicationFactory, …)` is used by
+  // the Platform, Localization and TenantUser inventories, and I found no HR equivalent.
+  //
+  // What partially covers it is structural rather than asserted, and is this file's own header: both
+  // harnesses call the PRODUCTION mapping extensions, so a route the Host maps through a different path
+  // would leave the harness set SHORT and fail the exact list — which is the incident that created this
+  // test. That reasoning is an argument, not an assertion, which is why the citation is partial.
+  [Trait("Criterion", "AC-POS-0058")]
   public void The_hr_route_inventory_is_exactly_as_ruled()
   {
     var routes = MappedRoutes()

@@ -2503,6 +2503,20 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // The comment above names the mechanism the criterion depends on: the handler reads the destination
   // INSIDE ITS OWN TRANSACTION, which is what makes the interleave decidable rather than racy.
+  //
+  // ⚠⚠ THIS IS AN EXHAUSTION CITATION, NOT A CONJUNCTION, SO WHAT CLOSES THE OUTCOME SPACE IS STATED
+  // RATHER THAN ASSUMED. Every other criterion in this sweep is *A and B*, covered by asserting A and B.
+  // This one is *either X or Y, never Z*, and a pair only covers it if nothing else can happen.
+  //
+  // THE CLOSURE IS GUARANTEED BY THE TYPE, not by an argument: `ChangePosition` returns a `Result`, so it
+  // either fails or succeeds. On FAILURE nothing moved — asserted here as the employee still holding
+  // `PositionA`. On SUCCESS the employee is asserted to hold the position they moved into BEFORE it was
+  // deactivated. So the forbidden outcome — holding an inactive position they did not already have — is
+  // REFUTED INSIDE EACH BRANCH rather than merely squeezed out between them.
+  //
+  // ⚠ IF THAT CLOSURE WERE AN ARGUMENT INSTEAD OF A TYPE, THIS CITATION WOULD BE WRONG: a criterion
+  // permitting *either X or Y* over an open-ended outcome space is not covered by asserting X and Y, and a
+  // fourth outcome nobody enumerated is exactly what such a citation would hide.
   [Trait("Criterion", "AC-POS-0025")]
   [Trait("Criterion", "AC-POS-0028")]
   [Trait("Criterion", "AC-POS-0050")]

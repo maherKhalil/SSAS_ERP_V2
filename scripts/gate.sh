@@ -1002,24 +1002,76 @@ reap_to_zero () {
 #
 #    Aborts LOUDLY and distinctly: this is a precondition failure, and reporting it as a suite failure
 #    would send someone hunting for a defect in the tests. See note 7a in the header for the incident.
-  local FREE_MB
-  FREE_MB=$(powershell.exe -NoProfile -Command     "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB,0)"     2>/dev/null | tr -d '[:space:]')
-  # ---- UNMEASURED IS NOT ZERO. 242, 2026-09-01.
+  # ---- FIVE SAMPLES, NOT ONE. 242(B), 2026-09-01.
   #
-  # This sampler CAN return empty: if `powershell.exe` fails, `tr` is handed nothing, the `2>/dev/null`
-  # discards the error text, and the pipe discards the exit status because this script sets `set -u` and
-  # not `pipefail`. `${FREE_MB:-0}` then read as "zero megabytes free" -- a value below every floor,
-  # produced by no measurement at all, and indistinguishable in the abort text from a genuinely full box.
+  # THE MEASURED REASON: on 2026-09-01 this check read 2639 MB, then 471 MB seconds later, then ~4300 MB
+  # two minutes after that -- one instrument, one box, no build in between, because the floor check is the
+  # first thing the gate does. A run was aborted at minute 0 on the 471.
+  #
+  # A SINGLE SAMPLE OF THAT QUANTITY DOES NOT RELIABLY MEASURE EVEN THE PRESENT, and the variance alone
+  # reproduces every abort attributed that night to build servers, to SQL Server's buffer pool and to a
+  # Debug-leg drawdown -- each of which was true when measured and none of which was necessary.
+  #
+  # FIVE SEPARATE INVOCATIONS, NOT ONE CALL RETURNING FIVE NUMBERS: a single call that fails loses every
+  # sample, which would collapse the "how many returned" test that the unmeasured branch turns on.
+  local FREE_MB FREE_NOTE FREE_N FREE_SAMPLES FREE_ONE FREE_MIN FREE_MAX FREE_PREV FREE_SHAPE FREE_SPREAD i
+  FREE_SAMPLES=""
+  FREE_N=0
+  FREE_MB=""
+  FREE_NOTE=""
+  for i in 1 2 3 4 5; do
+    FREE_ONE=$(powershell.exe -NoProfile -Command \
+      "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB,0)" \
+      2>/dev/null | tr -d '[:space:]')
+    # A non-numeric reading is not a sample. `tr` yields empty when powershell fails, and the pipe hides
+    # the exit status because this script sets `set -u` and not `pipefail` -- so the VALUE is the only
+    # evidence available about whether the measurement happened.
+    case "$FREE_ONE" in
+      '' | *[!0-9]*) : ;;
+      *) FREE_SAMPLES="$FREE_SAMPLES $FREE_ONE"; FREE_N=$((FREE_N + 1)) ;;
+    esac
+    [ "$i" = "5" ] || sleep 1
+  done
+  # ---- UNMEASURED IS NOT ZERO, AND FEWER THAN THREE SAMPLES IS UNMEASURED. 242, 2026-09-01.
+  #
+  # `${FREE_MB:-0}` used to read as "zero megabytes free" -- a value below every floor, produced by no
+  # measurement at all, and indistinguishable in the abort text from a genuinely full box.
   #
   # The fallback must fail toward the safe outcome FOR THIS CONSUMER, and here that is PROCEEDING.
   # Aborting on no evidence destroys the 25-minute run the floor exists to protect, which is the very
   # failure the floor was built to prevent. Contrast `${LEFT:-1}` below, where the same rule gives the
   # opposite value because an unmeasured reap must stop.
-  if [ -z "$FREE_MB" ]; then
-    echo "!!! UNMEASURED ($CFG): free physical memory could not be read. PROCEEDING WITHOUT THE FLOOR."
+  #
+  # THE MEDIAN, NEVER THE MAXIMUM: a genuinely full box reads low in all five, and a maximum would let a
+  # single high excursion wave it through. The median is the one that survives both a spike and a dip.
+  if [ "$FREE_N" -lt 3 ]; then
+    echo "!!! UNMEASURED ($CFG): only $FREE_N of 5 free-memory samples returned. PROCEEDING WITHOUT THE FLOOR."
     echo "!!! If this run dies, the cause may be the condition nobody could measure. That is NOT a suite"
     echo "!!! failure -- see note 7a before reading a red suite into it."
     FREE_MB=$((MEMORY_FLOOR_MB + 1))
+    FREE_NOTE="UNMEASURED -- $FREE_N of 5 samples returned"
+  else
+    # Unquoted deliberately: a space-separated word list that must split, as elsewhere in this file.
+    # THE UPPER MIDDLE WHEN THE COUNT IS EVEN (4 of 5 returned): sorted `a b c d`, take `c`, not `b`.
+    # An INDEX choice, not an average -- there is no arithmetic here that can round the wrong way. Which
+    # index is settled by the direction rule: an uncertain FREE_MB must fail toward PROCEEDING, and the
+    # lower middle biases toward aborting, which is the wrong direction for this consumer.
+    FREE_MB=$(printf '%s\n' $FREE_SAMPLES | sort -n | awk -v n="$FREE_N" 'NR == int(n / 2) + 1 { print; exit }')
+    FREE_MIN=$(printf '%s\n' $FREE_SAMPLES | sort -n | head -1)
+    FREE_MAX=$(printf '%s\n' $FREE_SAMPLES | sort -n | tail -1)
+    FREE_SPREAD=$((FREE_MAX - FREE_MIN))
+
+    # SHAPE IS A HINT AND IS REPORTED AS ONE. A non-increasing run of five looks identical to one arm of
+    # a slow oscillation, and a lone dip looks identical to the trough of one. Five samples cannot tell
+    # a drawdown from noise; they can say which one to suspect, and a wide spread says "this box is
+    # churning" where a narrow one says "this box is simply full". Those want different responses.
+    FREE_SHAPE="non-increasing"
+    FREE_PREV=""
+    for FREE_ONE in $FREE_SAMPLES; do
+      if [ -n "$FREE_PREV" ] && [ "$FREE_ONE" -gt "$FREE_PREV" ]; then FREE_SHAPE="mixed"; fi
+      FREE_PREV="$FREE_ONE"
+    done
+    FREE_NOTE="median of $FREE_N/5; spread ${FREE_SPREAD} MB; $FREE_SHAPE (hint)"
   fi
 
   # ---- THE FLOOR APPLIES WHERE ITS EVIDENCE CAME FROM: RUNS THAT INCLUDE INTEGRATION.
@@ -1045,9 +1097,9 @@ reap_to_zero () {
   # number stays visible so a future TASK death has a reading beside it, which is exactly what
   # the 2026-08-24 Integration deaths did not have until the sampler existed.
   if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ]; then
-    echo "--- free physical memory before $CFG: ${FREE_MB} MB (floor ${MEMORY_FLOOR_MB} MB, Integration in scope)"
+    echo "--- free physical memory before $CFG: ${FREE_MB} MB (floor ${MEMORY_FLOOR_MB} MB, Integration in scope; ${FREE_NOTE})"
   else
-    echo "--- free physical memory before $CFG: ${FREE_MB} MB (no floor: Integration is not in scope)"
+    echo "--- free physical memory before $CFG: ${FREE_MB} MB (no floor: Integration is not in scope; ${FREE_NOTE})"
   fi
 
   if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ] && [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then

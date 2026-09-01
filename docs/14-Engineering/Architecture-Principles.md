@@ -3575,6 +3575,29 @@ exemption red. Proven by planting exactly that removal.
 - **This is the general answer to every "this one is different because" comment in a codebase.** The
   comment states the difference; the test makes the difference falsifiable.
 
+### ⚠⚠⚠ AND THE CEILING, WHICH THE RULE ABOVE WAS MISSING
+
+**Grounds are half of it. AN EXEMPTION THAT GREW TO COVER MOST OF THE POPULATION WOULD RETIRE THE GUARD
+WHILE LEAVING IT GREEN** — a rule surviving as a passing test that governs nothing, which is the worst end
+state available to any guard.
+
+**So assert the exemption in BOTH directions:**
+
+- **LOAD-BEARING** — some exempted member really does carry the property. Otherwise the exemption is stale
+  decoration sitting over a place a future defect would go unchallenged.
+- ⚠ **NARROW** — it covers no more than a stated fraction of the population. **A guard whose exemption is
+  unbounded cannot report its own retirement.**
+
+**Worked instance, 2026-09-01.** A guard forbidding a tenant field on API response types exempted three
+authentication responses — types where the tenant is the SUBJECT of the answer rather than an attribute
+leaking out of a record somebody asked about. **Its exemption asserts both that at least one exempted type
+carries the field and that the exemption covers under a quarter of the surface.**
+
+⚠⚠ **AND EXEMPT BY A PROPERTY THE SUBJECT CANNOT CHOOSE FOR ITSELF.** That exemption is by NAMESPACE: a new
+authentication response is covered without an edit, **and a business response cannot be moved into the
+exemption by renaming it.** A name list grants exactly that move, silently, to anyone who wants it.
+
+
 ---
 
 ---

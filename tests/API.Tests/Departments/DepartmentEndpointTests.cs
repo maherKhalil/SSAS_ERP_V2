@@ -307,6 +307,10 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
 
   // And the rowversion loser gets the identical answer, which is what "indistinguishable" means.
   [Fact]
+  // CITED BY B18 pass 20 as the only assertion of `AC-DEP-0048`'s `409` clause -- for ONE mutation.
+  // The criterion says every department mutation; the other six map their concurrency conflict
+  // nowhere that a test reads.
+  [Trait("Criterion", "AC-DEP-0048")]
   public async Task D24_A_concurrency_conflict_on_assign_manager_maps_identically()
   {
     host.UnitOfWork.Failure = IdentityAccessErrors.ConcurrencyConflict;

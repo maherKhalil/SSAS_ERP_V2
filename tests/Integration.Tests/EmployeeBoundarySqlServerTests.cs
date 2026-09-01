@@ -1699,6 +1699,10 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0028` (`BR-HR-0009`) at the DATABASE layer.
+  // `A6c_Create_into_an_inactive_department_is_refused` is the same rule at the API layer. Two
+  // layers, and the pair is what shows the rule is not merely a request-validation convention.
+  [Trait("Criterion", "AC-DEP-0028")]
   public async Task D2_Creating_an_employee_into_an_inactive_department_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1814,6 +1818,15 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // CITED BY B18 pass 20 as `AC-DEP-0036`'s STALE half, bounded. The criterion is *the
+  // department-change endpoint changes the department AND refuses a stale `RowVersion` with `409`*.
+  // This test shows the refusal at the application layer and adds the control that a refused change
+  // APPENDS NOTHING to history.
+  // `A6e_Change_department_succeeds_with_employee_update_authority` is the success half.
+  //
+  // The `409` itself is asserted by neither: `A21_A_stale_rowversion_conflicts` maps the status for
+  // the ordinary employee update, not for the department change.
+  [Trait("Criterion", "AC-DEP-0036")]
   public async Task D8_A_stale_row_version_is_refused_and_appends_nothing()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1920,6 +1933,14 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // A BRANCH TRANSFER PRESERVES THE DEPARTMENT. +1 branch record, +0 department records.
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0037`'s first clause -- transferring between branches leaves the
+  // department unchanged. `D12_A_department_change_preserves_the_branch_and_writes_no_branch_history`
+  // is the second clause in the opposite direction. The criterion is symmetric and so is the pair;
+  // either alone would leave the other direction free to be wrong.
+  //
+  // And each asserts more than the criterion asks: no history row is appended on the axis that did
+  // NOT move, which is how a preserved value that was rewritten with itself would be caught.
+  [Trait("Criterion", "AC-DEP-0037")]
   public async Task D11_A_branch_transfer_preserves_the_department_and_writes_no_department_history()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1946,6 +1967,8 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // AND THE CONVERSE. A department change does not move the branch or append branch history.
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0037`'s second clause. See `D11_...` above for the pairing.
+  [Trait("Criterion", "AC-DEP-0037")]
   public async Task D12_A_department_change_preserves_the_branch_and_writes_no_branch_history()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1966,6 +1989,9 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // TERMINATION KEEPS THE DEPARTMENT. Not cleared, not moved to UNASSIGNED, no history appended.
   [Fact]
+  // CITED BY B18 pass 20, body-confirmed: terminating an employee leaves their department intact,
+  // with the same append-nothing control as the `D11`/`D12` pair.
+  [Trait("Criterion", "AC-DEP-0038")]
   public async Task D13_Termination_preserves_the_department_and_writes_no_department_history()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

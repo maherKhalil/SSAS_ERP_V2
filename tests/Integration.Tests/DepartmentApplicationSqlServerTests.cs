@@ -300,6 +300,18 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // ---- A STALE TOKEN IS REFUSED, and the hierarchy is left alone.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20 as the BEHAVIOURAL half of `AC-DEP-0048`, and the citation is bounded.
+  //
+  // The criterion is *every department mutation refuses a stale `RowVersion` with `409`* -- two
+  // clauses, and no single test carries either one whole:
+  //   * this test refuses a stale token for ONE mutation, the move;
+  //   * `Every_department_mutation_requires_a_row_version` supplies the population -- but by
+  //     HAND-NAMING seven commands, so nothing checks those seven against the commands that exist;
+  //   * `D24_A_concurrency_conflict_on_assign_manager_maps_identically` is the only `409`, for one
+  //     mutation, and the other six mutations' transport mapping is read by no test.
+  //
+  // So *every* is enumerated rather than derived, and `409` is pinned once. Recorded, not assumed.
+  [Trait("Criterion", "AC-DEP-0048")]
   public async Task A_stale_row_version_refuses_a_move()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -497,6 +509,15 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed. Assign / replace / clear in one test, so it carries the
+  // positive half of BOTH criteria: `AC-DEP-0018` (assigning an employee of the same company as
+  // manager succeeds and is readable on the department) and `AC-DEP-0022` (clearing removes the
+  // assignment and the department reads back with a null manager).
+  //
+  // `A_department_with_no_manager_reports_no_manager_at_all` is `0022`'s never-assigned case:
+  // cleared and never-assigned must read alike, and only the pair shows that.
+  [Trait("Criterion", "AC-DEP-0018")]
+  [Trait("Criterion", "AC-DEP-0022")]
   public async Task A_manager_can_be_assigned_replaced_and_cleared()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -663,6 +684,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed: the criterion verbatim.
+  [Trait("Criterion", "AC-DEP-0019")]
   public async Task A_manager_from_another_company_is_refused()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -680,6 +703,10 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed: the criterion verbatim. Its counterpart is
+  // `A_terminated_sitting_manager_is_retained_but_never_reported_as_active` -- refused on the way
+  // IN, retained once seated. That is `AC-DEP-0021` and a deliberately different rule.
+  [Trait("Criterion", "AC-DEP-0020")]
   public async Task A_terminated_employee_is_refused_as_a_manager()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -891,6 +918,14 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // current head of a department.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed: the assignment survives termination -- the manager row is
+  // still there and the read still names the employee -- while the read reports the manager as not
+  // active.
+  //
+  // NOTE FOR THE SPECIFICATION, NOT FOR THIS TEST: `AC-DEP-0021` words the read half as
+  // `manager.isTerminated = true`, and the contract exposes `IsActive`, asserted false here. The
+  // same claim through the complementary field -- the criterion names a field the DTO does not have.
+  [Trait("Criterion", "AC-DEP-0021")]
   public async Task A_terminated_sitting_manager_is_retained_but_never_reported_as_active()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -1024,6 +1059,9 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // confused: one means the department needs a manager, the other means you may not know who it has.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20: `AC-DEP-0022`'s never-assigned case. See
+  // `A_manager_can_be_assigned_replaced_and_cleared` for the cleared case.
+  [Trait("Criterion", "AC-DEP-0022")]
   public async Task A_department_with_no_manager_reports_no_manager_at_all()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -1258,6 +1296,11 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "DEC-POS-0034")]
+  // CITED BY B18 pass 20, body-confirmed: `employeeCount` reflects only employees within the
+  // caller's employee read scope. Two siblings complete the criterion:
+  // `A_member_count_never_reaches_outside_the_company_scope` and
+  // `An_empty_department_counts_zero_while_an_unscoped_caller_counts_null`.
+  [Trait("Criterion", "AC-DEP-0047")]
   public async Task A_department_member_count_includes_only_employees_inside_the_callers_scope()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -1288,6 +1331,16 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // at all gets null from the same call. Asserting both here means the two can never quietly converge.
   [Fact]
   [Trait("Decision", "DEC-POS-0034")]
+  // CITED BY B18 pass 20, body-confirmed, and this is `AC-DEP-0047`'s ANTI-VACUITY CONTROL rather
+  // than a third instance of it. THREE values, not two: a permitted caller reads 1 for a populated
+  // department and 0 for an empty one, and an unpermitted caller reads null.
+  //
+  // `0` and `null` being DIFFERENT ANSWERS is the point -- an empty department you may see is not
+  // confused with a department you may not. That is `AC-DEP-0007`'s distinction (an empty result
+  // claims something about the DATA, a refusal claims something about the CALLER) expressed as a
+  // count. A scope-blind implementation returning 0 for both would pass the two siblings and fail
+  // here.
+  [Trait("Criterion", "AC-DEP-0047")]
   public async Task An_empty_department_counts_zero_while_an_unscoped_caller_counts_null()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -1317,6 +1370,9 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // incidental, and a count written without it would still pass every single-company test above.
   [Fact]
   [Trait("Decision", "ADR-025")]
+  // CITED BY B18 pass 20: `AC-DEP-0047` at the COMPANY boundary, where the sibling above works the
+  // branch and employee boundary.
+  [Trait("Criterion", "AC-DEP-0047")]
   public async Task A_member_count_never_reaches_outside_the_company_scope()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();

@@ -39,6 +39,15 @@ public sealed class DepartmentScopeResolverTests
   // company in the tenant — and grants NO operation. An administrator who was never given the HR permission
   // cannot read a department, and the scope they would have had is irrelevant to that.
   [Fact]
+  // CITED BY B18 pass 20, body-confirmed: `Platform.Tenant.Administer` alone authorizes no
+  // department operation. This is the READ half; `Tenant_administration_alone_grants_no_department_
+  // write` is the write half, and the criterion says *any department operation* -- neither alone is
+  // the quantifier.
+  //
+  // The arrangement is deliberately generous: the administrator's company scope resolves to
+  // EVERYTHING and the resolution still fails, so the refusal is about the permission rather than
+  // about an empty scope.
+  [Trait("Criterion", "AC-DEP-0041")]
   public async Task Tenant_administration_alone_does_not_grant_the_department_read()
   {
     var resolver = Resolver(
@@ -57,6 +66,9 @@ public sealed class DepartmentScopeResolverTests
   [InlineData(HrPermissionNames.CreateDepartments)]
   [InlineData(HrPermissionNames.UpdateDepartments)]
   [InlineData(HrPermissionNames.DeactivateDepartments)]
+  // CITED BY B18 pass 20: `AC-DEP-0041`'s WRITE half, over every write permission. See the read
+  // half above.
+  [Trait("Criterion", "AC-DEP-0041")]
   public async Task Tenant_administration_alone_grants_no_department_write(string permission)
   {
     var resolver = Resolver(permissions: ["Platform.Tenant.Administer"], companies: [CompanyA]);

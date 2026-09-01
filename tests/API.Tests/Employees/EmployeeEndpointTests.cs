@@ -132,6 +132,11 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   // a department can be unusable, because those refusals reach the wire today whether or not anyone
   // intended to test them.
   [Fact]
+  // CITED BY B18 pass 20 for `AC-DEP-0033`'s FIRST clause only. The criterion (`FR-DEP-0109`) has
+  // three: creating without a department is refused (here), creating with a department from another
+  // company is refused, and creating with an `Active` department in the same company succeeds. Only
+  // this clause is pinned at this layer.
+  [Trait("Criterion", "AC-DEP-0033")]
   public async Task A6b_Create_without_a_department_is_refused()
   {
     const string body = """
@@ -145,6 +150,9 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   }
 
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0028` at the API layer. See
+  // `D2_Creating_an_employee_into_an_inactive_department_is_refused` in the SQL boundary suite.
+  [Trait("Criterion", "AC-DEP-0028")]
   public async Task A6c_Create_into_an_inactive_department_is_refused()
   {
     var body = $$"""
@@ -183,6 +191,21 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   // The permission is HR.Employees.Update, NOT Transfer: DepartmentId is a classification, not a security
   // partition (ADR-024), so nothing moves across an authorization boundary.
   [Fact]
+  // CITED BY B18 pass 20 for two criteria it genuinely carries:
+  //   * `AC-DEP-0036` -- the SUCCESS half (the endpoint changes the department). Its stale-token
+  //     half is `D8_A_stale_row_version_is_refused_and_appends_nothing` in the SQL boundary suite,
+  //     and the `409` is asserted by neither.
+  //   * `AC-DEP-0042` -- the POSITIVE control. The criterion is *requires `HR.Employees.Update`,
+  //     NOT `HR.Departments.Update`*, which is a three-way discrimination: this caller holds the
+  //     employee permission and succeeds, `A6f` holds neither and is forbidden, and `A6g` holds
+  //     ONLY the department permissions and is forbidden. `A6g` is the criterion's *not* half
+  //     exactly, and without THIS test a handler that forbade everyone would satisfy both refusals.
+  //
+  // NOTE FOR THE SPECIFICATION: `AC-DEP-0036` names the route
+  // `POST /api/hr/employees/{id}/department` and the endpoint under test is `.../change-department`.
+  // The criterion names a route the surface does not expose.
+  [Trait("Criterion", "AC-DEP-0036")]
+  [Trait("Criterion", "AC-DEP-0042")]
   public async Task A6e_Change_department_succeeds_with_employee_update_authority()
   {
     var response = await Send(
@@ -195,6 +218,8 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   }
 
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0042`'s no-authority refusal. See `A6e` for the three-way reading.
+  [Trait("Criterion", "AC-DEP-0042")]
   public async Task A6f_Change_department_without_the_update_permission_is_forbidden()
   {
     var response = await Send(
@@ -211,6 +236,9 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   // Department permissions are the sharp probe here: a reader might reasonably assume "it changes a
   // department, so it needs a department permission". It does not — it changes an EMPLOYEE.
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0042`'s *NOT `HR.Departments.Update`* clause, exactly -- a caller
+  // holding only the department permissions is forbidden. See `A6e` for the three-way reading.
+  [Trait("Criterion", "AC-DEP-0042")]
   public async Task A6g_Change_department_with_only_department_permissions_is_forbidden()
   {
     var token = host.TokenWith(

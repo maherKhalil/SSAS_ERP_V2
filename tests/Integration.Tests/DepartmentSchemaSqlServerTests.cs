@@ -218,6 +218,17 @@ public sealed class DepartmentSchemaSqlServerTests
   // unrepresentable. That is the difference this table's shape exists to buy.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed -- VERBATIM INCLUDING ITS INSTRUMENT. `AC-DEP-0024` says
+  // *at most one manager, enforced by the primary key of `tenant.DepartmentManagers` RATHER THAN BY
+  // A HANDLER CHECK*. This test inserts twice through the fixture, bypassing every handler, and then
+  // asserts the `SqlException` message names `PK_DepartmentManagers`. The key does the refusing and
+  // the assertion reads the key's own name.
+  //
+  // B18 pass 19 offered `Concurrent_manager_assignment_cannot_produce_two_rows` for this criterion.
+  // Reading that test's body refuted it: its own comment records that BOTH callers may legitimately
+  // succeed, because assignment is an upsert and the handler REASSIGNS. It is a good invariant test
+  // and it cannot discriminate key-enforcement from handler-enforcement, which is the whole clause.
+  [Trait("Criterion", "AC-DEP-0024")]
   public async Task A_department_can_have_at_most_one_manager()
   {
     await using var fixture = await DepartmentFixture.CreateAsync();

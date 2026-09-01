@@ -67,6 +67,11 @@ public sealed class DepartmentApplicationArchitectureTests
   [InlineData(typeof(AssignDepartmentManagerCommand))]
   [InlineData(typeof(ClearDepartmentManagerCommand))]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20 as `AC-DEP-0048`'s POPULATION half, and bounded: the seven commands are
+  // hand-named `[InlineData]`, so this test's name says *every* while its population is a list that
+  // nothing checks against the commands that exist. See `A_stale_row_version_refuses_a_move` in the
+  // department SQL suite for the full accounting of what this criterion still lacks.
+  [Trait("Criterion", "AC-DEP-0048")]
   public void Every_department_mutation_requires_a_row_version(Type command)
   {
     Assert.Contains(command.GetProperties(), property =>

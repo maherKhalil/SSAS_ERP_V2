@@ -60,7 +60,7 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 - **AC-DEP-0019** — Assigning an employee from a different company is refused.
 - **AC-DEP-0020** — Assigning a terminated employee is refused.
 - **AC-DEP-0021** — Terminating an employee who is a manager does **not** clear the assignment; the department
-  reads back with `manager.isTerminated = true`.
+  reads back with the manager still present and shown as inactive. **(Field name corrected 2026-09-01, architect: this read `manager.isTerminated = true`, and the contract exposes `IsActive` — three sites in `DepartmentReadModels.cs` and `DepartmentQueryHandlers.cs`, and no `IsTerminated` member anywhere on the department read models. The CLAIM was right and the FIELD did not exist; the test asserts `IsActive` false and was correct all along.)**
 - **AC-DEP-0022** — Clearing a manager removes the assignment and the department reads back with a null
   manager.
 - **AC-DEP-0023 (OD)** — Under `OD-DEP-003` reading (i): assigning an employee as manager of the department
@@ -89,8 +89,8 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
   company succeeds.
 - **AC-DEP-0035** — An employee's department cannot be changed through `PUT /api/hr/employees/{id}`; the field
   is not accepted there, and a request containing it is rejected rather than silently ignored.
-- **AC-DEP-0036** — `POST /api/hr/employees/{id}/department` changes the department and refuses a stale
-  `RowVersion` with `409`.
+- **AC-DEP-0036** — `POST /api/hr/employees/{id}/change-department` changes the department and refuses a stale
+  `RowVersion` with `409`. **(Route corrected 2026-09-01, architect: this named `/department`; the endpoint is `change-department`, at `DepartmentEndpointRouteBuilderExtensions.cs:160`. A criterion naming a route that does not exist cannot be checked by anybody who greps for it.)**
 - **AC-DEP-0037** — Transferring an employee between branches leaves their department unchanged; changing an
   employee's department leaves their branch unchanged.
 - **AC-DEP-0038** — Terminating an employee leaves their department intact.

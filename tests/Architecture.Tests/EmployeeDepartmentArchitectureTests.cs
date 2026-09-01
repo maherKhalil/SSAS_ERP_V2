@@ -104,6 +104,12 @@ public sealed class EmployeeDepartmentArchitectureTests
   // Two independent locks, and both must hold. The property has no public setter, so no code can assign it;
   // and the ordinary update command has no department parameter, so no REQUEST can express it.
   [Fact]
+  // CITED BY B18 pass 20, body-confirmed: an employee's department cannot be changed through the
+  // ordinary update. The test asserts it BY CONSTRUCTION -- `Employee.DepartmentId` has no public
+  // setter, and neither `UpdateEmployeeProfileCommand` nor `TransferEmployeeCommand` declares a
+  // department property -- which is stronger than a validator rejecting the field, and is why the
+  // criterion's *rejected rather than silently ignored* holds: there is no field to ignore.
+  [Trait("Criterion", "AC-DEP-0035")]
   public void The_department_cannot_be_changed_through_an_ordinary_employee_update()
   {
     var departmentId = typeof(Employee).GetProperty(nameof(Employee.DepartmentId));

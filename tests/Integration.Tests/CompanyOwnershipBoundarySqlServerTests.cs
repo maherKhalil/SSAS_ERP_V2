@@ -259,6 +259,19 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
 
   // ---- A DEACTIVATED COMPANY IS NOT ACCESS EITHER, even with the assignment row intact.
   [Fact]
+  // CITED BY B18 pass 20 for `AC-DEP-0009` (*deactivating the company mid-session refuses the next
+  // DEPARTMENT write*), and the citation is a JOIN OF TWO ASSERTIONS rather than a direct reading.
+  // Stated here because a reader who did not know that would be misled by the trait.
+  //
+  // This test writes `CompanyOwnedProbe`, not `Department`. It shows the interceptor refuses ANY
+  // company-owned write once the company is deactivated, and the probe is exactly the device that
+  // makes the population derived rather than hand-picked. The second half -- that Department IS
+  // company-owned -- is `Department_is_tenant_and_company_owned_but_never_branch_owned`
+  // (`AC-DEP-0051`).
+  //
+  // The two together entail the criterion. Neither alone puts a deactivated company and a
+  // department in the same assertion, and no test does.
+  [Trait("Criterion", "AC-DEP-0009")]
   public async Task Deactivating_the_company_mid_session_refuses_the_next_write()
   {
     await using var fixture = await CompanyFixture.CreateAsync();

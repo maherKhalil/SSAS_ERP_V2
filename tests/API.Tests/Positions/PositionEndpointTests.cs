@@ -267,6 +267,11 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
   // ---- WITH AN EMPLOYEE SCOPE, THE COUNT IS A NUMBER.
   [Fact]
   [Trait("Decision", "DEC-POS-0034")]
+  // ⚠ CITED BY 269: `AC-POS-0066`'s PERMITTED half — *`employeeCount` is a NUMBER for a caller holding
+  // `HR.Employees.View`.* `TS-POS-0070` names both halves and requires them asserted SEPARATELY, which is
+  // what these two tests are. Without this one, `null` everywhere satisfies the criterion's letter while
+  // making the field useless — the same degenerate case `AC-POS-0045`'s converse leg closes.
+  [Trait("Criterion", "AC-POS-0066")]
   public async Task EmployeeCount_is_a_number_for_a_caller_who_can_read_employees()
   {
     host.PositionReads.Detail = ActivePosition();
@@ -291,6 +296,15 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
   // may well have holders.
   [Fact]
   [Trait("Decision", "DEC-POS-0034")]
+  // ⚠ CITED BY 269: `AC-POS-0066`'s UNPERMITTED half, and it asserts both things the criterion distinguishes
+  // — the field is PRESENT (`TryGetProperty`, with the failure message naming the reason: a response whose
+  // SHAPE varies by permission) and its value is NULL rather than `0`.
+  //
+  // ⚠⚠ THE `null`-VERSUS-`0` DISTINCTION IS A DISCLOSURE RULE, NOT A NULLABILITY PREFERENCE. `0` asserts
+  // *this position has no employees* — a statement about data the caller may not see, and FALSE whenever
+  // the position is occupied, which the arrangement here makes concrete by setting the real holder count
+  // to 12 before asserting the caller sees `null`.
+  [Trait("Criterion", "AC-POS-0066")]
   public async Task EmployeeCount_is_null_for_a_caller_who_cannot_read_employees()
   {
     host.PositionReads.Detail = ActivePosition();
@@ -315,6 +329,14 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
   // ---- THE CURRENCY IS ECHOED FROM THE COMPANY, NOT STORED (DEC-POS-0015).
   [Fact]
   [Trait("Decision", "DEC-POS-0035")]
+  // ⚠ CITED BY 269: `AC-POS-0067`'s ECHO clause — *`currencyCode` is echoed from the owning Company through
+  // a module-facing contract.* `TS-POS-0071` maps this scenario to `AC-POS-0067` and `AC-POS-0022` together.
+  //
+  // The criterion's OTHER clause — *and `SSAS.HR.*` references no Platform assembly to obtain it; a build in
+  // which `HR.API` can see `SSAS.Platform.Domain` fails regardless of what it reads* — is a build claim no
+  // HTTP test can reach, and is
+  // `PositionApplicationArchitectureTests.No_hr_assembly_references_a_platform_assembly`.
+  [Trait("Criterion", "AC-POS-0067")]
   public async Task A_salary_grade_read_echoes_the_owning_companys_currency()
   {
     host.SalaryGradeReads.Detail = new SalaryGradeDetail(

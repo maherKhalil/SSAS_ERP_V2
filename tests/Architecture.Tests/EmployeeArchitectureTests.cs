@@ -80,9 +80,16 @@ public sealed class EmployeeArchitectureTests
   {
     var type = typeof(EmployeeBranchAssignment);
 
-    Assert.Null(type.GetProperty("RowVersion"));
-    Assert.Null(type.GetProperty("ModifiedUtc"));
-    Assert.Null(type.GetProperty("ModifiedBy"));
+    // ⚠ A LOOKUP WHOSE MISS IS THE ASSERTED VALUE (258). `GetProperty` returns null for a name that does
+    // not exist AND for a name that is misspelt, so these could not tell "the assignment has no row
+    // version" from "I typed it wrong". The three with a witness are now compile-checked against it.
+    Assert.Null(type.GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion)));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc)));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedBy)));
+
+    // ⚠⚠ `EffectiveToUtc` STAYS A STRING AND THAT IS NOT AN OVERSIGHT: closing an interval is the thing
+    // this model exists to prevent, so no type in the product declares it and NO WITNESS CAN EXIST. The
+    // residual is real — a wrong word here is detected by nothing.
     Assert.Null(type.GetProperty("EffectiveToUtc"));
     Assert.NotNull(type.GetProperty(nameof(EmployeeBranchAssignment.EffectiveFromUtc)));
   }

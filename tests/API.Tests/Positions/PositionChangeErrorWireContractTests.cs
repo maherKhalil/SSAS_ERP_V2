@@ -40,10 +40,20 @@ public sealed class PositionChangeErrorWireContractTests : IClassFixture<Positio
   // grepping test names to learn whether this answers 400 or 422 got the wrong answer from the artefact
   // most likely to be skimmed.
   //
-  // ⚠ CITED BY 269: `AC-POS-0034`, FIRST CLAUSE ONLY — *refused with `position.unchanged`*. The second
-  // clause, *AND NO HISTORY RECORD IS WRITTEN*, is not assertable here: this is a wire-contract test
-  // against a stubbed host, so there is no persisted history to inspect. It needs an integration-layer
-  // partner before the citation is complete, and until that exists this criterion is covered in part.
+  // ⚠ CITED BY 269: `AC-POS-0034`, FIRST CLAUSE — *refused with `position.unchanged`*. The second clause,
+  // *AND NO HISTORY RECORD IS WRITTEN*, is not assertable here: this is a wire-contract test against a
+  // stubbed host, with no persisted history to inspect.
+  //
+  // ⚠⚠ CORRECTION, SAME SWEEP: THIS COMMENT ORIGINALLY SAID THAT PARTNER DID NOT EXIST — *"it needs an
+  // integration-layer partner before the citation is complete, and until that exists this criterion is
+  // covered in part."* THAT WAS FALSE WHEN WRITTEN. `EmployeeBoundarySqlServerTests.P5_A_change_to_the_
+  // current_position_is_refused` asserts the refusal AND that the history count is unchanged, which is the
+  // whole second clause.
+  //
+  // I missed it because I searched the POSITION suite for a criterion about a POSITION change — and the
+  // change is a write to an EMPLOYEE, so it is tested where the employees are. Fifth time in this sweep
+  // that coverage sat under the other party to the relationship, and the first where I had already written
+  // the absence down.
   [Fact]
   [Trait("Criterion", "AC-POS-0034")]
   public async Task Moving_an_employee_to_the_position_they_already_hold_is_refused_as_unchanged()

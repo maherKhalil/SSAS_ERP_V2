@@ -2238,6 +2238,14 @@ public sealed class EmployeeBoundarySqlServerTests
   // incumbents and refuses the next hire. This is the refusal half; P8 proves the incumbent half.
   [Fact]
   [Trait("Decision", "OD-POS-005")]
+  // ⚠ CITED BY 269 FOR TWO CRITERIA. `AC-POS-0030`'s `Active` clause — *an employee created after FP-008
+  // requires a `positionId` … and `Active` status* — and `AC-POS-0025`'s CREATION half: *an `Inactive`
+  // position refuses a new employee, ON CREATION and on position change alike.* P8 carries the change half.
+  //
+  // `Assert.Equal(0, EmployeeCountAsync())` is doing real work: a refusal that had already written the
+  // employee would satisfy the error assertion alone.
+  [Trait("Criterion", "AC-POS-0025")]
+  [Trait("Criterion", "AC-POS-0030")]
   public async Task P1_Creating_an_employee_into_an_inactive_position_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2257,6 +2265,12 @@ public sealed class EmployeeBoundarySqlServerTests
   // creation a probe for positions in companies the caller cannot see.
   [Fact]
   [Trait("Rule", "BRULE-POS-0016")]
+  // ⚠ CITED BY 269: `AC-POS-0030`'s SAME-COMPANY clause. Like the position read next door, the property is
+  // an EQUALITY between two errors rather than a single error code — the foreign-company case answers
+  // exactly what a nonexistent identifier answers, and the comment above says that equality IS the
+  // property. Asserting `PositionNotFound` alone would pass against a refusal the caller could still
+  // distinguish.
+  [Trait("Criterion", "AC-POS-0030")]
   public async Task P2_Creating_an_employee_into_another_companys_position_is_refused_as_absent()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2280,6 +2294,14 @@ public sealed class EmployeeBoundarySqlServerTests
   // expressible — and a profile update leaves the position and its history exactly where they were.
   [Fact]
   [Trait("Decision", "DEC-POS-0010")]
+  // ⚠ CITED BY 269: `AC-POS-0031`'s FIRST clause — *`positionId` is not accepted on the ordinary employee
+  // profile update.* And it asserts the stronger form the comment names: not *does not*, but CANNOT — the
+  // command type has no position member, so the change is INEXPRESSIBLE rather than merely refused.
+  //
+  // ⚠ The criterion's second clause — *sending it is rejected as an UNKNOWN PROPERTY* — is a transport
+  // claim about the strict reader's `fields` allowlist and cannot be reached from the application boundary.
+  // Cited in part; the transport half would live in the employee endpoint tests.
+  [Trait("Criterion", "AC-POS-0031")]
   public async Task P3_An_ordinary_profile_update_cannot_express_a_position_change()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2304,6 +2326,22 @@ public sealed class EmployeeBoundarySqlServerTests
   // ---- P4. A CHANGE MOVES THE COLUMN AND APPENDS EXACTLY ONE ROW (BRULE-POS-0018).
   [Fact]
   [Trait("Requirement", "FR-POS-0211")]
+  // ⚠ CITED BY 269 FOR TWO CRITERIA.
+  //
+  // `AC-POS-0032` — *changing an employee's position updates `PositionId` AND appends EXACTLY ONE record,
+  // in one transaction; NEITHER HAPPENS WITHOUT THE OTHER.* The count moving 1 -> 2 is what makes "exactly
+  // one" a claim: asserting only that a record exists would pass against a handler appending two.
+  //
+  // `AC-POS-0035`'s THIRD clause — *a position change leaves `BranchId` and `DepartmentId` untouched.* The
+  // last four assertions are that, including the DEPARTMENT HISTORY count, which is the sharper of the two:
+  // a change that left the department column alone while appending a spurious department history row would
+  // pass a column check and fail the intent.
+  //
+  // ⚠ The criterion's other two clauses are the converse — *a branch transfer leaves `PositionId`
+  // untouched, a department change leaves it untouched* — and this test cannot reach them: it performs a
+  // POSITION change. They need the transfer and department-change paths, so `AC-POS-0035` is cited in part.
+  [Trait("Criterion", "AC-POS-0032")]
+  [Trait("Criterion", "AC-POS-0035")]
   public async Task P4_A_position_change_appends_exactly_one_history_row()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2335,6 +2373,10 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // A no-op that returned success would append a history row describing no movement at all.
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0034`'s SECOND clause — *and NO HISTORY RECORD IS WRITTEN.* The history count
+  // is still 1 after the refusal, which the wire-contract test in `API.Tests` cannot assert because it runs
+  // against a stubbed host. That test carries the status and code; this carries the persistence.
+  [Trait("Criterion", "AC-POS-0034")]
   public async Task P5_A_change_to_the_current_position_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2356,6 +2398,10 @@ public sealed class EmployeeBoundarySqlServerTests
   // historical employment record without a job is unreadable — and a closed record's history stops moving.
   [Fact]
   [Trait("Rule", "BRULE-POS-0020")]
+  // ⚠ CITED BY 269: `AC-POS-0036` — *terminating an employee leaves their `PositionId` AND their full
+  // assignment history intact.* Both are asserted after termination, and the history count is re-asserted
+  // after the refused change so the record is shown to be stable rather than merely present once.
+  [Trait("Criterion", "AC-POS-0036")]
   public async Task P6_A_terminated_employee_retains_their_position_and_refuses_a_change()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

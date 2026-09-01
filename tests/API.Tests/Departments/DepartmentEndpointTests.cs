@@ -87,6 +87,39 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
     Assert.Equal("request.invalid", await DepartmentApiTestHost.ProblemCodeAsync(response));
   }
 
+  // ---- THE SAME RULE FOR `tenantId`, AND A SEPARATE TEST BECAUSE THE ALLOWLIST IS PER-NAME (265).
+  //
+  // ⚠ `ReadStrictJsonAsync` DOES NOT DERIVE THE ACCEPTED MEMBERS FROM `CreateDepartmentRequest`. It takes an
+  // explicit `fields` DICTIONARY built at the call site -- currently code / name / parentDepartmentId in
+  // `DepartmentEndpointRouteBuilderExtensions` -- and rejects any name absent from it. So `companyId` and
+  // `tenantId` are TWO INDEPENDENT ENTRIES in an allowlist, not two faces of one derived rule: adding
+  // `tenantId` to that dictionary would bind and honour it WHILE `D5`, WHICH WITNESSES `companyId` ONLY,
+  // STAYS GREEN. A shared mechanism argues against a second test only when the subjects cannot diverge.
+  //
+  // The value names a DIFFERENT tenant from the host's own, so what is refused is the cross-tenant
+  // assertion the criterion is about and not merely a malformed field.
+  //
+  // ⚠ UNCITED ON PURPOSE, AND THIS IS NOT AN OVERSIGHT. `AC-DEP-0002` currently says body identifiers are
+  // *IGNORED, NOT HONOURED* and that such a request *produces a department in the caller's own tenant*.
+  // The product does neither — it REFUSES with 400 — so citing 0002 here would attach a criterion to a
+  // test that contradicts its stated behaviour. `AC-DEP-0035`, in the same document, states the opposite
+  // disposition for the same class of undeclared field, and the code implements 0035's rule. The citation
+  // lands on this test and on `D5` once the architect has corrected 0002 and `TS-DEP-0002` (265).
+  [Fact]
+  public async Task D5b_Create_rejects_an_undeclared_tenant_id()
+  {
+    const string body = """
+      {"code":"FIN","name":"Finance","tenantId":"33333333-3333-3333-3333-333333333333"}
+      """;
+
+    var response = await Send(HttpMethod.Post, Route, CreateToken, body);
+
+    // `request.invalid` rather than only the status: a 400 could also be a missing required field, and
+    // `code` and `name` are both present here precisely so that route to 400 is closed.
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await DepartmentApiTestHost.ProblemCodeAsync(response));
+  }
+
   // ---- THE FIRST OF THE TWO UNIQUE-CONSTRAINT CONTEXTS.
   //
   // On create, Persistence.UniqueConstraint means the unique index on NormalizedCode had the last word —

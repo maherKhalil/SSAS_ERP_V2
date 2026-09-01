@@ -70,6 +70,28 @@ public sealed class HrRouteInventoryTests
   // the part worth guarding — a route wired to the wrong constant is an authorization defect no functional
   // test of the happy path would notice.
   [Fact]
+  // ⚠ CITED BY 265: `AC-DEP-0040` -- *each of the four department permissions is required by exactly the
+  // operations listed in `authorization-model.md`, AND BY NO OTHERS*. A SUPERSET for the third time in this
+  // file, on the same grounds as `AC-DEP-0032` below.
+  //
+  // THE *AND BY NO OTHERS* HALF IS THE HARD ONE, AND IT IS CARRIED BY `Assert.Equal` OVER SETS RATHER THAN
+  // BY ANY CLAUSE ABOUT DEPARTMENTS. Set equality fails on an UNLISTED route just as it fails on a missing
+  // one, so no route can quietly acquire a department permission. A per-permission assertion could not do
+  // this: it would have to enumerate the routes that must NOT carry the permission, which is the open set.
+  //
+  // THE PAIRINGS WERE READ AGAINST THE DOCUMENT OPERATION BY OPERATION, not assumed from the names:
+  //   View       -> read one, list, read hierarchy  = the three GETs above
+  //   Create     -> create                          = POST /departments/
+  //   Update     -> rename/change code, move, manager = PUT + /move + /move-to-root + /manager + /manager/remove
+  //   Deactivate -> deactivate AND reactivate       = /activate + /deactivate (one permission, both directions)
+  // and the document's two NEGATIVE rows are here too: change-department and the employee search filter
+  // carry EMPLOYEE permissions, which is `AC-DEP-0042` restated.
+  //
+  // ⚠ THE BOUND, STATED SO IT IS NOT MISTAKEN FOR MORE: `MappedRoutes()` reads the three HR harnesses, so
+  // *no others* means NO OTHER HR ROUTE. A route in another module demanding `HR.Departments.*` is
+  // constructible and would not be seen here. Nothing pushes toward it and no guard is proposed; it is
+  // recorded as the edge of the instrument rather than as a gap.
+  [Trait("Criterion", "AC-DEP-0040")]
   public void The_hr_route_inventory_is_exactly_as_ruled()
   {
     var routes = MappedRoutes()

@@ -3133,6 +3133,33 @@ measurement behind it, not a failed one.
 **Write the disclaimer while the elegance is fresh**, in the same paragraph as the finding, rather than
 after somebody has drawn the conclusion it invites.
 
+## A sentinel must be outside the domain it stands in for
+
+**A script measures things by running a command and defaulting the result when it comes back empty. Ten of
+those defaults use a value that could never be a real reading — a question mark where a count belongs — and
+the unmeasured case is displayed as unmeasured.** ⚠ **Two use a number that is a perfectly ordinary reading
+of the thing being measured, and then branch on it.**
+
+**Zero free memory is a quantity of free memory. Zero running processes is the normal case.** In both, the
+sentinel is indistinguishable from a datum, so *could not measure* silently becomes *measured, and here is
+the answer*.
+
+⚠⚠ **The rule is sharper than "check your fallbacks", and it says where to look: THE DEFECT IS AVAILABLE
+ONLY WHERE THE DOMAIN HAS NO SPARE VALUE.** Where a spare exists — a sentinel string, a negative, a null —
+the author will usually reach for it, and did, ten times in the same file.
+
+### And the direction of the failure decides which instance is worse
+
+**One of the two aborts a healthy run when the measurement fails: loud, wrong, and it sends somebody hunting
+for a cause that was never there.** ⚠⚠ **The other lets a precondition PASS when the measurement fails — the
+guard against a sibling test run admits one, and the comment above it records that proceeding then can
+destroy data in use.**
+
+**A guard that cannot measure and therefore REFUSES is expensive. A guard that cannot measure and therefore
+ADMITS is the failure it was built to prevent.** ⚠ **When auditing this class, sort by direction before
+severity** — and note that the permissive one is the harder to notice precisely because nothing ever
+complains.
+
 # Related Documents
 
 - All accepted ADRs (001-012)

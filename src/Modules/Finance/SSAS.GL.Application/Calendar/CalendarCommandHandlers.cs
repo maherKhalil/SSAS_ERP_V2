@@ -169,7 +169,9 @@ public sealed record SetFiscalPeriodStateCommand(Guid FiscalPeriodId, bool IsOpe
 public sealed class SetFiscalPeriodStateCommandHandler(
   IFiscalCalendarRepository calendar,
   IGlScopeResolver scope,
+  IFiscalPeriodPostingLock postingLock,
   ITenantUnitOfWork unitOfWork,
+  ICurrentTenant currentTenant,
   ICurrentUser currentUser)
 {
   public async Task<Result> HandleAsync(
@@ -207,6 +209,39 @@ public sealed class SetFiscalPeriodStateCommandHandler(
       return authorized;
     }
 
+    // ---- THE EXCLUSIVE SIDE OF THE POSTING FENCE (249). See `IFiscalPeriodPostingLock`.
+    //
+    // Taking it here DRAINS IN-FLIGHT POSTERS: a poster holds the shared resource from before its period
+    // read until its commit, so this waits for every posting already under way and blocks any new one
+    // from starting while the state changes.
+    //
+    // ⚠ AND THE PERIOD WAS READ ABOVE, BEFORE THIS LOCK, WHICH IS DELIBERATE AND IS NOT THE ORDERING
+    // DEFECT THE POSTERS WERE FIXED FOR. The two mechanisms cover DIFFERENT PAIRS:
+    //
+    //   the FENCE serialises POSTER against CLOSER, inside overlapping transactions;
+    //   the ROWVERSION catches a STALE period read across SEPARATE requests -- `command.RowVersion`
+    //   below is the caller's copy, and a concurrent state change loses at save.
+    //
+    // So this handler's own read is protected by the token, and the fence exists here only to drain
+    // posters. NEITHER MECHANISM MAKES THE OTHER REDUNDANT and neither may be removed as tidying.
+    //
+    // The company is not known until the year is read, which is why the lock cannot precede that read:
+    // the resource is company-scoped and `SetFiscalPeriodStateCommand` carries only a period id.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return Result.Failure(GlScopeErrors.InvalidActor);
+    }
+
+    await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    var fenced = await postingLock.AcquireForStateChangeAsync(
+      tenantId, year.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return fenced;
+    }
+
     var transition = command.IsOpen ? period.Reopen() : period.Close();
     if (transition.IsFailure)
     {
@@ -218,6 +253,14 @@ public sealed class SetFiscalPeriodStateCommandHandler(
       period.RowVersion = command.RowVersion;
     }
 
-    return await unitOfWork.SaveChangesAsync(cancellationToken);
+    var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
+    if (saved.IsFailure)
+    {
+      return Result.Failure(saved.Error);
+    }
+
+    await transaction.CommitAsync(cancellationToken);
+
+    return Result.Success();
   }
 }

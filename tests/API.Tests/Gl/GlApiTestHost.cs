@@ -82,6 +82,8 @@ public sealed class GlApiTestHost : IAsyncLifetime
 
   public StubFiscalYearDefinitionLock CalendarLock { get; } = new();
 
+  public StubFiscalPeriodPostingLock PostingLock { get; } = new();
+
   public StubJournalDraftRepository Drafts { get; } = new();
 
   public StubJournalEntryRepository Journals { get; } = new();
@@ -151,6 +153,7 @@ public sealed class GlApiTestHost : IAsyncLifetime
     builder.Services.AddSingleton<IAccountRepository>(Accounts);
     builder.Services.AddSingleton<IFiscalCalendarRepository>(Calendar);
     builder.Services.AddSingleton<IFiscalYearDefinitionLock>(CalendarLock);
+    builder.Services.AddSingleton<IFiscalPeriodPostingLock>(PostingLock);
     builder.Services.AddSingleton<IJournalDraftRepository>(Drafts);
     builder.Services.AddSingleton<IJournalEntryRepository>(Journals);
 
@@ -196,6 +199,7 @@ public sealed class GlApiTestHost : IAsyncLifetime
     Accounts.Reset();
     Calendar.Reset();
     CalendarLock.Reset();
+    PostingLock.Reset();
     Drafts.Reset();
     Journals.Reset();
     UnitOfWork.Failure = null;

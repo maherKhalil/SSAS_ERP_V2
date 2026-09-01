@@ -159,14 +159,24 @@ public sealed class JournalPostingOrderTests
     }
   }
 
-  // ---- THE EXCLUSION'S OWN GROUNDS, ASSERTED. See the header.
+  // ---- THE EXCLUSION'S OWN GROUNDS, ASSERTED — AND THEY CHANGED WHEN 249 LANDED.
   //
-  // `SetFiscalPeriodStateCommandHandler` reads a period and writes without a transaction, and is correct
-  // because the period carries a mapped concurrency token. THIS TEST IS WHAT MAKES THAT EXEMPTION STOP
-  // BEING TRUE IF THE MAPPING GOES AWAY.
+  // BEFORE 249 this handler took no transaction at all and was exempt because the period carries a mapped
+  // concurrency token. It now takes a transaction AND the EXCLUSIVE side of the posting fence, and it is
+  // STILL EXEMPT FROM THE ORDERING ASSERTION — for a reason that has to be stated rather than inherited:
+  //
+  // ⚠⚠ IT READS THE PERIOD BEFORE ITS TRANSACTION, DELIBERATELY. The fence resource is company-scoped and
+  // `SetFiscalPeriodStateCommand` carries only a period id, so the company is not known until the year is
+  // read. The read cannot follow the lock here, and does not need to:
+  //
+  //   the FENCE serialises POSTER against CLOSER, inside overlapping transactions;
+  //   the TOKEN catches a STALE period read across SEPARATE requests.
+  //
+  // DIFFERENT PAIRS. The fence does not make the token redundant and the token never covered posters.
+  // ⚠ NEITHER MAY BE REMOVED AS TIDYING, and this test asserts BOTH so that removing either is a red.
   [Fact]
   [Trait("Decision", "BR-GL-0003")]
-  public void The_period_state_writer_is_serialised_by_a_concurrency_token_instead()
+  public void The_period_state_writer_is_serialised_by_a_token_and_the_exclusive_fence()
   {
     var posters = Posters();
 
@@ -187,9 +197,24 @@ public sealed class JournalPostingOrderTests
 
     Assert.True(
       mapping is not null,
-      "FiscalPeriod.RowVersion is no longer mapped IsRowVersion(): the period-state writer takes no " +
-      "transaction and was exempt ONLY because optimistic concurrency serialised it. That exemption is " +
-      "now false — give the handler a transaction or restore the token.");
+      "FiscalPeriod.RowVersion is no longer mapped IsRowVersion(). The period-state writer relies on the " +
+      "token for stale reads across separate requests, and that half of its exemption is now false.");
+
+    // ---- AND THE OTHER HALF: THE EXCLUSIVE FENCE, WHICH IS WHAT DRAINS IN-FLIGHT POSTERS.
+    var handler = File.ReadAllText(Path.Combine(
+      FindRepositoryRoot(),
+      "src", "Modules", "Finance", "SSAS.GL.Application", "Calendar", "CalendarCommandHandlers.cs"));
+
+    var body = string.Join(
+      Environment.NewLine,
+      handler.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+    Assert.Contains("AcquireForStateChangeAsync", body, StringComparison.Ordinal);
+
+    Assert.True(
+      body.IndexOf("BeginTransactionAsync", StringComparison.Ordinal) <
+      body.LastIndexOf("AcquireForStateChangeAsync", StringComparison.Ordinal),
+      "the exclusive fence is taken outside a transaction, so it is released before the state change commits");
   }
 
   private static int FirstIndexOfAny(string body, params string[] needles)

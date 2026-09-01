@@ -34,7 +34,8 @@ public sealed class PostingWindowAmbiguityTests
   {
     var poster = new GlJournalPoster(
       new UnusedJournals(), new UnusedAccounts(),
-      new AmbiguousCalendar(), new UnusedUnitOfWork());
+      new AmbiguousCalendar(), new UnusedPostingLock(), new UnusedTenant(),
+      new UnusedUnitOfWork());
 
     var window = await poster.InspectPostingWindowAsync(Company, EntryDate);
 
@@ -74,6 +75,25 @@ public sealed class PostingWindowAmbiguityTests
 
   // The other three dependencies THROW rather than returning empties: this query must not touch them, and
   // a stub that quietly answered would hide the day one starts to.
+  // 249. `InspectPostingWindowAsync` neither opens a transaction nor takes the fence -- it is the
+  // read-only question Payroll asks before committing to a run -- so both of these are genuinely unused
+  // here and throwing would be the honest body if either were ever called.
+  private sealed class UnusedPostingLock : SSAS.GL.Application.Calendar.IFiscalPeriodPostingLock
+  {
+    public Task<SSAS.BuildingBlocks.Domain.Result> AcquireForPostingAsync(
+      Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException("the posting window is inspected without taking the fence");
+
+    public Task<SSAS.BuildingBlocks.Domain.Result> AcquireForStateChangeAsync(
+      Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+      throw new NotSupportedException("the posting window is inspected without taking the fence");
+  }
+
+  private sealed class UnusedTenant : SSAS.BuildingBlocks.Application.Abstractions.Tenancy.ICurrentTenant
+  {
+    public Guid? TenantId => throw new NotSupportedException("the posting window needs no tenant");
+  }
+
   private sealed class UnusedJournals : IJournalEntryRepository
   {
     public Task<JournalEntry?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>

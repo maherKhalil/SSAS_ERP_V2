@@ -1058,9 +1058,11 @@ public sealed class PayrollChainSqlServerTests
           accessor, companyAccess, currentTenant, currentTenantUser,
           new WorkingCalendarRepository(accessor), roster);
 
+        // 249: the REAL fence, because this exercises the payroll posting path end to end.
         var ledger = new GlJournalPoster(
           new JournalEntryRepository(accessor), new AccountRepository(accessor),
-          new FiscalCalendarRepository(accessor), unitOfWork);
+          new FiscalCalendarRepository(accessor),
+          new SqlServerFiscalPeriodPostingLock(accessor), currentTenant, unitOfWork);
 
         var runs = new PayrollRunRepository(accessor);
         var periods = new PayrollPeriodRepository(accessor);

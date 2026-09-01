@@ -186,6 +186,8 @@ public static class PayrollApiErrorMapper
       "Payroll.RunAlreadyReversed" => RunStateInvalid,
       "Payroll.RunHasNoLines" => RunStateInvalid,
 
+      // 249. The ledger was busy, not refusing: 409 and retry, never 500.
+      "Payroll.LedgerPostingRetryable" => Conflict,
       "Payroll.LedgerRefusedPosting" => LedgerRefused,
       "Payroll.LedgerRefusedReversal" => LedgerRefused,
 

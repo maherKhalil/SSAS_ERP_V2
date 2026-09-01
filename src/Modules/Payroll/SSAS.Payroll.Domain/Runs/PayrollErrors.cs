@@ -105,6 +105,15 @@ public static class PayrollErrors
     "Payroll.FiscalPeriodNotFound",
     "No fiscal period covers this run's pay date, so it cannot be approved.");
 
+  // ---- 249. THE LEDGER IS BUSY, NOT REFUSING. THE RUN SHOULD BE REPEATED.
+  //
+  // ⚠ THE MESSAGE DOES THE WORK, NOT THE NAME. A retryable refusal whose text reads like a failure has
+  // kept none of its value: an operator told "the ledger refused this posting" stops and investigates,
+  // which is the wrong action for a condition that clears on its own.
+  public static readonly Error LedgerPostingRetryable = new(
+    "Payroll.LedgerPostingRetryable",
+    "The fiscal period's state is being changed right now, so this run was not posted. Try posting it again.");
+
   public static readonly Error LedgerRefusedPosting = new(
     "Payroll.LedgerRefusedPosting",
     "The ledger refused this posting, so the run has not been posted.");

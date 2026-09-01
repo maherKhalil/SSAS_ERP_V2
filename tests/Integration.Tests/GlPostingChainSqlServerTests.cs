@@ -131,7 +131,10 @@ public sealed class GlPostingChainSqlServerTests
       new AccountRepository(accessor),
       new FiscalCalendarRepository(accessor),
       new GrantingScope(),
+      // 249: the REAL fence, so this suite exercises it rather than routing around it.
+      new SqlServerFiscalPeriodPostingLock(accessor),
       new SingleContextUnitOfWork(context),
+      new PostingTenant(),
       new PostingUser());
   }
 
@@ -162,6 +165,15 @@ public sealed class GlPostingChainSqlServerTests
     await context.SaveChangesAsync();
 
     return (draft.Id, debit.Id);
+  }
+
+  // Any stable tenant serves: the fence resource only has to be consistent within a run, and nothing
+  // here posts and closes concurrently. 249.
+  private sealed class PostingTenant : SSAS.BuildingBlocks.Application.Abstractions.Tenancy.ICurrentTenant
+  {
+    private static readonly Guid Fixed = new("11111111-1111-1111-1111-111111111111");
+
+    public Guid? TenantId => Fixed;
   }
 
   private sealed class SingleContext(TenantDbContext context) : ITenantDbContextAccessor

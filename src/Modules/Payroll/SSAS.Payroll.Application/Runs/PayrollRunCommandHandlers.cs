@@ -641,9 +641,29 @@ public sealed class PostPayrollRunCommandHandler(
       // The transition is refused, and the closed-period case still names its period even here — the window
       // inspected at approval is not a reservation, so a period can close in between and this is the honest
       // answer when it does.
-      return outcome.Status == JournalPostingStatus.PeriodClosed
-        ? Result.Failure(PayrollErrors.PeriodClosedForPosting(outcome.PeriodName ?? period.Name))
-        : Result.Failure(PayrollErrors.LedgerRefusedPosting);
+      // ---- EVERY MEMBER MAPPED EXPLICITLY, SO THE LAST ARM MEANS *UNKNOWN MEMBER* AND NOTHING ELSE (249).
+      //
+      // This was a ternary: `Status == PeriodClosed ? closed : refused`. ⚠ THAT MADE THE GENERIC REFUSAL
+      // BOTH A LEGITIMATE MAPPING FOR FOUR MEMBERS AND THE IMPLICIT CATCH-ALL, AND A VALUE THAT IS BOTH
+      // CAN NEVER SIGNAL THAT THE FALLBACK FIRED. A seventh member would have routed here silently.
+      //
+      // The four that still land on the generic refusal now do so BY DECISION, written down. Giving them
+      // their own messages is a real improvement and a SEPARATE change: it alters user-facing text and
+      // does not belong inside a concurrency fix.
+      //
+      // ⚠ `Posted` is unreachable here -- the caller has already tested `!IsPosted` -- and is listed so
+      // that "every member is named" stays literally true and the discard keeps its single meaning.
+      return outcome.Status switch
+      {
+        JournalPostingStatus.PeriodClosed => Result.Failure(PayrollErrors.PeriodClosedForPosting(outcome.PeriodName ?? period.Name)),
+        JournalPostingStatus.PeriodStateChanging => Result.Failure(PayrollErrors.LedgerPostingRetryable),
+        JournalPostingStatus.PeriodNotFound => Result.Failure(PayrollErrors.LedgerRefusedPosting),
+        JournalPostingStatus.AccountUnavailable => Result.Failure(PayrollErrors.LedgerRefusedPosting),
+        JournalPostingStatus.Unbalanced => Result.Failure(PayrollErrors.LedgerRefusedPosting),
+        JournalPostingStatus.ReversalTargetUnavailable => Result.Failure(PayrollErrors.LedgerRefusedPosting),
+        JournalPostingStatus.Posted => Result.Failure(PayrollErrors.LedgerRefusedPosting),
+        _ => Result.Failure(PayrollErrors.LedgerRefusedPosting),
+      };
     }
 
     var posted = run.MarkPosted(outcome.JournalEntryId!.Value, currentUser.UserId);
@@ -755,9 +775,29 @@ public sealed class ReversePayrollRunCommandHandler(
 
     if (!outcome.IsPosted)
     {
-      return outcome.Status == JournalPostingStatus.PeriodClosed
-        ? Result.Failure<Guid>(PayrollErrors.PeriodClosedForPosting(outcome.PeriodName ?? "the reversal period"))
-        : Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal);
+      // ---- EVERY MEMBER MAPPED EXPLICITLY, SO THE LAST ARM MEANS *UNKNOWN MEMBER* AND NOTHING ELSE (249).
+      //
+      // This was a ternary: `Status == PeriodClosed ? closed : refused`. ⚠ THAT MADE THE GENERIC REFUSAL
+      // BOTH A LEGITIMATE MAPPING FOR FOUR MEMBERS AND THE IMPLICIT CATCH-ALL, AND A VALUE THAT IS BOTH
+      // CAN NEVER SIGNAL THAT THE FALLBACK FIRED. A seventh member would have routed here silently.
+      //
+      // The four that still land on the generic refusal now do so BY DECISION, written down. Giving them
+      // their own messages is a real improvement and a SEPARATE change: it alters user-facing text and
+      // does not belong inside a concurrency fix.
+      //
+      // ⚠ `Posted` is unreachable here -- the caller has already tested `!IsPosted` -- and is listed so
+      // that "every member is named" stays literally true and the discard keeps its single meaning.
+      return outcome.Status switch
+      {
+        JournalPostingStatus.PeriodClosed => Result.Failure<Guid>(PayrollErrors.PeriodClosedForPosting(outcome.PeriodName ?? "the reversal period")),
+        JournalPostingStatus.PeriodStateChanging => Result.Failure<Guid>(PayrollErrors.LedgerPostingRetryable),
+        JournalPostingStatus.PeriodNotFound => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
+        JournalPostingStatus.AccountUnavailable => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
+        JournalPostingStatus.Unbalanced => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
+        JournalPostingStatus.ReversalTargetUnavailable => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
+        JournalPostingStatus.Posted => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
+        _ => Result.Failure<Guid>(PayrollErrors.LedgerRefusedReversal),
+      };
     }
 
     // ---- THE RUN KEEPS ITS STATUS AND ITS JOURNAL, AND GAINS ONE FACT (T-112).

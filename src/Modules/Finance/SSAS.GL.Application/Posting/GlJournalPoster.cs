@@ -1,5 +1,7 @@
 using System.Globalization;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
+using SSAS.GL.Application.Calendar;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.GL.Application.Abstractions;
 using SSAS.GL.Contracts.Posting;
 using SSAS.GL.Domain.Accounts;
@@ -48,6 +50,8 @@ public sealed class GlJournalPoster(
   IJournalEntryRepository journals,
   IAccountRepository accounts,
   IFiscalCalendarRepository calendar,
+  IFiscalPeriodPostingLock postingLock,
+  ICurrentTenant currentTenant,
   ITenantUnitOfWork unitOfWork) : IJournalPoster
 {
   public async Task<JournalPostingOutcome> PostAsync(
@@ -61,6 +65,26 @@ public sealed class GlJournalPoster(
     // must still be so when the row is written. Reading outside the transaction and writing inside it leaves
     // exactly the window those rules exist to close.
     await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    // ---- THE POSTING FENCE, TAKEN BEFORE THE PERIOD IS READ (249). See `IFiscalPeriodPostingLock`.
+    //
+    // ⚠ A RE-READ INSIDE THIS TRANSACTION WOULD NARROW THIS WINDOW AND NOT CLOSE IT under READ COMMITTED.
+    // THE READ MUST FOLLOW THE LOCK. Measured 2026-09-01: without the fence a second connection closed
+    // the period while a poster's transaction held its read -- it did not block -- and the journal
+    // committed into a period whose status was `Closed`.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodStateChanging);
+    }
+
+    var fenced = await postingLock.AcquireForPostingAsync(
+      tenantId, request.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodStateChanging, fenced.Error.Message);
+    }
+
 
     var draft = JournalDraft.Create(request.EntryDateUtc, request.Description, request.Reference);
     if (draft.IsFailure)
@@ -165,6 +189,26 @@ public sealed class GlJournalPoster(
     {
       return JournalPostingOutcome.Refused(JournalPostingStatus.ReversalTargetUnavailable);
     }
+
+    // ---- THE POSTING FENCE, TAKEN BEFORE THE PERIOD IS READ (249). See `IFiscalPeriodPostingLock`.
+    //
+    // ⚠ A RE-READ INSIDE THIS TRANSACTION WOULD NARROW THIS WINDOW AND NOT CLOSE IT under READ COMMITTED.
+    // THE READ MUST FOLLOW THE LOCK. Measured 2026-09-01: without the fence a second connection closed
+    // the period while a poster's transaction held its read -- it did not block -- and the journal
+    // committed into a period whose status was `Closed`.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodStateChanging);
+    }
+
+    var fenced = await postingLock.AcquireForPostingAsync(
+      tenantId, original.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodStateChanging, fenced.Error.Message);
+    }
+
 
     var covering = await calendar.GetCoveringAsync(original.CompanyId, request.ReversalDateUtc, cancellationToken);
 

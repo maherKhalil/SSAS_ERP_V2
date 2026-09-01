@@ -126,6 +126,11 @@ public static class GlApiErrorMapper
       "Gl.AccountCodeConflict" => Conflict,
       "Gl.FiscalYearCodeConflict" => Conflict,
       "Gl.FiscalCalendarBusy" => Conflict,
+      // 249. THE POSTING FENCE'S TWO SIDES. Both are RETRYABLE and both are 409 for the same reason
+      // `FiscalCalendarBusy` is: the request was well-formed and lost a race, so the caller repeats it.
+      // ⚠ Without these arms they answered 500 `request.failed`, which tells a caller to stop.
+      "Gl.FiscalPeriodStateChangeInProgress" => Conflict,
+      "Gl.FiscalPeriodPostingInProgress" => Conflict,
       "Gl.FiscalCalendarAmbiguous" => Conflict,
       "Gl.FiscalYearOverlaps" => Conflict,
       "Gl.JournalNumberConflict" => Conflict,

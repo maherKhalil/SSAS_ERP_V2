@@ -84,7 +84,20 @@ public enum JournalPostingStatus
   Unbalanced = 4,
 
   // The journal named for reversal does not exist, or has already been reversed.
-  ReversalTargetUnavailable = 5
+  ReversalTargetUnavailable = 5,
+
+  // ---- 249. THE PERIOD'S STATE IS BEING CHANGED RIGHT NOW. RETRY.
+  //
+  // Named for the SITUATION and not for the mechanism. A poster takes a shared fence before reading the
+  // period and a period-state change takes it exclusively; this is what a caller is told when the fence
+  // could not be taken in time. ⚠ THE NAME MUST NOT MENTION THE FENCE: a consumer needs its own next
+  // action, not `sp_getapplock`, and the day the mechanism changes a mechanism-shaped name becomes a lie
+  // that other modules switch on. An internal name is a rename; a contract member is a migration.
+  //
+  // ⚠⚠ AND IT IS THE ONE MEMBER WHOSE DISTINCTION IS ACTIONABLE. For the others a generic refusal is
+  // merely unhelpful; for this one it is WRONG, because the caller's correct response is to do the same
+  // thing again, and "the ledger refused the posting" tells them to stop.
+  PeriodStateChanging = 6
 }
 
 // ---- THE OUTCOME.

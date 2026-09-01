@@ -303,6 +303,33 @@ public sealed class StubJournalEntryRepository : IJournalEntryRepository
 // ⚠ **`Failure` is the interesting answer and must be asked for by name.** `Gl.FiscalCalendarBusy` is
 // the only transient refusal on this route: the caller is not wrong and nothing about the request needs
 // changing, which is what separates it from `DuplicateCode` and `OverlappingYear`.
+// 249. The posting fence, stubbed on the same principle as the calendar lock above: GRANTS BY DEFAULT,
+// because every existing posting test asks about a rule rather than about contention, and a stub that
+// refused would fail them all for a reason unrelated to what they assert.
+//
+// ⚠ Each side is refusable INDEPENDENTLY, because a poster and a period-state change fail differently and
+// a single flag would make the two indistinguishable in a test that meant to exercise one.
+public sealed class StubFiscalPeriodPostingLock : IFiscalPeriodPostingLock
+{
+  public Error? PostingFailure { get; set; }
+
+  public Error? StateChangeFailure { get; set; }
+
+  public void Reset()
+  {
+    PostingFailure = null;
+    StateChangeFailure = null;
+  }
+
+  public Task<Result> AcquireForPostingAsync(
+    Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(PostingFailure is null ? Result.Success() : Result.Failure(PostingFailure));
+
+  public Task<Result> AcquireForStateChangeAsync(
+    Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(StateChangeFailure is null ? Result.Success() : Result.Failure(StateChangeFailure));
+}
+
 public sealed class StubFiscalYearDefinitionLock : IFiscalYearDefinitionLock
 {
   public Error? Failure { get; set; }

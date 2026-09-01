@@ -36,6 +36,23 @@ public static class CalendarErrors
     "Gl.FiscalPeriodClosed",
     "The fiscal period covering this date is closed and cannot receive postings.");
 
+  // ---- 249. THE TWO SIDES OF THE POSTING FENCE, DISTINCT BECAUSE THE CALLER ACTS DIFFERENTLY ON EACH.
+  //
+  // `CalendarErrors` already distinguishes CLOSED from ABSENT for exactly this reason: a caller who
+  // cannot tell them apart cannot tell "reopen the period" from "define the calendar".
+
+  // Returned to a POSTER that could not take the shared fence: a period-state change is in flight.
+  public static readonly Error PeriodStateChangeInProgress = new(
+    "Gl.FiscalPeriodStateChangeInProgress",
+    "The fiscal period's state is being changed. Retry the posting.");
+
+  // Returned to the PERIOD-STATE WRITER that waited out its bounded timeout: postings are still in
+  // flight. RETRYABLE BY DESIGN — an operator told "posting in progress" can act; one whose request
+  // never returns cannot.
+  public static readonly Error PostingInProgress = new(
+    "Gl.FiscalPeriodPostingInProgress",
+    "A journal posting is in progress for this company. Retry the period state change.");
+
   public static readonly Error PeriodAlreadyClosed = new(
     "Gl.FiscalPeriodAlreadyClosed",
     "The fiscal period is already closed.");

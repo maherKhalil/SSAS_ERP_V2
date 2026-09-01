@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.GL.Application.Calendar;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.SharedKernel;
@@ -34,7 +35,9 @@ public sealed class PostJournalDraftCommandHandler(
   IAccountRepository accounts,
   IFiscalCalendarRepository calendar,
   IGlScopeResolver scope,
+  IFiscalPeriodPostingLock postingLock,
   ITenantUnitOfWork unitOfWork,
+  ICurrentTenant currentTenant,
   ICurrentUser currentUser)
 {
   public async Task<Result<Guid>> HandleAsync(
@@ -64,8 +67,33 @@ public sealed class PostJournalDraftCommandHandler(
     //
     // `BR-GL-0003` and `BR-GL-0004` are read-then-act: a period read as open, or an account read as active,
     // must still be so when the row is written. Reading outside the transaction and writing inside it would
-    // leave exactly the window those rules exist to close, and `TS-GL-0011` asserts the closed-between case.
+    // leave exactly the window those rules exist to close.
+    //
+    // ⚠⚠ AND THE TRANSACTION ALONE NEVER CLOSED IT. This comment used to end "and `TS-GL-0011` asserts
+    // the closed-between case" -- `TS-GL-0011` HAS NO TEST, and under READ COMMITTED an open
+    // transaction does not hold the period read. THE TRANSACTION GIVES ATOMICITY; THE ISOLATION COMES
+    // FROM THE FENCE BELOW.
     await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    // ---- THE POSTING FENCE, TAKEN BEFORE THE PERIOD IS READ (249). See `IFiscalPeriodPostingLock`.
+    //
+    // ⚠ A RE-READ INSIDE THIS TRANSACTION WOULD NARROW THIS WINDOW AND NOT CLOSE IT under READ COMMITTED.
+    // THE READ MUST FOLLOW THE LOCK. Measured 2026-09-01: without this fence a second connection closed
+    // the period while this transaction held its read -- it did not block -- and the journal committed
+    // into a period whose status was `Closed`.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return Result.Failure<Guid>(GlScopeErrors.InvalidActor);
+    }
+
+    var fenced = await postingLock.AcquireForPostingAsync(
+      tenantId, draft.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return Result.Failure<Guid>(fenced.Error);
+    }
+
 
     // `BR-GL-0001` and the two-line minimum — the only checks the draft can make alone.
     var postable = draft.EnsurePostable();
@@ -227,7 +255,9 @@ public sealed class ReverseJournalCommandHandler(
   IJournalEntryRepository journals,
   IFiscalCalendarRepository calendar,
   IGlScopeResolver scope,
+  IFiscalPeriodPostingLock postingLock,
   ITenantUnitOfWork unitOfWork,
+  ICurrentTenant currentTenant,
   ICurrentUser currentUser)
 {
   public async Task<Result<Guid>> HandleAsync(
@@ -254,6 +284,26 @@ public sealed class ReverseJournalCommandHandler(
     }
 
     await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    // ---- THE POSTING FENCE, TAKEN BEFORE THE PERIOD IS READ (249). See `IFiscalPeriodPostingLock`.
+    //
+    // ⚠ A RE-READ INSIDE THIS TRANSACTION WOULD NARROW THIS WINDOW AND NOT CLOSE IT under READ COMMITTED.
+    // THE READ MUST FOLLOW THE LOCK. Measured 2026-09-01: without this fence a second connection closed
+    // the period while this transaction held its read -- it did not block -- and the journal committed
+    // into a period whose status was `Closed`.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return Result.Failure<Guid>(GlScopeErrors.InvalidActor);
+    }
+
+    var fenced = await postingLock.AcquireForPostingAsync(
+      tenantId, original.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return Result.Failure<Guid>(fenced.Error);
+    }
+
 
     // ---- CHECKED HERE, AND MADE UNWINNABLE BY A FILTERED UNIQUE INDEX.
     //

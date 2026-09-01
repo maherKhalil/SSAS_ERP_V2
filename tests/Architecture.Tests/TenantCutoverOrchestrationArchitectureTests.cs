@@ -69,9 +69,13 @@ public sealed class TenantCutoverOrchestrationArchitectureTests
   {
     var source = SourceOf("TenantCutoverOrchestrator.cs");
 
-    Assert.Equal(1, Occurrences(source, "AcquireForSessionAsync"));
-    Assert.DoesNotContain("TryAcquireForSessionAsync", source, StringComparison.Ordinal);
-    Assert.DoesNotContain("TryAcquireForTransactionAsync", source, StringComparison.Ordinal);
+    // ⚠ COMPILE-CHECKED AGAINST THE LOCK THAT DECLARES THEM (252). As bare strings these asserted
+    // nothing the day any of the three was renamed: the orchestrator would not mention the OLD name
+    // either, so the search went quiet and the test stayed green while the rule stopped being enforced.
+    // THE RENAME IS THE RISK HERE, NOT THE TYPO — a rename is routine, tool-driven and silent.
+    Assert.Equal(1, Occurrences(source, nameof(TenantCutoverOperationLock.AcquireForSessionAsync)));
+    Assert.DoesNotContain(nameof(TenantCutoverOperationLock.TryAcquireForSessionAsync), source, StringComparison.Ordinal);
+    Assert.DoesNotContain(nameof(TenantCutoverOperationLock.TryAcquireForTransactionAsync), source, StringComparison.Ordinal);
 
     // Every phase after acquisition runs under it: the copy and flip are entered through their
     // under-ownership paths, never their standalone ones.
@@ -145,7 +149,7 @@ public sealed class TenantCutoverOrchestrationArchitectureTests
     // comments first keeps the guard exactly as strong against a real reversal call.
     var source = CodeOf("TenantCutoverOrchestrator.cs");
 
-    Assert.DoesNotContain("ReleaseFreeze", source, StringComparison.Ordinal);
+    Assert.DoesNotContain(nameof(TenantCutoverOperation.ReleaseFreeze), source, StringComparison.Ordinal);
 
     foreach (var reversal in ReversalVerbs)
     {

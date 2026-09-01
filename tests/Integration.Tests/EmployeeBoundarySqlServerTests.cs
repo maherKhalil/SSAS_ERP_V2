@@ -1659,8 +1659,10 @@ public sealed class EmployeeBoundarySqlServerTests
       var filter = employee!.GetQueryFilter()?.ToString();
       Assert.NotNull(filter);
       Assert.Contains("TenantId", filter!, StringComparison.Ordinal);
-      Assert.DoesNotContain("CompanyId", filter!, StringComparison.Ordinal);
-      Assert.DoesNotContain("BranchId", filter!, StringComparison.Ordinal);
+      // ⚠ COMPILE-CHECKED (252). Renaming either property would have left these searching the filter text
+      // for a name nothing produces any more — green, and asserting nothing about the new one.
+      Assert.DoesNotContain(nameof(Employee.CompanyId), filter!, StringComparison.Ordinal);
+      Assert.DoesNotContain(nameof(Employee.BranchId), filter!, StringComparison.Ordinal);
 
       // The append-only history has no branch column at all, which is why its scope has to be inherited.
       var assignment = context.Model.FindEntityType(typeof(EmployeeBranchAssignment));
@@ -3541,8 +3543,11 @@ public sealed class EmployeeBoundarySqlServerTests
     // can hold it, which is what `DEC-DOC-0016` decided.
     var properties = typeof(EmployeeExportRunListItem).GetProperties().Select(p => p.Name).ToArray();
 
-    Assert.DoesNotContain("ScopeCompanyIds", properties);
-    Assert.DoesNotContain("ScopeBranchIds", properties);
+    // ⚠ THE WITNESS IS THE ENTITY THAT LEGITIMATELY CARRIES THEM (252). `EmployeeExportRun` holds the
+    // materialized scope at execution; the LIST ITEM must not. Compile-checking against it states both
+    // halves of `DEC-DOC-0016` in one place, so a rename cannot silence one half and leave the other.
+    Assert.DoesNotContain(nameof(EmployeeExportRun.ScopeCompanyIds), properties);
+    Assert.DoesNotContain(nameof(EmployeeExportRun.ScopeBranchIds), properties);
     Assert.DoesNotContain(properties, name => name.Contains("Scope", StringComparison.Ordinal));
 
     // The import listing has no snapshot to omit, and equally must not grow one.

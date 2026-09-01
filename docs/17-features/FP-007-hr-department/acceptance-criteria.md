@@ -63,8 +63,31 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
   reads back with the manager still present and shown as inactive. **(Field name corrected 2026-09-01, architect: this read `manager.isTerminated = true`, and the contract exposes `IsActive` — three sites in `DepartmentReadModels.cs` and `DepartmentQueryHandlers.cs`, and no `IsTerminated` member anywhere on the department read models. The CLAIM was right and the FIELD did not exist; the test asserts `IsActive` false and was correct all along.)**
 - **AC-DEP-0022** — Clearing a manager removes the assignment and the department reads back with a null
   manager.
-- **AC-DEP-0023 (OD)** — Under `OD-DEP-003` reading (i): assigning an employee as manager of the department
-  they belong to is refused, and moving an employee into the department they manage is refused.
+- **AC-DEP-0023** — Assigning an employee as manager of the department they belong to is refused, and moving
+  an employee into the department they manage is refused.
+
+  > ⚠⚠⚠ **LIVE AND NOT IMPLEMENTED — RELABELLED 2026-09-01, architect.** This read **(OD)** and *under
+  > `OD-DEP-003` reading (i)*, which made it look conditioned on a branch the owner did not take. **The owner
+  > CLOSED `OD-DEP-003` on 2026-08-20 adopting reading (iii)** (`decisions-approved.md:27`), and **(iii) is
+  > *both* — `README.md:213`: *(i) now, (ii) when a reporting line is introduced*.** So **(iii) subsumes (i)
+  > in full**, (i) is marked *enforceable in FP-007 — **Yes**, fully*, and it is named `BRULE-DEP-0012` at
+  > [`business-rules.md`](business-rules.md). The decision is closed, the provisional marker was wrong, and
+  > the substance was never conditional. **The MISLABEL is the whole reason this criterion read as stale to
+  > two independent readers.**
+  >
+  > ⚠⚠ **AND THE PRODUCT DOES THE OPPOSITE, DELIBERATELY AND IN WRITING.**
+  > `DepartmentManagerCommandHandlers.cs:68-70` states *"department membership is not consulted either, in
+  > either direction… `Employee.DepartmentId == Department.Id` is explicitly NOT a rule"*, and gives
+  > eligibility as same tenant, same company, not terminated — *"that is the whole list."* **That is the exact
+  > negation of `BRULE-DEP-0012`.** This is **not a test gap**; no test should be written for it until the
+  > conflict is resolved. **ESCALATED TO THE OWNER**, because closing it changes product behaviour and
+  > `README.md:219-222` records the cost the owner accepted when adopting (iii): *a department head cannot be
+  > a member of the department they head, which many organizations would find backwards.*
+  >
+  > ⚠ **WHY IT SURVIVED: THE CODE EXPLAINS ITSELF CONFIDENTLY.** A missing check reads as an omission and
+  > invites a second look. A paragraph asserting *that is the whole list* reads as a considered decision and
+  > stops the reader. **The comment is the concealment** — and it is the only concealment shape found in
+  > FP-007 whose author was production code rather than a test name, a seed, a summary row or a scope.
 - **AC-DEP-0024** — A department has at most one manager, enforced by the primary key of
   `tenant.DepartmentManagers` rather than by a handler check.
 

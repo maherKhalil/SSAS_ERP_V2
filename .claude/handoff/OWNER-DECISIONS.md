@@ -1098,3 +1098,44 @@ this very section assigns to engineering, and the two documents contradicted eac
 something, which makes it an absence claim** — and it spends the owner's attention, the one cost in this
 project that appears on no ledger. **Check a new escalation against this list's exclusions before it is
 written, not after.**
+
+---
+
+## 25 — `BR-HR-0007` was adopted and never built, and the code says so in writing
+
+**Raised 2026-09-01 by the architect, out of the `AC-DEP-0023` citation sweep (`265`).**
+
+**THE DECISION YOU MADE.** `OD-DEP-003` asked what `BR-HR-0007` — *an employee cannot directly manage
+themselves* — actually constrains, given that no employee→manager reporting line exists anywhere in the
+repository. Three readings were offered (`README.md:209-213`). **You closed it on 2026-08-20 adopting
+reading (iii)** (`decisions-approved.md:27`). **Reading (iii) is *both*: *(i) now, (ii) when a reporting line
+is introduced*.** Reading (i) is *an employee may not be the manager of the department they themselves belong
+to*, marked **enforceable in FP-007 — Yes, fully**, and named `BRULE-DEP-0012`.
+
+**WHAT THE PRODUCT DOES.** `DepartmentManagerCommandHandlers.cs:68-70`: *"department membership is not
+consulted either, in either direction… `Employee.DepartmentId == Department.Id` is explicitly NOT a rule."*
+Eligibility is same tenant, same company, not terminated — *"that is the whole list."*
+
+⚠ **THAT IS THE EXACT NEGATION OF THE RULE YOU ADOPTED**, written deliberately and at length.
+
+**WHY IT WAS NOT NOTICED.** `AC-DEP-0023` was labelled *(OD)* and *under reading (i)* — the branch NOT
+adopted — so it read as conditioned on a rejected option to two independent readers tonight. The label was
+wrong; the substance was never conditional. **Relabelled in `acceptance-criteria.md` today.**
+
+**WHY THIS IS YOURS AND NOT OURS.** Closing it changes product behaviour, and the cost is one the decision
+record already put in front of you (`README.md:219-222`): ⚠ ***a department head cannot be a member of the
+department they head, which many organizations would find backwards.*** You adopted (iii) with that note in
+view. **But the code was then written the other way by someone who may have had a reason we cannot see, and
+a peer window cannot overrule either the decision or the code.**
+
+**THE THREE ANSWERS.**
+1. **BUILD IT.** `BRULE-DEP-0012` is enforced in both directions, `AC-DEP-0023` becomes citable, `TS-DEP-0039`
+   gets written. Department heads can no longer belong to their own department.
+2. **NARROW THE DECISION TO (ii).** `BR-HR-0007` is entirely deferred, FP-007 enforces nothing for it — which
+   `README.md:221` explicitly names as *a legitimate answer but must be recorded rather than assumed*.
+   `AC-DEP-0023` is then retired the way `AC-DEP-0016` was.
+3. **SOMETHING ELSE** — if the handler comment reflects a ruling of yours that never reached these documents,
+   say so and the documents get corrected instead of the code.
+
+**NOTHING IS BEING BUILT OR DELETED UNTIL YOU ANSWER. NO TEST WILL BE WRITTEN FOR IT** — a test would harden
+whichever side happened to be tested.

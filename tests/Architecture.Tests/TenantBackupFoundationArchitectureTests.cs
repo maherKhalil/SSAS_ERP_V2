@@ -66,8 +66,19 @@ public sealed class TenantBackupFoundationArchitectureTests
 
       // ⚠⚠ AND THIS ONE STAYS A STRING, WHICH IS NOT AN OVERSIGHT. `TenantDatabaseAssignmentId` IS A
       // DATABASE COLUMN NAME, NOT A CLR MEMBER — the property is `Id`, mapped by
-      // `TenantDatabaseAssignmentConfiguration:27`. There is no symbol to `nameof`, so no compile-time
-      // form of this assertion exists and the literal is the honest expression of it.
+      // `TenantDatabaseAssignmentConfiguration:27`. There is no symbol to `nameof`, so NO COMPILE-TIME
+      // FORM OF THIS ASSERTION EXISTS.
+      //
+      // ⚠ THAT IS NOT THE SAME AS *NO WITNESS EXISTS*. The EF model is the witness for database
+      // vocabulary — `FindEntityType(...).FindProperty("Id").GetColumnName()` returns this exact string
+      // from the live model — so a RUNTIME control is available and was judged not worth two lines for a
+      // single site. The same is true of route strings (the endpoint data source is the witness, which is
+      // what 243 used) and JSON fields (the serializer contract). It is a COST JUDGEMENT PER SITE, not an
+      // impossibility.
+      //
+      // ⚠⚠⚠ THE RESIDUAL, SO THE NEXT READER PRICES IT RATHER THAN INHERITING IT: A WRONG WORD IN THIS
+      // LITERAL IS DETECTED BY NOTHING. Not the compiler, not this test, not the gate. If it is ever
+      // misspelt this assertion passes forever while asserting nothing.
       Assert.DoesNotContain("TenantDatabaseAssignmentId", names);
     }
 

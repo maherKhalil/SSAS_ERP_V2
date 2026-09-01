@@ -279,6 +279,8 @@ public sealed class EmployeeReadScopeArchitectureTests
   {
     using var context = ComposedTenantContext();
 
+    var examined = 0;
+
     foreach (var entity in context.Model.GetEntityTypes())
     {
       var filter = entity.GetQueryFilter()?.ToString();
@@ -287,9 +289,25 @@ public sealed class EmployeeReadScopeArchitectureTests
         continue;
       }
 
-      Assert.DoesNotContain("CompanyId", filter, StringComparison.Ordinal);
-      Assert.DoesNotContain("BranchId", filter, StringComparison.Ordinal);
+      examined++;
+
+      // ⚠ COMPILE-CHECKED (252). These were bare strings, and a renamed property would have emptied the
+      // search rather than failed it: the filter text would stop containing the old name and this would
+      // have gone on passing while asserting nothing about the new one.
+      Assert.DoesNotContain(nameof(Employee.CompanyId), filter, StringComparison.Ordinal);
+      Assert.DoesNotContain(nameof(Employee.BranchId), filter, StringComparison.Ordinal);
     }
+
+    // ⚠⚠ ANTI-VACUITY, AND THIS TEST HAD NONE (252). Every assertion above lives inside `if (filter is
+    // null) continue;`. A model that contributed NO query filter at all — a contributor dropped, the model
+    // composed differently, `GetQueryFilter` changing shape — would skip every iteration and this test
+    // would report success having examined nothing. THAT IS THE FAILURE IT EXISTS TO CATCH, INVERTED:
+    // "no filter scopes company or branch" is trivially true when there are no filters.
+    Assert.True(
+      examined >= 1,
+      "no entity in the composed model carries a query filter at all, so this examined nothing and passed " +
+      "vacuously — the guarantee is that no filter scopes company or branch, which is worthless if the " +
+      "model has stopped producing filters");
   }
 
   // ---- 9. AND THE TENANT FILTER IS STILL THERE.

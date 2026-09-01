@@ -3482,6 +3482,28 @@ the expected count — **making the alarm accommodate the thing it exists to cat
 **A commit that was not made is invisible to every instrument in the pipeline, so a refusal has to be
 written down or it did not happen.**
 
+### ⚠⚠⚠ AMENDED WITHIN THE HOUR, BY THE PERSON APPLYING IT: THE TEST IS NECESSARY AND NOT SUFFICIENT
+
+**The narrowing above passed the counterfactual test and was still the wrong action.** An enumeration —
+demanded before the edit, and only because three earlier rulings that day had failed by not asking what
+fraction of a population goes through a mechanism — found that **a test-defined contributor already existed
+in a different test project and had never broken the census**, because that assembly is not in the
+discovering project's output directory. **The blocked file simply belonged in that other project.** It was
+moved; nothing shared was touched; the guard is green and unmodified.
+
+⚠ **BOTH GROUNDS FOR THE CHANGE STILL HOLD.** The population still disagrees with the name; the guard is
+still passing on an absence. **The change is correct and was unnecessary, and the counterfactual test
+cannot tell those apart — it asks whether a change is JUSTIFIED, never whether it is NEEDED.**
+
+**SO THE TEST TAKES A SECOND CLAUSE: BEFORE TOUCHING A SHARED GUARD, ENUMERATE THE ALTERNATIVES THAT DO NOT
+TOUCH IT.** A cheaper move that makes the question moot is not screened out by any test applied to the
+change itself; it has to be looked for.
+
+⚠⚠ **And a correct change made under pressure to unblock is a different act from the same change made
+deliberately, even when the diff is identical** — the pressure selects which correct changes get made and
+which get examined. **A defect found this way belongs on the backlog, where it will be judged on its own
+merits, and not in the path of the work that found it.**
+
 ---
 
 # Revision History

@@ -25,8 +25,18 @@ namespace SSAS.API.Tests.Infrastructure;
 internal static class PlatformRouteInventory
 {
   public static RouteEndpoint[] Under(HostWebApplicationFactory factory, string prefix) =>
+    Under(factory.Services, prefix);
+
+  // ---- THE SAME DERIVATION FROM ANY HOST'S SERVICES (243 step 2).
+  //
+  // `PlatformSupportAuthorityAuthorizationTests` builds its OWN minimal host -- application handlers are
+  // deliberately unregistered there, so a request that reached one would surface as a DI failure rather
+  // than passing. It maps the same surface through `MapPlatformSupportAuthorityEndpoints`, and deriving
+  // its routes from ITS OWN endpoint source is stricter than borrowing another host's: the routes then
+  // come from the very application the requests are sent to.
+  public static RouteEndpoint[] Under(IServiceProvider services, string prefix) =>
   [
-    .. factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
+    .. services.GetRequiredService<EndpointDataSource>().Endpoints
       .OfType<RouteEndpoint>()
       .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith(prefix, StringComparison.Ordinal) ?? false)
   ];

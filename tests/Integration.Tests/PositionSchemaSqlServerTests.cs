@@ -145,11 +145,25 @@ public sealed class PositionSchemaSqlServerTests
   //
   // Amounts are denominated in the owning Company's immutable `BaseCurrencyCode`. A per-row copy would be a
   // second source of truth for a fact the Company already owns.
+  // ⚠ CITED BY 269 ON THE SET, NOT ALONE. This is `AC-POS-0022`'s FIRST clause — *`tenant.SalaryGrades` has
+  // no currency column*. The second — *sending `currencyCode` on a write is rejected* — is carried by
+  // `PositionEndpointTests.Sending_a_currency_code_on_a_salary_grade_write_is_rejected`. A schema test
+  // cannot reach the transport claim and an API test cannot reach the column. Neither is honest alone.
   [Fact]
   [Trait("Decision", "ADR-027")]
+  [Trait("Criterion", "AC-POS-0022")]
   public async Task No_position_table_stores_a_currency()
   {
     await using var fixture = await PositionFixture.CreateAsync();
+
+    // ⚠ THE KNOWN-POSITIVE CONTROL, ADDED WITH THE CITATION (269). `Assert.Equal(0, …)` over a column count
+    // passes identically when the rule holds and when the QUERY CAN SEE NOTHING — a renamed table, a
+    // changed schema, a broken predicate. Proving the same instrument finds a column that must exist is
+    // what separates "no currency column" from "no answer". It is checked on every run, which a plant is
+    // not.
+    Assert.True(
+      await fixture.ScalarAsync(ColumnCount("SalaryGrades", "c.name LIKE N'%Amount%'")) > 0,
+      "the column query found no amount columns on SalaryGrades, so its zeroes below mean nothing");
 
     foreach (var table in new[]
       { "Positions", "JobGrades", "SalaryGrades", "EmployeePositionAssignments" })

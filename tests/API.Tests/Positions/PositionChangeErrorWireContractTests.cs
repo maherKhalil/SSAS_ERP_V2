@@ -33,8 +33,20 @@ public sealed class PositionChangeErrorWireContractTests : IClassFixture<Positio
   //
   // `PositionA` is the position the seeded employee already holds
   // (`EmployeeApiTestStubs.cs:255-263`, `StampInitialAssignment`), so sending it is the whole test.
+  //
+  // ⚠⚠ RENAMED BY 269, AND THE OLD NAME WAS FALSE. It read
+  // `..._is_a_400_request_invalid` while the body asserts `422 position.unchanged` — the name survived the
+  // T-274 correction described below because nothing checks a test's name against its assertions. A reader
+  // grepping test names to learn whether this answers 400 or 422 got the wrong answer from the artefact
+  // most likely to be skimmed.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0034`, FIRST CLAUSE ONLY — *refused with `position.unchanged`*. The second
+  // clause, *AND NO HISTORY RECORD IS WRITTEN*, is not assertable here: this is a wire-contract test
+  // against a stubbed host, so there is no persisted history to inspect. It needs an integration-layer
+  // partner before the citation is complete, and until that exists this criterion is covered in part.
   [Fact]
-  public async Task Moving_an_employee_to_the_position_they_already_hold_is_a_400_request_invalid()
+  [Trait("Criterion", "AC-POS-0034")]
+  public async Task Moving_an_employee_to_the_position_they_already_hold_is_refused_as_unchanged()
   {
     using var request = PositionApiTestHost.Request(
       HttpMethod.Post,

@@ -267,6 +267,53 @@ public sealed class PositionScopeResolverTests
     Assert.Equal(4, access.Calls);
   }
 
+  // ---- AND RE-ASKING IS NOT THE SAME AS HONOURING THE NEW ANSWER (`AC-POS-0009`, 269).
+  //
+  // ⚠ THE TEST ABOVE COUNTS CALLS. `Assert.Equal(4, access.Calls)` proves the authority is CONSULTED four
+  // times and passes, unchanged, against a resolver that asks every time, ignores every reply, and serves a
+  // set captured on the first call. CONSULTING AN AUTHORITY AND OBEYING IT ARE TWO CLAIMS, and only the
+  // first was asserted.
+  //
+  // ⚠⚠ ITS COMMENT MAKES A REAL AND CORRECT ARGUMENT — *three resolutions across three families, because
+  // one shared cache would be invisible to a single-family count* — AND EVERY WORD OF THAT CARE IS SPENT
+  // INSIDE A MEASURE OF THE INSTRUMENT'S OWN ACTIVITY RATHER THAN THE SUBJECT'S BEHAVIOUR. Careful
+  // reasoning inside a wrong frame is more convincing than careless reasoning, which is why this survived.
+  //
+  // THE REVOCATION LEAVES THE SET NON-EMPTY, ON PURPOSE. Setting `Permitted` to `[]` would refuse for the
+  // reason `An_empty_authorized_company_set_is_refused_rather_than_unfiltered` already owns, and this test
+  // would silently become a second copy of it. `[CompanyB]` means the authority still answers with a real
+  // grant that no longer covers the company this caller established.
+  //
+  // ONE FAMILY, DELIBERATELY. The refusal lives in the resolver's shared half and the empty-set Theory
+  // above already spans all three — but this criterion is about the POSITION read, and a three-family
+  // assertion would redden under a job-grade regression while naming a position criterion.
+  //
+  // NO NEW TOKEN: one resolver instance, one established company context, asked twice. That clause is
+  // carried by REUSING `resolver` rather than by any assertion.
+  //
+  // ANTI-VACUITY: the first resolution is asserted to SUCCEED and to carry `[CompanyA]`. Without that leg
+  // a resolver refusing every read passes perfectly while asserting nothing about revocation.
+  [Fact]
+  [Trait("Requirement", "NFR-POS-0303")]
+  [Trait("Criterion", "AC-POS-0009")]
+  public async Task Revoking_company_access_mid_session_refuses_the_next_position_read()
+  {
+    var access = new RecordingCompanyAccess([CompanyA]);
+    var resolver = Resolver(companyAccess: access);
+
+    var before = await resolver.ResolvePositionsAsync(new PositionScopeRequest());
+
+    Assert.True(before.IsSuccess, before.IsFailure ? before.Error.Code : null);
+    Assert.Equal([CompanyA], before.Value.Companies.CompanyIds);
+
+    access.Permitted = [CompanyB];
+
+    var after = await resolver.ResolvePositionsAsync(new PositionScopeRequest());
+
+    Assert.True(after.IsFailure);
+    Assert.Equal(PositionErrors.CompanyScopeDenied, after.Error);
+  }
+
   // ================================================================================================
   // WHAT THE RESOLVER DELIBERATELY DOES NOT CONSULT (DEC-POS-0020)
   // ================================================================================================
@@ -331,13 +378,20 @@ public sealed class PositionScopeResolverTests
   {
     public int Calls { get; private set; }
 
+    // ⚠ SETTABLE, AND ITS ABSENCE WAS THE GAP (`AC-POS-0009`, 269). This stub read an immutable
+    // primary-constructor parameter, so NO TEST IN THIS FILE COULD EXPRESS A REVOCATION — the authority
+    // could not give a different answer the second time it was asked. That is why the mid-session
+    // company×read cell was empty here and in the department resolver: not an oversight in a list of
+    // tests, but a fixture that made the test unwritable.
+    public IReadOnlyList<Guid> Permitted { get; set; } = permitted;
+
     public Task<Result<IReadOnlyList<CompanyAccessSummary>>> GetPermittedCompaniesAsync(
       Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default)
     {
       Calls++;
 
       return Task.FromResult(Result.Success<IReadOnlyList<CompanyAccessSummary>>(
-        permitted.Select(id => new CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
+        Permitted.Select(id => new CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
     }
 
     public Task<Result> AuthorizeCompanyAsync(
@@ -345,7 +399,7 @@ public sealed class PositionScopeResolverTests
     {
       Calls++;
 
-      return Task.FromResult(permitted.Contains(companyId)
+      return Task.FromResult(Permitted.Contains(companyId)
         ? Result.Success()
         : Result.Failure(new Error("Company.Denied", "Denied.")));
     }

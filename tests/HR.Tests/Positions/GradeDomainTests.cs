@@ -348,10 +348,23 @@ public sealed class GradeDomainTests
   // ================================================================================================
   //
   // A `SalaryGrade -> JobGrade` reference would restore the foreign-key cycle that makes
-  // `TenantCutoverCopyPlan.Build` return `CutoverCopyOrderUndecidable`. The composed-model proof lives in
-  // Architecture.Tests; this is the domain half, and it fails the moment somebody adds the convenient
-  // back-pointer.
+  // `TenantCutoverCopyPlan.Build` return `CutoverCopyOrderUndecidable`. This is the DOMAIN half — it
+  // asserts the CLR TYPE carries no back-pointer, and it fails the moment somebody adds the convenient one.
+  //
+  // ⚠ THE SENTENCE HERE USED TO READ "the composed-model proof lives in Architecture.Tests" AND THAT WAS
+  // FALSE ABOUT *WHERE* WHILE TRUE ABOUT *WHETHER* (269). No test anywhere named that foreign key; the
+  // composed model was protected only INCIDENTALLY, because the cycle would have made the copy plan
+  // undecidable and reddened a manifest test that reddens for thirty-five unrelated reasons. A reader
+  // checking that sentence would look in Architecture.Tests, find nothing, and conclude the clause was
+  // uncovered — a false-absence trap delivered by a comment.
+  //
+  // ⚠⚠ SO THE COMMENT NOW NAMES THE MECHANISM AND THE TEST RATHER THAN A FILE: the composed-model half is
+  // `CutoverManifestArchitectureTests.The_grade_reference_runs_one_way_in_the_composed_model`, written for
+  // this criterion. A comment naming a MECHANISM stays true when files move; one naming a FILE decays
+  // silently. Neither citation is honest alone — a class with no property and a model with a configured
+  // key are different claims.
   [Fact]
+  [Trait("Criterion", "AC-POS-0017")]
   public void A_salary_grade_holds_no_reference_to_a_job_grade()
   {
     Assert.Null(typeof(SalaryGrade).GetProperty(nameof(SSAS.HR.Domain.Positions.Position.JobGradeId)));

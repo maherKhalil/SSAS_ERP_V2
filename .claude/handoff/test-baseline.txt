@@ -30,13 +30,13 @@
 # suite|configuration|total
 API|Debug|945
 API|Release|972
-Architecture|Debug|639
+Architecture|Debug|640
 Architecture|Release|628
 Attendance|Debug|87
 Attendance|Release|87
 Finance|Debug|51
 Finance|Release|51
-HR|Debug|329
+HR|Debug|330
 HR|Release|328
 Integration|Debug|862
 Integration|Release|862

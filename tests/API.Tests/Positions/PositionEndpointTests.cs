@@ -323,12 +323,22 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
     Assert.Equal(18000m, root.GetProperty("maximumAmount").GetDecimal());
   }
 
-  // ---- AND IT IS REJECTED ON WRITE (AC-POS-0022).
+  // ---- AND IT IS REJECTED ON WRITE (`AC-POS-0022`, second clause).
   //
   // Sending it is an undeclared field, so the strict reader answers 400 rather than ignoring it and
   // leaving the caller believing they set something.
+  //
+  // ⚠ CITED BY 269 ON THE SET, NOT ALONE. `AC-POS-0022` has two clauses and this test can only reach one:
+  // the FIRST — *`tenant.SalaryGrades` has NO CURRENCY COLUMN* — is a schema claim carried by
+  // `PositionSchemaSqlServerTests.No_position_table_stores_a_currency`. Neither citation is honest alone.
+  //
+  // ⚠⚠ AND THE ERROR CODE IS NOW ASSERTED, NOT ONLY THE STATUS (269). A bare `400` has another plausible
+  // producer here — a missing or malformed required field — so the status alone did not discriminate the
+  // undeclared-property refusal from an ordinary validation failure. Its department counterpart, `D5`,
+  // asserted both from the start.
   [Fact]
   [Trait("Decision", "DEC-POS-0015")]
+  [Trait("Criterion", "AC-POS-0022")]
   public async Task Sending_a_currency_code_on_a_salary_grade_write_is_rejected()
   {
     using var response = await host.Client.SendAsync(PositionApiTestHost.Request(
@@ -338,6 +348,7 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
       """{"code":"S7","name":"Band 7","rankOrder":70,"currencyCode":"USD"}"""));
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await PositionApiTestHost.ProblemCodeAsync(response));
   }
 
   // ================================================================================================

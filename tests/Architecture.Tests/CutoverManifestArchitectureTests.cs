@@ -70,7 +70,12 @@ public sealed class CutoverManifestArchitectureTests
   {
     var composed = CutoverTenantModel.Source.Model;
 
-    // The runtime model contains all twenty — two from Platform, two from FP-006, three from FP-007
+    // ⚠ THE COUNT BELOW SAID "ALL TWENTY" ABOVE A LIST OF THIRTY-FIVE, AND WAS STALE BY FIFTEEN (269).
+    // The LIST is the assertion and the list was right, so nothing was ever wrong — but a reader deriving
+    // the number from the prose got it wrong, which is the same stale-count class as a task brief shipped
+    // tonight with a four-short figure. The count is now stated as what the list actually holds.
+    //
+    // The runtime model contains all THIRTY-FIVE — two from Platform, two from FP-006, three from FP-007
     // Phase 1, four from FP-008 Phase 1, and the two run records from FP-009 Phase 1...
     var derived = composed.GetEntityTypes()
       .Where(entity => !entity.IsOwned())
@@ -474,5 +479,41 @@ public sealed class CutoverManifestArchitectureTests
       CutoverTenantModel.Source.Model.FindEntityType(typeof(SSAS.HR.Domain.Positions.Position))!
         .GetForeignKeys()
         .FirstOrDefault(key => key.PrincipalEntityType.ShortName() == nameof(Department)));
+  }
+
+  // ---- `AC-POS-0017`'s SECOND CLAUSE, IN THE COMPOSED MODEL (269).
+  //
+  // ⚠ THE DOMAIN HALF IS `GradeDomainTests.A_salary_grade_holds_no_reference_to_a_job_grade`, which asserts
+  // the CLR TYPE carries no `JobGradeId`. THAT IS A STATEMENT ABOUT A CLASS AND THIS IS A STATEMENT ABOUT
+  // THE MAPPED MODEL — different claims, because a foreign key can be configured in a `ModelBuilder`
+  // with no navigation and no scalar property on the type at all. Neither citation is honest alone.
+  //
+  // ⚠⚠ WRITTEN BECAUSE THE PROTECTION THAT EXISTED WAS INCIDENTAL. A `SalaryGrade → JobGrade` key would
+  // close a cycle with the existing `JobGrade → SalaryGrade`, make `TenantCutoverCopyPlan.Build` return
+  // `CutoverCopyOrderUndecidable`, and redden `C6_1_C6_2` — which asserts `plan.IsSuccess`. But that test
+  // reddens for any of thirty-five unrelated reasons, so its failure attributes to nothing.
+  // INCIDENTAL PROTECTION IS PROTECTION; IT IS NOT AN ASSERTION OF THE CRITERION.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0002")]
+  [Trait("Criterion", "AC-POS-0017")]
+  public void The_grade_reference_runs_one_way_in_the_composed_model()
+  {
+    var salaryGrade = CutoverTenantModel.Source.Model.FindEntityType(typeof(SalaryGrade));
+    var jobGrade = CutoverTenantModel.Source.Model.FindEntityType(typeof(JobGrade));
+
+    Assert.NotNull(salaryGrade);
+    Assert.NotNull(jobGrade);
+
+    // THE POSITIVE CONTROL, AND IT CARRIES THE WHOLE ATTRIBUTION. `DoesNotContain` over `GetForeignKeys()`
+    // passes identically against a model where the grades are unmapped, where the enumeration came back
+    // empty, or where the predicate matches nothing — so the forward edge is asserted to EXIST first.
+    Assert.Contains(
+      jobGrade!.GetForeignKeys(),
+      key => key.PrincipalEntityType.ClrType == typeof(SalaryGrade));
+
+    // THE CLAIM: the reference runs one way and never back.
+    Assert.DoesNotContain(
+      salaryGrade!.GetForeignKeys(),
+      key => key.PrincipalEntityType.ClrType == typeof(JobGrade));
   }
 }

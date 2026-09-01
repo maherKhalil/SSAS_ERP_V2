@@ -183,6 +183,23 @@ public sealed class CutoverCopyOrderCycleTests
   }
 
   // ---- THE CLAIM. One added foreign key, nothing else changed.
+  //
+  // ⚠⚠ COVERED BY MECHANISM, NOT BY ANY CRITERION'S OWN WORDING — AND DELIBERATELY NOT CITED (269).
+  //
+  // `AC-POS-0055` names *a direct `Position → Employee` foreign key* and `AC-DEP-0034`'s second clause
+  // names *a model in which `Department` holds a direct manager foreign key*. BOTH are covered by the
+  // reduction below and NEITHER is cited, which is the ruling already recorded against `AC-DEP-0034` in
+  // FP-007's `acceptance-criteria.md`. Two identical situations resolved differently would be worse than
+  // either resolution, so this one follows that precedent.
+  //
+  // The reduction is SOUND: `Order()` is a Kahn walk over the foreign-key graph and is type-agnostic, so a
+  // cycle is a cycle whatever the entities are. ⚠ IT IS STILL NOT THE CRITERION: what remains argued
+  // rather than executed is that `Position → Employee` — or `Department`'s manager key — actually PRODUCES
+  // such a cycle. That step is a reading of the model, not a run.
+  //
+  // ⚠⚠⚠ AND A CAVEAT IN A COMMENT WOULD NOT HAVE SAVED IT: a citation reads as a criterion-specific
+  // assertion to everyone who greps for one and never opens the file. A caveat travels with a claim and
+  // does not stop the claim being acted on.
   [Fact]
   [Trait("Decision", "ADR-026")]
   public void A_foreign_key_cycle_makes_the_copy_order_undecidable()

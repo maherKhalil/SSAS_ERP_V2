@@ -356,6 +356,52 @@ public sealed class PositionApplicationSqlServerTests
       $"WHERE [PositionId] = '{positionId}' AND [Status] = N'Active'"));
   }
 
+  // ---- AN INACTIVE POSITION IS STILL READABLE AND STILL LISTED (`AC-POS-0026`, `TS-POS-0030`, 269).
+  //
+  // ⚠ THE LIST HALF IS THE ONE WORTH ASSERTING. A read service that quietly filtered `Inactive` out of the
+  // DEFAULT search would satisfy every other position test — the refusal tests never list, and the search
+  // and paging tests use active rows — while making a deactivated position UNFINDABLE IN THE UI THAT HAS TO
+  // OFFER IT FOR REACTIVATION. So this searches with NO status filter and asserts it comes back.
+  //
+  // ⚠⚠ AND THE MARKING IS ASSERTED, NOT ONLY THE PRESENCE. A list that returned inactive rows
+  // INDISTINGUISHABLY from active ones would satisfy *appears in lists* and still be useless to that UI.
+  //
+  // Built on `DepartmentApplicationSqlServerTests.An_inactive_department_is_still_readable_and_still_listed_
+  // marked_inactive` (`AC-DEP-0030`, item 262) — the same criterion one noun over. The seed, the no-filter
+  // search and the anti-vacuity control are copied rather than reinvented, because the sweep has already
+  // found one case where an assertion propagated between features and its CONTROL did not.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0011")]
+  [Trait("Criterion", "AC-POS-0026")]
+  public async Task An_inactive_position_is_still_readable_and_still_listed_marked_inactive()
+  {
+    await using var fixture = await PositionAppFixture.CreateAsync();
+    var graph = fixture.Graph();
+
+    var active = await fixture.CreatePositionAsync("KEEP", "Stays Active");
+    var positionId = await fixture.CreatePositionAsync("GONE", "Goes Inactive");
+
+    Assert.True((await graph.DeactivatePosition().HandleAsync(new DeactivatePositionCommand(
+      positionId, await fixture.RowVersionAsync("Positions", "PositionId", positionId)))).IsSuccess);
+
+    var read = await graph.GetPosition().HandleAsync(new GetPositionQuery(positionId));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(PositionStatus.Inactive, read.Value.Status);
+
+    // ⚠⚠ NO STATUS FILTER — the default list, which is what a caller gets without asking.
+    var listed = await graph.SearchPositions().HandleAsync(new SearchPositionsQuery());
+
+    Assert.True(listed.IsSuccess, listed.IsFailure ? listed.Error.Code : null);
+
+    var row = Assert.Single(listed.Value.Items, item => item.PositionId == positionId);
+    Assert.Equal(PositionStatus.Inactive, row.Status);
+
+    // ANTI-VACUITY: the active one is still listed too, so this is not a list that collapsed to one row or
+    // to one status — the assertion above would hold trivially over a single-row result.
+    Assert.Contains(listed.Value.Items, item => item.PositionId == active);
+  }
+
   // ---- A POSITION MAY BE REACTIVATED WHILE ITS GRADE IS INACTIVE, AND THAT IS DELIBERATE.
   //
   // Refusing would strand it: re-pointing the grade needs `HR.Positions.Update`, which the holder of

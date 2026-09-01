@@ -3067,6 +3067,39 @@ identifier that resolves to nothing cannot be checked by the next reader — **w
 written or right until somebody renamed the test is a separate question, and the record is broken either
 way.**
 
+## Refusing to work is not automatically rigour
+
+**A long session built one discipline after another, and every one of them rewarded caution: do not cite
+past a near-miss, do not override a floor, do not edit a script while it runs, do not report a count you did
+not measure.** ⚠⚠ **Then a precondition failure was read as global when it was scoped, and both parties stood
+down for two hours on work that was never blocked.**
+
+**Standing down FELT like the disciplined choice.** It has the shape of every correct decision that came
+before it — declining to act on insufficient evidence — **and it was itself an unevidenced decision.**
+
+⚠ **A STOP IS A CLAIM ABOUT THE WORLD AND CARRIES THE SAME BURDEN AS A START.** *Nothing can be done* is a
+statement of fact, checkable in the same way and by the same instruments, and it is the one form of
+inaction that never looks like it needs justifying.
+
+### The disconfirming evidence was published by the party that then contradicted it
+
+**The tool announces the scope of its own decision, in the same line as the number:** *free physical memory
+before Debug: 1954 MB (no floor: Integration is not in scope)*. **That line had been quoted verbatim into a
+committed result file, from a green run, below the floor.**
+
+⚠⚠ **So this was not a missing instrument, a hidden one, or an ambiguous one. It was read, quoted,
+committed — and then contradicted by its own author.** **A fact stops being consulted once it has been
+turned into a conclusion**, and the conclusion is what gets carried forward.
+
+### And a shared premise stops being re-derived
+
+**One party generalised from the case in front of them; the other adopted the generalisation and had no
+reason to re-derive it.** ⚠ **A premise held by two people is checked by neither** — the first has already
+decided, and the second treats the first's having decided as the evidence.
+
+**The remedy is not more caution. It is that a claim which stops work must be stated as a claim, with its
+scope, so that it can be contradicted by the same kind of measurement that produced it.**
+
 # Related Documents
 
 - All accepted ADRs (001-012)

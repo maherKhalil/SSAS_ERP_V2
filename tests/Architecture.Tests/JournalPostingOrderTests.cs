@@ -36,11 +36,41 @@ namespace SSAS.Architecture.Tests;
 // `GlJournalPoster`, the last of which is not a `CommandHandler` at all and would be missed by any filter
 // keyed on that suffix. A FOURTH must be covered by arriving, not by being remembered.
 //
-// `DefineFiscalYearCommandHandler` opens a transaction and reads no period -- it checks code and overlap
-// -- so it is outside this population by construction and is guarded by `FiscalYearDefinitionOrderTests`.
+// `DefineFiscalYearCommandHandler` reads no period -- it checks code and overlap -- so it is outside this
+// population by construction and is guarded by `FiscalYearDefinitionOrderTests`.
+//
+// ---- ⚠⚠⚠ AND THE PREDICATE MUST NOT REQUIRE THE PROPERTY UNDER TEST. THE FIRST VERSION DID.
+//
+// It selected types that OPEN A TRANSACTION and read a period. That excluded, BY CONSTRUCTION, any
+// handler which reads a period and FAILS to open one -- which is precisely the defect this test exists to
+// find. THE POPULATION WAS SELF-SELECTING: the defect made a member invisible to the check.
+//
+// The predicate is now READS A FISCAL PERIOD AND WRITES. Membership is the situation; the transaction is
+// the assertion. That change put a real member in scope that the first version could not see:
+// `SetFiscalPeriodStateCommandHandler`, which reads a period, decides a transition is legal, and saves --
+// WITH NO TRANSACTION AT ALL.
+//
+// ⚠⚠ IT IS CORRECT, BY A DIFFERENT MECHANISM, AND THAT IS WHY IT IS EXCLUDED BY NAME RATHER THAN BY THE
+// PREDICATE. `FiscalPeriod.RowVersion` is mapped `.IsRowVersion().IsConcurrencyToken()`, the repository
+// returns a TRACKED entity, and `TenantUnitOfWork` turns a `DbUpdateConcurrencyException` into
+// `ConcurrencyConflict` which `GlApiErrorMapper` maps to a conflict response. Two concurrent state
+// changes are resolved by optimistic concurrency; the second is refused rather than silently winning.
+//
+// ⚠ AN EXCLUSION BY REASON IS FINE; AN EXCLUSION BY THE PROPERTY UNDER TEST IS NOT -- AND THIS EXCLUSION
+// ASSERTS ITS OWN REASON. If somebody removes `.IsRowVersion()` from the period, the justification
+// collapses and `The_period_state_writer_is_serialised_by_a_concurrency_token_instead` goes red. An
+// exemption whose grounds nothing checks is an exemption that outlives them.
+//
+// ⚠ NOTE WHICH SIDE OF THE RACE IT IS ON: this handler is THE WRITER THAT CLOSES A PERIOD. It is the
+// other half of the contention the posters guard against, so whatever step 2 eventually asserts depends
+// on how this one serialises.
 public sealed class JournalPostingOrderTests
 {
   private const string ApplicationRoot = "src/Modules/Finance/SSAS.GL.Application";
+
+  // The one member excluded by reason rather than by predicate. See the header, and see
+  // The_period_state_writer_is_serialised_by_a_concurrency_token_instead, which asserts the reason.
+  private const string PeriodStateWriter = "SetFiscalPeriodStateCommandHandler";
 
   // The three that exist today. Named as a FLOOR, never as the population: a derivation that silently
   // returned nothing would make every assertion below vacuous, which is the failure this whole class of
@@ -72,8 +102,30 @@ public sealed class JournalPostingOrderTests
       Assert.True(posters.ContainsKey(known), $"{known} is no longer recognised as a journal poster");
     }
 
+    // ---- ⚠ AND THE CONDITIONAL BRANCH BELOW NEEDS ITS OWN FLOOR (B23 at the scale of one `if`).
+    //
+    // BR-GL-0004's ordering is asserted only where `EnsureAccountsCanReceive` is CALLED, because a
+    // reversal reuses the original lines' accounts and has no reason to call it. But a floor that counts
+    // POSTERS does not notice if every poster stopped calling it: the branch would then apply to zero
+    // members and pass green, asserting nothing about BR-GL-0004 at all. Two call it today.
+    var accountCheckers = posters
+      .Where(poster => poster.Key != PeriodStateWriter)
+      .Count(poster => FirstIndexOfAny(
+        poster.Value, "EnsureAccountsCanReceiveAsync", "EnsureAccountsCanReceive") >= 0);
+
+    Assert.True(
+      accountCheckers >= 2,
+      $"only {accountCheckers} poster(s) validate accounts before writing. BR-GL-0004's ordering is " +
+      "asserted conditionally, so if the callers disappear the assertion silently applies to nobody.");
+
     foreach (var (name, body) in posters)
     {
+      if (name == PeriodStateWriter)
+      {
+        // Excluded by REASON, asserted separately below -- never by the predicate.
+        continue;
+      }
+
       var transaction = body.IndexOf("BeginTransactionAsync", StringComparison.Ordinal);
       var period = FirstIndexOfAny(body, "ResolveOpenPeriodFor", "ResolvePeriodAsync");
       var save = body.IndexOf("SaveChangesAsync", StringComparison.Ordinal);
@@ -107,6 +159,39 @@ public sealed class JournalPostingOrderTests
     }
   }
 
+  // ---- THE EXCLUSION'S OWN GROUNDS, ASSERTED. See the header.
+  //
+  // `SetFiscalPeriodStateCommandHandler` reads a period and writes without a transaction, and is correct
+  // because the period carries a mapped concurrency token. THIS TEST IS WHAT MAKES THAT EXEMPTION STOP
+  // BEING TRUE IF THE MAPPING GOES AWAY.
+  [Fact]
+  [Trait("Decision", "BR-GL-0003")]
+  public void The_period_state_writer_is_serialised_by_a_concurrency_token_instead()
+  {
+    var posters = Posters();
+
+    Assert.True(
+      posters.ContainsKey(PeriodStateWriter),
+      $"{PeriodStateWriter} is no longer in the population, so its exemption is describing nothing");
+
+    var configuration = File.ReadAllText(Path.Combine(
+      FindRepositoryRoot(),
+      "src", "Modules", "Finance", "SSAS.GL.Infrastructure", "Persistence", "CalendarConfigurations.cs"));
+
+    var mapping = configuration
+      .Split('\n')
+      .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal))
+      .FirstOrDefault(line =>
+        line.Contains("period => period.RowVersion", StringComparison.Ordinal) &&
+        line.Contains("IsRowVersion()", StringComparison.Ordinal));
+
+    Assert.True(
+      mapping is not null,
+      "FiscalPeriod.RowVersion is no longer mapped IsRowVersion(): the period-state writer takes no " +
+      "transaction and was exempt ONLY because optimistic concurrency serialised it. That exemption is " +
+      "now false — give the handler a transaction or restore the token.");
+  }
+
   private static int FirstIndexOfAny(string body, params string[] needles)
   {
     var found = needles
@@ -131,8 +216,10 @@ public sealed class JournalPostingOrderTests
     {
       foreach (var (name, body) in Classes(File.ReadAllText(path)))
       {
-        if (body.Contains("BeginTransactionAsync", StringComparison.Ordinal) &&
-            FirstIndexOfAny(body, "ResolveOpenPeriodFor", "ResolvePeriodAsync") >= 0)
+        var readsPeriod = FirstIndexOfAny(
+          body, "ResolveOpenPeriodFor", "ResolvePeriodAsync", "GetPeriodAsync") >= 0;
+
+        if (readsPeriod && body.Contains("SaveChangesAsync", StringComparison.Ordinal))
         {
           posters[name] = body;
         }

@@ -3549,6 +3549,34 @@ is one that can quietly stop applying, and only a count of the members that exer
 
 ---
 
+---
+
+## An exemption must assert its own grounds
+
+**Every derived population acquires exemptions — a member the rule genuinely does not reach, or reaches by
+a different mechanism. Recording the reason in a comment is the normal practice and it is not enough: THE
+GROUNDS OUTLIVE THE COMMENT.** The member changes, the mechanism is removed, and the exemption remains,
+now protecting exactly what the guard was built to catch.
+
+**Worked instance, 2026-09-01.** A handler that reads an accounting period and writes it opens no
+transaction — and is correct, because the entity's row version is mapped as a concurrency token, the
+repository read is tracked, the conflict is translated, and the API maps it. **Four links, any one of which
+would have made the exemption false.**
+
+⚠ **The exemption was written as a test, not as a comment.** It asserts two things: that the handler is
+**still in the derived population** — so the exemption describes something real rather than a member that
+has since moved — and that **the concurrency token is still mapped.** Removing the token turns the
+exemption red. Proven by planting exactly that removal.
+
+- **Assert membership, not just the grounds.** An exemption for a member that has left the population is
+  dead code that reads as a considered decision.
+- ⚠⚠ **Assert the grounds MECHANICALLY, not by restating them.** *This is safe because of optimistic
+  concurrency* is a claim; `IsRowVersion()` still being mapped is a fact a test can hold.
+- **This is the general answer to every "this one is different because" comment in a codebase.** The
+  comment states the difference; the test makes the difference falsifiable.
+
+---
+
 # Revision History
 
 | Version | Date | Author | Description |

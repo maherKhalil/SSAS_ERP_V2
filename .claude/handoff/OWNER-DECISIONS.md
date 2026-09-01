@@ -1186,3 +1186,89 @@ report's row counts come from the target or are the copier's own account of its 
 fix is reading the target rather than new plumbing.**
 
 **NOTHING IS BEING BUILT. No `Platform.Infrastructure` change is queued to the coder.**
+
+---
+
+## 26 — ⚠⚠⚠ SUPERSEDED BY THIS AMENDMENT, SAME DAY. READ THIS BEFORE ACTING ON ANYTHING ABOVE.
+
+**The headline of #26 was FALSE and the recommendation attached to it was WRONG. Retracted 2026-09-01 by the
+architect who raised it, on the coder's reading of the code #26 was escalated without.**
+
+**WHAT #26 CLAIMED:** *for thirteen tables including the ledger and the payslips, nothing would tell us if the
+copier dropped rows.* **THAT IS NOT TRUE.**
+
+**WHAT THE CODE ACTUALLY DOES.** `TenantCutoverCopyValidator.ValidateAsync:27-92` opens a reader on the
+**source** and a reader on the **target** with an identical projection and identical primary-key ordering,
+then walks them in lockstep: a row present on one side and not the other is a `Mismatch` naming the primary
+key; **every column of every row is compared by value**; tenant ownership is re-asserted per target row. **And
+it GATES THE COMMIT** — copy and validation share one target transaction and `!validation.IsExact` **rolls
+back**. A table is committed only once proven exact. **The report's row counts come from that two-sided walk,
+not from the copier** — `bulkCopy.RowsCopied` is returned and then discarded, unused.
+
+⚠ **SO THE PER-TABLE COUNT RECONCILIATION #26 RECOMMENDED BUILDING WOULD BE STRICTLY WEAKER THAN WHAT ALREADY
+SHIPS.** Building it would have added redundant plumbing at best.
+
+**WHY THE PLANT PASSED ANYWAY, WHICH IS THE REAL FINDING.** The plant removed the entity from
+`TenantCutoverCopyPlan.Build`. The per-table loop iterates the plan — **so with no plan row the table was
+never copied AND NEVER VALIDATED.** ⚠⚠ **THE VALIDATOR IS NOT WEAK; IT IS NEVER CONSULTED. THE PLAN IS BOTH
+THE WORK LIST AND THE CHECKLIST, so an omission from it is invisible by construction.** The mechanism is
+**manifest omission, not a copy that loses rows** — which moves the question from the copier to the manifest.
+
+**WHAT THIS DOES TO THE THIRTEEN.** Severity down, kind changed. They are **not** silent-loss exposure: any
+real row divergence on them is caught at copy time and rolls the cutover back. What they genuinely lack is
+**exercise of their per-table plan construction** — identity columns, computed columns, type quirks — and a
+wrong plan there fails loudly, with one exception below.
+
+### THE ONE QUESTION STILL WORTH YOUR TIME — and it is much smaller
+
+**`ColumnList` drives BOTH the copy projection and the validation projection.**
+`TenantCutoverCopyPlan.cs:182-185` states this deliberately: *a column the copy skipped cannot be a column the
+validation silently checks, or the reverse.* It is a real safety property against mismatch. ⚠ **AND IT CARRIES
+THE SAME BLIND SPOT ONE LEVEL DOWN: A COLUMN OMITTED FROM THE PROJECTION IS OMITTED FROM VERIFICATION.** If
+`Describe` ever wrongly excluded a column, the copy skips it, the validation never looks at it, **and the
+cutover reports EXACT while the target column holds a default.**
+
+**Table membership is guarded by an exact 35-name list. COLUMN membership per table appears to be guarded by
+nothing.** ⚠ **That last clause is being verified now (`268`) and is not yet established.**
+
+**NOTHING IS QUEUED AND NOTHING IS BEING BUILT.** No decision is needed from you until `268` reports.
+
+**THE PROCESS FAILURE, RECORDED BECAUSE IT IS THE OWNER'S TIME THAT WAS SPENT:** the architect escalated #26
+while the mechanism was explicitly unread, and said so inside #26. **A caveat travels with a claim and does
+not stop the claim being acted on.** The correct move was to hold the escalation until the read returned.
+
+### #26 — RESOLVED TO ONE CONCRETE QUESTION (`268` reported 2026-09-01)
+
+**THE REFRAME HOLDS. TABLE MEMBERSHIP IS GUARDED BY AN EXACT LIST, TWICE OVER** — read by body, not by test
+name. `CutoverManifestArchitectureTests.cs:93-131` asserts an **ordered exact-set** equality between a
+35-name literal list and the entities derived from the composed model; `:134-138` then asserts the **plan**
+equals that derived set. ⚠ **THE TWO CLOSE DIFFERENT HOLES: the first catches the MODEL losing an entity (the
+FP-013 unregistered-contributor case, which really happened), the second catches the PLAN losing one the model
+still has — which is exactly the mechanism of our plant.** Three independent routes agree on 35: the literal
+list, the model census, and `TablesCopied`. **So a whole table cannot silently leave the cutover.**
+
+**COLUMN MEMBERSHIP IS THE OPEN EXPOSURE, AND IT IS NARROWER AND SHARPER THAN #26 ORIGINALLY SAID.**
+
+The only positive column assertion in the entire test tree is
+`TenantCutoverCopyPlanTests.cs:91-110` — `foreach (var required in [14 names]) Assert.Contains(required,
+companies.Columns)`.
+
+⚠⚠ **THAT IS A REQUIRED SUBSET, NOT AN EXACT LIST. It cannot see a missing column that is not on its list, and
+it cannot see an extra column at all. It covers FOURTEEN columns of ONE entity — and it runs against
+`PlatformOnlyModel`, so it touches NO contributed entity.** ⚠⚠⚠ **ZERO OF THE 33 MODULE-OWNED TABLES HAVE ANY
+POSITIVE COLUMN ASSERTION.** The four other column assertions are `DoesNotContain(RowVersion, …)` — the
+opposite direction from this defect — plus one `NotEmpty` floor of one.
+
+**SO THE EXPOSURE, STATED EXACTLY:** if `Describe` ever wrongly excluded a column from any of the 34
+non-`Company` entities, or an unnamed column of `Company`, **the copy skips it, the validation never looks at
+it, and the cutover reports EXACT while the target column holds a default.** Nothing would see it.
+
+**THE DECISION.** Do we add a guard on column membership analogous to the table-level one?
+
+⚠ **AND IT NEED NOT BE 35 HAND-MAINTAINED LISTS.** The table guard's shape works here: **derive the expected
+column set per entity from the composed model, subtract the deliberate exclusions (`RowVersion`, computed
+columns), and assert EXACT equality against `ColumnList`.** One test, all 35 entities, nothing to maintain as
+modules are added, and it fails loudly the day an exclusion rule misfires. **That is a test-tree change, not a
+`Platform.Infrastructure` change — materially smaller and safer than what #26 first proposed.**
+
+**Still nothing queued and nothing built. This is the whole of what #26 should have asked in the first place.**

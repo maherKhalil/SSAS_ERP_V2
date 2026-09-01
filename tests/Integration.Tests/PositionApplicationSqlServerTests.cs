@@ -110,6 +110,12 @@ public sealed class PositionApplicationSqlServerTests
   // ================================================================================================
   [Fact]
   [Trait("Rule", "BRULE-POS-0009")]
+  // ⚠ CITED BY 269: `AC-POS-0015` — *a position may reference a grade in the same company, AND READS BACK
+  // WITH IT.* The read-back half matters: a create that accepted the reference and dropped it would satisfy
+  // the first clause alone. This is also the POSITIVE control for `AC-POS-0011` and `AC-POS-0016` next
+  // door — without a case where a grade reference SUCCEEDS, those refusals are consistent with a handler
+  // that refuses every grade.
+  [Trait("Criterion", "AC-POS-0015")]
   public async Task A_position_may_reference_an_active_grade_in_its_own_company()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -170,6 +176,11 @@ public sealed class PositionApplicationSqlServerTests
 
   [Fact]
   [Trait("Rule", "BRULE-POS-0009")]
+  // ⚠ CITED BY 269: `AC-POS-0016` — *a position may not reference an `Inactive` grade.* Paired with
+  // `Updating_a_position_revalidates_a_grade_that_has_since_been_deactivated`, which is the harder half:
+  // the reference was legal when made and the grade was deactivated afterwards, so a check performed only
+  // at CREATE would pass this criterion's first case and fail its intent.
+  [Trait("Criterion", "AC-POS-0016")]
   public async Task An_inactive_grade_cannot_be_assigned()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -193,6 +204,10 @@ public sealed class PositionApplicationSqlServerTests
   // silently would let the aggregate drift past `BRULE-POS-0009` without any operation having broken it.
   [Fact]
   [Trait("Rule", "BRULE-POS-0009")]
+  // ⚠ CITED BY 269: `AC-POS-0016`'s harder half — the reference was LEGAL WHEN MADE. A validation performed
+  // only at create satisfies the criterion's plain reading and still lets an update carry a now-inactive
+  // grade forward. Paired with `An_inactive_grade_cannot_be_assigned`.
+  [Trait("Criterion", "AC-POS-0016")]
   public async Task Updating_a_position_revalidates_a_grade_that_has_since_been_deactivated()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();

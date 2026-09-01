@@ -28,6 +28,12 @@ public sealed class GradeDomainTests
   // so a ladder ordered by its codes is ordered wrongly the moment it reaches ten grades. Without
   // `RankOrder` this test cannot pass.
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0014` — *`RankOrder` is authoritative: ordering grades by rank produces an
+  // order that a lexical sort of the codes does not, PROVEN WITH G9 AND G10.* The criterion names those
+  // two codes and this uses exactly them. Both halves are asserted, and the first is the control: without
+  // `CompareOrdinal(tenth, ninth) < 0` the test would pass against codes that happen to sort correctly and
+  // would prove nothing about rank being authoritative.
+  [Trait("Criterion", "AC-POS-0014")]
   public void Rank_order_orders_a_ladder_that_the_code_orders_wrongly()
   {
     var ninth = CreateJobGrade("G9", "Grade 9", rankOrder: 90).Value;
@@ -84,6 +90,12 @@ public sealed class GradeDomainTests
   // A caller that could not tell "unpriced" from "invalid" would have to guess, and the guess would be
   // wrong in exactly the case that matters.
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0021`'s CONSTRUCTION clause — *a salary grade may be created with no amounts at
+  // all.* The *reads back with nulls* clause is materialisation, not construction, and is
+  // `PositionSchemaSqlServerTests.An_unpriced_grade_materializes_with_a_null_band_and_a_priced_one_keeps_
+  // four_decimals`. The criterion's own note that nullability is a residual choice rather than a backfill
+  // accommodation is why the absence must be a SUCCESS here and not merely an un-refused state.
+  [Trait("Criterion", "AC-POS-0021")]
   public void A_band_with_no_amounts_is_a_successful_absence_not_a_failure()
   {
     var band = SalaryBand.Create(null, null, null);
@@ -125,6 +137,10 @@ public sealed class GradeDomainTests
   [InlineData(18000, 15000, 12000)]
   [InlineData(12000, 18000, 15000)]
   [InlineData(15000, 12000, 18000)]
+  // ⚠ CITED BY 269: `AC-POS-0019`'s DOMAIN clause. The database half —
+  // `PositionSchemaSqlServerTests.An_out_of_order_salary_band_is_refused_by_the_database` — is the one that
+  // holds against a write bypassing the application, and the criterion names both deliberately.
+  [Trait("Criterion", "AC-POS-0019")]
   public void A_band_out_of_order_is_refused(int minimum, int midpoint, int maximum)
   {
     var band = SalaryBand.Create(minimum, midpoint, maximum);
@@ -148,6 +164,11 @@ public sealed class GradeDomainTests
   [InlineData(-1, 15000, 18000)]
   [InlineData(12000, -1, 18000)]
   [InlineData(12000, 15000, -1)]
+  // ⚠ CITED BY 269: `AC-POS-0020`'s domain half, paired with
+  // `PositionSchemaSqlServerTests.A_negative_salary_band_amount_is_refused_by_the_database`. The boundary
+  // control is `A_zero_amount_is_accepted` below: without it, "negative is refused" is equally satisfied by
+  // a rule refusing everything at or below zero.
+  [Trait("Criterion", "AC-POS-0020")]
   public void A_negative_amount_is_refused(int minimum, int midpoint, int maximum)
   {
     var band = SalaryBand.Create(minimum, midpoint, maximum);

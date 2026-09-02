@@ -95,16 +95,28 @@ public sealed class HrRouteInventoryTests
   // ⚠ ALSO CITED BY 269: `AC-POS-0058`'s HARNESS half — *routes and handlers stand 1:1; the exact route
   // inventory matches.* The exact set equality is what makes it 1:1 in both directions.
   //
-  // ⚠⚠ CITED IN PART, AND THE MISSING HALF IS NAMED AS A SEARCH. The criterion says the inventory matches
-  // in the module harness AND THE HOST COMPOSITION, and *a route reachable in one and not the other fails
-  // this criterion.* `MappedRoutes()` reads the three HR harnesses only. I searched `API.Tests` for a
-  // Host-side HR route inventory — `PlatformRouteInventory.Under(HostWebApplicationFactory, …)` is used by
-  // the Platform, Localization and TenantUser inventories, and I found no HR equivalent.
+  // ⚠⚠ CITED IN PART. The criterion says the inventory matches in the module harness AND THE HOST
+  // COMPOSITION, and *a route reachable in one and not the other fails this criterion.* `MappedRoutes()`
+  // reads the three HR harnesses only, so this test alone is the harness side.
   //
-  // What partially covers it is structural rather than asserted, and is this file's own header: both
-  // harnesses call the PRODUCTION mapping extensions, so a route the Host maps through a different path
-  // would leave the harness set SHORT and fail the exact list — which is the incident that created this
-  // test. That reasoning is an argument, not an assertion, which is why the citation is partial.
+  // ⚠⚠⚠ CORRECTED BY 271. THIS COMMENT SAID I HAD SEARCHED FOR A HOST-SIDE HR ROUTE INVENTORY AND FOUND NO
+  // HR EQUIVALENT, AND THAT THE HOST HALF WAS THEREFORE COVERED ONLY BY AN ARGUMENT. THAT WAS FALSE, AND
+  // FALSE IN THE WAY THAT MATTERS: I searched for a per-module HR INVENTORY FILE, which is a search over
+  // NAMES, and concluded an absence of the MECHANISM.
+  // `ApiContractRowGuardTests.Every_documented_route_row_is_live_or_carries_a_marker` calls
+  // `PlatformRouteInventory.Under(factory, "/api")` — the entire live surface of the real Host `Program`,
+  // HR routes included — and asserts that every unmarked route row in `FP-008-hr-position/api-contracts.md`
+  // EXISTS THERE. That is an executable Host-composition assertion reaching this package's routes.
+  //
+  // ⚠ WHAT IT CLOSES IS ONE DIRECTION, AND THE RESIDUE IS NOW THE HONEST ONE. The row guard runs
+  // DOCUMENTED -> LIVE-HOST: a route ruled and documented here but absent from the Host composition
+  // reddens it. Nothing runs LIVE-HOST -> RULED, so a route the Host maps that this file never ruled is
+  // still seen by neither instrument, and the guard reaches only routes `api-contracts.md` documents
+  // WITHOUT a marker. The citation stays partial — for that residue, not for the absence I recorded.
+  //
+  // The structural argument in this file's header still holds and is still an argument: both harnesses call
+  // the PRODUCTION mapping extensions, so a route the Host maps through a different path would leave the
+  // harness set SHORT and fail the exact list. It is no longer the ONLY thing covering the Host half.
   [Trait("Criterion", "AC-POS-0058")]
   public void The_hr_route_inventory_is_exactly_as_ruled()
   {

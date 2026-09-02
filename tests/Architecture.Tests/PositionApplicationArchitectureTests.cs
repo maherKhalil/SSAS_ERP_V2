@@ -109,8 +109,24 @@ public sealed class PositionApplicationArchitectureTests
   // `GetProperty("RowVersion")` with a BARE STRING and no positive. `Type.GetProperty` returns null for a
   // property that is ABSENT and for one that is MISSPELT, so a rename left it green over a lookup that
   // could not hit. `JournalDomainTests.A_posted_journal_has_no_row_version_and_a_draft_does` fixed exactly
-  // this in item 258 and its comment states the reason; the Position analogue never received the fix.
+  // this in item 258 and its comment states the reason.
   // Both halves are now bound to a compiled symbol, and the POSITIVE is what proves the lookup can hit.
+  //
+  // ⚠⚠⚠ CORRECTED BY 271, AND THE CORRECTION IS THE USEFUL PART. This said *the Position analogue never
+  // received the fix*, which reads as an OVERSIGHT inside a sweep that covered this ground. 258's commit
+  // (`3063cbe`) touches SIX FILES: `AccountDomainTests`, `JournalDomainTests`, `AuthenticationDomainTests`,
+  // `CompanyDomainTests`, `PlatformSupportAuthorityTests`, `TenantLifecycleDomainTests` — all in
+  // `Finance.Tests` and `Platform.Tests`. `Architecture.Tests` AND `HR.Tests` WERE NEVER IN ITS POPULATION.
+  // The analogue was not missed; it was outside the boundary, which is a different defect with a different
+  // fix: 258 bound the sites it enumerated, and nothing has ever enumerated these two suites.
+  //
+  // ⚠ SO THE RESIDUE IS LIVE AND NAMED RATHER THAN IMPLIED. `EmployeePositionAssignmentDomainTests` line
+  // 186 asserts `Assert.Null(typeof(EmployeePositionAssignment).GetProperty("EffectiveToUtc"))` — a
+  // BARE-STRING NEGATIVE with no positive, in this package, carrying the identical defect: it passes when
+  // the property is absent AND when the literal is misspelt. `EmployeeDomainTests` line 519 is the same
+  // assertion on the employee side. Both are outside 269's citation lane and are recorded here rather than
+  // changed, because a sweep that names a defect class and steps over two instances of it in its own
+  // neighbourhood is the finding, not the fix.
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
   [Trait("Criterion", "AC-POS-0037")]
@@ -492,8 +508,27 @@ public sealed class PositionApplicationArchitectureTests
   //
   // `AC-POS-0064` — *no headcount, establishment or vacancy column exists.* The second clause, *any number
   // of employees may hold one position*, is not asserted here: it is a statement about permitted DATA and
-  // needs two employees sharing a position. Searched the employee boundary suite's P-series and the
-  // position application suite for such an arrangement and did not locate one — recorded as a search.
+  // needs two employees sharing a position.
+  //
+  // ⚠⚠⚠ CORRECTED BY 271. THIS SAID I HAD SEARCHED FOR SUCH AN ARRANGEMENT AND NOT LOCATED ONE. THE
+  // ARRANGEMENT IS EVERYWHERE, AND THE SEARCH IS WHY I MISSED IT. `EmployeeFixture.NewEmployee` declares
+  // `Guid? position = null` and resolves `position ?? PositionA`, so EVERY test that creates two employees
+  // without mentioning a position puts both on ONE position. `EmployeeBoundarySqlServerTests` lines 587-588
+  // create `EMP-502` and `EMP-503` and assert BOTH creations succeed; lines 547-548, 354-358 and 2611-2615
+  // do the same. Two employees holding one position, with the success asserted, exists many times over.
+  //
+  // ⚠ I SEARCHED THE P-SERIES — the position-TAGGED tests — AND CALLED IT THE SUITE. The arrangement lives
+  // in the ordinary employee tests, spelled by a DEFAULT PARAMETER NOBODY PASSES, so no line of any test
+  // contains the word `position` at the point where the sharing happens. A search over what tests SAY
+  // cannot see what a default argument DOES; this is the same false absence as `AC-POS-0034`, where the
+  // coverage sat under the other party to the relationship.
+  //
+  // ⚠⚠ WHAT IT IS NOT: an ASSERTION of this criterion. Those tests are about national-id and employee-number
+  // uniqueness; the shared position is arrangement, and a failure there would report a duplicate-number
+  // defect. A headcount constraint added tomorrow WOULD redden line 588 — so the protection is real and
+  // executable, and it attributes to nothing. INCIDENTAL PROTECTION IS PROTECTION; IT IS NOT AN ASSERTION
+  // OF THE CRITERION — the same ruling this sweep made for `AC-POS-0017`. The clause stays uncited, on
+  // accurate grounds this time.
   //
   // ⚠ The comment above is the reason the ban is not simply "Salary": matching on that alone would forbid
   // `SalaryGradeId`, which is the STRUCTURAL POINTER the package requires, and the named exemption list is

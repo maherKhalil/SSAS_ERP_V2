@@ -257,11 +257,24 @@ public sealed class BranchTransferArchitectureTests
   [Fact]
   public void No_hr_dependency_reaches_the_transfer_infrastructure()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). The emitted reading omits a
+    // reference no type is taken from, so the transfer infrastructure could declare an HR dependency and
+    // pass here until the first use — and *the channel is general mechanism, not Employee support* is
+    // exactly the claim a merged-but-unused reference already falsifies. One control covers both
+    // assemblies: identical predicate, identical helper.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase));
+
     foreach (var assembly in new[] { ApplicationAssembly, InfrastructureAssembly }.Distinct())
     {
       Assert.DoesNotContain(
         assembly.GetReferencedAssemblies(),
         reference => reference.Name?.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase) == true);
+
+      Assert.DoesNotContain(
+        DeclaredDependencies.Of(assembly),
+        name => name.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase));
     }
 
     // And nothing in the transfer types names an HR concept.

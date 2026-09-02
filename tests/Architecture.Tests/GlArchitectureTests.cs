@@ -35,6 +35,25 @@ public sealed class GlArchitectureTests
   {
     var assembly = Assembly.Load(assemblyName);
 
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). The emitted reading omits a
+    // reference no type is taken from, so a GL project could declare an HR or Platform dependency and pass
+    // here until the first use. Declared catches the capability at merge time.
+    //
+    // ⚠⚠ TWO CONTROLS, NOT ONE, BECAUSE THE PREDICATE IS A DISJUNCTION. `HR or Platform` is satisfied by
+    // either branch, so a single control proves only that ONE of them can fire and leaves the other
+    // untested — a wrong prefix on the silent branch would make that half of the ban hold over nothing.
+    // Both branches are exercised against the composition root, which legitimately declares both.
+    var host = DeclaredDependencies.Of("SSAS.Host.API");
+
+    Assert.Contains(host, name => name.StartsWith("SSAS.HR", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(assemblyName),
+      name =>
+        name.StartsWith("SSAS.HR", StringComparison.Ordinal) ||
+        name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     var forbidden = assembly.GetReferencedAssemblies()
       .Select(reference => reference.Name ?? string.Empty)
       .Where(name =>
@@ -85,6 +104,26 @@ public sealed class GlArchitectureTests
     // A contract that referenced GL's domain would re-create the coupling `ADR-012` forbids by another
     // route: the consumer would transitively see the ledger's internals. Everything crossing this boundary
     // is a primitive or a type declared in the contract itself.
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). A contract that DECLARED the GL
+    // domain would already re-create the coupling `ADR-012` forbids — the consumer would transitively see
+    // the ledger's internals the moment the reference merged, regardless of whether a type had been used
+    // yet. **For this criterion the declared reading is the sharper of the two**, because "cannot leak" is
+    // a statement about what the assembly can reach, not about what it currently reaches.
+    //
+    // ⚠⚠ THIS IS THE ONE CONVERSION WHOSE ASSERTION IS AN EMPTINESS, SO IT NEEDS A DIFFERENT CONTROL.
+    //
+    // `SSAS.GL.Contracts` is a leaf and legitimately declares nothing, so `Assert.Empty` is the right
+    // claim — and it is ALSO what a broken parse returns. The helper throws on a MISSING project file, but
+    // that does not cover a file it reads and yields nothing from: a changed element name, an attribute it
+    // no longer recognises. **Throwing on absence is not a control for emptiness.**
+    //
+    // So the parse is proven to read a real project first. `SSAS.GL.Domain` sits beside the contracts
+    // project and declares several dependencies; if this comes back empty the parse is blind and the
+    // emptiness below means nothing.
+    Assert.NotEmpty(DeclaredDependencies.Of("SSAS.GL.Domain"));
+
+    Assert.Empty(DeclaredDependencies.Of("SSAS.GL.Contracts"));
+
     var referenced = typeof(SSAS.GL.Contracts.Posting.IJournalPoster).Assembly
       .GetReferencedAssemblies()
       .Select(assembly => assembly.Name)

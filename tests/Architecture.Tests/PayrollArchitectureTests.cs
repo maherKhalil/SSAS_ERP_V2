@@ -77,6 +77,16 @@ public sealed class PayrollArchitectureTests
     // `DEC-PAY-0018` permits the ledger poster to skip a GL permission check partly because the coupling is
     // ONE-DIRECTIONAL: Payroll depends on GL, and GL knows nothing of payroll. If GL ever referenced
     // Payroll, that argument would silently stop holding while the decision still read as ratified.
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). `GetReferencedAssemblies()` reads
+    // emitted metadata and the compiler omits a reference no type is taken from, so GL could declare a
+    // Payroll reference and pass here until the first use — by which point `DEC-PAY-0018`'s one-directional
+    // argument has already stopped holding. Declared catches it at merge time; emitted catches consumption
+    // including through a transitive path no `.csproj` of ours names.
+    // The control proves the predicate fires where a Payroll reference legitimately exists.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Payroll", StringComparison.Ordinal));
+
     var referenced = Assembly.Load(assemblyName)
       .GetReferencedAssemblies()
       .Select(reference => reference.Name)
@@ -84,12 +94,22 @@ public sealed class PayrollArchitectureTests
       .ToArray();
 
     Assert.Empty(referenced);
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(assemblyName),
+      name => name.StartsWith("SSAS.Payroll", StringComparison.Ordinal));
   }
 
   [Fact]
   [Trait("Decision", "ADR-012")]
   public void The_payroll_api_layer_references_no_platform_assembly()
   {
+    // Declared and emitted, for the reason stated above: an unused `ProjectReference` is invisible to the
+    // emitted reading. The control proves the predicate fires where Platform is legitimately referenced.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     var referenced = Assembly.Load("SSAS.Payroll.API")
       .GetReferencedAssemblies()
       .Select(reference => reference.Name)
@@ -97,6 +117,10 @@ public sealed class PayrollArchitectureTests
       .ToArray();
 
     Assert.Empty(referenced);
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of("SSAS.Payroll.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
   }
 
   // ================================================================================================

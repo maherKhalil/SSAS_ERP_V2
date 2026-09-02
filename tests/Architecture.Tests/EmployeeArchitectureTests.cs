@@ -383,19 +383,55 @@ public sealed class EmployeeArchitectureTests
   // ================================================================================================
 
   // ---- HR DOMAIN AND APPLICATION STAY FREE OF PERSISTENCE, and Platform never depends on HR.
+  //
+  // ⚠⚠ THIS ONE METHOD CARRIES THREE DISTINCT CLAIMS OVER TWO POPULATIONS, AND THAT IS RECORDED RATHER
+  // THAN SILENTLY ACCEPTED (272). The bans are: EF Core (a PACKAGE reference) and `SSAS.Platform` (a
+  // PROJECT reference) over the two HR assemblies, then `SSAS.HR` over three PLATFORM assemblies. Three
+  // predicates, two element types, two loops, one test name.
+  //
+  // A failure therefore reports "HR layers are not clean" for any of three unrelated regressions, and the
+  // message does not say which. **Splitting it was considered and ruled out inside this sweep**: a split
+  // changes what a failure reports, changes test identity and names, and moves the suite count — none of
+  // which this item is about. It carries no `[Trait("Criterion", …)]`, so a future split would be a plain
+  // refactor rather than a decision about which half inherits a citation.
+  //
+  // ---- DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272).
+  //
+  // `GetReferencedAssemblies()` reads emitted metadata and the compiler omits a reference no type is taken
+  // from, so any of these three could be declared in a `.csproj` and pass until the first use. Declared
+  // catches the capability at merge time; emitted catches consumption, including through a transitive path
+  // no `.csproj` of ours names.
+  //
+  // ⚠ THREE PREDICATES, THREE CONTROLS — one exercise each, because a control proves a PREDICATE can fire
+  // and these three share nothing. A single control over one of them would leave the other two bans
+  // holding over a parse that might recognise neither.
   [Fact]
   public void Hr_layers_stay_clean_and_platform_never_depends_on_hr()
   {
+    var host = DeclaredDependencies.Of("SSAS.Host.API");
+
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.HR", StringComparison.Ordinal));
+
     foreach (var assembly in new[] { HrDomainAssembly, typeof(IEmployeeRepository).Assembly })
     {
+      var declared = DeclaredDependencies.Of(assembly);
+
       Assert.DoesNotContain(
         assembly.GetReferencedAssemblies(),
         reference => reference.Name?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true);
+      Assert.DoesNotContain(
+        declared, name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
 
       // And never on Platform: HR reaches the tenant plane only through the shared contract set.
       Assert.DoesNotContain(
         assembly.GetReferencedAssemblies(),
         reference => reference.Name?.StartsWith("SSAS.Platform", StringComparison.Ordinal) == true);
+      Assert.DoesNotContain(
+        declared, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
     }
 
     // Platform, in both directions.
@@ -409,6 +445,13 @@ public sealed class EmployeeArchitectureTests
       Assert.DoesNotContain(
         platform.GetReferencedAssemblies(),
         reference => reference.Name?.StartsWith("SSAS.HR", StringComparison.Ordinal) == true);
+
+      // The third claim, and the one a merged-but-unused reference falsifies first: Platform depending on
+      // HR inverts the layering the whole module boundary rests on, and the `.csproj` edit is where that
+      // inversion actually happens.
+      Assert.DoesNotContain(
+        DeclaredDependencies.Of(platform),
+        name => name.StartsWith("SSAS.HR", StringComparison.Ordinal));
     }
   }
 

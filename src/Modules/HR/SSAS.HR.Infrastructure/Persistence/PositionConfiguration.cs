@@ -26,6 +26,7 @@ namespace SSAS.HR.Infrastructure.Persistence;
 //                  department; a copy here would be a second source of truth for the same fact.
 //
 // Architecture guards assert all three against the COMPOSED MODEL, not against these files, so a shadow
+// property or a future convention cannot add one silently.
 //
 // ---- ASSERTED SINCE 2026-09-01, NOT ONLY REASONED (244).
 //
@@ -42,7 +43,12 @@ namespace SSAS.HR.Infrastructure.Persistence;
 // AND THE BOUND, WHICH IS THE HALF A CITATION USUALLY LOSES: WHAT IS TESTED IS THAT THE PLANNER
 // REFUSES A CYCLE. That THIS table's shape would produce one is still read from the model rather
 // than executed. The mechanism is proven; applying it to this table is an argument.
-// property or a future convention cannot add one silently.
+//
+// ⚠ HEADER REPAIRED BY 274. The `244` block above was inserted INTO THE MIDDLE OF A SENTENCE: the line
+// ending *"so a shadow"* was followed by seventeen lines, and its tail — *"property or a future convention
+// cannot add one silently"* — sat orphaned below them, reading as a fragment of the cycle argument it had
+// nothing to do with. Nothing checks that a comment is a sentence, so it survived every later reader,
+// including the sweep that audited this exact claim and found it false for `BranchId` until `d0227fc`.
 public sealed class PositionConfiguration : IEntityTypeConfiguration<Position>
 {
   public void Configure(EntityTypeBuilder<Position> builder)

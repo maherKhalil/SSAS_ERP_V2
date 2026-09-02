@@ -20,7 +20,7 @@ milestone: Milestone 1
 - **No route, body, or header accepts a writable `BranchId`** except the transfer route's destination, which is a business argument authorized server-side (`SEC-EMP-0203`, `SEC-EMP-0212`).
 - `CompanyId` is accepted only as the **company context selection** described below, never as a writable ownership field on an entity.
 - `Status` is never accepted as a writable field on create or update; lifecycle changes go through their own routes.
-- Requests use strict JSON binding; unknown fields are rejected with `400 request.invalid`.
+- Requests use strict JSON binding: an unknown property is refused, not silently dropped. The discriminating observation is that removing the unknown property makes the *same* request succeed — `400 request.invalid` on its own does not identify the rule, because a malformed body and a wrong content type return it too.
 - Reads are bounded; search uses page-based pagination with documented positive limits.
 - Every mutating command carries the Platform-standard expected rowversion (see **Rowversion transport**).
 - No physical `DELETE` route exists. No colon-style action route exists.

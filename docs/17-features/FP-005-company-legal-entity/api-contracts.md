@@ -18,7 +18,7 @@ milestone: Milestone 1
 - Every route requires authentication, a trusted current tenant, and the required `Platform.Companies.*` permission.
 - No route, body, query, or header accepts a writable `TenantId`; the owning tenant is derived from the trusted current tenant context.
 - Status is never accepted as a writable field on create or update; a company is created `Inactive` and made `Active` only through the activate route.
-- Requests use strict JSON binding; unknown fields are rejected with `400 request.invalid`.
+- Requests use strict JSON binding: an unknown property is refused, not silently dropped. The discriminating observation is that removing the unknown property makes the *same* request succeed — `400 request.invalid` on its own does not identify the rule, because a malformed body and a wrong content type return it too.
 - Reads are bounded; the list uses page-based pagination with documented positive limits.
 - Every mutating command carries the Platform-standard expected rowversion (see **Rowversion transport**).
 - No physical `DELETE` route exists. No colon-style action route exists.

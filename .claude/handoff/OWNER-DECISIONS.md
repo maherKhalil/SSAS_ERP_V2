@@ -1272,3 +1272,56 @@ modules are added, and it fails loudly the day an exclusion rule misfires. **Tha
 `Platform.Infrastructure` change — materially smaller and safer than what #26 first proposed.**
 
 **Still nothing queued and nothing built. This is the whole of what #26 should have asked in the first place.**
+
+### #27 — `requireJson`: A CLAUSE THAT HAS NEVER EXECUTED. ENABLE IT, OR DELETE IT AS DEAD. (raised 2026-09-02, from `279`)
+
+**WHAT IT IS.** `AuthenticationTransportServices.cs:21` guards the authentication transport:
+
+```
+if (!IsHttps || (requireJson && !HasJsonContentType())) return false;
+```
+
+⚠⚠ **`requireJson` IS `false` AT ALL SEVEN PRODUCTION CALL SITES. THE CLAUSE CAN NEVER FIRE.** And the only
+other implementation of the interface is a test stub — `PlatformSupportAuthenticationLogoutPipelineTests.cs:176`
+— which **returns `true` unconditionally and ignores the parameter entirely**, so nothing exercises the real
+check either. ⚠ **Both halves are dead independently. Either alone would have been survivable; together they
+mean the clause has never run and no test could have noticed.**
+
+### ⚠⚠⚠ READ THIS BEFORE THE OPTIONS: IT IS REDUNDANT, NOT A SECURITY GAP
+
+**The first version of this finding said content type was unenforced on the authentication routes. THAT WAS
+FALSE AND IS RETRACTED.** It is enforced, explicitly, one line above each reader call —
+`AuthenticationEndpointRouteBuilderExtensions.cs:45` (login) and `:80` (select-tenant), and
+`PlatformSupportAuthenticationEndpointRouteBuilderExtensions.cs:71` (support login). The Origin/Referer
+allowlist in the same transport method runs **unconditionally** and rejects cross-origin posts regardless.
+
+**The error's mechanism is worth your attention more than the error: the search was scoped to two directories
+and a product-wide absence was concluded from it.** A restricted search is safe for *I found X* and silently
+fatal for *there is no X*. Repo-wide there are six sites, three of them the very routes reported as having none.
+
+**So nothing is open. This is dead code wearing a security costume — which is its own hazard: the next reader
+who finds it will believe they are closing a hole, and will wire it up.**
+
+### THE DECISION
+
+**(a) ENABLE IT** — pass `true` at the seven call sites. ⚠ **This is not a no-op.** The enforcement already
+happens at each endpoint, which returns a Problem 400; the transport gate instead returns `false` and takes a
+different path. **Enabling changes the response shape for a non-JSON request on the live authentication
+surface.** Defence in depth, at the cost of a behaviour change on the login path.
+
+**(b) DELETE THE PARAMETER** — remove it and the clause. Nothing is lost, because every route it would cover
+already refuses non-JSON explicitly. Removes the trap.
+
+**MY RECOMMENDATION IS (b).** A parameter that is `false` everywhere, in a method whose other clause is
+unconditional, reads as an unfinished safety feature and will eventually be "finished" by someone who has not
+established that the protection already exists elsewhere. **The redundancy is not worth the misdirection.**
+
+### ⚠ NOT OPTIONAL UNDER EITHER BRANCH
+
+**The stub at `PlatformSupportAuthenticationLogoutPipelineTests.cs:176` gets fixed regardless.** A test double
+that accepts a parameter, ignores it, and returns a constant is the reason none of this was visible. ⚠ **Under
+(a) it would let the newly-enabled clause pass tests without ever being exercised; under (b) it is a live
+example of the pattern to remove.** **It is the instrument defect, and it outlives whichever branch you pick.**
+
+**Nothing is queued and nothing is being built. The coder is under a standing prohibition not to touch
+`requireJson` until you rule.**

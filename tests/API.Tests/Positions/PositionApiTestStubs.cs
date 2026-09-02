@@ -20,6 +20,41 @@ namespace SSAS.API.Tests.Positions;
 // test assert that the scope the route obtained is the scope the read received, which is the property the
 // whole read-scope design exists to guarantee.
 
+// ==================================================================================================
+// ⚠ THE THREE READ STUBS MATCH ON ID, AND THAT IS A TRADE RATHER THAN AN OVERSIGHT (274)
+// ==================================================================================================
+//
+// `GetAsync` answers `NotFound` unless `Detail`'s id equals the id asked for, and `Reset` leaves `Detail`
+// null. **REFUSAL IS THE DEFAULT AND SUCCESS IS OPT-IN.** Both halves of that have consequences, and
+// neither is written anywhere else, so a reader finding only the cost will remove the benefit with it.
+//
+// ---- WHAT IT BUYS: EVERY 200 IN THIS SUITE PROVES THE ROUTE PASSED THE RIGHT ID.
+//
+// A route that bound its path segment correctly and then handed a DIFFERENT id to the query would 404
+// here. That is route→handler→read propagation, asserted as a side effect of every successful read test,
+// and it is not asserted anywhere else in the API suite for any family.
+//
+// ---- WHAT IT COSTS: THIS HARNESS CANNOT EXPRESS A SUCCESSFUL CREATE. AT ALL.
+//
+// Every write route reads back through the scoped path. Update, activate, deactivate and `change-position`
+// read back by the ROUTE's id, which a test knows in advance and can seed — those succeed fine. **The three
+// CREATE routes read back by `created.Value`, an id the aggregate mints**, which no test can predict and
+// this stub can therefore never match. A valid create reaches `AddAsync`, writes, and then answers 500.
+//
+// So `Results.Created`, the `Location` header and the created representation are unasserted for positions,
+// job grades and salary grades. ⚠ **MEASURED: that blocks ZERO acceptance criteria** — the criteria naming
+// creation are domain and schema claims carried elsewhere, and the API-layer criteria are two refusals and
+// two reads. **The hole is real and no criterion stands on it, which is why this is annotated and not fixed.**
+//
+// ---- ⚠⚠ DO NOT "FIX" IT BY COPYING `StubDepartmentReads`. IT MAKES THE OPPOSITE TRADE.
+//
+// That stub ignores its `departmentId` entirely and defaults `Detail` to a sample, so success is free and
+// creates work — and nothing in that suite can tell whether the route passed the right id. **Copying it
+// closes this hole and silently opens that one.** The mechanism worth borrowing is *let a test express a
+// success*; the id-matching is this file's own strength and should survive any change.
+//
+// The form that keeps both is id-matching by default with an explicit opt-in for the create case. It is
+// not built because nothing yet needs it.
 public sealed class StubPositionReads : IPositionReadService
 {
   public PositionDetail? Detail { get; set; }

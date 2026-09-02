@@ -17,6 +17,44 @@ namespace SSAS.API.Tests.Departments;
 //
 // Each stub is CONTROLLABLE rather than fixed, because these tests are about which answer reaches the
 // caller: a refusal has to be producible on demand so the status code and problem code can be asserted.
+// ==================================================================================================
+// ⚠ THIS STUB IGNORES THE ID IT IS GIVEN, AND THAT IS A TRADE RATHER THAN THE DEFAULT (274)
+// ==================================================================================================
+//
+// `GetAsync`, `GetManagerEmployeeIdAsync` and the children read all take a `departmentId` and **none of
+// them uses it**. `Reset` seeds `Detail` with a sample, so SUCCESS IS THE DEFAULT and a refusal is opt-in
+// through `DetailError`. This is recorded because the note belongs at the site a reader arrives at, not
+// only at the stub that made the opposite choice.
+//
+// ---- WHAT IT BUYS: THIS SUITE CAN EXPRESS A SUCCESSFUL CREATE.
+//
+// Every write route reads back through the scoped path, and a create reads back by an id the aggregate
+// MINTS — unknowable to a test. Because this stub answers whatever it is asked, that read-back succeeds
+// and `DepartmentEndpointTests` can assert `201`, the `Location` header and the created representation.
+// `StubPositionReads` matches on id and therefore cannot: its create routes always answer 500.
+//
+// ---- WHAT IT COSTS: NOTHING HERE PROVES THE ROUTE PASSED THE RIGHT ID.
+//
+// A handler that bound `/{departmentId}` correctly and then queried a DIFFERENT id would pass every test in
+// this file. ⚠ **`StubPositionReads` gets that check for free — every 200 in the position suite proves
+// route→handler→read propagation as a SIDE EFFECT of the id match.**
+//
+// ⚠⚠ NO GUARD IS PROPOSED, AND THE REASON IS THAT THE FAILURE IS NOT CONSTRUCTIBLE. ASP.NET binds by NAME,
+// so a mismatch produces a binding failure — a 400 or a 404 — not a cheerful 200 over the wrong row. The
+// state described needs a handler that accepts the id and deliberately passes another, which is a typo
+// visible in four lines and under pressure from nothing. Recorded so it is not re-opened as a gap.
+//
+// ---- AND THE LAYER THAT ACTUALLY DECIDES WHICH ROW COMES BACK IS WELL COVERED, JUST NOT HERE.
+//
+// `DepartmentApplicationSqlServerTests` reads a **CompanyB** department through a **CompanyA**-scoped graph
+// and asserts `NotFound` — a test whose pass DEPENDS on the id being used, because ignoring it would return
+// the CompanyA row and go green. Six further sites assert the returned content belongs to the requested
+// department. **Handler → read service → SQL is asserted against real SQL; only route → handler is not.**
+//
+// ⚠⚠⚠ THE DISTINCTION WORTH CARRYING AWAY: INCIDENTAL PROTECTION IS REAL PROTECTION AND CANNOT CARRY A
+// CITATION. The position suite's id match genuinely prevents the defect, so *is this safe* is answered yes.
+// It still must not be cited for a criterion, because when it reddens it names the wrong subject. Two
+// different questions, and a citation sweep runs them together.
 public sealed class StubDepartmentReads : IDepartmentReadService
 {
   public DepartmentDetail? Detail { get; set; }

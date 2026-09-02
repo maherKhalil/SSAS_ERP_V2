@@ -317,6 +317,32 @@ public sealed class PositionApiTestHost : IAsyncLifetime
     PositionRepository.Existing = position;
     JobGradeRepository.Existing = jobGrade;
     SalaryGradeRepository.Existing = salaryGrade;
+
+    // ---- ⚠⚠ AND THE READ SIDE, BECAUSE EVERY WRITE ROUTE READS BACK BEFORE IT ANSWERS.
+    //
+    // `update`, `activate` and `deactivate` read back BY THE ROUTE'S ID — the one seeded above — so seeding
+    // `Detail` with that id is what turns their `500` into a real answer. Without it the write succeeds and
+    // the endpoint still fails at `PositionEndpointRouteBuilderExtensions:254`.
+    //
+    // ⚠⚠⚠ THE ID MATCH IN THESE STUBS IS DELIBERATE AND LOAD-BEARING — SEE `PositionApiTestStubs:28-57`.
+    // **Every 200 in this suite proves the route passed the RIGHT id**, which is asserted nowhere else in
+    // the API suite for any family. **Do NOT make these answer for ids they were not given** — that is the
+    // `StubDepartmentReads` trade the stub file explicitly forbids, and it would delete that property
+    // silently while looking like a fix.
+    //
+    // The THREE CREATE routes still answer `500` and that is by design, not by omission: they read back an
+    // id the aggregate mints inside the request, which no seed can predict. Measured there as blocking ZERO
+    // acceptance criteria.
+    // ⚠⚠ SEEDED WITH THE **ROUTE** IDS, NOT THE AGGREGATES' MINTED ONES, AND THE DISTINCTION IS THE WHOLE
+    // POINT OF THE ID MATCH. The read stubs answer only for the id they are asked for; the routes ask with
+    // `PositionId`/`JobGradeId`/`SalaryGradeId`, while `Position.Create` mints its own `Guid` that no route
+    // carries. Seeding the minted id leaves every read at `404` — measured, by doing exactly that first.
+    PositionReads.Detail = new PositionDetail(
+      PositionId, CompanyA, "ACC-SR", "Senior Accountant", null, null, position.Status, SeededRowVersion);
+    JobGradeReads.Detail = new JobGradeDetail(
+      JobGradeId, CompanyA, "G7", "Grade 7", 70, null, jobGrade.Status, SeededRowVersion);
+    SalaryGradeReads.Detail = new SalaryGradeDetail(
+      SalaryGradeId, CompanyA, "S7", "Band 7", 70, null, null, null, salaryGrade.Status, SeededRowVersion);
   }
 
   // The eight-byte token the seeded aggregates carry; `"AAAAAAAAB9E="` is its base64 form, which is what a

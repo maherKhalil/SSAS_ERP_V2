@@ -128,6 +128,105 @@ public sealed class TenantBranchLifecycleSqlServerTests
     Assert.Equal("Riyadh One", (await service.GetAsync(branch.BranchId)).Value.BranchName);
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ A DEACTIVATED BRANCH CANNOT BE RENAMED — A LIVE METHOD WHOSE REFUSAL ARM HAD NEVER FIRED.
+  // ================================================================================================
+  //
+  // `Branch.Rename` refuses when `!IsActive` (`Branch.cs:97-100`). **Every one of the seven
+  // `UpdateBranchRequest` call sites in this repository targets an ACTIVE branch**, and the deactivated
+  // branches this suite creates are used only by session and scope tests, which never rename them.
+  //
+  // ⚠⚠ SO THE METHOD WAS EXERCISED AND THE GUARD WAS NOT. **Line coverage reports `Rename` as covered** —
+  // which is why coverage is not the instrument for this class of gap. An untested method is easy to find;
+  // a tested method with an untested refusal arm is not.
+  //
+  // ---- ⚠ THE ROWVERSION MUST BE RE-READ, AND GETTING THAT WRONG WOULD GREEN THIS TEST FOR THE WRONG GUARD.
+  //
+  // `UpdateAsync` checks the concurrency token at `:204`, BEFORE `Rename` at `:209`. Deactivation advances
+  // the token, so passing the pre-deactivation `RowVersion` would answer `ConcurrencyConflict` and never
+  // reach the guard under test. A test asserting only `IsFailure` would pass, having proved nothing.
+  // **Asserting the CODE is what distinguishes the two, and re-reading the token is what makes the
+  // assertion reachable at all.**
+  //
+  // ---- ⚠⚠ AND THE SIBLING GUARD IS UNREACHABLE, WHICH IS WHY NO TEST HERE COVERS IT.
+  //
+  // `Branch.MarkAsMainBranch` carries the SAME `!IsActive` refusal (`Branch.cs:113-116`), and **no caller
+  // can reach it with an inactive branch:**
+  //
+  //   `TenantBranchService:229`   `Rename` at `:209` already refused, so control never arrives
+  //   `TenantBranchService:368`   the replacement is loaded `&& candidate.IsActive` at `:338`
+  //
+  // So that arm is defence in depth, unreachable from outside the domain, and a test for it would have to
+  // manufacture a state the product cannot produce. **Recorded rather than covered** — mapped is not
+  // reachable, and writing the test anyway would assert against an invented world.
+  //
+  // ⚠⚠⚠ RELATEDLY, AND WORTH SOMEONE'S ATTENTION: `Branch.Reactivate()` (`Branch.cs:141-145`) IS CALLED BY
+  // NOTHING — not in `src`, not in `tests`, and `TenantBranchService` exposes no reactivation at all. **A
+  // deactivated branch cannot be brought back through any product path.** That is why this file has the
+  // refusal half of the rule and no capability half: the capability is not expressible, rather than
+  // untested. (Note too that `Reactivate` carries no already-active guard while `Deactivate` does — an
+  // asymmetry nothing has ever exercised.)
+  //
+  // ---- ⚠⚠⚠ AND THE CONTEXT THAT CHANGES HOW TO READ ALL OF THE ABOVE, AS AT 2026-09-02.
+  //
+  // **`ITenantBranchService` HAS NO CONSUMER.** Searched with no path filter and no cap, because it is an
+  // absence claim: it occurs in `src` at exactly three sites — the declaration, the implementation, and
+  // `PlatformPersistenceServiceCollectionExtensions.cs:300`, its DI registration. **Nothing injects it, and
+  // `SSAS.Platform.API` maps no branch routes at all.** `Branch.Create` likewise has ONE caller in `src`:
+  // `TenantBranchService:80`, inside that same unreachable service.
+  //
+  // ⚠⚠ **SO THE HONEST STATEMENT IS *NO WIRED CODE PATH CREATES, UPDATES OR DEACTIVATES A BRANCH* — NOT
+  // *branches do not exist*.** A migration, a seed or an operational script could insert rows, and that was
+  // not checked. The distinction is the whole difference between a reachability finding and a guess.
+  //
+  // **This test is still worth its weight: the guard is real, it is on a live method, and pinning it costs
+  // nothing whether or not the surface above it is wired today.** But a reader should not conclude from a
+  // green here that a user can reach any of it.
+  //
+  // ⚠ THE PRECEDENT, BECAUSE IT MAKES THIS A KNOWN CLASS RATHER THAN AN OVERSIGHT:
+  // `TenantUserEndpointRouteBuilderExtensions:37-52` records T-091 repairing exactly this shape — handlers
+  // that existed and were DI-registered while *neither was reachable from anything*, and permissions
+  // *catalog-defined, grantable, and required by no endpoint*. It names the general case and says the sweep
+  // was deliberately not widened. **Branch is the un-swept instance.**
+  [Fact]
+  public async Task A_deactivated_branch_cannot_be_renamed()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var riyadh = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    Assert.True((await service.DeactivateAsync(
+      new DeactivateBranchRequest(jeddah.BranchId, null, jeddah.RowVersion))).IsSuccess);
+
+    // The CURRENT token, not the one held before the deactivation — see above.
+    var retired = (await service.GetAsync(jeddah.BranchId)).Value;
+    Assert.False(retired.IsActive, "the branch is still active, so the refusal below would prove nothing");
+
+    var refused = await service.UpdateAsync(
+      new UpdateBranchRequest(jeddah.BranchId, "JED", "Jeddah Renamed", false, retired.RowVersion));
+
+    // ⚠ THE MESSAGE IS NOT DECORATION. Planting this guard away made the rename SUCCEED, so THIS is the
+    // assertion that fires — and a bare `Assert.True` reds with `Expected: True / Actual: False`, which
+    // tells the next reader nothing about what broke. Measured: the bare form was written first and its
+    // output was exactly that useless.
+    Assert.True(refused.IsFailure, "a deactivated branch was renamed — Branch.Rename's activity guard is gone");
+    Assert.Equal(BranchErrors.Inactive.Code, refused.Error.Code);
+
+    // ---- ⚠⚠ ASSERTED THROUGH THE READ, NOT THE ROW. *Refused* means the caller cannot observe the change,
+    // so the check belongs where a caller looks. A rename that was refused but somehow persisted would
+    // satisfy the error assertion above and still be wrong — and the failure would be visible only here.
+    Assert.Equal("Jeddah", (await service.GetAsync(jeddah.BranchId)).Value.BranchName);
+
+    // ANTI-VACUITY: the active branch is still renameable, so this is a rule about INACTIVITY and not a
+    // service that had stopped renaming anything.
+    var allowed = await service.UpdateAsync(
+      new UpdateBranchRequest(riyadh.BranchId, "RUH", "Riyadh Renamed", true, riyadh.RowVersion));
+
+    Assert.True(allowed.IsSuccess, allowed.IsFailure ? allowed.Error.Code : null);
+    Assert.Equal("Riyadh Renamed", (await service.GetAsync(riyadh.BranchId)).Value.BranchName);
+  }
+
   // ---- H + N + O. DEACTIVATION RETIRES WITHOUT DELETING.
   [Fact]
   public async Task Deactivating_a_non_main_branch_retains_it_as_history()

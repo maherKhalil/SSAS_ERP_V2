@@ -29,7 +29,21 @@ namespace SSAS.HR.Domain.Positions;
 // foreign-key graph. `TenantCutoverCopyPlan.Order` places tables principals-before-dependents and returns
 // `CutoverCopyOrderUndecidable` when no table is ready — verified in source for Department's naive manager
 // column (`RISK-DEP-001`). Shared→Dedicated cutover would stop working for EVERY tenant, and it would not
-// degrade or warn. One convenience column is all it takes; `TS-POS-0044` asserts the failure executably.
+// degrade or warn. One convenience column is all it takes.
+//
+// ⚠⚠ CORRECTED 2026-09-02, architect. THIS SENTENCE ENDED `TS-POS-0044` asserts the failure
+// executably. IT DOES NOT, AND IT NEVER HAS: `TS-POS-0044` IS AN APPROVED, UNIMPLEMENTED SCENARIO IN
+// FP-008's `test-scenarios.md` WITH ZERO MATCHES IN `tests/`. It asserted nothing, and this comment
+// promised a reader that the cycle was caught by a test naming Position.
+//
+// WHAT ACTUALLY EXISTS is `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`), which
+// proves THE MECHANISM: the planner returns `CutoverCopyOrderUndecidable` for a foreign-key cycle among
+// tenant-owned entities, isolated from the two unrelated conditions sharing that error value by a matched
+// acyclic control that must pass. ⚠ IT CONSTRUCTS ABSTRACT PROBES, NOT Position AND Employee — SO THAT A
+// DIRECT `Position -> Employee` KEY WOULD FORM SUCH A CYCLE IS READ FROM THE MODEL, NOT EXECUTED. The
+// protection is TESTED MECHANISM PLUS ARGUED SHAPE, which is stronger than the `verified in source` above
+// it and weaker than what the removed sentence claimed. `AC-POS-0055` is deliberately NOT cited for the
+// same reason, matching `AC-DEP-0034`'s ruling on identical facts.
 //
 // ================================================================================================
 // THERE IS NO DepartmentId EITHER (OD-POS-003).

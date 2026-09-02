@@ -160,7 +160,21 @@ exists *because* of a ruling, the ruling is cited.
   build in which `HR.API` can see `SSAS.Platform.Domain` fails this criterion regardless of what it reads.
 - **AC-POS-0068** — *(`DEC-POS-0036`, added as-built in Phase 4)* The route inventory names **every HR route
   exactly**, as an ordered set pinned by pattern AND permission, with **the count owned by the test rather
-  than by this document**; and every FP-008 route is mapped by a harness as well as by the Host.
+  than by this document**. ⚠ **THE HARNESS/HOST EQUIVALENCE IS `AC-POS-0058`'s CLAUSE, NOT THIS ONE'S** —
+  see the note below.
+
+  > ⚠⚠ **SCOPE NARROWED 2026-09-02, architect, ON THE CODER'S OBJECTION — AND THE OBJECTION WAS TO MY OWN
+  > REWORDING.** As first reworded, this criterion repeated `AC-POS-0058`'s *mapped by a harness as well as by
+  > the Host*, which made the two nearly indistinguishable from the test side AND made this one claim a Host
+  > reach that `MappedRoutes()` does not have — it reads the three HR harnesses only. **Removing the
+  > duplicated clause fixes both faults at once: the collision and the overclaim were the same sentence.**
+  >
+  > **THE DIVISION IS NOW: `0058` owns ROUTES-AND-HANDLERS 1:1 AND HARNESS/HOST EQUIVALENCE, with its own
+  > recorded residue that the equivalence rests on an argument (both harnesses call the production mapping
+  > extensions) rather than an assertion. `0068` OWNS EXACTNESS AND PERMISSION-PINNING** — that the inventory
+  > is an ordered set with nothing missing and nothing extra, and that each entry is pinned by its PERMISSION
+  > and not only its pattern. **A route reachable only through `Program.cs` fails `0058`; a route present but
+  > paired with the wrong permission fails `0068`.**
 
   > ⚠⚠ **THE NUMBER WAS REMOVED, NOT UPDATED — 2026-09-02, architect.** This read *exactly 41 HR routes*
   > and `HrRouteInventoryTests` asserts **46**. Both were right at their own moment: FP-008 took the surface

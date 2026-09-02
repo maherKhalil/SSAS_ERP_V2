@@ -56,13 +56,61 @@ public sealed class LocalizationArchitectureTests
       name => declarable.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal)));
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ THIS FILE MATCHES BY `Contains`, AND THAT IS LOAD-BEARING (275)
+  // ================================================================================================
+  //
+  // Every other converted guard in this repository bans a FULLY-QUALIFIED PREFIX and matches with
+  // `StartsWith`. **These terms are bare SEGMENTS.** Every assembly here is prefixed `SSAS.` or
+  // `Microsoft.`, so `Infrastructure`, `EntityFrameworkCore`, `AspNetCore` and `Data.SqlClient` can only
+  // ever match in the MIDDLE of a name.
+  //
+  // ⚠ SO A `StartsWith` READ WOULD NOT BAN A DIFFERENT SET — IT WOULD BAN THE EMPTY SET. All four
+  // predicates would match nothing and every `Assert.Empty` would pass on any input. **Do not "restore
+  // consistency" with the rest of the sweep here: it would silently empty all four predicates while the
+  // emitted half kept supplying a passing result, so the dead assertion would read as a second opinion.**
+  //
+  // Tightening the terms to prefixes is a decision about the RULE, not the instrument, and is deliberately
+  // not folded in — `Contains("Infrastructure")` would also match a hypothetical `InfrastructureSupport`,
+  // which nobody has hit. Recorded, not changed.
+  //
+  // ---- DECLARED AND EMITTED, WITH ONE BRANCH THAT CANNOT BE DECLARED.
+  //
+  // `Data.SqlClient` reaches this tree TRANSITIVELY through `EntityFrameworkCore.SqlServer` and appears in
+  // no project file — so a declared read on it would pass vacuously and emitted is the correct instrument
+  // for that branch alone (`272` category 3). The other three are declarable and each has a real witness.
   [Fact]
   public void Platform_localization_domain_and_application_respect_layer_boundaries()
   {
-    var domainForbidden = new[] { "Infrastructure", "EntityFrameworkCore", "AspNetCore", "Data.SqlClient" };
-    var applicationForbidden = new[] { "Infrastructure", "EntityFrameworkCore", "AspNetCore", "Data.SqlClient" };
-    Assert.Empty(ForbiddenReferences(typeof(TenantLocalizationOverride).Assembly, domainForbidden));
-    Assert.Empty(ForbiddenReferences(typeof(LocalizationTextResolver).Assembly, applicationForbidden));
+    var declarable = new[] { "Infrastructure", "EntityFrameworkCore", "AspNetCore" };
+    var transitiveOnly = new[] { "Data.SqlClient" };
+    var forbidden = declarable.Concat(transitiveOnly).ToArray();
+
+    var domain = typeof(TenantLocalizationOverride).Assembly;
+    var application = typeof(LocalizationTextResolver).Assembly;
+
+    // One exercise per declarable term, each proving the term finds a real declaration THROUGH THE HELPER
+    // THE BANS BELOW USE — not through an inline copy of its predicate, which would not witness the
+    // `Contains`/`StartsWith` swap the header warns about.
+    //
+    // ⚠ `AspNetCore`'s witnesses are `FrameworkReference` elements, which the helper could not read until
+    // `ba94176` — this control would have failed before that fix, which is how the hole was found.
+    Assert.NotEmpty(ForbiddenDeclarations("SSAS.Host.API", ["Infrastructure"]));
+    Assert.NotEmpty(ForbiddenDeclarations("SSAS.Host.API", ["AspNetCore"]));
+    Assert.NotEmpty(ForbiddenDeclarations("SSAS.BuildingBlocks.Infrastructure", ["EntityFrameworkCore"]));
+
+    // ⚠⚠ AND A TERM CONTROL IS NOT AN INPUT CONTROL. The exercises above prove the predicate can match
+    // SOMEWHERE — against `Host.API`, an assembly this test does not examine. If either assembly below had
+    // an unreadable project file the ban would hold over an empty set and all three term controls would
+    // still pass. These two legs are the inputs actually being judged.
+    Assert.NotEmpty(DeclaredDependencies.Of(domain));
+    Assert.NotEmpty(DeclaredDependencies.Of(application));
+
+    Assert.Empty(ForbiddenReferences(domain, forbidden));
+    Assert.Empty(ForbiddenReferences(application, forbidden));
+
+    Assert.Empty(ForbiddenDeclarations(domain, declarable));
+    Assert.Empty(ForbiddenDeclarations(application, declarable));
   }
 
   [Fact]
@@ -129,8 +177,21 @@ public sealed class LocalizationArchitectureTests
   [Fact]
   public void Preview_handler_has_no_infrastructure_or_persistence_dependency()
   {
-    var forbidden = new[] { "Infrastructure", "EntityFrameworkCore", "Data.SqlClient" };
-    Assert.Empty(ForbiddenReferences(typeof(PreviewTenantLocalizationOverrideCommandHandler).Assembly, forbidden));
+    // `Contains`, not `StartsWith` — see the note on
+    // `Platform_localization_domain_and_application_respect_layer_boundaries`. `Data.SqlClient` is
+    // transitive-only and stays emitted-only; the other two are declarable and controlled.
+    var declarable = new[] { "Infrastructure", "EntityFrameworkCore" };
+    var forbidden = declarable.Concat(["Data.SqlClient"]).ToArray();
+    var handler = typeof(PreviewTenantLocalizationOverrideCommandHandler).Assembly;
+
+    Assert.NotEmpty(ForbiddenDeclarations("SSAS.Host.API", ["Infrastructure"]));
+    Assert.NotEmpty(ForbiddenDeclarations("SSAS.BuildingBlocks.Infrastructure", ["EntityFrameworkCore"]));
+
+    // The input leg: this method examines one assembly and the term controls above exercised another.
+    Assert.NotEmpty(DeclaredDependencies.Of(handler));
+
+    Assert.Empty(ForbiddenReferences(handler, forbidden));
+    Assert.Empty(ForbiddenDeclarations(handler, declarable));
   }
 
   [Fact]
@@ -297,6 +358,47 @@ public sealed class LocalizationArchitectureTests
     assembly.GetReferencedAssemblies()
       .Where(reference => forbidden.Any(part => reference.Name?.Contains(part, StringComparison.Ordinal) == true))
       .Select(reference => $"{assembly.GetName().Name} -> {reference.Name}");
+
+  // The declared sibling. ⚠ IT MATCHES BY `Contains`, IDENTICALLY TO THE EMITTED ONE ABOVE, AND THAT IS
+  // THE WHOLE REASON THIS PAIR IS SAFE. The terms are bare segments and every assembly name is prefixed,
+  // so a `StartsWith` variant here would match nothing — and the two halves would then ban DIFFERENT SETS
+  // while appearing to assert one rule, with the dead half's greenness supplied by the live one.
+  //
+  // Callers pass only the DECLARABLE terms: `Data.SqlClient` is transitive-only and would be vacuous here.
+  private static IEnumerable<string> ForbiddenDeclarations(
+    Assembly assembly, IReadOnlyCollection<string> forbidden) =>
+    ForbiddenDeclarations(assembly.GetName().Name!, forbidden);
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE TERM CONTROLS CALL THIS OVERLOAD, AND THAT IS THE ONLY REASON IT EXISTS
+  // ================================================================================================
+  //
+  // ***A CONTROL THAT REIMPLEMENTS THE INSTRUMENT CANNOT WITNESS THE INSTRUMENT CHANGING.***
+  //
+  // The three term exercises first read `DeclaredDependencies.Of(...).Any(n => n.Contains(term))` inline.
+  // That exercises `Contains`; it does NOT exercise this helper. **Measured, not argued: with a forbidden
+  // `ProjectReference` planted in `SSAS.Platform.Application.csproj` and this predicate switched to
+  // `StartsWith`, both bans went green AND ALL THREE TERM CONTROLS STAYED GREEN.** The control would have
+  // been the thing that certified the vacuity. Routed through here, the same swap reddens all three —
+  // confirmed by re-running the identical plant.
+  //
+  // ---- ⚠⚠ AND THE GENERAL RULE IS A SYMMETRY, BECAUSE THE SAME WORD WANTS OPPOSITE THINGS.
+  //
+  //   A CONTROL MUST SHARE ITS INSTRUMENT WITH THE ASSERTION. It has to sit downstream of the same code,
+  //   or it cannot detect that code changing. **Independence here is the defect** — and it is invisible,
+  //   because an inline copy and a call through the helper are green in exactly the same situations right
+  //   up until the helper changes.
+  //
+  //   A CHECKLIST MUST NOT SHARE ITS POPULATION WITH THE WORK LIST. If the plan enumerating what to do is
+  //   also the plan verifying it was done, an omission is invisible BY CONSTRUCTION. **Dependence there is
+  //   the defect.**
+  //
+  // Confusing the two produces precisely these two failures, and neither is derivable from the other.
+  private static IEnumerable<string> ForbiddenDeclarations(
+    string projectName, IReadOnlyCollection<string> forbidden) =>
+    DeclaredDependencies.Of(projectName)
+      .Where(name => forbidden.Any(part => name.Contains(part, StringComparison.Ordinal)))
+      .Select(name => $"{projectName} DECLARES {name}");
 
   private static IEnumerable<string> SourceFiles(string directory) =>
     Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)

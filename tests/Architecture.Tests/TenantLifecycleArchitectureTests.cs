@@ -36,14 +36,28 @@ public sealed class TenantLifecycleArchitectureTests
 
     // One exercise per declarable branch — four predicates sharing nothing, so one control would leave
     // three bans holding over prefixes it never matched.
-    var host = DeclaredDependencies.Of("SSAS.Host.API");
+    //
+    // ⚠ DERIVED FROM `declarable`, NOT RESTATED BESIDE IT (278). These controls used to hardcode the four
+    // terms, which meant a FIFTH term added to the ban above would have been witnessed by nothing and
+    // banned nothing — silently, with all four existing controls still green. Adding one now fails at the
+    // witness lookup instead. It still restates `StartsWith` inline, and that is deliberate: see the
+    // control section in `DeclaredDependencies` for why widening a ban is loud and only narrowing is silent.
+    var witnessOf = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+      ["Microsoft.EntityFrameworkCore"] = "SSAS.BuildingBlocks.Infrastructure",
+      ["Microsoft.AspNetCore"] = "SSAS.Host.API",
+      ["SSAS.HR"] = "SSAS.Host.API",
+      ["SSAS.GL"] = "SSAS.Host.API"
+    };
 
-    Assert.Contains(
-      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
-      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
-    Assert.Contains(host, name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal));
-    Assert.Contains(host, name => name.StartsWith("SSAS.HR", StringComparison.Ordinal));
-    Assert.Contains(host, name => name.StartsWith("SSAS.GL", StringComparison.Ordinal));
+    Assert.All(declarable, term =>
+    {
+      Assert.True(witnessOf.TryGetValue(term, out var witness),
+        $"'{term}' is banned but no project is named as its declared witness. Add one, or move the term " +
+        "to `transitiveOnly` with grounds — an unwitnessed term bans nothing and reads as coverage.");
+      Assert.Contains(
+        DeclaredDependencies.Of(witness!), name => name.StartsWith(term, StringComparison.Ordinal));
+    });
 
     var violations = assemblies.SelectMany(assembly => assembly.GetReferencedAssemblies()
       .Where(reference => forbidden.Any(prefix => reference.Name?.StartsWith(prefix, StringComparison.Ordinal) == true))

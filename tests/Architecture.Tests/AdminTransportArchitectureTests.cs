@@ -51,12 +51,25 @@ public sealed class AdminTransportArchitectureTests
     var forbidden = declarable.Concat(transitiveOnly).ToArray();
 
     // One exercise per declarable branch, against projects that legitimately declare each.
-    Assert.Contains(
-      DeclaredDependencies.Of("SSAS.Host.API"),
-      name => name.StartsWith("SSAS.Platform.Infrastructure", StringComparison.Ordinal));
-    Assert.Contains(
-      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
-      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+    //
+    // ⚠ DERIVED FROM `declarable` RATHER THAN RESTATED BESIDE IT (278) — a control that hardcodes its terms
+    // cannot notice a term ADDED to the ban, which would then hold over a prefix nothing witnesses. The
+    // inline `StartsWith` stays: see the control section in `DeclaredDependencies` for why only narrowing
+    // a match is silent and widening it is loud.
+    var witnessOf = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+      ["SSAS.Platform.Infrastructure"] = "SSAS.Host.API",
+      ["Microsoft.EntityFrameworkCore"] = "SSAS.BuildingBlocks.Infrastructure"
+    };
+
+    Assert.All(declarable, term =>
+    {
+      Assert.True(witnessOf.TryGetValue(term, out var witness),
+        $"'{term}' is banned but no project is named as its declared witness. Add one, or move the term " +
+        "to `transitiveOnly` with grounds — an unwitnessed term bans nothing and reads as coverage.");
+      Assert.Contains(
+        DeclaredDependencies.Of(witness!), name => name.StartsWith(term, StringComparison.Ordinal));
+    });
 
     var violations = typeof(RowVersionCodec).Assembly.GetReferencedAssemblies()
       .Where(reference => forbidden.Any(prefix => reference.Name?.StartsWith(prefix, StringComparison.Ordinal) == true))

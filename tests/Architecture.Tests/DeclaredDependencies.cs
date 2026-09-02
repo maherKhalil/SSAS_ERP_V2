@@ -77,6 +77,52 @@ namespace SSAS.Architecture.Tests;
 // call and say why at the site — `TenantRoutingArchitectureTests` is the worked example, and it separates
 // the two levels: the MECHANISM is controllable, the individual banned LITERALS are not, exactly as `273`
 // found for an identifier with no symbol anywhere in the tree.
+// ==================================================================================================
+// ⚠⚠⚠ HOW TO CONTROL A BAN BUILT ON THIS, AND THE ONE ASYMMETRY THAT MAKES IT SAFE (278)
+// ==================================================================================================
+//
+// Every ban here is an `Assert.Empty` / `Assert.DoesNotContain` and therefore needs a control proving the
+// predicate CAN fire. `278` audited all 40 controls this sweep wrote. **7 call through the instrument the
+// assertion uses; 33 re-express the predicate inline.**
+//
+// ---- ⚠ *33 BLIND* IS THE WRONG SENTENCE, AND THE DISTINCTION IS THE WHOLE POINT.
+//
+// All 33 call `DeclaredDependencies.Of`. **They are sighted on the PARSE and blind on the PREDICATE** —
+// different organs. If this class stopped recognising an element type (as it really had, until `ba94176`),
+// every one of the 33 reddens. That is the failure they were written against and they catch it.
+//
+// ---- ⚠⚠ WHY THE INLINE PREDICATE IS LEFT ALONE: WIDENING A BAN CANNOT PRODUCE A FALSE GREEN.
+//
+// `Contains ⊇ StartsWith` for every string, so `StartsWith` -> `Contains` makes a ban fire MORE. That is a
+// false RED — loud, immediate, self-announcing. **Only NARROWING can hide a violation, and narrowing can
+// only empty the set where a term is NOT a real prefix.** Measured across all 33: the one file where that
+// held was `LocalizationArchitectureTests`, whose terms are bare segments — which is why that file matches
+// by `Contains`, says so in a ⚠⚠⚠ header, and routes its controls through a helper. It is the exception.
+//
+// **So do not "finish the job" by routing the other 33 through helpers.** It closes a direction that is
+// already loud, and a fix whose visible size exceeds the risk it closes is how a sweep starts lying about
+// its own coverage.
+//
+// ---- ⚠⚠⚠ WHAT *IS* SILENT, AND WHAT THE CONTROLS MUST THEREFORE DERIVE FROM.
+//
+// A control that hardcodes its own term literals CANNOT NOTICE A TERM ADDED TO THE BAN. Add a fourth prefix
+// to `declarable` and forget a witness, and that branch holds over a term nothing can match — silently,
+// forever, and with every existing control still green.
+//
+// ⚠ **That is not a malicious swap. It is someone extending a ban and not thinking about controls, which
+// is the ordinary case — and therefore the one that will actually happen.**
+//
+// So where a site has a term LIST, the controls are DERIVED FROM IT:
+//
+//   Assert.All(declarable, term =>
+//   {
+//     Assert.True(witnessOf.TryGetValue(term, out var witness), "...");
+//     Assert.Contains(DeclaredDependencies.Of(witness!), name => name.StartsWith(term, Ordinal));
+//   });
+//
+// Adding a term now fails at the witness lookup rather than passing into silence. **This closes TERM drift
+// and deliberately not PREDICATE drift** — see the asymmetry above, which is the reason and which lives
+// nowhere else in the code.
 internal static class DeclaredDependencies
 {
   // ================================================================================================

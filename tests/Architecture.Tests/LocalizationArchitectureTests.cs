@@ -32,14 +32,30 @@ public sealed class LocalizationArchitectureTests
 
     var forbidden = declarable.Concat(transitiveOnly).ToArray();
 
-    // One exercise per declarable branch.
-    var host = DeclaredDependencies.Of("SSAS.Host.API");
+    // One exercise per declarable branch, DERIVED FROM `declarable` rather than restated beside it (278):
+    // hardcoded control terms cannot notice a term ADDED to the ban.
+    //
+    // ⚠⚠ AND THIS METHOD DELIBERATELY DOES **NOT** ROUTE THROUGH `ForbiddenDeclarations`, THOUGH THE HELPER
+    // IS RIGHT THERE IN THIS FILE. That helper matches by `Contains`, because the OTHER two methods here
+    // ban bare segments. These three terms are FULLY-QUALIFIED PREFIXES matched by `StartsWith`, and
+    // routing them through it would WIDEN the rule — `Microsoft.AspNetCore` would start matching anything
+    // containing it. **That is a change to what is banned, not to how it is measured**, and coupling the
+    // control to the instrument is not worth silently altering the ban to get it.
+    var witnessOf = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+      ["SSAS.Platform"] = "SSAS.Host.API",
+      ["Microsoft.AspNetCore"] = "SSAS.Host.API",
+      ["Microsoft.EntityFrameworkCore"] = "SSAS.BuildingBlocks.Infrastructure"
+    };
 
-    Assert.Contains(host, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
-    Assert.Contains(host, name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal));
-    Assert.Contains(
-      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
-      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+    Assert.All(declarable, term =>
+    {
+      Assert.True(witnessOf.TryGetValue(term, out var witness),
+        $"'{term}' is banned but no project is named as its declared witness. Add one, or move the term " +
+        "to `transitiveOnly` with grounds — an unwitnessed term bans nothing and reads as coverage.");
+      Assert.Contains(
+        DeclaredDependencies.Of(witness!), name => name.StartsWith(term, StringComparison.Ordinal));
+    });
 
     var violations = typeof(ResourceKey).Assembly.GetReferencedAssemblies()
       .Where(reference => forbidden.Any(prefix => reference.Name?.StartsWith(prefix, StringComparison.Ordinal) == true))
@@ -95,9 +111,22 @@ public sealed class LocalizationArchitectureTests
     //
     // ⚠ `AspNetCore`'s witnesses are `FrameworkReference` elements, which the helper could not read until
     // `ba94176` — this control would have failed before that fix, which is how the hole was found.
-    Assert.NotEmpty(ForbiddenDeclarations("SSAS.Host.API", ["Infrastructure"]));
-    Assert.NotEmpty(ForbiddenDeclarations("SSAS.Host.API", ["AspNetCore"]));
-    Assert.NotEmpty(ForbiddenDeclarations("SSAS.BuildingBlocks.Infrastructure", ["EntityFrameworkCore"]));
+    // ⚠ AND DERIVED FROM `declarable` (278). These three were written a term at a time, which meant a
+    // FOURTH declarable term would have been witnessed by nothing while all three stayed green.
+    var witnessOf = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+      ["Infrastructure"] = "SSAS.Host.API",
+      ["AspNetCore"] = "SSAS.Host.API",
+      ["EntityFrameworkCore"] = "SSAS.BuildingBlocks.Infrastructure"
+    };
+
+    Assert.All(declarable, term =>
+    {
+      Assert.True(witnessOf.TryGetValue(term, out var witness),
+        $"'{term}' is banned but no project is named as its declared witness. Add one, or move the term " +
+        "to `transitiveOnly` with grounds — an unwitnessed term bans nothing and reads as coverage.");
+      Assert.NotEmpty(ForbiddenDeclarations(witness!, [term]));
+    });
 
     // ⚠⚠ AND A TERM CONTROL IS NOT AN INPUT CONTROL. The exercises above prove the predicate can match
     // SOMEWHERE — against `Host.API`, an assembly this test does not examine. If either assembly below had
@@ -184,8 +213,20 @@ public sealed class LocalizationArchitectureTests
     var forbidden = declarable.Concat(["Data.SqlClient"]).ToArray();
     var handler = typeof(PreviewTenantLocalizationOverrideCommandHandler).Assembly;
 
-    Assert.NotEmpty(ForbiddenDeclarations("SSAS.Host.API", ["Infrastructure"]));
-    Assert.NotEmpty(ForbiddenDeclarations("SSAS.BuildingBlocks.Infrastructure", ["EntityFrameworkCore"]));
+    // Derived from `declarable` (278), for the reason given on the method above.
+    var witnessOf = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+      ["Infrastructure"] = "SSAS.Host.API",
+      ["EntityFrameworkCore"] = "SSAS.BuildingBlocks.Infrastructure"
+    };
+
+    Assert.All(declarable, term =>
+    {
+      Assert.True(witnessOf.TryGetValue(term, out var witness),
+        $"'{term}' is banned but no project is named as its declared witness. Add one, or move the term " +
+        "to `transitiveOnly` with grounds — an unwitnessed term bans nothing and reads as coverage.");
+      Assert.NotEmpty(ForbiddenDeclarations(witness!, [term]));
+    });
 
     // The input leg: this method examines one assembly and the term controls above exercised another.
     Assert.NotEmpty(DeclaredDependencies.Of(handler));

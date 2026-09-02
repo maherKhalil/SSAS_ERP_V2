@@ -261,7 +261,13 @@ public sealed class BranchTransferArchitectureTests
     // reference no type is taken from, so the transfer infrastructure could declare an HR dependency and
     // pass here until the first use — and *the channel is general mechanism, not Employee support* is
     // exactly the claim a merged-but-unused reference already falsifies. One control covers both
-    // assemblies: identical predicate, identical helper.
+    // assemblies, which read the same term through the same helper.
+    //
+    // ⚠ THIS COMMENT USED TO SAY *IDENTICAL PREDICATE, IDENTICAL HELPER*, AND THE FIRST HALF WAS FALSE
+    // (278). The lambda below is a COPY of the one in the ban — same text, different expression — so it
+    // cannot witness the ban's predicate changing. Deliberate: `Contains ⊇ StartsWith`, so widening this
+    // match makes the ban fire more, which is a loud false red rather than a silent pass. The silent
+    // direction needs a term that is not a real prefix, and `SSAS.HR` is one.
     Assert.Contains(
       DeclaredDependencies.Of("SSAS.Host.API"),
       name => name.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase));

@@ -110,8 +110,14 @@ public sealed class PersistenceArchitectureTests
     //
     // `Assert.Empty` over a filtered set passes when nothing violates the rule AND when the filter cannot
     // recognise a violation — a `.csproj` shape the parse misreads, a `PackageReference` it never sees.
-    // `SSAS.BuildingBlocks.Infrastructure` is where EF legitimately lives, so finding it there proves this
-    // exact predicate can fire. Without it the ban below holds over nothing.
+    // `SSAS.BuildingBlocks.Infrastructure` is where EF legitimately lives, so finding it there proves the
+    // parse reads a real project and that this term matches something. Without it the ban below holds over
+    // nothing.
+    //
+    // ⚠ IT DOES NOT PROVE *THIS EXACT PREDICATE* CAN FIRE, WHICH IS WHAT THIS COMMENT USED TO CLAIM (278).
+    // The lambda below is a COPY of the one in the ban, not the same expression, so it cannot witness that
+    // one changing. Left as a copy deliberately: `Contains ⊇ StartsWith`, so widening the ban only makes it
+    // fire more — a loud false red. See the control section in `DeclaredDependencies`.
     Assert.Contains(
       DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
       name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));

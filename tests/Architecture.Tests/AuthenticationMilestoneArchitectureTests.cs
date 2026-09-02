@@ -39,12 +39,25 @@ public sealed class AuthenticationMilestoneArchitectureTests
 
     // One exercise per DECLARABLE branch: a control proves a predicate can fire, and these two share
     // nothing, so one would leave the other holding over a parse that recognises it nowhere.
-    Assert.Contains(
-      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
-      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
-    Assert.Contains(
-      DeclaredDependencies.Of("SSAS.Host.API"),
-      name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal));
+    //
+    // ⚠ AND DERIVED FROM `declarable` RATHER THAN RESTATED BESIDE IT (278). Hardcoded control terms cannot
+    // notice a term ADDED to the ban, which would then hold over a prefix nothing witnesses — silently.
+    // The inline `StartsWith` stays; the control section in `DeclaredDependencies` says why widening a
+    // match is loud and only narrowing is silent.
+    var witnessOf = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+      ["Microsoft.EntityFrameworkCore"] = "SSAS.BuildingBlocks.Infrastructure",
+      ["Microsoft.AspNetCore"] = "SSAS.Host.API"
+    };
+
+    Assert.All(declarable, term =>
+    {
+      Assert.True(witnessOf.TryGetValue(term, out var witness),
+        $"'{term}' is banned but no project is named as its declared witness. Add one, or move the term " +
+        "to `transitiveOnly` with grounds — an unwitnessed term bans nothing and reads as coverage.");
+      Assert.Contains(
+        DeclaredDependencies.Of(witness!), name => name.StartsWith(term, StringComparison.Ordinal));
+    });
 
     var violations = assemblies
       .SelectMany(assembly => assembly.GetReferencedAssemblies()

@@ -4410,9 +4410,18 @@ public sealed class EmployeeBoundarySqlServerTests
     // projects `CompanyId`/`Id` as its predicate and `Status` as the whole of `IsActive`. Assignability
     // reads NOTHING ELSE, so even the one field this UPDATE could get wrong is not on the path under test.
     //
-    // The domain event `Position.Reactivate` raises is deliberately NOT reproduced: it is consumed by
-    // projections, not by assignability, and inventing one here would fake a notification nothing in this
-    // test consumes.
+    // ⚠⚠ THE GROUNDS ARE BOUND TO THE PATH, NOT TO THE PRODUCT, AND THE DIFFERENCE IS NOT PEDANTRY.
+    //
+    // What is established above is *the injected row matches on every column assignability reads*. It is NOT
+    // *the injection is what the product does*: `Reactivate` also raises `PositionReactivated`
+    // (`Position.cs:272`) and this UPDATE raises nothing. The enumeration behind the column list covered the
+    // method's ASSIGNMENTS; the broader claim would have needed its EFFECTS, which is a different scope.
+    //
+    // ⚠ NOTHING CONSUMES THAT EVENT AS AT 2026-09-02 — a repo-wide search finds the raise site, the record
+    // declaration and two domain tests asserting it is raised, and NO handler. So the divergence is
+    // UNOBSERVABLE rather than harmless by design, and it stops being unobservable the day someone
+    // subscribes. That is a fact with a shelf life, not a licence: a test needing the event's CONSEQUENCES
+    // must drive `ReactivatePositionCommandHandler` instead of this.
     public Task ReactivatePositionDirectlyAsync(Guid positionId) =>
       ExecuteAsync($"""
         UPDATE [tenant].[Positions]

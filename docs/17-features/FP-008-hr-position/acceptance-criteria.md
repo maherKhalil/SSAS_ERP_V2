@@ -214,8 +214,37 @@ exists *because* of a ruling, the ruling is cited.
   registration**, and the exact-list assertion names all of them.
 - **AC-POS-0053** — The derived copy order places every grade before Position, Position before Employee, and
   Employee before every assignment table.
-- **AC-POS-0054** — The restore-verification `DROP TABLE` list is exactly the copy order read backwards, and
-  the drop succeeds against a real database carrying the new foreign keys.
+- **AC-POS-0054** — ⚠⚠⚠ **WITHDRAWN 2026-09-02, architect. THIS CRITERION DESCRIBES A MECHANISM THE
+  DESIGN DOES NOT USE, AND THE OPERATION IT ASSUMES IS DELIBERATELY NOT BUILT.**
+
+  It read: *the restore-verification `DROP TABLE` list is exactly the copy order read backwards, and the drop
+  succeeds against a real database carrying the new foreign keys.*
+
+  > **`DROP TABLE` APPEARS NOWHERE IN `src/`.** Six searches across two windows found none. **Restore
+  > verification restores and disposes of a WHOLE DATABASE, never a table** — so there is no table list, no
+  > ordering to reverse, and the foreign-key concern the criterion raises cannot arise: **a database dropped
+  > whole has no intra-database referential order to respect.** The criterion's premise is wrong, not merely
+  > unimplemented.
+  >
+  > ⚠⚠ **AND THE DROP ITSELF IS DELIBERATELY DEFERRED, RECORDED IN FOUR PLACES IN PRODUCTION CODE**, each
+  > saying the same thing in its own words: `ITenantDatabaseRestoreVerificationProvider.cs:14` — *shipping a
+  > `DROP DATABASE` path against an unproven permission model would be the wrong order*;
+  > `TenantDatabaseVerificationTargetGuard.cs:8` — the guard *should exist and be tested before anything can
+  > call `DROP DATABASE`, not be written under pressure*; also `TenantDatabaseVerificationNaming.cs:8` and
+  > `SqlServerTenantDatabaseRestoreVerificationProvider.cs:29`. **The naming rule and the target guard were
+  > built FIRST, on purpose, so that a future destructive operation has something to constrain it.**
+  >
+  > **FOURTH DISTINCT CAUSE OF *A CRITERION DESCRIBING WHAT IS NOT THERE*, AND EACH NEEDED A DIFFERENT
+  > REMEDY:** `AC-DEP-0016` was **SUPERSEDED** — a route the surface deliberately does not expose, annotated.
+  > `AC-DEP-0023` was **ADOPTED AND NEVER BUILT** — an owner decision the handler contradicts in writing,
+  > escalated. `AC-POS-0068` was **TRUE AND DECAYED** — a pinned count a later feature moved. This one is
+  > **WRONG ABOUT THE MECHANISM** — it assumes a table-level operation where the design is database-level.
+  > ⚠ **Same symptom four times, four causes, four remedies — and a citation sweep is the only activity that
+  > finds any of them, because it is the only one that reads a criterion against the PRODUCT.**
+  >
+  > **NOT TO BE CITED AND NOT TO BE TESTED.** If a `DROP DATABASE` path is ever built, the criterion this
+  > feature needs is about the TARGET GUARD refusing a non-verification database — which is what those four
+  > comments are protecting — not about a table ordering that will never exist.
 - **AC-POS-0055** — **A constructed model containing a direct `Position → Employee` foreign key fails with
   `CutoverCopyOrderUndecidable`.** The failure mode is asserted executably, not described in prose.
 - **AC-POS-0056** — `Position` does not implement `IBranchOwnedEntity`, and the composed EF model contains no

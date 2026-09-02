@@ -118,6 +118,22 @@ public sealed class HrRouteInventoryTests
   // the PRODUCTION mapping extensions, so a route the Host maps through a different path would leave the
   // harness set SHORT and fail the exact list. It is no longer the ONLY thing covering the Host half.
   [Trait("Criterion", "AC-POS-0058")]
+  // ⚠ ALSO CITED BY 274: `AC-POS-0068` — *names every HR route exactly, as an ordered set pinned by pattern
+  // AND permission, with the count owned by the test rather than by the document.* That is this test's
+  // SUBJECT rather than a consequence of it, which is the line that admits it and refused `AC-POS-0024`:
+  // that criterion's subject is a permission on two transitions, and this test would have carried it only
+  // as a by-product of asserting the whole surface.
+  //
+  // The count clause is carried by the exact set equality below owning the number outright — the criterion
+  // deliberately states no figure, because 41 -> 46 would buy until the next route and re-arm the same trap
+  // `CutoverManifestArchitectureTests` had when "ALL TWENTY" stood above a list of thirty-five.
+  //
+  // ⚠⚠ IT NEEDS NO PARTIAL NOTE, AND THAT IS A CHANGE TO THE CRITERION RATHER THAN TO THIS TEST. As first
+  // reworded it repeated `AC-POS-0058`'s harness/Host clause, which both duplicated that criterion and
+  // claimed a Host reach `MappedRoutes()` does not have. The clause was removed. The division now is:
+  // `0058` owns 1:1 and harness/Host equivalence, `0068` owns exactness and permission-pinning — a route
+  // reachable only through `Program.cs` fails `0058`; a route present under the WRONG PERMISSION fails this.
+  [Trait("Criterion", "AC-POS-0068")]
   public void The_hr_route_inventory_is_exactly_as_ruled()
   {
     var routes = MappedRoutes()

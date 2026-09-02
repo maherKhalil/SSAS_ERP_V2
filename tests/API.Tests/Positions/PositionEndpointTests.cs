@@ -394,6 +394,72 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
     Assert.Equal("request.invalid", await PositionApiTestHost.ProblemCodeAsync(response));
   }
 
+  // ---- OWNERSHIP IS NOT ACCEPTED FROM THE BODY, AND THE REFUSAL WRITES NOTHING (`AC-POS-0002`, 274).
+  //
+  // *`TenantId` and `CompanyId` supplied in the request body are REFUSED, not honoured and not silently
+  // ignored: rejected with `400 request.invalid`, and NO POSITION IS PRODUCED.* Both clauses are here, and
+  // they are separate claims: a handler that refused the request AFTER handing the aggregate to the
+  // repository would satisfy the status assertion and violate the criterion.
+  //
+  // The mechanism is `StrictRequestReader.ReadStrictJsonAsync` with an allowlist of exactly
+  // `code / title / jobGradeId`; an undeclared property makes the whole request null, which becomes
+  // `ApiErrors.RequestInvalid`. So the refusal is a TRANSPORT fact and no test below the endpoint can
+  // reach it — the criterion was corrected to this wording precisely because the product REFUSES where the
+  // draft said it IGNORES.
+  //
+  // ⚠⚠ THE CONTROL IS THE REASON THIS TEST IS SHAPED THIS WAY, AND IT RETRO-FITS ONE THAT WAS MISSING.
+  // `Assert.Null(Added)` passes when the write was refused AND when the write could never have happened —
+  // a wrong route, a refused permission, a stub nothing reaches. Before this test, `Added` was asserted
+  // exactly ONCE in the whole of `API.Tests` and that assertion was `Assert.Null`, so NOTHING anywhere
+  // proved the field can become non-null. The stub's own header calls it *how a test asserts that a refused
+  // write wrote nothing* — a self-explaining comment over an uncontrolled instrument.
+  //
+  // The accepted create below is that control, and it runs in the same test against the same host, so the
+  // null that follows means REFUSED rather than UNREACHABLE.
+  [Theory]
+  [InlineData("tenantId", "\"11111111-1111-1111-1111-111111111111\"")]
+  [InlineData("companyId", "\"22222222-2222-2222-2222-222222222222\"")]
+  [Trait("Criterion", "AC-POS-0002")]
+  public async Task An_ownership_field_in_the_body_is_refused_and_produces_no_position(
+    string field, string value)
+  {
+    host.PositionReads.Detail = ActivePosition();
+
+    // THE CONTROL. The same route, the same permission, the same stub — everything but the offending field.
+    //
+    // ⚠ IT ASSERTS THE MECHANISM, NOT THE STATUS, AND THE REASON IS A HARNESS LIMIT WORTH KNOWING.
+    // A create reads its own result back by the NEW position's id, and `StubPositionReads.GetAsync` answers
+    // `PositionNotFound` for any id that is not the one seeded on `Detail` — an id no test can predict,
+    // because the aggregate mints it. So a valid create here reaches `AddAsync`, writes, and THEN 500s on
+    // the read-back. **This harness cannot express a fully successful position create at all**, which is
+    // why none exists: the same shape as `AC-POS-0009`'s revocation, where a fixture made the test
+    // unwritable rather than anyone forgetting to write it.
+    //
+    // `Added` becoming non-null is exactly the control this test needs — it proves the write path is
+    // REACHED through this route with this permission — and the later 500 does not weaken it.
+    using var accepted = await host.Client.SendAsync(PositionApiTestHost.Request(
+      HttpMethod.Post,
+      "/api/hr/positions",
+      host.TokenWith(HrPermissionNames.CreatePositions),
+      """{"code":"ACC-SR","title":"Senior Accountant","jobGradeId":null}"""));
+
+    Assert.NotNull(host.PositionRepository.Added);
+
+    host.PositionRepository.Reset();
+
+    using var response = await host.Client.SendAsync(PositionApiTestHost.Request(
+      HttpMethod.Post,
+      "/api/hr/positions",
+      host.TokenWith(HrPermissionNames.CreatePositions),
+      $$"""{"code":"ACC-SR","title":"Senior Accountant","jobGradeId":null,"{{field}}":{{value}}}"""));
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await PositionApiTestHost.ProblemCodeAsync(response));
+
+    // AND NO POSITION IS PRODUCED — the criterion's second clause, meaningful because of the control above.
+    Assert.Null(host.PositionRepository.Added);
+  }
+
   // ================================================================================================
   // MAPPER ARMS
   // ================================================================================================

@@ -418,6 +418,12 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
     application.UseAuthorization();
     application.MapPlatformSupportAuthenticationEndpoints();
 
+    // ⚠ AND THE TENANT AUTH ROUTES, FOR `PlatformAuthenticationEndToEndTests` (280). They share this host
+    // deliberately: it already owns a migrated platform database and the singleton rate limiter, and a
+    // second `IAsyncLifetime` host would create and migrate a second database for four tests. The two
+    // surfaces are structurally separate in `src/` and stay separate here — only the host is shared.
+    application.MapPlatformAuthenticationEndpoints();
+
     await application.StartAsync();
     client = application.GetTestClient();
     client.BaseAddress = new Uri("https://localhost");

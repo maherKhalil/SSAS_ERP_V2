@@ -625,7 +625,17 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
   [Trait("Criterion", "AC-POS-0047")]
   public async Task A_stale_rowversion_is_refused_at_the_handler_pre_check_on_every_family()
   {
-    var seeded = SeedEveryFamily();
+    // ⚠ THE SEED COMES FROM `Reset()`, NOT FROM HERE. It used to be built in this test; once the host began
+    // seeding every family for every test, a second construction would have been a copy of the three stamps
+    // that could drift from the one the rest of the suite uses.
+    // ⚠⚠ NAMED, NOT NULL-FORGIVEN. A bare `!` here produced an opaque `NullReferenceException` when the
+    // seeding was removed — the stub's loud guard never fired, because this test dereferences the aggregate
+    // BEFORE any request reaches the stub. **An unseeded run must say what is missing at the first place it
+    // can, not at the first place it happens to crash.**
+    var seeded = (
+      Required(host.PositionRepository.Existing, nameof(Position)),
+      Required(host.JobGradeRepository.Existing, nameof(JobGrade)),
+      Required(host.SalaryGradeRepository.Existing, nameof(SalaryGrade)));
     var offenders = new List<string>();
 
     foreach (var (label, route, permission, body) in UpdateRequests(seeded, StaleRowVersion))
@@ -659,51 +669,11 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
   private const string CurrentRowVersion = "AAAAAAAAB9E=";
   private const string StaleRowVersion = "AAAAAAAAAAA=";
 
-  private static readonly byte[] SeededRowVersion = [0, 0, 0, 0, 0, 0, 7, 209];
-
-  private (Position Position, JobGrade JobGrade, SalaryGrade SalaryGrade) SeedEveryFamily()
-  {
-    var now = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
-
-    var position = Position.Create(
-      PositionCode.Create("ACC-SR").Value, PositionTitle.Create("Senior Accountant").Value,
-      jobGradeId: null, "seed", Guid.NewGuid(), now).Value;
-    var jobGrade = JobGrade.Create(
-      JobGradeCode.Create("G7").Value, JobGradeName.Create("Grade 7").Value,
-      rankOrder: 70, salaryGradeId: null, "seed", Guid.NewGuid(), now).Value;
-    var salaryGrade = SalaryGrade.Create(
-      SalaryGradeCode.Create("S7").Value, SalaryGradeName.Create("Band 7").Value,
-      rankOrder: 70, band: null, "seed", Guid.NewGuid(), now).Value;
-
-    // ⚠ OWNERSHIP AND THE TOKEN ARE BOTH DATABASE-ASSIGNED IN PRODUCTION, AND THERE IS NO DATABASE HERE.
-    //
-    // `PersistenceDbContext.AssignTenant` stamps `TenantId` on save and the company context supplies
-    // `CompanyId`; a freshly created aggregate carries neither. **The handler checks ownership FIRST —
-    // `position.TenantId != tenantId` answers `PositionNotFound` at `PositionCommandHandlers:228` — so an
-    // unstamped seed is indistinguishable from no seed at all.** The concurrency token is placed the same
-    // way and for the same reason, exactly as `EmployeeApiTestStubs.SetRowVersion` does.
-    foreach (var aggregate in new object[] { position, jobGrade, salaryGrade })
-    {
-      Place(aggregate, "TenantId", PositionApiTestHost.TenantId);
-      Place(aggregate, "CompanyId", PositionApiTestHost.CompanyA);
-      Place(aggregate, "RowVersion", SeededRowVersion);
-    }
-
-    host.PositionRepository.Existing = position;
-    host.JobGradeRepository.Existing = jobGrade;
-    host.SalaryGradeRepository.Existing = salaryGrade;
-
-    return (position, jobGrade, salaryGrade);
-  }
-
-  // ⚠ THROWS RATHER THAN SKIPPING IF THE PROPERTY IS GONE. A rename that made this a no-op would restore
-  // the exact defect `b99a4bb` records — an unseeded stub answering 404 while the suite stays green.
-  private static void Place(object aggregate, string property, object value) =>
-    (aggregate.GetType().GetProperty(property)
-      ?? throw new InvalidOperationException(
-        $"{aggregate.GetType().Name} has no '{property}' to seed; the stub would answer 404 and this test " +
-        "would be green over a route it never reached."))
-      .SetValue(aggregate, value);
+  private static T Required<T>(T? seeded, string aggregate)
+    where T : class =>
+    seeded ?? throw new InvalidOperationException(
+      $"`PositionApiTestHost.Reset()` did not seed a {aggregate}. Every route in this file would answer 404 " +
+      "and the tests that only distinguish 403 from not-403 would still pass.");
 
   private static (string Label, string Route, string Permission, string Body)[] UpdateRequests(
     (Position Position, JobGrade JobGrade, SalaryGrade SalaryGrade) seeded, string version) =>

@@ -165,6 +165,26 @@ public sealed class StubSalaryGradeReads : ISalaryGradeReadService
   }
 }
 
+// ==================================================================================================
+// ⚠⚠⚠ AN UNSEEDED LOOKUP THROWS. IT MUST NEVER RETURN NULL, AND THAT IS THE WHOLE POINT.
+// ==================================================================================================
+//
+// The defect these stubs carried was SILENCE: `Existing` was seeded by nothing, `GetByIdAsync` returned
+// null, every handler stopped at its not-found branch, and the suite stayed green over routes it never
+// reached. **A stub that answers `null` when nobody seeded it rebuilds that trap with a different symptom.**
+//
+// So the lookup DEMANDS a seed and names what is missing. ⚠ A test that forgot to seed fails immediately
+// and says so; it can no longer pass by accident through a 404 that looks like a legitimate answer.
+internal static class StubSeed
+{
+  public static T Require<T>(T? candidate, string aggregate)
+    where T : class =>
+    candidate ?? throw new InvalidOperationException(
+      $"the {aggregate} stub was asked for an aggregate and none was seeded. Set `Existing` in the test or " +
+      "in `PositionApiTestHost.Reset()`. Returning null here would answer 404 and let this test pass " +
+      "without ever reaching the code it names.");
+}
+
 // ---- THE WRITE STUBS.
 //
 // `Existing` is the aggregate a load returns; the uniqueness probes answer from flags a test sets, so the
@@ -188,6 +208,19 @@ public sealed class StubSalaryGradeReads : ISalaryGradeReadService
 // **So nothing gated reaches any post-load rule on these aggregates**: the concurrency pre-check at
 // `PositionCommandHandlers:245`, the uniqueness probes on update, the dependent checks. `AC-POS-0047`'s
 // behavioural half is unassertable here for that reason and not because the property needs a database.
+//
+// ---- ⚠⚠ CLOSED 2026-09-02. THE LOOKUPS NO LONGER MATCH ON ID, AND THAT IS A TRADE, NOT A TIDY-UP.
+//
+// `Reset()` now seeds all three families, so the routes reach their handlers and the matrix can tell
+// `403` from a broken route. **The lookups return the seeded aggregate UNCONDITIONALLY** — the same shape
+// `EmployeeApiTestStubs` has always used — because `Entity<TId>.Id` is get-only through a private
+// constructor, so a test cannot place a chosen id and the old `Existing?.Id == positionId` match could
+// never have succeeded against a factory-built aggregate.
+//
+// ⚠ **WHAT THAT GIVES UP, RECORDED SO IT READS AS TRADED RATHER THAN OVERLOOKED: an *unknown id answers
+// 404* test is no longer expressible through THIS double.** It was not expressible before either — every
+// call returned null — so nothing is lost that existed, but the capability is now foreclosed by design and
+// would need a separate double or a fixture that nulls `Existing` deliberately.
 //
 // ---- HOW IT WAS FOUND, BECAUSE READING WOULD NOT HAVE FOUND IT.
 //
@@ -221,7 +254,7 @@ public sealed class StubPositionRepository : IPositionRepository
   }
 
   public Task<Position?> GetByIdAsync(Guid positionId, CancellationToken cancellationToken = default) =>
-    Task.FromResult(Existing?.Id == positionId ? Existing : null);
+    Task.FromResult<Position?>(StubSeed.Require(Existing, nameof(Position)));
 
   public Task<bool> CodeExistsAsync(
     Guid companyId, string normalizedCode, CancellationToken cancellationToken = default) =>
@@ -266,7 +299,7 @@ public sealed class StubJobGradeRepository : IJobGradeRepository
   }
 
   public Task<JobGrade?> GetByIdAsync(Guid jobGradeId, CancellationToken cancellationToken = default) =>
-    Task.FromResult(Existing?.Id == jobGradeId ? Existing : null);
+    Task.FromResult<JobGrade?>(StubSeed.Require(Existing, nameof(JobGrade)));
 
   public Task<bool> CodeExistsAsync(
     Guid companyId, string normalizedCode, CancellationToken cancellationToken = default) =>
@@ -318,7 +351,7 @@ public sealed class StubSalaryGradeRepository : ISalaryGradeRepository
 
   public Task<SalaryGrade?> GetByIdAsync(
     Guid salaryGradeId, CancellationToken cancellationToken = default) =>
-    Task.FromResult(Existing?.Id == salaryGradeId ? Existing : null);
+    Task.FromResult<SalaryGrade?>(StubSeed.Require(Existing, nameof(SalaryGrade)));
 
   public Task<bool> CodeExistsAsync(
     Guid companyId, string normalizedCode, CancellationToken cancellationToken = default) =>

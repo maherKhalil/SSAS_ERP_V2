@@ -170,6 +170,38 @@ public sealed class StubSalaryGradeReads : ISalaryGradeReadService
 // `Existing` is the aggregate a load returns; the uniqueness probes answer from flags a test sets, so the
 // conflict arms of the mapper are reachable without a database. `Added` records what a create handed over,
 // which is how a test asserts that a refused write wrote nothing.
+//
+// ==================================================================================================
+// ⚠⚠⚠ `Existing` IS SEEDED BY NO TEST IN THIS ASSEMBLY, AND EVERY UPDATE ROUTE THEREFORE ANSWERS 404
+// ==================================================================================================
+//
+// Measured 2026-09-02. `Existing` is declared here, set to null by `Reset()`, read by `GetByIdAsync` —
+// **and assigned nowhere.** So `GetByIdAsync` always returns null, every handler stops at its not-found
+// branch, and **every `PUT`, `activate` and `deactivate` in `PositionEndpointTests.Fp008Routes()` answers
+// `404`.** The same holds for `StubJobGradeRepository` and `StubSalaryGradeRepository`.
+//
+// ⚠⚠ THE CONSEQUENCE IS NOT MERELY *those routes are untested*. **THE POSITION PERMISSION MATRIX CANNOT
+// DISTINGUISH *the caller is authorised* FROM *the route is broken*:** it asserts `403` versus not-`403`,
+// and `404` satisfies not-`403`. **A position update route that had stopped working entirely would pass
+// that matrix unchanged** — an observable shared between the intended behaviour and a failure.
+//
+// **So nothing gated reaches any post-load rule on these aggregates**: the concurrency pre-check at
+// `PositionCommandHandlers:245`, the uniqueness probes on update, the dependent checks. `AC-POS-0047`'s
+// behavioural half is unassertable here for that reason and not because the property needs a database.
+//
+// ---- HOW IT WAS FOUND, BECAUSE READING WOULD NOT HAVE FOUND IT.
+//
+// ⚠ By writing a stale-`RowVersion` test and watching all three cases return `404` instead of `409`.
+// **No artefact was wrong: no comment stale, no name misleading, no search that would have named it. The
+// defect is the ABSENCE OF AN ASSIGNMENT, which nothing describes.** A reader checking this file sees a
+// field declared and nulled and has no reason to ask whether anyone ever sets it.
+//
+// ---- WHAT FIXING IT COSTS, SO THE NEXT READER DOES NOT UNDER-ESTIMATE IT AS I DID.
+//
+// Seeding needs a real `Position`, `JobGrade` and `SalaryGrade` built through their own factories with
+// `RowVersion` set by reflection — `EmployeeApiTestStubs.SetRowVersion` at `:285` is the precedent, and
+// that harness DOES seed its employee, which is exactly why the employee-side equivalent works.
+// **That is establishing seeding this harness has never had, not applying a pattern.**
 public sealed class StubPositionRepository : IPositionRepository
 {
   public Position? Existing { get; set; }

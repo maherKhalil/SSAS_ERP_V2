@@ -1325,3 +1325,48 @@ example of the pattern to remove.** **It is the instrument defect, and it outliv
 
 **Nothing is queued and nothing is being built. The coder is under a standing prohibition not to touch
 `requireJson` until you rule.**
+
+### #28 — THE TEST-COUNT CHECK CANNOT FAIL THE GATE, AND WE HAVE THE INSTANCE IT MISSED (raised 2026-09-02, from `281`)
+
+**WHAT IS TRUE.** `scripts/gate.sh` condition 4 compares the test count against
+`.claude/handoff/test-baseline.txt`. ⚠⚠ **`GATE_C4_NOTE` IS ONLY EVER ECHOED — `:1632`, `:1718`, `:1719`. It
+never sets `GATE_FAILED` and never exits non-zero.** The header says so deliberately: *"PARTIALLY MECHANISED
+-- AND THE PARTIAL IS THE POINT."*
+
+**This was found while disposing of a different worry, and that worry IS disposed of** — a hand-edited
+baseline buys nothing, because `OLD` is read from `git show "$BASE:…"` (the merge-base commit, not the
+working tree), and because C4 cannot fail anyway. **Two independent reasons, both checked.**
+
+### ⚠⚠⚠ BUT THE SAME FACT READ THE OTHER WAY IS THE FINDING
+
+**If condition 4 cannot fail the gate, then A GENUINE TEST-COUNT REGRESSION CANNOT FAIL IT EITHER.** A suite
+that loses tests merges green, with an advisory that nobody is obliged to read.
+
+⚠⚠ **AND THIS IS NOT HYPOTHETICAL. Earlier on this project the write-run-restore plant discipline was
+applied by SHAPE rather than by PURPOSE, and it DELETED THE ONLY REGRESSION TEST FOR NEW INFRASTRUCTURE.
+Nothing caught it.** **We now know why nothing caught it: the one mechanism positioned to notice a
+disappearing test is advisory.**
+
+**That is what changes this from a design choice into a design choice with a recorded failure.** The
+partial mechanisation may still be right — but it should be re-affirmed knowing it has already been paid
+for once, rather than inherited.
+
+### THE DECISION
+
+**(a) MAKE CONDITION 4 FAIL THE GATE when the count drops.** Catches the deletion case mechanically. ⚠ **The
+cost is real: legitimate consolidation — merging two tests into a better one, removing a genuinely
+redundant case — would block a merge until the baseline is updated in the same change.** That may be
+acceptable, since updating it in the same diff is exactly the visibility the current design wants.
+
+**(b) LEAVE IT ADVISORY AND MAKE THE ADVISORY UNMISSABLE** — the count drop is currently one echoed line
+among a gate's worth of output.
+
+**(c) LEAVE IT EXACTLY AS IT IS**, now recorded as a considered choice rather than an unexamined one.
+
+**NO RECOMMENDATION FROM ME.** ⚠ **A gate that fails on every deliberate test consolidation is the shape of
+guard I have twice ruled should be deleted for having more false positives than true ones — and I do not
+know this repo's consolidation rate, so I cannot say which side that lands on. That number is the thing
+that decides it, and neither of us has measured it.**
+
+**Nothing is queued. The coder is under a standing prohibition not to edit `scripts/gate.sh` at all — the
+architect writes the ruling, the coder applies it, between runs.**

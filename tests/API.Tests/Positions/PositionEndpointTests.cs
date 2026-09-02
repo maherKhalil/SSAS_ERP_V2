@@ -588,6 +588,134 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
     Assert.Null(host.PositionRepository.Added);
   }
 
+  // ================================================================================================
+  // ⚠⚠ `AC-POS-0047`'s PRE-CHECK HALF — A `[Fact]`, NOT A THEORY, AND THE REASON IS RECORDED IN `B20`
+  // ================================================================================================
+  //
+  // The criterion is *every position and grade mutation refuses a stale `RowVersion` with `409`*. Gated, it
+  // had only the STRUCTURAL half — `PositionApplicationArchitectureTests` asserts the commands CARRY a
+  // version. **That a version is carried says nothing about it being CHECKED.** The behavioural half lived
+  // only in `PositionApplicationSqlServerTests`, which the merge gate does not run.
+  //
+  // ---- ⚠⚠⚠ WHY THIS CANNOT BE A `[Theory]` OVER THE ROUTE TABLE.
+  //
+  // `Fp008Routes()` hardcodes `PositionApiTestHost.PositionId`, and the stub matches on identity
+  // (`Existing?.Id == positionId`). `Entity<TId>.Id` is GET-ONLY, assigned once through a private
+  // constructor — **there is no setter to place a chosen id through.** So the route must carry the id the
+  // SEEDED aggregate actually has, which is known only at run time.
+  //
+  // **`[MemberData]`/`[InlineData]` are enumerated at DISCOVERY time, before `IAsyncLifetime` builds
+  // anything — so a theory cannot see the seed.** ⚠ That is `B20`'s recorded amendment, and its conclusion
+  // applies unchanged: **the obvious implementation is IMPOSSIBLE, not merely awkward, so the loop inside a
+  // `[Fact]` is the CORRECT shape rather than a compromise.** The loop therefore collects offenders and
+  // asserts the collection is empty — an `Assert` inside it would report only the first family.
+  //
+  // ---- WHAT IT COVERS, AND THE TWO THINGS IT DOES NOT.
+  //
+  // `PositionCommandHandlers:245` compares the supplied version against the repository's and fails with
+  // `ConcurrencyConflict` before the aggregate is mutated. Its own comment: *"compared again by the database
+  // on save — **this is the friendly error, not the rule**."* **This covers the friendly error only** — a
+  // stubbed repository never commits, so the authoritative token is out of reach. Hence `pre_check`.
+  //
+  // ⚠⚠ **AND THE SEEDED `RowVersion` IS LOAD-BEARING, NOT SETUP NOISE.** A freshly created aggregate has
+  // `RowVersion = []`, which differs from ANY eight-byte token — so without placing a known value this test
+  // would pass because the seed is EMPTY rather than because the caller is STALE. **It would be green for
+  // the wrong reason, and the matching-version control below is what proves it is not.**
+  [Fact]
+  [Trait("Criterion", "AC-POS-0047")]
+  public async Task A_stale_rowversion_is_refused_at_the_handler_pre_check_on_every_family()
+  {
+    var seeded = SeedEveryFamily();
+    var offenders = new List<string>();
+
+    foreach (var (label, route, permission, body) in UpdateRequests(seeded, StaleRowVersion))
+    {
+      using var response = await host.Client.SendAsync(
+        PositionApiTestHost.Request(HttpMethod.Put, route, host.TokenWith(permission), body));
+
+      if (response.StatusCode != HttpStatusCode.Conflict)
+      {
+        offenders.Add($"{label}: stale version answered {(int)response.StatusCode}, expected 409");
+      }
+    }
+
+    // ⚠ THE CONTROL, IN THE SAME TEST. The identical requests carrying the version the seed actually holds
+    // must NOT conflict — otherwise this asserts *the handler refuses everything* and cannot tell that from
+    // *the handler refuses stale versions*.
+    foreach (var (label, route, permission, body) in UpdateRequests(seeded, CurrentRowVersion))
+    {
+      using var response = await host.Client.SendAsync(
+        PositionApiTestHost.Request(HttpMethod.Put, route, host.TokenWith(permission), body));
+
+      if (response.StatusCode == HttpStatusCode.Conflict)
+      {
+        offenders.Add($"{label}: the CURRENT version also conflicted — the refusal is not about staleness");
+      }
+    }
+
+    Assert.Empty(offenders);
+  }
+
+  private const string CurrentRowVersion = "AAAAAAAAB9E=";
+  private const string StaleRowVersion = "AAAAAAAAAAA=";
+
+  private static readonly byte[] SeededRowVersion = [0, 0, 0, 0, 0, 0, 7, 209];
+
+  private (Position Position, JobGrade JobGrade, SalaryGrade SalaryGrade) SeedEveryFamily()
+  {
+    var now = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
+
+    var position = Position.Create(
+      PositionCode.Create("ACC-SR").Value, PositionTitle.Create("Senior Accountant").Value,
+      jobGradeId: null, "seed", Guid.NewGuid(), now).Value;
+    var jobGrade = JobGrade.Create(
+      JobGradeCode.Create("G7").Value, JobGradeName.Create("Grade 7").Value,
+      rankOrder: 70, salaryGradeId: null, "seed", Guid.NewGuid(), now).Value;
+    var salaryGrade = SalaryGrade.Create(
+      SalaryGradeCode.Create("S7").Value, SalaryGradeName.Create("Band 7").Value,
+      rankOrder: 70, band: null, "seed", Guid.NewGuid(), now).Value;
+
+    // ⚠ OWNERSHIP AND THE TOKEN ARE BOTH DATABASE-ASSIGNED IN PRODUCTION, AND THERE IS NO DATABASE HERE.
+    //
+    // `PersistenceDbContext.AssignTenant` stamps `TenantId` on save and the company context supplies
+    // `CompanyId`; a freshly created aggregate carries neither. **The handler checks ownership FIRST —
+    // `position.TenantId != tenantId` answers `PositionNotFound` at `PositionCommandHandlers:228` — so an
+    // unstamped seed is indistinguishable from no seed at all.** The concurrency token is placed the same
+    // way and for the same reason, exactly as `EmployeeApiTestStubs.SetRowVersion` does.
+    foreach (var aggregate in new object[] { position, jobGrade, salaryGrade })
+    {
+      Place(aggregate, "TenantId", PositionApiTestHost.TenantId);
+      Place(aggregate, "CompanyId", PositionApiTestHost.CompanyA);
+      Place(aggregate, "RowVersion", SeededRowVersion);
+    }
+
+    host.PositionRepository.Existing = position;
+    host.JobGradeRepository.Existing = jobGrade;
+    host.SalaryGradeRepository.Existing = salaryGrade;
+
+    return (position, jobGrade, salaryGrade);
+  }
+
+  // ⚠ THROWS RATHER THAN SKIPPING IF THE PROPERTY IS GONE. A rename that made this a no-op would restore
+  // the exact defect `b99a4bb` records — an unseeded stub answering 404 while the suite stays green.
+  private static void Place(object aggregate, string property, object value) =>
+    (aggregate.GetType().GetProperty(property)
+      ?? throw new InvalidOperationException(
+        $"{aggregate.GetType().Name} has no '{property}' to seed; the stub would answer 404 and this test " +
+        "would be green over a route it never reached."))
+      .SetValue(aggregate, value);
+
+  private static (string Label, string Route, string Permission, string Body)[] UpdateRequests(
+    (Position Position, JobGrade JobGrade, SalaryGrade SalaryGrade) seeded, string version) =>
+  [
+    ("position", $"/api/hr/positions/{seeded.Position.Id}", HrPermissionNames.UpdatePositions,
+      $$"""{"code":"ACC-SR","title":"Renamed","jobGradeId":null,"expectedRowVersion":"{{version}}"}"""),
+    ("job grade", $"/api/hr/job-grades/{seeded.JobGrade.Id}", HrPermissionNames.UpdateJobGrades,
+      $$"""{"code":"G7","name":"Renamed","rankOrder":70,"salaryGradeId":null,"expectedRowVersion":"{{version}}"}"""),
+    ("salary grade", $"/api/hr/salary-grades/{seeded.SalaryGrade.Id}", HrPermissionNames.UpdateSalaryGrades,
+      $$"""{"code":"S7","name":"Renamed","rankOrder":70,"minimumAmount":null,"midpointAmount":null,"maximumAmount":null,"expectedRowVersion":"{{version}}"}""")
+  ];
+
   [Fact]
   // ⚠ CITED BY 269: `AC-POS-0061`'s WIRE half. The name states the criterion and the assertion is on the
   // CODE, not the status — a 409 alone cannot distinguish the two indexes, which is the whole criterion.

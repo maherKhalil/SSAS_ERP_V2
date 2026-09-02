@@ -498,6 +498,25 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
   // ⚠ Read the population on the FIRST REQUEST, not at startup — a startup filter runs before the host's
   // `MapX` calls and sees an EMPTY endpoint set, which inverts the result into a confident backwards answer.
   //
+  // ---- ⚠⚠ A BETTER MECHANISM WAS TRIED AND IS UNRESOLVED. READ THIS BEFORE REPEATING IT.
+  //
+  // Per-host middleware has a structural flaw: its population is *the hosts somebody remembered*, so a host
+  // added later is a silent hole — which is precisely how the first sweep went wrong. The fix attempted was
+  // to hook the framework instead: a `[ModuleInitializer]` subscribing to `DiagnosticListener` for
+  // `Microsoft.AspNetCore.Hosting.EndRequest`, which every host in the process emits through the shared
+  // hosting layer. **That makes the population the framework's own pipeline rather than a list anyone
+  // maintains, and it would cover hosts that do not exist yet.**
+  //
+  // **It ran — 952 green, so it perturbs nothing — AND PRODUCED NO OUTPUT FILE AT ALL. Not an empty file:
+  // none.** Two candidates, NEITHER PROVEN:
+  //   * the `[ModuleInitializer]` never fired in the test host, or
+  //   * the hosting diagnostics never reached the subscriber.
+  // ⚠ The discriminating fact already known: **the middleware version wrote its files under the IDENTICAL
+  // environment-variable setup, so variable propagation into the test host is NOT the cause.**
+  //
+  // Recorded as unresolved rather than as *doesn't work*, because a bare "doesn't work" hides which half
+  // was never tested and the next person pays for that twice.
+  //
   // ⚠ Compare pairs against pairs. Distinct `(method, route, STATUS)` triples are a different key space and
   // give a different, plausible, wrong number.
   //

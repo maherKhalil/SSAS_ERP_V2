@@ -217,6 +217,53 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
   }
 
+  // ================================================================================================
+  // ⚠⚠ THE OTHER HALF OF `AC-DEP-0036`, AND THE NAME SAYS WHICH HALF — IT IS NOT THE AUTHORITATIVE ONE.
+  // ================================================================================================
+  //
+  // `AC-DEP-0036` is two clauses: *changes the department* AND *refuses a stale `RowVersion` with `409`*.
+  // `A6e` above asserts the first. **Until this test the second was asserted only in
+  // `EmployeeBoundarySqlServerTests.D8_…`, which the merge gate does not run** — so a change-department
+  // guard that stopped refusing stale versions passed everything a merge is defended by.
+  //
+  // ---- ⚠⚠⚠ WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT.
+  //
+  // `ChangeEmployeeDepartmentCommandHandler:99` compares the supplied version against the one the
+  // repository returns and fails with `ConcurrencyConflict` before any write. **THAT PRE-CHECK is what this
+  // test covers, through production handler code.** ⚠ **The handler's own comment at `:96` says the
+  // rowversion token AT COMMIT is *"the authoritative check"* — and this test does NOT reach it, because a
+  // stubbed unit of work never commits.** The name says `pre_check` for that reason; do not rename it to
+  // something that sounds like it covers concurrency, and do not let it carry the criterion's second clause
+  // as though the authoritative half were asserted.
+  //
+  // ---- WHY A STUB IS LEGITIMATE HERE WHEN IT IS NOT ELSEWHERE.
+  //
+  // **A stub that SUPPLIES INPUT to the code under test is a fixture; a stub that REPLACES the code under
+  // test is a substitution.** The repository feeds `employee.RowVersion` in; the comparison and the refusal
+  // are the real handler's. ⚠ Contrast `AC-EMP-0015`, whose subject IS `IEmployeeReadService` — asserting
+  // that here would test the stub.
+  [Fact]
+  [Trait("Criterion", "AC-DEP-0036")]
+  public async Task A6h_Change_department_refuses_a_stale_rowversion_at_the_handler_pre_check()
+  {
+    // ⚠ THE MATCHING CASE IS THE CONTROL AND IT IS NOT DECORATION. `A6e` sends the SAME route with the
+    // stub's current version and expects `200`. Without that pairing this test cannot distinguish
+    // *the handler refuses STALE versions* from *the handler refuses EVERYTHING* — which is `B22`'s shape
+    // landing on the very test that came out of `B22`.
+    var body = $$"""
+      {"departmentId":"{{EmployeeApiTestHost.DepartmentB}}","expectedRowVersion":"AAAAAAAAAAA="}
+      """;
+
+    var response = await Send(
+      HttpMethod.Post,
+      $"{Route}/{EmployeeApiTestHost.EmployeeId}/change-department",
+      UpdateToken,
+      body);
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("concurrency.conflict", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   // CITED BY B18 pass 20: `AC-DEP-0042`'s no-authority refusal. See `A6e` for the three-way reading.
   [Trait("Criterion", "AC-DEP-0042")]

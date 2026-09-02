@@ -180,9 +180,27 @@ public sealed class EmployeePositionAssignmentDomainTests
 
   // NO EffectiveToUtc. Closing an interval would mean UPDATING the previous row, which is precisely the
   // history mutation this model exists to prevent. The interval is derived by ordering.
+  //
+  // ⚠ THE LITERAL STAYS A BARE STRING, AND THE RESIDUAL IS NAMED HERE RATHER THAN LEFT IMPLICIT (273).
+  // `nameof` cannot be used because `EffectiveToUtc` EXISTS NOWHERE IN `src/`: a value search returns twelve
+  // occurrences and every one is a COMMENT recording its absence, across seven types in three modules.
+  // **There is no symbol to bind to, so a misspelling here would pass and nothing can prevent that.** Item
+  // `258` reached the identical conclusion for `UpdateName` — *"a value search finds it nowhere in src/, so
+  // no witness can exist and the residual is named at the site"* — and left it a string for this reason.
+  //
+  // ⚠⚠ SO THE CONTROL CLOSES THE OTHER FAILURE, WHICH IS THE ONE THAT IS CLOSEABLE. `Assert.Null` over a
+  // lookup passes when the property is ABSENT and equally when the lookup CANNOT SEE THIS TYPE'S PROPERTIES
+  // AT ALL — a changed binding flag, a renamed type, reflection returning an empty set. Proving the SAME
+  // call finds `EffectiveFromUtc` makes the null below mean *absent* rather than *blind*.
+  //
+  // Two failure modes, one instrument: the misspelling is unguardable and stated; the blind lookup is
+  // guarded and no longer possible.
   [Fact]
   public void The_record_carries_no_end_date()
   {
+    Assert.NotNull(typeof(EmployeePositionAssignment)
+      .GetProperty(nameof(EmployeePositionAssignment.EffectiveFromUtc)));
+
     Assert.Null(typeof(EmployeePositionAssignment).GetProperty("EffectiveToUtc"));
   }
 

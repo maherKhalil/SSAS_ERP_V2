@@ -513,9 +513,20 @@ public sealed class EmployeeDomainTests
     Assert.Empty(type.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
       .Where(method => method.DeclaringType == type && !method.IsSpecialName));
 
+    // ⚠ THE LOOKUP IS PROVEN TO SEE THIS TYPE BEFORE THREE NULLS ARE READ AS ABSENCES (273). Each
+    // `Assert.Null` passes when the property is absent AND when the call cannot see the type's properties
+    // at all, and three of them in a row look like thoroughness while sharing one point of failure.
+    Assert.NotNull(type.GetProperty(nameof(EmployeeBranchAssignment.EffectiveFromUtc)));
+
     // No RowVersion, no Modified pair, no EffectiveToUtc.
     Assert.Null(type.GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion)));
     Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc)));
+
+    // ⚠⚠ AND THIS ONE CANNOT BE BOUND, WHICH IS WHY IT IS THE ONLY BARE STRING LEFT IN THE THREE.
+    // `EffectiveToUtc` exists NOWHERE in `src/` — twelve occurrences, every one a comment recording its
+    // absence — so there is no symbol for `nameof` and a misspelling here would pass undetected. The two
+    // above are bound because `RowVersion` and `ModifiedUtc` DO exist elsewhere and a rename breaks the
+    // build. Item `258` left `UpdateName` a string on exactly this reasoning.
     Assert.Null(type.GetProperty("EffectiveToUtc"));
 
     // Only the ownership interfaces may set anything, and only what the persistence layer stamps.

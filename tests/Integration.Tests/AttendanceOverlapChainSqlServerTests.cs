@@ -264,6 +264,11 @@ public sealed class AttendanceOverlapChainSqlServerTests
   // reached into. Both results are asserted: `LeaveType.SetActivation` REFUSES A NO-OP, so a silently
   // failed arrangement would leave the type in the state it was already in and the assertions below would
   // be measuring nothing.
+  // ⚠⚠ NO `Criterion` TRAIT, AND THE ABSENCE IS THE FINDING — the same shape as the position family.
+  // `AC-ATT-0022` (`acceptance-criteria.md:54`) states three clauses: deactivated-never-deleted, a
+  // deactivated type CANNOT be named on a new request, and existing requests remain intact. **None of them
+  // says the capability RETURNS.** This is the allowed side of the second clause, and no acceptance
+  // criterion states it — so it is left untagged rather than credited to a clause it does not satisfy.
   [Fact]
   [Trait("BusinessRule", "BR-ATT-0009")]
   public async Task A_reactivated_leave_type_can_be_booked_against_again()
@@ -309,7 +314,89 @@ public sealed class AttendanceOverlapChainSqlServerTests
       .Where(request => request.StartDate == start && request.EndDate == end)
       .CountAsync();
 
+    // ⚠ AND THE COUNT PINS A SECOND RULE FOR FREE, WHICH READS AS BOOKKEEPING: `1` is this submission and
+    // nothing else, so it also asserts THE REFUSED ATTEMPT WROTE NO ROW. A refusal that inserted anyway
+    // would read `2` and fail here.
     Assert.Equal(1, booked);
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ AND THE THIRD CLAUSE: AN EXISTING REQUEST SURVIVES ITS TYPE BEING RETIRED (`AC-ATT-0022`).
+  // ================================================================================================
+  //
+  // The two tests above cover *cannot be named on a new request* and its allowed side. **NEITHER ASSERTS
+  // THAT A REQUEST ALREADY REFERENCING THE TYPE STAYS INTACT** — which is the clause with money behind it:
+  // leave becomes paid or unpaid absence, and absence is a payslip line. A deactivation that orphaned or
+  // silently altered existing rows would pass both.
+  //
+  // ⚠ THE DEPARTMENT FAMILY HAS THIS AND ATTENDANCE DID NOT:
+  // `DepartmentApplicationSqlServerTests:565` asserts an inactive department is still readable and still
+  // listed (`AC-DEP-0030`). Same criterion one noun over, and the reason it is worth its own test is the
+  // same: a read path that quietly filtered inactive rows would satisfy every refusal test in the module.
+  //
+  // ---- WHAT "INTACT" IS ASSERTED ON, RATHER THAN GESTURED AT.
+  //
+  // The row exists, still points at the SAME leave type, and carries the SAME `WorkingDaysConsumed` it was
+  // submitted with. **The settled figure is the one that reaches a payslip**, so an intactness claim that
+  // checked only existence would miss the failure that costs money.
+  //
+  // ⚠⚠ AND THE DEACTIVATION ITSELF MUST SUCCEED WITH A DEPENDENT PRESENT — the `OD-POS-005` shape one
+  // module over. If it were refused while requests referenced the type, "deactivated, never deleted" would
+  // be unreachable for any type anyone had ever used, and this test would be asserting over a no-op.
+  [Fact]
+  [Trait("BusinessRule", "BR-ATT-0009")]
+  [Trait("Criterion", "AC-ATT-0022")]
+  public async Task A_request_already_referencing_a_leave_type_survives_its_deactivation()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+    var leaveTypeId = await SeedLeaveAsync(fixture, context);
+
+    var start = new DateOnly(2026, 9, 7);
+    var end = new DateOnly(2026, 9, 11);
+
+    var submitted = await LeaveHandlerFor(context, fixture).HandleAsync(new SubmitLeaveRequestCommand(
+      fixture.CompanyA, fixture.Employee, leaveTypeId, start, end));
+
+    Assert.True(submitted.IsSuccess, submitted.IsFailure ? submitted.Error.Code : null);
+
+    // The figure as SUBMITTED, read before the deactivation so the comparison is against a measurement
+    // rather than against a number written into this test.
+    var before = await context.Set<LeaveRequest>()
+      .Where(request => request.Id == submitted.Value)
+      .Select(request => request.WorkingDaysConsumed)
+      .SingleAsync();
+
+    Assert.True(before > 0m, "a request consuming no days would make the comparison below vacuous");
+
+    // ---- THE DEACTIVATION, WITH A DEPENDENT PRESENT, THROUGH THE PRODUCT.
+    Assert.True((await ActivationHandlerFor(context)
+      .HandleAsync(new SetLeaveTypeActivationCommand(leaveTypeId, false))).IsSuccess);
+
+    // ---- THE CLAIM. Still there, still pointed at the same type, still carrying the same settled figure.
+    //
+    // ⚠⚠ `ChangeTracker.Clear()` IS LOAD-BEARING AND WAS MEASURED, NOT ASSUMED. Without it the read below
+    // could be answered from the tracked instance already in memory, and "the row survived" would be a
+    // claim about an object this test is holding rather than about the DATABASE.
+    //
+    // PLANTED to prove the assertion reads persisted state: altering `WorkingDaysConsumed` to 999 and
+    // saving, immediately before this line, failed the test with `Expected: 4.00 / Actual: 999.00`. So a
+    // deactivation that silently rewrote a settled figure WOULD be caught here.
+    context.ChangeTracker.Clear();
+
+    var after = await context.Set<LeaveRequest>()
+      .SingleAsync(request => request.Id == submitted.Value);
+
+    Assert.Equal(leaveTypeId, after.LeaveTypeId);
+    Assert.Equal(before, after.WorkingDaysConsumed);
+    Assert.Equal(start, after.StartDate);
+    Assert.Equal(end, after.EndDate);
+
+    // And the type itself: DEACTIVATED, NEVER DELETED — the first clause, which is what makes the row's
+    // reference above still resolve rather than dangle.
+    var leaveType = await context.Set<LeaveType>().SingleAsync(type => type.Id == leaveTypeId);
+
+    Assert.False(leaveType.IsActive);
   }
 
   private static SetLeaveTypeActivationCommandHandler ActivationHandlerFor(TenantDbContext context)

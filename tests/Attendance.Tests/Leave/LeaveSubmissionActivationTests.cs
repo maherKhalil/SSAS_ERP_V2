@@ -78,8 +78,22 @@ public sealed class LeaveSubmissionActivationTests
     return leaveType;
   }
 
+  // ⚠⚠ THE CLAUSE, NOT THE RULE. `AC-ATT-0022` (`acceptance-criteria.md:54`) has THREE:
+  //
+  //   1. a leave type is deactivated, never deleted
+  //   2. a deactivated type CANNOT BE NAMED ON A NEW REQUEST        ← this test, and only this one
+  //   3. existing requests that reference it remain intact
+  //
+  // Naming the rule alone would credit this with all three. It asserts the second and nothing else.
+  //
+  // ⚠ THIS TRAIT WAS `BR-ATT-0003` WHEN THE TEST LANDED AND THAT WAS FALSE — that rule is *the number of
+  // days a leave request consumed is fixed at the moment of decision and does not change if the calendar is
+  // later amended* (`business-rules.md:23`), about settled figures and calendar amendment, of which this
+  // test asserts not one word. A trait naming a REAL rule the test does not satisfy is well-formed,
+  // resolvable and wrong, and it inflates coverage in the direction of the gap.
   [Fact]
-  [Trait("BusinessRule", "BR-ATT-0003")]
+  [Trait("BusinessRule", "BR-ATT-0009")]
+  [Trait("Criterion", "AC-ATT-0022")]
   public async Task A_submission_against_a_retired_leave_type_is_refused()
   {
     var leaveType = Retired();
@@ -109,8 +123,11 @@ public sealed class LeaveSubmissionActivationTests
   // (`:307-311`), one branch above the activation check. A test asserting only `IsFailure` would pass
   // identically if the company ids drifted apart and the refusal came from the WRONG guard — the
   // arrangement would be broken and the test still green. Naming the code is what pins which refusal ran.
+  // ⚠ NO `Criterion` TRAIT: this is a fixture control and satisfies no clause of `AC-ATT-0022`. It exists
+  // so the refusal above cannot be coming from the construction. Tagging it would count the criterion twice
+  // for one assertion.
   [Fact]
-  [Trait("BusinessRule", "BR-ATT-0003")]
+  [Trait("BusinessRule", "BR-ATT-0009")]
   public async Task An_active_leave_type_gets_past_the_activation_guard()
   {
     // The SAME construction as `Retired`, minus the deactivation. If this answered `LeaveTypeInactive`

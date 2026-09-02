@@ -39,6 +39,44 @@ namespace SSAS.Architecture.Tests;
 // ⚠⚠ IT READS ONE LINE AT A TIME. MSBuild writes these elements on a single line and every project in this
 // repository does; an `Include` split across lines would be invisible here. That is a real bound and it is
 // stated rather than guarded, because no such element exists to test against.
+//
+// ==================================================================================================
+// ⚠⚠⚠ READ THIS BEFORE CHOOSING BETWEEN THIS HELPER AND THE RAW CALL — THERE IS NO BAN, DELIBERATELY
+// ==================================================================================================
+//
+// **`can see` and `does use` are NOT a strength ordering. Which one is stronger is a function of HOW THE
+// DEPENDENCY CAN ARRIVE**, and item `272` swept every boundary guard in this suite on that basis:
+//
+//   A DIRECT `ProjectReference`, or a package this repository really declares (`Microsoft.EntityFrameworkCore`,
+//   `Microsoft.AspNetCore`) — **declared ⊃ emitted.** You can declare without using, so the emitted read is
+//   blind to the merged-but-unused reference: the `.csproj` edit is in, the friction is gone, and the next
+//   developer reaching for a forbidden type meets nothing in the way. **Use this helper, and keep the
+//   emitted assertion beside it — they fail on different days, and the emitted one catches a transitive
+//   use no `.csproj` of ours names.**
+//
+//   A TRANSITIVE OR FRAMEWORK DEPENDENCY — `Microsoft.Data.SqlClient` (arrives through
+//   `EntityFrameworkCore.SqlServer`), `System.Security.Cryptography`, `Microsoft.Extensions.Caching`, or a
+//   package banned precisely BECAUSE nothing references it, like the seven message brokers in
+//   `TenantRoutingArchitectureTests` — **emitted ⊃ declared, AND DECLARED IS EMPTY BY CONSTRUCTION.** The
+//   whole repository declares ELEVEN `PackageReference` lines across three projects. **A declared check on
+//   any of those subjects passes forever, for a reason no reader would guess, while reading as extra
+//   rigour. THE RAW CALL IS CORRECT THERE. Do not "finish the job" by adding the declared half.**
+//
+// ---- ⚠ AND THERE IS NO GUARD BANNING THE RAW CALL. THAT IS A RULING, NOT AN OVERSIGHT.
+//
+// `272` intended to end with one, on the `RepositoryPathPortabilityTests` precedent: ban the weak call,
+// supply the sanctioned helper. **It is not writable.** The ban's real population is *call sites that
+// SHOULD have been converted* — and separating those from the ones that correctly use the raw call
+// requires knowing what each criterion needs, which is a SEMANTIC judgement no mechanical rule can make.
+// A ban would have to exempt a third of its own population on day one, which is how a guard is born
+// vacuous. A *pair it with a declared read* rule is a structural proxy for that semantic property and can
+// be satisfied by a `.csproj` read that checks something else entirely.
+//
+// **So the record lives here rather than in a guard, because this file is what you are reading at the
+// moment you make the choice.** If the thing you are banning can never appear in a `.csproj`, use the raw
+// call and say why at the site — `TenantRoutingArchitectureTests` is the worked example, and it separates
+// the two levels: the MECHANISM is controllable, the individual banned LITERALS are not, exactly as `273`
+// found for an identifier with no symbol anywhere in the tree.
 internal static class DeclaredDependencies
 {
   // The declared dependency names of the project that builds this assembly.

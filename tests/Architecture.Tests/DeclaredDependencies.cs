@@ -123,6 +123,22 @@ namespace SSAS.Architecture.Tests;
 // Adding a term now fails at the witness lookup rather than passing into silence. **This closes TERM drift
 // and deliberately not PREDICATE drift** — see the asymmetry above, which is the reason and which lives
 // nowhere else in the code.
+//
+// ---- WHERE THE DERIVATION IS REQUIRED, AND WHERE IT IS NOT.
+//
+//   A ban that grows a term LIST MUST derive its controls from that list. The list can sit far from the
+//   controls that iterate it, so a term can be added without the controls ever being looked at.
+//   A ban that is a SINGLE INLINE LITERAL need not. The banned term and its control are adjacent literals
+//   in the same method, so **extending the ban requires editing the method the control sits in** — the
+//   drift is not constructible there. ~17 controls are of this kind and are deliberately left alone.
+//
+// ⚠⚠⚠ AND THE PARAGRAPH ABOVE IS DIAGNOSIS, NOT PREVENTION. **NOTHING ENFORCES IT.** No guard checks that
+// a term list has derived controls. A future method that introduces a `declarable` array with hardcoded
+// controls beside it reintroduces the entire defect, silently, and every existing test stays green.
+//
+// **Naming a failure mode confers no immunity, and a comment that gets CREDITED as a guard is worse than
+// no comment at all** — it buys the reassurance of coverage while supplying none. If this shape recurs,
+// the answer is an instrument over the term lists, not a longer version of this paragraph.
 internal static class DeclaredDependencies
 {
   // ================================================================================================

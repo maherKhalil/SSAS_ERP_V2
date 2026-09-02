@@ -50,9 +50,30 @@ public sealed class ModuleTenantContractArchitectureTests
   [Fact]
   public void The_tenancy_project_does_not_depend_on_entity_framework()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). The emitted reading omits a
+    // reference no type is taken from, so this project could DECLARE EF and pass until the first use — and
+    // *an Application-layer module can reference it without pulling EF Core in* is a claim about what
+    // consumers inherit, which is decided by the declaration rather than by current usage.
+    //
+    // ⚠⚠ FOUR EXERCISES FOR FOUR BRANCHES. The second ban is a disjunction over `SSAS.Platform`, `SSAS.HR`
+    // and `SSAS.GL`; one control would prove only that one of the three can fire and leave two prefixes
+    // untested. All four witnesses are the composition root or the EF host, both of which legitimately
+    // declare what they are asked about.
+    var host = DeclaredDependencies.Of("SSAS.Host.API");
+    var declared = DeclaredDependencies.Of(TenancyAssembly);
+
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.HR", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.GL", StringComparison.Ordinal));
+
     Assert.DoesNotContain(
       TenancyAssembly.GetReferencedAssemblies(),
       reference => reference.Name?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true);
+    Assert.DoesNotContain(
+      declared, name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
 
     // Nor on any module, in either direction. A contract project that referenced Platform would put every
     // consumer back where it started.
@@ -61,6 +82,11 @@ public sealed class ModuleTenantContractArchitectureTests
       reference => reference.Name?.StartsWith("SSAS.Platform", StringComparison.Ordinal) == true ||
         reference.Name?.StartsWith("SSAS.HR", StringComparison.Ordinal) == true ||
         reference.Name?.StartsWith("SSAS.GL", StringComparison.Ordinal) == true);
+    Assert.DoesNotContain(
+      declared,
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal) ||
+        name.StartsWith("SSAS.HR", StringComparison.Ordinal) ||
+        name.StartsWith("SSAS.GL", StringComparison.Ordinal));
   }
 
   // ---- BOTH SIDES REFERENCE THE CONTRACTS, AND NEITHER REFERENCES THE OTHER.

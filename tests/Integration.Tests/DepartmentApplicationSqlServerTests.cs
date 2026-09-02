@@ -300,6 +300,100 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.Equal(DepartmentErrors.ParentInactive, moved.Error);
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ THE THIRD `ParentInactive` SITE — CREATION — WHICH NOTHING REACHED.
+  // ================================================================================================
+  //
+  // `DepartmentErrors.ParentInactive` is returned from THREE handlers, one per operation that can attach a
+  // department to a parent:
+  //
+  //   `DepartmentCommandHandlers:85`            CREATE beneath the parent      ← this test
+  //   `DepartmentHierarchyCommandHandlers:144`  MOVE beneath the parent        `An_inactive_parent_is_refused`
+  //   `DepartmentLifecycleCommandHandlers:132`  REACTIVATE beneath the parent  `Reactivation_beneath_...`
+  //
+  // **Searched with no cap because it is an absence claim: `ParentInactive` appeared in the whole `tests`
+  // tree at exactly two sites — `:300` and `:491` — which are the MOVE and REACTIVATE paths. Creation was
+  // reached by nothing.**
+  //
+  // ---- ⚠⚠ AND THE EXPECTED RHYME WITH `GradeInactive` IS WRONG IN BOTH DIRECTIONS, WHICH IS WHY IT WAS
+  // ---- CHECKED RATHER THAN INHERITED.
+  //
+  // `PositionErrors.cs:159` says the grade trio MIRRORS this one, so the natural expectation was the same
+  // shape. It is not:
+  //
+  //   `GradeInactive`    TWO sites, TWO different relationships (position→job grade, job grade→salary
+  //                      grade), reached through a SHARED validator called from two handler families.
+  //   `ParentInactive`   THREE sites, ONE self-referential relationship, each an INLINE check in its own
+  //                      handler with no shared validator at all.
+  //
+  // **The trio mirrors in its ERROR VOCABULARY — three ways a reference can be invalid — and not in its
+  // call graph.** A test written from the analogy would have looked for a second relationship that does
+  // not exist and missed a third site that does.
+  //
+  // ---- ⚠ THE ALLOWED SIDE ALREADY EXISTS FOR ONE PATH, AND THAT IS WHY THIS ONE ADDS IT FOR CREATE.
+  //
+  // `Reactivation_beneath_an_inactive_parent_is_refused:493-497` already reactivates the parent and shows
+  // the child then follows — the capability half, for the REACTIVATE path, written before tonight. Nothing
+  // showed it for CREATE, so the refusals below are followed by the reversal.
+  //
+  // ---- ⚠⚠⚠ MEASURED AS A FULL 3×3. NINE CELLS RUN, 2026-09-03, AND IT IS PERFECTLY DIAGONAL.
+  //
+  //                              create test    move test    reactivate test
+  //   remove the CREATE guard        RED          green          green
+  //   remove the MOVE guard         green          RED           green
+  //   remove the REACTIVATE guard   green         green           RED
+  //
+  // **Three handlers return one error value, so a single plant could not tell three tests about three
+  // guards from three tests about whichever guard runs first.** The OFF-DIAGONAL is the claim: each test
+  // is blind to the other two guards, which is exactly what makes adding a third one worth doing rather
+  // than duplicating cover that already existed.
+  //
+  // ⚠ Unlike the grade pair, these checks are INLINE in three separate handlers with no shared validator —
+  // so the disjointness is structural here and the matrix confirms it rather than discovering it. Run
+  // anyway, because *structurally disjoint* was the expectation and the expectation is the thing being
+  // tested.
+  [Fact]
+  [Trait("Decision", "ADR-026")]
+  [Trait("Criterion", "AC-DEP-0015")]
+  public async Task A_department_cannot_be_created_beneath_an_inactive_parent()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var parent = await fixture.CreateDepartmentAsync("P", "Parent");
+
+    Assert.True((await graph.Deactivate().HandleAsync(
+      new DeactivateDepartmentCommand(parent, await fixture.RowVersionAsync(parent)))).IsSuccess);
+
+    var refused = await graph.Create().HandleAsync(
+      new CreateDepartmentCommand(fixture.CompanyA, "C", "Child", parent));
+
+    Assert.True(refused.IsFailure, "a department was created beneath an inactive parent");
+    Assert.Equal(DepartmentErrors.ParentInactive, refused.Error);
+
+    // ⚠ AND NOTHING WAS WRITTEN. *Refused* means the row does not exist, which the error alone does not
+    // say — a handler that failed AFTER saving satisfies the assertion above and leaves an orphan.
+    Assert.Equal(0, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [tenant].[Departments] WHERE [NormalizedCode] = N'C'"));
+
+    // ---- THE ALLOWED SIDE. The refusal above is the control: the guard is observed FIRING on this exact
+    // parent moments earlier, so the success below is a REVERSAL rather than a parent that never blocked.
+    Assert.True((await graph.Reactivate().HandleAsync(
+      new ReactivateDepartmentCommand(parent, await fixture.RowVersionAsync(parent)))).IsSuccess);
+
+    var created = await graph.Create().HandleAsync(
+      new CreateDepartmentCommand(fixture.CompanyA, "C", "Child", parent));
+
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    // THE CAPABILITY, read back through the query handler: the department exists AND is attached where it
+    // was refused a moment ago. `Result.Success` alone would not say the parent was recorded.
+    var read = await graph.Get().HandleAsync(new GetDepartmentQuery(created.Value));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(parent, read.Value.ParentDepartmentId);
+  }
+
   // ---- A STALE TOKEN IS REFUSED, and the hierarchy is left alone.
   [Fact]
   [Trait("Decision", "ADR-026")]

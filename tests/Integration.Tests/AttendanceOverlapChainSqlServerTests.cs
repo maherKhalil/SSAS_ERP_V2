@@ -234,6 +234,93 @@ public sealed class AttendanceOverlapChainSqlServerTests
   }
 
   // ================================================================================================
+  // ⚠⚠⚠ A REACTIVATED LEAVE TYPE CAN BE BOOKED AGAINST AGAIN — THE ALLOWED HALF OF `BR-ATT-0009`.
+  // ================================================================================================
+  //
+  // The refusal half is `LeaveSubmissionActivationTests` in `Attendance.Tests`, which runs on every task.
+  // This is the half that says the guard STOPS firing, and it needs a whole submission to succeed.
+  //
+  // ---- ⚠⚠ IT LIVES HERE BECAUSE A STUBBED SUCCESS WOULD ASSERT THE STUBS.
+  //
+  // The two halves have OPPOSITE relationships to a double. **A refusal short-circuits**: the retired type
+  // is rejected before the lock, the calendar or the overlap query, so the unit-test file can stub those
+  // with throwing doubles and even use the throws to pin the ordering. **A success runs through all of
+  // them** — roster, calendar, overlap, `sp_getapplock`, unit of work must each say yes. Stubbing that
+  // would prove six doubles written to return success returned success.
+  //
+  // **Success is the easy outcome to fake and refusal is not**, which is why the same stub strategy is
+  // sound for one half and vacuous for the other. Real database, real calendar, real lock.
+  //
+  // ---- ⚠ AND THE ASYMMETRY THAT LEAVES BEHIND, SAID PLAINLY RATHER THAN LEFT TO BE NOTICED.
+  //
+  // The refusal half is GATED and runs on every task; this one runs only at `PHASE`. **So the refusal gets
+  // the better treatment again — which is the very complaint that produced this pair.** It is the honest
+  // trade here (the alternative is a gated test that asserts its own doubles) but it is a trade, and the
+  // next person should not have to rediscover that this half is checked far less often.
+  //
+  // ---- THE TRANSITION RUNS THROUGH THE PRODUCT, BOTH WAYS.
+  //
+  // `SetLeaveTypeActivationCommandHandler` deactivates and reactivates — no injected column, no aggregate
+  // reached into. Both results are asserted: `LeaveType.SetActivation` REFUSES A NO-OP, so a silently
+  // failed arrangement would leave the type in the state it was already in and the assertions below would
+  // be measuring nothing.
+  [Fact]
+  [Trait("BusinessRule", "BR-ATT-0009")]
+  public async Task A_reactivated_leave_type_can_be_booked_against_again()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+    var leaveTypeId = await SeedLeaveAsync(fixture, context);
+
+    var start = new DateOnly(2026, 9, 7);
+    var end = new DateOnly(2026, 9, 11);
+
+    // ---- THE CONTROL. The guard is observed FIRING on this leave type before it is observed releasing.
+    // Without it, a success below would be indistinguishable from a type that was never blocking.
+    Assert.True((await ActivationHandlerFor(context)
+      .HandleAsync(new SetLeaveTypeActivationCommand(leaveTypeId, false))).IsSuccess);
+
+    var refused = await LeaveHandlerFor(context, fixture).HandleAsync(new SubmitLeaveRequestCommand(
+      fixture.CompanyA, fixture.Employee, leaveTypeId, start, end));
+
+    Assert.True(refused.IsFailure, "a retired leave type must not accept a booking");
+    Assert.Equal(LeaveErrors.LeaveTypeInactive, refused.Error);
+
+    // ---- THE ASSERTION: THE CAPABILITY COMES BACK.
+    Assert.True((await ActivationHandlerFor(context)
+      .HandleAsync(new SetLeaveTypeActivationCommand(leaveTypeId, true))).IsSuccess);
+
+    var submitted = await LeaveHandlerFor(context, fixture).HandleAsync(new SubmitLeaveRequestCommand(
+      fixture.CompanyA, fixture.Employee, leaveTypeId, start, end));
+
+    Assert.True(submitted.IsSuccess, submitted.IsFailure ? submitted.Error.Code : null);
+
+    // ⚠⚠ THE CAPABILITY, NOT THE ABSENCE OF THE OLD ERROR. *The result is no longer `LeaveTypeInactive`*
+    // would be satisfied by a dozen other refusals — the `not-403` shape, which cannot tell a working path
+    // from a differently-broken one. **A ROW EXISTS FOR THOSE DAYS**, which only a completed submission
+    // produces: the lock was taken, the calendar counted the working days, and the insert committed.
+    //
+    // ⚠ MEASURED: removing the reactivation line failed this in 7 s of real SQL with
+    // `Attendance.LeaveTypeInactive`, at the success assertion — the guard's own code, from the leg the
+    // test claims to exercise. So the success above is a REVERSAL rather than a default.
+    var booked = await context.Set<LeaveRequest>()
+      .Where(request => request.EmployeeId == fixture.Employee)
+      .Where(request => request.LeaveTypeId == leaveTypeId)
+      .Where(request => request.StartDate == start && request.EndDate == end)
+      .CountAsync();
+
+    Assert.Equal(1, booked);
+  }
+
+  private static SetLeaveTypeActivationCommandHandler ActivationHandlerFor(TenantDbContext context)
+  {
+    var accessor = new SingleContext(context);
+
+    return new SetLeaveTypeActivationCommandHandler(
+      new LeaveTypeRepository(accessor), new GrantingScope(), new SingleContextUnitOfWork(context));
+  }
+
+  // ================================================================================================
   // THE DATABASE REFUSES AN IDENTICAL ACTIVE REQUEST (T-150).
   // ================================================================================================
   //

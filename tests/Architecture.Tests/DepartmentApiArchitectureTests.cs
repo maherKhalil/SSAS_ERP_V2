@@ -113,9 +113,40 @@ public sealed class DepartmentApiArchitectureTests
   //
   // A DbContext or a repository in transport would let a route compose its own query, which is every scope
   // guarantee in this module undone in one line that would look perfectly ordinary in review.
+  //
+  // ⚠⚠ BOTH READINGS SINCE 272, BECAUSE *references no persistence type* IS A CLAIM ABOUT WHAT THE PROJECT
+  // CAN SEE. `GetReferencedAssemblies()` reads EMITTED metadata and the compiler omits a reference no type
+  // is taken from — so `SSAS.HR.API.csproj` could declare `SSAS.HR.Infrastructure`, build, and pass this
+  // until somebody first used a type from it. Measured in `269` (`3b9728c`), where exactly that plant left
+  // the equivalent assertion green.
+  //
+  // The declared reading catches the CAPABILITY at the moment the `.csproj` merges; the emitted reading
+  // catches CONSUMPTION, including through a transitive path no `.csproj` of ours names.
+  //
+  // ⚠ BOTH STAY, BECAUSE THEY FAIL ON DIFFERENT DAYS AND NEITHER SUBSUMES THE OTHER. Two assertions that
+  // both mention "references" read as duplication, and that is what a later tidy-up deletes one of. The
+  // declared one alone would miss a transitive use; the emitted one alone would miss a merged capability
+  // until somebody first exercised it.
   [Fact]
   public void The_api_layer_references_no_persistence_type()
   {
+    var declared = DeclaredDependencies.Of(HrApiAssembly);
+
+    // ⚠ THE PREDICATES ARE PROVEN TO MATCH BEFORE ANY ABSENCE IS READ AS COMPLIANCE. `SSAS.Host.API` is
+    // the composition root and legitimately declares HR's infrastructure; `SSAS.BuildingBlocks.Infrastructure`
+    // is where EF lives. Without these two the bans below would hold over a parse that recognises nothing.
+    var host = DeclaredDependencies.Of("SSAS.Host.API");
+
+    Assert.Contains(host, name => name.StartsWith("SSAS.HR.Infrastructure", StringComparison.Ordinal));
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+
+    Assert.DoesNotContain(
+      declared, name => name is "Microsoft.EntityFrameworkCore" or "Microsoft.Data.SqlClient");
+    Assert.DoesNotContain(
+      declared, name => name.StartsWith("SSAS.HR.Infrastructure", StringComparison.Ordinal));
+
     Assert.DoesNotContain(
       HrApiAssembly.GetReferencedAssemblies(),
       reference => reference.Name is "Microsoft.EntityFrameworkCore" or "Microsoft.Data.SqlClient");
@@ -131,9 +162,21 @@ public sealed class DepartmentApiArchitectureTests
   // Phase 4: the department error mapper first translated to Platform's `Persistence.ConcurrencyConflict`,
   // and the compiler refused. HR's own error maps to the same problem code, so the wire answer is
   // unchanged and the boundary holds.
+  //
+  // ⚠ AND `AC-POS-0067` STATES THE STRONGER FORM THIS NOW ASSERTS: *a build in which `HR.API` CAN SEE
+  // `SSAS.Platform.Domain` fails REGARDLESS OF WHAT IT READS.* The emitted check alone cannot say that.
   [Fact]
   public void The_hr_api_references_no_platform_assembly()
   {
+    // The predicate matches a real Platform reference where one legitimately exists.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(HrApiAssembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     Assert.DoesNotContain(
       HrApiAssembly.GetReferencedAssemblies(),
       reference => reference.Name?.StartsWith("SSAS.Platform", StringComparison.Ordinal) ?? false);

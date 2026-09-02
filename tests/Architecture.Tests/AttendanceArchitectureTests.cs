@@ -181,6 +181,52 @@ public sealed class AttendanceArchitectureTests
     // because a future reference to `.Infrastructure` would pass the negative form of this assertion if
     // somebody only listed the assemblies they thought of.
     Assert.Equal(["SSAS.Attendance.Contracts"], attendanceReferences);
+
+    // ================================================================================================
+    // ⚠⚠ TWO CLAUSES, ONE INSTRUMENT, AND ONLY THE POSITIVE ONE WAS SAFE (272)
+    // ================================================================================================
+    //
+    // The exact set above carries a POSITIVE clause — *references the contracts* — and a NEGATIVE one —
+    // *and no implementation*. **The exact form protects only the first.**
+    //
+    // `GetReferencedAssemblies()` reads EMITTED metadata, and the compiler omits a reference no type is
+    // taken from. ⚠ **PRUNING REMOVES THE FORBIDDEN REFERENCE, NOT THE SANCTIONED ONE.** Add an unused
+    // `SSAS.Attendance.Domain` ProjectReference and the emitted set is still exactly
+    // `["SSAS.Attendance.Contracts"]` — this passes, unchanged, over a project that can now reach the
+    // implementation. The reference is merged, the friction is gone, and the guard says nothing until the
+    // first use.
+    //
+    // I first filed this test as FAIL-SAFE on the reasoning that pruning would empty the set and redden it.
+    // That was wrong in the direction that matters, and the declared reading is what closes it.
+    //
+    // ---- ⚠ BOTH ASSERTIONS STAY. THEY FAIL ON DIFFERENT DAYS.
+    //
+    // DECLARED catches the capability the moment the `.csproj` merges. EMITTED catches consumption,
+    // INCLUDING through a transitive path no `.csproj` of ours names. **Neither subsumes the other**, and
+    // two assertions that both mention "references" are exactly what a later tidy-up deletes one of.
+    //
+    // ---- ⚠⚠ AND THE ORDER OF THE TWO IS LOAD-BEARING FOR THE PLANT, WHICH IS INVISIBLE FROM HERE.
+    //
+    // The plant that justified this conversion added an UNUSED `SSAS.Attendance.Domain` ProjectReference to
+    // `SSAS.Payroll.Application.csproj`. xUnit stops at the first failure, and because the EMITTED
+    // assertion runs ABOVE this one it was observed to PASS while the declared assertion below reddened —
+    // both halves demonstrated in a single run.
+    //
+    // **Swap the two and the coverage is identical but that demonstration is gone**: the declared failure
+    // would mask the emitted one, and nobody could show the emitted check is blind to an unused reference
+    // without a second run. A tidy-up that reorders these loses nothing at runtime and destroys the
+    // evidence, which is why the order is written down rather than left to look arbitrary.
+    var declared = DeclaredDependencies.Of(payrollApplication)
+      .Where(name => name.StartsWith("SSAS.Attendance", StringComparison.Ordinal))
+      .ToArray();
+
+    // The predicate matches an implementation reference where one legitimately exists, so the exact set
+    // below is not satisfied by a parse that recognises no Attendance project at all.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Attendance.Infrastructure"),
+      name => name.StartsWith("SSAS.Attendance.Domain", StringComparison.Ordinal));
+
+    Assert.Equal(["SSAS.Attendance.Contracts"], declared);
   }
 
   [Fact]

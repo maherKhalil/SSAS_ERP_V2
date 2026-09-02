@@ -86,19 +86,55 @@ public sealed class PersistenceArchitectureTests
   // rather than the dependency. A project can reference EF Core and never write the namespace — an
   // extension method reached through a fully-qualified call, or a transitive reference — and the scan
   // would have said nothing. **The reference is the thing the rule is about.**
+  //
+  // ⚠⚠ AND THAT CONVERSION WAS RIGHT AND STILL SHORT, WHICH IS THE INTERESTING PART (272). The reasoning
+  // above is correct; the instrument it reached for does not do it. `GetReferencedAssemblies()` reads
+  // EMITTED METADATA, and **the compiler omits a reference no type is taken from** — so a project could
+  // declare `Microsoft.EntityFrameworkCore` in its `.csproj`, build, and be reported EF-free here until the
+  // day somebody first used it. **THIS MOVED FROM ONE PROXY TO A BETTER PROXY BELIEVING IT HAD REACHED THE
+  // THING**, and the improvement is what stopped the search.
+  //
+  // MEASURED, NOT ARGUED: item `269` planted a forbidden `ProjectReference` and the equivalent assertion
+  // stayed green (`3b9728c`).
+  //
+  // ---- BOTH READINGS, BECAUSE NEITHER SUBSUMES THE OTHER.
+  //
+  // DECLARED catches the capability the moment the `.csproj` edit merges — which is when the friction is
+  // gone and the next developer meets nothing in the way. EMITTED catches consumption, including a type
+  // reached TRANSITIVELY that no `.csproj` of ours names. A rule about persistence leaking out of
+  // Infrastructure wants both, and they fail on different days.
   [Fact]
   public void Domain_and_application_projects_remain_entity_framework_free()
   {
-    var violations = DomainAndApplicationAssemblies()
-      .SelectMany(assembly => assembly.GetReferencedAssemblies()
-        .Where(reference => reference.Name is not null
-          && reference.Name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal))
-        .Select(reference => $"{assembly.GetName().Name} -> {reference.Name}"))
+    // ⚠ THE PREDICATE IS PROVEN TO MATCH ITS TARGET BEFORE ANY EMPTINESS IS READ AS COMPLIANCE.
+    //
+    // `Assert.Empty` over a filtered set passes when nothing violates the rule AND when the filter cannot
+    // recognise a violation — a `.csproj` shape the parse misreads, a `PackageReference` it never sees.
+    // `SSAS.BuildingBlocks.Infrastructure` is where EF legitimately lives, so finding it there proves this
+    // exact predicate can fire. Without it the ban below holds over nothing.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+
+    var declared = DomainAndApplicationAssemblies()
+      .SelectMany(assembly => DeclaredDependencies.Of(assembly)
+        .Where(name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal))
+        .Select(name => $"{assembly.GetName().Name} DECLARES {name}"))
       .OrderBy(text => text, StringComparer.Ordinal)
       .ToArray();
 
+    var emitted = DomainAndApplicationAssemblies()
+      .SelectMany(assembly => assembly.GetReferencedAssemblies()
+        .Where(reference => reference.Name is not null
+          && reference.Name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal))
+        .Select(reference => $"{assembly.GetName().Name} USES {reference.Name}"))
+      .OrderBy(text => text, StringComparer.Ordinal)
+      .ToArray();
+
+    var violations = declared.Concat(emitted).ToArray();
+
     Assert.True(violations.Length == 0,
-      "a Domain or Application assembly references Entity Framework, so persistence has leaked out of " +
+      "a Domain or Application project can see or uses Entity Framework, so persistence has leaked out of " +
       "Infrastructure:\n  " + string.Join("\n  ", violations));
   }
 

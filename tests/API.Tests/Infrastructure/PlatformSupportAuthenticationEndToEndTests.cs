@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -365,6 +367,7 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
   private const string Issuer = "https://platform-support-e2e.tests";
   private const string Audience = "platform-support-e2e-tests";
 
+  private readonly System.Collections.Concurrent.ConcurrentBag<string> observed = [];
   private WebApplication? application;
   private HttpClient? client;
   private string connectionString = string.Empty;
@@ -413,6 +416,20 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
       await scope.ServiceProvider.GetRequiredService<PlatformDbContext>().Database.MigrateAsync();
     }
 
+    // ---- `283`'s OBSERVER. See the ratchet in `DisposeAsync`.
+    //
+    // Records the MATCHED ROUTE PATTERN and status of every request this host serves. It watches what the
+    // tests DO rather than what their source says, so interpolated paths and helper indirection are not
+    // blind spots — a request that happened is recorded however the test spelled it.
+    application.Use(async (context, next) =>
+    {
+      await next();
+      if ((context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText is { } pattern)
+      {
+        observed.Add($"{context.Request.Method} /{pattern.TrimStart('/')} {context.Response.StatusCode}");
+      }
+    });
+
     application.UseCorrelationId();
     application.UseAuthentication();
     application.UseAuthorization();
@@ -431,6 +448,8 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
 
   public async Task DisposeAsync()
   {
+    // ⚠ CLEAN UP FIRST, ASSERT SECOND. The ratchet below throws, and a throw before this point would leak
+    // a real database and a running host for every subsequent run.
     client?.Dispose();
     if (application is not null)
     {
@@ -440,6 +459,65 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
       }
 
       await application.DisposeAsync();
+    }
+
+    AssertPositiveCoverageRatchet();
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE POSITIVE-COVERAGE RATCHET (283). IT RUNS ON EVERY GATE RUN AND NEEDS NO CONFIGURATION.
+  // ================================================================================================
+  //
+  // `282` measured the gated suite's HTTP surface: of 154 `/api` route+method pairs, **15 receive any
+  // request at all and only FIVE ever receive a 2xx** — and two of those five exist only because `280`
+  // added them. Every one of the five is exercised from THIS host, in THIS collection.
+  //
+  // ---- WHY A RATCHET ON THE SET, AND NOT A THRESHOLD ON A COUNT.
+  //
+  // A count can be satisfied by an unrelated addition: delete a login test, add any other passing request,
+  // and a count-based check stays green over a DIFFERENT set. **An exact set cannot be satisfied by
+  // substitution.** It also needs no baseline file, so there is no threshold for the guarded party to
+  // lower — the failure `#28` records is that `gate.sh` condition 4 is advisory and a suite that LOSES
+  // tests merges green. This closes that for the one set where the answer is known.
+  //
+  // ⚠⚠ AND IT IS DELIBERATELY NOT ENV-VAR GATED. The measurement instrument that produced the numbers
+  // above was, and shipping it that way would have reproduced `#27` exactly: a security-shaped clause,
+  // plumbed through an interface, `false` at every call site, never executed. **An instrument that runs
+  // only when someone sets a variable nobody sets reads as coverage infrastructure and is dead code.**
+  // This one has no switch. If it stops running, the collection stops running, and that is loud.
+  //
+  // ---- WHAT IT CANNOT DO, STATED SO NOBODY CREDITS IT WITH MORE.
+  //
+  // It sees ONLY this host. The other 149 route+method pairs are served by `HostWebApplicationFactory` and
+  // are outside its reach; **139 of them receive no HTTP request from the gated suite at all**, which is an
+  // exposure profile for the owner (`#29`) and not something this guard addresses. It also proves only that
+  // each route ANSWERED 2xx once — not that the response was correct. The tests above do that.
+  private void AssertPositiveCoverageRatchet()
+  {
+    string[] required =
+    [
+      "POST /api/platform/support/auth/login",
+      "POST /api/platform/support/auth/refresh",
+      "POST /api/platform/support/auth/logout",
+      "POST /api/platform/auth/login",
+      "POST /api/platform/auth/select-tenant"
+    ];
+
+    var successful = observed
+      .Select(entry => entry.Split(' '))
+      .Where(parts => parts.Length == 3 && parts[2].StartsWith('2'))
+      .Select(parts => $"{parts[0]} {parts[1]}")
+      .ToHashSet(StringComparer.Ordinal);
+
+    var lost = required.Where(route => !successful.Contains(route)).ToArray();
+    if (lost.Length > 0)
+    {
+      throw new InvalidOperationException(
+        "POSITIVE HTTP COVERAGE REGRESSED. These routes received no 2xx from any test in this collection: " +
+        string.Join(", ", lost) +
+        ". A route that is only ever exercised into a 4xx cannot distinguish 'rejects bad input' from " +
+        "'rejects everything' — which is why these five are pinned. Restore the test that exercised it, or " +
+        "change this list deliberately and say why.");
     }
   }
 

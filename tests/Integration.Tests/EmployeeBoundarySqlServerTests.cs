@@ -4417,11 +4417,24 @@ public sealed class EmployeeBoundarySqlServerTests
     // (`Position.cs:272`) and this UPDATE raises nothing. The enumeration behind the column list covered the
     // method's ASSIGNMENTS; the broader claim would have needed its EFFECTS, which is a different scope.
     //
-    // ⚠ NOTHING CONSUMES THAT EVENT AS AT 2026-09-02 — a repo-wide search finds the raise site, the record
-    // declaration and two domain tests asserting it is raised, and NO handler. So the divergence is
-    // UNOBSERVABLE rather than harmless by design, and it stops being unobservable the day someone
-    // subscribes. That is a fact with a shelf life, not a licence: a test needing the event's CONSEQUENCES
-    // must drive `ReactivatePositionCommandHandler` instead of this.
+    // ⚠ NOTHING ACTS ON THAT EVENT AS AT 2026-09-02 — AND THE MECHANISM IS NOT "NO HANDLER EXISTS".
+    //
+    // `IDomainEventConsumer` is NOT type-generic. `DomainEventDispatcher.cs:66-79` loops EVERY registered
+    // consumer over EVERY event, so `PositionReactivated` IS delivered. The single registration
+    // (`PlatformPersistenceServiceCollectionExtensions.cs:436`) is `LocalizationCacheDomainEventConsumer`,
+    // whose switch matches four `TenantLocalizationOverride*` events and drops everything else on
+    // `_ => (Guid?)null`. Delivered, matched by nothing, discarded.
+    //
+    // ⚠⚠ SO SUBSCRIBING IS CHEAPER AND NEARER THAN "NOBODY LISTENS" IMPLIES — one arm on an existing switch
+    // or a second registration, not a new delivery path. The divergence is UNOBSERVABLE TODAY rather than
+    // harmless by design, and a test needing the event's CONSEQUENCES must drive
+    // `ReactivatePositionCommandHandler` rather than this UPDATE.
+    //
+    // ⚠⚠⚠ AND HOW THIS WAS NEARLY GOT WRONG, BECAUSE THE NEXT READER WILL REACH FOR THE SAME INSTRUMENT:
+    // searching for the TYPE NAME returns six hits with no handler among them, which reads as proof. With an
+    // UNTYPED dispatcher every consumer is a candidate and the type name appears in NONE of them — so that
+    // search is blind to the only mechanism that could refute it. It returned the right answer for a reason
+    // that does not hold. **Check the dispatcher's SHAPE before believing a name search about events.**
     public Task ReactivatePositionDirectlyAsync(Guid positionId) =>
       ExecuteAsync($"""
         UPDATE [tenant].[Positions]

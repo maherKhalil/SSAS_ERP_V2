@@ -13,14 +13,38 @@ public sealed class AuthenticationMilestoneArchitectureTests
   [Trait("Scenario", "TS-AUTH-0070")]
   public void Authentication_domain_and_application_have_no_persistence_http_or_crypto_framework_dependency()
   {
-    var forbiddenPrefixes = new[]
-    {
-      "Microsoft.EntityFrameworkCore",
-      "Microsoft.Data.SqlClient",
-      "Microsoft.AspNetCore",
-      "System.Security.Cryptography"
-    };
+    // ================================================================================================
+    // ⚠⚠ THE FOUR BANNED PREFIXES SPLIT INTO TWO KINDS, AND THE SPLIT IS STRUCTURAL (272)
+    // ================================================================================================
+    //
+    // Item `272` converted the boundary guards to read DECLARED dependencies from the `.csproj`, because
+    // `GetReferencedAssemblies()` omits a reference no type is taken from. **Which reading is stronger is a
+    // function of HOW THE DEPENDENCY CAN ARRIVE**, and these four do not arrive the same way — so they are
+    // separated here rather than annotated as a group. A note covering all four would say the wrong thing
+    // about two of them whichever way it was written.
+    //
+    // DECLARABLE: both readings apply, and declared is the stronger one — it catches the capability the
+    // moment the `.csproj` merges, before any type is used.
+    var declarable = new[] { "Microsoft.EntityFrameworkCore", "Microsoft.AspNetCore" };
+
+    // ⚠⚠⚠ TRANSITIVE OR FRAMEWORK ONLY: **DECLARED IS EMPTY BY CONSTRUCTION FOR THESE AND A DECLARED CHECK
+    // WOULD PASS VACUOUSLY.** `Microsoft.Data.SqlClient` reaches this tree through `EntityFrameworkCore.
+    // SqlServer` and appears in no `.csproj` of ours; `System.Security.Cryptography` is a framework assembly
+    // and never a `PackageReference` at all. The whole repository declares ELEVEN package references and
+    // neither of these is among them. **Emitted is the correct instrument here, and that is a decision.**
+    var transitiveOnly = new[] { "Microsoft.Data.SqlClient", "System.Security.Cryptography" };
+
+    var forbiddenPrefixes = declarable.Concat(transitiveOnly).ToArray();
     var assemblies = new[] { typeof(AuthenticationAccount).Assembly, typeof(AuthenticationPolicy).Assembly };
+
+    // One exercise per DECLARABLE branch: a control proves a predicate can fire, and these two share
+    // nothing, so one would leave the other holding over a parse that recognises it nowhere.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal));
 
     var violations = assemblies
       .SelectMany(assembly => assembly.GetReferencedAssemblies()
@@ -28,7 +52,24 @@ public sealed class AuthenticationMilestoneArchitectureTests
         .Select(reference => $"{assembly.GetName().Name} -> {reference.Name}"))
       .ToArray();
 
+    // The emitted read is shown to see SOMETHING on each assembly, so an empty violation set means "none of
+    // the four" rather than "no references read at all" — the control the transitive branches depend on,
+    // since no declared witness can exist for them.
+    foreach (var assembly in assemblies)
+    {
+      Assert.NotEmpty(assembly.GetReferencedAssemblies());
+    }
+
     Assert.Empty(violations);
+
+    // And the declarable half, at the layer the emitted read cannot see.
+    var declared = assemblies
+      .SelectMany(assembly => DeclaredDependencies.Of(assembly)
+        .Where(name => declarable.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal)))
+        .Select(name => $"{assembly.GetName().Name} DECLARES {name}"))
+      .ToArray();
+
+    Assert.Empty(declared);
   }
 
   [Fact]

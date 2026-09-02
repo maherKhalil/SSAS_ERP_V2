@@ -18,21 +18,50 @@ public sealed class TenantLifecycleArchitectureTests
   [Trait("Scenario", "TS-TEN-0030")]
   public void Tenant_domain_and_application_are_framework_and_module_independent()
   {
-    var forbidden = new[]
-    {
-      "Microsoft.EntityFrameworkCore",
-      "Microsoft.Data.SqlClient",
-      "Microsoft.AspNetCore",
-      "SSAS.HR",
-      "SSAS.GL"
-    };
+    // ⚠⚠ FIVE BANNED PREFIXES, TWO KINDS, AND THE SPLIT IS STRUCTURAL (272). This method is the clearest
+    // case in the sweep that the unit is the BRANCH rather than the site: three of these are declarable and
+    // two can never be, in one assertion. No site-level classification could describe it.
+    //
+    // DECLARABLE: DECLARED is the stronger reading — it catches the capability the moment a `.csproj`
+    // merges, which is before the emitted read can see anything at all.
+    var declarable = new[] { "Microsoft.EntityFrameworkCore", "Microsoft.AspNetCore", "SSAS.HR", "SSAS.GL" };
+
+    // ⚠⚠⚠ TRANSITIVE ONLY: `Microsoft.Data.SqlClient` arrives through `EntityFrameworkCore.SqlServer` and
+    // appears in no `.csproj` of ours, so **a declared check on it would pass vacuously**. Emitted is the
+    // correct instrument for this branch — a decision, not an omission.
+    var transitiveOnly = new[] { "Microsoft.Data.SqlClient" };
+
+    var forbidden = declarable.Concat(transitiveOnly).ToArray();
     var assemblies = new[] { typeof(Tenant).Assembly, typeof(CreateTenantCommandHandler).Assembly };
+
+    // One exercise per declarable branch — four predicates sharing nothing, so one control would leave
+    // three bans holding over prefixes it never matched.
+    var host = DeclaredDependencies.Of("SSAS.Host.API");
+
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.HR", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.GL", StringComparison.Ordinal));
 
     var violations = assemblies.SelectMany(assembly => assembly.GetReferencedAssemblies()
       .Where(reference => forbidden.Any(prefix => reference.Name?.StartsWith(prefix, StringComparison.Ordinal) == true))
       .Select(reference => $"{assembly.GetName().Name} -> {reference.Name}")).ToArray();
 
+    // The control the transitive branch depends on, since no declared witness for it can exist.
+    foreach (var assembly in assemblies)
+    {
+      Assert.NotEmpty(assembly.GetReferencedAssemblies());
+    }
+
     Assert.Empty(violations);
+
+    var declared = assemblies.SelectMany(assembly => DeclaredDependencies.Of(assembly)
+      .Where(name => declarable.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal)))
+      .Select(name => $"{assembly.GetName().Name} DECLARES {name}")).ToArray();
+
+    Assert.Empty(declared);
   }
 
   [Fact]

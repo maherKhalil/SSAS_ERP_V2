@@ -30,19 +30,48 @@ public sealed class AdminTransportArchitectureTests
   [Fact]
   public void Platform_api_does_not_reference_infrastructure_persistence_or_ef_directly()
   {
-    var forbidden = new[]
+    // ⚠⚠ THE THREE BANNED PREFIXES SPLIT INTO TWO KINDS, AND THE SPLIT IS STRUCTURAL (272).
+    //
+    // DECLARABLE: a `ProjectReference` and a `PackageReference` this repository really does declare
+    // elsewhere, so DECLARED is the stronger reading — it catches the capability at merge time, before any
+    // type is used.
+    var declarable = new[]
     {
       "SSAS.Platform.Infrastructure",
       // The shared transport project must not drag persistence in either.
-      "Microsoft.EntityFrameworkCore",
-      "Microsoft.Data.SqlClient"
+      "Microsoft.EntityFrameworkCore"
     };
+
+    // ⚠⚠⚠ TRANSITIVE ONLY: `Microsoft.Data.SqlClient` reaches this tree through
+    // `EntityFrameworkCore.SqlServer` and appears in NO `.csproj` of ours. **A declared check on it would
+    // pass vacuously**, so emitted is the correct instrument for this branch and that is a decision rather
+    // than an omission.
+    var transitiveOnly = new[] { "Microsoft.Data.SqlClient" };
+
+    var forbidden = declarable.Concat(transitiveOnly).ToArray();
+
+    // One exercise per declarable branch, against projects that legitimately declare each.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform.Infrastructure", StringComparison.Ordinal));
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+
     var violations = typeof(RowVersionCodec).Assembly.GetReferencedAssemblies()
       .Where(reference => forbidden.Any(prefix => reference.Name?.StartsWith(prefix, StringComparison.Ordinal) == true))
       .Select(reference => reference.Name)
       .ToArray();
 
+    // The emitted read sees something, so an empty violation set means "none of the three" rather than
+    // "no references read" — the control the transitive branch depends on, having no declared witness.
+    Assert.NotEmpty(typeof(RowVersionCodec).Assembly.GetReferencedAssemblies());
+
     Assert.Empty(violations);
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(typeof(RowVersionCodec).Assembly),
+      name => declarable.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal)));
   }
 
   [Fact]

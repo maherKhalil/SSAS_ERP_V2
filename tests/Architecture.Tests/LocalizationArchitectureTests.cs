@@ -17,20 +17,43 @@ public sealed class LocalizationArchitectureTests
   [Fact]
   public void Localization_building_blocks_has_no_platform_persistence_http_or_cache_dependency()
   {
-    var forbidden = new[]
-    {
-      "SSAS.Platform",
-      "Microsoft.EntityFrameworkCore",
-      "Microsoft.Data.SqlClient",
-      "Microsoft.AspNetCore",
-      "Microsoft.Extensions.Caching"
-    };
+    // ⚠⚠ FIVE BANNED PREFIXES, TWO KINDS, AND THE SPLIT IS STRUCTURAL (272).
+    //
+    // DECLARABLE: this repository really does declare each of these somewhere, so DECLARED is the stronger
+    // reading — it catches the capability when the `.csproj` merges, which the emitted read cannot see
+    // until a type is first used.
+    var declarable = new[] { "SSAS.Platform", "Microsoft.EntityFrameworkCore", "Microsoft.AspNetCore" };
+
+    // ⚠⚠⚠ TRANSITIVE OR FRAMEWORK ONLY: `Microsoft.Data.SqlClient` arrives through
+    // `EntityFrameworkCore.SqlServer`, and `Microsoft.Extensions.Caching` through the framework — neither
+    // appears in any of this repository's eleven `PackageReference` lines. **A declared check on either
+    // would pass vacuously.** Emitted is the correct instrument for these two branches, deliberately.
+    var transitiveOnly = new[] { "Microsoft.Data.SqlClient", "Microsoft.Extensions.Caching" };
+
+    var forbidden = declarable.Concat(transitiveOnly).ToArray();
+
+    // One exercise per declarable branch.
+    var host = DeclaredDependencies.Of("SSAS.Host.API");
+
+    Assert.Contains(host, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal));
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+
     var violations = typeof(ResourceKey).Assembly.GetReferencedAssemblies()
       .Where(reference => forbidden.Any(prefix => reference.Name?.StartsWith(prefix, StringComparison.Ordinal) == true))
       .Select(reference => reference.Name)
       .ToArray();
 
+    // The control the two transitive branches depend on, no declared witness being possible for them.
+    Assert.NotEmpty(typeof(ResourceKey).Assembly.GetReferencedAssemblies());
+
     Assert.Empty(violations);
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(typeof(ResourceKey).Assembly),
+      name => declarable.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal)));
   }
 
   [Fact]

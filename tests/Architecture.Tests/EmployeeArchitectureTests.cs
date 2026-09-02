@@ -246,6 +246,12 @@ public sealed class EmployeeArchitectureTests
       .Select(type => type.Name)
       .ToArray();
 
+    // The floor and the matcher control, for the reason given on `No_rehire_operation_exists` (B23): an
+    // empty `types` satisfies this ban identically to compliance, and a comparison that can never match is
+    // indistinguishable from one that is satisfied.
+    Assert.NotEmpty(types);
+    Assert.Contains(types, name => name.Contains("Employee", StringComparison.OrdinalIgnoreCase));
+
     Assert.DoesNotContain(types, name =>
       name.Contains("Sequence", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("NumberGenerator", StringComparison.OrdinalIgnoreCase));
@@ -267,10 +273,38 @@ public sealed class EmployeeArchitectureTests
   [Trait("Criterion", "AC-EMP-0047")]
   public void No_rehire_operation_exists()
   {
-    Assert.DoesNotContain(
-      HrDomainAssembly.GetTypes().SelectMany(type => type.GetMethods()).Select(method => method.Name),
-      name => name.Contains("Rehire", StringComparison.OrdinalIgnoreCase));
+    var methodNames = HrDomainAssembly.GetTypes()
+      .SelectMany(type => type.GetMethods())
+      .Select(method => method.Name)
+      .ToArray();
+
+    // ⚠ THE FLOOR: a ban over an EMPTY sequence passes and looks identical to a ban that found nothing.
+    // `GetTypes()` returning nothing — a renamed assembly, a load failure — would satisfy the assertion
+    // below in exactly the same way as compliance does (B23).
+    Assert.NotEmpty(methodNames);
+
+    // ⚠⚠ AND THE MATCHER CONTROL: `Contains(..., OrdinalIgnoreCase)` over THIS population is proven able to
+    // fire, against a lifecycle method that really exists. Without it, a ban whose comparison never matches
+    // anything is indistinguishable from a ban that is satisfied.
+    Assert.Contains(methodNames, name => name.Contains("Terminate", StringComparison.OrdinalIgnoreCase));
+
+    Assert.DoesNotContain(methodNames, name => name.Contains("Rehire", StringComparison.OrdinalIgnoreCase));
   }
+
+  // ⚠⚠⚠ WHAT THE TWO CONTROLS ABOVE DO **NOT** CLOSE, SAID PLAINLY SO NOBODY CREDITS THEM WITH IT.
+  //
+  // They prove the population is real and the matching MECHANISM fires. **They cannot prove the WORD is
+  // right.** If the concept ships as `Reinstate` or `Reactivate`, `"Rehire"` matches nothing and this test
+  // is green over a feature it was written to forbid.
+  //
+  // **B23's preferred remedy — make a wrong name a compile error via `nameof` — IS UNAVAILABLE HERE BY
+  // CONSTRUCTION: you cannot `nameof` a symbol whose absence is the claim.** That limit is inherent to
+  // absence-of-concept assertions, not an omission in this one, and it is the reason the criterion also
+  // needs the behavioural half (no transition out of `Terminated`) rather than resting on a name scan.
+  //
+  // ⚠ MEASURED, NOT ASSUMED: with BOTH controls above in place, changing the banned literal to `"Rehiree"`
+  // left this test GREEN. The controls close an empty population and a dead comparison; they do not close
+  // a wrong word, and the plant says so rather than leaving a reader to infer it.
 
   // ================================================================================================
   // WHAT THE CONTRACTS REFUSE TO EXPRESS

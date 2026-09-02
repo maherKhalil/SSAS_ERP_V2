@@ -2589,6 +2589,72 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   // ================================================================================================
+  // ⚠⚠⚠ P10 — THE **ALLOWED** HALF OF `BRULE-POS-0013`. EVERY EXISTING TEST ASSERTS THE REFUSAL.
+  // ================================================================================================
+  //
+  // A lifecycle rule has two halves and only one of them attracts tests, because a refusal is what a defect
+  // report gets written about. Enumerated across both suites, the position family had **only** the refusing
+  // half and the TRANSITION:
+  //
+  //   `P8` (above)                                   deactivated destination is REFUSED
+  //   `PositionApplicationSqlServerTests:331`        reactivation SUCCEEDS, row reads `Active`
+  //   `:412`                                         reactivation succeeds while its grade is inactive
+  //
+  // ⚠⚠ THE SECOND AND THIRD LOOK LIKE THE POSITIVE HALF AND ARE NOT. They assert a STATE CHANGE — the
+  // handler returned success, the column says `Active`. **Nothing asserted that the position can once again
+  // DO what an active position does**, which is the only thing `OD-POS-005` is about: accept a new arrival.
+  //
+  // ⚠⚠⚠ THE DEFECT THIS CATCHES AND NOTHING ELSE DOES: A GUARD THAT OVER-FIRES. An assignability check that
+  // refused every position it had ever seen inactive — a cached flag, a status read that never re-read, a
+  // predicate inverted after the first transition — **passes `P8`, passes both reactivation tests, and
+  // passes every refusal test in either suite.** The column would say `Active` and the position would be
+  // unfillable. Only asking for the capability BACK can see it.
+  //
+  // ---- ⚠ THE REFUSAL LEG HERE IS A CONTROL, NOT A COPY OF `P8`.
+  //
+  // Without it a green success proves nothing: if the guard never fired for this destination at all, the
+  // assignment would succeed for the wrong reason and this test would be vacuous — the seed active, the
+  // refusal absent, the reactivation irrelevant. **The control establishes that the guard WAS firing on
+  // this exact position moments earlier, so the success is a reversal rather than a default.** `P8` proves
+  // the refusal happens; this proves it STOPS happening, and only the pair is the rule.
+  //
+  // Both legs use the same employee and the same position, deliberately: a control against a DIFFERENT
+  // position would leave open that the two ids differ in some way the guard cares about.
+  [Fact]
+  [Trait("Decision", "OD-POS-005")]
+  [Trait("Criterion", "AC-POS-0028")]
+  public async Task P10_A_reactivated_position_accepts_new_assignments_again()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P10"));
+    var destination = await fixture.SeedPositionAsync(fixture.CompanyA, "POSJ", active: true);
+
+    // ---- THE CONTROL. The guard is observed FIRING on this destination before it is observed releasing.
+    await fixture.DeactivatePositionDirectlyAsync(destination);
+
+    var refused = await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.PositionInactive.Code, refused.Error.Code);
+
+    // ---- THE ASSERTION: THE CAPABILITY COMES BACK.
+    await fixture.ReactivatePositionDirectlyAsync(destination);
+
+    var accepted = await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(accepted.IsSuccess, accepted.IsFailure ? accepted.Error.Code : null);
+
+    // The move actually happened. A `Result.Success` that moved nothing would satisfy the line above, and
+    // that is the failure `BRULE-POS-0018` exists to prevent — so the record and its history are read back.
+    Assert.Equal(destination, await fixture.EmployeePositionAsync(created.Value));
+    Assert.Equal(2, await fixture.PositionHistoryCountForAsync(created.Value));
+  }
+
+  // ================================================================================================
   // D16 — THE EMPLOYEE NUMBER FILTER, WHICH HAD NO COVERAGE UNTIL FP-008 PHASE 2
   // ================================================================================================
   //
@@ -4301,6 +4367,17 @@ public sealed class EmployeeBoundarySqlServerTests
       ExecuteAsync($"""
         UPDATE [tenant].[Positions]
         SET [Status] = N'Inactive', [StatusChangedUtc] = SYSDATETIMEOFFSET()
+        WHERE [PositionId] = '{positionId}';
+        """);
+
+    // The mirror, for the same reason `SeedPositionAsync` is raw SQL: reactivation is a PRECONDITION of the
+    // assignment being tested, not the behaviour under test. Driving `ReactivatePositionCommandHandler` here
+    // would make an employee test fail when a position handler broke, which is the coupling the seeder's own
+    // comment declines.
+    public Task ReactivatePositionDirectlyAsync(Guid positionId) =>
+      ExecuteAsync($"""
+        UPDATE [tenant].[Positions]
+        SET [Status] = N'Active', [StatusChangedUtc] = SYSDATETIMEOFFSET()
         WHERE [PositionId] = '{positionId}';
         """);
 

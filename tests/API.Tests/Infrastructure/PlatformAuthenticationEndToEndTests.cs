@@ -55,6 +55,30 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
   private const string Origin = PlatformSupportAuthenticationEndToEndHost.Origin;
   private const string Password = PlatformSupportAuthenticationEndToEndHost.Password;
   private const string Prefix = "/api/platform/auth";
+
+  // ================================================================================================
+  // ⚠⚠⚠ THIS CLASS SHARES A SINGLETON RATE LIMITER WITH THE SUPPORT-LOGIN TESTS. READ BEFORE ADDING ONE.
+  // ================================================================================================
+  //
+  // The E2E host is one process with one `AuthenticationEndpointRateLimiter`, and both surfaces log in over
+  // the same loopback address, so **the `login-ip` partition is genuinely shared: 30 requests per rolling
+  // minute across BOTH files.** Counted at the time of writing: 10 support logins (`:54`, `:88`, `:118`,
+  // `:185`, and a SIX-case loop at `:165`) plus 3 here = 13. Headroom 17.
+  //
+  // ⚠ ORDER CANNOT MATTER BELOW THE LIMIT, AS A PROPERTY RATHER THAN AS A MEASUREMENT: a sliding-window
+  // COUNT is invariant under permutation, so a fixed set of N calls inside one window gives the same
+  // verdict in any order. **Order only becomes material at N >= 30** — and then it is intermittent and
+  // order-dependent, which is the worst kind. Adding roughly seventeen more login tests to this collection
+  // is what makes that reachable.
+  //
+  // ⚠⚠ AND THE RISK DIRECTION IS THE OPPOSITE OF THE ONE YOU WILL ASSUME. **The limiter reads WALL CLOCK
+  // (`DateTimeOffset.UtcNow`), not this fixture's frozen `Now`.** So a FASTER machine is the hazard — it
+  // compresses every login into one window — and a slower one slides them apart and passes.
+  //
+  // **A green run on a slow box is therefore the PERMISSIVE evidence, not the conservative evidence.** That
+  // is exactly backwards from how a green run is normally read, which is why it is written here rather than
+  // left to be re-derived. The identity partition (5 per 15 min) stays unreachable only because every test
+  // below seeds a fresh email; reuse one and that limit binds instead.
   private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
   private static readonly DateTimeOffset Now = new(2026, 8, 12, 11, 0, 0, TimeSpan.Zero);
 

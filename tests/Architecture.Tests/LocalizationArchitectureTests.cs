@@ -235,7 +235,15 @@ public sealed class LocalizationArchitectureTests
     Assert.Empty(ForbiddenDeclarations(handler, declarable));
   }
 
+  // ⚠ CITES ONE CLAUSE OF THREE. `AC-LOC-0021` reads *"Events exclude full text; dispatch metadata supplies
+  // context; audit projector reads committed versions."* **This test satisfies the FIRST clause only** — it
+  // walks the four domain events and bans text, placeholder and transport-shaped property names.
+  //
+  // IT ASSERTS NOTHING about dispatch metadata supplying the context those events omit, and nothing about
+  // the audit projector reading committed versions. Both are behavioural and live elsewhere; naming the
+  // criterion without naming the clause would credit this with all three.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0021")]
   public void Localization_domain_events_contain_no_text_placeholder_or_transport_data()
   {
     var events = typeof(TenantLocalizationOverride).Assembly.GetTypes()
@@ -254,7 +262,17 @@ public sealed class LocalizationArchitectureTests
     Assert.Empty(violations);
   }
 
+  // ⚠ CITES ONE CLAUSE OF THREE, AND ONLY ITS STRUCTURAL HALF. `AC-LOC-0011` reads *"Each mutation appends
+  // one UNMODIFIABLE, uniquely numbered version and atomically advances current/settings versions."*
+  //
+  // **This test satisfies *unmodifiable*** — `TenantLocalizationOverrideVersion` exposes no public setter
+  // and no public mutating method.
+  //
+  // ⚠⚠ IT DOES NOT ASSERT THAT A MUTATION APPENDS ONE, that numbering is unique, or that the advance is
+  // atomic. Those are behavioural claims about the write path; this is a claim about the TYPE. A version
+  // that was never appended would satisfy every assertion here.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0011")]
   public void Localization_history_has_no_public_mutation_or_setter_api()
   {
     var type = typeof(TenantLocalizationOverrideVersion);

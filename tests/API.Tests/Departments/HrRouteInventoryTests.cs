@@ -124,9 +124,17 @@ public sealed class HrRouteInventoryTests
   // that criterion's subject is a permission on two transitions, and this test would have carried it only
   // as a by-product of asserting the whole surface.
   //
-  // The count clause is carried by the exact set equality below owning the number outright — the criterion
-  // deliberately states no figure, because 41 -> 46 would buy until the next route and re-arm the same trap
-  // `CutoverManifestArchitectureTests` had when "ALL TWENTY" stood above a list of thirty-five.
+  // ⚠ THE COUNT CLAUSE, CORRECTED THE SAME DAY I WROTE IT. I first said the exact set equality below owns
+  // the number "outright", implying no figure is written anywhere. THERE IS ONE: `Assert.Equal(46,
+  // routes.Length)` sits beside the list, deliberately, with its own reason stated at the site. I described
+  // the mechanism from the assertion I had read and not from the one two lines further down — found when a
+  // plant added a route and THIS was the assertion that caught it, not the list.
+  //
+  // The criterion is still satisfied, and the literal is the reason rather than an exception to it: *the
+  // count owned by the TEST rather than by this DOCUMENT* means the number lives where a gate reads it and
+  // a green run depends on it. 41 -> 46 in prose buys until the next route; 41 -> 46 here cannot be wrong
+  // without something going red — which is the opposite of the trap `CutoverManifestArchitectureTests` had
+  // when "ALL TWENTY" stood above a list of thirty-five and nothing checked the sentence.
   //
   // ⚠⚠ IT NEEDS NO PARTIAL NOTE, AND THAT IS A CHANGE TO THE CRITERION RATHER THAN TO THIS TEST. As first
   // reworded it repeated `AC-POS-0058`'s harness/Host clause, which both duplicated that criterion and

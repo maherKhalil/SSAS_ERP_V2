@@ -37,7 +37,23 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
 
   // Every FP-008 route, with the permission it demands and a body that would be valid if it got that far.
   // The `null` body marks a GET.
+  //
+  // ⚠ THE DATA LIVES IN `Fp008Routes()` AND THIS PROJECTS IT, so the drift guard below can read the same
+  // rows in a TYPED form. Enumerating `TheoryData` would mean casting `object[]` positionally, which is the
+  // kind of untyped access that goes wrong silently when a column is added.
   public static TheoryData<string, string, string, string?> AllRoutes()
+  {
+    var data = new TheoryData<string, string, string, string?>();
+
+    foreach (var (method, path, permission, body) in Fp008Routes())
+    {
+      data.Add(method, path, permission, body);
+    }
+
+    return data;
+  }
+
+  private static (string Method, string Path, string Permission, string? Body)[] Fp008Routes()
   {
     var position = PositionApiTestHost.PositionId;
     var jobGrade = PositionApiTestHost.JobGradeId;
@@ -46,40 +62,110 @@ public sealed class PositionEndpointTests : IClassFixture<PositionApiTestHost>
 
     const string token = """{"expectedRowVersion":"AAAAAAAAB9E="}""";
 
-    return new TheoryData<string, string, string, string?>
+    return new (string, string, string, string?)[]
     {
-      { "POST", "/api/hr/positions", HrPermissionNames.CreatePositions,
-        """{"code":"ACC-SR","title":"Senior Accountant","jobGradeId":null}""" },
-      { "GET", "/api/hr/positions", HrPermissionNames.ViewPositions, null },
-      { "GET", $"/api/hr/positions/{position}", HrPermissionNames.ViewPositions, null },
-      { "PUT", $"/api/hr/positions/{position}", HrPermissionNames.UpdatePositions,
-        """{"code":"ACC-SR","title":"Renamed","jobGradeId":null,"expectedRowVersion":"AAAAAAAAB9E="}""" },
-      { "POST", $"/api/hr/positions/{position}/activate", HrPermissionNames.DeactivatePositions, token },
-      { "POST", $"/api/hr/positions/{position}/deactivate", HrPermissionNames.DeactivatePositions, token },
+      ("POST", "/api/hr/positions", HrPermissionNames.CreatePositions,
+        """{"code":"ACC-SR","title":"Senior Accountant","jobGradeId":null}"""),
+      ("GET", "/api/hr/positions", HrPermissionNames.ViewPositions, null),
+      ("GET", $"/api/hr/positions/{position}", HrPermissionNames.ViewPositions, null),
+      ("PUT", $"/api/hr/positions/{position}", HrPermissionNames.UpdatePositions,
+        """{"code":"ACC-SR","title":"Renamed","jobGradeId":null,"expectedRowVersion":"AAAAAAAAB9E="}"""),
+      ("POST", $"/api/hr/positions/{position}/activate", HrPermissionNames.DeactivatePositions, token),
+      ("POST", $"/api/hr/positions/{position}/deactivate", HrPermissionNames.DeactivatePositions, token),
 
-      { "POST", "/api/hr/job-grades", HrPermissionNames.CreateJobGrades,
-        """{"code":"G7","name":"Grade 7","rankOrder":70,"salaryGradeId":null}""" },
-      { "GET", "/api/hr/job-grades", HrPermissionNames.ViewJobGrades, null },
-      { "GET", $"/api/hr/job-grades/{jobGrade}", HrPermissionNames.ViewJobGrades, null },
-      { "PUT", $"/api/hr/job-grades/{jobGrade}", HrPermissionNames.UpdateJobGrades,
-        """{"code":"G7","name":"Renamed","rankOrder":70,"salaryGradeId":null,"expectedRowVersion":"AAAAAAAAB9E="}""" },
-      { "POST", $"/api/hr/job-grades/{jobGrade}/activate", HrPermissionNames.DeactivateJobGrades, token },
-      { "POST", $"/api/hr/job-grades/{jobGrade}/deactivate", HrPermissionNames.DeactivateJobGrades, token },
+      ("POST", "/api/hr/job-grades", HrPermissionNames.CreateJobGrades,
+        """{"code":"G7","name":"Grade 7","rankOrder":70,"salaryGradeId":null}"""),
+      ("GET", "/api/hr/job-grades", HrPermissionNames.ViewJobGrades, null),
+      ("GET", $"/api/hr/job-grades/{jobGrade}", HrPermissionNames.ViewJobGrades, null),
+      ("PUT", $"/api/hr/job-grades/{jobGrade}", HrPermissionNames.UpdateJobGrades,
+        """{"code":"G7","name":"Renamed","rankOrder":70,"salaryGradeId":null,"expectedRowVersion":"AAAAAAAAB9E="}"""),
+      ("POST", $"/api/hr/job-grades/{jobGrade}/activate", HrPermissionNames.DeactivateJobGrades, token),
+      ("POST", $"/api/hr/job-grades/{jobGrade}/deactivate", HrPermissionNames.DeactivateJobGrades, token),
 
-      { "POST", "/api/hr/salary-grades", HrPermissionNames.CreateSalaryGrades,
-        """{"code":"S7","name":"Band 7","rankOrder":70,"minimumAmount":null,"midpointAmount":null,"maximumAmount":null}""" },
-      { "GET", "/api/hr/salary-grades", HrPermissionNames.ViewSalaryGrades, null },
-      { "GET", $"/api/hr/salary-grades/{salaryGrade}", HrPermissionNames.ViewSalaryGrades, null },
-      { "PUT", $"/api/hr/salary-grades/{salaryGrade}", HrPermissionNames.UpdateSalaryGrades,
-        """{"code":"S7","name":"Renamed","rankOrder":70,"minimumAmount":null,"midpointAmount":null,"maximumAmount":null,"expectedRowVersion":"AAAAAAAAB9E="}""" },
-      { "POST", $"/api/hr/salary-grades/{salaryGrade}/activate", HrPermissionNames.DeactivateSalaryGrades, token },
-      { "POST", $"/api/hr/salary-grades/{salaryGrade}/deactivate", HrPermissionNames.DeactivateSalaryGrades, token },
+      ("POST", "/api/hr/salary-grades", HrPermissionNames.CreateSalaryGrades,
+        """{"code":"S7","name":"Band 7","rankOrder":70,"minimumAmount":null,"midpointAmount":null,"maximumAmount":null}"""),
+      ("GET", "/api/hr/salary-grades", HrPermissionNames.ViewSalaryGrades, null),
+      ("GET", $"/api/hr/salary-grades/{salaryGrade}", HrPermissionNames.ViewSalaryGrades, null),
+      ("PUT", $"/api/hr/salary-grades/{salaryGrade}", HrPermissionNames.UpdateSalaryGrades,
+        """{"code":"S7","name":"Renamed","rankOrder":70,"minimumAmount":null,"midpointAmount":null,"maximumAmount":null,"expectedRowVersion":"AAAAAAAAB9E="}"""),
+      ("POST", $"/api/hr/salary-grades/{salaryGrade}/activate", HrPermissionNames.DeactivateSalaryGrades, token),
+      ("POST", $"/api/hr/salary-grades/{salaryGrade}/deactivate", HrPermissionNames.DeactivateSalaryGrades, token),
 
-      { "POST", $"/api/hr/employees/{employee}/change-position", HrPermissionNames.UpdateEmployees,
-        """{"positionId":"aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa","expectedRowVersion":"AAAAAAAAB9E="}""" },
-      { "GET", $"/api/hr/employees/{employee}/position-history", HrPermissionNames.ViewEmployees, null }
+      ("POST", $"/api/hr/employees/{employee}/change-position", HrPermissionNames.UpdateEmployees,
+        """{"positionId":"aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa","expectedRowVersion":"AAAAAAAAB9E="}"""),
+      ("GET", $"/api/hr/employees/{employee}/position-history", HrPermissionNames.ViewEmployees, null)
     };
   }
+
+  // ================================================================================================
+  // THE ROUTE AXIS CANNOT GO STALE EITHER (270)
+  // ================================================================================================
+  //
+  // The three theories below derive their PERMISSION axis reflectively and their ROUTE axis from a
+  // hand-written list. **That asymmetry was written down as a bound and left open:** a route added to the
+  // product and to `HrRouteInventoryTests`' exact inventory but NOT to `AllRoutes` is pinned for its
+  // pairing and never probed for bleed — it passes both guards while nothing checks it refuses a caller
+  // holding every other permission. This closes it, and the bound above is now discharged rather than
+  // merely stated.
+  //
+  // ⚠ THE COMPARISON NEEDS NO FAMILY FILTER, WHICH IS WHY IT LIVES HERE AND NOT BESIDE THE INVENTORY.
+  // `HrRouteInventoryTests.MappedRoutes()` unions three harnesses and spans all 41 HR routes, so comparing
+  // against it would need a hand-written "which of these are FP-008" predicate — the same staleness one
+  // level up. **`host.MappedRoutes()` is the POSITION harness alone**, which maps exactly the four groups
+  // this package adds. The population is the mechanism's own output.
+  //
+  // ⚠⚠ ONE CANONICALISER, APPLIED TO BOTH SIDES. The probed list carries concrete ids
+  // (`/api/hr/positions/{a real guid}`) because it issues real requests; the mapped list carries patterns
+  // (`/api/hr/positions/{positionId}`) and a trailing slash on group roots. Normalising only ONE side would
+  // compare two shapes and fail on the difference rather than on the drift. Every parameter segment — a
+  // brace pattern or a parsed `Guid` — collapses to `{}`, and empty segments are dropped.
+  //
+  // ⚠⚠⚠ AND THE CANONICALISER HAS AN INJECTIVITY CONTROL, BECAUSE IT IS THE FAILURE THIS TEST INVITES.
+  // A normaliser that collapsed too much — every id AND every literal segment — would map both sides onto
+  // a handful of identical strings and the two differences would be empty. **That is a green test over a
+  // canonicaliser that destroyed its own subject.** Asserting the probed set stays as large as the route
+  // table proves the collapse is injective HERE, which is the only place it needs to be.
+  [Fact]
+  [Trait("Criterion", "AC-POS-0068")]
+  public void The_bleed_theory_probes_every_route_the_position_harness_maps()
+  {
+    var probed = Fp008Routes()
+      .Select(route => $"{route.Method} {Canonical(route.Path)}")
+      .ToArray();
+
+    var mapped = host.MappedRoutes()
+      .Select(route => $"{route.Method} {Canonical(route.Pattern)}")
+      .ToArray();
+
+    // ANTI-VACUITY. Both sides non-empty, and the canonicaliser proven injective over the probed set: if
+    // it collapsed two distinct routes onto one string, the count drops and this fails before the
+    // set comparison below can pass for the wrong reason.
+    Assert.NotEmpty(mapped);
+    Assert.Equal(Fp008Routes().Length, probed.Distinct(StringComparer.Ordinal).Count());
+
+    // NAMED, NOT COUNTED. With twenty routes on each side, "the sets differ" sends the reader to diff two
+    // lists by hand; the offending member is what they actually need.
+    var unprobed = mapped.Except(probed, StringComparer.Ordinal).OrderBy(r => r, StringComparer.Ordinal);
+    var stale = probed.Except(mapped, StringComparer.Ordinal).OrderBy(r => r, StringComparer.Ordinal);
+
+    Assert.True(
+      !unprobed.Any(),
+      $"the harness maps these and the bleed theory never probes them: {string.Join(", ", unprobed)}. " +
+      "A route reaching the product without reaching this list is pinned for its pairing and never " +
+      "checked against a caller holding every other permission.");
+
+    Assert.True(
+      !stale.Any(),
+      $"the bleed theory probes these and the harness maps nothing matching: {string.Join(", ", stale)}. " +
+      "The route was renamed or removed and this list still claims to cover it.");
+  }
+
+  // Both sides through this, never one. A brace pattern and a concrete id are the same thing said twice.
+  private static string Canonical(string path) =>
+    string.Join('/', path
+      .Split('/', StringSplitOptions.RemoveEmptyEntries)
+      .Select(segment =>
+        segment.StartsWith('{') || Guid.TryParse(segment, out _) ? "{}" : segment));
 
   // ---- EVERY ROUTE REFUSES AN UNAUTHENTICATED CALLER.
   [Theory]

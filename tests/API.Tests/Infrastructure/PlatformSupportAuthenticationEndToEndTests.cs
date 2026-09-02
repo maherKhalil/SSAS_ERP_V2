@@ -468,9 +468,38 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
   // ⚠⚠⚠ THE POSITIVE-COVERAGE RATCHET (283). IT RUNS ON EVERY GATE RUN AND NEEDS NO CONFIGURATION.
   // ================================================================================================
   //
-  // `282` measured the gated suite's HTTP surface: of 154 `/api` route+method pairs, **15 receive any
-  // request at all and only FIVE ever receive a 2xx** — and two of those five exist only because `280`
-  // added them. Every one of the five is exercised from THIS host, in THIS collection.
+  // **These five routes are pinned because THIS HOST is where they are exercised** — two of them only
+  // because `280` added them on 2026-09-02. The set is the assertion; there is no threshold and no baseline
+  // file, so there is nothing here for the guarded party to lower.
+  //
+  // ⚠⚠⚠ THIS COMMENT DELIBERATELY CARRIES NO SUITE-WIDE COVERAGE FIGURES, AND THE REASON IS A RETRACTION.
+  // An earlier version cited a measurement of the whole `/api` surface. **It was wrong.** The observer that
+  // produced it was wired into two hosts, and this suite builds many more — most API test classes are
+  // `IAsyncLifetime` and construct their own `WebApplication`. Every route exercised through one of those
+  // was recorded as never invoked. **An instrument counts what it can see, and its blind spot was published
+  // as an absence.**
+  //
+  // ⚠ The stated bound was on the wrong axis, which was worse than having none: it said *by anything the
+  // gate runs* — gated versus ungated — when the real limit was WHICH HOSTS WERE WIRED. **A bound on the
+  // wrong axis signals that bounds were considered and closes the question.**
+  //
+  // So: no number lives here until a sweep that enumerates hosts BY MECHANISM produces one.
+  //
+  // ---- ⚠⚠ HOW TO RE-DERIVE IT, BECAUSE A DATED NUMBER NOBODY CAN REFRESH IS ONE THEY TRUST OR IGNORE.
+  //
+  // Reinstate the `282` observer — deliberately not committed: middleware recording
+  // `METHOD | matched RoutePattern.RawText | status` for every request, plus the population read from
+  // `EndpointDataSource`.
+  //
+  // ⚠⚠⚠ WIRE IT INTO **EVERY** HOST, NOT THE TWO OBVIOUS ONES. `HostWebApplicationFactory` and this host
+  // are the shared ones; every `*ApiTestHost` and every `IAsyncLifetime` test class that builds its own
+  // `WebApplication` is another. **Omitting them is what made the first run wrong.**
+  //
+  // ⚠ Read the population on the FIRST REQUEST, not at startup — a startup filter runs before the host's
+  // `MapX` calls and sees an EMPTY endpoint set, which inverts the result into a confident backwards answer.
+  //
+  // ⚠ Compare pairs against pairs. Distinct `(method, route, STATUS)` triples are a different key space and
+  // give a different, plausible, wrong number.
   //
   // ---- WHY A RATCHET ON THE SET, AND NOT A THRESHOLD ON A COUNT.
   //

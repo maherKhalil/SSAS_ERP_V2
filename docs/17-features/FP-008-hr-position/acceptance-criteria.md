@@ -14,8 +14,26 @@ exists *because* of a ruling, the ruling is cited.
 
 - **AC-POS-0001** — Creating a position with a code and a title produces an `Active` position whose
   `TenantId` and `CompanyId` match the caller's trusted context.
-- **AC-POS-0002** — `TenantId` and `CompanyId` supplied in the request body are ignored, not honoured. A
-  request naming another tenant's identifiers produces a position in the caller's own tenant.
+- **AC-POS-0002** — `TenantId` and `CompanyId` supplied in the request body are **refused**, not honoured
+  and not silently ignored: the request is rejected with `400 request.invalid`, and no position is produced.
+
+  > ⚠⚠ **CORRECTED 2026-09-02, architect. This read *are ignored, not honoured… produces a position in
+  > the caller's own tenant*, and THE PRODUCT DOES NEITHER — IT REFUSES.** Strict binding returns null for any
+  > property absent from the `fields` allowlist, and the allowlist at
+  > `PositionEndpointRouteBuilderExtensions.cs:217-226` is exactly `code / title / jobGradeId`; a null request
+  > becomes `ApiErrors.RequestInvalid` → `400`.
+  >
+  > ⚠⚠⚠ **THIS IS `AC-DEP-0002` WORD FOR WORD WITH THE NOUN SWAPPED, AND IT WAS WRONG THERE TOO.** The
+  > FP-007 block was copied wholesale and **adapted with care** — `AC-POS-0001` drops the parent/root clause
+  > because a position has no hierarchy, `0005` changes *name* to *title* — **and this one came across intact,
+  > because it is wrong in a way that READING it does not reveal.** A careful copier propagates exactly the
+  > defects that are invisible. **The audit question is never *what was copied* but *was the source ever
+  > checked against the product*.**
+  >
+  > ⚠⚠ **AND THIS DOCUMENT CONTRADICTED ITSELF: `AC-POS-0022` STATES THE OPPOSITE DISPOSITION FOR THE SAME
+  > CLASS OF UNDECLARED FIELD** — a `currencyCode` on a salary-grade write is *rejected as an unknown
+  > property*. **Same file, same problem, opposite rules, and the product implements `0022`'s.** Each criterion
+  > reads well alone, which is why neither reader caught it until both were held together.
 - **AC-POS-0003** — A second position with a code that normalizes to an existing code in the same company is
   refused with `409`, and the refusal comes from the unique index under concurrent creation, not only from a
   prior read.
@@ -94,7 +112,18 @@ exists *because* of a ruling, the ruling is cited.
 - **AC-POS-0037** — No update or delete path exists for `EmployeePositionAssignment`; the entity implements
   `IAppendOnlyEntity` and the guard that asserts append-only entities carries no `RowVersion` covers it.
 - **AC-POS-0038** — *(`OD-POS-001`)* `Employees.PositionId` is **`NOT NULL` in the first migration that
-  creates it.** There is no transitional nullable phase, no later `ALTER COLUMN`, and no backfill `UPDATE`.
+  creates it.**
+
+  > ⚠⚠ **DEMOTED TO AN IMPLEMENTATION NOTE 2026-09-02, architect.** This clause read *there is no transitional
+  > nullable phase, no later `ALTER COLUMN`, and no backfill `UPDATE`* as though it were an outcome. **IT IS
+  > NOT ASSERTABLE AND IT SHOULD NOT BE A CRITERION: add-nullable → backfill → alter PRODUCES EXACTLY THE
+  > SCHEMA THIS CRITERION'S OUTCOME CLAUSES ASSERT**, so no end-state check can separate the two. The only
+  > test that could reads the migration's SOURCE, which breaks on refactoring and proves nothing about
+  > behaviour. **And a transitional phase inside one transaction is atomic — no reader ever observes the
+  > nullable moment.** The intended implementation remains single-step; it is a note, not an acceptance test.
+  > **The outcome clauses stand and are asserted, and the ABSENT DEFAULT CONSTRAINT is the sharp one — the
+  > scaffolded `defaultValue` form would leave one behind, so its absence proves the accommodation was
+  > REMOVED rather than merely unused.**
 - **AC-POS-0039** — *(`DEC-POS-0026`)* Against a database that **already holds Employee rows**, the migration
   **fails and writes nothing**: no table is created, no column added. The failure names the database, the row
   count, and the decision (`FP-008 DEC-POS-0009 / OD-POS-001`), and states the one remedy. A migration that
@@ -129,9 +158,21 @@ exists *because* of a ruling, the ruling is cited.
 - **AC-POS-0067** — *(`DEC-POS-0035`, added as-built in Phase 4)* `currencyCode` is echoed from the owning
   Company through a module-facing contract, and `SSAS.HR.*` references no Platform assembly to obtain it. A
   build in which `HR.API` can see `SSAS.Platform.Domain` fails this criterion regardless of what it reads.
-- **AC-POS-0068** — *(`DEC-POS-0036`, added as-built in Phase 4)* The route inventory names **exactly 41**
-  HR routes, pinned by pattern AND permission, and every FP-008 route is mapped by a harness as well as by
-  the Host. A route reachable only through `Program.cs` fails this criterion even if it works.
+- **AC-POS-0068** — *(`DEC-POS-0036`, added as-built in Phase 4)* The route inventory names **every HR route
+  exactly**, as an ordered set pinned by pattern AND permission, with **the count owned by the test rather
+  than by this document**; and every FP-008 route is mapped by a harness as well as by the Host.
+
+  > ⚠⚠ **THE NUMBER WAS REMOVED, NOT UPDATED — 2026-09-02, architect.** This read *exactly 41 HR routes*
+  > and `HrRouteInventoryTests` asserts **46**. Both were right at their own moment: FP-008 took the surface
+  > from 21 to 41 and FP-009 Phase 2 took it to 46, correctly and deliberately. **A CRITERION THAT HARD-CODES
+  > A COUNT OF A GROWING SURFACE HAS A SHELF LIFE, AND NOTHING FAILS WHEN IT EXPIRES** — the test moved and
+  > stayed green, because the test asserts the product and the criterion asserted a memory of it. **Changing
+  > 41 to 46 would buy us until the next route and re-arm the same trap.** The runnable artefact owns the
+  > value; the readable one owns the intent.
+  >
+  > ⚠ **This is a distinct defect class from `AC-POS-0002`: that one was WRONG ON ARRIVAL, found by reading
+  > against the code. This one WAS TRUE AND DECAYED, found by reading against TIME — and only the second kind
+  > gets worse on its own.** A route reachable only through `Program.cs` fails this criterion even if it works.
 
 ## Persistence and concurrency
 
@@ -141,8 +182,17 @@ exists *because* of a ruling, the ruling is cited.
 - **AC-POS-0049** — The model admits no state in which one employee has two current positions.
 - **AC-POS-0050** — Assigning an employee to a position that is concurrently deactivated either refuses or
   succeeds against the pre-deactivation state; it never produces an employee holding an inactive position.
-- **AC-POS-0051** — Every scoped read is served by an index whose leading keys are tenant then company; no
-  scoped read is served by a scan that ignores a scope column.
+- **AC-POS-0051** — An index whose leading keys are tenant then company exists for every scoped read path,
+  and every scoped read composes an explicit tenant and company predicate rather than relying on a global
+  filter.
+
+  > ⚠⚠ **REWORDED 2026-09-02, architect.** This read *every scoped read is SERVED BY an index… no scoped
+  > read is served by a scan*. **THAT IS A QUERY-PLAN CLAIM, AND A PLAN ASSERTION IS BRITTLE, ENVIRONMENT-
+  > DEPENDENT AND BREAKS ON STATISTICS** — this repository asserts plans nowhere, and it removed an
+  > allocation-budget assertion once already in favour of a structural guard. **The two halves above are what
+  > the criterion actually wants and both are assertable today**: the index existence is carried by the schema
+  > suite, and the predicate shape by the `AC-DEP-0044`-style architecture guard. **A criterion nothing can
+  > assert without reading a plan is a criterion asking the wrong question.**
 
 ## Cutover and ownership classification
 

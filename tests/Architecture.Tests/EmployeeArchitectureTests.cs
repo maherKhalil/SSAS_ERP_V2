@@ -305,6 +305,50 @@ public sealed class EmployeeArchitectureTests
   // ⚠ MEASURED, NOT ASSUMED: with BOTH controls above in place, changing the banned literal to `"Rehiree"`
   // left this test GREEN. The controls close an empty population and a dead comparison; they do not close
   // a wrong word, and the plant says so rather than leaving a reader to infer it.
+  //
+  // ================================================================================================
+  // ⚠⚠⚠ THE B23 POPULATION, CLASSIFIED BY REFLECTION — AS AT 2026-09-02, AND HOW TO RE-DERIVE IT
+  // ================================================================================================
+  //
+  // **246 distinct literals banned by negative assertions across `tests/`. 193 NAME A REAL SYMBOL; 53 NAME
+  // NOTHING** — measured against 84,176 type, member and assembly names reflected from every non-test
+  // assembly in this project's output directory.
+  //
+  // ⚠ A DATED AS-BUILT RECORD, ASSERTED BY NOTHING. To re-derive: extract literals from `tests/**/*.cs`
+  // with `Assert\.(DoesNotContain|Empty|Null|False)\([^;]*?"([^"]+)"` — **the `[^;]` bound is load-bearing;
+  // without it the match runs past the end of a method and captures the NEXT method's `[Trait]` attributes,
+  // which inflated a first run from 246 to 313.** Then reflect over every `*.dll` beside the tests,
+  // **excluding test assemblies BY PROPERTY (references xunit), never by a `*.Tests.dll` name pattern**,
+  // collecting type names, full names, member names including non-public, and the ASSEMBLY NAME itself.
+  //
+  // ⚠⚠ IT ERRS TOWARDS KIND 2. Its reach is assemblies present in this project's OUTPUT, not every type
+  // that exists — `IHttpContextAccessor` is a real framework type filed as *names nothing* because its
+  // assembly is not there. **Over-reporting the un-closable kind is the safe direction, and a reader needs
+  // to know WHICH WAY it errs, not merely that it errs.**
+  //
+  // ---- ⚠⚠⚠ AND *NAMES NOTHING* IS NOT ONE POPULATION. IT IS AT LEAST THREE, WANTING OPPOSITE TREATMENT.
+  //
+  //   ABSENCE-OF-CONCEPT BANS — `Rehire`, `Punch`, `Unfreeze`, `MapDelete`, `UpdateName`, `SetCode`,
+  //   `NextDue`, `DeleteDepartmentAsync`. **The real B23 population.** `nameof` impossible; close
+  //   behaviourally.
+  //
+  //   ⚠ DELIBERATELY-ABSENT PROBE VALUES — `hunter2`, `spoofed`, `Nothing.MapsThis`,
+  //   `Platform.Unknown.Thing`, `probe.widgets.view`, `primary.example`, `secret.internal`, `1098765432`.
+  //   **MATCHING NOTHING IS THE ASSERTION. These must NOT be "fixed".** And the risk runs the other way:
+  //   the day `Platform.Unknown.Thing` becomes a real permission, the test does not fail — it keeps passing
+  //   while the proposition silently changes from *unknown permissions are rejected* to *ungranted
+  //   permissions are rejected*. **True for a different reason, and no plant can detect that.**
+  //
+  //   SOURCE-TEXT BANS — `Math.Clamp`, `context.Add`, `copyService.CopyAsync`, `OPENQUERY`, `NOCHECK`.
+  //   The literal is a code fragment matched against file CONTENTS, not a symbol name.
+  //
+  // ---- WHY NO GUARD WAS LANDED FOR THIS.
+  //
+  // The classifier computes *does this literal name a symbol*. The guard the probe values need is *does
+  // this literal STILL name nothing* — and separating those from absence-of-concept bans requires INTENT,
+  // which is not derivable. **A hand-maintained list of probe values is exactly the term drift `278`
+  // closed: a new probe added without a list entry would be unguarded, silently, forever.** So the
+  // instrument was run, recorded here, and deleted rather than landed over a population it cannot derive.
 
   // ================================================================================================
   // WHAT THE CONTRACTS REFUSE TO EXPRESS

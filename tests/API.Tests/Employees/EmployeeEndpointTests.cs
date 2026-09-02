@@ -498,12 +498,27 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
     Assert.DoesNotContain("RowVersion", payload, StringComparison.Ordinal);
   }
 
+  // ⚠⚠ `positionId` ADDED BY 271, AND WHY IT WAS MISSING IS THE FINDING RATHER THAN THE FIX.
+  //
+  // `AC-POS-0031` says `positionId` is not accepted on the ordinary profile update and that sending it is
+  // rejected as an unknown property. The update allowlist is exactly `fullName`, `nationalId`,
+  // `expectedRowVersion`, so the mechanism refuses it — and nothing asserted that until this line.
+  //
+  // ⚠⚠⚠ THIS THEORY'S OWN SELECTION PRINCIPLE ALREADY COVERED THE CASE. `employeeNumber` is here with the
+  // IDENTICAL shape: present in the CREATE allowlist, absent from the UPDATE one. Nobody decided to exclude
+  // `positionId` — **the list simply predates FP-008 and was never extended.**
+  //
+  // **THE OMISSION WAS INVISIBLE PRECISELY BECAUSE FOUR SIBLINGS WERE PRESENT.** A list that looks complete
+  // because it HAS members is harder to audit than an empty one: an empty list announces itself, a list of
+  // four reads as considered. ⚠ The next field added to a create allowlist has exactly this problem, and
+  // the check is the same one — *is it in create and not in update?* If so it belongs here.
   [Theory]
   [InlineData("tenantId")]
   [InlineData("companyId")]
   [InlineData("branchId")]
   [InlineData("employeeNumber")]
   [InlineData("status")]
+  [InlineData("positionId")]
   public async Task A22_Update_rejects_ownership_and_identity_fields(string field)
   {
     var body = $$"""

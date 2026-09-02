@@ -239,6 +239,117 @@ public sealed class PositionApplicationSqlServerTests
   }
 
   // ================================================================================================
+  // ⚠⚠⚠ THE OTHER HALF OF `BRULE-POS-0011`: JOB GRADE → SALARY GRADE, WHICH NOTHING REACHED.
+  // ================================================================================================
+  //
+  // `PositionErrors.GradeInactive` guards TWO relationships through two validators:
+  //
+  //   `PositionGradeReference.ValidateJobGradeAsync:295-296`     position → JOB grade
+  //   `PositionGradeReference.ValidateSalaryGradeAsync:324-325`  job grade → SALARY grade
+  //
+  // **The two tests above cover the first. Searched with no cap, `GradeInactive` appeared in the whole
+  // `tests` tree at exactly those two sites — so the second guard was reached by nothing.**
+  //
+  // ---- ⚠⚠ THE SHARED ERROR VALUE IS A DELIBERATE DESIGN, NOT A COLLAPSE NOBODY NOTICED.
+  //
+  // `PositionErrors.cs:159-161` says so directly: the trio *"is shared by both referencing directions —
+  // Position -> JobGrade and JobGrade -> SalaryGrade — because the three failures are the same three
+  // failures."* The author enumerated both directions by name and recorded the judgement. **Cited here so
+  // the next reader who notices one code behind two guards finds the reason instead of re-opening it.**
+  //
+  // ---- ⚠⚠⚠ AND WHY THE ARRANGEMENT, NOT THE ASSERTION, IS WHAT MAKES THIS TEST ABOUT THE SALARY GUARD.
+  //
+  // `Assert.Equal(GradeInactive, …)` cannot say WHICH guard produced it — one value, two sites. So the
+  // discrimination has to come from the setup, and it comes from two facts:
+  //
+  //   **The validators are DISJOINT BY CALLER**, verified with no cap: `ValidateJobGradeAsync` is called
+  //   only from `PositionCommandHandlers:71,163`, and `ValidateSalaryGradeAsync` only from
+  //   `JobGradeCommandHandlers:75,162`. **A job-grade command never invokes the job-grade validator**, so
+  //   on this path the salary guard is the only site that can return this error.
+  //
+  //   **The job grade is asserted ACTIVE**, which rules out the update being refused for its OWN state
+  //   rather than for its reference — a different confusion, and the one the arrangement really guards.
+  //
+  // ⚠⚠⚠ MEASURED AS A 2×2, NOT AS A PLANT — ALL FOUR CELLS RUN, 2026-09-03:
+  //
+  //                              the two tests above        this test
+  //   remove the JOB guard            RED ×2                  green
+  //   remove the SALARY guard         green                    RED
+  //
+  // **Each set is sensitive to exactly its own guard and blind to the other.** A single plant would have
+  // shown only that this test reddens for something; the off-diagonal is what proves the two tests are
+  // about DIFFERENT guards rather than both about whichever one happens to run first. That is the whole
+  // claim being made by adding a test beside two that already assert the same error value.
+  [Fact]
+  [Trait("Rule", "BRULE-POS-0011")]
+  [Trait("Criterion", "AC-POS-0016")]
+  public async Task A_job_grade_may_not_point_at_an_inactive_salary_grade()
+  {
+    await using var fixture = await PositionAppFixture.CreateAsync();
+    var graph = fixture.Graph();
+
+    var salaryGradeId = await fixture.CreateSalaryGradeAsync("S7", "Band 7", 70);
+    var jobGradeId = await fixture.CreateJobGradeAsync("G7", "Grade 7", 70);
+
+    Assert.True((await graph.DeactivateSalaryGrade().HandleAsync(new DeactivateSalaryGradeCommand(
+      salaryGradeId,
+      await fixture.RowVersionAsync("SalaryGrades", "SalaryGradeId", salaryGradeId)))).IsSuccess);
+
+    // THE ARRANGEMENT, ASSERTED. The job grade must be ACTIVE or a refusal below could be about the record
+    // being updated rather than about the reference it names.
+    var arranged = await graph.GetJobGrade().HandleAsync(new GetJobGradeQuery(jobGradeId));
+    Assert.True(arranged.IsSuccess, arranged.IsFailure ? arranged.Error.Code : null);
+    Assert.Equal(JobGradeStatus.Active, arranged.Value.Status);
+    Assert.Null(arranged.Value.SalaryGradeId);
+
+    // ---- CREATE: a NEW job grade naming the retired band.
+    var refusedCreate = await graph.CreateJobGrade().HandleAsync(
+      new CreateJobGradeCommand(fixture.CompanyA, "G8", "Grade 8", 80, salaryGradeId));
+
+    Assert.True(refusedCreate.IsFailure, "a job grade was created against an inactive salary grade");
+    Assert.Equal(PositionErrors.GradeInactive, refusedCreate.Error);
+
+    // ⚠ AND NOTHING WAS WRITTEN. *Refused* means the row does not exist, which the error alone does not
+    // say — a handler that failed AFTER saving would satisfy the assertion above.
+    Assert.Equal(0, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [tenant].[JobGrades] WHERE [Code] = N'G8'"));
+
+    // ---- UPDATE: an EXISTING job grade repointed at it.
+    var refusedUpdate = await graph.UpdateJobGrade().HandleAsync(new UpdateJobGradeCommand(
+      jobGradeId, "G7", "Grade 7", 70, salaryGradeId,
+      await fixture.RowVersionAsync("JobGrades", "JobGradeId", jobGradeId)));
+
+    Assert.True(refusedUpdate.IsFailure, "an existing job grade was repointed at an inactive salary grade");
+    Assert.Equal(PositionErrors.GradeInactive, refusedUpdate.Error);
+
+    // UNCHANGED, read back through the query handler rather than off the row — *refused* is a claim about
+    // what a caller can subsequently see.
+    var unchanged = await graph.GetJobGrade().HandleAsync(new GetJobGradeQuery(jobGradeId));
+    Assert.True(unchanged.IsSuccess, unchanged.IsFailure ? unchanged.Error.Code : null);
+    Assert.Null(unchanged.Value.SalaryGradeId);
+
+    // ---- ⚠⚠ AND THE ALLOWED SIDE: REACTIVATION RESTORES THE ABILITY TO BE REFERENCED.
+    //
+    // The refusals above are the control — the guard is observed FIRING on this exact salary grade moments
+    // earlier — so the success below is a REVERSAL and not a default. Without them, a salary grade that had
+    // never been blocking would satisfy this leg.
+    Assert.True((await graph.ReactivateSalaryGrade().HandleAsync(new ReactivateSalaryGradeCommand(
+      salaryGradeId,
+      await fixture.RowVersionAsync("SalaryGrades", "SalaryGradeId", salaryGradeId)))).IsSuccess);
+
+    var allowed = await graph.UpdateJobGrade().HandleAsync(new UpdateJobGradeCommand(
+      jobGradeId, "G7", "Grade 7", 70, salaryGradeId,
+      await fixture.RowVersionAsync("JobGrades", "JobGradeId", jobGradeId)));
+
+    Assert.True(allowed.IsSuccess, allowed.IsFailure ? allowed.Error.Code : null);
+
+    // THE CAPABILITY, not the absence of the old error: the reference is actually there afterwards.
+    var repointed = await graph.GetJobGrade().HandleAsync(new GetJobGradeQuery(jobGradeId));
+    Assert.True(repointed.IsSuccess, repointed.IsFailure ? repointed.Error.Code : null);
+    Assert.Equal(salaryGradeId, repointed.Value.SalaryGradeId);
+  }
+
+  // ================================================================================================
   // THE DEPENDENT REFUSAL (DEC-POS-0013, BRULE-POS-0015)
   // ================================================================================================
   //

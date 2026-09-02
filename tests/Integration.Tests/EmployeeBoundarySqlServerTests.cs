@@ -2589,20 +2589,32 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   // ================================================================================================
-  // ⚠⚠⚠ P10 — THE **ALLOWED** HALF OF `BRULE-POS-0013`. EVERY EXISTING TEST ASSERTS THE REFUSAL.
+  // ⚠⚠⚠ P10 — THE **ALLOWED** SIDE OF `BRULE-POS-0013`. EVERY EXISTING TEST ASSERTS THE REFUSAL.
   // ================================================================================================
   //
-  // A lifecycle rule has two halves and only one of them attracts tests, because a refusal is what a defect
+  // ⚠ THE SUBJECT IS `BRULE-POS-0013` — *an `Inactive` Position may not receive a new Employee*
+  // (`business-rules.md:88`) — and it is the identifier with the two sides: refuses while `Inactive`,
+  // accepts once `Active`. `OD-POS-005` is the DECISION it derives from, cited as a reference; its own two
+  // clauses are a different axis (incumbents keep the position / new arrivals are refused), and the first of
+  // those is `P8`'s subject, not this one.
+  //
+  // ⚠⚠ NO `Criterion` TRAIT, DELIBERATELY, AND THE ABSENCE IS THE FINDING. `AC-POS-0028` is *deactivating a
+  // position with incumbents succeeds* — `P8` and `PositionApplicationSqlServerTests:331` between them. It
+  // does NOT cover the allowed side, so tagging this with it would report a criterion as newly covered by a
+  // test that does not assert it, and inflate the traceability count with the one thing that was missing.
+  // **The allowed side has no acceptance criterion. That is worth someone's attention, not a borrowed tag.**
+  //
+  // A lifecycle rule has two sides and only one of them attracts tests, because a refusal is what a defect
   // report gets written about. Enumerated across both suites, the position family had **only** the refusing
-  // half and the TRANSITION:
+  // side and the TRANSITION:
   //
   //   `P8` (above)                                   deactivated destination is REFUSED
   //   `PositionApplicationSqlServerTests:331`        reactivation SUCCEEDS, row reads `Active`
   //   `:412`                                         reactivation succeeds while its grade is inactive
   //
-  // ⚠⚠ THE SECOND AND THIRD LOOK LIKE THE POSITIVE HALF AND ARE NOT. They assert a STATE CHANGE — the
+  // ⚠⚠ THE SECOND AND THIRD LOOK LIKE THE POSITIVE SIDE AND ARE NOT. They assert a STATE CHANGE — the
   // handler returned success, the column says `Active`. **Nothing asserted that the position can once again
-  // DO what an active position does**, which is the only thing `OD-POS-005` is about: accept a new arrival.
+  // DO what an active position does**, which is the whole of `BRULE-POS-0013`: receive a new Employee.
   //
   // ⚠⚠⚠ THE DEFECT THIS CATCHES AND NOTHING ELSE DOES: A GUARD THAT OVER-FIRES. An assignability check that
   // refused every position it had ever seen inactive — a cached flag, a status read that never re-read, a
@@ -2621,8 +2633,8 @@ public sealed class EmployeeBoundarySqlServerTests
   // Both legs use the same employee and the same position, deliberately: a control against a DIFFERENT
   // position would leave open that the two ids differ in some way the guard cares about.
   [Fact]
+  [Trait("BusinessRule", "BRULE-POS-0013")]
   [Trait("Decision", "OD-POS-005")]
-  [Trait("Criterion", "AC-POS-0028")]
   public async Task P10_A_reactivated_position_accepts_new_assignments_again()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2651,6 +2663,11 @@ public sealed class EmployeeBoundarySqlServerTests
     // The move actually happened. A `Result.Success` that moved nothing would satisfy the line above, and
     // that is the failure `BRULE-POS-0018` exists to prevent — so the record and its history are read back.
     Assert.Equal(destination, await fixture.EmployeePositionAsync(created.Value));
+
+    // ⚠ THE COUNT PINS A SECOND RULE FOR FREE, AND IT IS EASY TO READ AS BOOKKEEPING: `2` is creation plus
+    // this one move, so it also asserts THE REFUSED ATTEMPT WROTE NO HISTORY ROW. A refusal that logged a
+    // move it did not make would read `3` and fail here — the only place that is checked on a refusal
+    // followed by a success against the SAME destination.
     Assert.Equal(2, await fixture.PositionHistoryCountForAsync(created.Value));
   }
 
@@ -4374,10 +4391,32 @@ public sealed class EmployeeBoundarySqlServerTests
     // assignment being tested, not the behaviour under test. Driving `ReactivatePositionCommandHandler` here
     // would make an employee test fail when a position handler broke, which is the coupling the seeder's own
     // comment declines.
+    //
+    // ⚠⚠⚠ THIS INJECTION IS NOT PROTECTED THE WAY THE DEACTIVATE ONE IS, SO ITS GROUNDS ARE ASSERTED HERE.
+    //
+    // `DeactivatePositionDirectlyAsync` is checked by `P10`'s own control: if that UPDATE produced a state
+    // the product never produces, the refusal leg would not refuse and the test would go red. **NOTHING
+    // checks this one.** It is the load-bearing leg, and a green over a row the product cannot produce would
+    // be a test that is green about a fiction.
+    //
+    // SO THE COLUMN SETS WERE COMPARED RATHER THAN ASSUMED EQUIVALENT:
+    //
+    //   `Position.Reactivate` (`Position.cs:268-270`) writes EXACTLY `Status`, `StatusChangedUtc` and
+    //   `StatusChangedBy` — enumerated by reading the method, which has no other assignment.
+    //   This UPDATE writes those same three. `StatusChangedBy` is set for that reason alone; the deactivate
+    //   mirror omits it and is inconsistent with the domain, which its control conceals.
+    //
+    // ⚠ AND THE COLUMN THAT ACTUALLY DECIDES: `EmployeeRepository.FindAssignablePositionAsync:158-164`
+    // projects `CompanyId`/`Id` as its predicate and `Status` as the whole of `IsActive`. Assignability
+    // reads NOTHING ELSE, so even the one field this UPDATE could get wrong is not on the path under test.
+    //
+    // The domain event `Position.Reactivate` raises is deliberately NOT reproduced: it is consumed by
+    // projections, not by assignability, and inventing one here would fake a notification nothing in this
+    // test consumes.
     public Task ReactivatePositionDirectlyAsync(Guid positionId) =>
       ExecuteAsync($"""
         UPDATE [tenant].[Positions]
-        SET [Status] = N'Active', [StatusChangedUtc] = SYSDATETIMEOFFSET()
+        SET [Status] = N'Active', [StatusChangedUtc] = SYSDATETIMEOFFSET(), [StatusChangedBy] = N'{Actor}'
         WHERE [PositionId] = '{positionId}';
         """);
 

@@ -1370,3 +1370,65 @@ that decides it, and neither of us has measured it.**
 
 **Nothing is queued. The coder is under a standing prohibition not to edit `scripts/gate.sh` at all — the
 architect writes the ruling, the coder applies it, between runs.**
+
+### #29 — 139 OF 154 `/api` ROUTES RECEIVE NO HTTP REQUEST FROM THE GATED SUITE. HOW MUCH OF THAT DO YOU WANT CLOSED? (raised 2026-09-02, from `282`)
+
+**MEASURED, NOT ESTIMATED — and by observation rather than by matching test source.** Middleware in both
+test hosts recorded `METHOD | matched route pattern | status` for every request the suite actually issues;
+the population came from the live `EndpointDataSource`. A static search would have had blind spots on
+interpolated paths and helper indirection, and every blind spot returns as a false absence.
+
+| | count | |
+|---|---|---|
+| Population (`/api` only) | **154** | distinct `(method, route)` pairs |
+| Observed at all | **15** | |
+| **Never invoked** | **139** | **90%** |
+| — of the 15: positive (any 2xx) | **5** | support login/refresh/logout; tenant login and select-tenant |
+| — of the 15: rejection-only | **10** | never once a 2xx |
+
+⚠ **TWO OF THE FIVE POSITIVE ROUTES ONLY BECAME POSITIVE TONIGHT**, under `280`. Before this evening the
+tenant authentication surface had no successful HTTP request asserted against it at all.
+
+### ⚠ THE BOUND, WHICH MUST TRAVEL WITH THE NUMBER
+
+***Never invoked* means *by anything the merge gate runs*.** `Integration.Tests` certainly exercises some of
+these routes and does not run at the gate (`#28`, `281`). This is a statement about what defends a merge,
+not about what exists.
+
+### WHAT THE NUMBER DOES AND DOES NOT MEAN
+
+⚠⚠ **139 IS NOT 139 DEFECTS.** Most of these routes have domain, application and route-inventory coverage.
+**But a route-inventory test proves the route is MAPPED, and mapped is not reachable** — which is exactly
+why asking *is this tested?* kept returning an honest, researched, true yes across HR, GL, Payroll,
+Attendance and Companies.
+
+**AND WE HAVE ONE DEMONSTRATED INSTANCE THIS EVENING.** The tenant login surface had full domain,
+application and persistence coverage and no HTTP-layer test. That missing layer is where a live contract
+defect sat — the private body readers whose serializer options were silently load-bearing (`279`). Nothing
+found it until the layer was tested directly.
+
+⚠ **The ten rejection-only routes are the sharper half of the 15.** Nine are
+`/api/platform/localization/*`, every observed response a **401**. The suite proves they refuse an
+anonymous caller; **it cannot distinguish that from a group that refuses everything.**
+
+### THE DECISION — SCOPE, NOT WHETHER
+
+**Nobody is proposing to E2E-cover 154 routes. The question is how far down this list to go.**
+
+**(a) THE TEN REJECTION-ONLY ROUTES ONLY.** Smallest, and the shape is proven to hide defects. The
+localization nine are already queued behind `283` pending your view.
+
+**(b) (a) PLUS THE HIGHEST-DAMAGE SURFACES** — GL, Payroll and anything moving money — on the argument that
+untested and wrong are correlated and the cost of being wrong is not uniform across the 139.
+
+**(c) (a) PLUS ROUTES BINDING THROUGH ANYTHING UNUSUAL**, since that is what `279` actually caught.
+
+**(d) TREAT 139 AS ACCEPTED EXPOSURE** and rely on the layers below HTTP.
+
+**MY RECOMMENDATION IS (a) NOW AND A DECISION ON THE REST LATER**, once `283` makes the number
+re-derivable. ⚠ **I am deliberately not recommending (b) or (c) yet: both are prioritisation arguments
+built on which routes I GUESS are risky, and this project has spent the evening establishing that guesses
+about where the gaps are have been wrong more often than right.**
+
+**`283` lands the instrument with a ratchet on the five positive routes, so this number becomes repeatable
+rather than a figure in a document that decays. Nothing else is queued.**

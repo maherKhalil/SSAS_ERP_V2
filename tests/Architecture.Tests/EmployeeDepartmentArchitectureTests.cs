@@ -194,6 +194,19 @@ public sealed class EmployeeDepartmentArchitectureTests
   [Fact]
   public void The_hr_domain_still_references_no_platform_assembly()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). `GetReferencedAssemblies()` reads
+    // emitted metadata and the compiler omits a reference no type is taken from, so a `.csproj` could
+    // declare Platform and pass here until somebody first used a type. Declared catches the capability at
+    // merge time; emitted catches consumption through a transitive path no `.csproj` of ours names.
+    // The control proves the predicate fires where a Platform reference legitimately exists.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(HrDomainAssembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     Assert.DoesNotContain(
       HrDomainAssembly.GetReferencedAssemblies(),
       reference => reference.Name?.StartsWith("SSAS.Platform", StringComparison.Ordinal) ?? false);

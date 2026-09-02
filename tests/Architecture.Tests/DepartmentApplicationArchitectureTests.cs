@@ -428,12 +428,23 @@ public sealed class DepartmentApplicationArchitectureTests
   [Trait("Decision", "ADR-012")]
   public void The_hr_application_still_references_no_platform_assembly()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). `GetReferencedAssemblies()` reads
+    // emitted metadata and the compiler omits a reference no type is taken from, so a declared-but-unused
+    // Platform reference is invisible to it — merged, frictionless, and silent until the first use.
+    // The control proves the predicate fires where a Platform reference legitimately exists.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     var referenced = HrApplicationAssembly
       .GetReferencedAssemblies()
       .Select(assembly => assembly.Name ?? string.Empty)
       .ToArray();
 
     Assert.DoesNotContain(referenced, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(HrApplicationAssembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
   }
 
   // The department application namespace, keyed on rather than matched by name: see

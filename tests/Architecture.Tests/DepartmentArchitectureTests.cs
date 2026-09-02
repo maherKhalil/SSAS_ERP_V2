@@ -301,12 +301,32 @@ public sealed class DepartmentArchitectureTests
   [Trait("Decision", "ADR-012")]
   public void Hr_still_references_no_platform_assembly()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). `GetReferencedAssemblies()` reads
+    // emitted metadata and the compiler omits a reference no type is taken from — so a `.csproj` could
+    // declare Platform, build, and pass here until the first use. Declared catches the capability at merge
+    // time, which is when the friction disappears; emitted catches consumption, including transitively.
+    // ⚠⚠ ONE CONTROL COVERS BOTH CONVERSIONS BELOW, AND ITS SUFFICIENCY IS STATED BECAUSE IT IS NOT
+    // OBVIOUS. This method converts TWO assemblies — the contributor and the domain — and both use the
+    // IDENTICAL predicate (`StartsWith("SSAS.Platform")`) through the IDENTICAL helper. A control proves the
+    // PREDICATE can fire, not that a particular call site can, so one exercise of it covers both.
+    //
+    // Without this note the control reads as belonging to the first conversion only and the second looks
+    // unguarded — which is the reading that makes a later auditor "fix" it by adding a duplicate assertion
+    // that carries no information. The sweep's own check counts distinct (predicate, method) pairs for
+    // exactly this reason.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     var referenced = typeof(HrTenantModelContributor).Assembly
       .GetReferencedAssemblies()
       .Select(assembly => assembly.Name ?? string.Empty)
       .ToArray();
 
     Assert.DoesNotContain(referenced, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(typeof(HrTenantModelContributor).Assembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
 
     var domainReferences = typeof(Department).Assembly
       .GetReferencedAssemblies()
@@ -315,6 +335,9 @@ public sealed class DepartmentArchitectureTests
 
     Assert.DoesNotContain(
       domainReferences, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(typeof(Department).Assembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
   }
 
   // The composed tenant model — Platform's own entities plus HR's contribution, exactly as the Host builds

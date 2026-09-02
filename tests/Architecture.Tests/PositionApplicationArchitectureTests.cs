@@ -581,12 +581,23 @@ public sealed class PositionApplicationArchitectureTests
   [Trait("Decision", "ADR-012")]
   public void The_hr_application_still_references_no_platform_assembly()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). This file already reads the
+    // `.csproj` files for `AC-POS-0067` below, on exactly this reasoning — the emitted check cannot see a
+    // `ProjectReference` no type is taken from. The same bound applies here and the same pair closes it.
+    // The control proves the predicate fires where a Platform reference legitimately exists.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     var referenced = HrApplicationAssembly
       .GetReferencedAssemblies()
       .Select(assembly => assembly.Name ?? string.Empty)
       .ToArray();
 
     Assert.DoesNotContain(referenced, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(HrApplicationAssembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
   }
 
   // ---- AND THE SAME RULE OVER EVERY HR ASSEMBLY, NOT THREE OF THEM (`AC-POS-0060`, `AC-POS-0067`, 269).

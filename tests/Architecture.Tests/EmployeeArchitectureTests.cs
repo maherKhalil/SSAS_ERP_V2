@@ -375,7 +375,12 @@ public sealed class EmployeeArchitectureTests
       name.Contains("Company", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("Branch", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("Status", StringComparison.OrdinalIgnoreCase) ||
-      name.Equals("EmployeeNumber", StringComparison.Ordinal));
+      // ⚠ `nameof` RATHER THAN A LITERAL, AND IT IS THE ONLY CLAUSE HERE THAT CAN BE (B23). The other four
+      // are SUBSTRING bans — *no parameter MENTIONS Tenant* — and `nameof` yields an exact string, so
+      // converting them would narrow each ban from *mentions* to *equals* and let `TenantId` through.
+      // This clause is an exact-equality ban on a member that really exists on the create command, so the
+      // reference is compile-checked and a rename cannot leave it silently matching nothing.
+      name.Equals(nameof(CreateEmployeeCommand.EmployeeNumber), StringComparison.Ordinal));
 
     // And it carries the concurrency token, so an update cannot be applied to state the caller never saw.
     Assert.Contains("ExpectedRowVersion", parameters);

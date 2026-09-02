@@ -209,9 +209,19 @@ public sealed class AttendanceRouteInventoryTests(HostWebApplicationFactory fact
   // none: a record is append-only, a leave request is cancelled rather than removed, and a leave type
   // deactivates. Removing a holiday is a POST to `/holidays/remove`, which is the product's spelling for a
   // named administrative act.
+  // ⚠ `HttpMethods.Delete` RATHER THAN `"DELETE"` (B23). This is an emptiness over a filter, so it passes
+  // both when no route deletes AND when the comparison can never match — and a literal that stops matching
+  // is invisible. The framework constant makes a wrong spelling a compile error.
+  //
+  // ⚠⚠ AND THE FLOOR, WHICH THE CONSTANT DOES NOT SUPPLY: `Assert.Empty` over `Routes()` is also satisfied
+  // by an EMPTY ROUTE TABLE. A host that mapped nothing would pass this and every other emptiness in the
+  // file identically to compliance.
   [Fact]
-  public void No_attendance_route_responds_to_delete() =>
-    Assert.Empty(Routes().Where(route => FirstMethodOf(route) == "DELETE"));
+  public void No_attendance_route_responds_to_delete()
+  {
+    Assert.NotEmpty(Routes());
+    Assert.Empty(Routes().Where(route => FirstMethodOf(route) == HttpMethods.Delete));
+  }
 
   private RouteEndpoint[] Routes() =>
   [

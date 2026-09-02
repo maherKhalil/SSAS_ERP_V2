@@ -79,6 +79,41 @@ namespace SSAS.Architecture.Tests;
 // found for an identifier with no symbol anywhere in the tree.
 internal static class DeclaredDependencies
 {
+  // ================================================================================================
+  // ⚠⚠⚠ THE ELEMENT TYPES THAT CARRY A DEPENDENCY, ENUMERATED RATHER THAN ACCUMULATED (275)
+  // ================================================================================================
+  //
+  // This list read `ProjectReference` and `PackageReference` only, and that was WRONG AND SHIPPED.
+  // `FrameworkReference Include="Microsoft.AspNetCore.App"` appears SEVEN TIMES in `src/` and is how an
+  // ASP.NET dependency is actually taken here — so guards banning `Microsoft.AspNetCore` had a declared
+  // half that could not see the thing it was banning.
+  //
+  // ⚠ PROVEN BEFORE IT WAS FIXED: with `<FrameworkReference Include="Microsoft.AspNetCore.App" />` added to
+  // `SSAS.Platform.Domain.csproj`, `TenantLifecycleArchitectureTests` stayed GREEN — **and so did its
+  // emitted half, because an unused reference emits nothing.** Both readings blind at once, which is the
+  // FP-011 shape: the capability merges, the friction disappears, and nothing notices until first use.
+  //
+  // ---- WHAT WAS CONSIDERED AND WHY THE REST ARE ABSENT. THE LIST IS A DECISION, NOT AN ACCUMULATION.
+  //
+  // Measured across every `.csproj` in the repository, the item types that appear at all are:
+  // `ProjectReference`, `PackageReference`, `FrameworkReference`, `InternalsVisibleTo` and `Using`.
+  //
+  //   * `InternalsVisibleTo` is an OUTBOUND grant — it names who may see THIS project, the reverse
+  //     direction, and is not a dependency of it.
+  //   * `Using` is a namespace import. The assembly it names must already arrive through one of the three
+  //     below, so it adds no edge.
+  //
+  // ⚠⚠ AND A DIFFERENT KIND OF ABSENCE, KEPT SEPARATE BECAUSE THE GROUNDS DIFFER: `Reference`,
+  // `COMReference` and `NativeReference` WOULD each carry a dependency and appear NOWHERE in this
+  // repository today — checked, not assumed. **They are excluded by absence, not by kind, so the first one
+  // added must be added here too.** `Analyzer` and `PackageDownload` are build-time only and carry no
+  // reference either way.
+  //
+  // The distinction matters: an element excluded by KIND stays excluded forever; one excluded by ABSENCE
+  // is a standing obligation, and collapsing the two is how this list became wrong the first time.
+  private static readonly string[] DependencyElements =
+    ["ProjectReference", "PackageReference", "FrameworkReference"];
+
   // The declared dependency names of the project that builds this assembly.
   //
   // Project references are reduced through `RepositoryPaths.ProjectName` — the same one rule, so this
@@ -97,9 +132,7 @@ internal static class DeclaredDependencies
 
     return File.ReadAllLines(ProjectFileOf(assemblyName))
       .Select(line => line.Trim())
-      .Where(line =>
-        line.Contains("ProjectReference", StringComparison.Ordinal) ||
-        line.Contains("PackageReference", StringComparison.Ordinal))
+      .Where(line => DependencyElements.Any(element => line.Contains(element, StringComparison.Ordinal)))
       .Select(IncludeValue)
       .Where(value => value.Length > 0)
       .Select(value => value.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)

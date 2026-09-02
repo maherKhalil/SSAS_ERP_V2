@@ -5,7 +5,9 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.GL.Application.Accounts;
 using SSAS.GL.Application.Journals;
+using SSAS.GL.Application.Permissions;
 using SSAS.GL.Application.Reads;
 using SSAS.GL.Domain.Accounts;
 using SSAS.GL.Domain.Calendar;
@@ -119,6 +121,150 @@ public sealed class GlPostingChainSqlServerTests
     Assert.Empty(await verify.Set<JournalDraftLine>()
       .Where(line => line.JournalDraftId == seeded.DraftId)
       .ToListAsync());
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ `AC-GL-0009` — BOTH CLAUSES, AND CLAUSE 1 HAD BEEN COVERED TWICE WITHOUT EVER RUNNING HERE.
+  // ================================================================================================
+  //
+  // *A deactivated account refuses new postings with `Gl.AccountInactive`, **and** journals posted to it
+  // before deactivation remain readable and unchanged.* (`acceptance-criteria.md:68-69`)
+  //
+  // ---- ⚠⚠ CLAUSE 1 WAS COVERED TWICE AND NEVER WHERE IT RUNS.
+  //
+  //   `AccountDomainTests:69`      `EnsureCanReceiveTransactions()` returns a failure. Domain only.
+  //   `GlEndpointTests:472,497`    the API suite, against stubs.
+  //
+  // **The production call sites are `PostJournalCommandHandlers:233` and `GlJournalPoster:344`, and NO
+  // integration test deactivated an account at all** — `GlPostingChainSqlServerTests` and
+  // `GlSchemaSqlServerTests` contained no `Deactivate`, no `Inactive`, no `IsActive` before this. Covered
+  // twice and never at the layer that matters.
+  //
+  // ---- ⚠⚠⚠ CLAUSE 2 SAYS **READABLE**, WHICH IS A READ-PATH CLAIM, AND *READABLE AND UNCHANGED* IS TWO
+  // ---- PROPERTIES. BOTH ARE ASSERTED HERE, THROUGH THE READ SERVICE AND NOT THROUGH THE TABLES.
+  //
+  // The three GL read paths were each opened rather than assumed, because they answer differently:
+  //
+  //   `SearchJournalsAsync:129-151`   NO account reference at all — insensitive to account state.
+  //   `GetJournalAsync:184,211-212`   joins accounts, and projects the code with **`.First()`**.
+  //   `GetAccountBalanceAsync:325-327` looks the account up on `TenantId` + `Id` only.
+  //
+  // **None filters on `IsActive`, so clause 2 holds today BY NOBODY'S DECISION** — safe rather than
+  // guarded, which is the distinction this test converts.
+  //
+  // ⚠⚠ THE BALANCE IS THE LEG WITH MONEY BEHIND IT, AND IT IS A DIFFERENT QUERY FROM THE JOURNAL READ. **An
+  // accountant who deactivates an account and sees its balance read zero BELIEVES IT**; a journal that has
+  // vanished from a list, they go looking for. A test through `GetJournalAsync` alone cannot see it.
+  //
+  // ⚠ AND `GetJournalAsync` PROJECTS THE ACCOUNT CODE WITH `.First()`, NOT `FirstOrDefault()` — so a
+  // DELETED account would make the journal read THROW rather than return null. Deactivation is safe;
+  // deletion is not. That is the same clause-coupling as `AC-ATT-0022`: *never deleted* is the precondition
+  // that keeps *remains readable* true, and it is enforced here by a projection rather than by a join.
+  //
+  // ---- ⚠⚠⚠ BOTH READ PATHS WERE PLANTED SEPARATELY, AND THEY FAIL DIFFERENTLY. MEASURED 2026-09-02.
+  //
+  //   `&& candidate.IsActive` on `GetAccountBalanceAsync:325-327`
+  //       → the BALANCE leg failed `Assert.NotNull` — the balance read NULL — **while the journal-readable
+  //         assertions above it PASSED.** One run, two conclusions: the balance leg discriminates, and a
+  //         test through `GetJournalAsync` alone could not have seen this at all.
+  //
+  //   `.Where(a => a.IsActive)` on `GetJournalAsync:184`
+  //       → the READABLE leg THREW from inside `GetJournalAsync` itself rather than returning null,
+  //         which is the `.First()` above doing exactly what it is described as doing.
+  //
+  // **Two failures, two shapes, and neither test could stand in for the other.** That is why this test
+  // asserts at both read paths and not at whichever one was convenient.
+  [Fact]
+  [Trait("Criterion", "AC-GL-0009")]
+  public async Task A_deactivated_account_refuses_new_postings_and_leaves_its_history_readable()
+  {
+    await using var fixture = await GlFixture.CreateAsync();
+
+    var accounts = await fixture.SeedSharedAccountsAsync();
+    var seeded = await fixture.SeedCompanySubjectsAsync(
+      fixture.CompanyA, "AAA", accounts.Debit, accounts.Credit);
+
+    var from = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    var to = new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    var scope = await fixture.Resolver(fixture.CompanyA).ResolveAsync(GlPermissionNames.ViewJournals);
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+
+    // ---- THE MEASUREMENT, TAKEN BEFORE THE DEACTIVATION so the comparison below is against an observation
+    // rather than against a number written into this test.
+    decimal debitsBefore;
+    int linesBefore;
+    await using (var before = fixture.CreateContext())
+    {
+      var reads = GlFixture.Reads(before);
+
+      var balance = await reads.GetAccountBalanceAsync(scope.Value, accounts.Debit, from, to);
+      Assert.NotNull(balance);
+      Assert.True(
+        balance!.TotalDebits > 0m,
+        "the seeded account carries no debits, so the equality below would hold trivially");
+      debitsBefore = balance.TotalDebits;
+
+      var journal = await reads.GetJournalAsync(scope.Value, seeded.PostedJournalId);
+      Assert.NotNull(journal);
+      linesBefore = journal!.Lines.Count;
+      Assert.True(linesBefore > 0, "a journal with no lines would make the line comparison vacuous");
+    }
+
+    // ---- DEACTIVATED THROUGH THE PRODUCT'S OWN HANDLER, not by setting a column.
+    await using (var act = fixture.CreateContext())
+    {
+      var deactivated = await ActivationHandlerFor(act).HandleAsync(
+        new SetAccountActivationCommand(accounts.Debit, false, null));
+
+      Assert.True(deactivated.IsSuccess, deactivated.IsFailure ? deactivated.Error.Code : null);
+    }
+
+    // ---- CLAUSE 1, THROUGH THE ROUTE'S OWN POSTING HANDLER — the layer the two existing tests never reach.
+    await using (var post = fixture.CreateContext())
+    {
+      var refused = await HandlerFor(post).HandleAsync(new PostJournalDraftCommand(seeded.DraftId));
+
+      Assert.True(refused.IsFailure, "a draft naming a deactivated account was posted");
+      Assert.Equal(AccountErrors.Inactive("ignored").Code, refused.Error.Code);
+
+      // ⚠ THE MESSAGE NAMES THE ACCOUNT, AND THAT IS THE WHOLE REASON THIS ERROR IS PARAMETERISED.
+      // `AccountErrors.cs:29-33` states the standard it exists to meet — *"account 4100 is inactive" is the
+      // difference between a user fixing something and a user filing a ticket* — and the only other test of
+      // this code (`AccountDomainTests:72`) asserts the CODE and never the message, so nothing checked that
+      // the identifier actually reaches the caller.
+      Assert.Contains("1000", refused.Error.Message, StringComparison.Ordinal);
+    }
+
+    // ---- CLAUSE 2, ON A FRESH CONTEXT so these are reads of PERSISTED state and not of anything this test
+    // is still holding, and through the READ SERVICE because *readable* is a claim about what a caller sees.
+    await using var after = fixture.CreateContext();
+    var afterReads = GlFixture.Reads(after);
+
+    // READABLE.
+    var stillThere = await afterReads.GetJournalAsync(scope.Value, seeded.PostedJournalId);
+    Assert.NotNull(stillThere);
+
+    // UNCHANGED — the second property of the clause, asserted separately from the first.
+    Assert.Equal(linesBefore, stillThere!.Lines.Count);
+    Assert.Contains(stillThere.Lines, line => line.AccountId == accounts.Debit);
+
+    // AND THE BALANCE, which is the different query and the one an accountant believes.
+    var afterBalance = await afterReads.GetAccountBalanceAsync(scope.Value, accounts.Debit, from, to);
+
+    Assert.NotNull(afterBalance);
+    Assert.Equal(debitsBefore, afterBalance!.TotalDebits);
+  }
+
+  private static SetAccountActivationCommandHandler ActivationHandlerFor(TenantDbContext context)
+  {
+    var accessor = new SingleContext(context);
+
+    return new SetAccountActivationCommandHandler(
+      new AccountRepository(accessor),
+      new GrantingScope(),
+      new SingleContextUnitOfWork(context),
+      new PostingUser());
   }
 
   private static PostJournalDraftCommandHandler HandlerFor(TenantDbContext context)

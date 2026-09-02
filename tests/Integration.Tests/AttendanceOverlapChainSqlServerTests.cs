@@ -4,6 +4,7 @@ using SSAS.Attendance.Domain.Leave;
 using SSAS.Attendance.Application.Leave;
 using Microsoft.EntityFrameworkCore;
 using SSAS.Attendance.Application.Periods;
+using SSAS.Attendance.Application.Permissions;
 using SSAS.Attendance.Application.Reads;
 using SSAS.Attendance.Domain.Periods;
 using SSAS.BuildingBlocks.Domain;
@@ -397,6 +398,49 @@ public sealed class AttendanceOverlapChainSqlServerTests
     var leaveType = await context.Set<LeaveType>().SingleAsync(type => type.Id == leaveTypeId);
 
     Assert.False(leaveType.IsActive);
+
+    // ================================================================================================
+    // ⚠⚠⚠ AND THROUGH THE READ PATH, BECAUSE *REMAINS INTACT* IS ABOUT WHAT A USER CAN STILL SEE.
+    // ================================================================================================
+    //
+    // Everything above asserts at the PERSISTENCE layer — `context.Set<LeaveRequest>()` straight to the
+    // table. **That cannot detect the failure this test exists to prevent**, which is a read path that
+    // stops returning the row. The department analogue (`DepartmentApplicationSqlServerTests:565`,
+    // `AC-DEP-0030`) asserts *still readable and still LISTED* for exactly that reason.
+    //
+    // ---- ⚠⚠ THE MECHANISM, READ AND DATED, BECAUSE IT COUPLES THE TWO CLAUSES.
+    //
+    // As at 2026-09-02, `AttendanceReadService.QueryLeaveRequestsAsync:258-291` does NOT filter on
+    // `IsActive` — verified by reading the whole query, not by searching it. **So this holds today by
+    // nobody's decision, which is the difference between SAFE and GUARDED.**
+    //
+    // ⚠⚠⚠ AND `:264-268` IS AN INNER `.Join` TO `LeaveType`, NOT A LEFT JOIN. **If a leave type row ever
+    // disappeared, every request referencing it would VANISH FROM THIS LIST — not error, not orphan, just
+    // absent.** That is the real force of clause 1: *deactivated, NEVER DELETED* is what keeps these rows
+    // visible, so the two clauses are mechanically coupled through that join rather than independent.
+    // Asserting `IsActive` off the entity above does not show the request is still RETRIEVABLE; this does.
+    //
+    // ⚠⚠⚠ MEASURED, AND IT PROVES THE PERSISTENCE ASSERTIONS ABOVE ARE NOT ENOUGH. Adding
+    // `.Where(t => t.IsActive)` to that join in `AttendanceReadService` failed this test with
+    // `Assert.Single() Failure ... Collection: []` — the request GONE from the list — **while every
+    // assertion above it still passed, because the row was still in the table.** A filtering read path is
+    // invisible from the persistence layer, which is exactly why this leg exists.
+    var scope = await fixture.Resolver(true, fixture.CompanyA)
+      .ResolveCompanyOnlyAsync(AttendancePermissionNames.ViewLeave);
+
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+
+    var reads = AttendanceFixture.Reads(context, fixture.Resolver(true, fixture.CompanyA));
+    var visible = await reads.GetLeaveRequestsForEmployeeAsync(scope.Value, fixture.Employee);
+
+    Assert.True(visible.IsSuccess, visible.IsFailure ? visible.Error.Code : null);
+
+    // `Single` rather than `Contains`: the request is there, exactly once, and the settled figure survived
+    // the round trip through the projection as well as through the table.
+    var view = Assert.Single(visible.Value, row => row.LeaveRequestId == submitted.Value);
+
+    Assert.Equal(before, view.WorkingDaysConsumed);
+    Assert.Equal(leaveTypeId, view.LeaveTypeId);
   }
 
   private static SetLeaveTypeActivationCommandHandler ActivationHandlerFor(TenantDbContext context)

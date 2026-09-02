@@ -208,7 +208,21 @@ Fixed by the `OD-POS-002` ruling:
 | **Total new** | **20** |
 
 `HrRouteInventoryTests` pins the HR surface as an **exact** inventory read from **both** the module harness
-and the Host composition, and today it names **21** routes. FP-008 takes it to **41**.
+and the Host composition. **At FP-008's start it named 21 routes; FP-008 took it to 41.**
+
+> ⚠⚠ **TENSE ANCHORED 2026-09-02, architect.** This read *today it names **21** routes* — a PRESENT-TENSE
+> count of a growing surface, and it decayed: FP-009 Phase 2 took the inventory to **46**, correctly and
+> deliberately, and nothing failed when this sentence expired. **The two figures below are DATED to FP-008
+> Phase 4 and are therefore still true — they record what this feature DID, which does not change.**
+>
+> ⚠⚠⚠ **THE RULE, WHICH REFINES THE ONE APPLIED TO `AC-POS-0068`: A NUMBER IN PROSE MUST BE ANCHORED TO A
+> MOMENT, OR IT MUST NOT BE THERE.** `AC-POS-0068` stated a STANDING REQUIREMENT and could not be anchored,
+> so the figure was removed and the count left to the test, where a green run depends on it. **An AS-BUILT
+> record IS anchored and keeps its numbers.** **The defect was never *a number in a document* — it was a
+> number with no time attached, which reads as a claim about now and silently becomes false.**
+>
+> **THE CURRENT FIGURE LIVES IN `HrRouteInventoryTests`** — an exact ordered list with the count asserted
+> beside it, so it cannot go stale without something going red. Read it there, never here.
 
 > **AS BUILT (FP-008 Phase 4) — 41 ROUTES, AND THE HARNESS THAT SEES THEM.**
 >

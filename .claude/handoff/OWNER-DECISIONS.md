@@ -1371,7 +1371,46 @@ that decides it, and neither of us has measured it.**
 **Nothing is queued. The coder is under a standing prohibition not to edit `scripts/gate.sh` at all — the
 architect writes the ruling, the coder applies it, between runs.**
 
-### #29 — 139 OF 154 `/api` ROUTES RECEIVE NO HTTP REQUEST FROM THE GATED SUITE. HOW MUCH OF THAT DO YOU WANT CLOSED? (raised 2026-09-02, from `282`)
+### ⚠⚠⚠ #29 IS RETRACTED — SAME DAY, BEFORE ANY DECISION WAS TAKEN. DO NOT ACT ON THE NUMBERS BELOW.
+
+**`15 observed` and `139 never invoked` ARE WITHDRAWN. They are not a measurement of the gated suite. They
+are a measurement of TWO HOSTS, reported as the suite.**
+
+**The instrument recorded traffic through `HostWebApplicationFactory` and the support-auth E2E host. ⚠ The
+suite has roughly TWENTY hosts** — `LocalizationEffectiveApiTests`, `PositionApiTestHost`,
+`PayrollApiTestHost`, `AttendanceApiTestHost`, `EmployeeApiTestHost`, `DepartmentApiTestHost`,
+`GlApiTestHost`, `CompaniesEndpointTests`, `RolesEndpointTests` and others each build their own
+`WebApplication`. **Every route exercised through a per-class host was recorded as never invoked — and that
+is precisely where HR, GL, Payroll, Attendance and Companies live, the population this item said receives
+no HTTP request at all.**
+
+**The disproof is one line: `LocalizationEffectiveApiTests.cs:64` asserts `OK` on
+`GET /api/platform/localization/effective` — a positive HTTP test on a route reported as rejection-only.**
+
+⚠⚠ **AN INSTRUMENT COUNTS WHAT IT CAN SEE, AND ITS BLIND SPOT WAS PUBLISHED AS AN ABSENCE.** The coder
+found this while answering an unrelated question and stopped the escalation before any decision was taken.
+
+⚠⚠⚠ **THE ARCHITECT'S HALF IS WORSE AND IS RECORDED HERE BECAUSE THIS FILE IS WHERE THE OWNER'S TIME WAS
+SPENT.** The report said *middleware in BOTH hosts*. **`BOTH` IS A CLOSED-SET CLAIM AND IT WAS NEVER
+TESTED.** Every other population in this sweep was audited — 33 controls, 40 exercises, 154 routes, 872
+methods — **and the population predicate of the INSTRUMENT ITSELF was not.** Worse: the architect
+explicitly praised the bound *never invoked by anything the gate runs* and adopted it verbatim. ⚠ **THAT
+BOUND WAS ON THE WRONG AXIS. The gap was not gated-versus-ungated; it was which hosts were wired. A STATED
+BOUND ON THE WRONG AXIS IS WORSE THAN NO BOUND, because it signals that bounds were considered and closes
+the question.**
+
+**WHAT SURVIVES:** `154` as a population (read from `EndpointDataSource`, not from traffic); the
+calibration readings for `/auth/refresh` (403 only) and `/auth/logout` (absent), both on instrumented
+hosts; and `283`'s ratchet mechanism at `8303c13` — though **its header prose and commit subject carry the
+retracted numbers and are being corrected.**
+
+**A corrected sweep is queued: hosts enumerated BY MECHANISM rather than by name, with
+`LocalizationEffectiveApiTests:64` as a known-positive control the sweep must find. No number from this
+item may be quoted until that reports.**
+
+---
+
+### #29 (ORIGINAL TEXT, RETAINED FOR THE RECORD — RETRACTED ABOVE) — 139 OF 154 `/api` ROUTES RECEIVE NO HTTP REQUEST FROM THE GATED SUITE (raised 2026-09-02, from `282`)
 
 **MEASURED, NOT ESTIMATED — and by observation rather than by matching test source.** Middleware in both
 test hosts recorded `METHOD | matched route pattern | status` for every request the suite actually issues;

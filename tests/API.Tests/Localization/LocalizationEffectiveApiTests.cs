@@ -35,9 +35,17 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
   private WebApplication? application;
   private HttpClient? client;
 
+  // ⚠ CITES THE ANONYMOUS HALF OF `AC-LOC-0062`'s SECOND CLAUSE — *"Effective group and batch REJECT
+  // ANONYMOUS and untrusted-Tenant callers."* Both effective routes, unauthenticated, `401`.
+  //
+  // ⚠⚠ NOT THE FIRST CLAUSE. *"All NINE M2 routes are non-anonymous"* is a claim over a set of nine; this
+  // theory enumerates TWO, and they are named individually. **The test name is honest — *Effective_routes*,
+  // which is exactly what the two are** — but a criterion id is read as covering the criterion, so the
+  // nine-route claim is left to the route inventory where the population is derived rather than listed.
   [Theory]
   [InlineData("/api/platform/localization/effective?culture=en&module=platform&group=common.actions")]
   [InlineData("/api/platform/localization/effective/batch")]
+  [Trait("Criterion", "AC-LOC-0062")]
   public async Task Effective_routes_require_authentication(string path)
   {
     using var request = new HttpRequestMessage(path.Contains("batch", StringComparison.Ordinal) ? HttpMethod.Post : HttpMethod.Get, path);
@@ -51,7 +59,14 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
     Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
   }
 
+  // ⚠ CITES `AC-LOC-0062`'s THIRD CLAUSE — *"PERMIT an Active trusted Tenant WITHOUT View for ordinary
+  // runtime resolution."* The caller holds no localization administration permission and gets `200`.
+  //
+  // ⚠⚠ THIS IS THE CLAUSE MOST LIKELY TO BE LOST, because it is the ALLOWED side of an authorization rule
+  // and everything around it is a refusal. A gate that demanded `View` for ordinary resolution would pass
+  // every anonymous-and-untrusted test in this file and break every logged-in user's screen.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0062")]
   public async Task Active_trusted_tenant_without_localization_administration_permission_resolves_group_with_safe_headers()
   {
     state.Reset();
@@ -73,11 +88,23 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
     AssertSecurityHeaders(response);
   }
 
+  // ⚠ CITES THE UNTRUSTED-TENANT HALF OF `AC-LOC-0062`'s SECOND CLAUSE, and its FOURTH — *"reject …
+  // untrusted-Tenant callers"* and *"provide NO Tenant override for non-Active Tenant."*
+  //
+  // The four rows split cleanly: the first is a caller claiming a DIFFERENT tenant while Active — untrusted
+  // — and the other three are the SAME tenant in each non-Active status. **Two clauses, one theory, and the
+  // rows are the reason both are covered rather than one.**
+  //
+  // ⚠⚠ THE STATUS ROWS ARE ENUMERATED, NOT DERIVED. `Provisioning`, `Suspended` and `Archived` are named,
+  // so a FIFTH non-Active status added to `TenantStatus` would join the enum and not this list, and the
+  // clause would silently narrow. **The name says *non_active_tenant*, which claims the category** — that
+  // is `B20`'s shape, recorded here rather than swept.
   [Theory]
   [InlineData("00000000-0000-0000-0000-000000000001", TenantStatus.Active)]
   [InlineData("ce2bea1d-dc51-433d-8168-1afce01a7bbb", TenantStatus.Provisioning)]
   [InlineData("ce2bea1d-dc51-433d-8168-1afce01a7bbb", TenantStatus.Suspended)]
   [InlineData("ce2bea1d-dc51-433d-8168-1afce01a7bbb", TenantStatus.Archived)]
+  [Trait("Criterion", "AC-LOC-0062")]
   public async Task Untrusted_or_non_active_tenant_is_denied(string claimTenantId, TenantStatus status)
   {
     state.Reset();

@@ -44,6 +44,27 @@ public sealed class PlatformAuthorizationPipelineTests : IAsyncLifetime
   // ---- STEP 24 / STEP 25 : platform token success + missing permission ----
 
   [Fact]
+  // ⚠ CITES THE PERMIT HALF OF `AC-IAM-0003` — *"An App Owner / App Support actor WITH THE REQUIRED
+  // PLATFORM PERMISSION CAN PERFORM an approved support action…"* — AND ONLY THAT HALF. The rest of the
+  // sentence is *"…in a SELECTED TENANT, and the action is AUDITED"*, and neither is observed here: this
+  // is a test route with no tenant target, and nothing reads an audit record.
+  //
+  // ⚠⚠ THE PERMIT HALF IS WORTH CITING ON ITS OWN BECAUSE IT IS THE ONLY POSITIVE IN A LANDSCAPE OF
+  // REFUSALS. `PlatformSupportAuthorityAuthorizationTests` has FOUR tests and every one asserts a refusal:
+  // anonymous, tenant-plane token, platform token without `Administer`, mixed-plane token. **A pipeline
+  // that refused EVERYTHING satisfies all four.** This is the test that makes them mean *the gate
+  // discriminates* rather than *the gate is shut*.
+  //
+  // The three refusals below it in this file are the same shape and depend on it identically — and the
+  // pairing runs both ways, since without them a pipeline that ALLOWED everything would satisfy this one.
+  //
+  // ⚠⚠⚠ AND THE AUDIT CLAUSE IS UNOBSERVED ANYWHERE, WHICH MAKES IT THE THIRD OF ITS KIND TONIGHT.
+  // `AC-IAM-0023` (*every security-sensitive change records timestamp and actor*) and `AC-IAM-0024` (*no
+  // secret in any log*) are the other two, and all three ask for a record to EXIST rather than for a
+  // behaviour to happen. **A support action is exactly the kind of change `AC-IAM-0023` covers, so the
+  // audit half of this criterion is uncovered for the same structural reason and not by separate
+  // neglect.** Cited as the permit half; the rest is recorded, not claimed.
+  [Trait("Criterion", "AC-IAM-0003")]
   public async Task Valid_platform_token_with_the_required_permission_is_authorized()
   {
     using var request = PlatformRequest("/platform-test/administer", permissions: [Administer]);

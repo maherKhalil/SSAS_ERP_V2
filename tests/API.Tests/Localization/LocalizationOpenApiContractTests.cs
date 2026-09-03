@@ -12,7 +12,24 @@ namespace SSAS.API.Tests.Localization;
 [Collection(HostIntegrationTestGroup.Name)]
 public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory factory)
 {
+  // ⚠ CITES `AC-LOC-0062`'s FIRST CLAUSE — *"All nine M2 routes are NON-ANONYMOUS"* — AT THE OTHER LAYER.
+  // `PlatformLocalizationRouteInventoryTests` already cites this clause and asserts `HasAuthorization`, i.e.
+  // that the METADATA IS DECLARED. This asserts the OBSERVABLE: an anonymous request to each of the nine
+  // returns 401, with the no-store/no-cache/no-referrer/nosniff headers and the failure resource key.
+  // **Declared and enforced are different claims and this is the second one**; neither test subsumes the
+  // other, and a route could carry `[Authorize]` metadata that some later middleware never honours.
+  //
+  // ⚠⚠ RESIDUAL, AND IT IS THE REASON THIS DOES NOT ALSO CARRY `AC-LOC-0053` ("Milestone 2 exposes no
+  // anonymous localization HTTP route"): THE POPULATION HERE IS A HAND-WRITTEN LIST, NOT A PINNED SET. The
+  // inventory test loops over a SHARED `Expected` static that a sibling test proves set-equal to the live
+  // route table, so its per-row claim really is a claim about the whole surface. The nine paths below and
+  // the nine in `Generated_document_exposes_…` are SEPARATE LITERALS in different spellings (concrete keys
+  // here, `{resourceKey}` templates there). **A tenth route would redden the document test, and once its
+  // list was updated nothing would notice that this one still had nine** — so the universal belongs to the
+  // inventory test and the observation belongs here. See the population rule: a control must share the
+  // instrument, and this one does not.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0062")]
   public async Task All_nine_routes_apply_the_required_security_headers_to_authentication_failures()
   {
     var routes = new (HttpMethod Method, string Path)[]
@@ -50,7 +67,25 @@ public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory f
     }
   }
 
+  // ⚠ CITES THE *"exact OpenAPI"* CLAUSE OF `AC-LOC-0042` (list) AND `AC-LOC-0043` (get resource). Both
+  // sentences end *"…and exact OpenAPI"*, and this pins the generated document: the localization path set is
+  // EXACTLY these nine, each exposes exactly one operation, each carries a `Bearer` security requirement,
+  // and none exposes `delete`.
+  //
+  // ⚠⚠ THIS IS THE ONE ASSERTION IN THE FILE WHOSE POPULATION IS CLOSED AGAINST REALITY. `Assert.Equal(
+  // expected.Keys.Order(), localization.Keys.Order())` compares the hand-written set to THE GENERATED
+  // DOCUMENT, so a tenth localization route cannot appear without reddening. Every other clause of 0042 and
+  // 0043 — auth, `View`, current live Tenant, strict bounded filters, paging, safe raw-template projection,
+  // safe not-found, status codes, cross-Tenant denial — is NOT asserted here; the raw-template projection
+  // clause is carried by `LocalizationAdministrationTemplateTests` at the handler layer.
+  //
+  // ⚠⚠⚠ AND *EXACT OPENAPI* IS A CLAUSE ABOUT THE DOCUMENT, WHICH IS THE ONLY REASON A DOCUMENT ASSERTION
+  // CAN SATISFY IT. The same shape would be a mistake anywhere else in these sentences: `:139` asserts that
+  // the `expectedRowVersion` DESCRIPTION mentions *padded RFC 4648 Base64*, and that is deliberately NOT
+  // cited to `AC-LOC-0061` — a description saying what the contract is is not the contract behaving.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0042")]
+  [Trait("Criterion", "AC-LOC-0043")]
   public async Task Generated_document_exposes_exactly_the_nine_approved_localization_routes_and_authentication()
   {
     using var document = await GetDocumentAsync();
@@ -87,7 +122,24 @@ public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory f
       .GetProperty("post").GetProperty("description").GetString(), StringComparison.Ordinal);
   }
 
+  // ⚠ CITES THE *"and OpenAPI"* CLAUSE OF `AC-LOC-0050` (effective batch). The sentence requires *"strict
+  // UNIQUE BOUNDED KEYS / CULTURE / optional resource-scoped PLAIN-STRING placeholder values"*, and the
+  // document is pinned to exactly that: `resourceKeys` `maxItems` 100 and `uniqueItems` true, `culture`
+  // enumerated to `["en","ar"]`, and `placeholderValuesByResource` an object of `maxProperties` 100 whose
+  // nested `additionalProperties` are `string` — which is what *plain-string* means in the schema.
+  //
+  // ⚠⚠ DECLARED, NOT ENFORCED, AND THE DISTINCTION IS THE WHOLE CITATION. Every number here is read out of
+  // the generated document; NONE of it exercises the handler. `LocalizationTextResolver` carries its own
+  // `MaximumExplicitBatchSize` and returns `ExplicitBatchTooLarge`, and 0050's remaining clauses — malformed
+  // or unrequested maps failing REQUEST validation, missing/unknown placeholders failing POLICY validation,
+  // and runtime resolution not requiring `View` — are behaviour and are not touched here. **A schema bound
+  // and a runtime bound can disagree, and this test would stay green if they did.**
+  //
+  // ⚠ Also examined and NOT cited: `AC-LOC-0061` (see the note above — `:139` reads a description string),
+  // and the `ProblemDetails` required-property and 400/401/403/409/422/503 assertions, which pin the
+  // document's error surface without exercising any of those responses.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0050")]
   public async Task Generated_document_locks_request_shapes_culture_limits_rowversions_and_problem_responses()
   {
     using var document = await GetDocumentAsync();

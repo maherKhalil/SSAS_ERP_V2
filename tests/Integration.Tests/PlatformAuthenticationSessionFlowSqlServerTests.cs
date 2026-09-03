@@ -158,6 +158,18 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0067")]
+  // `AC-TEN-0067` — *"`PlatformAuthenticationSession.SecurityVersionAtCreation` SNAPSHOTS the global
+  // `AuthenticationAccount.SecurityVersion`; a LIVE MISMATCH on refresh REVOKES and DENIES continuation."*
+  // The account version is bumped in the database after the session exists, refresh fails, and the session's
+  // `RevocationReason` reads `SecurityStateChanged` — **the snapshot half is carried by the mismatch being
+  // detectable at all: if the session had re-read the version instead of snapshotting it, there would be
+  // nothing to mismatch against.**
+  //
+  // ⚠ KEY IS `AcceptanceCriteria` TO MATCH THIS FILE, WHICH USES IT EXCLUSIVELY — and it is the rarest of the
+  // four `AC-`-bearing keys in the repository (3 uses against `Criterion`'s 131). **File consistency beats
+  // suite consistency because a reader of THIS file can only see this file**, but the tension is real and
+  // worth a checker knowing about.
   public async Task Refresh_denies_and_revokes_on_security_version_mismatch()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();
@@ -176,6 +188,21 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0064")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0062")]
+  // TWO CRITERIA, ONE PER BLOCK OF THIS TEST, AND THEY ARE DELIBERATELY SEPARATE IDS FOR SEPARATE CAUSES.
+  //
+  // `AC-TEN-0064` — *"At refresh, LIVE principal status is re-read; a `Disabled` principal is denied, the
+  // current platform session is REVOKED."* The first block disables the principal by direct SQL AFTER the
+  // session exists, so the token cannot carry the new status — **the denial can only come from a live read**,
+  // which is the criterion's operative word. `RevocationReason` reads `PlatformPrincipalIneligible`.
+  //
+  // `AC-TEN-0062` — the same shape for ZERO active permissions, in the second block, by revoking Administer.
+  //
+  // ⚠ BOTH CRITERIA ALSO SAY *"and NO NEW TOKEN IS ISSUED"*, WHICH IS NOT ASSERTED HERE. The handler returns
+  // a failure and the session is revoked, so no token could be returned to a caller — but **the fixture
+  // holds a `CapturingAccessTokenIssuer` and never asks it whether it was invoked.** The clause is true by
+  // construction and unobserved, and the instrument to observe it is already in the fixture.
   public async Task Refresh_fails_closed_when_principal_disabled_account_ineligible_or_zero_permissions()
   {
     // Principal Disabled at the DB level (backstop independent of proactive revocation).
@@ -266,6 +293,17 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0065")]
+  // `AC-TEN-0065` — *"Disabling a `PlatformSupportPrincipal` (and revoking its platform sessions) has NO
+  // EFFECT on the person's tenant `AuthenticationSession`s."* Asserted on all three axes for the SAME
+  // identity: platform sessions go to zero Active, the tenant session stays `Active`, and the account's
+  // `SecurityVersion` is unchanged.
+  //
+  // ⚠ THE THIRD ASSERTION IS WHAT MAKES THIS A CROSS-PLANE CLAIM RATHER THAN TWO UNRELATED OBSERVATIONS.
+  // Bumping `SecurityVersion` is how the tenant plane invalidates sessions wholesale — **so a Disable that
+  // incremented it would leave the tenant session row `Active` while making every tenant token useless, and
+  // the first two assertions would still pass.** The version check closes the route the status check cannot
+  // see.
   public async Task Disable_revokes_platform_sessions_without_touching_tenant_session_or_account_security_version()
   {
     // F3C-1 consolidated: platform Disable must not increment the global account SecurityVersion and must not

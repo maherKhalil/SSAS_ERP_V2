@@ -132,6 +132,26 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0058")]
+  [Trait("Acceptance", "AC-TEN-0057")]
+  // ⚠ `AC-TEN-0057` AND `0058` ARE A MIRRORED PAIR AND THIS TEST CARRIES THE STRUCTURAL HALF OF BOTH.
+  //
+  // `0058` — *"A PLATFORM refresh token resolves only against PLATFORM-session persistence; it can never
+  // continue into or mint a tenant token."* `0057` is the same sentence with the planes swapped. **The
+  // assertion below is why neither is a matter of care at the call site: the platform creator and refresh
+  // handler take `IPlatformAuthenticationSessionRepository` and are asserted NOT to take
+  // `IAuthenticationSessionRepository` at all** — a handler cannot resolve against a store it has no way to
+  // reach, so cross-plane resolution is refused by the constructor rather than by a check that could be
+  // forgotten.
+  //
+  // ⚠⚠ WHAT IS NOT CARRIED, AND IT IS THE SAME GAP ON BOTH: *"can never … MINT a tenant token"* is about
+  // ISSUANCE, not resolution. This test says nothing about which claims type the platform flow can hand to
+  // the issuer. `AC-TEN-0075`'s typed-issuer assertion is the nearest thing — an `Issue` overload takes one
+  // of exactly two claims records — but that constrains the ISSUER's API, not which record this flow builds.
+  //
+  // ⚠ AND `0058`'s LAST CLAUSE IS UNCARRIED TOO: *"NO REQUEST PARAMETER SELECTS A PLANE for an existing
+  // refresh token."* That is a transport-shape claim about the refresh endpoint's contract, so its witness
+  // is the platform-support authentication route contract, not this constructor walk.
   public void Platform_session_flow_depends_on_platform_persistence_not_tenant_session_persistence()
   {
     // The platform creation + refresh flow must resolve platform sessions only — never the tenant session

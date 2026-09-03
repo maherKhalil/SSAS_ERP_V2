@@ -88,9 +88,22 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
   // and the instrument existed in a suite I had not examined.** Not missing — UNSEARCHED, which is the same
   // mistake as reading an architecture pass's leftovers as a coverage gap.
   //
-  // ⚠ *No cache eviction* survives the correction: searched `tests` with no cap for `EvictTenant`,
-  // `ILocalizationTenantCache` and any recording cache — the two doubles that exist are passthroughs that
-  // record nothing, so nothing can observe it. One of the five, not two.
+  // ⚠⚠⚠ AND *NO CACHE EVICTION* DID NOT SURVIVE EITHER — CORRECTED AGAIN, ONE PASS LATER.
+  //
+  // I searched `tests` with no cap for `EvictTenant`, `ILocalizationTenantCache` and any recording cache,
+  // found only passthroughs, and concluded the observable did not exist. **THE SEARCH WAS SHAPED FOR THE
+  // WRONG KIND OF INSTRUMENT.** `LocalizationResolverTests.Post_commit_domain_event_evicts_the_tenant_
+  // generation` observes eviction BEHAVIOURALLY — after the event is handled, a re-resolve returns the new
+  // text and the override reader's call count has risen. No spy, no recording double, nothing my search
+  // could have matched.
+  //
+  // **So the technique for asserting *no eviction here* exists and is demonstrated in that file**: run the
+  // refused mutation, re-resolve, and assert the reader was NOT called again. It is fixture work, not an
+  // impossibility.
+  //
+  // ⚠⚠ BOTH RESIDUALS WERE UNSEARCHED, NOT UNINSTRUMENTED. The domain-event one was in a suite I had not
+  // read; this one was behind an instrument shape I had not imagined. **A missing-instrument explanation
+  // was offered for both and neither survived.** What generalised was the search, not the mechanism.
   //
   // ⚠ `MemberData` here is a hand-written list, but the name quantifies nothing — *an authorized mutation*,
   // not *every route* — so it claims no population and `B20` does not apply. Checked, not assumed.

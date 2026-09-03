@@ -253,7 +253,22 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
     }
   }
 
+  // ⚠ CITES `AC-LOC-0061`'s LAST CLAUSE — *"…and maps ONLY VALID STALE VALUES to 409 `concurrency.conflict`"*
+  // — and it is the *only* leg in the codebase that carries the WORD ONLY. `Error_mapper_maps_internal_
+  // concurrency_to_http_contract` shows a stale value reaching 409; that is the permissive half. **This shows
+  // a NONCANONICAL value NOT reaching it**: `AQIDBAUGBwg_` returns 400 with `localization.rowversion_invalid`
+  // and `RepositoryCalls` stays at 0, so the concurrency comparison is never performed at all.
+  //
+  // ⚠⚠ IT IS ALSO THE JOIN THE OTHER TWO CITERS DEPEND ON. `RowVersionCodecTests` proves a shared
+  // BuildingBlocks codec refuses Base64Url, and `LocalizationTransportContractTests` proves a static mapper
+  // holds 400 plus the code — **neither touches a localization route.** This drives the real PUT endpoint and
+  // is what makes those citations something other than ADJACENT-SCOPE.
+  //
+  // ⚠⚠⚠ THE RESIDUAL, AND IT IS THE *ONLY* THAT SURVIVES: this pins one refused value out of the seven
+  // categories 0061 names. The remaining six are refused at the codec and are NOT observed through HTTP —
+  // ORDERED CHECKS AGAIN, since one input can only ever demonstrate one refusal.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0061")]
   public async Task Malformed_transport_rowversion_is_400_before_concurrency_or_audit_processing()
   {
     state.Reset();

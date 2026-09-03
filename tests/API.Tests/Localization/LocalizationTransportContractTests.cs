@@ -97,7 +97,16 @@ public sealed class LocalizationTransportContractTests
     Assert.Equal("concurrency.conflict", error.Code);
   }
 
+  // ⚠ CITES THE TRANSPORT-MAPPING CLAUSE OF `AC-LOC-0061` — *"…rejects [them] with HTTP 400
+  // `localization.rowversion_invalid`"*. `RowVersionCodecTests` proves WHICH VALUES are refused; this proves
+  // WHAT A REFUSAL BECOMES. Neither is the other, and the criterion needs both.
+  //
+  // ⚠⚠ AND THIS IS A STATIC PROPERTY, NOT A ROUTE. It reads `LocalizationApiErrorMapper.InvalidRowVersion`
+  // directly; nothing here shows any endpoint returning it. `LocalizationAuditReadinessApiTests.Malformed_
+  // transport_rowversion_is_400_before_concurrency_or_audit_processing` is the leg that observes a real PUT
+  // producing this exact status and code — **declared here, realised there.**
   [Fact]
+  [Trait("Criterion", "AC-LOC-0061")]
   public void Error_mapper_exposes_invalid_rowversion_contract()
   {
     var error = LocalizationApiErrorMapper.InvalidRowVersion;

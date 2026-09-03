@@ -101,7 +101,20 @@ public sealed class LocalizationDomainTests
   //
   // ⚠⚠ THE ROWVERSION HALF OF THAT CLAUSE IS NOT ASSERTED HERE. The expected version passed in is the one
   // the skip would need, and the failure comes from the TARGET check — so this says nothing about a stale
-  // token being refused. `AC-LOC-0035` names the exact codes for the stale case and is where that lives.
+  // token being refused.
+  //
+  // ⚠⚠⚠ AND *ONLY X PLUS Y SUCCEEDS* MAKES THE REFUSALS COUNTABLE, so the residual is a fraction rather
+  // than a hand-off: **the refusal population is THREE** — wrong predecessor with a good rowversion, good
+  // predecessor with a stale one, and both wrong. **THIS TEST COVERS THE FIRST. 1 OF 3.**
+  //
+  // The second is *owned* by `AC-LOC-0035`, which names the exact codes for the stale case — ⚠ that is a
+  // claim about WHERE IT BELONGS, not that it is covered, and I have not opened those tests. The third is
+  // unexercised by anything I have read. **Saying *`AC-LOC-0035` owns it* would read as delegation and
+  // delegation reads as coverage; the count does not.**
+  //
+  // ⚠ AND THE ORDERING IS WHY THE SECOND CANNOT BE REACHED FROM HERE: the target check fires first, so an
+  // input that trips it NEVER EVALUATES the rowversion. Testing the second condition needs an input that
+  // PASSES the first — a different input, not a stronger assertion.
   [Fact]
   [Trait("Criterion", "AC-LOC-0012")]
   public void Undo_rejects_arbitrary_and_incompatible_target_without_skipping()

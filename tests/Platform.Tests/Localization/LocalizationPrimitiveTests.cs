@@ -200,6 +200,21 @@ public sealed class LocalizationPrimitiveTests
   //
   // **So the citation is for the domain half of a criterion whose sentence spans domain and schema**, and
   // the numeric pair it states is half-covered.
+  //
+  // ⚠⚠⚠ AND THERE IS A SECOND CRITERION ABOUT THIS EXACT LINE, UNCITED, WHICH EXPLAINS WHY THE EMOJI IS
+  // HERE AT ALL. `AC-LOC-0058` — *"Values AT AND ABOVE 512/4000 UTF-16 limits, INCLUDING BOUNDARY SURROGATE
+  // PAIRS, behave IDENTICALLY IN DOMAIN/API/SQL."* **Someone chose a surrogate pair at the boundary on
+  // purpose, and the criterion that asked for it is not the one cited above.**
+  //
+  // ⚠ IT IS DELIBERATELY NOT CITED HERE, because it is a THREE-LAYER EQUIVALENCE CLAIM — *identically in
+  // Domain/API/SQL* — and this file is one layer. A domain-only test showing the boundary behaves correctly
+  // says nothing about whether the API and SQL agree with it, and agreement is the whole content of that
+  // sentence. **Citing it here would be the adjacent-scope defect: right subject, right fixture, wrong
+  // arity of claim.**
+  //
+  // ⚠⚠ AND IT INHERITS THE SAME HALF-COVERED PAIR, ONE LEVEL UP: `0058` also says *512/4000*, so even its
+  // domain leg is only half-exercised. **Two criteria state the same compound literal and neither has a
+  // 4000 boundary anywhere in the repository.**
   [Fact]
   [Trait("Criterion", "AC-LOC-0008")]
   public void Text_validation_uses_utf16_boundaries_and_preserves_input()

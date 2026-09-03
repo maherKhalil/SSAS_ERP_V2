@@ -153,7 +153,17 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
     Assert.Equal(path.Contains("en-US", StringComparison.Ordinal) ? 1 : 0, state.GroupCalls);
   }
 
+  // ⚠ CITES `AC-LOC-0050`'s *CODES* CLAUSE. The batch route's failure shape asserted whole rather than by
+  // status alone: `400` + `status` + `type` + `code` + `correlationId` + `resourceKey`. **The clause is
+  // *codes*, plural and stable, so asserting only the status would satisfy the word and not the contract.**
+  //
+  // ⚠⚠ AND THE `DoesNotContain` IS THE ONE ASSERTION WITH A REAL ARRANGEMENT BEHIND IT: the rejected body
+  // carries `candidate-do-not-echo` TWICE, so the value is demonstrably in play and demonstrably absent
+  // from the response. Compare the usual failure mode, where a ban passes because the string was never
+  // there. The duplicate is also what triggers the rejection, so the echo test and the refusal share one
+  // input.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0050")]
   public async Task Handler_errors_preserve_the_complete_stable_problem_contract_without_echoing_input()
   {
     state.Reset();
@@ -174,7 +184,20 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
     AssertSecurityHeaders(response);
   }
 
+  // ⚠ CITES `AC-LOC-0050`'s *STRICT UNIQUE BOUNDED KEYS* CLAUSE, one body per word:
+  //
+  //   `{ malformed` · missing `resourceKeys` · `"not-an-array"`   STRICT — the reader refuses the shape
+  //   `"tenantId":"forged"`                                       STRICT — an unknown field, not ignored
+  //   duplicate `"culture"` JSON key                              STRICT — duplicate members refused
+  //   the same resource key twice                                 UNIQUE
+  //   101 keys → `localization.explicit_batch_too_large`          BOUNDED, and by its own code
+  //
+  // ⚠⚠ `Assert.Equal(0, state.BatchCalls)` INSIDE THE LOOP IS THE CLAUSE'S REAL CONTENT — *BEFORE
+  // RESOLUTION*, which the test name promises and a status check cannot show. A reader that bound the body,
+  // resolved, and then rejected would answer `400` on every row and pass a status-only version of this
+  // test.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0050")]
   public async Task Batch_rejects_unknown_duplicate_and_oversized_transport_inputs_before_resolution()
   {
     state.Reset();
@@ -205,7 +228,15 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
     Assert.Equal("localization.explicit_batch_too_large", oversizedDocument.RootElement.GetProperty("code").GetString());
   }
 
+  // ⚠ CITES `AC-LOC-0050`'s *PROJECTION* CLAUSE, and it is the positive that the refusal test above needs.
+  // `BatchCalls == 1` where every row there asserts `0`: **the same counter proves the batch is refused
+  // before resolution in one test and reaches the resolver in this one.** Neither reading is available from
+  // its own test alone.
+  //
+  // The response is ORDINALLY ordered — `cancel` before `save`, which is not the request order — and
+  // carries `source` per item, so the projection is the resolver's answer rather than an echo of the keys.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0050")]
   public async Task Batch_uses_the_resolver_for_ordinal_safe_projection_and_accepts_the_approved_empty_list()
   {
     state.Reset();

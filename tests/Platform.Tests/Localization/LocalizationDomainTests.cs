@@ -62,7 +62,15 @@ public sealed class LocalizationDomainTests
     Assert.Equal(3, aggregate.Versions.Count);
   }
 
+  // ⚠ CITES THE SECOND CLAUSE OF `AC-LOC-0012` — *"…repeated Undo WALKS EXPLICIT LINEAGE."*
+  //
+  // Two undos in sequence, and the lineage is asserted on the RECORDED PRIOR rather than on the resulting
+  // value: undoing to v2 writes version 4 with `PriorLogicalVersionNumber = 1`, and undoing again writes
+  // version 5 with a NULL prior. **A implementation that simply stepped back through version NUMBERS would
+  // produce the same `CurrentValue` at both points and record the wrong lineage** — which is why the text
+  // assertions alone would not carry this clause.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0012")]
   public void Repeated_undo_walks_explicit_lineage()
   {
     var aggregate = CreateOverride("v1");
@@ -87,7 +95,15 @@ public sealed class LocalizationDomainTests
     Assert.Null(aggregate.Versions.Single(version => version.VersionNumber.Value == 5).PriorLogicalVersionNumber);
   }
 
+  // ⚠ CITES THE TARGET HALF OF `AC-LOC-0012`'s FIRST CLAUSE — *"ONLY the advertised compatible lineage
+  // predecessor plus matching rowversion succeeds."* Current is v3, the caller names v1, and the skip is
+  // refused with `UndoTargetInvalid` while `CurrentVersionNumber` stays at 3 — refused AND nothing moved.
+  //
+  // ⚠⚠ THE ROWVERSION HALF OF THAT CLAUSE IS NOT ASSERTED HERE. The expected version passed in is the one
+  // the skip would need, and the failure comes from the TARGET check — so this says nothing about a stale
+  // token being refused. `AC-LOC-0035` names the exact codes for the stale case and is where that lives.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0012")]
   public void Undo_rejects_arbitrary_and_incompatible_target_without_skipping()
   {
     var aggregate = CreateOverride("v1");

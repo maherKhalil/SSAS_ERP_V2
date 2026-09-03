@@ -111,6 +111,19 @@ public sealed class PlatformSupportAuthorityTests
   // ---- Lifecycle (ADR-016 / DEC-TEN-0020) ----
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0038")]
+  // `AC-TEN-0038` — *"A registered `PlatformSupportPrincipal` STARTS `Active`; the ONLY transitions are
+  // `Active -> Disabled` and `Disabled -> Active`."* Two claims, and this test carries the first.
+  //
+  // THE SECOND IS A COMPLEMENT CLAIM AND IT IS CLOSED BY FOUR TESTS TOGETHER, not by this one:
+  //   `Disable_then_reenable_transitions_and_stamps_metadata_without_touching_assignments`  both legal moves
+  //   `Disable_when_already_disabled_is_an_invalid_transition`                              Disabled -> Disabled
+  //   `Reenable_when_already_active_is_an_invalid_transition`                               Active -> Active
+  // **Two statuses give four ordered pairs; two are legal, two are refused, and all four are exercised** —
+  // so *the ONLY transitions* is a complete case analysis rather than a sample. ⚠ It stays complete only
+  // while `PlatformSupportPrincipalStatus` has two members; nothing here pins that, and the pin that would
+  // (an `Enum.GetNames` assertion, as `Status_and_reason_vocabularies_are_exact` does for tenants) does not
+  // exist for this enum.
   public void Register_starts_active_with_no_status_transition_metadata()
   {
     var principal = PlatformSupportPrincipal.Register(7).Value;
@@ -121,6 +134,11 @@ public sealed class PlatformSupportAuthorityTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0038")]
+  [Trait("Acceptance", "AC-TEN-0041")]
+  // `AC-TEN-0038`'s two LEGAL transitions, and `AC-TEN-0041`'s first clause — *"While `Disabled`, active
+  // assignment rows REMAIN PERSISTED (not deleted, not revoked)"* — which is the `without_touching_
+  // assignments` half of the name. The grant/revoke clauses are the two tests below, same trait.
   public void Disable_then_reenable_transitions_and_stamps_metadata_without_touching_assignments()
   {
     var principal = PlatformSupportPrincipal.Register(7).Value;
@@ -140,6 +158,7 @@ public sealed class PlatformSupportAuthorityTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0038")]
   public void Disable_when_already_disabled_is_an_invalid_transition()
   {
     var principal = PlatformSupportPrincipal.Register(7).Value;
@@ -153,6 +172,7 @@ public sealed class PlatformSupportAuthorityTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0038")]
   public void Reenable_when_already_active_is_an_invalid_transition()
   {
     var principal = PlatformSupportPrincipal.Register(7).Value;
@@ -165,6 +185,11 @@ public sealed class PlatformSupportAuthorityTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0041")]
+  // `AC-TEN-0041`'s SECOND clause — *"a grant is REJECTED"* while `Disabled`. Paired with the revoke test
+  // below, which carries the third: **the criterion names three behaviours in the disabled state and they
+  // point in different directions — rows persist, grants refuse, revokes proceed — so a test covering only
+  // the refusals would satisfy two thirds of it and silently license deleting the rows.**
   public void Grant_is_rejected_while_disabled()
   {
     var principal = PlatformSupportPrincipal.Register(7).Value;
@@ -178,6 +203,11 @@ public sealed class PlatformSupportAuthorityTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0041")]
+  // `AC-TEN-0041`'s THIRD clause — *"a revoke is ALLOWED"*. ⚠ This is the one that would be lost first in a
+  // tidy-up: *disabled means no changes* is the intuitive rule and it is WRONG here by specification, so a
+  // reviewer simplifying the disabled-state behaviour would break the criterion while making the code look
+  // more consistent.
   public void Revoke_is_allowed_while_disabled()
   {
     var principal = PlatformSupportPrincipal.Register(7).Value;
@@ -192,6 +222,15 @@ public sealed class PlatformSupportAuthorityTests
   }
 
   [Fact]
+  // `AC-TEN-0042`'s FIRST SENTENCE — *"Status mutations use the principal `RowVersion` (a STALE VERSION IS A
+  // CONFLICT)."* The stale-version gate is the third of the three this test walks.
+  //
+  // ⚠ THE CRITERION'S SECOND SENTENCE IS NOT A PRODUCT CLAIM AND CANNOT BE CITED ANYWHERE: *"DOCUMENTATION
+  // STATES ACCURATELY that disabling does not cryptographically invalidate an already-issued short-lived
+  // JWT; immediate cut-off is via `SecurityVersion`/session revocation."* **That is a criterion about what a
+  // DOCUMENT says, and no test can witness it** — the subject is prose, not behaviour. It belongs to a
+  // documentation review, and I am recording it rather than leaving a reader to wonder why half a criterion
+  // has no site.
   public async Task Disable_handler_gates_on_actor_missing_principal_and_stale_version()
   {
     var missing = new DisablePlatformSupportPrincipalCommandHandler(
@@ -316,6 +355,38 @@ public sealed class PlatformSupportAuthorityTests
     Assert.Equal(1, unitOfWork.SaveCount);
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ WHAT THE DOUBLES BELOW CANNOT EXPRESS. READ THIS BEFORE ADDING A TEST OR A CITATION HERE.
+  // ==================================================================================================
+  //
+  // **A TEST DOUBLE DOES NOT ONLY SIMPLIFY THE WORLD — IT BOUNDS THE VOCABULARY OF CLAIMS EVERY TEST IN THE
+  // FILE CAN MAKE.** Enumerated up front so a clause is never cited here that nothing here could observe:
+  //
+  //   LOCK / SERIALIZATION SEMANTICS   `GetByIdForUpdateAsync` returns exactly what the unlocked read
+  //                                    returns. Any clause about ordering, contention or for-update
+  //                                    behaviour is INEXPRESSIBLE here. The double says so itself, below.
+  //
+  //   PROACTIVE SESSION REVOCATION     `FakePlatformSessionRepository.ListActiveByPrincipalForUpdateAsync`
+  //                                    returns EMPTY, always. **A Disable that revoked nothing and a Disable
+  //                                    that revoked correctly are indistinguishable in this file**, because
+  //                                    the handler is never handed a session to revoke. So `AC-TEN-0040`'s
+  //                                    *"its platform session is revoked"* CANNOT be cited here — its
+  //                                    witness is `PlatformAuthenticationSessionFlowSqlServerTests
+  //                                    .Disable_revokes_all_active_platform_sessions_of_the_principal_only`,
+  //                                    which needs a database and sits in the parked PHASE scope.
+  //
+  //   ANY SESSION LOOKUP OR CREATION   every other member of that double throws `NotSupportedException`.
+  //
+  //   HOW MANY PRINCIPALS WERE ADDED   `Added` is a single slot overwritten by each `AddAsync`, the same
+  //                                    shape that made `AC-TEN-0048`'s *exactly one* unassertable in
+  //                                    `PlatformSupportBootstrapTests` until it was repaired. It is not
+  //                                    load-bearing here — one principal is registered per test — but a
+  //                                    cardinality claim must not be cited against it without fixing it
+  //                                    first.
+  //
+  // ⚠ NONE OF THESE IS A DEFECT IN THE DOUBLES. They are correct choices for what this file tests, and the
+  // list exists so the NEXT reader knows which criteria to take elsewhere rather than discovering it after
+  // writing a citation that cannot fail.
   private sealed class FakePrincipalRepository(PlatformSupportPrincipal? principal = null) : IPlatformSupportPrincipalRepository
   {
     public bool ExistsForIdentity { get; init; }
@@ -326,6 +397,12 @@ public sealed class PlatformSupportAuthorityTests
 
     // In-memory fake: same result as the unlocked read. Real lock serialization is proven only by the SQL Server
     // concurrency tests (PlatformAuthenticationSessionFlowSqlServerTests), never by this fake.
+    //
+    // ⚠ THIS COMMENT IS THE PATTERN THE OTHER TWO DEFECTIVE DOUBLES IN THIS TREE LACKED — it DECLARES its own
+    // inexpressibility instead of leaving a reader to infer it. `AuthenticationSessionApplicationTests`'
+    // membership fake derived tenant eligibility from membership, and `PlatformSupportBootstrapTests`' one-slot
+    // recorder discarded cardinality; neither said so, and both silently bounded what any test in their file
+    // could claim.
     public Task<PlatformSupportPrincipal?> GetByIdForUpdateAsync(long platformSupportPrincipalId, CancellationToken cancellationToken = default) =>
       Task.FromResult(principal);
 

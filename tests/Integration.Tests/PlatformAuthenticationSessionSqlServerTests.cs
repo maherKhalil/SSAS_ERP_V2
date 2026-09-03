@@ -212,6 +212,27 @@ public sealed class PlatformAuthenticationSessionSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("Criterion", "AC-TEN-0080")]
+  [Trait("Criterion", "AC-TEN-0081")]
+  // `AC-TEN-0080` — *"resolves the locator ONLY in platform-session persistence; the tenant refresh route
+  // resolves only tenant persistence. NO SHARED LOCATOR."* Both stores are asked for the SAME public id and
+  // the answers are opposite: the platform repository resolves it to an identity+principal locator, **the
+  // tenant repository returns null**. ⚠ **Asking BOTH stores the SAME question is what makes this a
+  // separation claim rather than two independent lookups** — one store answering correctly proves nothing
+  // about the other.
+  //
+  // `AC-TEN-0081`'s SECOND DIRECTION — *"a PLATFORM refresh token on the TENANT refresh route is denied"* —
+  // at the store level, which is where the denial is decided: the tenant route cannot deny what it can
+  // resolve, and it resolves nothing. **Its FIRST direction (a tenant token on the platform route) is over
+  // HTTP in `PlatformSupportAuthenticationEndToEndTests.A_platform_refresh_cookie_presented_under_the_
+  // tenant_cookie_name_is_refused`, same trait.**
+  //
+  // ⚠⚠ AND THE FIRST DIRECTION IS CARRIED BY CLASS MEMBERSHIP RATHER THAN BY AN EXERCISED CASE. That HTTP
+  // test presents a RANDOM foreign token in the platform cookie, and the last line here shows the platform
+  // repository returns null for an unknown id — **so "a tenant refresh token" is covered as an instance of
+  // "a token not in the platform store", not as itself.** A real tenant refresh token is never presented to
+  // the platform route anywhere I have read. The reasoning is sound and the criterion names the tenant case
+  // specifically, so it is recorded rather than assumed.
   public async Task Platform_refresh_token_is_invisible_to_the_tenant_session_repository()
   {
     await using var database = await PlatformSessionSqlDatabase.CreateAsync();

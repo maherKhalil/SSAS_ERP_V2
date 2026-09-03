@@ -213,6 +213,21 @@ public sealed class PlatformSupportAuthenticationEndToEndTests(PlatformSupportAu
   // ---- Cross-plane refresh isolation over HTTP ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0081")]
+  // `AC-TEN-0081` OVER HTTP. Two mislabelling attacks in one test: real platform refresh material presented
+  // under the TENANT cookie name, and a foreign token presented under the PLATFORM cookie name. Both 403.
+  //
+  // ⚠ THE SECOND ONE IS THE CRITERION'S FIRST DIRECTION BY CLASS MEMBERSHIP: the token is a random GUID
+  // pair, not a real tenant refresh token, so *"a TENANT refresh token presented on the platform refresh
+  // route"* is covered as an instance of *"a token not in the platform store"*. **The store-level witness is
+  // `PlatformAuthenticationSessionSqlServerTests.Platform_refresh_token_is_invisible_to_the_tenant_session_
+  // repository`, same trait, which shows the two repositories answer the same id oppositely.**
+  //
+  // ⚠⚠ AND THE COMMENT ALREADY RECORDS WHY THE FOREIGN TOKEN CANNOT SIMPLY BE REPLAYED: **the CSRF payload
+  // is bound to the real refresh token's public id.** So this is not one guard but two in series — cookie
+  // name/path scoping AND CSRF binding — and a plant that removed either would still leave the other
+  // returning 403. **Two guards over one property make each look dead**, which is worth knowing before
+  // anyone measures this test's discriminating power with a single plant.
   public async Task A_platform_refresh_cookie_presented_under_the_tenant_cookie_name_is_refused()
   {
     // Cookie names/paths differ by plane; presenting real platform refresh material under the tenant refresh

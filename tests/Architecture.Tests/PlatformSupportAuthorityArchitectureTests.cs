@@ -184,6 +184,23 @@ public sealed class PlatformSupportAuthorityArchitectureTests
       field.FieldType.Name.Contains("ReadService", StringComparison.Ordinal));
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ DO NOT DELETE THIS TEST. IT ASSERTS AN ENUM AGAINST ITS OWN NAMES AND `AC-TEN-0038` RESTS ON IT.
+  // ==================================================================================================
+  //
+  // `AC-TEN-0038` — *"the ONLY transitions are `Active -> Disabled` and `Disabled -> Active`"* — is carried
+  // by four tests in `PlatformSupportAuthorityTests` covering the four ordered pairs over two statuses, two
+  // legal and two refused. **That is a COMPLETE CASE ANALYSIS only because this line fixes the statuses at
+  // two.**
+  //
+  // **DELETING THIS CONVERTS THAT ANALYSIS INTO A SAMPLE AND NOTHING WILL REDDEN.** A third status arrives
+  // with four new ordered pairs, none exercised, all four transition tests green, and their `AC-TEN-0038`
+  // traits still claiming the criterion.
+  //
+  // ⚠ EDITING IS FINE AND EXPECTED — change the vocabulary here, then add the transition rows the new member
+  // creates. **The failure mode is REMOVING it**, because editing forces the question and removing answers
+  // it silently. Same shape, and the same warning, as `TenantLifecycleDomainTests
+  // .Status_and_reason_vocabularies_are_exact`, on which three tenant criteria depend.
   [Fact]
   public void Principal_status_enum_has_exactly_active_and_disabled()
   {

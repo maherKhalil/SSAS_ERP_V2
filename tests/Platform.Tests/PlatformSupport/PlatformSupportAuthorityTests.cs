@@ -122,8 +122,18 @@ public sealed class PlatformSupportAuthorityTests
   // **Two statuses give four ordered pairs; two are legal, two are refused, and all four are exercised** —
   // so *the ONLY transitions* is a complete case analysis rather than a sample. ⚠ It stays complete only
   // while `PlatformSupportPrincipalStatus` has two members; nothing here pins that, and the pin that would
-  // (an `Enum.GetNames` assertion, as `Status_and_reason_vocabularies_are_exact` does for tenants) does not
-  // exist for this enum.
+  // (an `Enum.GetNames` assertion, as `Status_and_reason_vocabularies_are_exact` does for tenants) is
+  // `PlatformSupportAuthorityArchitectureTests.Principal_status_enum_has_exactly_active_and_disabled`.
+  //
+  // ⚠⚠⚠ CORRECTED: I FIRST WROTE THAT NO SUCH PIN EXISTED AND ADDED ONE, AND THE PIN HAD BEEN THERE ALL
+  // ALONG. The plant — a third enum member — reddened TWO tests, mine and the architecture test above, which
+  // is how the duplication surfaced. **I asserted an absence without searching for it**, which is the rule
+  // this repository has been enforcing all night, and I broke it while writing a note about completeness.
+  // My duplicate is removed; the load-bearing warning now sits at the real pin, where a deleter reads it.
+  //
+  // ⚠ AND THE PLANT EARNED ITS KEEP IN A WAY I HAD NOT ANTICIPATED: **it did not only show that a control
+  // discriminates, it showed that MY control was not the only one.** A plant that reddens two tests is
+  // telling you the second one was already doing the job.
   public void Register_starts_active_with_no_status_transition_metadata()
   {
     var principal = PlatformSupportPrincipal.Register(7).Value;
@@ -225,12 +235,19 @@ public sealed class PlatformSupportAuthorityTests
   // `AC-TEN-0042`'s FIRST SENTENCE — *"Status mutations use the principal `RowVersion` (a STALE VERSION IS A
   // CONFLICT)."* The stale-version gate is the third of the three this test walks.
   //
-  // ⚠ THE CRITERION'S SECOND SENTENCE IS NOT A PRODUCT CLAIM AND CANNOT BE CITED ANYWHERE: *"DOCUMENTATION
-  // STATES ACCURATELY that disabling does not cryptographically invalidate an already-issued short-lived
-  // JWT; immediate cut-off is via `SecurityVersion`/session revocation."* **That is a criterion about what a
-  // DOCUMENT says, and no test can witness it** — the subject is prose, not behaviour. It belongs to a
-  // documentation review, and I am recording it rather than leaving a reader to wonder why half a criterion
-  // has no site.
+  // ⚠ THE CRITERION'S SECOND SENTENCE HAS NO SITE IN ANY TEST: *"DOCUMENTATION STATES ACCURATELY that
+  // disabling does not cryptographically invalidate an already-issued short-lived JWT; immediate cut-off is
+  // via `SecurityVersion`/session revocation."* **Its subject is a DOCUMENT, not behaviour.**
+  //
+  // ⚠⚠ IT IS UNWITNESSABLE BY TESTS, WHICH IS NOT THE SAME AS UNWITNESSABLE IN PRINCIPLE, AND THE DIFFERENCE
+  // DECIDES WHETHER ANYONE EVER CLOSES IT. The clause is perfectly checkable — read the documentation against
+  // the code and confirm it says what the code does — but the method is a REVIEW, not a run. **"In principle"
+  // licenses ignoring it forever; "by tests" hands it an owner and a method.** Recorded here as *witnessed by
+  // documentation review, not by the suite*.
+  //
+  // ⚠ AND IT SHOULD NOT SIT IN A TEST-COVERAGE DENOMINATOR. A criterion the suite CANNOT close depresses that
+  // ratio permanently and for the wrong reason, and a reader who cannot tell which gaps are closable learns
+  // to discount the number instead of chasing it.
   public async Task Disable_handler_gates_on_actor_missing_principal_and_stale_version()
   {
     var missing = new DisablePlatformSupportPrincipalCommandHandler(

@@ -35,7 +35,27 @@ public sealed class LocalizationDomainTests
     Assert.IsType<TenantLocalizationOverrideCreated>(aggregate.DomainEvents.Single());
   }
 
+  // ⚠ CITES `AC-LOC-0014`'s SECOND CLAUSE — *"A later PUT requires expected rowversion and REACTIVATES THE
+  // SAME AGGREGATE IDENTITY."* The arrangement is the criterion's: create, restore to default (inactive),
+  // then update — *a later PUT after a restore* — and the aggregate comes back active with its history
+  // continued rather than restarted.
+  //
+  // ⚠⚠ NOT THE FIRST CLAUSE. *Requires expected rowversion* is a handler concern —
+  // `UpdateTenantLocalizationOverrideCommand` carries `ExpectedRowVersion` and the domain `Update` below
+  // takes none — so nothing here can observe it.
+  //
+  // ⚠⚠⚠ AND THE ASSERTION THAT LOOKS LIKE THE IDENTITY CLAIM IS THE ONE THAT CANNOT FAIL.
+  // `Assert.Equal(id, aggregate.Id)` compares a field of ONE INSTANCE with itself a few lines later; only
+  // `Update` reassigning its own `Id` could break it, and nothing would. **It reads as the load-bearing
+  // line and is the weakest in the test.**
+  //
+  // What actually carries *the same aggregate* is the pair below it: `IsActive` true (it was inactive after
+  // the restore, so this is the REACTIVATION) and **`Versions.Count == 3` with `CurrentVersionNumber == 3`
+  // — the update APPENDED to the existing lineage.** An implementation that abandoned the restored
+  // aggregate and began a fresh one would produce an active override with `CurrentValue` `"v3"` and a
+  // version count of ONE, passing every other assertion here.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0014")]
   public void Update_reactivates_same_identity_and_appends_history()
   {
     var aggregate = CreateOverride("v1");
@@ -175,7 +195,26 @@ public sealed class LocalizationDomainTests
     Assert.Null(aggregate.CurrentValue);
   }
 
+  // ⚠ CITES `AC-LOC-0009`'s SECOND CLAUSE — *"All protected causes retain one generic code/ResourceKey and
+  // CANNOT BE TENANT-OVERRIDDEN."* An authentication resource is handed to `Create` and the refusal is
+  // `SecuritySensitive`.
+  //
+  // ⚠⚠ NOT THE FIRST CLAUSE. *Retain one generic code/ResourceKey* is a property of the auth error surface,
+  // not of this refusal, and it is asserted in `LocalizationCatalogTests.Authentication_resources_are_non_
+  // overridable_and_generic`.
+  //
+  // **That test and this one are the two halves of *cannot be overridden* and neither replaces the other**:
+  // it asserts the catalog FLAG (`TenantOverridable` is false) and this asserts the BEHAVIOUR (the factory
+  // refuses). A flag nothing consults would satisfy the first; a hard-coded refusal that ignored the flag
+  // would satisfy this one.
+  //
+  // ⚠ ANTI-VACUITY, AND IT IS ALREADY IN THIS FILE RATHER THAN ADDED: a `Create` that refused every
+  // resource would satisfy this test completely. `Create_appends_version_one_and_safe_event` and the
+  // `CreateOverride` helper used by most tests here are the positives — an ordinary resource is overridden
+  // successfully several lines above, so the refusal is known to be about THIS resource and not about
+  // creation.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0009")]
   public void Security_sensitive_resource_cannot_create_override()
   {
     var definition = GetDefinition("platform.authentication.errors.authentication_failed");

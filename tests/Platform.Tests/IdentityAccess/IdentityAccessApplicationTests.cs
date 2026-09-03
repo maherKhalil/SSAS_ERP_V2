@@ -238,6 +238,94 @@ public sealed class IdentityAccessApplicationTests
     Assert.Empty(inactiveResult.Value);
   }
 
+  // ==================================================================================================
+  // THE HANDLER ACTUALLY ASKS, AND THE ANSWER IT GETS IS THE ONE THE DOMAIN ACTS ON.
+  // ==================================================================================================
+  //
+  // ---- WHY THIS TEST EXISTS WHEN `Role.Retire` IS ALREADY TESTED AND THE ENDPOINT IS ALREADY TESTED.
+  //
+  // `Role.Retire(bool hasActiveUserAssignments, …)` is **TOLD** whether the role is assigned; it honours the
+  // flag and says nothing about who computes it. `IdentityAccessDomainTests` proves the domain refuses when
+  // told `true`. **Neither that test nor any route test proves the flag is DISCOVERED** —
+  // `RetireRoleCommandHandler:38` is the only place in the product that computes it, and until now nothing
+  // constructed that handler.
+  //
+  // **So a handler that passed a literal `false` would satisfy the domain test, the endpoint test, and the
+  // criterion as written — and would retire a role out from under its assigned users.**
+  //
+  // ---- HOW ONE REPOSITORY ANSWERING TWO WAYS PINS MORE THAN A STUB COULD.
+  //
+  // Both roles go through the same `FakeTenantUserRepository`, and the user is assigned to `assigned` only.
+  // The repository therefore answers `true` for one role id and `false` for the other. **A handler that
+  // passed a constant, or the wrong id, gets the wrong answer for exactly one of the two legs** — which no
+  // single-leg test and no stub returning a fixed value can detect.
+  //
+  // `RoleAssignmentQueries` then asserts the calls happened, in order, with the two role ids. **The
+  // recording is the anti-vacuity control**: without it, a handler that skipped the query entirely and got
+  // `false` by accident would still pass the second leg.
+  //
+  // ⚠ THE `RequestRetirement` STEP IS LOAD-BEARING AND IS NOT SETUP NOISE. `Retire` checks
+  // `Status != RetirementPending` **BEFORE** it checks the flag, so **from `Active` the refusal is
+  // `InvalidRoleTransition` and `RoleHasActiveUsers` is never reachable.** An ordered refusal means only the
+  // first is ever observed; without this step the first leg would go green for the wrong reason and this
+  // test would assert nothing about active users at all.
+  //
+  // ⚠⚠ PLANTED BOTH WAYS AND THE RESULTS ARE MEASURED, NOT PREDICTED — the substitution was made in
+  // `RetireRoleCommandHandler:39` and reverted, `src/` verified clean afterwards.
+  //
+  //   `role.Retire(FALSE, …)`  → leg 1 red: *Expected "Role.HasActiveUsers", Actual ""* — the retirement
+  //                              SUCCEEDED against a role with an active user, which is the defect
+  //   `role.Retire(TRUE, …)`   → leg 2 red: `Assert.True(accepted.IsSuccess)` — an unassigned role
+  //                              refused
+  //
+  // **Each plant reddened exactly ONE leg, and they were different lines.** That is the part worth
+  // recording: it makes these two independent assertions rather than one restated twice, and it is the only
+  // evidence that the second leg is a control rather than decoration. **Both plants also left the other
+  // 1,105 Platform tests green**, so neither was detected by anything else in the suite — which is the same
+  // fact the header states, now demonstrated rather than argued.
+  [Fact]
+  public async Task Retiring_a_role_asks_whether_it_is_assigned_and_acts_on_that_answer()
+  {
+    var assigned = CreateRole(1, "Assigned");
+    var unassigned = CreateRole(2, "Unassigned");
+    SetRowVersion(assigned, [1]);
+    SetRowVersion(unassigned, [1]);
+    // ⚠ THE ASSIGNMENT MUST PRECEDE THE RETIREMENT REQUEST AND THE DOMAIN ENFORCES THAT ORDER.
+    // `AC-IAM-0019` bars a NEW assignment to a role already in `RetirementPending`, so assigning after
+    // requesting fails and takes the arrangement with it. This is also the real sequence: a user holds the
+    // role, someone then requests retirement, and only then is the retirement attempted.
+    var user = CreateUser(10);
+    Assert.True(user.AssignRole(assigned, "actor", Guid.NewGuid(), Now).IsSuccess);
+
+    Assert.True(assigned.RequestRetirement(Guid.NewGuid(), Now).IsSuccess);
+    Assert.True(unassigned.RequestRetirement(Guid.NewGuid(), Now).IsSuccess);
+
+    var tenantUsers = new FakeTenantUserRepository(user);
+    var unitOfWork = new FakeUnitOfWork();
+    var handler = new RetireRoleCommandHandler(
+      new FakeRoleRepository(assigned, unassigned),
+      tenantUsers,
+      unitOfWork,
+      new TestCurrentTenant(TenantId),
+      new TestCurrentUser("actor"),
+      new TestClock());
+
+    var refused = await handler.HandleAsync(new RetireRoleCommand(assigned.Id, [1]));
+    var accepted = await handler.HandleAsync(new RetireRoleCommand(unassigned.Id, [1]));
+
+    Assert.Equal("Role.HasActiveUsers", refused.Error.Code);
+    Assert.Equal(Domain.Enums.RoleStatus.RetirementPending, assigned.Status);
+
+    Assert.True(accepted.IsSuccess);
+    Assert.Equal(Domain.Enums.RoleStatus.Retired, unassigned.Status);
+
+    // The refusal saved nothing; only the accepted retirement did.
+    Assert.Equal(1, unitOfWork.SaveCount);
+
+    // Asked about both, in order, by their own ids — not a constant, and not the other role's.
+    Assert.Equal([assigned.Id, unassigned.Id], tenantUsers.RoleAssignmentQueries);
+  }
+
   private static Role CreateRole(long id, string name = "Administrator")
   {
     var role = Role.CreateCustom(TenantId, RoleName.Create(name).Value, null, Guid.NewGuid(), Now);
@@ -324,8 +412,16 @@ public sealed class IdentityAccessApplicationTests
     public Task<bool> MembershipExistsAsync(long identityId, CancellationToken cancellationToken = default) =>
       Task.FromResult(MembershipExists);
 
-    public Task<bool> HasActiveAssignmentToRoleAsync(long roleId, CancellationToken cancellationToken = default) =>
-      Task.FromResult(values.Any(user => user.Status == Domain.Enums.TenantUserStatus.Active && user.ActiveRoleIds.Contains(roleId)));
+    // Recorded so a caller can assert WHICH role was asked about, not merely that an answer came back.
+    // Additive: no existing behaviour changes.
+    public List<long> RoleAssignmentQueries { get; } = [];
+
+    public Task<bool> HasActiveAssignmentToRoleAsync(long roleId, CancellationToken cancellationToken = default)
+    {
+      RoleAssignmentQueries.Add(roleId);
+      return Task.FromResult(
+        values.Any(user => user.Status == Domain.Enums.TenantUserStatus.Active && user.ActiveRoleIds.Contains(roleId)));
+    }
 
     public Task AddAsync(TenantUser tenantUser, CancellationToken cancellationToken = default)
     {

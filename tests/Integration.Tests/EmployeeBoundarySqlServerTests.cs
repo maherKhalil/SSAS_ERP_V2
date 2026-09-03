@@ -3514,6 +3514,20 @@ public sealed class EmployeeBoundarySqlServerTests
   // any of them: the column is RECOGNIZED (so the allowlist stays strict and nothing is silently ignored),
   // empty or `Active` passes, and any other value is a row error whose message names the remedy.
   //
+  // ⚠⚠⚠ AND `AC-DOC-0002` STILL SAYS THE OPPOSITE, THREE WEEKS AFTER THE RULING. Its current text reads
+  // *"A file carrying `companyId`, `branchId`, `tenantId` OR `status` is refused by the unknown-column rule —
+  // not accepted-and-ignored, and not accepted-and-validated. THERE IS NO CODE PATH THAT READS SUCH A
+  // COLUMN."* **The product recognizes `status`, reads it, and validates it.** The ruling above closed the
+  // three-way conflict in the CODE; the criterion was never updated to match.
+  //
+  // ***THAT IS A SUPERSEDED RULE, NOT A SUPERSEDED MECHANISM — the criterion's normative content is now
+  // FALSE, and like a superseded mechanism it ANNOUNCES NOTHING***: *"is refused by the unknown-column rule"*
+  // carries no marker any text filter could match. **A reader arriving at `AC-DOC-0002` today would conclude
+  // this test documents a bug.**
+  //
+  // ⚠ THIS COMMENT IS CURRENTLY THE ONLY PLACE THE CONTRADICTION IS RECORDED, and it sits in an Integration
+  // test behind a parked scope. **The criteria document is not this lane; flagged rather than edited.**
+  //
   // A `status=Terminated` export therefore refuses on re-import, and that refusal is the correct behaviour
   // rather than a residual gap: create-only cannot recreate a terminated person's employment history, and
   // resurrecting them as new Active hires would look like it worked.

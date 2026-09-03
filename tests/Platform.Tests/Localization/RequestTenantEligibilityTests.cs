@@ -5,6 +5,32 @@ using SSAS.Platform.Infrastructure.Persistence.Queries;
 
 namespace SSAS.Platform.Tests.Localization;
 
+// ⚠ EXAMINED FOR CITATION AND DELIBERATELY LEFT UNCITED. Nine route criteria (`AC-LOC-0042` through
+// `-0050`) each carry a *"current live Tenant"* or *"trusted live Tenant"* clause, and this file is the
+// MECHANISM BENEATH ALL NINE — but it drives `RequestTenantEligibility` directly and touches no route. A
+// clause that says a ROUTE ENFORCES something is not satisfied by showing the thing it enforces works.
+//
+// **Citing nine ids here would put nine criteria's worth of apparent coverage on a test that exercises no
+// endpoint** — the failure mode a criterion id is most prone to, because an id reads later as PROVEN.
+//
+// ⚠⚠ WHAT THIS FILE DOES ESTABLISH, AND IT IS WORTH RECORDING EVEN WITHOUT A CITATION:
+//
+//   *live* really means live. `New_scope_observes_suspension_after_an_active_request` suspends the tenant
+//   BETWEEN requests and shows the next scope observing it, while the in-flight scope keeps its answer.
+//   That is the difference between *live* and *decided once at login*, and no route test states it.
+//
+//   The mutation path cannot be served from this cache: `GetEligibilityForUpdateAsync` throws
+//   *"Request eligibility must never replace the locked mutation check."* A read-scoped cache silently
+//   answering a locked check is exactly how a suspended tenant would keep writing.
+//
+// ⚠⚠⚠ AND THE POPULATION OF `Non_active_or_missing_tenant_remains_denied` IS COMPLETE — MEASURED, NOT
+// ASSUMED. `TenantStatus` declares exactly FOUR members (Provisioning, Active, Suspended, Archived); the
+// theory names the three non-Active ones plus `null` for the missing tenant. **So this is that rare thing,
+// a hand-enumerated `[InlineData]` set that is exhaustive over its domain rather than merely plausible.**
+//
+// ⚠ THE RESIDUAL IS THE USUAL ONE AND IT IS NOT FIXED HERE: exhaustive TODAY. A fifth `TenantStatus`
+// member would be denied by nothing and named by no test, and nothing in this file pins the enum's size.
+// A one-line count control would close it; that is a logic change and is left for a separate decision.
 public sealed class RequestTenantEligibilityTests
 {
   [Fact]

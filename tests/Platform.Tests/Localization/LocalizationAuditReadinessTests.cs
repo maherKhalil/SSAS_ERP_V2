@@ -50,6 +50,35 @@ public sealed class LocalizationAuditReadinessTests
   // IN THIS FIXTURE AT ALL: there is no event collector, no cache and no logger. **That is a *cannot*, not a
   // *did not*.** The count is spelled out because *no side effects* reads as ATOMIC and is five things —
   // the multiplicity is hidden inside one noun phrase, like *fully validated* or *cleanly rolled back*.
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ *NO CACHE EVICTION* IS NOW SETTLED, AND NOT BY A NEW ASSERTION — BY THE ABSENCE OF A DEPENDENCY.
+  // ==================================================================================================
+  //
+  // A previous pass recorded the technique for observing it — *run the refused mutation, re-resolve, assert
+  // the override reader was not called again* — and called it fixture work. **The fixture work is not
+  // possible and does not need to be, and the reason is visible in `InvokeAsync` below.**
+  //
+  //   `EvictTenant` HAS EXACTLY ONE CALLER IN `src/`: `LocalizationCacheDomainEventConsumer:25`. The other
+  //   two hits are the interface declaration and the `LocalizationMemoryCache` implementation.
+  //
+  //   ⚠ **NONE OF THE FOUR MUTATION HANDLERS TAKES A CACHE OR A DISPATCHER.** Their full dependency lists
+  //   are at `:170-181` — settings, overrides, eligibility, readiness, unit of work, catalog, tenant, user,
+  //   clock. **A handler cannot evict what it holds no reference to**, and eviction reaches the cache only
+  //   through a POST-COMMIT domain event.
+  //
+  //   On this path there is no commit — `CommitCalls` 0, `RollbackCalls` 1 — and no aggregate is touched at
+  //   all (`Settings.Calls` and `Overrides.Calls` are both 0), **so nothing raises the event that is the
+  //   sole route to an eviction.**
+  //
+  // **So the element holds BY CONSTRUCTION rather than by luck, and the zeroes already asserted above are
+  // what establish the premise.** `PlatformLocalizationSqlServerTests.Audit_unavailable_leaves_all_
+  // localization_sql_state_and_events_unchanged` confirms the event half independently against real SQL.
+  //
+  // ⚠⚠ THE CITATION IS STILL NOT WIDENED, AND THAT IS DELIBERATE. This is an argument from a dependency
+  // list, not an observation — **a fifth constructor parameter added tomorrow would break it silently**,
+  // and no test in this repository asserts that these handlers hold no cache. **It is a settled DISPOSAL
+  // with its search recorded, not a covered element**, and the fraction below stays 2 of the 5.
   [Theory]
   [InlineData("create")]
   [InlineData("update")]

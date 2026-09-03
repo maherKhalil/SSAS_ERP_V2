@@ -60,8 +60,33 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
     }
   };
 
+  // ⚠⚠⚠ THE BEHAVIOURAL HALF OF `AC-LOC-0064`, AND IT COMPLETES A PAIR.
+  //
+  // *"An otherwise authorized Production localization mutation proceeds only when audit readiness succeeds;
+  // otherwise it returns HTTP 503 `localization.audit_readiness_unavailable` with no SQL state change,
+  // Domain event, cache eviction, submitted-text logging, or internal-cause disclosure."*
+  //
+  // **`LocalizationArchitectureTests.Every_localization_mutation_handler_retains_locked_tenant_eligibility_
+  // and_audit_readiness` carries the WIRING half** — that all four handlers call the guard — **and it is a
+  // SOURCE-TEXT match, so it proves the call is WRITTEN and not that it is REACHED or honoured.** This test
+  // is the other half: the call runs, the refusal happens, and the response is what the criterion says.
+  //
+  // WHAT THIS ONE ASSERTS, five of the criterion's elements:
+  //
+  //   the 503 · the exact code `localization.audit_readiness_unavailable`
+  //   NO SQL STATE CHANGE — `RepositoryCalls` and `SaveCalls` both zero, not merely a status check
+  //   no submitted-text disclosure — the candidate value is absent from the body
+  //   no internal-cause disclosure — the provider's exception message is absent
+  //
+  // ⚠⚠ WHAT NEITHER HALF ASSERTS: **no Domain event and no cache eviction.** The fixture counts repository
+  // and save calls and neither event dispatch nor cache eviction is observed, so two of the five
+  // must-not-happens are carried by nothing in this pair.
+  //
+  // ⚠ `MemberData` here is a hand-written list, but the name quantifies nothing — *an authorized mutation*,
+  // not *every route* — so it claims no population and `B20` does not apply. Checked, not assumed.
   [Theory]
   [MemberData(nameof(MutationRequests))]
+  [Trait("Criterion", "AC-LOC-0064")]
   public async Task Authorized_active_mutation_returns_safe_503_when_audit_is_unavailable(string path, object body)
   {
     state.Reset();

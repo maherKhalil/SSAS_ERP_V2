@@ -263,6 +263,86 @@ public sealed class LocalizationArchitectureTests
       .Where(property => Regex.IsMatch(property.Name, IdentityName, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)));
   }
 
+  // ⚠ CITES `AC-LOC-0018`'s SECOND CLAUSE — *"…and bounded projections DISCLOSE NO FOREIGN STATE."*
+  //
+  // The criterion is one sentence with two DIRECTIONS: what a request may CARRY IN, asserted above and
+  // behaviourally at `LocalizationAuditReadinessApiTests`, and what a projection may HAND BACK, which is
+  // this. **Only the inbound half was guarded.**
+  //
+  // ---- ⚠⚠⚠ AND THE TWO BANS ARE NOT MIRROR IMAGES. COPYING THE ONE ABOVE WOULD HAVE BEEN WRONG.
+  //
+  // The inbound ban is `TenantId|Actor|UserId`. Applied outbound it FAILS ON `LocalizationHistoryEntry.
+  // ActorId` — **and that field is required**: `requirements.md:106` says authorized history *"includes
+  // LINEAGE"*, and `LocalizationHistoryEntryResponse.ChangedBy` is its transport form. **An actor on a
+  // history entry is the tenant's OWN actor, which is not foreign state; a TenantId is.**
+  //
+  // So the outbound ban is narrower ON PURPOSE, and the difference is the finding rather than an oversight.
+  // *Foreign* is doing real work in that sentence and a careless mirror would have deleted a specified
+  // feature to satisfy a criterion that never asked for it.
+  //
+  // ---- THE POPULATION IS DERIVED, AND ITS PREDICATE DOES NOT NAME THE ASSERTION.
+  //
+  // Every public type in the localization application namespace, not a hand-written list of the ones I
+  // happened to think of — so a projection added tomorrow joins the ban by existing. ⚠ **`B20`'s condition
+  // is met: the selection predicate is *public type in this namespace*, which says nothing about tenant
+  // identifiers**, so a type that carried one could not leave the population by carrying it.
+  //
+  // ---- THREE CONTROLS, AND THE SECOND IS THE ONE THAT MATTERS.
+  //
+  //   MEMBERSHIP, not a count: the three projections whose safety is being claimed are asserted to be IN
+  //   the walk. A numeric floor would go stale as types are added; this cannot, and it names its subjects.
+  //
+  //   ⚠⚠ THE MATCHER IS EXERCISED AGAINST THE THREE LEGITIMATE `Tenant*` FIELDS THAT ACTUALLY EXIST —
+  //   `TenantLocalizationVersion`, `TenantOverridable`, `CurrentTenantOverride`. **A ban on `Tenant`
+  //   rather than on `TenantId` would match all three and redden on correct code**, and nothing but this
+  //   control distinguishes *no tenant identifier* from *no field mentioning tenants*.
+  //
+  //   THE EXEMPTION ASSERTS ITS OWN GROUNDS: `ActorId` is asserted PRESENT on `LocalizationHistoryEntry`.
+  //   **If lineage is ever removed, this test reddens** — so the reason the outbound ban is narrower stays
+  //   attached to the thing that justifies it, rather than living only in this comment.
+  //
+  // ⚠⚠⚠ PLANTED, AND THE PLANT MEASURED THE GAP RATHER THAN JUST THIS TEST. A `public Guid TenantId
+  // { get; init; }` was added to `LocalizationMutationResult` in `src/` and reverted, `git diff -- src/`
+  // clean afterwards. **EXACTLY ONE TEST REDDENED — this one — and the other 3,290 stayed green.**
+  //
+  // **So nothing else in the repository notices a tenant identifier appearing on a localization
+  // projection.** That is the measurement the citation rests on: before this test, the outbound half of
+  // `AC-LOC-0018` could be violated by a five-line edit that no gate, no architecture guard and no
+  // behavioural test would object to. ⚠ The plant is also the only reason the ban is known to discriminate
+  // at all — every projection satisfies it today, so a green run proves nothing on its own.
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0018")]
+  public void Localization_projections_never_expose_a_tenant_identifier()
+  {
+    var projections = typeof(LocalizationMutationResult).Assembly.GetTypes()
+      .Where(type => type.IsPublic && type.Namespace == "SSAS.Platform.Application.Localization")
+      .ToArray();
+
+    // MEMBERSHIP CONTROL. Without it the bans below pass over a namespace that was renamed or emptied.
+    Assert.Contains(typeof(LocalizationMutationResult), projections);
+    Assert.Contains(typeof(LocalizationHistoryEntry), projections);
+    Assert.Contains(typeof(LocalizationAdministrationResource), projections);
+
+    var properties = projections.SelectMany(type => type.GetProperties()).ToArray();
+    Assert.NotEmpty(properties);
+
+    // ⚠ THE MATCHER CONTROL. `TenantLocalizationVersion`, `TenantOverridable` and `CurrentTenantOverride`
+    // are real properties on real projections and every one of them is legitimate.
+    const string TenantIdentifier = "^TenantId$";
+
+    Assert.Matches(TenantIdentifier, "TenantId");
+    Assert.DoesNotMatch(TenantIdentifier, "TenantLocalizationVersion");
+    Assert.DoesNotMatch(TenantIdentifier, "TenantOverridable");
+    Assert.DoesNotMatch(TenantIdentifier, "CurrentTenantOverride");
+
+    Assert.Empty(properties
+      .Where(property => Regex.IsMatch(
+        property.Name, TenantIdentifier, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)));
+
+    // THE EXEMPTION'S GROUNDS. Lineage is specified, so its absence must fail rather than pass quietly.
+    Assert.Contains(typeof(LocalizationHistoryEntry).GetProperties(), property => property.Name == "ActorId");
+  }
+
   // ⚠ CITES ONE CLAUSE OF `AC-LOC-0036` — *"Manage-only Preview validates fully yet WRITES/CACHES/emits/logs
   // nothing and returns encoded text only."* This is the WRITES-AND-CACHES half, and structurally: the
   // handler's assembly carries no Infrastructure, EF or SqlClient dependency, so it has no capability to

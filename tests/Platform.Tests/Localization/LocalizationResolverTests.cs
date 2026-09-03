@@ -39,6 +39,16 @@ public sealed class LocalizationResolverTests
   // anonymous (`ResolverFixture(null, …)`), which supplies the NEUTRAL half; nothing in it establishes the
   // Production environment condition. Cited for the neutral path, and the environment scoping is not
   // claimed.
+  //
+  // ⚠⚠⚠ AND THAT QUALIFIER IS NOT DECORATION — DROPPING IT WOULD ASSERT THE OPPOSITE OF THE DESIGN IN THE
+  // OTHER MODE. `AC-LOC-0001` (`acceptance-criteria.md:13`) reads *"incomplete NON-PRODUCTION output is
+  // FLAGGED, DIAGNOSES CULTURE, uses English fallback, and is not promotable."* **So outside Production the
+  // product is specified to surface diagnostic detail, and a bare *never exposes ResourceKey* trait would
+  // claim, for that path, something the design appears to contradict.**
+  //
+  // **A MODE QUALIFIER IS PART OF THE PREDICATE, NOT CONTEXT AROUND IT.** Written here because dropping one
+  // makes the sentence read STRONGER — *never exposes the resource key* is more quotable than the true,
+  // conditional version, which is exactly why it would survive a review.
   [Fact]
   [Trait("Criterion", "AC-LOC-0005")]
   public async Task Anonymous_resolution_uses_defaults_formats_literally_and_hides_missing_key()

@@ -50,10 +50,26 @@ public sealed class SubscriptionInvariantTests
   // Two records at the same instant make "the greatest `EffectiveFromUtc <= T`" ambiguous — the derived
   // invariant "exactly one in force" stops being derivable, and which plan a tenant holds depends on row
   // order. That is why the rule is strictly-greater rather than not-less-than.
+  // ⚠ CITES `AC-SUB-0004`'s FIRST CLAUSE — *"Appending a record whose `EffectiveFromUtc` is EQUAL TO OR
+  // EARLIER THAN the tenant's current maximum is refused."* The three rows are that clause exactly: `0` is
+  // *equal to*, `-1` and `-864000000000` are *earlier than* at two magnitudes.
+  //
+  // ⚠⚠ THE `0` ROW IS THE ONE THE CRITERION EXISTS FOR AND THE ONE AN IMPLEMENTER WOULD OMIT. A
+  // not-less-than rule passes the two negative rows and fails only this one — and the comment above already
+  // says why: two records at the same instant make *the greatest `EffectiveFromUtc <= T`* ambiguous, so
+  // *exactly one in force* stops being derivable and the answer depends on row order. **Delete the `0` row
+  // and the test still reads as a monotonicity test while permitting the tie it exists to forbid.**
+  //
+  // ⚠⚠⚠ AND CLAUSE TWO IS NOT HERE: *"Two CONCURRENT appends produce one record and one refusal, never two
+  // records."* That is a race over a shared maximum and needs real SQL; this passes `currentMaximum` as an
+  // argument, so **the value it is compared against is supplied by the caller and never read under
+  // contention.** Same shape as `Role.Retire` being TOLD whether a role is assigned — the domain honours
+  // the input and says nothing about who computes it. Cited for clause 1 only.
   [Theory]
   [InlineData(0)]      // the same instant
   [InlineData(-1)]     // one tick behind
   [InlineData(-864000000000L)] // a day behind
+  [Trait("Criterion", "AC-SUB-0004")]
   public void An_append_at_or_behind_the_current_maximum_is_refused(long offsetTicks)
   {
     var result = Append(Noon.AddTicks(offsetTicks), currentMaximum: Noon);
@@ -84,9 +100,29 @@ public sealed class SubscriptionInvariantTests
   // ADDITIVE GRANTS — THE WRITE-TIME REFUSAL.
   // ==================================================================================================
 
+  // ⚠ CITES `AC-SUB-0016` — *"A grant whose `LimitValue` is AT OR BELOW the plan's current cap for that key
+  // is REFUSED AT WRITE, with an error naming the plan's value."* The two rows are *below* and *at*, and
+  // `A_limit_grant_above_the_plan_cap_is_accepted` below is the anti-vacuity control: without it, a
+  // `RaiseLimit` that refused everything satisfies both rows.
+  //
+  // ⚠⚠ THE CLAUSE THIS TEST DOES **NOT** CARRY: *"with an error NAMING THE PLAN'S VALUE."* It asserts the
+  // error IS `GrantWouldNotRaise` and never inspects its message for `100`. **An operator who submits 100
+  // against a cap of 100 gets a refusal that does not tell them what the cap is** — and the criterion asked
+  // for that specifically, so it is a dropped clause rather than an unstated nicety. Recorded, not fixed:
+  // asserting message content is a different decision about error contracts.
+  //
+  // ⚠⚠⚠ AND `AC-SUB-0017` IS A SEPARATE CRITERION, DELIBERATELY, WHICH THIS FILE'S OWN HEADING ANTICIPATES
+  // — *ADDITIVE GRANTS: THE WRITE-TIME REFUSAL*. `0017` says the resolved cap is `max(plan, grants)` and
+  // that a lower grant row **"however it came to exist"** does not lower it. **That phrase is the criterion
+  // authors saying the write guard may be bypassed** — by a migration, a seed, a direct write — so the
+  // resolution side must hold independently. **It is not cited here and this test cannot carry it**:
+  // nothing below resolves a cap. `TenantEntitlementResolutionTests` is where that half must live, and a
+  // reader who takes this citation as covering *additive grants* would have the write half and none of the
+  // defence behind it.
   [Theory]
   [InlineData(50)]   // below the plan's cap
   [InlineData(100)]  // equal to it — a no-op the caller would believe did something
+  [Trait("Criterion", "AC-SUB-0016")]
   public void A_limit_grant_at_or_below_the_plan_cap_is_refused(long grantValue)
   {
     var result = TenantEntitlementGrant.RaiseLimit(

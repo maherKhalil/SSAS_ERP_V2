@@ -127,6 +127,17 @@ public sealed class IdentityAccessDomainTests
   // ordered-refusals problem with the EARLIER guard accidentally satisfying a criterion about the LATER one:
   // *satisfied by a broader guard, unexercisable as stated.*
   //
+  // ⚠⚠⚠ AND IT IS A DORMANT GAP WITH AN EXTERNAL TRIGGER. ***WHAT WOULD HAVE TO CHANGE ELSEWHERE FOR THIS
+  // CRITERION'S OWN RULE TO START MATTERING: system roles becoming assignable.*** If some legitimate product
+  // change ever lets a `RoleType.System` role take permissions, the earlier refusal stops shadowing the scope
+  // check, `AC-TEN-0024`'s plane rule becomes load-bearing for system roles **on that day**, and nothing
+  // observes it — **while the criterion still reads as covered, because it is.**
+  //
+  // **`AC-TEN-0012` waits on a route somebody PLANS to build; this waits on an unrelated guard somebody
+  // MIGHT RELAX.** ***THE FIRST IS ON A ROADMAP AND THE SECOND IS NOT, WHICH IS WHY THE SECOND NEEDS THE NOTE
+  // MORE.*** Whoever makes system roles assignable should add the platform-permission row here in the same
+  // change.
+  //
   // ⚠⚠⚠ THIS TEST ALREADY CARRIED `AC-IAM-0004`, SO IT DID NOT READ AS UNCITED — the same blind spot as
   // `AC-TEN-0016`. **It was found by a PLANT, not a search**: `git grep` for `PlatformPermissionRejected`
   // returned nothing because the assertion is `result.IsFailure`, not the error constant. ***A NAME SEARCH

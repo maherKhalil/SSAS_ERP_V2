@@ -155,6 +155,21 @@ public sealed class PlatformSupportAuthoritySqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0018")]
+  [Trait("Criterion", "AC-TEN-0053")]
+  // `AC-TEN-0053` — *"'No usable platform authority exists' is evaluated LIVE from persisted state and the
+  // code-owned catalog … and NEVER from configuration, a cached flag, a bare principal row, or
+  // CORRUPT/UNKNOWN/REVOKED ASSIGNMENT ROWS."*
+  //
+  // ⚠ **THE FIXTURE FORCE-SEEDS A TENANT-SCOPED ASSIGNMENT DIRECTLY INTO SQL, EXPLICITLY BYPASSING THE
+  // WRITE-SIDE GUARD** — the row cannot be created through any handler, so the only way to test the read
+  // side's exclusion is to write it behind the application's back. ***THAT IS THE ADVERSARIAL FIXTURE IN ITS
+  // strongest form: the state is not merely unusual, it is UNREACHABLE through the product***, and a reader
+  // tidying "impossible" test data would delete the only evidence that the read side filters at all.
+  //
+  // ⚠⚠ THE CRITERION LISTS FOUR FORBIDDEN SOURCES AND THIS CARRIES ONE. *Configuration*, *a cached flag* and
+  // *a bare principal row* are not exercised here; the first two are absences in the read service's
+  // dependencies rather than states a fixture can hold. **Four sources named, one planted — the connective
+  // rule, and the other three need different witness kinds.**
   public async Task Corrupt_non_platform_support_assignment_is_excluded_from_authority_reads()
   {
     await using var database = await PlatformSupportSqlDatabase.CreateAsync();
@@ -285,6 +300,11 @@ public sealed class PlatformSupportAuthoritySqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0020")]
+  [Trait("Criterion", "AC-TEN-0046")]
+  // `AC-TEN-0046`'s SCHEMA HALF — *"adds `Status` NOT NULL (default `Active`, CHECK Active/Disabled) and
+  // `StatusChangedUtc`/`StatusChangedBy` NULLABLE."* Read from `INFORMATION_SCHEMA`, so the subject is the
+  // COLUMN rather than the mapping. **The BACKFILL half is the next test, same trait** — and this test's own
+  // comment already points at it, which is why it does not try to prove the default functionally here.
   public async Task Status_migration_creates_expected_lifecycle_columns_and_check_constraint()
   {
     await using var database = await PlatformSupportSqlDatabase.CreateAsync();
@@ -313,6 +333,18 @@ public sealed class PlatformSupportAuthoritySqlServerTests
   [Fact]
   [Trait("Scenario", "TS-TEN-0081")]
   [Trait("Scenario", "TS-TEN-0082")]
+  [Trait("Criterion", "AC-TEN-0046")]
+  // `AC-TEN-0046`'s BACKFILL HALF — *"EVERY `PlatformSupportPrincipal` EXISTING BEFORE THE MIGRATION becomes
+  // `Active` with null status metadata."*
+  //
+  // ⚠⚠ **THIS IS THE ONLY WAY A BACKFILL CAN BE TESTED AND IT IS RARE: the fixture migrates only as far as
+  // the PRE-LIFECYCLE schema, seeds a principal by RAW SQL because the entity's `Status` property has no
+  // column yet, and then migrates forward.** A test that starts from the current schema can never observe a
+  // backfill — **there is nothing pre-existing to back-fill** — so it would assert the default on a row the
+  // migration never touched.
+  //
+  // ***THE PRE-MIGRATION STATE IS THE FIXTURE, AND CONSTRUCTING IT IS THE ENTIRE DIFFICULTY.*** Most schema
+  // tests assert the destination and silently skip the transition; this one refuses to.
   public async Task Existing_principal_backfills_to_active_with_null_status_metadata()
   {
     // Bring the database only up to the Phase-2 authority migration (before the Status column exists).

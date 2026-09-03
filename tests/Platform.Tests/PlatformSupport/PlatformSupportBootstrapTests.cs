@@ -301,6 +301,16 @@ public sealed class PlatformSupportBootstrapTests
   // the re-enable rule vanished.** Same shape as `AC-TEN-0024`'s system-role clause and `AC-TEN-0045`'s
   // unexercised exception: **covered, and untestable at this site as stated.**
   //
+  // ⚠⚠⚠ DORMANT, WITH AN EXTERNAL TRIGGER. ***WHAT WOULD HAVE TO CHANGE ELSEWHERE: bootstrap ceasing to skip
+  // identities that already own a principal.*** The moment recovery is allowed to REUSE an existing
+  // principal's identity — for any reason, including a perfectly good one about re-establishing authority
+  // faster — **the disabled-principal path becomes reachable and `AC-TEN-0037` becomes load-bearing with no
+  // witness.** The service's own header calls new-principal-only a deliberate choice, which is exactly the
+  // kind of choice a later phase revisits.
+  //
+  // **Whoever relaxes new-principal-only must add a disabled-principal fixture here in the same change**,
+  // because after that change this file contains nothing that would notice a re-enable.
+  //
   // `AC-TEN-0031`'s ELIGIBILITY HALF — *"must resolve to an … authentication-capable, ACTIVE
   // `AuthenticationAccount`; a missing or INELIGIBLE subject creates no platform authority."* `local:alice`
   // has an ineligible account and is skipped; `local:carol` seeds the plane. **`local:bob` is skipped for a

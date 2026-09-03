@@ -386,8 +386,18 @@ public sealed class PlatformLocalizationSqlServerTests
   //
   // `CreateTenantLocalizationOverrideCommandHandler:40` opens the transaction; the pre-check is at `:66`
   // and the save at `:101`. **ONE TRANSACTION SPANS BOTH, so `HOLDLOCK` does not release between them.**
-  // The predicate is index-backed — `IX_TenantLocalizationOverrides_Tenant_Culture_Resource` — which is the
-  // precondition for a key-range lock on a row that does not yet exist.
+  //
+  // The predicate is index-backed, which is the precondition for a key-range lock on a row that does not
+  // yet exist. ⚠ **TWO indexes cover those three columns and only one is the relevant one**
+  // (`TenantLocalizationOverrideConfiguration.cs:72-76`):
+  //
+  //   `UX_TenantLocalizationOverrides_Tenant_Resource_Culture`  (TenantId, ResourceKey, Culture)  **UNIQUE**
+  //   `IX_TenantLocalizationOverrides_Tenant_Culture_Resource`  (TenantId, Culture, ResourceKey)  not unique
+  //
+  // **The pre-check filters TenantId, ResourceKey and Culture in that order — the UNIQUE one.** An earlier
+  // revision of this comment named the other, and a reader chasing *is it unique* would have found no
+  // constraint and concluded the arm at `:101-103` was dead code. **IT IS LIVE: a unique index exists, so a
+  // save that got past the pre-check would be refused by the engine.**
   //
   // **INFERENCE FROM THOSE FACTS, MARKED AS ONE:** the two pre-checks serialise, so whichever acquires
   // first inserts and commits while the other blocks; the second then reads the committed row and leaves
@@ -397,8 +407,12 @@ public sealed class PlatformLocalizationSqlServerTests
   // ⚠ NOT OBSERVED, AND TWO THINGS COULD STILL MAKE IT WRONG: the serialisation is SQL Server semantics
   // reasoned about rather than measured, and **two callers converting range locks to exclusive is a classic
   // DEADLOCK** — which would surface as a different error and fail `Assert.Single` loudly. The test being
-  // green is weak evidence against that, not proof. Whether the backing index is UNIQUE is also unchecked,
-  // and it decides whether the constraint arm can ever fire at all.
+  // green is weak evidence against that, not proof.
+  //
+  // ⚠ The third open end — *is the backing index unique* — is now CLOSED, and it closed in the direction
+  // that keeps the arm alive: the unique index above exists, so `:101-103` is reachable in principle and
+  // is unreached here only because the lock serialises the callers. **Unreachable-in-this-test is not
+  // dead-in-the-product**, and the two would have been easy to conflate from the wrong index name.
   //
   // **THE CITATION DECISION WAS NEVER IN DOUBT AND IS UNCHANGED: atomicity stays uncited.** What changed is
   // the reason — from a guess about scheduling to a property of the product — and the reason is what a

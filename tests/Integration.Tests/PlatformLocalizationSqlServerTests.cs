@@ -357,11 +357,11 @@ public sealed class PlatformLocalizationSqlServerTests
   //                                                         MAPPED to the same error. A version append and
   //                                                         a settings advance WERE attempted and undone.
   //
-  // `Assert.Single(results, result => result.Error == OverrideAlreadyExists)` is satisfied by both. **So on
-  // a run where the loser lost at the pre-check this test exercises the duplicate guard and not atomicity,
-  // and on a run where it lost at the constraint it exercises both — and the assertions cannot say which
-  // happened.** The final-state checks below (one version row, settings at 2) WOULD demonstrate a complete
-  // rollback, but only on the runs that reached the constraint.
+  // `Assert.Single(results, result => result.Error == OverrideAlreadyExists)` is satisfied by both, **so the
+  // assertion cannot say which arm the loser took.** ⚠ THAT REMAINS TRUE AND IS NOT THE INTERESTING PART —
+  // see the transaction-scope note below, which argues the second arm is not reached at all. The final-state
+  // checks (one version row, settings at 2) would demonstrate a complete rollback only on a run that
+  // reached the constraint.
   //
   // ⚠⚠ NOT CITED FOR THAT CLAUSE. A criterion id here would publish atomicity as covered by a test whose
   // coverage of it is decided by a race. **The fix is not another assertion but a DISCRIMINATOR** — the
@@ -382,14 +382,31 @@ public sealed class PlatformLocalizationSqlServerTests
   // pre-check, and `:101-103` is a defensive arm this test never reaches.** Which would make the clause
   // uncarried for a different and simpler reason than the one above.
   //
-  // ⚠⚠ WHAT DECIDES BETWEEN THE TWO READINGS IS TRANSACTION SCOPE, AND I HAVE NOT ESTABLISHED IT.
-  // `HOLDLOCK` holds only to the end of the enclosing transaction. If the pre-check runs outside one and
-  // `SaveChangesAsync` opens its own, the lock is released immediately and the free race is back.
+  // ⚠⚠ TRANSACTION SCOPE IS NOW SETTLED BY READING, AND IT REMOVES THE RACE FROM THE STORY.
   //
-  // **So: NOT CITED either way, and the reason is now one of two — a race, or a lock that makes the
-  // constraint arm unreachable.** The search that settles it is whether these handlers run inside an
-  // ambient transaction spanning the pre-check and the save. Recorded rather than guessed, because the
-  // paragraph above was written before this line was read and would otherwise stand as the whole story.
+  // `CreateTenantLocalizationOverrideCommandHandler:40` opens the transaction; the pre-check is at `:66`
+  // and the save at `:101`. **ONE TRANSACTION SPANS BOTH, so `HOLDLOCK` does not release between them.**
+  // The predicate is index-backed — `IX_TenantLocalizationOverrides_Tenant_Culture_Resource` — which is the
+  // precondition for a key-range lock on a row that does not yet exist.
+  //
+  // **INFERENCE FROM THOSE FACTS, MARKED AS ONE:** the two pre-checks serialise, so whichever acquires
+  // first inserts and commits while the other blocks; the second then reads the committed row and leaves
+  // by the pre-check at `:73`. On that reading `:101-103` is **unreachable from this test — never, not
+  // sometimes**, and the earlier paragraph's *a race decides which arm fires* is the wrong account.
+  //
+  // ⚠ NOT OBSERVED, AND TWO THINGS COULD STILL MAKE IT WRONG: the serialisation is SQL Server semantics
+  // reasoned about rather than measured, and **two callers converting range locks to exclusive is a classic
+  // DEADLOCK** — which would surface as a different error and fail `Assert.Single` loudly. The test being
+  // green is weak evidence against that, not proof. Whether the backing index is UNIQUE is also unchecked,
+  // and it decides whether the constraint arm can ever fire at all.
+  //
+  // **THE CITATION DECISION WAS NEVER IN DOUBT AND IS UNCHANGED: atomicity stays uncited.** What changed is
+  // the reason — from a guess about scheduling to a property of the product — and the reason is what a
+  // later reader would act on.
+  //
+  // ⚠⚠ AND DO NOT DEFEAT THE LOCK TO REACH THE OTHER ARM. Building a fixture that holds one caller between
+  // its pre-check and its save would be constructing a barrier to defeat a product safeguard in order to
+  // exercise a defensive branch — the guard exists precisely to prevent that interleave.
   public async Task Concurrent_application_create_has_one_deterministic_loser()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();

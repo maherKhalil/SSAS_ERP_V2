@@ -49,6 +49,17 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   // carry `AC-AUTH` ids elsewhere in this file.
   [Fact]
   [Trait("Criterion", "AC-IAM-0008")]
+  [Trait("Criterion", "AC-TEN-0060")]
+  // `AC-TEN-0060`'s ISSUANCE HALF — *"A tenant access token WITHOUT a `security_plane` claim … no
+  // tenant-issuer change is required in Phase 3C."* The last assertion in this method is that the issued
+  // tenant token carries NO `security_plane` claim at all, and it already names `DEC-TEN-0022` in its own
+  // comment.
+  //
+  // ⚠ THE CRITERION'S OTHER HALF IS VALIDATION, NOT ISSUANCE — *"REMAINS VALID under the tenant profile
+  // (absence => tenant)"* — and it is carried by every authentication test in this file whose token omits
+  // the claim and succeeds. **That is coverage by construction rather than by intent**: no test here exists
+  // to prove the absent claim is accepted, they simply do not set it. `Explicit_tenant_security_plane_is_
+  // accepted` covers the claim PRESENT and set to `tenant`, which is the adjacent case, not this one.
   public void Access_token_issuer_emits_rs256_known_kid_and_exact_trusted_bindings()
   {
     using var scope = factory.Services.CreateScope();
@@ -80,6 +91,20 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0074")]
+  // `AC-TEN-0074`'s POSITIVE HALF AT ITS STRONGEST SITE — *"it carries `security_plane=platform` EXACTLY
+  // ONCE plus `identity_id`, `session_id`, `client_id`, `security_version` …"*. `Assert.Single` on the plane
+  // claim is *exactly once* literally, and the same form covers subject, identity, session and client.
+  //
+  // ⚠ THIS IS A BETTER SITE THAN THE ONE I CITED FIRST. `PlatformAccessTokenClaimsTests` asserts the CLAIMS
+  // RECORD's members are populated; **this asserts the ISSUED TOKEN's claims, which is what the criterion is
+  // actually about.** The record is a precondition for the token, so the earlier citation is a supporting
+  // site rather than a wrong one — both keep the trait, and a reader who deletes either still sees the id.
+  //
+  // ⚠⚠ AND THE FIXTURE IS ADVERSARIAL RATHER THAN REPRESENTATIVE: the permission list passed in contains
+  // `Platform.Tenants.View` TWICE. **A duplicate is the input that would break *exactly once* if the issuer
+  // emitted per-item**, so the arrangement builds the state in which a plausible wrong implementation
+  // succeeds and then asserts it does not.
   public void Platform_token_issuer_emits_the_platform_profile_and_no_tenant_claims()
   {
     using var scope = factory.Services.CreateScope();
@@ -402,6 +427,19 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0059")]
+  // `AC-TEN-0059` AT THE AUTHENTICATION LAYER AND FROM THE OTHER DIRECTION — the two sites in
+  // `PlatformAuthorizationPipelineTests` and `PlatformSupportAuthorityAuthorizationTests` add `tenant_id` to
+  // a PLATFORM-shaped token; this takes a TENANT-shaped token and claims the platform plane. Same criterion,
+  // opposite construction, and **the rejection here is `AuthenticateAsync` failing rather than a route
+  // returning 401 — the structural refusal seen without any HTTP layer in the way.**
+  //
+  // ⚠⚠ AND THIS SITE NARROWS THE DISJUNCTION GAP I RECORDED AT THE OTHER TWO WITHOUT CLOSING IT. The default
+  // claim set carries BOTH `tenant_id` AND `tenant_user_id`, so this token violates both arms of *"any
+  // `tenant_id` (or `tenant_user_id`)"* at once. **Both arms present is not each arm tested**: a validator
+  // that rejects on `tenant_id` alone and ignores `tenant_user_id` passes all three sites, because no
+  // fixture anywhere plants `tenant_user_id` WITHOUT `tenant_id`. ***THE ARM-ONLY CASE IS THE ONE A
+  // DISJUNCTION NEEDS, and a fixture carrying both arms looks like stronger coverage while providing less.***
   public async Task Tenant_shaped_token_claiming_platform_plane_is_rejected()
   {
     // Attack: a valid tenant token (with tenant fields) sets security_plane=platform → platform profile

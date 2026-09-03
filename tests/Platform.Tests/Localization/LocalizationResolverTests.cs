@@ -29,6 +29,37 @@ public sealed class LocalizationResolverTests
   // `TenantOverride` is exercised by the batch tests below, not here, so this carries the *reports its
   // source* property over the two sources it visits and not over the chain.
   //
+  // ==================================================================================================
+  // ⚠⚠⚠ THE CHAIN ENUMERATED, AND THE FOURTH STEP IS ASSERTED BY NOTHING **BECAUSE IT CANNOT HAPPEN**.
+  // ==================================================================================================
+  //
+  // The *"four-step chain"* is not a prose figure — **it is `LocalizationResolutionSource` member for
+  // member**, which makes the population completable rather than a matter of reading:
+  //
+  //   `TenantOverride`   `Active_tenant_batch_uses_one_override_query…`:101 — now cited there
+  //   `SystemDefault`    here, `:66`
+  //   `EnglishFallback`  ⚠ **ASSERTED NOWHERE IN `tests/`** — searched by enum member across the whole tree
+  //   `KeyFallback`      here, `:69`
+  //
+  // ⚠ AND THE ABSENCE IS CORRECT, WHICH IS THE PART WORTH WRITING DOWN. `LocalizationTextResolver:293` sets
+  // `useEnglishFallback` only when **the requested culture is Arabic AND that resource's Arabic default is
+  // empty** — and `LocalizationCatalogTests:56` asserts `NotEmpty(resource.ArabicDefault)` over **all six**
+  // catalog resources. **So the branch is unreachable through `GeneratedLocalizationCatalog`, and a guard
+  // in another file is what makes it unreachable.**
+  //
+  // **A reader auditing *four steps, are all four tested?* finds three and infers a gap. The true answer is
+  // that the fourth is excluded by an invariant asserted somewhere else entirely** — which no amount of
+  // reading this file could reveal.
+  //
+  // ⚠⚠ THE ALARM IS REAL RATHER THAN SILENT, AND THAT IS THE GOOD OUTCOME: a seventh resource shipped
+  // without an Arabic default reddens `LocalizationCatalogTests` FIRST, before anything reaches this
+  // resolver. So the exclusion announces itself. **What is NOT covered is what happens next** —
+  // `EnglishFallback` also sets `resolvedCulture` to English (`:294`), so it changes the reported culture
+  // **and the text direction**: an Arabic caller would receive `Ltr`. **The day the catalog guard is
+  // relaxed, that path runs for the first time with nothing asserting it.** Recorded, not built: writing a
+  // test for it needs a catalog the product does not produce, which is a fixture decision rather than a
+  // citation.
+  //
   // **Never exposes ResourceKey**: `platform.unknown.key` does not appear in the returned text.
   // ⚠⚠ AND THE NEGATIVE ASSERTION HAS A PROPER POSITIVE COMPANION, WHICH IS RARE ENOUGH TO NAME:
   // `Diagnostics.MissingKeys` is asserted to CONTAIN that exact key. **So the key demonstrably exists in
@@ -73,7 +104,17 @@ public sealed class LocalizationResolverTests
     Assert.Equal(0, fixture.OverrideReader.Calls);
   }
 
+  // ⚠ CARRIES `AC-LOC-0005`'s FIRST CHAIN STEP — the one the citation above explicitly does not reach.
+  // `:101` asserts `TenantOverride` with the overriding text `"Stop"`, so the source is not merely reported
+  // but reported *correctly for the branch that was taken*.
+  //
+  // **Its anti-vacuity control is in the same assertion block and needs no addition**: `:100` asserts
+  // `SystemDefault` for the sensitive key in the SAME batch. A resolver reporting `TenantOverride`
+  // unconditionally passes `:101` and fails `:100`; one reporting `SystemDefault` unconditionally does the
+  // reverse. **Two sources, one call, neither satisfiable by a constant** — and that is a stronger control
+  // than a separate positive test, because the two answers come from one traversal of the chain.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0005")]
   public async Task Active_tenant_batch_uses_one_override_query_and_never_overrides_sensitive_text()
   {
     var fixture = new ResolverFixture(TenantId, TenantStatus.Active);
@@ -247,6 +288,35 @@ public sealed class LocalizationResolverTests
     Assert.False(resolved.Value.OverrideCompatible);
   }
 
+  // ⚠⚠⚠ EXAMINED FOR `AC-LOC-0062`'s FIFTH CLAUSE — *"expose NO ARBITRARY PUBLIC CATALOG GROUP"* — AND
+  // **NOT CITED**, because what this asserts is the adjacent property.
+  //
+  // It proves a REAL group returns EXACTLY its two active members, ordinally ordered. That is *bounded*.
+  // **The clause is about an ARBITRARY group, and no test asks for one.**
+  //
+  // ⚠ THE DISPOSAL'S SEARCH, SO IT IS FALSIFIABLE BY RE-EXECUTION RATHER THAN RE-READING: `ResolveGroupAsync`
+  // and `ResolveTemplateGroupAsync` across all of `tests/` return **five hits — this line, one
+  // source-TEXT assertion in `LocalizationArchitectureTests:539`, and three STUB IMPLEMENTATIONS in
+  // `LocalizationEffectiveApiTests`.** ⚠⚠ **THIS `:295` IS THE ONLY CALL THAT REACHES THE REAL RESOLVER,
+  // and it passes a valid module and group.** A hit, so the disposal confirms strongly.
+  //
+  // ⚠⚠ AND WHAT THE PRODUCT ACTUALLY DOES IS NOT WHAT THE ERROR NAME SUGGESTS. `LocalizationTextResolver:122`
+  // returns `InvalidGroup` **only for empty, whitespace or untrimmed module/group — a FORMATTING check.**
+  // An unknown-but-well-formed group falls through to `catalog.GetActiveGroup`, which **returns an EMPTY
+  // list**, so the caller gets `200` with zero items. ***The clause is satisfied by disclosing nothing
+  // rather than by refusing*** — and a reader who saw `InvalidGroup` would reasonably assume the opposite.
+  //
+  // ⚠ NEITHER BEHAVIOUR IS ASSERTED ANYWHERE. The `:122-127` arm is entered by no test, and the
+  // unknown-group-yields-empty path by none either. **`InvalidGroup` appears in `tests/` exactly once — as
+  // a STUB'S CANNED RETURN at `LocalizationEffectiveApiTests:325`, which tests the TRANSPORT MAPPING of
+  // that error and, by stubbing the resolver, subtracts itself from the witness set for the validation
+  // that produces it.**
+  //
+  // ⚠⚠⚠ AND THE `ar` CULTURE HERE IS QUIETLY LOAD-BEARING FOR THE CHAIN NOTE AT THE TOP OF THIS FILE.
+  // `Assert.All(… Rtl)` holds **because every catalog resource has a non-empty Arabic default**. Give any
+  // one of them an empty Arabic default and `EnglishFallback` fires, `resolvedCulture` becomes English, and
+  // **this assertion flips to `Ltr` — so this test is an unwitting second alarm on that invariant**, in a
+  // file that never mentions it.
   [Fact]
   public async Task Group_batch_is_active_bounded_and_ordinally_ordered()
   {

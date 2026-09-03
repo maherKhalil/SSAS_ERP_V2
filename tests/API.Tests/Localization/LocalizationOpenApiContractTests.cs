@@ -12,6 +12,74 @@ namespace SSAS.API.Tests.Localization;
 [Collection(HostIntegrationTestGroup.Name)]
 public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory factory)
 {
+  // ⚠⚠⚠ ONE POPULATION FOR BOTH ROUTE TESTS, AND THE DELIVERABLE IS PROPAGATION RATHER THAN DETECTION.
+  //
+  // These nine templates were previously written TWICE — once here as templates for the document
+  // comparison, and once in the authentication test as CONCRETE paths with `{resourceKey}` and `{culture}`
+  // already substituted. Only the document comparison is closed against reality, and that asymmetry is the
+  // defect: a tenth route reddens the document test, whoever repairs THAT list has discharged the alarm,
+  // and nothing anywhere points at the authentication list still holding nine.
+  //
+  // ⚠⚠ A PARTIAL ALARM IS WORSE THAN NO ALARM, BECAUSE IT CONSUMES THE ATTENTION THE WHOLE PROBLEM NEEDED.
+  // With no alarm at all, two stale lists might eventually be swept together. With one, the sweep stops the
+  // moment the red goes green.
+  //
+  // ⚠ BE PRECISE ABOUT WHAT THIS FIXES, BECAUSE IT IS NOT WHAT IT SOUNDS LIKE: the authentication test still
+  // loops over whatever this static says, so a tenth ROUTE still does not redden it directly. What changes
+  // is that the document test's red is now REPAIRED IN ONE PLACE and the repair PROPAGATES to the
+  // authentication loop. The derivation FORECLOSES the drift where a cross-check would only DETECT it.
+  //
+  // ⚠⚠⚠ PLANTED WITH A REAL TENTH ROUTE — `group.MapGet("/{resourceKey}/planted-tenth-route", …)` added to
+  // `LocalizationEndpointRouteBuilderExtensions`, run, removed — BECAUSE A TENTH ENTRY IN THIS STATIC WOULD
+  // HAVE TESTED THE WRONG DIRECTION. Adding to the static reddens both tests because both read the static;
+  // that confirms COUPLING and says nothing about PRODUCT DRIFT, which is what actually goes wrong.
+  //
+  //   tenth route, static untouched  → document test FAILED (ten paths against nine).
+  //                                    Authentication test PASSED, over NINE. **That is the defect: the
+  //                                    alarm fires and the tenth route's gate is never exercised.**
+  //   tenth route, static updated    → both PASSED, and the request log shows TEN `401` responses
+  //                                    including `…/planted-tenth-route`. **That is the repair
+  //                                    propagating, and NO RED WOULD EVER HAVE TOLD ME IT HAPPENED —
+  //                                    the second half of this plant is an OBSERVATION, not a colour.**
+  private static readonly (HttpMethod Method, string Template)[] ApprovedRoutes =
+  [
+    (HttpMethod.Get, "/api/platform/localization/resources"),
+    (HttpMethod.Get, "/api/platform/localization/resources/{resourceKey}"),
+    (HttpMethod.Put, "/api/platform/localization/resources/{resourceKey}/overrides/{culture}"),
+    (HttpMethod.Post, "/api/platform/localization/resources/{resourceKey}/overrides/{culture}/undo"),
+    (HttpMethod.Post, "/api/platform/localization/resources/{resourceKey}/overrides/{culture}/restore-default"),
+    (HttpMethod.Get, "/api/platform/localization/resources/{resourceKey}/history"),
+    (HttpMethod.Post, "/api/platform/localization/preview"),
+    (HttpMethod.Get, "/api/platform/localization/effective"),
+    (HttpMethod.Post, "/api/platform/localization/effective/batch")
+  ];
+
+  // The substitution that turns a documented template into a routable path.
+  //
+  // ⚠⚠⚠ I PREDICTED THAT A WRONG SUBSTITUTION WOULD FAIL LOUDLY WITH A 404. **MEASURED, AND IT DOES NOT
+  // FAIL AT ALL.** Planting `{culture}` → `xx-BROKEN` left all three tests GREEN: every one of the nine
+  // requests still routed and still returned 401, because **authentication runs before a route parameter
+  // means anything**, and these segments carry no constraint. A literal unsubstituted `{culture}` would
+  // route just as happily.
+  //
+  // ⚠⚠ SO THE SUBSTITUTION CARRIES NO WEIGHT IN WHAT THE TEST MEASURES — the claim is about route PATTERNS
+  // and the parameter values are arbitrary — but *carries no weight* is not *cannot rot*: rename a template
+  // placeholder and `Concrete` silently passes the braces through, leaving a test that reads as though it
+  // exercises a real resource key while asserting nothing about one. The guard below is therefore a
+  // LEGIBILITY control rather than a routing one, and it is planted: with the `{culture}` replacement
+  // removed it fails and names the offending template.
+  private static string Concrete(string template)
+  {
+    var path = template
+      .Replace("{resourceKey}", "platform.common.actions.save", StringComparison.Ordinal)
+      .Replace("{culture}", "en", StringComparison.Ordinal);
+
+    Assert.False(path.Contains('{', StringComparison.Ordinal),
+      $"'{template}' still holds an unsubstituted placeholder, so '{path}' is not a concrete path. A "
+      + "template placeholder was renamed and `Concrete` was not updated to match.");
+    return path;
+  }
+
   // ⚠ CITES `AC-LOC-0062`'s FIRST CLAUSE — *"All nine M2 routes are NON-ANONYMOUS"* — AT THE OTHER LAYER.
   // `PlatformLocalizationRouteInventoryTests` already cites this clause and asserts `HasAuthorization`, i.e.
   // that the METADATA IS DECLARED. This asserts the OBSERVABLE: an anonymous request to each of the nine
@@ -19,31 +87,22 @@ public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory f
   // **Declared and enforced are different claims and this is the second one**; neither test subsumes the
   // other, and a route could carry `[Authorize]` metadata that some later middleware never honours.
   //
-  // ⚠⚠ RESIDUAL, AND IT IS THE REASON THIS DOES NOT ALSO CARRY `AC-LOC-0053` ("Milestone 2 exposes no
-  // anonymous localization HTTP route"): THE POPULATION HERE IS A HAND-WRITTEN LIST, NOT A PINNED SET. The
-  // inventory test loops over a SHARED `Expected` static that a sibling test proves set-equal to the live
-  // route table, so its per-row claim really is a claim about the whole surface. The nine paths below and
-  // the nine in `Generated_document_exposes_…` are SEPARATE LITERALS in different spellings (concrete keys
-  // here, `{resourceKey}` templates there). **A tenth route would redden the document test, and once its
-  // list was updated nothing would notice that this one still had nine** — so the universal belongs to the
-  // inventory test and the observation belongs here. See the population rule: a control must share the
-  // instrument, and this one does not.
+  // ⚠⚠ RESIDUAL, AND IT SURVIVES THE `ApprovedRoutes` DERIVATION ABOVE — WHICH IS WHY THIS STILL DOES NOT
+  // CARRY `AC-LOC-0053` ("Milestone 2 exposes no anonymous localization HTTP route"). Sharing the static
+  // removed the DRIFT between the two lists; it did not make this loop's population closed. **A tenth route
+  // still does not redden THIS test** — it reddens the document test, and the repair then propagates here.
+  // The claim is therefore *each of the routes we approved refuses anonymous callers*, not *no localization
+  // route is anonymous*.
+  //
+  // The universal belongs to `PlatformLocalizationRouteInventoryTests`, whose `Expected` static is proved
+  // set-equal to the LIVE ROUTE TABLE by a sibling test, so its per-row claim really is about the whole
+  // surface. **Set-equality against the running application is what closes a population; set-equality
+  // against a generated document is one step short of it.**
   [Fact]
   [Trait("Criterion", "AC-LOC-0062")]
   public async Task All_nine_routes_apply_the_required_security_headers_to_authentication_failures()
   {
-    var routes = new (HttpMethod Method, string Path)[]
-    {
-      (HttpMethod.Get, "/api/platform/localization/resources"),
-      (HttpMethod.Get, "/api/platform/localization/resources/platform.common.actions.save"),
-      (HttpMethod.Put, "/api/platform/localization/resources/platform.common.actions.save/overrides/en"),
-      (HttpMethod.Post, "/api/platform/localization/resources/platform.common.actions.save/overrides/en/undo"),
-      (HttpMethod.Post, "/api/platform/localization/resources/platform.common.actions.save/overrides/en/restore-default"),
-      (HttpMethod.Get, "/api/platform/localization/resources/platform.common.actions.save/history"),
-      (HttpMethod.Post, "/api/platform/localization/preview"),
-      (HttpMethod.Get, "/api/platform/localization/effective"),
-      (HttpMethod.Post, "/api/platform/localization/effective/batch")
-    };
+    var routes = ApprovedRoutes.Select(route => (route.Method, Path: Concrete(route.Template))).ToArray();
     var client = factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
     {
       services.RemoveAll<IRequestTenantEligibility>();
@@ -93,18 +152,10 @@ public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory f
     var localization = paths.EnumerateObject()
       .Where(path => path.Name.StartsWith("/api/platform/localization", StringComparison.Ordinal))
       .ToDictionary(path => path.Name, path => path.Value, StringComparer.Ordinal);
-    var expected = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-      ["/api/platform/localization/resources"] = "get",
-      ["/api/platform/localization/resources/{resourceKey}"] = "get",
-      ["/api/platform/localization/resources/{resourceKey}/overrides/{culture}"] = "put",
-      ["/api/platform/localization/resources/{resourceKey}/overrides/{culture}/undo"] = "post",
-      ["/api/platform/localization/resources/{resourceKey}/overrides/{culture}/restore-default"] = "post",
-      ["/api/platform/localization/resources/{resourceKey}/history"] = "get",
-      ["/api/platform/localization/preview"] = "post",
-      ["/api/platform/localization/effective"] = "get",
-      ["/api/platform/localization/effective/batch"] = "post"
-    };
+    var expected = ApprovedRoutes.ToDictionary(
+      route => route.Template,
+      route => route.Method.Method.ToLowerInvariant(),
+      StringComparer.Ordinal);
 
     Assert.Equal(expected.Keys.Order(), localization.Keys.Order());
     foreach (var (path, method) in expected)

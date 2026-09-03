@@ -10,6 +10,16 @@ namespace SSAS.Architecture.Tests;
 public sealed class PlatformPermissionAuthorizationArchitectureTests
 {
   [Fact]
+  [Trait("Criterion", "AC-TEN-0091")]
+  // `AC-TEN-0091`'s SECOND half — *"`PlatformPermissionAuthorizationHandler` and the plane-authenticated
+  // policies perform NO LIVE PRINCIPAL-STATUS / PER-REQUEST DB [authorization]."* Carried by an ABSENT
+  // DEPENDENCY, which is the strongest available form: **a handler cannot query a database it has no way to
+  // reach.** The no-new-claim half is on `PlatformSupportAuthenticationEndToEndTests.Platform_login_...`,
+  // same trait.
+  //
+  // ⚠ AND THE BAN INCLUDES `Principal` AND `Session` AS WELL AS THE THREE PERSISTENCE SPELLINGS, which is
+  // what makes it *no live PRINCIPAL-STATUS* rather than merely *no database*: **a read service is not the
+  // only way to reach live status, and a `PlatformSupportPrincipal` parameter would have been one.**
   public void Platform_permission_handler_depends_only_on_the_permission_catalog_and_no_persistence()
   {
     var parameters = typeof(PlatformPermissionAuthorizationHandler).GetConstructors().Single().GetParameters();

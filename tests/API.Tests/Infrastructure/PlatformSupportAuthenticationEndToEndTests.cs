@@ -49,6 +49,25 @@ public sealed class PlatformSupportAuthenticationEndToEndTests(PlatformSupportAu
   // ---- M1 : positive HTTP login (+ M5 issued-JWT validation) ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0078")]
+  [Trait("Criterion", "AC-TEN-0091")]
+  [Trait("Criterion", "AC-TEN-0074")]
+  // `AC-TEN-0078` — *"A verified identity obtains a platform session ONLY THROUGH a dedicated, SERVER-OWNED
+  // platform login route."* This is that route, exercised end to end from credentials to issued token.
+  //
+  // `AC-TEN-0091`'s NO-NEW-CLAIM half — *"the Phase-3C token profile is unchanged (NO `PlatformSupport
+  // PrincipalId`/`principal_id` claim)."* `AssertPlatformTokenProfile` bans `principal_id` by name. **Its
+  // other half — no per-request DB authorization — is structural and lives on
+  // `PlatformPermissionAuthorizationArchitectureTests`, same trait.**
+  //
+  // ⚠⚠ `AC-TEN-0074` IS CITED HERE AS A **THIRD** SITE AND IT IS THE BROADEST, NOT THE STRONGEST. The
+  // hierarchy, written out because no census can express it:
+  //   LOAD-BEARING  `JwtInfrastructureTests.Platform_token_issuer_emits_the_platform_profile...` — isolates
+  //                 the ISSUER, so a failure names the issuer.
+  //   BROADEST      here — the token that a real login actually returns, through routing, authentication
+  //                 and issuance. **Realest instance, weakest isolation: a dozen things could redden it.**
+  //   SUPPORTING    `PlatformAccessTokenClaimsTests` — the claims record, a precondition.
+  // **Breadth and strength are different axes and a trait shows neither.**
   public async Task Platform_login_issues_a_validated_platform_token_with_refresh_and_csrf_cookies()
   {
     var (email, identityId) = await SeedEligibleOperatorAsync();
@@ -84,6 +103,21 @@ public sealed class PlatformSupportAuthenticationEndToEndTests(PlatformSupportAu
   // ---- M2 : positive HTTP refresh rotation ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0073")]
+  // ⚠ `AC-TEN-0073` CITED FOR ITS DENIAL AND NOT FOR ITS COMPROMISE SEMANTICS, WHICH IS THE `AC-TEN-0059`
+  // DISTINCTION AGAIN. *"Platform refresh-token REUSE MARKS THE PLATFORM SESSION COMPROMISED/REVOKED …
+  // WITHOUT AFFECTING TENANT SESSIONS."*
+  //
+  //   replay denied            asserted here — 401 and `authentication.refresh_failed`
+  //   session COMPROMISED      NOT asserted here; a 401 says the request failed, not that the session was
+  //                            marked. **A route that simply rejected the consumed cookie and left the
+  //                            session Active passes every line of this test.** The witness is
+  //                            `PlatformAuthenticationSessionFlowSqlServerTests.Refresh_reuse_of_a_consumed_
+  //                            token_compromises_the_session`, which reads the stored status.
+  //   tenant sessions spared   NOT asserted at either site.
+  //
+  // **Denial and compromise are the same colour from outside**, which is why the criterion names the second
+  // and the HTTP layer can only see the first.
   public async Task Platform_refresh_rotates_the_continuation_and_denies_the_previous_token()
   {
     var (email, identityId) = await SeedEligibleOperatorAsync();

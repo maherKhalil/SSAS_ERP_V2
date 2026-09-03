@@ -150,11 +150,29 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
   // saying a ROUTE ENFORCES liveness needs a route. **`ReadinessCalls` staying at 0 is the ordering half —
   // the tenant check runs BEFORE audit readiness, so a suspended tenant cannot probe audit state.**
   //
-  // ⚠⚠⚠ AND THE RESIDUAL IS `Suspended` ALONE. `TenantStatus` has four members; this drives ONE non-Active
-  // status through the localization routes. The other two reach these routes only through the shared
-  // pipeline (`AuthorizationPipelineTests.Non_active_or_missing_tenant_is_rejected`, which enumerates all
-  // three plus `null` but against a TEST route) — **so the full status population is covered at the pipeline
-  // and one member of it is covered here, and neither location covers both axes.**
+  // ⚠⚠⚠ ONE STATUS IS ENOUGH HERE, AND THE REASON IS COMPOSITION — CHECKED, NOT ASSUMED.
+  //
+  // This drives only `Suspended`, while `AuthorizationPipelineTests.Non_active_or_missing_tenant_is_rejected`
+  // drives all three non-Active statuses plus `null` against a TEST route. That reads like neither location
+  // covering both axes. **It is not, because both exercise THE SAME COMPONENT:**
+  //
+  //   `InitializeAsync` calls `AddHostPermissionAuthorization()` — the same call `SSAS.Host.API/Program.cs`
+  //   makes — which registers `LiveTenantEligibilityAuthorization` over the REAL `RequestTenantEligibility`.
+  //   `PermissionAuthorizationHandler` and `RoleAuthorizationHandler` each take it as a CONSTRUCTOR
+  //   DEPENDENCY, so it is consulted rather than merely registered, and the localization routes reach it by
+  //   `.RequireAuthorization($"Permission:{ManageLocalization}")`.
+  //
+  // **So the pipeline test carries the STATUS POPULATION and this test is the WITNESS THAT THESE ROUTES ARE
+  // WIRED TO IT — one status suffices for a wiring claim.**
+  //
+  // ⚠⚠ BUT THE COMPOSITION COVERS SEVEN ROUTES, NOT NINE, AND THE TWO IT MISSES ARE GATED DIFFERENTLY.
+  // `MapPlatformLocalizationEndpoints` gives the effective group a BARE `.RequireAuthorization()` — the
+  // default policy, which carries only `DenyAnonymousAuthorizationRequirement`, so neither permission handler
+  // is invoked and `LiveTenantEligibilityAuthorization` never runs for `/effective` or `/effective/batch`.
+  // Their liveness check is at the QUERY-HANDLER layer instead (`GetTenantLocalizationResourceQueryHandler`
+  // and friends call `eligibility.GetEligibilityAsync` and return `TenantIneligible`), and it is
+  // `LocalizationEffectiveApiTests` that covers them — with its own enumerated status list and its own
+  // recorded `B20` note. **Two mechanisms, two test sites; the composition argument applies to one of them.**
   [Theory]
   [MemberData(nameof(MutationRequests))]
   [Trait("Criterion", "AC-LOC-0044")]

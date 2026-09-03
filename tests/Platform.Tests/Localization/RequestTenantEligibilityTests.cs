@@ -46,11 +46,19 @@ namespace SSAS.Platform.Tests.Localization;
 // set — which reddens ON THE ASSERTION and forces whoever adds a member to decide its eligibility — rather
 // than a count, which only reports that something changed.
 //
-// ⚠⚠⚠ THE SAME HAND-ENUMERATION EXISTS AT THE ROUTE LAYER AND IS **NOT** EXHAUSTIVE THERE:
-// `LocalizationEffectiveApiTests` already records its own `B20` note, and
-// `LocalizationAuditReadinessApiTests.Inactive_tenant_returns_403_without_disclosing_audit_state` drives
-// only `Suspended`. **The full status population is covered at the shared pipeline against a TEST route;
-// the localization routes cover one member of it. Neither location covers both axes.**
+// ⚠⚠⚠ AND THE ROUTE LAYER IS COVERED BY COMPOSITION RATHER THAN BY REPETITION — CHECKED, NOT ASSUMED.
+// `AuthorizationPipelineTests` drives all four cases against a TEST route;
+// `LocalizationAuditReadinessApiTests` drives only `Suspended` against the three REAL mutation routes. That
+// is not two partial coverages: both reach `LiveTenantEligibilityAuthorization`, registered by the same
+// `AddHostPermissionAuthorization()` that `Program.cs` calls and taken as a CONSTRUCTOR DEPENDENCY by both
+// permission handlers. **The pipeline test carries the population; the route test is the witness that the
+// routes are wired to it.**
+//
+// ⚠ THE EXCEPTION, WHICH IS WHY THIS IS WORTH WRITING DOWN: the effective group gets a BARE
+// `.RequireAuthorization()`, whose default policy invokes neither permission handler — so
+// `LiveTenantEligibilityAuthorization` never runs for `/effective` or `/effective/batch`, and their liveness
+// check lives in the QUERY HANDLERS instead. **Two mechanisms across the nine routes, and only one of them
+// is the one this file tests.**
 public sealed class RequestTenantEligibilityTests
 {
   [Fact]

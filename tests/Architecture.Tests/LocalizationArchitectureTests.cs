@@ -209,6 +209,25 @@ public sealed class LocalizationArchitectureTests
     Assert.DoesNotContain(signatures, signature => signature.Contains("EntityEntry", StringComparison.Ordinal));
   }
 
+  // ⚠⚠ EXAMINED FOR A CITATION AND LEFT UNRESOLVED, WITH THE REASON, SO THE SEARCH IS NOT REPEATED BLIND.
+  //
+  // Two criteria are adjacent and NEITHER MATCHES THE VERB:
+  //
+  //   `AC-LOC-0018`  *"Strict DTOs REJECT unknown/TenantId fields..."*  — rejection is what the strict
+  //                  READER does with an incoming field. This test says the property does not EXIST.
+  //   `AC-LOC-0004`  *"Every path DERIVES TenantId from trusted context..."* — derivation is what a
+  //                  handler does. This test says the command cannot carry one.
+  //
+  // **The structural absence is a PRECONDITION for both and identical to neither.** A DTO with no
+  // `TenantId` property tells you nothing about whether the reader rejects an unknown field or silently
+  // drops it, and nothing about where a handler then gets the tenant from.
+  //
+  // ⚠ Three adjacent-citation defects have already cost this loop tonight — a real criterion the test does
+  // not satisfy is well-formed, resolvable and wrong, and it inflates the count toward the clause left
+  // uncovered. Recorded as EXAMINED-BUT-UNRESOLVED, which is a different number from *uncovered*.
+  //
+  // ⚠ Worth keeping for whoever resolves it: this test's own anti-vacuity is exemplary — the regex is
+  // exercised positively AND negatively, and the property walk carries a count floor with a message.
   [Fact]
   public void Localization_commands_never_accept_tenant_or_actor_identity()
   {
@@ -244,7 +263,17 @@ public sealed class LocalizationArchitectureTests
       .Where(property => Regex.IsMatch(property.Name, IdentityName, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)));
   }
 
+  // ⚠ CITES ONE CLAUSE OF `AC-LOC-0036` — *"Manage-only Preview validates fully yet WRITES/CACHES/emits/logs
+  // nothing and returns encoded text only."* This is the WRITES-AND-CACHES half, and structurally: the
+  // handler's assembly carries no Infrastructure, EF or SqlClient dependency, so it has no capability to
+  // write or cache at all.
+  //
+  // ⚠⚠ IT ASSERTS NOTHING about the other three. *Emits nothing* is domain events, *logs nothing* is
+  // diagnostics, and *Manage-only* is authorization — a handler with no persistence dependency can still
+  // raise an event, write a log line, or be reachable without the permission. Those need behavioural tests
+  // and this is a dependency walk.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0036")]
   public void Preview_handler_has_no_infrastructure_or_persistence_dependency()
   {
     // `Contains`, not `StartsWith` — see the note on

@@ -29,6 +29,31 @@ namespace SSAS.API.Tests.Infrastructure;
 // `TrialTenantGateTests` run the real resolver and demonstrate an actual refusal. **This test is not
 // superseded by them** — they show what the resolver answers, and this shows what the seam does with the
 // answer, which stays worth isolating however entitlement comes to be decided.
+// ==================================================================================================
+// ⚠⚠⚠ AND `AC-SUB-0019` IS SATISFIED **VACUOUSLY** — UNDECLARED, WHICH IS WHAT MAKES IT THE DANGEROUS ONE.
+// ==================================================================================================
+//
+// *"That problem type is IDENTICAL on every gated route of every module. A per-module variant is a failure
+// of this criterion even if each variant is individually correct."*
+//
+// **There is no problem type on any gated route, so all of them are trivially identical.** The criterion is
+// met, and met by the absence of the thing it constrains.
+//
+// ⚠ `TS-SUB-0019` PRESCRIBES THE TEST THAT WOULD MISS THIS: *"The same problem type comes back from a GL
+// route, a Payroll route, an Attendance route AND an HR route. Four modules, because a per-module variant
+// would pass a single-module test."* **The scenario author anticipated a per-module VARIANT and not a
+// per-module ABSENCE — and four empty bodies are identical.** Written as prescribed, that test passes today
+// over nothing at all, and would keep passing if the type were added to three modules and forgotten in one,
+// only failing once someone made two DIFFERENT types. It is the collective-predicate shape: *the same on
+// all four* is true of the empty set.
+//
+// ⚠⚠ WHY THIS ONE MATTERS MORE THAN THE OTHER VACUOUS CRITERIA IN THIS PACKAGE. `AC-SUB-0008` carries an
+// explicit **"satisfied vacuously as at 2026-08-30"** note in its own criterion text, and `AC-SUB-0020`
+// carries a correction saying the counts were stale. **Both declare their own weakness. `AC-SUB-0019`
+// declares nothing** — it reads as an ordinary consistency requirement, and a reader auditing this package
+// would tick it off from the criterion text alone.
+//
+// **A vacuous criterion that announces itself is a known gap; one that does not is a false green.**
 public sealed class ModuleEnablementGateTests
 {
   private const string ModuleKey = "Payroll";
@@ -69,7 +94,28 @@ public sealed class ModuleEnablementGateTests
   //
   // "The handler never runs" is the half that matters for correctness — a gate that refused *after* the
   // work would still have done the work.
+  //
+  // ⚠ CITES `AC-SUB-0018` FOR TWO OF ITS THREE CLAUSES — *"…refused BEFORE THE HANDLER RUNS, with `403`
+  // and problem type `module-not-enabled`."* The `403` is asserted; *before the handler runs* is asserted
+  // by `Assert.Empty` on the body, since the handler's only observable act is writing `"reached"`, and by
+  // `AskedFor`, which proves the gate was consulted rather than the route merely being unmapped.
+  //
+  // ⚠⚠⚠ THE THIRD CLAUSE IS NOT MET BY THE PRODUCT, AND **THE ASSERTION THAT PROVES CLAUSE 1 IS THE
+  // EVIDENCE FOR CLAUSE 3 FAILING.** `Assert.Empty(body)` says there is no body — so there is no problem
+  // document, and therefore no problem type. That is not an artefact of this minimal host:
+  //
+  //   `ModuleEnablement.cs:117` returns `Results.StatusCode(StatusCodes.Status403Forbidden)` — a BARE
+  //   status with no `ProblemDetails`. The real host registers `AddProblemDetails` but no
+  //   `UseStatusCodePages`, so nothing converts a bare status result into a document. `ExpiredTenantGateTests`
+  //   and `TrialTenantGateTests` run the real host and assert STATUS CODES ONLY — no body assertion exists
+  //   on any gate refusal anywhere. And the literal `module-not-enabled` appears **nowhere outside
+  //   `docs/`.**
+  //
+  // ⚠ STATED FAIRLY, BECAUSE THE NARROW READING WOULD BE UNFAIR: this is not one forgotten slug. **No
+  // `problems/` type URI exists anywhere in `src/`** — the whole typed-problem convention `api-contracts.md`
+  // documents is unbuilt, and `module-not-enabled` is one instance of that, not a singular omission.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0018")]
   public async Task A_route_of_a_module_the_tenant_does_not_have_is_refused_with_403()
   {
     var entitlement = new Answers(false);

@@ -21,6 +21,21 @@ public sealed class PlatformAuthenticationSessionSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("Criterion", "AC-TEN-0054")]
+  [Trait("Criterion", "AC-TEN-0056")]
+  // `AC-TEN-0054`'s SEPARATE-TABLE HALF and `AC-TEN-0056`'s BOTH-COLUMNS-PRESENT half, read from
+  // `INFORMATION_SCHEMA` rather than from the EF model — **the criterion says "table", so the witness is the
+  // database's own catalogue and not the mapping that is supposed to produce it.**
+  //
+  // ⚠ `AC-TEN-0056` SAYS *"both are REQUIRED and both are FOREIGN-KEY-ENFORCED"*, AND ONLY THE SECOND HALF
+  // IS COVERED. The FK half is `Foreign_keys_reject_an_unknown_identity_or_a_mismatched_principal_identity`
+  // below, same trait. **REQUIRED means NOT NULL, and nothing here reads `IS_NULLABLE`** — the column list
+  // proves the columns exist, not that either is mandatory. A nullable `PlatformSupportPrincipalId` would
+  // pass every assertion in this method.
+  //
+  // ⚠⚠ `AC-TEN-0054`'s TENANT-UNCHANGED half is the next test; its AGGREGATE half is structural and lives in
+  // `PlatformSupportAuthorityArchitectureTests`. **The criterion names aggregate, table, foreign keys, events
+  // AND queries — and *events and queries are unchanged* is carried by nothing here.**
   public async Task Migration_creates_platform_session_tables_with_expected_non_tenant_shape()
   {
     await using var database = await PlatformSessionSqlDatabase.CreateAsync();
@@ -72,6 +87,16 @@ public sealed class PlatformAuthenticationSessionSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("Criterion", "AC-TEN-0054")]
+  // `AC-TEN-0054`'s TENANT-UNCHANGED half — *"the tenant `AuthenticationSession` aggregate, table, foreign
+  // keys, events, and queries are UNCHANGED."* A regression assertion in both directions: the tenant tables
+  // keep `TenantId`/`TenantUserId` and gain no platform column or discriminator.
+  //
+  // ⚠ AND THE EXISTING NOTE ABOUT STRINGS-VERSUS-`nameof` (item 252) IS THE SAME LESSON THIS WHOLE PASS KEEPS
+  // FINDING, ALREADY WRITTEN HERE: the collection is DATABASE COLUMN NAMES, so a `nameof` would assert about
+  // the C# property while the subject is the column. ***AN INSTRUMENT THAT LOOKS STRONGER BY NAMING A SYMBOL
+  // CAN QUIETLY CHANGE WHAT IS BEING TESTED*** — and the two coincide only by mapping convention, which is
+  // precisely the thing a migration could break.
   public async Task Tenant_session_schema_is_unchanged_by_the_platform_migration()
   {
     await using var database = await PlatformSessionSqlDatabase.CreateAsync();
@@ -121,6 +146,16 @@ public sealed class PlatformAuthenticationSessionSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("Criterion", "AC-TEN-0056")]
+  // `AC-TEN-0056`'s FOREIGN-KEY-ENFORCED half, and **the schema is STRONGER than the criterion asks.** The
+  // criterion wants both columns FK-enforced; the principal key is COMPOSITE — `(PlatformSupportPrincipalId,
+  // IdentityId)` — so a session cannot bind a real principal to a DIFFERENT real identity. Both arms are
+  // exercised separately: an unknown identity, then a valid principal against the wrong identity.
+  //
+  // ⚠ THAT SECOND ARM IS THE ONE A SIMPLE FK WOULD MISS, and it is the case the criterion's wording does not
+  // reach: *"both are foreign-key-enforced"* is satisfied by two independent keys, under which a
+  // principal/identity mismatch is perfectly legal. **The implementation closes a hole the criterion leaves
+  // open, which is worth recording so nobody "simplifies" the composite key to match the text.**
   public async Task Foreign_keys_reject_an_unknown_identity_or_a_mismatched_principal_identity()
   {
     await using var database = await PlatformSessionSqlDatabase.CreateAsync();

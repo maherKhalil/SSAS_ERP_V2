@@ -78,9 +78,19 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
   //   no submitted-text disclosure — the candidate value is absent from the body
   //   no internal-cause disclosure — the provider's exception message is absent
   //
-  // ⚠⚠ WHAT NEITHER HALF ASSERTS: **no Domain event and no cache eviction.** The fixture counts repository
-  // and save calls and neither event dispatch nor cache eviction is observed, so two of the five
-  // must-not-happens are carried by nothing in this pair.
+  // ⚠⚠ WHAT NEITHER HALF ASSERTS: **no Domain event and no cache eviction.** This fixture counts repository
+  // and save calls; it has no dispatcher and no cache to inspect.
+  //
+  // ⚠⚠⚠ CORRECTED ONE PASS LATER, AND THE CORRECTION IS THE USEFUL PART. *No Domain event* IS carried —
+  // `PlatformLocalizationSqlServerTests.Audit_unavailable_leaves_all_localization_sql_state_and_events_
+  // unchanged` runs all four mutations against a real database with a `RecordingDomainEventDispatcher` and
+  // asserts the event count is unmoved. **I had recorded it as carried by nothing, bounded to this pair,
+  // and the instrument existed in a suite I had not examined.** Not missing — UNSEARCHED, which is the same
+  // mistake as reading an architecture pass's leftovers as a coverage gap.
+  //
+  // ⚠ *No cache eviction* survives the correction: searched `tests` with no cap for `EvictTenant`,
+  // `ILocalizationTenantCache` and any recording cache — the two doubles that exist are passthroughs that
+  // record nothing, so nothing can observe it. One of the five, not two.
   //
   // ⚠ `MemberData` here is a hand-written list, but the name quantifies nothing — *an authorized mutation*,
   // not *every route* — so it claims no population and `B20` does not apply. Checked, not assumed.

@@ -525,11 +525,37 @@ public sealed class PlatformLocalizationSqlServerTests
     }
   }
 
+  // ⚠⚠⚠ THE THIRD CITER OF `AC-LOC-0064`, AND THE ONE THAT CARRIES THE CLAUSE THE OTHER TWO CANNOT.
+  //
+  // *"…with no SQL state change, DOMAIN EVENT, cache eviction, submitted-text logging, or internal-cause
+  // disclosure."* Three tests now carry this criterion and each reaches a different layer:
+  //
+  //   `LocalizationArchitectureTests.Every_localization_mutation_handler_…`  the guard is CALLED (source text)
+  //   `LocalizationAuditReadinessApiTests.Authorized_active_mutation_…`      the 503, the code, no disclosure
+  //   **this one**                                                          NO SQL STATE CHANGE and NO EVENT,
+  //                                                                         against a real database, across
+  //                                                                         all four mutation operations
+  //
+  // **`RecordingDomainEventDispatcher` is the observable the other two lack** — `Assert.Equal(beforeEventCount,
+  // dispatcher.Events.Count)` is what turns *no domain event* from an unassertable prohibition into a
+  // measurement. The API fixture counts repository and save calls and has no dispatcher to inspect.
+  //
+  // ⚠⚠ THAT CORRECTS SOMETHING I PUBLISHED. Having cited the first two, I recorded *no domain event* as
+  // carried by nothing — bounded to that pair, but the bound was easy to read past, and a
+  // missing-INSTRUMENT explanation was already being built on it. **The instrument existed; it was in the
+  // suite I had not examined.** Same shape as the behavioural clauses one pass earlier: NOT MISSING,
+  // UNSEARCHED.
+  //
+  // ⚠ WHAT IS STILL CARRIED BY NOTHING, AND THIS TIME THE SEARCH IS NAMED: *no cache eviction*. Searched
+  // `tests` with no cap for `EvictTenant`, `ILocalizationTenantCache` and any recording cache — the two
+  // doubles that exist are passthroughs that record nothing, so no test can observe that this path evicts
+  // no tenant. That one is a genuinely missing observable rather than an unsearched suite.
   [Theory]
   [InlineData("create")]
   [InlineData("update")]
   [InlineData("undo")]
   [InlineData("restore")]
+  [Trait("Criterion", "AC-LOC-0064")]
   public async Task Audit_unavailable_leaves_all_localization_sql_state_and_events_unchanged(string operation)
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();

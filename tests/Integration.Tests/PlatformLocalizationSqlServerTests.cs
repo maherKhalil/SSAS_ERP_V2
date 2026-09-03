@@ -107,6 +107,29 @@ public sealed class PlatformLocalizationSqlServerTests
   }
 
   [Fact]
+  // ⚠ CITES THE PERSISTED HALF OF `AC-LOC-0029` — *"Canonical examples produce deterministic SHA-256 and
+  // EXACTLY 32 PERSISTED BYTES."* `:133` reads the fingerprint length back out of SQL Server and asserts
+  // 32, which is the only place that clause can be settled: a domain test can assert the hash is 32 bytes
+  // and say nothing about what the column stored.
+  //
+  // ⚠⚠ IT DOES NOT COVER *deterministic SHA-256* — no canonical example is hashed twice here, and equality
+  // of two runs is not observed. That half belongs to the primitive tests.
+  //
+  // ---- ⚠⚠⚠ AND WHAT I CAME LOOKING FOR IS NOT HERE, WHICH IS WORTH RECORDING RATHER THAN LEAVING BLANK.
+  //
+  // I opened this test for `AC-LOC-0011`'s ATOMICITY clause — *"…and atomically advances current/settings
+  // versions"* — the clause the architecture suite explicitly could not reach. **It is not carried here.**
+  // This test asserts constraint enforcement, uniqueness, column types and immutability; nothing in it
+  // observes a mutation advancing both versions as one unit, nor a failure leaving neither advanced.
+  //
+  // Not recorded as uncovered: `Concurrent_application_create_has_one_deterministic_loser` and
+  // `Application_mutations_use_trusted_context_and_preserve_lineage_and_no_op_behavior` in this same file
+  // are unexamined and are where it would live. **Not carried by the ONE test examined, of THREE in this
+  // file that could plausibly carry it.**
+  //
+  // ⚠ This test also touches `AC-LOC-0030`'s column types at `:134-135`. Not cited: that criterion names
+  // several version columns and only one is read here, so the citation would claim a set from a sample.
+  [Trait("Criterion", "AC-LOC-0029")]
   public async Task Aggregate_and_history_enforce_coherence_uniqueness_fingerprints_and_immutability()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();

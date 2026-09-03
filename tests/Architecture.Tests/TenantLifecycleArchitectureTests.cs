@@ -149,9 +149,40 @@ public sealed class TenantLifecycleArchitectureTests
   // used that exact route once — deliberately, with reasons, which is what makes it a normal act rather
   // than an exotic one.
   //
-  // **So the honest disposal is: CLOSED THROUGH THE MODEL, OPEN THROUGH A HAND-WRITTEN MIGRATION, and the
-  // grounds are a caller-side practice rather than a type-level impossibility** — it holds exactly as long
-  // as nobody hand-writes that migration, and nothing in the suite would report it if they did.
+  // ⚠⚠ SECOND CORRECTION, AND IT NARROWS THE MIGRATION ROUTE RATHER THAN CLOSING IT. *"Nothing in the
+  // suite would report it"* was ANOTHER UNSEARCHED ABSENCE — I had inspected two guards and generalised to
+  // all. Searching `delete_referential_action` / `sys.foreign_keys` across `tests/` returns ELEVEN files,
+  // and two bear on this directly:
+  //
+  //   `PlatformTenantLifecycleSqlServerTests:104` and `:243` select every table referencing
+  //   `platform.Tenants` and assert the set is EXACTLY SEVEN, BY NAME. **It pins WHICH tables reference
+  //   Tenants and never reads HOW they delete.**
+  //
+  //   `SubscriptionPlanOwnershipCascadeSqlServerTests:208` runs `SELECT delete_referential_action_desc
+  //   FROM sys.foreign_keys` as `DeleteRuleAsync`, and `:119` asserts `"CASCADE"` on the three ownership
+  //   keys BY NAME. **The database-level observable is not a form to be invented — it is working code,
+  //   invoked by name, three tables away.**
+  //
+  // SO THE ROUTE SPLITS AND ONLY ONE HALF IS OPEN:
+  //
+  //   a migration ADDING a cascading key to Tenants      CAUGHT — the set of seven changes
+  //   a migration ALTERING an existing key's action      NOT CAUGHT — the set is unchanged
+  //
+  // **AND ALTERING IS THE ROUTE THIS REPOSITORY HAS TAKEN.** `RelaxOwnershipDeleteBehaviour` changed three
+  // existing keys and added none.
+  //
+  // ---- THE DISPOSAL, IN ITS FINAL FORM.
+  //
+  // **CLOSED through the model · CLOSED for ADD at the database · OPEN for ALTER on Tenant keys**, and the
+  // grounds for the open half are a caller-side practice, not a type-level impossibility. What is missing
+  // is COVERAGE, not MECHANISM: `DeleteRuleAsync` would answer this question about a Tenant key today if
+  // anyone called it with one. That call needs a database, so it is `Integration.Tests` and outside this
+  // gate.
+  //
+  // ⚠ AND THE SHAPE OF WHO WROTE THAT HELPER IS THE ORDINARY CASE, WORTH NAMING: whoever took the
+  // hand-written-migration route INSTRUMENTED THEIR OWN CHANGE AND DID NOT GENERALISE IT. **The control
+  // exists because someone needed it once, not because anyone decided the class needed guarding** — which
+  // is why looking for a neighbouring control is worth doing before calling a route unwatched.
   //
   // ⚠ THE FIFTH — *API contract* — IS NOT COVERED AND CORRECTLY SO: `AC-TEN-0020` defers the tenant
   // endpoints entirely, and `Tenant_endpoints_remain_deferred…` below is what asserts that. **There is no

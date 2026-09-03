@@ -128,7 +128,31 @@ public sealed class TenantLifecycleApplicationTests
   [Trait("Requirement", "FR-AUTH-0120")]
   [Trait("Acceptance", "AC-AUTH-0018")]
   [Trait("Acceptance", "AC-IAM-0021")]
+  [Trait("Acceptance", "AC-TEN-0016")]
   [Trait("Scenario", "TS-TEN-0012")]
+  // ⚠⚠⚠ `AC-TEN-0016` ADDED, AND IT IS THE ONE THIS TEST WAS ALREADY ASSERTING VERBATIM. *"The
+  // authentication-eligibility contract accepts ONE TenantId and returns EXACTLY TenantId, Exists,
+  // nullable TenantStatus, IsAuthenticationEligible, and TenantAuthenticationIneligibilityReason. It
+  // exposes NO NAME, `IQueryable`, aggregate, generic repository, subscription decision, or authorization
+  // grant."* Lines `:164-168` are those five members in the criterion's own order; `:169` is the *no name*
+  // ban. **The test predates the citation and the name says it — *derived exactly and has no name* is the
+  // criterion's two halves in six words.**
+  //
+  // ⚠ WORTH NOTING WHY IT WAS MISSED: this theory already carried `AC-AUTH-0018` and `AC-IAM-0021`, so it
+  // did not READ as uncited. **A test carrying criteria from two other packages looks covered**, and the
+  // criterion from its own package — the one naming the exact contract it asserts — was the absent one.
+  //
+  // ---- TWO RESIDUALS, AND THE FIRST IS IN THE WORD *EXACTLY*.
+  //
+  // **`:164-168` assert the five members are PRESENT and correct. Nothing asserts they are the ONLY five.**
+  // A sixth property added tomorrow passes every line here unless its name happens to contain `Name`. The
+  // criterion says *returns exactly*, and *exactly* is a claim about the complement — which needs a
+  // property-count or a set comparison, and has neither.
+  //
+  // ⚠⚠ AND ONE BAN OF SIX IS CARRIED. *No name* is asserted; *no `IQueryable`, aggregate, generic
+  // repository, subscription decision, or authorization grant* are not. **Five of those six would be
+  // caught by a walk this test already performs** — it has `GetProperties()` in hand at `:169` — so the
+  // gap is the predicate, not the access.
   // ⚠ `AC-IAM-0021` ADDED — its SECOND half, *"…or new tenant-scoped TOKENS."* The `Suspended` row returns
   // `eligible: false` with reason `Suspended`, and eligibility is the gate token issuance consults, so this
   // is where the token half of an IAM criterion is actually decided. `AuthorizationPipelineTests` carries

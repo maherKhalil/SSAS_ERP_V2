@@ -210,6 +210,23 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
   }
 
   [Fact]
+  // ⚠ CITES THE FIRST CLAUSE OF `AC-LOC-0018` — *"Strict DTOs REJECT unknown/TenantId fields and bounded
+  // projections disclose no foreign state."* Four malformations, each answered `400`, and the first is a
+  // FORGED `tenantId` on a route whose contract has no such property.
+  //
+  // ⚠⚠ AND IT PROVES MORE THAN THE WORD *REJECT*: `ReadinessCalls`, `RepositoryCalls` and `SaveCalls` are
+  // all asserted ZERO, so the refusal happens BEFORE any handler runs. A DTO that bound the field and then
+  // ignored it would answer `400` from somewhere further in and satisfy a status-only assertion.
+  //
+  // ⚠⚠⚠ THIS IS WHY `LocalizationArchitectureTests.Localization_commands_never_accept_tenant_or_actor_
+  // identity` WAS DELIBERATELY LEFT UNCITED FOR THIS CRITERION. That test asserts the property DOES NOT
+  // EXIST — a structural absence, and a precondition for rejection rather than rejection itself. **The verb
+  // is asserted HERE, by a different mechanism, at a different layer.** Two real claims; one criterion
+  // clause; only one of them is what the clause says.
+  //
+  // ⚠ NOT CLAUSE 2. *Bounded projections disclose no foreign state* is about what a READ returns and is
+  // untouched by anything in this test.
+  [Trait("Criterion", "AC-LOC-0018")]
   public async Task Shared_strict_json_binding_rejects_unknown_duplicate_missing_and_wrong_typed_fields_before_handlers()
   {
     var requests = new[]

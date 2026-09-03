@@ -169,7 +169,15 @@ public sealed class PlatformSupportBootstrapTests
   //
   //   THE PRACTICE      `IPlatformSupportBootstrapService` is resolved in exactly ONE place —
   //                     `PlatformSupportBootstrapHostedService`, a startup hosted service. No request path
-  //                     resolves it, so no tenant path can reach it.
+  //                     resolves it, so no tenant path can reach it. ⚠ **AND IT IS RESOLVED THERE BY
+  //                     `GetRequiredService` INSIDE `StartAsync`, NOT BY CONSTRUCTOR INJECTION** — measured:
+  //                     four references in `src/` and ZERO constructor parameters of that type.
+  //   TWO MECHANISMS    so the practice is not *resolved in one place* but ***RESOLVED IN ONE PLACE BY TWO
+  //                     POSSIBLE MECHANISMS, AND NO STRUCTURAL GUARD CAN SEE THE SECOND***: a
+  //                     constructor-dependency ban would catch a handler that INJECTS the service and would
+  //                     be blind to one that calls `GetRequiredService` for it. **Such a guard would close
+  //                     one route of two while being named for the whole property — a partial alarm, worse
+  //                     than none if reported as closing this criterion.** That is why none was built.
   //   THE ROUTE AROUND  ⚠ **the interface is declared in the APPLICATION assembly**, so any handler could
   //                     take it as a constructor dependency tomorrow and NOTHING WOULD OBJECT. The property
   //                     holds because nobody has done it, not because anything prevents it.

@@ -278,12 +278,55 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   // and it is more dangerous here: a stale criterion misleads a reader, a stale rationale invites a deletion.
   public void No_bootstrap_configuration_is_introduced_in_this_phase()
   {
-    // Genesis/recovery bootstrap (DEC-TEN-0019) is Phase 3B, not Phase 3A.
+    // ⚠ RATIONALE CORRECTED. This previously read *"Genesis/recovery bootstrap (`DEC-TEN-0019`) is Phase 3B,
+    // not Phase 3A"* — a PHASE-BOUNDARY marker. **Bootstrap LANDED in 3B and this test still passes, because
+    // bootstrap went into INFRASTRUCTURE while this guard watches DOMAIN and APPLICATION.** The stated reason
+    // had expired; the assertion had not. ***A READER CHECKING WHETHER THE STATED PURPOSE STILL APPLIED WOULD
+    // HAVE FOUND IT DID NOT AND DELETED A LIVE GUARD*** — a stale criterion misleads, a stale RATIONALE
+    // invites a deletion.
+    //
+    // THE LIVE REASON: authorization is decided in Domain and Application — catalog, permissions, principal
+    // status — so keeping bootstrap CONFIGURATION out of both layers means configuration cannot authorize
+    // anything, because the deciding layers cannot see it. That is `AC-TEN-0034`.
     var forbidden = new[] { "PlatformSupportBootstrapOptions", "PlatformSupportBootstrap", "PlatformSupportBootstrapGate" };
 
-    foreach (var assembly in new[] { typeof(PlatformSupportPrincipal).Assembly, typeof(PlatformSupportPermissionFilter).Assembly })
+    // ⚠⚠⚠ TWO OF THOSE THREE NAMES RESOLVE TO NO TYPE ANYWHERE IN `src/` — only
+    // `PlatformSupportBootstrapOptions` exists. **THAT IS RECORDED, NOT RESOLVED**, because the two readings
+    // are indistinguishable from here:
+    //   FORWARD-LOOKING   a name reserved in advance so such a type can never be created in these layers —
+    //                     legitimate, and a ban whose purpose is to PREVENT a type cannot be required to
+    //                     point at one.
+    //   SILENTLY RETIRED  a name that matched something once and no longer does after a rename — in which
+    //                     case that entry now watches nothing.
+    // **Nothing in the source says which was intended, so no assertion here can separate them.**
+    //
+    // ***MAINTENANCE INSTRUCTION, WHICH IS WHAT MAKES THIS A CONTROL RATHER THAN A NOTE: IF YOU RENAME
+    // `PlatformSupportBootstrapOptions`, UPDATE THIS LIST IN THE SAME COMMIT — after that rename the guard
+    // watches nothing at all, and it will stay green while doing so.***
+    foreach (var (assembly, anchor) in new[]
     {
-      Assert.DoesNotContain(assembly.GetTypes(), type => forbidden.Contains(type.Name, StringComparer.Ordinal));
+      (typeof(PlatformSupportPrincipal).Assembly, nameof(PlatformSupportPrincipal)),
+      (typeof(PlatformSupportPermissionFilter).Assembly, nameof(PlatformSupportPermissionFilter))
+    })
+    {
+      var types = assembly.GetTypes();
+
+      // FLOOR on the scanned population (the T-258 shape): an empty enumeration is this ban's success
+      // condition, so the count must be asserted on what was SCANNED, never on what was found.
+      Assert.True(types.Length >= 20,
+        $"only {types.Length} types scanned in {assembly.GetName().Name}; the enumeration collapsed.");
+
+      // ⚠⚠ KNOWN-POSITIVE CONTROL (the T-263 shape, borrowed rather than invented). The floor proves types
+      // were scanned; it cannot prove the ORDINAL NAME COMPARISON still selects anything. **A ban whose
+      // matcher matches nothing is green for the wrong reason**, so the same `Contains(..., Ordinal)` runs
+      // over the same collection for a name that MUST be present in this assembly.
+      //
+      // ***THIS IS DELIBERATELY NOT "every forbidden name must resolve to a type" — that control would
+      // redden on the two forward-looking entries above and outlaw a legitimate use of a ban list. WHEN TWO
+      // CAUSES OF AN OBSERVATION CANNOT BE SEPARATED, VERIFY THE MECHANISM RATHER THAN ASSUMING A CAUSE.***
+      Assert.Contains(types, type => new[] { anchor }.Contains(type.Name, StringComparer.Ordinal));
+
+      Assert.DoesNotContain(types, type => forbidden.Contains(type.Name, StringComparer.Ordinal));
     }
   }
 }

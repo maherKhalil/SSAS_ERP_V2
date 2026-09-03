@@ -61,7 +61,22 @@ public sealed class LocalizationPrimitiveTests
     Assert.True(LocalizationPlaceholderParser.Format("Hello {name}", placeholders, new Dictionary<string, string>()).IsFailure);
   }
 
+  // ⚠ CITES THE DETERMINISM HALF OF `AC-LOC-0029` — *"Canonical examples produce DETERMINISTIC SHA-256 and
+  // exactly 32 persisted bytes."*
+  //
+  // **The determinism is shown by RECOMPUTING the hash independently from the canonical form** — sorted,
+  // distinct, LF-joined, UTF-8 — rather than by calling `Calculate` twice and comparing. ⚠⚠ THAT
+  // DISTINCTION IS THE WHOLE VALUE: two calls agreeing proves only that the function is a function, and
+  // would still pass if the canonicalisation were wrong in the same way both times. Deriving `a\nz` from
+  // `["z", "a", "z"]` by hand is what pins the canonical form itself.
+  //
+  // ⚠ IT DOES NOT COVER *exactly 32 PERSISTED bytes* — that half is
+  // `PlatformLocalizationSqlServerTests.Aggregate_and_history_enforce_coherence_uniqueness_fingerprints_
+  // and_immutability`, which reads the length back out of SQL Server. **`Compatibility_fingerprint_…:93`
+  // asserts 32 bytes IN MEMORY, and an in-memory 32 is not a persisted 32** — a column could truncate,
+  // widen or store a different encoding without any of that showing here.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0029")]
   public void Placeholder_fingerprint_uses_sorted_distinct_lf_utf8_sha256()
   {
     var set = PlaceholderSet.Create(["z", "a", "z"]).Value;

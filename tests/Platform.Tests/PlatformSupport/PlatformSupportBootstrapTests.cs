@@ -162,6 +162,25 @@ public sealed class PlatformSupportBootstrapTests
 
   // ---- Orchestrator (ADR-016 / DEC-TEN-0019/0020/0021) ----
 
+  // ⚠⚠⚠ `AC-TEN-0032` EXAMINED AND NOT CITED — IT IS **OPEN-BY-PRACTICE**, AND ALL THREE CONDITIONS HOLD.
+  //
+  // *"No tenant role or tenant-IAM path can INVOKE BOOTSTRAP or create/modify platform-support authority;
+  // bootstrap is keyed only by immutable `AuthenticationSubject` configuration."*
+  //
+  //   THE PRACTICE      `IPlatformSupportBootstrapService` is resolved in exactly ONE place —
+  //                     `PlatformSupportBootstrapHostedService`, a startup hosted service. No request path
+  //                     resolves it, so no tenant path can reach it.
+  //   THE ROUTE AROUND  ⚠ **the interface is declared in the APPLICATION assembly**, so any handler could
+  //                     take it as a constructor dependency tomorrow and NOTHING WOULD OBJECT. The property
+  //                     holds because nobody has done it, not because anything prevents it.
+  //   THE NEIGHBOUR     the CONFIGURATION type is genuinely guarded: `PlatformSupportAuthorityArchitecture
+  //                     Tests.No_bootstrap_configuration_is_introduced_in_this_phase` keeps
+  //                     `PlatformSupportBootstrapOptions` out of Domain and Application entirely.
+  //
+  // ***SO THE OPTIONS ARE FENCED AND THE SERVICE IS NOT, AND THE CRITERION'S OWN WORDING COVERS BOTH.***
+  // The asymmetry is invisible: a reader seeing the configuration guard would reasonably assume the
+  // invocation path is guarded too. **The cheap closure is one more forbidden name in that existing guard's
+  // list, on the Application assembly — the idiom is already there and takes the interface's name.**
   [Fact]
   public async Task No_configured_subjects_short_circuits_without_any_persistence_access()
   {

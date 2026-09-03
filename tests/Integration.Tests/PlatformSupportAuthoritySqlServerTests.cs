@@ -163,8 +163,14 @@ public sealed class PlatformSupportAuthoritySqlServerTests
   // ⚠ **THE FIXTURE FORCE-SEEDS A TENANT-SCOPED ASSIGNMENT DIRECTLY INTO SQL, EXPLICITLY BYPASSING THE
   // WRITE-SIDE GUARD** — the row cannot be created through any handler, so the only way to test the read
   // side's exclusion is to write it behind the application's back. ***THAT IS THE ADVERSARIAL FIXTURE IN ITS
-  // strongest form: the state is not merely unusual, it is UNREACHABLE through the product***, and a reader
-  // tidying "impossible" test data would delete the only evidence that the read side filters at all.
+  // strongest form: the state is not merely unusual, it is UNREACHABLE through the product***.
+  //
+  // ⚠⚠⚠ AND DELETING IT WOULD NOT BE A LAPSE — IT WOULD BE SUPPORTED BY A CORRECT ARGUMENT. *"No handler can
+  // produce this row, so the fixture is nonsense"* is TRUE. ***THE ARGUMENT IS WRONG ONLY BECAUSE THE READ
+  // SIDE'S FILTER EXISTS PRECISELY FOR STATES THE WRITE SIDE FORBIDS: TESTING DEFENCE-IN-DEPTH REQUIRES
+  // CREATING A STATE THE FIRST LINE OF DEFENCE PREVENTS.*** The impossibility is not an accident of the
+  // fixture — **it is the point of the test**, and a second line of defence can only be observed in the
+  // states the first line is assumed to have stopped.
   //
   // ⚠⚠ THE CRITERION LISTS FOUR FORBIDDEN SOURCES AND THIS CARRIES ONE. *Configuration*, *a cached flag* and
   // *a bare principal row* are not exercised here; the first two are absences in the read service's

@@ -57,6 +57,21 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0077")]
+  // `AC-TEN-0077`'s ELIGIBILITY HALF — *"it requires LIVE ACCOUNT ELIGIBILITY, an `Active` PRINCIPAL, and AT
+  // LEAST ONE catalog-valid PERMISSION before issuing a platform access/refresh pair."* **Three conditions,
+  // three cases, and the test name is the criterion's own list** — each refused independently rather than as
+  // a class.
+  //
+  // ⚠ THE CRITERION'S FIRST HALF IS STRUCTURAL AND ELSEWHERE: *"consumes a trusted verified-authentication
+  // result (`VerifiedIdentity`) and NEVER an arbitrary caller-supplied `IdentityId`."* That is a claim about
+  // `PlatformAuthenticationSessionCreator.CreateAsync`'s SIGNATURE — **a caller cannot supply an identity
+  // because the parameter type will not carry one** — and it is the absent-capability form again: not a rule
+  // to obey but a value that cannot be expressed.
+  //
+  // ⚠⚠ AND ITS LAST SENTENCE IS A PHASE-SCOPED HISTORICAL CLAIM, NOT A LIVE ONE: *"No HTTP route is added in
+  // Phase 3C."* Platform auth routes exist NOW, added in 4B — **the criterion is about what 3C did, so it
+  // cannot rot and cannot be witnessed by anything current.**
   public async Task Creation_fails_closed_for_disabled_principal_ineligible_account_or_zero_permissions()
   {
     // Disabled principal.

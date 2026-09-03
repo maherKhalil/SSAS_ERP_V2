@@ -100,6 +100,21 @@ public sealed class PlatformAuthorizationPipelineTests : IAsyncLifetime
   // ---- STEP 27 : real platform token against a tenant policy ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0029")]
+  // `AC-TEN-0029` — *"FP-005 Company and Localization routes REMAIN TENANT-PLANE: they still require a
+  // validated current tenant and `PermissionScope.Tenant` permissions through the EXISTING `RequirePermission`
+  // handler, UNAFFECTED by the platform plane."*
+  //
+  // ⚠ THIS IS A REGRESSION CRITERION, SO ITS WITNESS IS A NON-EVENT, AND THAT SHAPES WHAT CAN CARRY IT. The
+  // assertion here is that a REAL platform token — correctly issued, structurally valid — **cannot satisfy a
+  // tenant permission policy.** The tenant plane being unchanged is proved by the tenant pipeline continuing
+  // to work in `AuthorizationPipelineTests`, which predates the platform plane entirely; **this test adds the
+  // half that file cannot have — that the NEW plane did not become a second way in.**
+  //
+  // ⚠⚠ THE NAMED ROUTES ARE NOT EXERCISED HERE. The criterion names FP-005 Company and Localization routes;
+  // this uses the pipeline's own `/tenant-test` endpoints. **The property is proved at the POLICY, which is
+  // what those routes use — a class argument, and the class is the `RequirePermission` handler the criterion
+  // itself names.** Recorded because the criterion names specific routes and this does not visit them.
   public async Task Real_platform_token_cannot_satisfy_a_tenant_permission_policy()
   {
     using var request = PlatformRequest("/tenant-test/permission", permissions: [Administer, "test.permission"]);

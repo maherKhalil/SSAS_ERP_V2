@@ -258,6 +258,24 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0034")]
+  // `AC-TEN-0034` — *"Being present in bootstrap CONFIGURATION never authorizes ordinary platform
+  // operations; it authorizes only the genesis/recovery operation."*
+  //
+  // The assertion below keeps every bootstrap-configuration type out of the DOMAIN and APPLICATION
+  // assemblies. **Authorization is decided in those two layers — catalog, permissions, principal status — so
+  // configuration cannot authorize anything there because those layers cannot SEE it.** Absent capability in
+  // the product, and observed, which is the strong form.
+  //
+  // ⚠⚠⚠ BUT THE GUARD'S STATED REASON HAS ROTTED WHILE ITS EFFECT HAS NOT. Its comment says *"Genesis/
+  // recovery bootstrap is Phase 3B, not Phase 3A"* — a PHASE-BOUNDARY marker. **Bootstrap landed in 3B and
+  // this test still passes, because bootstrap went into INFRASTRUCTURE and the guard watches Domain and
+  // Application.** ***THE RATIONALE IS STALE AND THE ASSERTION IS EXACTLY RIGHT FOR A REASON ITS AUTHOR DID
+  // NOT WRITE DOWN*** — so a reader who checks whether the stated purpose still applies would conclude the
+  // test is obsolete and delete a live guard.
+  //
+  // **This is the fifth rot kind (a superseded rationale) sitting on a control rather than on a criterion**,
+  // and it is more dangerous here: a stale criterion misleads a reader, a stale rationale invites a deletion.
   public void No_bootstrap_configuration_is_introduced_in_this_phase()
   {
     // Genesis/recovery bootstrap (DEC-TEN-0019) is Phase 3B, not Phase 3A.

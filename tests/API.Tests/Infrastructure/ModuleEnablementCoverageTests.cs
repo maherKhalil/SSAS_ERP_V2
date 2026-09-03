@@ -76,7 +76,19 @@ public sealed class ModuleEnablementCoverageTests(HostWebApplicationFactory fact
   }
 
   // ---- EVERY MODULE-OWNED ROUTE CARRIES THE GATE.
+  //
+  // ⚠ CITES `AC-SUB-0020`, WHICH IS THE HALF OF THE PROPERTY THIS TEST CARRIES — *"EVERY MODULE-OWNED
+  // ENDPOINT CARRIES THE ENABLEMENT CONVENTION and no platform-plane endpoint does, asserted BY REFLECTION
+  // OVER THE BUILT HOST rather than by reading `Program.cs`."* The other half is
+  // `No_platform_plane_endpoint_is_gated`; neither test is the criterion alone, because the criterion is
+  // explicitly two-sided and a one-sided version is satisfied by gating everything.
+  //
+  // ⚠⚠ THE CRITERION ALSO CARRIES AN INSTRUCTION AND IT IS BEING FOLLOWED: it was corrected on 2026-08-30
+  // because its original text named *"exactly the TEN gated route groups … and the SEVEN exempt ones"*, and
+  // it records that **the test never asserted either number** and **must NOT be changed to match the old
+  // text.** Nothing here asserts a count of route groups. The citation is for the count-free property.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0020")]
   public void Every_module_owned_endpoint_is_gated()
   {
     var ungated = Endpoints()
@@ -131,7 +143,27 @@ public sealed class ModuleEnablementCoverageTests(HostWebApplicationFactory fact
   //
   // This is the half of the guard that a well-meaning "gate everything" change would break, and it is why
   // the assertion is two-sided rather than one.
+  //
+  // ⚠ CITES `AC-SUB-0020`'s SECOND HALF — *"…and NO PLATFORM-PLANE ENDPOINT DOES."*
+  //
+  // ⚠⚠ AND ONE LIMIT ON THE ANTI-VACUITY CONTROL THE CRITERION CLAIMS THIS TEST CARRIES.
+  // `The_endpoint_scan_finds_all_four_modules…` asserts the scan sees FOUR MODULE ASSEMBLIES. That is a
+  // genuine control for `Every_module_owned_endpoint_is_gated`, whose population is exactly those
+  // assemblies' endpoints — and it catches a TOTAL scan failure for this test too, since losing `MethodInfo`
+  // metadata everywhere would drop `owners.Count` to zero and redden it.
+  //
+  // **What no control establishes is that the PLATFORM-PLANE population is non-empty.** This test filters
+  // `OwnerOf(endpoint) is { } owner` first, so any platform endpoint whose owner could not be resolved is
+  // silently skipped rather than examined — and a change that stopped attributing platform-plane endpoints
+  // *while leaving module ones attributed* would leave this assertion green over an empty set. The four-
+  // module control cannot see that, because it only counts the module side.
+  //
+  // ⚠ SAID HONESTLY RATHER THAN AS A DEMAND: **I cannot name a mechanism that would produce that partial
+  // loss** — every route here is a minimal-API lambda and they all carry `MethodInfo`. So this is a stated
+  // residual, not a defect and not a request for another test. It is recorded because the criterion asserts
+  // the control exists, and the control is complete for one of the two halves rather than for both.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0020")]
   public void No_platform_plane_endpoint_is_gated()
   {
     var gated = Endpoints()

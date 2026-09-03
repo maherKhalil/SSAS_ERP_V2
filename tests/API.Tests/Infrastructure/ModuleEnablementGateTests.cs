@@ -54,6 +54,28 @@ namespace SSAS.API.Tests.Infrastructure;
 // would tick it off from the criterion text alone.
 //
 // **A vacuous criterion that announces itself is a known gap; one that does not is a false green.**
+//
+// ⚠⚠⚠ AND THE CONSEQUENCE IS WORSE THAN THAT, BECAUSE THE DECLARING IS WHAT LICENSES THE TRUST.
+// **`FP-014`'s habit of declaring its own weaknesses is exactly what makes `AC-SUB-0019` credible.**
+// `0008` says *satisfied vacuously*; `0020` says *the counts were stale*; the criteria file keeps a whole
+// *declared, not guessed* section. A reader learns that **this package tells you when a criterion is
+// weak** — then reads `0019`, which says nothing, and concludes it is sound.
+//
+// **That is a PARTIAL ALARM, and a partial alarm is worse than no alarm: the loud entries discharge the
+// suspicion that would have caught the quiet one.** The package's best property is what does the damage.
+//
+// ⚠⚠ AND `TS-SUB-0019` IS ITS OWN SUB-CLASS, WORTH NAMING SEPARATELY: **A SCENARIO DESIGNED AGAINST ONE
+// FAILURE MODE IS SILENT UNDER ANOTHER, AND THE CARE TAKEN OVER THE FIRST IS WHAT MAKES IT READ AS
+// THOROUGH.** The author reasoned about VARIANCE — *four modules, because a per-module variant would pass
+// a single-module test* — wrote the reasoning down, and **the written reasoning is what makes the
+// prescribed test look sufficient.** Nobody asked about ABSENCE, because the visible rigour was aimed
+// somewhere else.
+//
+// ⚠ HOW THIS WAS FOUND, RECORDED BECAUSE THE METHOD GENERALISES AND VIGILANCE DOES NOT: it did not come
+// from looking for vacuous criteria. **It came from reading a DIFFERENT criterion's clause and checking
+// the product against it**; the vacuity was two steps downstream. *Looking for undeclared gaps is sampling
+// by expectation, which is the thing that fails.* **Check the product against each clause and vacuity
+// surfaces as a consequence.**
 public sealed class ModuleEnablementGateTests
 {
   private const string ModuleKey = "Payroll";

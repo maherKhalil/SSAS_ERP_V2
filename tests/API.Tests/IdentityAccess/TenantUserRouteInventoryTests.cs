@@ -41,10 +41,33 @@ namespace SSAS.API.Tests.IdentityAccess;
 // `ListTenantUsersQueryHandler` is on no executed path. **The tenant-scoping of that query is asserted by
 // nothing.**
 //
-// ⚠ This repository's own prior applies and is why the correction is worth the lines: the two read
-// services no test ever constructed were the two carrying live defects, one of them a financial report
-// that threw on every call. **Stated as a prior. I have not read these three handlers and am not claiming
-// a defect — only that nothing would find one.**
+// ⚠ This repository's own prior applies: the two read services no test ever constructed were the two
+// carrying live defects, one of them a financial report that threw on every call.
+//
+// ---- ⚠⚠⚠ SO THEY WERE READ. THEY ARE CORRECT — AND *WHY* THEY ARE CORRECT IS THE FINDING.
+//
+// `ListTenantUsersQueryHandler` validates a tenant actor and then calls
+// `readService.ListAsync(pageNumber, pageSize, ct)`. **IT PASSES NO TENANT ID.** `TenantUserReadService`
+// then queries `dbContext.TenantUsers` **WITH NO TENANT PREDICATE** — and `GetByIdAsync` matches on
+// `item.Id` alone. **Nothing in either file scopes anything to a tenant.**
+//
+// The scoping is real and lives two layers away: `PersistenceDbContext.ConfigureTenantFilter<TEntity>`
+// applies a global query filter to every `ITenantOwnedEntity` —
+// `CurrentTenantId.HasValue && entity.TenantId == CurrentTenantId.Value` — which also FAILS CLOSED, since
+// no ambient tenant yields no rows rather than all rows.
+//
+// **So `AC-IAM-0001` is ENFORCED and UNOBSERVED, and the enforcement is invisible at both sites that
+// depend on it.** That is not a defect; it is the intended ADR-005 mechanism. What it means for a reader:
+//
+// ⚠⚠ **ADDING `IgnoreQueryFilters()` TO EITHER METHOD WOULD LEAK EVERY TENANT'S USERS, AND IT IS A
+// NORMAL-LOOKING EDIT** — `AccessTokenClaimsProvider` and `TenantAdministratorAuthority` both call it
+// legitimately, with an explicit `TenantId ==` predicate supplied by hand instead. **A developer copying
+// that idiom into `TenantUserReadService` and forgetting the hand-written predicate removes tenant
+// isolation from the user list, and no test anywhere would fail.**
+//
+// ⚠ The outcome is therefore none of *broken*, *fine and tested*, or *dead*: **correct, load-bearing on a
+// mechanism named nowhere near it, and undefended.** Recorded rather than repaired — a test for it needs
+// the query filter and a real context, which is `Integration.Tests` and outside this loop's gate.
 //
 // **That is recorded here rather than fixed**: building the read surface is a feature. The inventory's job
 // is to make the gap legible to whoever picks it up, and a list of four POSTs with no GET is the clearest

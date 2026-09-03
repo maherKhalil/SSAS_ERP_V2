@@ -30,6 +30,13 @@ public sealed class LocalizationAuditReadinessInfrastructureTests
   //
   // **Neither test alone attributes anything: the first without the second cannot tell a working
   // environment check from a dead flag.** Recorded because the pairing is invisible from either signature.
+  //
+  // ⚠⚠⚠ AND THE GENERAL POINT, WHICH IS ABOUT THE ARRANGEMENT RATHER THAN THE PAIRING: **A FIXTURE VALUE
+  // CHOSEN TO EXCLUDE A CONFOUND AND ONE CHOSEN ARBITRARILY ARE IDENTICAL IN THE SOURCE.** `developmentBypass
+  // Enabled: true` above is a considered choice carrying the whole discrimination — and turning it to
+  // `false` leaves the test PASSING, proving nothing, while the edit reads as a simplification. **Every
+  // deliberately-chosen fixture value is a claim about what would otherwise confound, and nothing records
+  // it.** Hence this note: the arrangement cannot describe itself.
   [Fact]
   [Trait("Criterion", "AC-LOC-0064")]
   public async Task Production_is_fail_closed_even_when_development_bypass_is_configured()
@@ -53,9 +60,23 @@ public sealed class LocalizationAuditReadinessInfrastructureTests
   // `Development` only. **A construction-site search over a class with one constructor is the completable
   // kind; a search for the string `"Test"` would not have been.**
   //
-  // So the disjunct's second arm is unexercised: a change dropping it leaves this file green while silently
-  // closing the bypass for the Test environment — ⚠ **which is the environment `LocalizationAuditReadiness
-  // ApiTests` and the other API fixtures actually run under**, so the arm is not hypothetical.
+  // So the disjunct's second arm is unexercised: a change dropping it leaves this file green while closing
+  // the bypass for the Test environment.
+  //
+  // ⚠⚠ AND THE FAILURE WOULD BE SILENT, NOT MISATTRIBUTED — CHECKED, BECAUSE THE OPPOSITE WAS PLAUSIBLE.
+  // `LocalizationAuditReadinessApiTests` and the API fixtures DO run under `"Test"`, which makes it look as
+  // though dropping the disjunct would redden them and be blamed on localization rather than on an
+  // environment predicate two layers away. **It would not: every consumer supplies its own stub.**
+  // `LocalizationAuditReadinessApiTests` registers `AddScoped<ILocalizationManagementAuditReadiness,
+  // AuditReadiness>`; `PlatformLocalizationSqlServerTests` has `ReadyAuditReadiness`/`UnavailableAudit
+  // Readiness`; `LocalizationAuditReadinessTests` has its own. **NOTHING outside this file resolves the real
+  // class.**
+  //
+  // ⚠⚠⚠ WHICH MAKES THE RESIDUAL NARROWER AND WORSE. The real implementation's BEHAVIOUR is exercised by
+  // this one file and its `"Test"` arm by nothing at all; the only other assertion about it —
+  // `PlatformInfrastructureRegistrationTests` — checks that it is registered SCOPED, which is a lifetime
+  // claim and not a behavioural one. **Registered is not exercised, and a stub in every consumer means the
+  // production class has exactly one witness.**
   //
   // Stated as a hole in the DISJUNCTION rather than as a missing row, because the test name claims
   // *Development behavior* and is accurate about what it covers; the gap is that the product's condition is

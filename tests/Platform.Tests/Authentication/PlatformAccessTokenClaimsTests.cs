@@ -54,7 +54,8 @@ public sealed class PlatformAccessTokenClaimsTests
 
   [Fact]
   [Trait("Acceptance", "AC-TEN-0074")]
-  // ***SUPPORTING SITE FOR `AC-TEN-0074`'s POSITIVE HALF — the LOAD-BEARING one is
+  // ***SUPPORTING (STRENGTH) AND NARROWEST-BUT-ONE (BREADTH) SITE FOR `AC-TEN-0074`'s POSITIVE HALF. The
+  // LOAD-BEARING one is
   // `JwtInfrastructureTests.Platform_token_issuer_emits_the_platform_profile_and_no_tenant_claims`***, which
   // asserts the ISSUED TOKEN carries `security_plane=platform` exactly once. This test asserts the CLAIMS
   // RECORD is populated, which is a PRECONDITION for that token rather than the criterion's subject.

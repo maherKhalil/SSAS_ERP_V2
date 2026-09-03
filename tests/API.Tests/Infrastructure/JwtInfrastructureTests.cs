@@ -98,7 +98,11 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
 
   [Fact]
   [Trait("Criterion", "AC-TEN-0074")]
-  // ***LOAD-BEARING SITE FOR `AC-TEN-0074`'s POSITIVE HALF.*** The other site — `PlatformAccessTokenClaims
+  // ***LOAD-BEARING (STRENGTH) AND NARROWEST (BREADTH) SITE FOR `AC-TEN-0074`'s POSITIVE HALF — it isolates
+  // the ISSUER, so a failure here names the issuer and nothing else. The end-to-end login in
+  // `PlatformSupportAuthenticationEndToEndTests` is BROADEST and least diagnostic; the claims record is
+  // SUPPORTING. **Breadth and strength run opposite: the most realistic test is the least diagnostic**, so
+  // three sites is a hierarchy on two axes and a census sees only three.*** The other site — `PlatformAccessTokenClaims
   // Tests.Eligible_active_principal_with_permissions_prepares_platform_claims` — is SUPPORTING, and the
   // distinction is written at both because **a trait says a criterion is covered and never says by how
   // much. With two sites of UNEQUAL strength, deleting the strong one leaves the id sitting on the weak one

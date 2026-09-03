@@ -62,6 +62,32 @@ public sealed class PlatformSupportAuthenticationEndpointTests(HostWebApplicatio
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0079")]
+  // `AC-TEN-0079` — *"Platform login/refresh REJECT OR IGNORE any caller-supplied `security_plane`,
+  // `PlatformSupportPrincipalId`, permission list, `SecurityVersion`, or `plane`/`isPlatform`/`mode` field
+  // as authority; none can select a privileged plane or bypass the server-side eligibility proof."*
+  //
+  // ⚠⚠⚠ THE FIXTURE PLANTS `clientId` — A FIELD THE CRITERION DOES NOT NAME — AND THAT IS WHY IT IS THE
+  // RIGHT TEST RATHER THAN THE WRONG ONE. `ReadLoginAsync` is an ALLOW-LIST of exactly `loginEmail` and
+  // `password`; **any other property fails the whole request.** So the criterion's six names are not six
+  // cases to be planted individually — **they are six members of the class the allow-list already
+  // forecloses**, and planting a SEVENTH field proves the class is closed in a way planting one of the six
+  // never could.
+  //
+  // ⚠⚠ I PREDICTED THIS FIXTURE WOULD PLANT ONE OF THE SIX, BY THE RULE THAT AN ENUMERATION IN A CRITERION
+  // IS N SEPARATE CASES. **That rule holds for a DENY-LIST and inverts for an ALLOW-LIST**: with a deny-list
+  // every arm needs its own fixture, because the implementation must name each; with an allow-list ONE
+  // unknown field tests every arm at once, and choosing one of the named six would test LESS. ***THE
+  // CRITERION'S ENUMERATION INVITED ME TO EXPECT ENUMERATION IN THE TEST; THE IMPLEMENTATION FORECLOSED THE
+  // CLASS INSTEAD.***
+  //
+  // ⚠ AND THIS IS THE THIRD INSTANCE OF THE IMPLEMENTATION EXCEEDING ITS CRITERION (after the composite
+  // foreign key and the capability-rather-than-storage ban). **The criterion says *reject or ignore*; the
+  // route only ever REJECTS, and rejects far more than the six.** A maintainer reading the criterion could
+  // "simplify" the allow-list into a six-name deny-list and satisfy every word of it while opening the class.
+  //
+  // The second assertion — the submitted password is not echoed into the problem body — belongs to the
+  // disclosure rules rather than to this criterion, and is left uncited here.
   public async Task Login_rejects_unknown_input_fields_without_echoing_the_body()
   {
     const string body = "{\"loginEmail\":\"operator@example.test\",\"password\":\"do-not-echo\",\"clientId\":\"caller-value\"}";

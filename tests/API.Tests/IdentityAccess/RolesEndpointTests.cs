@@ -40,7 +40,18 @@ public sealed class RolesEndpointTests : IAsyncLifetime
   private HttpClient? client;
   private RecordingRoleReadService roleReadService = new();
 
+  // ⚠ CITES `AC-IAM-0009` — *"Protected requests without valid authentication return 401."* Through the
+  // REAL Host authentication pipeline, not a stub: this file builds the actual JWT validation and
+  // authorization wiring, which is what makes a status-code assertion worth anything here.
+  //
+  // ⚠⚠ AND `Assert.False(roleReadService.Called)` IS THE HALF THAT IS NOT IN THE CRITERION AND SHOULD BE.
+  // A 401 that had already queried the tenant's roles would satisfy the sentence exactly. **The recorder
+  // proves the refusal happened BEFORE the work, not alongside it** — and the same flag appears on every
+  // refusal test in this file, with `Called == true` on the authorized one at `:84` as its companion.
+  // **Without that one positive, `Called == false` everywhere is satisfied by a read service nothing ever
+  // calls.**
   [Fact]
+  [Trait("Criterion", "AC-IAM-0009")]
   public async Task Unauthenticated_request_returns_401()
   {
     var response = await Client.GetAsync("/api/platform/roles");
@@ -49,7 +60,16 @@ public sealed class RolesEndpointTests : IAsyncLifetime
     Assert.False(roleReadService.Called);
   }
 
+  // ⚠ CITES `AC-IAM-0010` — *"Authenticated requests without required permission return 403."* The token
+  // carries a valid tenant claim and NO permission claim, so the 401/403 boundary is exercised rather than
+  // assumed: the caller is authenticated and still refused.
+  //
+  // **Together with `Unauthenticated_request_returns_401` this is the pair that makes either meaningful.**
+  // A pipeline that returned 401 for everything satisfies the first criterion and violates this one; a
+  // pipeline that returned 403 for everything does the reverse. **Neither test alone distinguishes a
+  // working boundary from a stuck one.**
   [Fact]
+  [Trait("Criterion", "AC-IAM-0010")]
   public async Task Authenticated_without_view_permission_returns_403()
   {
     using var request = Authorized(new Claim(JwtClaimTypes.TenantId, TenantId.ToString()));
@@ -187,7 +207,23 @@ public sealed class RolesEndpointTests : IAsyncLifetime
     Assert.False(roleReadService.Called);
   }
 
+  // ⚠ CITES `AC-IAM-0002` — *"A tenant administrator cannot access or manage another tenant EVEN WHEN
+  // SUPPLYING ANOTHER TENANT ID."* The caller is fully authorized for its own tenant and supplies a
+  // different `tenantId`; the request is refused and the read service is never reached.
+  //
+  // ⚠⚠ THE MECHANISM IS NOT A CROSS-TENANT CHECK AND THE TEST NAME SAYS SO — *rejected as UNKNOWN*. The
+  // endpoint declares no `tenantId` parameter, so strict binding refuses it as an unrecognised query field,
+  // **400 `request.invalid` rather than 403.** The criterion is satisfied because the input has nowhere to
+  // land, not because anything compares the supplied id to the trusted one.
+  //
+  // ⚠⚠⚠ AND THAT IS WHY THIS IS AN OBSERVATION RATHER THAN A *satisfied by construction* ARGUMENT: the
+  // parameter is actually supplied and the refusal is actually seen. **But the protection is a property of
+  // the parameter list, so it would evaporate silently if the endpoint ever gained a legitimate `tenantId`
+  // — for paging, filtering, anything.** A future reader adding one would see this test go red and could
+  // reasonably read it as a strict-binding test to update rather than a tenant-isolation guarantee to
+  // preserve. **It is the second.**
   [Fact]
+  [Trait("Criterion", "AC-IAM-0002")]
   public async Task A_caller_supplied_tenant_id_query_is_rejected_as_unknown()
   {
     using var request = Authorized(

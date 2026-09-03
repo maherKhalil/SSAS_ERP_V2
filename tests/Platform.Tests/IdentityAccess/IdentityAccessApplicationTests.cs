@@ -183,10 +183,18 @@ public sealed class IdentityAccessApplicationTests
   // would then be refused by `AC-IAM-0010`'s 403. The chain is plausible and only its first link is
   // observed here.
   //
-  // ⚠⚠ AND THE RETIREMENT SEQUENCE AT `:174-181` IS A DISTINCTION NO CRITERION NAMES: a role in
-  // `RetirementPending` STILL GRANTS its permissions; only `Retired` stops granting. **`AC-IAM-0019` bars
-  // NEW assignments to a pending role while existing ones keep working — two different questions about the
-  // same status, and this test is the only place the second is answered.**
+  // ⚠⚠ AND THE RETIREMENT SEQUENCE AT `:174-181` RECORDS A DESIGN DECISION THAT NO CRITERION STATES: a role
+  // in `RetirementPending` STILL GRANTS its permissions; only `Retired` stops granting. `AC-IAM-0019` bars
+  // NEW assignments to a pending role while existing ones keep working — two different questions about one
+  // status, and only the first is written down anywhere.
+  //
+  // **SO THIS TEST IS THE ONLY ARTEFACT IN THE REPOSITORY THAT RECORDS THE SECOND, AND THAT IS WHY THE
+  // THREE-STEP SEQUENCE MUST NOT BE SHORTENED.** Assign → request retirement → still granted → retire → no
+  // longer granted. The middle step looks redundant beside the last one and is the whole point: **deleting
+  // it removes the only evidence that *pending still grants* was chosen rather than overlooked**, and a
+  // later reader would have no way to tell an intentional grace period from a missing guard.
+  //
+  // Stated as one instance. Nothing here says specifications generally under-record design decisions.
   //
   // The removed-permission leg (`viewRoles` assigned then removed on the historical role) is the control
   // that stops *distinct union* being satisfied by a resolver that simply returns too little.

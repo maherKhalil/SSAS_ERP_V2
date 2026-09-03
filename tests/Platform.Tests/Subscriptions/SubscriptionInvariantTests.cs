@@ -242,11 +242,16 @@ public sealed class SubscriptionInvariantTests
   // THE TERM, AND THE EXPLICIT PERPETUAL MARKER.
   // ==================================================================================================
 
+  // ⚠ CITES `AC-SUB-0027`'s FIRST CLAUSE — *"A `Fixed` term requires an end AFTER its start."* The guard is
+  // `endUtc <= startUtc`, so `A_fixed_term_ending_AT_its_start` is the boundary row and the one that
+  // separates *after* from *not before*; the other is the ordinary case.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0027")]
   public void A_fixed_term_ending_before_it_starts_is_refused() =>
     Assert.True(SubscriptionTerm.Fixed(Noon, Noon.AddDays(-1)).IsFailure);
 
   [Fact]
+  [Trait("Criterion", "AC-SUB-0027")]
   public void A_fixed_term_ending_at_its_start_is_refused() =>
     Assert.True(SubscriptionTerm.Fixed(Noon, Noon).IsFailure);
 
@@ -273,12 +278,32 @@ public sealed class SubscriptionInvariantTests
   //
   // EF materialises through `Rehydrate`, so a row written before the `CHECK` existed — or by any path that
   // bypassed the domain — must not become an object the rest of the model believes is valid.
+  //
+  // ⚠⚠⚠ CITES `AC-SUB-0027`'s SECOND CLAUSE **WITH A QUALIFIER THAT CHANGES WHERE THE GUARANTEE LIVES** —
+  // *"`Fixed` with a NULL END and `Perpetual` with AN END are both refused AT CONSTRUCTION."*
+  //
+  // **They are not refused at construction. They are unconstructible.** The factory signatures are
+  // `Fixed(DateTimeOffset startUtc, DateTimeOffset endUtc)` — a NON-NULLABLE end — and
+  // `Perpetual(DateTimeOffset startUtc)`, which takes no end at all and returns a bare `SubscriptionTerm`
+  // rather than a `Result`, because **it has nothing it could fail on.** Neither bad combination can be
+  // expressed through the construction path the criterion names.
+  //
+  // ⚠ THAT IS STRONGER THAN THE CRITERION ASKS AND IT IS NOT WHAT THE CRITERION SAYS, so the distinction is
+  // recorded rather than smoothed over. **The two tests below are on `Rehydrate`, a DIFFERENT path** — the
+  // one EF materialises through — and that is the only path where the states are representable at all. A
+  // reader citing `AC-SUB-0027` for "refused at construction" and landing here would find a refusal on the
+  // rehydration path and conclude the constructors validate. They do not; **they make the question
+  // impossible to ask**, which is why no test exists for a refusal that cannot happen.
+  //
+  // **The guarantee is real, complete, and located one layer from where the criterion puts it.**
   [Fact]
+  [Trait("Criterion", "AC-SUB-0027")]
   public void Rehydrating_a_perpetual_term_that_carries_an_end_is_refused() =>
     Assert.True(SubscriptionTerm
       .Rehydrate(SubscriptionTermKind.Perpetual, Noon, Noon.AddDays(1)).IsFailure);
 
   [Fact]
+  [Trait("Criterion", "AC-SUB-0027")]
   public void Rehydrating_a_fixed_term_with_no_end_is_refused() =>
     Assert.True(SubscriptionTerm.Rehydrate(SubscriptionTermKind.Fixed, Noon, null).IsFailure);
 }

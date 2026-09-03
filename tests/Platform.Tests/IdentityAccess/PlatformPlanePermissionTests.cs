@@ -53,6 +53,15 @@ public sealed class PlatformPlanePermissionTests
   // a wrong implementation would emit from.** `Claim_filter_drops_known_platform_support_permissions` proves
   // the filter drops what it is given; this proves the filter is reached even when the data should not
   // exist. ***GIVE THE FIXTURE THE THING THAT WOULD LET A WRONG IMPLEMENTATION PASS.***
+  //
+  // ⚠⚠⚠ AND THAT IS EXACTLY WHY THIS FIXTURE NEEDS THE NOTE: **THE ARRANGEMENT LOOKS LIKE A MISTAKE.** A
+  // platform-scoped permission sitting on a tenant role is invalid data — precisely the thing a tidy-up
+  // removes, because it is wrong, it is confusing, and **the test still passes without it.** What is lost is
+  // silent: the assertion stops proving the filter is REACHED and starts proving only that the filter drops
+  // what it is handed, which its sibling already covers.
+  //
+  // ***AN ADVERSARIAL FIXTURE CARRIES THE DISCRIMINATION IN ITS ARRANGEMENT, HAS NO SELF-DESCRIPTION, AND
+  // ADDITIONALLY LOOKS WRONG — SO IT IS THE FIXTURE MOST LIKELY TO BE "CORRECTED" BY A COMPETENT READER.***
   public void Corrupt_platform_support_assignment_never_becomes_a_tenant_token_claim()
   {
     // AC-TEN-0030 / TS-TEN-0054: even if stored role-permission data is corrupted to contain a

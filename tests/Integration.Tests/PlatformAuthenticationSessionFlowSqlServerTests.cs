@@ -190,6 +190,19 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
   [Trait("Decision", "DEC-TEN-0022")]
   [Trait("AcceptanceCriteria", "AC-TEN-0064")]
   [Trait("AcceptanceCriteria", "AC-TEN-0062")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0040")]
+  // ⚠⚠ `AC-TEN-0040` IS `AC-TEN-0064` RESTATED IN ANOTHER BLOCK — *"refresh/session continuation RE-READS
+  // LIVE STATUS; a `Disabled` principal's refresh is denied and its platform session is REVOKED; no new
+  // platform token is issued"* against *"at refresh, live principal status is RE-READ; a `Disabled`
+  // principal is denied, the current platform session is REVOKED, and no new token is issued."* **Same
+  // property, same three clauses, same order.** Second duplicated pair in this package after
+  // `0039`/`0063`.
+  //
+  // ⚠ THE PAIRS WERE FOUND BY A SIMILARITY SWEEP OVER ALL 93 BODIES, AND THE SWEEP CANNOT BE TRUSTED ALONE:
+  // it scored `0057`/`0058` HIGHER than this pair, and those are **deliberate MIRRORS** — the same sentence
+  // with the planes swapped, both needed. ***A SIMILARITY METRIC GROUPS AN ACCIDENTAL RESTATEMENT WITH A
+  // DELIBERATE MIRROR, AND ONLY READING SEPARATES THEM.*** Six pairs scored above threshold; two are
+  // duplicates, three are mirrors, one is a containment.
   // TWO CRITERIA, ONE PER BLOCK OF THIS TEST, AND THEY ARE DELIBERATELY SEPARATE IDS FOR SEPARATE CAUSES.
   //
   // `AC-TEN-0064` — *"At refresh, LIVE principal status is re-read; a `Disabled` principal is denied, the

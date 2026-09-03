@@ -121,6 +121,18 @@ public sealed class PlatformAccessTokenClaimsTests
 
   [Fact]
   [Trait("Acceptance", "AC-TEN-0063")]
+  [Trait("Criterion", "AC-TEN-0039")]
+  // ⚠⚠⚠ `AC-TEN-0039` AND `AC-TEN-0063` ARE THE SAME CRITERION WRITTEN TWICE, IN TWO BLOCKS.
+  //   `0039` *"Platform token issuance performs a LIVE PRINCIPAL-STATUS CHECK and denies issuance for a
+  //          `Disabled` principal; NO TOKEN-CARRIED STATUS IS AUTHORITATIVE."*
+  //   `0063` *"At issuance, a LIVE STATUS CHECK denies a platform token when `...Status == Disabled`;
+  //          NO TOKEN-CARRIED STATUS IS AUTHORITATIVE."*
+  // Same property, same trailing clause verbatim; `0039` sits in the principal-lifecycle block and `0063` in
+  // the token-profile block. **One test satisfies both because there is only one property.**
+  //
+  // ⚠ THAT MATTERS FOR THE DENOMINATOR, NOT JUST FOR THE TRAITS: **a package of 93 criteria containing a
+  // duplicated property describes fewer than 93 distinct behaviours**, so criterion-coverage and
+  // property-coverage are different numbers. Recorded rather than silently double-counted.
   // `AC-TEN-0063` — *"At issuance, a LIVE STATUS CHECK denies a platform token when
   // `PlatformSupportPrincipal.Status == Disabled`; no token-carried status is authoritative."*
   //

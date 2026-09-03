@@ -110,8 +110,27 @@ public sealed class PlatformSupportAuthorityTests
 
   // ---- Lifecycle (ADR-016 / DEC-TEN-0020) ----
 
+  // ==================================================================================================
+  // ⚠⚠⚠ DO NOT DELETE THIS TEST. IT READS AS A BASELINE SANITY CHECK AND IT IS `AC-TEN-0047`'s PRECONDITION.
+  // ==================================================================================================
+  //
+  // **DELETING THIS MAKES *POPULATES* UNPROVABLE, AND NOTHING WILL REDDEN.**
+  // `AC-TEN-0047` says the FIRST transition POPULATES `StatusChangedUtc`/`StatusChangedBy`.
+  // `Disable_then_reenable_transitions_and_stamps_metadata_without_touching_assignments` shows the fields
+  // holding values after two transitions — **but a field that already held a value cannot be seen to be
+  // populated.** Only the assertions below, on a freshly registered principal with both fields EMPTY,
+  // establish the starting state that gives the word *populates* any content.
+  //
+  // Remove this and that test still passes, its `AC-TEN-0047` trait still claims the criterion, and the
+  // *populates* half quietly becomes an assertion about two arbitrary values.
+  //
+  // ⚠ SAME SHAPE AS `Principal_status_enum_has_exactly_active_and_disabled`, which this test also depends on:
+  // **a test whose whole value is being DEPENDED ON has no visible value of its own**, and its dependants
+  // cannot announce themselves. The warning has to live here because the deleter reads THIS file and never
+  // `AC-TEN-0047`.
   [Fact]
   [Trait("Acceptance", "AC-TEN-0038")]
+  [Trait("Criterion", "AC-TEN-0047")]
   // `AC-TEN-0038` — *"A registered `PlatformSupportPrincipal` STARTS `Active`; the ONLY transitions are
   // `Active -> Disabled` and `Disabled -> Active`."* Two claims, and this test carries the first.
   //

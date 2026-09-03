@@ -361,6 +361,17 @@ public sealed class LocalizationArchitectureTests
       .Where(method => Regex.IsMatch(method.Name, "^(Set|Update|Delete|Remove|Restore|Undo)", RegexOptions.CultureInvariant)));
   }
 
+  // ⚠⚠ EXAMINED AND LEFT UNRESOLVED ON A MILESTONE MISMATCH, WITH THE SET ENUMERATED THIS TIME.
+  //
+  // The two criteria that speak to milestone containment are `AC-LOC-0023` (*"M1 generates neutral client
+  // JSON only; no Angular runtime/library/screen is introduced"*) and `AC-LOC-0024` (*"M1 contains only
+  // approved backend core/migration/tests; HTTP/OpenAPI stay M2"*). **Both are scoped to M1. This test
+  // asserts PHASE FOUR's boundaries**, and citing an M1 criterion for a phase-four containment rule would
+  // be wrong on the milestone even where the file lists overlap.
+  //
+  // ⚠ THE DISPOSAL IS ONLY WORTH THIS MUCH BECAUSE THE SET WAS ENUMERATED: `AC-LOC-0001`–`0064`, all read.
+  // Earlier disposals in this file were made having read two thirds, which made *no criterion matches* an
+  // absence claim over a population I had not counted. Nothing here is scoped to phase four.
   [Fact]
   public void Localization_phase_four_adds_only_approved_server_boundaries_and_no_ui_redis_audit_store_or_mutable_default_catalog()
   {
@@ -424,6 +435,14 @@ public sealed class LocalizationArchitectureTests
     Assert.Equal(4, Regex.Matches(migrationSource, "migrationBuilder.CreateTable", RegexOptions.CultureInvariant).Count);
   }
 
+  // ⚠ EXAMINED AND LEFT UNRESOLVED. `AC-LOC-0064` is the only criterion about audit readiness and its
+  // subject is RUNTIME BEHAVIOUR — a mutation proceeds only when readiness succeeds, else 503. **This test
+  // asserts WHERE THE TYPE LIVES**: interface in Application, implementation in Infrastructure, nothing
+  // named `AuditReadiness` in the Domain assembly. Layering, not behaviour, and no criterion in the
+  // enumerated set `0001`–`0064` states a layering rule for it.
+  //
+  // The nearest is `AC-LOC-0022`'s *bounded*, but that is scoped to Domain/Application generally and is
+  // already carried by two other tests here on their own subjects.
   [Fact]
   public void Audit_readiness_is_application_owned_infrastructure_implemented_and_absent_from_domain()
   {
@@ -494,6 +513,21 @@ public sealed class LocalizationArchitectureTests
     Assert.DoesNotMatch("Log(?:Warning|Error|Information).*\\b(Text|Value|Placeholder)\\b", source);
   }
 
+  // ⚠⚠ EXAMINED AND LEFT UNRESOLVED — SEVEN ASSERTIONS, THREE NEAR CRITERIA, NONE A CLAUSE MATCH.
+  //
+  //   `AC-LOC-0022`  *Domain/Application remain provider/framework-neutral* — the EF bans here are on the
+  //                  **API** assembly, which that criterion does not name. Adjacent scope.
+  //   `AC-LOC-0005`  *the four-step chain reports exact source/cultures* — about what the chain REPORTS.
+  //                  *No second fallback algorithm in HTTP* is a different claim about where it LIVES.
+  //   `AC-LOC-0054`  *no input channel can alter current scope* — the closest, and it fits only the LAST
+  //                  assertion (`LocalizationTransportContracts.cs` contains no `TenantId`), not the six
+  //                  about resolver reuse.
+  //
+  // **Citing on one of seven assertions would publish the criterion as covered by a test whose subject is
+  // something else.** If this is split later, the transport-contract line is the citable half.
+  //
+  // Set enumerated `0001`–`0064`; the search that would settle it is whether a phase-five HTTP criterion
+  // exists outside `acceptance-criteria.md`.
   [Fact]
   public void Phase_five_localization_http_reuses_the_application_resolver_without_ef_or_a_second_fallback_algorithm()
   {

@@ -364,6 +364,17 @@ public sealed class TenantLifecycleArchitectureTests
       typeof(TenantAuthenticationEligibilityResult).GetProperties().Select(Describe).Order(StringComparer.Ordinal));
 
     // ---- THE TERM BAN, WHICH COVERS THE PROJECTION THAT DOES NOT EXIST YET.
+    //
+    // ⚠⚠⚠ READ THIS BEFORE ADDING A PIN. **THE BAN'S POPULATION IS THE WHOLE NAMESPACE; ITS LOAD-BEARING
+    // POPULATION IS THE UNPINNED TYPES ONLY.** On any type with a member pin above, the pin fires first and
+    // the ban can never be the first failure — it is subsumed there, and no plant on a pinned type can
+    // observe it. That is why plant B had to be placed on `GetTenantQuery`.
+    //
+    // The consequence runs the wrong way round from intuition: **pinning the remaining types in this
+    // namespace would make this ban completely unobservable while making the suite look stronger.** If you
+    // pin more types, either accept that this ban is then decorative and say so, or move it to a population
+    // that still has unpinned members. Do not leave it looking like a namespace-wide control when its
+    // observable population is empty.
     var properties = projections.SelectMany(type => type.GetProperties()).ToArray();
     Assert.NotEmpty(properties);
 

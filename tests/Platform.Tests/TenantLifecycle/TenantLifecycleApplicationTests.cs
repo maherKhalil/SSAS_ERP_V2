@@ -101,6 +101,18 @@ public sealed class TenantLifecycleApplicationTests
   // ABSENCE OF A SURFACE, and its real mechanism is platform-plane authorization — the `AC-TEN-0021..0030`
   // block, deferred with the endpoints. **Adding a discriminating fixture here would assert a boundary this
   // layer does not enforce and is not the place to.**
+  //
+  // ⚠⚠⚠ AND THAT MAKES IT A SCHEDULED FAILURE RATHER THAN A GAP. **A PROPERTY HELD BY THE ABSENCE OF A
+  // SURFACE FAILS SILENTLY ON THE DAY THE SURFACE IS BUILT** — and here the day is named and already on the
+  // plan. Nothing about building those routes forces anyone to notice that the guard was never written.
+  //
+  // ⚠ THIS NOTE IS THE REDUNDANT COPY AND KNOWS IT. The person who builds the `0021..0030` transport will be
+  // reading the CRITERIA DOCUMENT, not a Platform unit test about tenant creation, so the load-bearing
+  // record is the entry in `FP-003`'s acceptance criteria — outside this lane and requested from the
+  // architect. As of this commit **that entry is composed but BLOCKED** behind an owner decision on repo
+  // and handoff writes, so the only copy that exists today is this one, in the place least likely to be
+  // read by the person who needs it. Whoever unblocks that write should place it; until then, this comment
+  // is carrying a criterion on its own.
   public async Task Platform_actor_is_required_without_inferring_authority_from_tenant_roles()
   {
     var repository = new FakeTenantRepository();

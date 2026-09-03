@@ -129,7 +129,57 @@ public sealed class TenantLifecycleDomainTests
   [Fact]
   [Trait("BusinessRule", "BRULE-TEN-0003")]
   [Trait("Acceptance", "AC-TEN-0005")]
+  [Trait("Acceptance", "AC-TEN-0007")]
+  [Trait("Acceptance", "AC-TEN-0009")]
   [Trait("Scenario", "TS-TEN-0004")]
+  // ⚠⚠⚠ TWO CRITERIA ADDED, AND `AC-TEN-0009` IS CARRIED BY A PAIR IN WHICH NEITHER HALF IS SUFFICIENT.
+  //
+  // *"A `Suspended` Tenant CAN be reactivated; NO OTHER STATUS can use the reactivation operation."* Two
+  // claims pointing opposite ways, and they live in different tests:
+  //
+  //   the positive   `:150-152` here — Suspended, `Reactivate()` succeeds, status returns to Active.
+  //   the negative   `Every_unapproved_transition_preserves_state_metadata_and_events` rows
+  //                  `(Provisioning, "Reactivate")`, `(Active, "Reactivate")`, `(Archived, "Reactivate")`.
+  //
+  // **NEITHER SITE ALONE CARRIES THE CRITERION AND EACH LOOKS AS THOUGH IT DOES.** The negative rows read
+  // as *no other status can reactivate* while being equally consistent with reactivation being refused
+  // ALWAYS; the positive reads as *Suspended can reactivate* while saying nothing about exclusivity. So the
+  // trait is on both, and deleting either one leaves a green suite and a half-proved criterion.
+  //
+  // ⚠ AND THE *NO OTHER STATUS* IS COMPLETE RATHER THAN SAMPLED, FOR THE THIRD TIME IN THIS PACKAGE:
+  // `Status_and_reason_vocabularies_are_exact` asserts `Enum.GetNames<TenantStatus>()` EQUALS four names,
+  // so three refusals plus one success EXHAUST the statuses. Same rule as `AC-TEN-0008`'s *only for Active*
+  // and `AC-TEN-0016`'s *returns exactly*: **an enumeration closes a complement claim exactly when
+  // something else pins the size of the set being enumerated.** All three now rest on a pin, though only
+  // one of the pins was written for that purpose.
+  //
+  // ---- `AC-TEN-0007` IS CITED FOR ITS FIRST CLAUSE ONLY, AND THE SECOND IS A THREE-MEMBER SET.
+  //
+  // *"Suspending an `Active` Tenant MAKES CURRENT AUTHENTICATION ELIGIBILITY FALSE ‖ and blocks subsequent
+  // TENANT SELECTION, NEW-SESSION, and REFRESH eligibility decisions."* Clause one is `:144-146` exactly —
+  // an Active tenant, `Suspend()`, `Assert.False(tenant.IsAuthenticationEligible)`.
+  //
+  // Clause two names THREE decisions and a citation would claim all three. The mechanism exists for each,
+  // and it is one mechanism rather than three — every route reaches `Tenant.IsAuthenticationEligible`
+  // (`Tenant.cs:65`, `Status == Active`) through `IdentityTenantMembershipReadService:81`, which packages it
+  // as `IdentityTenantMembershipEligibility.IsTenantEligible`:
+  //
+  //   tenant selection   `SelectTenantCommandHandler:52-60`, refuses on `IsEligible`
+  //   new-session        `BeginTenantAccessCommandHandler:49-59`, refuses on `IsEligible` before the
+  //                      session is created
+  //   refresh            `RefreshAuthenticationSessionCommandHandler:44-48` and `:77-80`, REVOKES with
+  //                      `AuthenticationSessionRevocationReason.TenantIneligible`
+  //
+  // (`IsEligible => Membership is not null && IsTenantEligible`.) **WHAT I HAVE ESTABLISHED IS THAT THE
+  // PRODUCT DOES THIS, NOT THAT ANY TEST ASSERTS IT** — those three handlers are AUTH-package subjects and
+  // I have not yet looked for their tests. Clause two is therefore UNCITED here rather than uncovered, and
+  // the distinction matters because the work to close it is a search, not a build.
+  //
+  // ⚠⚠ A NAME SEARCH CANNOT MEASURE THIS AND NEARLY MISLED ME. `IsAuthenticationEligible` is declared on TWO
+  // aggregates — `Tenant.cs:65` and `AuthenticationAccount.cs:77` — and MOST hits in `Authentication/` are
+  // the ACCOUNT one, which has nothing to do with tenant status. Counting hits would have reported roughly
+  // a dozen tenant-status consumers where there are three. **The population had to be found by following
+  // `ITenantAuthenticationEligibilityReadService`, the mechanism, rather than the property name.**
   public void Every_approved_transition_updates_trusted_metadata_and_raises_safe_event()
   {
     var tenant = CreateTenant();
@@ -205,7 +255,21 @@ public sealed class TenantLifecycleDomainTests
   [InlineData(TenantStatus.Archived, "Archive")]
   [Trait("BusinessRule", "BRULE-TEN-0003")]
   [Trait("Acceptance", "AC-TEN-0006")]
+  [Trait("Acceptance", "AC-TEN-0009")]
   [Trait("Scenario", "TS-TEN-0005")]
+  // ⚠⚠⚠ `AC-TEN-0009`'s NEGATIVE HALF IS HERE AND THE POSITIVE HALF IS NOT — SEE `Every_approved_
+  // transition_updates_trusted_metadata_and_raises_safe_event`, WHICH CARRIES THE SAME TRAIT FOR THE OTHER
+  // HALF. *"A Suspended Tenant CAN be reactivated; NO OTHER STATUS can use the reactivation operation."*
+  //
+  // The three `Reactivate` rows below — `Provisioning`, `Active`, `Archived` — are the *no other status*
+  // half, and with `Status_and_reason_vocabularies_are_exact` pinning `TenantStatus` at four names they
+  // EXHAUST the complement rather than sampling it.
+  //
+  // **BUT THEY ARE EQUALLY CONSISTENT WITH REACTIVATION BEING REFUSED FROM EVERY STATUS**, which would
+  // satisfy every row here and break the criterion. The positive site is not a nicety; it is what makes
+  // these rows mean *no OTHER status* rather than *no status*. ⚠ **A PAIR IN WHICH EACH HALF LOOKS
+  // SUFFICIENT IS THE ONE THAT LOSES A HALF QUIETLY** — whoever deletes the other test gets a green suite
+  // and a trait still sitting here, pointing at rows that no longer say what the id claims.
   public void Every_unapproved_transition_preserves_state_metadata_and_events(TenantStatus status, string operation)
   {
     var tenant = CreateInStatus(status);

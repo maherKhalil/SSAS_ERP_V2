@@ -33,7 +33,29 @@ public sealed class LocalizationEffectiveRealResolverApiTests : IAsyncLifetime
   private WebApplication? application;
   private HttpClient? client;
 
+  // ⚠ CITES TWO CLAUSES OF `AC-LOC-0049` — *"raw effective-template projection"* and *"IT PERFORMS NO
+  // PLACEHOLDER INTERPOLATION"* — through the REAL route and the REAL `LocalizationTextResolver`, not a
+  // stub. `/effective` returns `"{fieldName} is required."` with the brace intact.
+  //
+  // ⚠⚠ AND A THIRD: *"ordinary runtime resolution DOES NOT REQUIRE View."* `TestBearerHandler` issues a
+  // principal with a subject and a tenant and **NO PERMISSION CLAIM AT ALL**, and the request returns 200.
+  // That is the behavioural counterpart of the bare `.RequireAuthorization()` on the effective group — the
+  // default policy demands an authenticated caller and nothing more. **The absence of a claim is doing the
+  // work here, so it is worth saying: adding a permission requirement to this group would redden this test,
+  // which is the point.**
+  //
+  // ⚠⚠⚠ AND THE PAIR BELOW IS THE THING I BUILT BY HAND ELSEWHERE, ALREADY PRESENT HERE AND UNREMARKED.
+  // *No interpolation* is a property whose test and whose negation have IDENTICAL SHAPE — both are an
+  // equality against a rendered string, and only the expected value differs, so a reader cannot recover the
+  // direction from the assertion. `LocalizationAdministrationTemplateTests` needed a second positive over a
+  // contrasting producer added deliberately to carry that direction.
+  //
+  // **HERE THE CONTRASTING PRODUCER IS A SIBLING TEST AND A DIFFERENT ROUTE**: `/effective` yields
+  // `"{fieldName} is required."` and `/effective/batch` yields `"Name is required."` from the same resource
+  // and the same resolver. Between them the direction is structural — the raw form is the one the batch
+  // route did NOT return. Two tests that look independent are jointly carrying one property.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0049")]
   public async Task Effective_group_returns_raw_template_for_placeholder_resource()
   {
     using var request = Authorized(new HttpRequestMessage(
@@ -49,7 +71,28 @@ public sealed class LocalizationEffectiveRealResolverApiTests : IAsyncLifetime
     Assert.Equal("{fieldName} is required.", item.GetProperty("value").GetString());
   }
 
+  // ⚠ CITES THE *POLICY VALIDATION* HALF OF `AC-LOC-0050`'s LAST SENTENCE — *"malformed or unrequested maps
+  // fail REQUEST validation, MISSING/UNKNOWN PLACEHOLDERS FAIL POLICY VALIDATION"* — plus the *"optional
+  // resource-scoped plain-string placeholder values"* clause on the success leg, and *"ordinary runtime
+  // resolution does not require View"* (again, no permission claim, 200).
+  //
+  // Supplied `fieldName` → `"Name is required."`; omitted → 422; an extra `other` → 422; both
+  // `localization.placeholder_mismatch`.
+  //
+  // ⚠⚠ THE 422/400 SPLIT IS THE WHOLE CITATION AND NEITHER HALF STANDS ALONE. The criterion assigns two
+  // DIFFERENT validation kinds to two DIFFERENT failure classes, so a test showing only one of them leaves
+  // the distinction unmade — a single implementation returning 422 for everything would satisfy this test
+  // and violate the sentence. `Effective_batch_strictly_rejects_invalid_placeholder_map_shapes` carries the
+  // 400 half, and the two are cited as a pair for that reason.
+  //
+  // ⚠⚠⚠ AND THIS IS THE RUNTIME SIDE OF A CITATION I DELIBERATELY MADE ON THE DECLARED SIDE ONLY.
+  // `LocalizationOpenApiContractTests` cites `AC-LOC-0050` for the generated document's `maxItems` 100,
+  // `uniqueItems`, culture enum and plain-string placeholder map, with the note that **a schema bound and a
+  // runtime bound can disagree and that test would stay green if they did.** This is where the runtime
+  // behaviour is actually exercised. **Two citers, two sides of declared-versus-enforced, and the note at
+  // each site names the other.**
   [Fact]
+  [Trait("Criterion", "AC-LOC-0050")]
   public async Task Effective_batch_formats_supplied_placeholders_and_rejects_missing_or_unknown_names()
   {
     using var formatted = Authorized(Post(
@@ -98,6 +141,37 @@ public sealed class LocalizationEffectiveRealResolverApiTests : IAsyncLifetime
   [InlineData("{\"culture\":\"en\",\"resourceKeys\":[\"platform.common.validation.required\"],\"placeholderValuesByResource\":{\"platform.common.validation.required\":{\"fieldName\":\"Name\",\"fieldName\":\"Other\"}}}")]
   [InlineData("{\"culture\":\"en\",\"resourceKeys\":[\"platform.common.validation.required\"],\"placeholderValuesByResource\":{\"platform.common.validation.required\":{\"fieldName\":5}}}")]
   [InlineData("{\"culture\":\"en\",\"resourceKeys\":[\"platform.common.validation.required\"],\"placeholderValuesByResource\":{\"platform.common.actions.save\":{}}}")]
+  // ⚠ CITES THE *REQUEST VALIDATION* HALF OF `AC-LOC-0050`'s LAST SENTENCE — *"MALFORMED OR UNREQUESTED MAPS
+  // FAIL REQUEST VALIDATION"* — and it is the half that makes the sibling test's 422 mean something. All
+  // four rows return 400 `request.invalid`, and they cover both nouns the clause names:
+  //
+  //   MALFORMED    duplicate resource key in the map · duplicate placeholder name · non-string value (`5`)
+  //   UNREQUESTED  a map keyed on `platform.common.actions.save`, which is not in `resourceKeys`
+  //
+  // ⚠⚠ THE ROWS ARE RAW JSON STRINGS RATHER THAN OBJECTS, DELIBERATELY, AND THE CITATION DEPENDS ON IT.
+  // Two of the four are DUPLICATE KEYS, which no serializer would emit and no anonymous object can express
+  // — `new { fieldName = "Name", fieldName = "Other" }` does not compile. **A typed request object cannot
+  // construct the input this clause is about**, so the ugly literals are the mechanism, not an oversight.
+  //
+  // ⚠⚠⚠ AND THE *UNREQUESTED* ROW IS GUARDED TWICE, WHICH I FOUND ONLY BY PLANTING A SENTENCE I HAD ALREADY
+  // WRITTEN. I claimed *"the three malformed rows would still pass if the cross-field check were deleted,
+  // and only this row would notice."* **MEASURED, AND FALSE.** All four cells:
+  //
+  //   `HasValidPlaceholderMap` `!requested.Contains`   `HasValidPlaceholderResourceScope`   result
+  //   present                                          present                              all pass
+  //   DELETED                                          present                              ALL PASS
+  //   present                                          DELETED                              ALL PASS
+  //   DELETED                                          DELETED                              this row FAILS
+  //
+  // **The rule is enforced in TWO places — `LocalizationEndpointRouteBuilderExtensions` checks
+  // `!requested.Contains(...)` in the raw-JSON validator AND again in `HasValidPlaceholderResourceScope`
+  // over the bound request — and DELETING EITHER ONE ALONE IS INVISIBLE TO THE ENTIRE SUITE.**
+  //
+  // ⚠ So this row tests THE RULE and tests NEITHER MECHANISM. That is worth stating plainly because the
+  // usual reading of a green suite is the opposite: redundant guards look like defence in depth and behave,
+  // under test, like a single guard whose location nothing pins. **Reading only the diagonal — baseline
+  // green, both-deleted red — would have shown a working control and hidden this entirely.**
+  [Trait("Criterion", "AC-LOC-0050")]
   public async Task Effective_batch_strictly_rejects_invalid_placeholder_map_shapes(string body)
   {
     using var request = Authorized(Post(body));

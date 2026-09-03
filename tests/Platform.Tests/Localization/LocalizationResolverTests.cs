@@ -21,7 +21,26 @@ public sealed class LocalizationResolverTests
   private static readonly Guid TenantId = Guid.Parse("9b7fc347-a31f-4724-8bf1-3dc83fac6c85");
   private static readonly DateTimeOffset InitialTime = new(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
 
+  // ⚠ CITES `AC-LOC-0005` — *"The four-step chain reports exact source/cultures and neutral Production
+  // output never exposes ResourceKey."* — WITH TWO BOUNDS, BOTH ON THE SAME LINE OF THE CRITERION.
+  //
+  // **Reports exact source**: `SystemDefault` for a known key and `KeyFallback` for an unknown one, plus
+  // the direction each culture implies. ⚠ TWO OF THE CHAIN'S FOUR STEPS. A tenant override resolving to
+  // `TenantOverride` is exercised by the batch tests below, not here, so this carries the *reports its
+  // source* property over the two sources it visits and not over the chain.
+  //
+  // **Never exposes ResourceKey**: `platform.unknown.key` does not appear in the returned text.
+  // ⚠⚠ AND THE NEGATIVE ASSERTION HAS A PROPER POSITIVE COMPANION, WHICH IS RARE ENOUGH TO NAME:
+  // `Diagnostics.MissingKeys` is asserted to CONTAIN that exact key. **So the key demonstrably exists in
+  // the system at that moment and is absent only from the OUTPUT** — the ban cannot pass because the
+  // string was never in play, which is how a `DoesNotContain` usually goes quietly vacuous.
+  //
+  // ⚠ THE BOUND I CANNOT DISCHARGE HERE: the criterion says *neutral PRODUCTION output*. This fixture is
+  // anonymous (`ResolverFixture(null, …)`), which supplies the NEUTRAL half; nothing in it establishes the
+  // Production environment condition. Cited for the neutral path, and the environment scoping is not
+  // claimed.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0005")]
   public async Task Anonymous_resolution_uses_defaults_formats_literally_and_hides_missing_key()
   {
     var fixture = new ResolverFixture(null, TenantStatus.Active);

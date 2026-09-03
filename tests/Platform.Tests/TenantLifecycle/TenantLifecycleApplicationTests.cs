@@ -179,11 +179,24 @@ public sealed class TenantLifecycleApplicationTests
   // reddening. **Four pinned members, four rows plus null, one true — that is a complete case analysis and
   // not a sample.**
   //
-  // ⚠ `AC-TEN-0016`'s *returns exactly five members* has NO such neighbour: nothing anywhere asserts the
-  // arity of `TenantAuthenticationEligibilityResult`'s property list. **THE TWO CLAIMS ARE THE SAME
-  // SENTENCE-SHAPE ON THE SAME TEST AND ONLY ONE OF THEM COMPOSES** — which is the reusable test for this
-  // family: an enumeration closes a complement claim exactly when something else pins the size of the set
-  // being enumerated. Where that neighbour is absent, the enumeration proves presence and nothing more.
+  // ⚠ `AC-TEN-0016`'s *returns exactly five members* had NO such neighbour when this was written: nothing
+  // asserted the arity of `TenantAuthenticationEligibilityResult`'s property list. **THE TWO CLAIMS WERE THE
+  // SAME SENTENCE-SHAPE ON THE SAME TEST AND ONLY ONE OF THEM COMPOSED** — which is the reusable test for
+  // this family: an enumeration closes a complement claim exactly when something else pins the size of the
+  // set being enumerated. Where that neighbour is absent, the enumeration proves presence and nothing more.
+  //
+  // ⚠⚠ THE MISSING NEIGHBOUR NOW EXISTS, BUILT IN THE SAME STRETCH THAT NAMED THE GAP.
+  // `TenantLifecycleArchitectureTests.Tenant_read_projections_expose_exactly_their_lifecycle_contract` pins
+  // this type's members by NAME AND TYPE at exactly five. Two consequences for the residuals recorded
+  // below, and they should be read together with that test rather than in isolation:
+  //
+  //   *returns EXACTLY*   CLOSED. A sixth property reddens the pin, whatever it is called.
+  //   five of six bans    CLOSED AS CONSEQUENCES rather than as assertions — no `IQueryable`, aggregate,
+  //                       generic repository, subscription decision or authorization grant can be a sixth
+  //                       member of a set asserted to have exactly five.
+  //
+  // **The residual text below is kept as written because it is what the gap looked like from here**, and
+  // the shape of the miss is the reusable part. It is a record, not a live gap.
   //
   // ---- ONE RESIDUAL, AND IT IS A LAYER RATHER THAN A CLAUSE.
   //
@@ -292,6 +305,12 @@ public sealed class TenantLifecycleApplicationTests
   // in THIS file and only as construction (`Map`, `FakeTenantReadService`), and no test in
   // `Architecture.Tests` walks `SSAS.Platform.Application.Tenants` by namespace — the two routes by which a
   // guard would reach it, one by name and one by mechanism.
+  //
+  // ⚠⚠ BUILT, SAME STRETCH: `TenantLifecycleArchitectureTests.Tenant_read_projections_expose_exactly_their_
+  // lifecycle_contract` now pins `TenantDto`'s member names exactly and bans business-data terms across the
+  // namespace, and `AC-TEN-0004` is cited THERE. **This test still does not carry the criterion and still
+  // should not** — the two cover opposite halves of one sentence, and the reason to leave this note
+  // standing is that the name here will go on reading as though it covers both.
   public async Task Get_and_list_return_bounded_safe_projections()
   {
     var tenant = CreateTenant();

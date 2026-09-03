@@ -11,6 +11,29 @@ namespace SSAS.Architecture.Tests;
 //
 // Checked rather than assumed. `Assert.NotEmpty(files)` is what catches it, and it catches it because
 // the count is taken AFTER the pattern filter rather than before.
+//
+// ---- PLANT RECORD, `Tenant_read_projections_expose_exactly_their_lifecycle_contract`: TWO PLANTS, RUN AND
+//      REVERTED SEPARATELY, BECAUSE THAT TEST HOLDS TWO INDEPENDENT CONTROLS AND ONE RUN CANNOT SEPARATE
+//      THEM. A single plant that reddens the test proves the UNION is live and says nothing about which
+//      half did the work — and the half that stops discriminating is then invisible behind the half that
+//      still does.
+//
+//   PLANT A, THE ARITY PIN. `public string? Notes { get; init; }` added to `TenantDto` in `src/`.
+//   `Notes` matches NO term in the business-data ban, so only the exact-member-set assertion could fire.
+//   **GATE RED, exactly ONE test failed across all seven suites — this one — and the other 3,288 stayed
+//   green.** Failure was `Assert.Equal() Failure: Collections differ`, read from the TRX rather than
+//   inferred: the PIN, not the ban.
+//
+//   PLANT B, THE TERM BAN. `public string? EmployeeName { get; init; }` added to `GetTenantQuery`, which is
+//   in the guarded namespace and deliberately carries NO arity pin — on `TenantDto` the pin would have
+//   fired first and masked the result. **GATE RED, exactly ONE test failed — this one.** Failure was
+//   `Assert.Empty() Failure: Collection was not empty`: the BAN, not the pin.
+//
+//   Two plants, two different assertions, each measured alone. `git diff --quiet -- src/` clean after each.
+//
+// ⚠ WHY THE PLANTS WERE NECESSARY AND A GREEN RUN IS NOT EVIDENCE: every projection in this namespace
+// satisfies both controls today, so this test passes whether or not it can discriminate. **That is the
+// definition of the vacuity it exists to prevent, and it applies to the guard as much as to the code.**
 public sealed class TenantLifecycleArchitectureTests
 {
   [Fact]
@@ -258,6 +281,118 @@ public sealed class TenantLifecycleArchitectureTests
 
     Assert.Equal(7, eventTypes.Length);
     Assert.Empty(unsafeProperties);
+  }
+
+  // ⚠⚠⚠ THE READ PROJECTIONS HAD NO SHAPE GUARD AT ALL, AND `AC-TEN-0004`'S CLAIM IS ENTIRELY ABOUT SHAPE.
+  //
+  // *"Get and bounded list queries ‖ return safe lifecycle projections and NO TENANT BUSINESS DATA."*
+  // `TenantLifecycleApplicationTests.Get_and_list_return_bounded_safe_projections` establishes everything
+  // BEFORE the bar — page 0 and size 101 are both refused — and nothing after it, because `Map` in that
+  // same file BUILDS the dto its fake returns, so the test asserts its own arrangement. **A test that
+  // verifies the criterion's SUBJECT is not weak evidence for its PREDICATE; it is no evidence for it**, and
+  // that test's name contains every one of the criterion's words, which is exactly why it read as covered.
+  //
+  // The absence was searched two ways before building this: `TenantDto` appeared in `tests/` only in that
+  // one file and only as construction, and no test in this project walked `SSAS.Platform.Application
+  // .Tenants` by namespace — by NAME and by MECHANISM, the two routes a guard could have reached it.
+  //
+  // ---- WHY A TERM BAN ALONE WOULD HAVE REPRODUCED THE DEFECT IT IS MEANT TO CATCH.
+  //
+  // `Tenant_events_contain_only_safe_lifecycle_values` above is the idiom: a term regex AND an arity pin.
+  // The pin is the load-bearing half. **A ban list is a claim about the names you thought of; the criterion
+  // says NO business data, which is a claim about the COMPLEMENT** — and a complement claim is closed by
+  // enumeration only when something else pins the SIZE of the set being enumerated. Ban `Employee` and a
+  // `PrimaryContactSalary` walks straight through.
+  //
+  // So the two assertions do different jobs and both are needed: the exact member sets close the criterion
+  // for the projections that EXIST, and the term ban covers a projection ADDED to this namespace tomorrow,
+  // which no member set can anticipate.
+  //
+  // ⚠ THE TWO PINS ARE DELIBERATELY DIFFERENT IN STRENGTH. `TenantDto` pins NAMES: `AC-TEN-0004` asks what
+  // is EXPOSED, and a `TenantCode` that changes representation is not a business-data question. The
+  // eligibility result pins NAME AND TYPE, because `AC-TEN-0016` says *returns EXACTLY* — a contract shape
+  // rather than a field list.
+  //
+  // ⚠⚠ AND THAT SECOND PIN CLOSES A RESIDUAL RECORDED ONE COMMIT AGO. `Eligibility_is_derived_exactly_and_
+  // has_no_name` asserts five members PRESENT; nothing asserted they were the ONLY five, so a sixth property
+  // passed every line there unless its name contained `Name`. It also carried ONE of that criterion's six
+  // bans. **With the set pinned exactly, the other five bans stop being assertions and become CONSEQUENCES**
+  // — no `IQueryable`, aggregate, generic repository, subscription decision or authorization grant can be a
+  // sixth member of a set asserted to have exactly five. One pin, five bans discharged.
+  //
+  // ⚠⚠⚠ PLANTED TWICE, SEPARATELY, BECAUSE A SHARED FLOOR OVER A UNION HIDES ONE MEMBER COLLAPSING.
+  // See the plant record above the class for what each reddened.
+  [Fact]
+  [Trait("Acceptance", "AC-TEN-0004")]
+  [Trait("Acceptance", "AC-TEN-0016")]
+  public void Tenant_read_projections_expose_exactly_their_lifecycle_contract()
+  {
+    var projections = typeof(TenantDto).Assembly.GetTypes()
+      .Where(type => type.IsPublic && type.Namespace == "SSAS.Platform.Application.Tenants")
+      .ToArray();
+
+    // MEMBERSHIP CONTROL. Without it the ban below passes over a namespace that was renamed or emptied.
+    Assert.Contains(typeof(TenantDto), projections);
+    Assert.Contains(typeof(TenantAuthenticationEligibilityResult), projections);
+
+    // ---- THE ARITY PINS. These are what make *no business data* and *exactly* mean anything.
+    Assert.Equal(
+      [
+        "CreatedBy",
+        "CreatedUtc",
+        "ModifiedBy",
+        "ModifiedUtc",
+        "RowVersion",
+        "Status",
+        "StatusChangeReasonCode",
+        "StatusChangedBy",
+        "StatusChangedUtc",
+        "TenantCode",
+        "TenantId",
+        "TenantName"
+      ],
+      typeof(TenantDto).GetProperties().Select(property => property.Name).Order(StringComparer.Ordinal));
+
+    Assert.Equal(
+      [
+        "Exists:Boolean",
+        "IsAuthenticationEligible:Boolean",
+        "TenantAuthenticationIneligibilityReason:TenantAuthenticationIneligibilityReason",
+        "TenantId:Guid",
+        "TenantStatus:TenantStatus?"
+      ],
+      typeof(TenantAuthenticationEligibilityResult).GetProperties().Select(Describe).Order(StringComparer.Ordinal));
+
+    // ---- THE TERM BAN, WHICH COVERS THE PROJECTION THAT DOES NOT EXIST YET.
+    var properties = projections.SelectMany(type => type.GetProperties()).ToArray();
+    Assert.NotEmpty(properties);
+
+    const string TenantBusinessData =
+      "Employee|Department|Position|Branch|Company|Payroll|Attendance|Journal|Ledger|Account|Invoice|" +
+      "Salary|Subscription|Billing|Credential|Password|Token|Claim|Secret";
+
+    // ⚠ THE MATCHER CONTROL. Every name on the right is a real property in this namespace today, and every
+    // one of them is legitimate lifecycle metadata — the ban has to let all of them through.
+    Assert.Matches(TenantBusinessData, "EmployeeCount");
+    Assert.Matches(TenantBusinessData, "BillingContact");
+    Assert.DoesNotMatch(TenantBusinessData, "TenantCode");
+    Assert.DoesNotMatch(TenantBusinessData, "StatusChangeReasonCode");
+    Assert.DoesNotMatch(TenantBusinessData, "IsAuthenticationEligible");
+    Assert.DoesNotMatch(TenantBusinessData, "StatusChangedBy");
+    Assert.DoesNotMatch(TenantBusinessData, "RowVersion");
+
+    Assert.Empty(properties
+      .Where(property => Regex.IsMatch(
+        property.Name, TenantBusinessData, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+      .Select(property => $"{property.DeclaringType?.Name}.{property.Name}"));
+
+    static string Describe(PropertyInfo property)
+    {
+      var underlying = Nullable.GetUnderlyingType(property.PropertyType);
+      return underlying is null
+        ? $"{property.Name}:{property.PropertyType.Name}"
+        : $"{property.Name}:{underlying.Name}?";
+    }
   }
 
   // ==================================================================================================

@@ -194,7 +194,39 @@ public sealed class LocalizationResolverTests
     Assert.Equal(2, calls);
   }
 
+  // ⚠ CITES `AC-LOC-0059` IN FULL — *"After 60 SECONDS from last successful SQL validation, Tenant
+  // overrides are EXCLUDED and health/telemetry reports DEGRADATION."* Both halves at `:229-232`: the
+  // source drops from `TenantOverride` to `SystemDefault`, and `Diagnostics.DegradedTenants` records the
+  // tenant. **Neither alone is the criterion** — silently serving defaults without reporting is the
+  // failure this sentence exists to prevent, and reporting while still serving stale overrides is the
+  // other one.
+  //
+  // ⚠⚠ THE 60 IS CROSSED IN TWO STEPS AND THAT IS WHAT MAKES IT A BOUND RATHER THAN A DELAY. At `:224` the
+  // version reader starts FAILING and 16s later the override is STILL SERVED — grace holds. At `:229` a
+  // further 45s takes it to 61s since the last success and the override is dropped. **A test that only
+  // advanced past 60 would show exclusion without showing that anything was tolerated first**, and a grace
+  // period that never granted grace would satisfy it.
+  //
+  // ⚠ ALSO CITES `AC-LOC-0019` FOR THREE OF ITS FOUR BOUNDS — *"Version revalidation/eviction observes
+  // 15s/30s/5m/60s bounds and never crosses Tenant/culture."*
+  //
+  //   **15s** `:206-216` — at 14s the version reader is NOT called again (`Calls` still 1); at 16s it is
+  //           (`Calls` 2) and the new version is picked up. The pair is the bound; either row alone is a
+  //           statement about caching.
+  //   **5m**  `:219-222` — absolute lifetime, the override re-read even though the version had not moved.
+  //   **60s** `:224-232` — as above.
+  //
+  // ⚠⚠ THE RESIDUALS, AND THE FIRST MAY NOT BE ASSERTABLE AT ALL. **30s is not exercised here.**
+  // `decisions-approved.md:37` calls it *healthy expected STALENESS* rather than a trigger — it describes
+  // how stale a healthy answer may be, not an action the code takes — so it may have no observable
+  // behaviour to assert. Recorded as unexercised rather than as a gap, because I have not established that
+  // a mechanism exists for it.
+  //
+  // **And *never crosses Tenant/culture* is not here**: it is `Cache_keys_are_tenant_complete_and_
+  // incompatible_overrides_fall_back`, cited for `AC-LOC-0004`. Same clause, two criteria, one test.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0059")]
+  [Trait("Criterion", "AC-LOC-0019")]
   public async Task Version_revalidation_expiry_failure_grace_and_recovery_use_fake_time()
   {
     var fixture = new ResolverFixture(TenantId, TenantStatus.Active);

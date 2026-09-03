@@ -215,6 +215,16 @@ public sealed class LocalizationPrimitiveTests
   // ⚠⚠ AND IT INHERITS THE SAME HALF-COVERED PAIR, ONE LEVEL UP: `0058` also says *512/4000*, so even its
   // domain leg is only half-exercised. **Two criteria state the same compound literal and neither has a
   // 4000 boundary anywhere in the repository.**
+  //
+  // ⚠ WHAT THAT PAIR IS **NOT** EVIDENCE OF, CHECKED RATHER THAN ASSUMED. `git log -S "512/4000"` over
+  // `acceptance-criteria.md` returns **ONE commit** — `49864b9 docs(localization): approve FP-004 feature
+  // package`. **Both criteria came from a single drafting pass, so they are ONE data point and not two
+  // independent authors converging.** The corroboration a reader might infer from *two criteria say it* is
+  // not there.
+  //
+  // **The finding survives the correction and is narrower than it first looked: the 4000 boundary is absent
+  // from this repository and is required by two criteria. That is a fact about 4000** — not evidence that
+  // compound literals go half-covered in general, which would need a sample nobody here has.
   [Fact]
   [Trait("Criterion", "AC-LOC-0008")]
   public void Text_validation_uses_utf16_boundaries_and_preserves_input()

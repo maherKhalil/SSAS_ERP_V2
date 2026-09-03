@@ -25,7 +25,30 @@ namespace SSAS.API.Tests.Infrastructure;
 [Collection(HostIntegrationTestGroup.Name)]
 public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
 {
+  // ⚠ CITES `AC-IAM-0008` — *"Every tenant-scoped token contains EXACTLY ONE VALID tenant claim."* `:51`
+  // carries both halves of that in one assertion, and the choice of `Assert.Single` is the citation:
+  //
+  //   EXACTLY ONE   `Assert.Single(claims, predicate)` fails on ZERO and on TWO. `Assert.Contains` would
+  //                 pass with a second, contradictory `tenant_id` in the token — which is the forgery
+  //                 shape the criterion exists to exclude, and the one a reader assumes is covered.
+  //   VALID         the predicate compares the VALUE to the tenant the caller asked for, so a token
+  //                 carrying exactly one claim naming a DIFFERENT tenant fails too.
+  //
+  // **`Assert.Single` with a predicate is doing two jobs and looks like one.** Weakening it to `Contains`
+  // during a tidy-up would leave a passing test and delete the whole criterion.
+  //
+  // ⚠⚠ AND THE ANTI-VACUITY CONTROL IS THE PLATFORM PROFILE, TWO TESTS DOWN: `Assert.DoesNotContain(…
+  // TenantId …)` on a platform token, plus a theory at `:283-285` that REJECTS a platform token carrying
+  // `tenant_id` — **including when it is BLANK.** So *exactly one* here is a real constraint rather than a
+  // description of a claim set that always looks the same: the same infrastructure is proved to emit ONE
+  // in one profile and NONE in the other. **Neither alone distinguishes a working rule from a fixed
+  // template.**
+  //
+  // Not cited: everything else in this test — RS256, the kid, the fifteen-minute lifetime, the 8 KB cap,
+  // role and permission ordering and de-duplication. Those are `FP-002`'s subject and several already
+  // carry `AC-AUTH` ids elsewhere in this file.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0008")]
   public void Access_token_issuer_emits_rs256_known_kid_and_exact_trusted_bindings()
   {
     using var scope = factory.Services.CreateScope();

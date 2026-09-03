@@ -7,6 +7,28 @@ using SSAS.Platform.Domain.ValueObjects;
 
 namespace SSAS.Platform.Tests.IdentityAccess;
 
+// ⚠⚠ `AC-IAM-0023` IS UNCOVERED AS A UNIVERSAL, AND THIS FILE IS WHY IT LOOKS COVERED.
+//
+// *"EVERY security-sensitive change records UTC timestamp and authenticated actor."* Every mutating call
+// below passes `"actor"`, a `Guid` event id and `Now` — `AssignPermission`, `AssignRole`, `RemoveRole`,
+// `Deactivate`, `Retire`. **So the parameters are exercised everywhere and the UNIVERSAL is asserted
+// nowhere.** No test here reads back a stamped timestamp or actor, and none establishes that a mutation
+// which took neither could not exist.
+//
+// ⚠ SAME SHAPE AS `AC-IAM-0024` (*no secret in ANY log*), which is recorded in `AuthenticationSecurity
+// Tests`: **a universal over an open population — every security-sensitive change that exists or will.**
+// A behavioural test can only reach the mutations it calls, so the instrument that fits is STRUCTURAL —
+// *every mutating domain method takes an actor and a timestamp*, checkable by reflection over method
+// signatures rather than by driving them.
+//
+// Searched for that guard by mechanism across `Architecture.Tests`: `OccurredUtc|IDomainEvent|ActorId`
+// matches 26 files, none asserting an audit-stamp universal, and `PersistenceArchitectureTests` carries
+// no audit-field assertion at all — though `PersistenceDbContext.ApplyPersistenceRules` is where the
+// stamping actually happens. **The mechanism exists and has no guard over it.**
+//
+// Recorded rather than built, for the reason `AC-IAM-0024` was: the exemptions are the expensive part —
+// a reflection sweep demanding an actor parameter would redden every legitimate parameterless transition
+// — and enumerating them is a separate item.
 public sealed class IdentityAccessDomainTests
 {
   private static readonly DateTimeOffset Now = new(2026, 7, 31, 12, 0, 0, TimeSpan.Zero);

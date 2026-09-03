@@ -27,7 +27,8 @@ public sealed class LocalizationAdministrationTemplateTests
   // ⚠⚠⚠ AND THE ASSERTION IS THE RIGHT ONE FOR *NO INTERPOLATION*, WHICH IS EASY TO GET BACKWARDS: it
   // checks the brace SURVIVES. A test asserting some interpolated output would prove the opposite property
   // while reading as though it proved this one — the criterion wants the template UNRESOLVED, because an
-  // administrator editing a resource must see `{fieldName}` and not a sample value.
+  // administrator editing a resource must see `{fieldName}` and not a sample value. **The last three lines
+  // of the test carry that direction structurally; see the note there for why the equalities alone cannot.**
   [Fact]
   [Trait("Criterion", "AC-LOC-0042")]
   [Trait("Criterion", "AC-LOC-0043")]
@@ -71,6 +72,41 @@ public sealed class LocalizationAdministrationTemplateTests
     Assert.True(detail.IsSuccess);
     Assert.Equal("{fieldName} is required.", detail.Value.Resource.EffectiveValue);
     Assert.Equal(["fieldName"], detail.Value.Resource.Placeholders);
+
+    // ⚠⚠⚠ THE DIRECTION-CARRYING LEG. Nothing above it can say WHICH WAY the property points: every
+    // assertion so far is an equality against a literal, and the interpolated form `"Email is required."`
+    // would sit in exactly the same `Assert.Equal` and prove the OPPOSITE. The direction lives in the
+    // expected VALUE, and a value is data, not structure.
+    //
+    // ⚠ `Placeholders` at the line above does NOT rescue it. `Map` passes `definition.Placeholders.Names`
+    // — the CATALOG DEFINITION's declared set — while `EffectiveValue` is `effective.Text` off the
+    // resolver. The two never touch, so `["fieldName"]` would still hold for an interpolated value.
+    //
+    // So: drive the SAME resolver at the SAME key through its OTHER entry point. `ResolveTemplate*`
+    // and `Resolve*` differ ONLY by `formatPlaceholders`, and the administration handlers take the
+    // template pair. Both candidate strings are now present and each is labelled by the entry point
+    // that produced it, and the administration value is the one the FORMATTER DID NOT RETURN.
+    //
+    // ⚠⚠ THE TWO LEGS BELOW CARRY DIFFERENT THINGS, AND A PLANT SAID SO — I HAD CREDITED THE WRONG ONE.
+    // Planting `formatPlaceholders` to a constant `false` (the formatting path silently degrading to the
+    // template path) left the three equalities above GREEN and failed on the `Assert.Equal` here. So:
+    //
+    //   `Assert.Equal("Email is required.", …)` is an ANTI-VACUITY CONTROL, and it is the leg with
+    //   detection power. *The administration path does not interpolate* is only a property if something
+    //   else DOES; were the formatter to stop formatting, the criterion would hold VACUOUSLY and nothing
+    //   above would notice.
+    //
+    //   `Assert.NotEqual(…)` carries LEGIBILITY ONLY. It cannot be the first failure under any
+    //   wrong-direction implementation: whichever of the two strings moves, an earlier equality already
+    //   pins it. It is here so a reader can see the two candidates contrasted — not because it catches
+    //   anything the others miss.
+    var interpolated = await resolver.ResolveAsync(new LocalizationResolutionRequest(
+      "platform.common.validation.required",
+      "en",
+      new Dictionary<string, string>(StringComparer.Ordinal) { ["fieldName"] = "Email" }));
+    Assert.True(interpolated.IsSuccess);
+    Assert.Equal("Email is required.", interpolated.Value.Text);
+    Assert.NotEqual(interpolated.Value.Text, detail.Value.Resource.EffectiveValue);
   }
 
   private sealed class TestCurrentTenant(Guid tenantId) : ICurrentTenant

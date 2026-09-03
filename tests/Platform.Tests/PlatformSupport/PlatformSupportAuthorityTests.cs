@@ -232,6 +232,13 @@ public sealed class PlatformSupportAuthorityTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0042")]
+  // ⚠ THE TRAIT ABOVE WAS MISSING FOR SEVERAL COMMITS WHILE THIS COMMENT CLAIMED THE CITATION. **A comment
+  // naming a criterion with no trait beside it is exactly the mention-versus-trait defect this pass removed
+  // from the coverage table** — a text census counts it as covered, a trait census counts it as uncited, and
+  // both are wrong. I committed it after identifying it, which is the strongest argument for the trait being
+  // the citation: **the prose looked complete and carried nothing.**
+  //
   // `AC-TEN-0042`'s FIRST SENTENCE — *"Status mutations use the principal `RowVersion` (a STALE VERSION IS A
   // CONFLICT)."* The stale-version gate is the third of the three this test walks.
   //

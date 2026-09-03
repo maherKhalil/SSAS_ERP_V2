@@ -64,6 +64,18 @@ public sealed class PlatformPermissionAuthorizationArchitectureTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0068")]
+  // ⚠ THE TRAIT IS NEW; THE CITATION WAS ALREADY HERE IN PROSE. The comment below has named `AC-TEN-0068`
+  // since it was written, and the assertions are the criterion verbatim — *"No `SecurityVersion` is added to
+  // `PlatformSupportPrincipal`"*. **A trait census reported this criterion uncited for as long as it has
+  // existed, and a text census reported it covered; the assertions were right the whole time.** Found by
+  // auditing my OWN identical slip on `AC-TEN-0042` two commits ago, which is the only reason anyone looked.
+  //
+  // ⚠⚠ AND THE EXISTING ANTI-VACUITY NOTE (258) IS THE SHARPEST IN THIS FILE: the assertions are bound to
+  // `nameof(AuthenticationAccount.SecurityVersion)` — the tenant-plane account that DOES carry the version —
+  // because `GetProperty`/`GetField` return null for a member that is ABSENT **and** for one that is
+  // MISSPELT. **A bare string would have asserted nothing a typo could not satisfy**, which is the same
+  // failure as a matcher that matches nothing, arriving in an absence assertion instead of a ban.
   public void Platform_support_principal_has_no_security_version_member()
   {
     // L4: principal status is a separate platform-plane state; the principal carries no SecurityVersion, so a

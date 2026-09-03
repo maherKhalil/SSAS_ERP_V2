@@ -227,12 +227,23 @@ public sealed class PlatformAuthenticationSessionSqlServerTests
   // HTTP in `PlatformSupportAuthenticationEndToEndTests.A_platform_refresh_cookie_presented_under_the_
   // tenant_cookie_name_is_refused`, same trait.**
   //
-  // ⚠⚠ AND THE FIRST DIRECTION IS CARRIED BY CLASS MEMBERSHIP RATHER THAN BY AN EXERCISED CASE. That HTTP
-  // test presents a RANDOM foreign token in the platform cookie, and the last line here shows the platform
-  // repository returns null for an unknown id — **so "a tenant refresh token" is covered as an instance of
-  // "a token not in the platform store", not as itself.** A real tenant refresh token is never presented to
-  // the platform route anywhere I have read. The reasoning is sound and the criterion names the tenant case
-  // specifically, so it is recorded rather than assumed.
+  // ⚠⚠ THE FIRST DIRECTION IS CARRIED BY CLASS MEMBERSHIP, AND I FIRST NAMED THE WRONG MECHANISM FOR IT.
+  // I wrote that a tenant token is covered as an instance of *"a token not in the platform store"*. **The
+  // platform refresh route never reaches the store in that scenario.** `AuthenticationCsrfService.TryValidate`
+  // rejects first, and it rejects on `parsed.RefreshTokenPublicId != refreshPublicId` — **the CSRF cookie
+  // must name the SAME public id as the presented refresh token.**
+  //
+  // ***SO A REAL TENANT REFRESH TOKEN AND A RANDOM FORMAT-VALID ONE TAKE IDENTICAL PATHS AND FAIL AT THE
+  // IDENTICAL COMPARISON***: both parse to a public id, neither matches the platform CSRF payload, both get
+  // 403 `authentication.request_rejected`. **Class membership is genuine here, and it is genuine for a
+  // stronger reason than I gave** — not *the store does not contain it* but *the route never asks the
+  // store*. A real tenant token travels no further than a random one.
+  //
+  // ⚠ AND THAT IS THE ALLOW-LIST QUESTION ANSWERED THE OTHER WAY. With `AC-TEN-0079` the implementation
+  // discriminated at ONE point, so an unknown field tested the whole class and a named one tested less.
+  // Here the implementation also discriminates at one point — CSRF public-id binding — **so the named case
+  // and the class instance are the same experiment.** ***WHETHER A CLASS INSTANCE SUBSTITUTES FOR A NAMED
+  // CASE DEPENDS ENTIRELY ON WHERE THE IMPLEMENTATION DISCRIMINATES, AND THAT IS READABLE, NOT GUESSABLE.***
   public async Task Platform_refresh_token_is_invisible_to_the_tenant_session_repository()
   {
     await using var database = await PlatformSessionSqlDatabase.CreateAsync();

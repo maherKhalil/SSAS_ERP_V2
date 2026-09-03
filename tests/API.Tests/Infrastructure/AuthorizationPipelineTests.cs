@@ -97,11 +97,33 @@ public sealed class AuthorizationPipelineTests : IAsyncLifetime
     Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
   }
 
+  // ⚠ CITES `AC-IAM-0021`'s FIRST HALF — *"A suspended tenant cannot receive normal application access"* —
+  // AND IT IS A CROSS-PACKAGE CITATION, WHICH NEEDS ITS GROUNDS STATED HERE RATHER THAN INFERRED.
+  // Tenant suspension is `FP-003` lifecycle behaviour and this is an `FP-003`-shaped test; `FP-001` carries
+  // a criterion about it because IAM's subject is the ACCESS CONSEQUENCE, not the transition. **A trait
+  // claims EVIDENCE, not OWNERSHIP** — duplicating a suspension test into the IAM directory to make a
+  // per-package sweep tidy would buy a second maintenance site and no new assurance.
+  //
+  // ⚠⚠ WHOEVER MAINTAINS THIS FILE HAS NO OTHER WAY TO KNOW AN `FP-001` CRITERION NOW RESTS ON IT. That is
+  // the real cost of citing across packages, and this comment is the compensator: a bare trait is a claim
+  // with its grounds elsewhere, and a future simplification that narrowed these rows would silently delete
+  // the only evidence for an IAM criterion.
+  //
+  // ⚠⚠⚠ ADJACENT-SCOPE CHECKED, BECAUSE THE NAME IS A SUPERSET AND THE CRITERION IS NOT. *Non_active_or_
+  // missing* names a class; `AC-IAM-0021` is SUSPENSION-SPECIFIC. **`TenantStatus.Suspended` is its own
+  // `[InlineData]` row**, so the criterion is carried by an exercised case and NOT by reasoning that
+  // Suspended is a member of the class. Had the rows been `Provisioning`/`Archived`/`null` only, this
+  // citation would have been exactly the defect it is meant to record.
+  //
+  // The criterion's SECOND half — *"or new tenant-scoped tokens"* — is not here: this asserts a route
+  // returns 403, never that issuance is refused. `TenantLifecycleApplicationTests` and
+  // `TenantLifecycleDomainTests` carry the eligibility side.
   [Theory]
   [InlineData(TenantStatus.Provisioning)]
   [InlineData(TenantStatus.Suspended)]
   [InlineData(TenantStatus.Archived)]
   [InlineData(null)]
+  [Trait("Criterion", "AC-IAM-0021")]
   public async Task Non_active_or_missing_tenant_is_rejected(TenantStatus? status)
   {
     TenantEligibility.Status = status;
@@ -115,7 +137,17 @@ public sealed class AuthorizationPipelineTests : IAsyncLifetime
     Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
   }
 
+  // ⚠ ALSO CITES `AC-IAM-0021`'s FIRST HALF, AND IT IS THE STRONGER OF THE TWO. The theory above proves a
+  // suspended tenant is refused; this proves an ALREADY-ISSUED token stops working the moment the tenant is
+  // suspended — which is what *"cannot receive normal application access"* means for a caller who was
+  // legitimately admitted a second earlier. **Refusing new access and revoking existing access are different
+  // properties, and the criterion needs the second.**
+  //
+  // ⚠⚠ This one is suspension-specific by construction — no class name, no theory rows, `TenantStatus
+  // .Suspended` set directly — so there is no adjacent-scope question to answer for it. Cross-package for
+  // the same reason stated on the theory above.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0021")]
   public async Task Already_issued_token_is_immediately_rejected_after_tenant_suspension()
   {
     using var request = CreateAuthorizedRequest(

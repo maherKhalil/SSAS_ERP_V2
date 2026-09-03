@@ -203,7 +203,23 @@ public sealed class PersistenceArchitectureTests
     Assert.Empty(matches);
   }
 
+  // ⚠ CITES `AC-IAM-0017` — *"No API or domain operation physically deletes a user."* The criterion is a
+  // CAPABILITY claim, and a capability that does not exist is what makes *cannot* true, so a source-shape
+  // ban is the right instrument rather than a behavioural one — there is no delete to call.
+  //
+  // ⚠⚠ THE SCOPE IS NARROWER THAN THE CRITERION AND THE GAP IS NAMED: this walks `src/Platform/` only. The
+  // criterion says *no API or domain operation*, and a delete introduced in a module assembly that reached
+  // a Platform user would not be seen here. **Cited for the Platform half, which is where the user
+  // aggregate lives.**
+  //
+  // ⚠⚠⚠ AND THIS FILE IS WHERE `FP-001`'s ROW 27 RESOLVES — the row whose acceptance cell reads
+  // *"architecture constraints"* and names no criterion at all. Its three scenarios are real and all three
+  // are tested: `TS-IAM-0046` (Domain/Application EF-free) by `Domain_and_application_declare_no_ef_core`
+  // above, `TS-IAM-0047` (no generic repository) by the test above this one, and `TS-IAM-0048` (Platform
+  // does not depend on HR or GL) by `ModulePermissionContributionArchitectureTests`. **The row is honest and
+  // simply is not an acceptance row; `NFR-IAM-0302`/`0303` are its real subjects.**
   [Fact]
+  [Trait("Criterion", "AC-IAM-0017")]
   public void Platform_identity_access_has_no_physical_delete_operation()
   {
     var files = ProductionSourceFiles();

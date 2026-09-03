@@ -18,7 +18,33 @@ namespace SSAS.Integration.Tests;
 
 public sealed class PlatformIdentityAccessSqlServerBehaviorTests
 {
+  // ⚠ CITES `AC-IAM-0005` IN FULL — *"The same email cannot be added twice IN ONE TENANT but MAY EXIST IN
+  // ANOTHER TENANT."* Both clauses, and the second is the one that makes the first a scoping rule rather
+  // than a global ban:
+  //
+  //   `Case.User@Example.com` in tenant one          → saved
+  //   `case.user@example.com` in tenant one          → `Persistence.UniqueConstraint`
+  //   `case.user@example.com` in tenant TWO          → saved
+  //
+  // **A test with only the first two legs is satisfied by a globally unique email column, which violates
+  // the criterion in the direction nobody would notice until a second customer arrived.**
+  //
+  // ⚠⚠ AND THE DUPLICATE DIFFERS ONLY IN CASE, WHICH IS NOT IN THE CRITERION AT ALL. The sentence says
+  // *"the same email"* and leaves *same* undefined; this pins it to the NORMALIZED form, so
+  // `Case.User@…` and `case.user@…` are one email. **That is a design decision the criterion does not
+  // record, and this test is where it lives** — pick two addresses differing in more than case and the
+  // citation still passes while the decision stops being observed.
+  //
+  // ⚠⚠⚠ NOTE THE CONVERSE IS ASSERTED TWO STATEMENTS AWAY AND POINTS THE OTHER WAY: `Platform.Users.View`
+  // and `platform.Users.View` are assigned to one role and **BOTH SURVIVE** (`:64-67`, count of 2).
+  // **Permission names are ORDINAL; emails are NORMALIZED — the same file deliberately holds both, and a
+  // reader who generalises either one across the other gets it backwards.**
+  //
+  // ⚠ THIS TEST RUNS ONLY UNDER `GATE_SCOPE=PHASE`. The citation was written from reading, and the trait
+  // and comment are inert; but nothing in the TASK loop has executed this file, so the citation rests on
+  // the last PHASE run rather than on an observation of mine.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0005")]
   public async Task Exact_identifiers_and_per_tenant_normalized_uniqueness_are_enforced()
   {
     await using var database = await SqlTestDatabase.CreateAsync();

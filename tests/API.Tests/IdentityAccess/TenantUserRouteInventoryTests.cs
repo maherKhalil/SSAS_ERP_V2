@@ -22,6 +22,30 @@ namespace SSAS.API.Tests.IdentityAccess;
 // `CreateTenantUserMembership`, `SetTenantUserBranches` — **exist, are tested, and are named nowhere in
 // `SSAS.Platform.API`.**
 //
+// ---- ⚠⚠⚠ CORRECTION: *ARE TESTED* IS TRUE OF TWO OF THOSE FIVE, NOT OF ALL FIVE.
+//
+// Measured by CONSTRUCTION SITE across `tests/` — the completable search, since a handler must be named to
+// be built:
+//
+//   `CreateTenantUserMembershipCommandHandler`   constructed in `IdentityAccessApplicationTests`      ✓
+//   `SetTenantUserBranchesCommandHandler`        constructed in `TenantBranchLifecycleSqlServerTests`  ✓
+//   `ListTenantUsersQueryHandler`                NO TEST NAMES IT
+//   `GetTenantUserByIdQueryHandler`              NO TEST NAMES IT
+//   `UpdateTenantUserProfileCommandHandler`      NO TEST NAMES IT
+//
+// **So three of the five are neither routed NOR constructed by any test.** *Exists* is the part that
+// holds; *is tested* was the part nobody checked, and it is the sentence that makes the gap look safe.
+//
+// ⚠⚠ AND THAT MATTERS BEYOND THE INVENTORY: `AC-IAM-0001` — *"A tenant administrator sees only users from
+// the current tenant"* — IS UNCOVERED. Its subject is the listing, the listing has no route, and
+// `ListTenantUsersQueryHandler` is on no executed path. **The tenant-scoping of that query is asserted by
+// nothing.**
+//
+// ⚠ This repository's own prior applies and is why the correction is worth the lines: the two read
+// services no test ever constructed were the two carrying live defects, one of them a financial report
+// that threw on every call. **Stated as a prior. I have not read these three handlers and am not claiming
+// a defect — only that nothing would find one.**
+//
 // **That is recorded here rather than fixed**: building the read surface is a feature. The inventory's job
 // is to make the gap legible to whoever picks it up, and a list of four POSTs with no GET is the clearest
 // statement of it that exists anywhere in the tests.

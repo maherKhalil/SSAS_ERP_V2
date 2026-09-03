@@ -106,7 +106,23 @@ public sealed class PlatformLocalizationRouteInventoryTests(HostWebApplicationFa
     Assert.Equal(expected, actual);
   }
 
+  // ⚠ CITES `AC-LOC-0062`'s FIRST CLAUSE — *"All nine M2 routes are NON-ANONYMOUS."* `:137` asserts
+  // `HasAuthorization` for every route in the inventory, and `LocalizationEffectiveApiTests` deliberately
+  // does NOT carry this clause: its authentication theory enumerates the TWO effective routes by hand,
+  // which cannot speak for a set of nine.
+  //
+  // ⚠⚠ THE POPULATION HERE IS PINNED RATHER THAN LISTED. `The_platform_localization_route_surface_is_
+  // exactly_the_documented_inventory` asserts SET EQUALITY between `Expected` and the live route table, so
+  // a tenth route cannot appear without reddening — which is what makes a per-row loop over `Expected` a
+  // claim about the whole surface instead of about a hand-written list.
+  //
+  // ⚠⚠⚠ AND THE SEPARATION AT `:132-137` IS WHY THIS CLAUSE AND CLAUSE 3 CAN BOTH BE TRUE. *Permit an
+  // Active trusted Tenant WITHOUT View* means two rows legitimately carry no permission — and a route that
+  // lost `.RequireAuthorization()` entirely ALSO reports a null policy. **Checking presence separately, and
+  // first, is what distinguishes *authenticated with no permission* from *not authorized at all*.** A single
+  // policy comparison would have made the anonymous route indistinguishable from the intended one.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0062")]
   public void Every_route_requires_the_permission_the_inventory_names()
   {
     // ---- THE PROPERTY THE SET COMPARISON CANNOT SEE.

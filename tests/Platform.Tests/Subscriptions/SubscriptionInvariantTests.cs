@@ -105,11 +105,48 @@ public sealed class SubscriptionInvariantTests
   // `A_limit_grant_above_the_plan_cap_is_accepted` below is the anti-vacuity control: without it, a
   // `RaiseLimit` that refused everything satisfies both rows.
   //
-  // ⚠⚠ THE CLAUSE THIS TEST DOES **NOT** CARRY: *"with an error NAMING THE PLAN'S VALUE."* It asserts the
-  // error IS `GrantWouldNotRaise` and never inspects its message for `100`. **An operator who submits 100
-  // against a cap of 100 gets a refusal that does not tell them what the cap is** — and the criterion asked
-  // for that specifically, so it is a dropped clause rather than an unstated nicety. Recorded, not fixed:
-  // asserting message content is a different decision about error contracts.
+  // ⚠⚠⚠ THE CLAUSE THIS TEST DOES **NOT** CARRY IS NOT A TEST GAP. IT IS A PRODUCT GAP, AND IT IS
+  // STRUCTURAL. *"…refused at write, WITH AN ERROR NAMING THE PLAN'S VALUE."*
+  //
+  // `TenantEntitlementGrant.RaiseLimit` returns `SubscriptionErrors.GrantWouldNotRaise`, which is a
+  // `static readonly Error` built once at type load:
+  //
+  //   "An entitlement grant may only raise a limit above the plan's value; it may never lower one."
+  //
+  // **It names the plan's value the way a sentence names a variable — it does not CARRY it.** The instance
+  // is shared by every refusal and takes no parameters, so **it cannot vary with `planLimitValue` at all**.
+  // An operator submitting 100 against a cap of 100 is told the rule and not the number.
+  //
+  // ⚠ SO THE CLAUSE IS UNSATISFIABLE WITHOUT A `src/` CHANGE — a parameterised error, or detail added at
+  // the transport boundary — **and that is a decision for the owner, not a test to write.** Recorded here
+  // rather than asserted, because a test demanding `100` in the message would fail on correct-as-built code
+  // and would be a proposal wearing a test's clothes.
+  //
+  // ⚠⚠⚠ AND *"REFUSED AT WRITE"* HAS A SECOND PROBLEM THAT SUBSUMES THE FIRST: **THERE IS NO WRITE.**
+  // `TenantEntitlementGrant` has exactly two factories — `GrantModule` and `RaiseLimit` — and searching
+  // `src/` for both names plus `new TenantEntitlementGrant` finds **only their own declarations and three
+  // comments about them.** No command handler, no endpoint, nothing in Application or API. **The only
+  // callers in the repository are four test files**, this one among them.
+  //
+  // The type IS persisted and IS read — `TenantEntitlementGrantConfiguration`, the migrations, and
+  // `TenantEntitlementReader` are all real — so grant rows can exist and be resolved. **They just cannot be
+  // created through the domain by anything that ships.**
+  //
+  // ⚠ MECHANISM, NOT NAMES: two factories and a private constructor are the complete set of ways this
+  // aggregate comes into being in C#, so the search is exhaustive over source. What it does not cover is EF
+  // materialisation and raw SQL — **which is precisely the *"however it came to exist"* path `AC-SUB-0017`
+  // names, and right now it is the ONLY path.**
+  //
+  // ⚠⚠ THAT INVERTS THE BELT-AND-BRACES READING. `SubscriptionErrors.cs` calls the write refusal *"the loud
+  // half"* of a deliberate pair. **The loud half is unreachable in production, so the resolution-side
+  // `max(plan, grants)` is not redundancy — it is the whole enforcement**, and `AC-SUB-0017`'s tests are
+  // carrying a load their own criterion describes as secondary.
+  //
+  // ⚠⚠ AND THE ERROR'S OWN DECLARATION CONFIRMS `AC-SUB-0017`'s READING: *"Resolution ALSO takes
+  // `max(plan, grants)`, so a grant that somehow named a lower value could not lower anything — the two are
+  // deliberate belt and braces, and this error is the loud half."* **The redundant enforcement is stated in
+  // the source as well as split across two criteria**, which is the opposite of the undocumented double
+  // guard found earlier tonight in the localization batch validator.
   //
   // ⚠⚠⚠ AND `AC-SUB-0017` IS A SEPARATE CRITERION, DELIBERATELY, WHICH THIS FILE'S OWN HEADING ANTICIPATES
   // — *ADDITIVE GRANTS: THE WRITE-TIME REFUSAL*. `0017` says the resolved cap is `max(plan, grants)` and

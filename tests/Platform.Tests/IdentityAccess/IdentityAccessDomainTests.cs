@@ -153,10 +153,13 @@ public sealed class IdentityAccessDomainTests
   // surrounding successes are what make that failure mean *exactly once* rather than *assignment is broken*.
   //
   // ⚠⚠ AND `AC-IAM-0014` ONLY IN PART. That criterion is *"A user may hold MULTIPLE ROLES and receives the
-  // DISTINCT UNION of their permissions"* — two clauses. **This test carries the first and says nothing
-  // about the second: no permission is assigned to either role, so no union is computed and a duplicate
-  // across roles is never exercised.** Cited for clause 1, with clause 2 named as not covered here — *union*
-  // is the clause a reader would assume from *multiple roles*, and it is the one that is absent.
+  // DISTINCT UNION of their permissions"* — two clauses. **This test carries the first: no permission is
+  // assigned to either role here, so no union is computed and a duplicate across roles is never exercised.**
+  //
+  // Clause 2 is carried by `IdentityAccessApplicationTests.Effective_permissions_use_only_active_
+  // memberships_roles_and_permission_assignments`, where two roles both grant `ViewUsers` and the resolver
+  // returns ONE entry. **Named here rather than left as an open residual, because a residual that has since
+  // been closed elsewhere is a false absence and those rot fastest.**
   //
   // ⚠⚠⚠ AND `:153-157` IS THE ANTI-VACUITY CONTROL FOR THE *EXACTLY ONCE* CLAIM, WHICH IS EASY TO MISREAD AS
   // *NEVER TWICE*: after removing the first role it is assigned AGAIN and succeeds, leaving 3 assignments of

@@ -123,7 +123,28 @@ public sealed class IdentityAccessApplicationTests
     Assert.NotNull(userRepository.Added);
   }
 
+  // ⚠ TWO CRITERIA, ONE PER LEG, AND THE THIRD LEG IS WHAT MAKES BOTH MEAN ANYTHING:
+  //
+  //   `AC-IAM-0013`  *"Only CODE-CATALOG permissions can be assigned to an eligible role."*
+  //                  `"Platform.Unknown.Read"` — well-formed, three segments, absent from the catalog —
+  //                  is refused `Permission.Invalid`. **The grammar is not the gate; MEMBERSHIP is.**
+  //   `AC-IAM-0022`  *"A stale update is rejected WITHOUT OVERWRITING NEWER DATA."* Row version `[2]`
+  //                  against a stored `[1]` yields `Persistence.ConcurrencyConflict`.
+  //
+  // ⚠⚠ `Assert.Equal(1, unitOfWork.SaveCount)` IS THE *WITHOUT OVERWRITING* HALF AND IT IS EASY TO SKIM.
+  // Three commands run and exactly ONE save happens — so the two refusals did not merely return an error,
+  // they wrote nothing. **A handler that refused and saved anyway would satisfy both error assertions.**
+  //
+  // ⚠⚠⚠ AND THE THIRD LEG IS THE ANTI-VACUITY CONTROL FOR BOTH: the same handler, a REAL catalog permission
+  // and the CORRECT row version, succeeds. Without it, a handler that rejected everything would pass this
+  // test — and both citations would be over a gate that never opens.
+  //
+  // `AC-IAM-0022` also has a prior comment citation in `TenantUserAssignmentAndConcurrencyTests` on the
+  // user-assignment path. **This is a second, independent witness on the role-permission path, not a
+  // conversion of that one.**
   [Fact]
+  [Trait("Criterion", "AC-IAM-0013")]
+  [Trait("Criterion", "AC-IAM-0022")]
   public async Task Permission_command_rejects_unknown_names_and_stale_versions()
   {
     var role = CreateRole(1);
@@ -147,7 +168,31 @@ public sealed class IdentityAccessApplicationTests
     Assert.Equal(1, unitOfWork.SaveCount);
   }
 
+  // ⚠⚠⚠ CARRIES `AC-IAM-0014`'s SECOND CLAUSE — *"…and receives the DISTINCT UNION of their permissions"* —
+  // WHICH `IdentityAccessDomainTests` EXPLICITLY RECORDS AS NOT COVERED THERE. **Both roles grant
+  // `ViewUsers`; the user holds both; the result is `[ViewUsers]` — ONE entry.** The duplicate across roles
+  // is constructed deliberately and deduplicated, which is the whole content of the word *distinct*.
+  //
+  // **That clause is the one a reader assumes from *multiple roles* and it is the one that needed finding.**
+  // The domain test carries clause 1 (a user may HOLD multiple roles); this carries clause 2.
+  //
+  // ⚠ ALSO CITES `AC-IAM-0016` — *"A deactivated user cannot obtain or refresh usable tenant access"* — AT
+  // THE PERMISSION LAYER ONLY. `:183-185` deactivates the user and the resolver returns EMPTY. **Scope
+  // stated: this is *resolves to no permissions*, not *is refused a token*.** Token issuance and refresh
+  // are `FP-002`/`FP-003` mechanisms and are not exercised here; a caller could still authenticate and
+  // would then be refused by `AC-IAM-0010`'s 403. The chain is plausible and only its first link is
+  // observed here.
+  //
+  // ⚠⚠ AND THE RETIREMENT SEQUENCE AT `:174-181` IS A DISTINCTION NO CRITERION NAMES: a role in
+  // `RetirementPending` STILL GRANTS its permissions; only `Retired` stops granting. **`AC-IAM-0019` bars
+  // NEW assignments to a pending role while existing ones keep working — two different questions about the
+  // same status, and this test is the only place the second is answered.**
+  //
+  // The removed-permission leg (`viewRoles` assigned then removed on the historical role) is the control
+  // that stops *distinct union* being satisfied by a resolver that simply returns too little.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0014")]
+  [Trait("Criterion", "AC-IAM-0016")]
   public async Task Effective_permissions_use_only_active_memberships_roles_and_permission_assignments()
   {
     var catalog = new PlatformPermissionCatalog();

@@ -151,8 +151,23 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
   // and the shared pipeline enforces policies — and behaviourally by nothing for localization.** That is
   // the declaration/realisation split again, and the reason this test is a poor citation for it: it is a
   // real assertion about a different proposition.
+  // ⚠⚠⚠ AND THE PROPER HOME IS `AC-LOC-0052`, WHICH SPLITS THE VERY DISTINCTION `0017` COLLAPSES.
+  // *"MISSING/wrong permission, ordinary user, anonymous management, Preview/Undo/Restore WITHOUT MANAGE,
+  // and history without ViewHistory are DENIED."* **`Missing` and `without Manage` are exactly what an
+  // empty token tests**, and the three rows of `MutationRequests` are the PUT, the Undo and the
+  // Restore-Default. Cited for those clauses.
+  //
+  // **The criterion separates *missing* from *wrong* in one phrase; `AC-LOC-0017` does not, which is why
+  // this test belongs to one and not the other.** Not carried from that sentence: *wrong permission*,
+  // *ordinary user*, *anonymous management*, *Preview* (not among these three routes), and *history
+  // without ViewHistory*.
+  //
+  // ⚠ `ReadinessCalls == 0` IS AN ORDERING CLAIM ON TOP OF THE DENIAL: authorization runs before the audit
+  // gate, so a caller without Manage cannot probe whether audit readiness is degraded. A route that
+  // checked readiness first would answer `503` to an unauthorized caller and leak operational state.
   [Theory]
   [MemberData(nameof(MutationRequests))]
+  [Trait("Criterion", "AC-LOC-0052")]
   public async Task Missing_manage_permission_returns_403_before_audit_readiness(string path, object body)
   {
     state.Reset();
@@ -231,7 +246,22 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
     Assert.DoesNotContain("candidate-do-not-echo", responseBody, StringComparison.Ordinal);
   }
 
+  // ⚠ CITES `AC-LOC-0051`'s *SUCCEEDS* HALF — *"Each exact permission SUCCEEDS only for its documented
+  // operations."* A `ManageLocalization` token reaches the create route and gets `Created`, with
+  // `SaveCalls == 1` and `Added` non-null so the success is a WRITE rather than a status.
+  //
+  // ⚠⚠ NOT THE WORD *ONLY*. That is the over-granting direction — Manage succeeding at something it should
+  // not — and it is the same half `AC-LOC-0017` needs and nothing supplies. **`0051` and `0052` are the
+  // specification's own positives/negatives pair, and between them they still leave *only* unwitnessed:
+  // `0052` covers denials for callers who lack a permission, `0051` covers successes for callers who hold
+  // the right one, and neither presents the WRONG one.**
+  //
+  // ⚠⚠⚠ THIS IS ALSO THE ANTI-VACUITY CONTROL FOR EVERY `403` AND `503` IN THIS FILE, AND IT IS THE ONLY
+  // ONE. Without a mutation that actually completes, a host that refused every request — wrong policy,
+  // broken route, a gate stuck closed — satisfies the audit-unavailable theory, the missing-permission
+  // theory and the inactive-tenant theory together. **Three refusal families, one positive.**
   [Fact]
+  [Trait("Criterion", "AC-LOC-0051")]
   public async Task Ready_authorized_create_continues_to_the_existing_success_contract()
   {
     state.Reset();
@@ -248,9 +278,19 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
     Assert.NotNull(state.Added);
   }
 
+  // ⚠ CITES `AC-LOC-0051`'s *SUCCEEDS* HALF FOR THE OTHER TWO OPERATIONS. The create route is covered
+  // above; *documented operations* is plural, and Undo and Restore-Default are separately documented and
+  // separately gated. **A permission that opened create and not undo would satisfy the test above
+  // completely.**
+  //
+  // ⚠⚠ AND THIS PAIRS ROW-FOR-ROW WITH `Missing_manage_permission_returns_403_before_audit_readiness`,
+  // WHICH IS WHAT MAKES EITHER MEAN ANYTHING. The same three routes appear with Manage (here and above,
+  // succeeding) and without it (there, refused). **Same routes, same bodies, one variable — so the `403`
+  // is attributable to the permission and not to the route, the body or the fixture.**
   [Theory]
   [InlineData("/api/platform/localization/resources/platform.common.actions.save/overrides/en/undo", true)]
   [InlineData("/api/platform/localization/resources/platform.common.actions.save/overrides/en/restore-default", false)]
+  [Trait("Criterion", "AC-LOC-0051")]
   public async Task Ready_authorized_existing_mutation_routes_continue_past_the_audit_gate(string path, bool undo)
   {
     state.Reset();

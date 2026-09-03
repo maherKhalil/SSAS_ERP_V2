@@ -61,6 +61,7 @@ public sealed class LocalizationDomainTests
     var aggregate = CreateOverride("v1");
     var definition = GetDefinition("platform.common.actions.save");
     var v1 = aggregate.Versions.Single().ToSnapshot();
+    var originalVersionId = aggregate.Versions.Single().Id;
     Assert.True(aggregate.RestoreDefault(
       v1, definition, "actor", Guid.NewGuid(), Now.AddMinutes(1), TenantLocalizationVersion.Create(3).Value, CatalogVersion.Create(1).Value).IsSuccess);
     var id = aggregate.Id;
@@ -80,6 +81,18 @@ public sealed class LocalizationDomainTests
     Assert.Equal("v3", aggregate.CurrentValue);
     Assert.Equal(3, aggregate.CurrentVersionNumber.Value);
     Assert.Equal(3, aggregate.Versions.Count);
+
+    // ⚠ ADDED, NOT SUBSTITUTED — the weak `Assert.Equal(id, aggregate.Id)` above is left where it is.
+    //
+    // `originalVersionId` is the ROW IDENTITY of the version written by `Create`, captured before the
+    // restore. **Its survival is what *the same aggregate* means**, and it is the one fact a restarted
+    // lineage cannot fake: a fresh aggregate would renumber from 1 and so would still satisfy any
+    // assertion about version NUMBERS, but its rows carry new identities.
+    //
+    // ⚠⚠ I FIRST WROTE THIS AS `VersionNumber.Value == 1` AND IT WAS THE SAME DEFECT AS THE LINE IT WAS
+    // MEANT TO REPAIR — a restarted aggregate has a version numbered 1 too. **The number is shared by both
+    // implementations; only the identity separates them.**
+    Assert.Contains(aggregate.Versions, version => version.Id == originalVersionId);
   }
 
   // ⚠ CITES THE SECOND CLAUSE OF `AC-LOC-0012` — *"…repeated Undo WALKS EXPLICIT LINEAGE."*

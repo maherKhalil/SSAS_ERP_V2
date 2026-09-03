@@ -305,11 +305,27 @@ public sealed class LocalizationArchitectureTests
   // { get; init; }` was added to `LocalizationMutationResult` in `src/` and reverted, `git diff -- src/`
   // clean afterwards. **EXACTLY ONE TEST REDDENED — this one — and the other 3,290 stayed green.**
   //
-  // **So nothing else in the repository notices a tenant identifier appearing on a localization
-  // projection.** That is the measurement the citation rests on: before this test, the outbound half of
-  // `AC-LOC-0018` could be violated by a five-line edit that no gate, no architecture guard and no
-  // behavioural test would object to. ⚠ The plant is also the only reason the ban is known to discriminate
-  // at all — every projection satisfies it today, so a green run proves nothing on its own.
+  // ⚠⚠⚠ CORRECTED WITHIN THE HOUR, AND THE CORRECTION IS THE SAME DEFECT THIS LOOP DIAGNOSED EARLIER
+  // TONIGHT: **AN ABSENCE CLAIM CARRIES AN IMPLICIT LAYER AND I STATED MINE WITHOUT ONE.**
+  //
+  // I first wrote that *nothing else in the repository notices a tenant identifier on a localization
+  // projection*. **The plant was on `LocalizationMutationResult`, an APPLICATION type — so the measurement
+  // is exact and the sentence was too wide.** `LocalizationTransportContractTests.Administration_read_
+  // contracts_do_not_expose_tenant_or_actor_identity_outside_history` has guarded the API RESPONSE
+  // CONTRACTS since before tonight, and the plant could not have reddened it because it does not cover
+  // application types.
+  //
+  // **THE TRUE STATEMENT, WITH ITS LAYER: before this test the APPLICATION projections were unguarded, and
+  // exactly one test in 3,291 objects to a tenant identifier on one — this one.** The transport half was
+  // never the gap.
+  //
+  // ⚠ THE TWO ARE A PAIR AND NEITHER SUBSUMES THE OTHER: this walks the application namespace, that names
+  // three response contracts, and a field can be added at either layer alone. **They also reached the same
+  // narrower-than-inbound exemption independently — `ActorId` here, `ChangedBy` there — which is why the
+  // pairing is worth recording rather than deduplicating.**
+  //
+  // ⚠ The plant remains the only reason the ban is known to discriminate at all: every projection satisfies
+  // it today, so a green run proves nothing on its own.
   [Fact]
   [Trait("Criterion", "AC-LOC-0018")]
   public void Localization_projections_never_expose_a_tenant_identifier()

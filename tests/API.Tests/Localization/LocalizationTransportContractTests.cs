@@ -89,7 +89,19 @@ public sealed class LocalizationTransportContractTests
       json);
   }
 
+  // ⚠ CITES `AC-LOC-0063`'s FIRST CLAUSE — *"`Persistence.ConcurrencyConflict` REMAINS THE INTERNAL RESULT
+  // and localization HTTP returns HTTP 409 `concurrency.conflict`."* Both halves are here in one assertion
+  // block: the input to `TryMap` is the internal code, unchanged, and the output is the HTTP pair.
+  //
+  // ⚠⚠ THE SECOND CLAUSE IS CARRIED BY THIS TEST **TOGETHER WITH** `Error_mapper_exposes_invalid_rowversion_
+  // contract` BELOW, AND BY NEITHER ALONE — *"malformed or missing required rowversions are REQUEST
+  // VALIDATION, NOT CONCURRENCY."* That is a claim about two things being DIFFERENT, so it needs both
+  // values: concurrency is `409 concurrency.conflict` here, a malformed rowversion is
+  // `400 localization.rowversion_invalid` there. **One test showing 400 cannot say it is not the
+  // concurrency answer; one showing 409 cannot say the rowversion answer differs.** Cited on both, and the
+  // contrast is the content.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0063")]
   public void Error_mapper_maps_internal_concurrency_to_http_contract()
   {
     Assert.True(LocalizationApiErrorMapper.TryMap(IdentityAccessErrors.ConcurrencyConflict.Code, out var error));
@@ -105,8 +117,13 @@ public sealed class LocalizationTransportContractTests
   // directly; nothing here shows any endpoint returning it. `LocalizationAuditReadinessApiTests.Malformed_
   // transport_rowversion_is_400_before_concurrency_or_audit_processing` is the leg that observes a real PUT
   // producing this exact status and code — **declared here, realised there.**
+  // ⚠ ALSO CITES `AC-LOC-0063`'s SECOND CLAUSE — *"malformed or missing required rowversions are REQUEST
+  // VALIDATION, NOT CONCURRENCY"* — as the other half of the contrast described on
+  // `Error_mapper_maps_internal_concurrency_to_http_contract` above. **This end supplies the 400; that end
+  // supplies the 409 it must not be.**
   [Fact]
   [Trait("Criterion", "AC-LOC-0061")]
+  [Trait("Criterion", "AC-LOC-0063")]
   public void Error_mapper_exposes_invalid_rowversion_contract()
   {
     var error = LocalizationApiErrorMapper.InvalidRowVersion;
@@ -127,7 +144,28 @@ public sealed class LocalizationTransportContractTests
     Assert.DoesNotContain("provider", error.Code, StringComparison.OrdinalIgnoreCase);
   }
 
+  // ⚠ CITES `AC-LOC-0018`'s SECOND CLAUSE — *"…and bounded projections DISCLOSE NO FOREIGN STATE"* — AT THE
+  // TRANSPORT LAYER, which is where a caller actually receives them.
+  //
+  // ⚠⚠⚠ AND IT IS THE OLDER HALF OF A PAIR I DID NOT KNOW EXISTED WHEN I BUILT THE OTHER ONE.
+  // `LocalizationArchitectureTests.Localization_projections_never_expose_a_tenant_identifier` guards the
+  // APPLICATION projections (`LocalizationMutationResult`, `LocalizationAdministrationResource`,
+  // `LocalizationHistoryEntry`); this guards the API RESPONSE CONTRACTS. **Neither covers the other's
+  // types**, and a projection can lose a field between the two layers or gain one.
+  //
+  // ⚠ MY OWN CORRECTION, RECORDED HERE BECAUSE THIS IS WHERE A READER MEETS IT: when the application-layer
+  // guard landed I reported that *nothing in the repository would object to a tenant identifier on a
+  // localization projection*. **The plant that produced that claim was on an APPLICATION type, so the
+  // measurement was right and the sentence was too wide** — these transport contracts were guarded, here,
+  // before tonight. An absence claim carries an implicit LAYER and I stated mine without one.
+  //
+  // ⚠⚠ THE TWO ARRIVED AT THE SAME EXEMPTION INDEPENDENTLY, WHICH IS THE INTERESTING PART. This test
+  // exempts history and asserts `ChangedBy` is PRESENT; the application-layer one exempts `ActorId` and
+  // asserts it present for the same reason — `requirements.md:106` requires lineage. **Two authors, months
+  // apart, both concluded the ban must be narrower than the inbound one and both wrote the grounds as an
+  // assertion rather than a comment.**
   [Fact]
+  [Trait("Criterion", "AC-LOC-0018")]
   public void Administration_read_contracts_do_not_expose_tenant_or_actor_identity_outside_history()
   {
     var nonHistoryContracts = new[]

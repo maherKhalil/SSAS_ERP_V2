@@ -80,6 +80,12 @@ public sealed class IdentityAccessDomainTests
   // guard against a shape the catalog does not contain — deliberate, and a different question.**
   [Fact]
   [Trait("Criterion", "AC-IAM-0004")]
+  [Trait("Criterion", "AC-TEN-0043")]
+  // `AC-TEN-0043` — *"`Platform.Support.Administer` is `PermissionScope.PlatformSupport` and CANNOT BE
+  // ASSIGNED to any tenant custom role, tenant system role, or tenant role-permission assignment."* The
+  // scope half is `PlatformSupportBootstrapTests.Administer_platform_support_is_a_platform_support_scoped_
+  // catalog_permission`; the assignment half is here. **Same guard as `AC-TEN-0024` one row over — the
+  // criteria differ only in which permission family they name.**
   public void Tenant_role_rejects_platform_support_permission()
   {
     var role = CreateCustomRole(Guid.NewGuid());
@@ -99,6 +105,26 @@ public sealed class IdentityAccessDomainTests
   [InlineData(PlatformPermissionNames.ManageTenants)]
   [InlineData(PlatformPermissionNames.TenantLifecycle)]
   [Trait("Criterion", "AC-IAM-0004")]
+  [Trait("Criterion", "AC-TEN-0024")]
+  // `AC-TEN-0024` — *"`Platform.Tenants.View`, `Platform.Tenants.Manage`, and `Platform.Tenants.Lifecycle`
+  // cannot be assigned to any tenant custom role, tenant system role, or tenant role-permission assignment;
+  // `Role.AssignPermission` REJECTS THEM BY SCOPE."*
+  //
+  // ⚠ **THE CRITERION NAMES THREE PERMISSIONS AND THE THEORY HAS THREE ROWS, ONE EACH.** That is the
+  // enumeration rule satisfied rather than assumed — and it matters here because the guard is a single
+  // `Scope != Tenant` check, so **one row would have proved the whole class and the author still wrote
+  // three.** The row set also asserts each permission IS `PermissionScope.PlatformSupport` before assigning,
+  // so a permission silently re-scoped to `Tenant` reddens rather than passing.
+  //
+  // ⚠⚠ THE *SYSTEM ROLE* CLAUSE IS SATISFIED BY A BROADER GUARD AND NOT BY THIS TEST: `AssignPermission`
+  // refuses a `RoleType.System` role BEFORE reaching the scope check, so a system role rejects EVERY
+  // permission, platform or tenant. **The criterion's clause is true for a reason that has nothing to do
+  // with planes**, and this fixture uses a CUSTOM role, so the system case is untested here.
+  //
+  // ⚠⚠⚠ THIS TEST ALREADY CARRIED `AC-IAM-0004`, SO IT DID NOT READ AS UNCITED — the same blind spot as
+  // `AC-TEN-0016`. **It was found by a PLANT, not a search**: `git grep` for `PlatformPermissionRejected`
+  // returned nothing because the assertion is `result.IsFailure`, not the error constant. ***A NAME SEARCH
+  // OVER THE ERROR MISSED A TEST ASSERTING THE BEHAVIOUR.***
   public void Custom_tenant_role_cannot_acquire_platform_tenant_permission(string permissionName)
   {
     var role = CreateCustomRole(Guid.NewGuid());

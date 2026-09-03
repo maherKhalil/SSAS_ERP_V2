@@ -170,6 +170,17 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
 
   [Fact]
   [Trait("Criterion", "AC-TEN-0087")]
+  [Trait("Criterion", "AC-TEN-0045")]
+  // `AC-TEN-0045` — *"`Platform.Tenants.Manage` and `Platform.Tenants.Lifecycle` cannot REGISTER, GRANT,
+  // REVOKE, DISABLE, or RE-ENABLE platform-support authority; ONLY `Platform.Support.Administer` (or genesis
+  // bootstrap) can."* This sweep runs EVERY authority route against a platform token lacking `Administer` —
+  // **and the five verbs the criterion names are exactly those routes**, so the route inventory is what
+  // makes the enumeration complete rather than sampled.
+  //
+  // ⚠ THE *OR GENESIS BOOTSTRAP* CLAUSE IS NOT HERE and belongs to the bootstrap service, which reaches the
+  // principal repository directly and never traverses a route. **A criterion naming an exception needs the
+  // exception exercised somewhere, or the sweep reads as forbidding what the criterion permits.**
+  //
   // `AC-TEN-0087`'s NON-ADMINISTER DENIAL — the other half of *"a non-`Administer` platform token and a
   // tenant token are BOTH denied"*. **A criterion naming two callers is a set, and each member needs its own
   // route sweep**; the tenant-token half is the test above, same trait.

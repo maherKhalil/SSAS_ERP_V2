@@ -75,6 +75,32 @@ public sealed class TenantLifecycleApplicationTests
 
   [Fact]
   [Trait("Security", "SEC-TEN-0203")]
+  // ⚠⚠⚠ `AC-TEN-0012` EXAMINED AND NOT CITED: THE `["Administrator"]` ARGUMENT REACHES NO BRANCH.
+  //
+  // *"An ordinary tenant role cannot administer Tenant lifecycle."* This test's name says exactly that, and
+  // its fixture hands the handler a tenant role to prove it. But `ApplicationExecutionContext
+  // .GetPlatformActor` is `string.IsNullOrWhiteSpace(currentUser.UserId)` and NOTHING ELSE — `Roles` is
+  // never read, on this path or any other reachable from here. **The refusal below is caused entirely by
+  // `UserId` being null, so the role argument is inert and the assertion cannot tell the two apart.**
+  //
+  // A handler that granted authority on `Roles.Contains("Administrator")` while still requiring a non-null
+  // `UserId` would pass every line here. The test carries *a platform actor is required*; it does not carry
+  // *and authority is not inferred from roles*, though the name claims both. The local variable is called
+  // `anonymous`, which is what the fixture actually is.
+  //
+  // ⚠ THE TELL IS AN ARGUMENT THAT DOES NO WORK, and it is the same tell as the unused theory parameter that
+  // took the gate red earlier in this run — except a constructor argument is not compiler-visible, so
+  // nothing complains and it reads as deliberate scope-setting. **An inert fixture value and one chosen to
+  // exclude a confound are identical in the source.**
+  //
+  // ⚠⚠ AND THE CRITERION IS NOT MERELY UNCITED HERE — IT HAS NO APPLICATION-LAYER MECHANISM TO CITE.
+  // `GetPlatformActor` admits ANY non-empty `UserId`, so a tenant user calling this handler directly is
+  // authorized by it. What stands between a tenant role and tenant administration today is that these
+  // commands are routed nowhere: `Tenant_endpoints_remain_deferred_and_the_platform_api_does_not_reach_
+  // tenant_application` holds that, and `AC-TEN-0020` defers the transport. So the criterion holds by the
+  // ABSENCE OF A SURFACE, and its real mechanism is platform-plane authorization — the `AC-TEN-0021..0030`
+  // block, deferred with the endpoints. **Adding a discriminating fixture here would assert a boundary this
+  // layer does not enforce and is not the place to.**
   public async Task Platform_actor_is_required_without_inferring_authority_from_tenant_roles()
   {
     var repository = new FakeTenantRepository();
@@ -129,7 +155,45 @@ public sealed class TenantLifecycleApplicationTests
   [Trait("Acceptance", "AC-AUTH-0018")]
   [Trait("Acceptance", "AC-IAM-0021")]
   [Trait("Acceptance", "AC-TEN-0016")]
+  [Trait("Acceptance", "AC-TEN-0008")]
   [Trait("Scenario", "TS-TEN-0012")]
+  // ⚠⚠⚠ `AC-TEN-0008` ADDED ONE COMMIT AFTER `AC-TEN-0016`, ON THIS SAME THEORY, AND FINDING IT IS THE
+  // WHOLE POINT OF THE SWEEP THAT `AC-TEN-0016` STARTED. Last commit established that a test carrying other
+  // packages' criteria does not read as uncited, so the already-traited tests became the population to
+  // re-examine rather than the one to skip. **This theory was the first entry in that population and it was
+  // carrying a SECOND absent criterion from its own package.** The correction found its next instance on the
+  // test that produced it.
+  //
+  // *"Eligibility is true ONLY for `Active`. A MISSING Tenant returns `Exists = false`, null status, false
+  // eligibility, and `TenantNotFound`; existing statuses return the MATCHING EXACT REASON or `None` for
+  // Active."* **The five `[InlineData]` rows are that sentence, in its own order.** Row 1 is the missing
+  // clause's four values; rows 2-5 are each status with its own reason; the `eligible` column is true on
+  // exactly one row.
+  //
+  // ---- WHY THE *ONLY* HOLDS HERE AND THE *EXACTLY* BELOW DOES NOT — SAME WORD-SHAPE, OPPOSITE DISPOSAL.
+  //
+  // Both are claims about a COMPLEMENT, and a row list can only ever assert presence. *Only for Active* is
+  // nonetheless discharged, because the complement is FINITE AND PINNED ELSEWHERE:
+  // `TenantLifecycleDomainTests.Status_and_reason_vocabularies_are_exact` asserts
+  // `Enum.GetNames<TenantStatus>()` EQUALS the four names, so a fifth status cannot arrive without
+  // reddening. **Four pinned members, four rows plus null, one true — that is a complete case analysis and
+  // not a sample.**
+  //
+  // ⚠ `AC-TEN-0016`'s *returns exactly five members* has NO such neighbour: nothing anywhere asserts the
+  // arity of `TenantAuthenticationEligibilityResult`'s property list. **THE TWO CLAIMS ARE THE SAME
+  // SENTENCE-SHAPE ON THE SAME TEST AND ONLY ONE OF THEM COMPOSES** — which is the reusable test for this
+  // family: an enumeration closes a complement claim exactly when something else pins the size of the set
+  // being enumerated. Where that neighbour is absent, the enumeration proves presence and nothing more.
+  //
+  // ---- ONE RESIDUAL, AND IT IS A LAYER RATHER THAN A CLAUSE.
+  //
+  // *A MISSING Tenant* is asserted here as *a null status argument*. Row 1 calls `FromStatus(id, null)`;
+  // what makes a missing row produce that null is `SingleOrDefaultAsync` over a `TenantStatus?` projection
+  // in `TenantAuthenticationEligibilityReadService:15-18` (and `tenant?.Status` at `:29` for the UPDLOCK
+  // path). **That step is EF behaviour against a real table, so no unit fixture can reach it** — it needs a
+  // database, which puts it in Integration and behind the parked `PHASE` scope. The pure function is
+  // covered; the mapping into it is not.
+  //
   // ⚠⚠⚠ `AC-TEN-0016` ADDED, AND IT IS THE ONE THIS TEST WAS ALREADY ASSERTING VERBATIM. *"The
   // authentication-eligibility contract accepts ONE TenantId and returns EXACTLY TenantId, Exists,
   // nullable TenantStatus, IsAuthenticationEligible, and TenantAuthenticationIneligibilityReason. It
@@ -197,6 +261,37 @@ public sealed class TenantLifecycleApplicationTests
   [Trait("Requirement", "FR-TEN-0102")]
   [Trait("Requirement", "FR-TEN-0103")]
   [Trait("Scenario", "TS-TEN-0011")]
+  // ⚠⚠⚠ `AC-TEN-0004` EXAMINED AND DELIBERATELY NOT CITED. THE TEST ASSERTS THE CRITERION'S SUBJECT AND NOT
+  // ITS PREDICATE, AND THAT IS A CITATION CLASS I HAVE NOT WRITTEN DOWN BEFORE.
+  //
+  // *"GET AND BOUNDED LIST QUERIES ‖ return safe lifecycle projections and no tenant business data."* The
+  // clause before the bar names WHICH queries are in scope; the clause after it is the whole claim. This
+  // test asserts the first and not the second:
+  //
+  //   bounded            `invalid.IsFailure` — page 0 and size 101 both refused. Delete the bound and this
+  //                      line reddens. GENUINELY CARRIED, and it is the SUBJECT.
+  //   safe projection    `Assert.Equal(dto, get.Value)` — the handler returns what the read service gave
+  //                      it. Fails if the handler substitutes something; passes for ANY `TenantDto`.
+  //   no business data   **NO FIXTURE.** `TenantDto` gaining a `TaxId` tomorrow passes every line in this
+  //                      method, because `Map` at the bottom of this file BUILDS the dto the fake returns.
+  //                      The test is asserting its own arrangement.
+  //
+  // **A test that verifies the subject is not weak evidence for the predicate — it is no evidence for it**,
+  // and the name `Get_and_list_return_bounded_safe_projections` contains all the criterion's words, which is
+  // exactly why it reads as covering it. Citing here would put an id on the qualifier.
+  //
+  // ---- WHAT WOULD CLOSE IT, AND THE IDIOM IS ALREADY IN THE TREE TWICE.
+  //
+  // A shape guard over the projection, not a handler test: `TenantLifecycleArchitectureTests
+  // .Tenant_events_contain_only_safe_lifecycle_values:239-261` bans a business-term regex over the event
+  // types AND pins their arity at seven; `LocalizationArchitectureTests:334` walks
+  // `SSAS.Platform.Application.Localization` public types for the same purpose. The read projection has
+  // neither.
+  //
+  // ⚠ THE ABSENCE IS SEARCHED TWO WAYS AND I HAVE NOT SEARCHED FURTHER: `TenantDto` appears in `tests/` only
+  // in THIS file and only as construction (`Map`, `FakeTenantReadService`), and no test in
+  // `Architecture.Tests` walks `SSAS.Platform.Application.Tenants` by namespace — the two routes by which a
+  // guard would reach it, one by name and one by mechanism.
   public async Task Get_and_list_return_bounded_safe_projections()
   {
     var tenant = CreateTenant();

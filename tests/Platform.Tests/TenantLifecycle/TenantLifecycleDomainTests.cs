@@ -116,6 +116,35 @@ public sealed class TenantLifecycleDomainTests
   [Fact]
   [Trait("Decision", "DEC-TEN-0002")]
   [Trait("Decision", "DEC-TEN-0009")]
+  // ==================================================================================================
+  // ⚠⚠⚠ DO NOT DELETE THIS TEST. IT LOOKS LIKE A TAUTOLOGY AND THREE ACCEPTANCE CRITERIA REST ON IT.
+  // ==================================================================================================
+  //
+  // **DELETING THIS CONVERTS THREE COMPLETE CASE ANALYSES INTO SAMPLES, AND NOTHING WILL REDDEN.** The
+  // three tests below go on passing, their traits go on claiming their criteria, and each one silently
+  // stops proving the half of its criterion that is a claim about a COMPLEMENT:
+  //
+  //   `AC-TEN-0008`  *eligibility is true ONLY for Active* — `TenantLifecycleApplicationTests
+  //                  .Eligibility_is_derived_exactly_and_has_no_name` covers four statuses plus null. That
+  //                  EXHAUSTS the statuses only because the line below fixes them at four.
+  //   `AC-TEN-0009`  *NO OTHER STATUS can use the reactivation operation* — `Every_unapproved_transition_
+  //                  preserves_state_metadata_and_events` refuses `Reactivate` from three statuses. Three
+  //                  refusals are the whole complement only because the complement is three.
+  //   `AC-TEN-0016`  *returns EXACTLY five members* — closed instead by the member pin in
+  //                  `TenantLifecycleArchitectureTests`, which is the same idiom on a different set.
+  //
+  // A fifth `TenantStatus` added after this test is gone would arrive with no row covering it, no refusal
+  // covering it, and a green suite.
+  //
+  // ⚠ THE REASON THIS IS WORTH SHOUTING IS THAT IT IS THE HIGHEST-VALUE TARGET IN A TIDY-UP. It asserts an
+  // enum against its own names; it reads as ceremony; every argument for removing dead tests points here
+  // first. **A TEST WHOSE WHOLE VALUE IS BEING DEPENDED ON HAS NO VISIBLE VALUE OF ITS OWN**, and the
+  // person who deletes it will be reading THIS file, not the three that need it — which is why the warning
+  // is here rather than three notes written for someone who is not in the room.
+  //
+  // ⚠⚠ IF THE VOCABULARY GENUINELY MUST CHANGE, that is fine and expected — change it here, then go to the
+  // three sites above and add the row, the refusal, or the member. **The failure mode is not editing this
+  // test; it is REMOVING it**, because editing forces the question and removing answers it silently.
   public void Status_and_reason_vocabularies_are_exact()
   {
     Assert.Equal(

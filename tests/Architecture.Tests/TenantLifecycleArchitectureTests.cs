@@ -12,6 +12,27 @@ namespace SSAS.Architecture.Tests;
 // Checked rather than assumed. `Assert.NotEmpty(files)` is what catches it, and it catches it because
 // the count is taken AFTER the pattern filter rather than before.
 //
+// ---- PLANT RECORD, `No_tenant_lifecycle_entry_point_accepts_a_caller_supplied_status_or_eligibility`:
+//      THREE PLANTS, ONE PER ROUTE, EACH RUN AND REVERTED ALONE.
+//
+//   ROUTE 1, PASS IT IN   `TenantStatus? forcedStatus = null` added to `Tenant.Activate` — an OPTIONAL
+//                         parameter, so no call site breaks and the plant measures the guard rather than
+//                         the compiler. GATE RED, exactly ONE test of 3,290 failed. `Assert.Empty`, and
+//                         the TRX names `TenantLifecycleArchitectureTests.cs:line 339`.
+//   ROUTE 2, ASSIGN IT    `Status { get; private set; }` widened to `{ get; set; }`. GATE RED, exactly one
+//                         test. `Assert.True() Failure` — a distinct assertion type, so the name alone
+//                         settles it. ⚠ **NOTHING ELSE IN 3,290 TESTS OBJECTS TO A LIFECYCLE AGGREGATE'S
+//                         STATUS BECOMING PUBLICLY ASSIGNABLE.** That is the measurement, not a remark.
+//   ROUTE 3, CARRY IT     `TenantStatus? DesiredStatus` added to `ActivateTenantCommand`. GATE RED,
+//                         exactly one test. `Assert.Empty`, TRX line 373.
+//
+// ⚠⚠⚠ ROUTES 1 AND 3 SHARE AN ASSERTION TYPE, SO THE FAILURE NAME CANNOT SEPARATE THEM AND THE LINE NUMBER
+// IS WHAT DOES. Route 1's plant was re-run for that reason alone: the first pass read only `Assert.Empty`,
+// which is equally consistent with route 3 having fired. **The subject-disjointness argument — a method
+// parameter cannot appear in a walk of command PROPERTIES — is sound and was still not worth relying on**,
+// because it is exactly the shape of reasoning that has been wrong repeatedly here. Two same-named
+// assertions in one test need a discriminator that is not the name.
+//
 // ---- PLANT RECORD, `Tenant_read_projections_expose_exactly_their_lifecycle_contract`: TWO PLANTS, RUN AND
 //      REVERTED SEPARATELY, BECAUSE THAT TEST HOLDS TWO INDEPENDENT CONTROLS AND ONE RUN CANNOT SEPARATE
 //      THEM. A single plant that reddens the test proves the UNION is live and says nothing about which
@@ -281,6 +302,104 @@ public sealed class TenantLifecycleArchitectureTests
 
     Assert.Equal(7, eventTypes.Length);
     Assert.Empty(unsafeProperties);
+  }
+
+  // ⚠⚠⚠ `AC-TEN-0013` HAD NO TEST, AND IT IS A COMPLEMENT CLAIM THE SIGNATURES CLOSE FOR FREE.
+  //
+  // *"Caller-supplied STATUS OR ELIGIBILITY values cannot create, activate, suspend, reactivate, archive,
+  // or AUTHENTICATE a Tenant outside the persisted lifecycle rules."* Six verbs, and the cheapest possible
+  // proof: **a value that cannot be PASSED cannot be honoured.** An absent-parameter assertion is a
+  // complement claim closed by the signature itself, which needs no arity pin of its own — the parameter
+  // list IS the pin. The idiom is already one field over in `TenantLifecycleDomainTests
+  // .Creation_factory_generates_immutable_identifier_and_rejects_null_value_objects`, which asserts
+  // `Tenant.Create` takes no `tenantId`; this is that move applied to status.
+  //
+  // ---- THREE ROUTES, THREE CONTROLS, BECAUSE BLOCKING ONE LEAVES THE OTHER TWO OPEN.
+  //
+  //   PASS IT IN    a `TenantStatus` parameter on a transition method
+  //   ASSIGN IT     a public setter on `Status` or `IsAuthenticationEligible`
+  //   CARRY IT      a status member on a lifecycle COMMAND, so the transport supplies it
+  //
+  // Each is independently sufficient to break the criterion and none implies the others, so all three are
+  // asserted and all three were planted separately.
+  //
+  // ⚠⚠⚠ AND THE BAN IS BY TYPE IDENTITY, NOT BY NAME, FOR A REASON THAT WOULD HAVE BITTEN IMMEDIATELY.
+  // `Suspend`, `Reactivate` and `Archive` all take a `TenantStatusChangeReason`, which IS caller-supplied
+  // and IS legitimate — `Created_reason_is_rejected_for_transitions_and_reactivation_uses_bounded_
+  // resolution_reasons` guards its bounds. **A name-based ban on `Status` catches
+  // `TenantStatusChangeReason` and would have flagged the reason parameter on three of the five
+  // transitions.** The two are different TYPES and identical as substrings, so the mechanism separates them
+  // and the name cannot. Third time tonight that a name spanned two populations.
+  //
+  // ⚠⚠ THE QUERY EXEMPTION ASSERTS ITS OWN GROUNDS. `ListTenantsQuery.Status` is a caller-supplied
+  // `TenantStatus?` and is excluded, because it SELECTS rows rather than SETTING state — the criterion is
+  // about values that drive a transition, not values that filter a read. That exemption is only sound while
+  // the property is a query filter, so its presence is ASSERTED below: **if the list filter is ever removed,
+  // this test reddens and the exemption is re-examined rather than left standing over nothing.**
+  [Fact]
+  [Trait("Acceptance", "AC-TEN-0013")]
+  public void No_tenant_lifecycle_entry_point_accepts_a_caller_supplied_status_or_eligibility()
+  {
+    var statusType = typeof(SSAS.Platform.Domain.Enums.TenantStatus);
+    var reasonType = typeof(SSAS.Platform.Domain.Enums.TenantStatusChangeReason);
+
+    static bool IsStatusOrEligibility(Type type, string? name, Type statusType) =>
+      type == statusType ||
+      Nullable.GetUnderlyingType(type) == statusType ||
+      (name is not null && name.Contains("eligib", StringComparison.OrdinalIgnoreCase));
+
+    // ---- ROUTE 1: PASS IT IN. The five lifecycle entry points take no status and no eligibility.
+    var lifecycle = typeof(Tenant).GetMethods()
+      .Where(method => method.IsPublic)
+      .Where(method => method.Name is "Create" or "Activate" or "Suspend" or "Reactivate" or "Archive")
+      .ToArray();
+
+    // MEMBERSHIP CONTROL. Without it a renamed transition leaves the ban walking a shorter list in silence.
+    Assert.Equal(5, lifecycle.Length);
+
+    Assert.Empty(lifecycle
+      .SelectMany(method => method.GetParameters().Select(parameter => (method, parameter)))
+      .Where(entry => IsStatusOrEligibility(entry.parameter.ParameterType, entry.parameter.Name, statusType))
+      .Select(entry => $"{entry.method.Name}({entry.parameter.Name})"));
+
+    // ⚠ THE MATCHER CONTROL, AND IT IS THE POINT OF USING TYPES. `TenantStatusChangeReason` is caller-
+    // supplied on three transitions and legitimate; a name-based ban would flag every one of them.
+    Assert.Contains(lifecycle, method => method.GetParameters().Any(parameter => parameter.ParameterType == reasonType));
+    Assert.False(IsStatusOrEligibility(reasonType, "reason", statusType));
+    Assert.True(IsStatusOrEligibility(statusType, "status", statusType));
+
+    // ---- ROUTE 2: ASSIGN IT. Status is not publicly settable and eligibility is derived, not stored.
+    var status = typeof(Tenant).GetProperty(nameof(Tenant.Status))!;
+    var eligible = typeof(Tenant).GetProperty(nameof(Tenant.IsAuthenticationEligible))!;
+
+    // `CanWrite` is TRUE for a private setter, so it cannot be used here — `Status` is `{ get; private
+    // set; }` and the transitions need that setter. The question is whether a CALLER can reach it.
+    Assert.True(status.SetMethod is null or { IsPublic: false });
+    Assert.Null(eligible.SetMethod);
+
+    // ---- ROUTE 3: CARRY IT. No lifecycle command exposes a status or eligibility member.
+    var commands = typeof(CreateTenantCommand).Assembly.GetTypes()
+      .Where(type => type.IsPublic && type.Namespace == "SSAS.Platform.Application.Tenants")
+      .Where(type => type.Name.EndsWith("Command", StringComparison.Ordinal))
+      .ToArray();
+
+    // MEMBERSHIP CONTROL, naming all five so a renamed command cannot silently leave the population.
+    Assert.Equal(5, commands.Length);
+    Assert.Contains(typeof(CreateTenantCommand), commands);
+    Assert.Contains(typeof(ActivateTenantCommand), commands);
+    Assert.Contains(typeof(SuspendTenantCommand), commands);
+    Assert.Contains(typeof(ReactivateTenantCommand), commands);
+    Assert.Contains(typeof(ArchiveTenantCommand), commands);
+
+    Assert.Empty(commands
+      .SelectMany(type => type.GetProperties())
+      .Where(property => IsStatusOrEligibility(property.PropertyType, property.Name, statusType))
+      .Select(property => $"{property.DeclaringType?.Name}.{property.Name}"));
+
+    // THE EXEMPTION'S GROUNDS. The one caller-supplied `TenantStatus?` in this namespace is a READ FILTER,
+    // and it is asserted present so the exemption cannot outlive the thing it exempts.
+    var listFilter = typeof(ListTenantsQuery).GetProperty(nameof(ListTenantsQuery.Status))!;
+    Assert.Equal(statusType, Nullable.GetUnderlyingType(listFilter.PropertyType));
   }
 
   // ⚠⚠⚠ THE READ PROJECTIONS HAD NO SHAPE GUARD AT ALL, AND `AC-TEN-0004`'S CLAIM IS ENTIRELY ABOUT SHAPE.

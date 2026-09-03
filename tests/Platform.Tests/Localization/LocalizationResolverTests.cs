@@ -261,7 +261,26 @@ public sealed class LocalizationResolverTests
     Assert.Equal(2, fixture.OverrideReader.Calls);
   }
 
+  // ⚠ CITES `AC-LOC-0004`'s CACHE PATH — *"EVERY read/write/history/CACHE path derives TenantId from
+  // trusted context and RETURNS NO OTHER TENANT'S STATE."*
+  //
+  // Two tenants, **the same resource key and the same culture**, different override values, and each
+  // `GetOrCreateAsync` returns its own. The arrangement is the collision: a cache keyed on
+  // key-plus-culture and not on tenant would serve the first tenant's text to the second and pass any test
+  // that used different keys per tenant. **The shared key is what makes this an isolation assertion rather
+  // than a caching one.**
+  //
+  // ⚠⚠ ONE PATH OF FOUR, AND THE CRITERION SAYS *EVERY*. Read, write and history are not touched here.
+  // **A criterion id reads later as covering the sentence it belongs to**, so the clause is named: this is
+  // the CACHE path alone. The other three live in the query handlers, the mutation handlers and the
+  // history query, and are not cited by this test.
+  //
+  // ⚠ NOR DOES IT CARRY *derives TenantId from TRUSTED CONTEXT* — the tenant ids here are passed as
+  // arguments by the test. That half is `LocalizationArchitectureTests.Localization_commands_never_accept_
+  // tenant_or_actor_identity` plus the handlers reading `currentTenant`, and it is the *told, not
+  // discovering* shape again: this test supplies the very value whose provenance the clause is about.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0004")]
   public async Task Cache_keys_are_tenant_complete_and_incompatible_overrides_fall_back()
   {
     var clock = new FakeClock(InitialTime);

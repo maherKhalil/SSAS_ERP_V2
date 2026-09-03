@@ -54,10 +54,17 @@ public sealed class PlatformAccessTokenClaimsTests
 
   [Fact]
   [Trait("Acceptance", "AC-TEN-0074")]
-  // `AC-TEN-0074`'s POSITIVE HALF — *"it carries … `identity_id`, `session_id`, `client_id`,
-  // `security_version`, and one or more active catalog-valid PlatformSupport permission claims."* The ban
-  // half is on `PlatformPlaneAuthorizationArchitectureTests.Platform_access_token_claims_carry_no_tenant_
-  // or_role_shaped_fields`, which carries the same trait.
+  // ***SUPPORTING SITE FOR `AC-TEN-0074`'s POSITIVE HALF — the LOAD-BEARING one is
+  // `JwtInfrastructureTests.Platform_token_issuer_emits_the_platform_profile_and_no_tenant_claims`***, which
+  // asserts the ISSUED TOKEN carries `security_plane=platform` exactly once. This test asserts the CLAIMS
+  // RECORD is populated, which is a PRECONDITION for that token rather than the criterion's subject.
+  //
+  // ⚠ THE RANKING IS WRITTEN DOWN BECAUSE A TRAIT CANNOT CARRY IT. **Two sites of unequal strength look
+  // identical to any census; deleting the load-bearing one leaves this id here, still green, covering less.**
+  //
+  // *"it carries … `identity_id`, `session_id`, `client_id`, `security_version`, and one or more active
+  // catalog-valid PlatformSupport permission claims."* The ban half is on `PlatformPlaneAuthorizationArchi
+  // tectureTests.Platform_access_token_claims_carry_no_tenant_or_role_shaped_fields`, same trait.
   //
   // ⚠ **THE TWO HALVES CANNOT LIVE IN ONE TEST**: a ban is a claim about the TYPE's members and the positive
   // is a claim about a produced INSTANCE's values. Splitting them across a structural and a behavioural site

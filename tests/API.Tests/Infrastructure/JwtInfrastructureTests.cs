@@ -56,10 +56,16 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   // comment.
   //
   // ⚠ THE CRITERION'S OTHER HALF IS VALIDATION, NOT ISSUANCE — *"REMAINS VALID under the tenant profile
-  // (absence => tenant)"* — and it is carried by every authentication test in this file whose token omits
-  // the claim and succeeds. **That is coverage by construction rather than by intent**: no test here exists
-  // to prove the absent claim is accepted, they simply do not set it. `Explicit_tenant_security_plane_is_
-  // accepted` covers the claim PRESENT and set to `tenant`, which is the adjacent case, not this one.
+  // (absence => tenant)"* — and it has its own deliberate witness at `Legacy_tenant_token_without_security_
+  // plane_is_accepted`, which carries the same trait.
+  //
+  // ⚠⚠ CORRECTED: I FIRST WROTE THAT NO SUCH TEST EXISTED AND THAT THE HALF WAS COVERED ONLY *BY
+  // CONSTRUCTION*. **It is named for exactly this property and sits one method ABOVE
+  // `Explicit_tenant_security_plane_is_accepted`, which I did read and cited as the adjacent case.** I was
+  // one method away and asserted an absence instead of scrolling. ***AND THE SEARCH THAT WOULD HAVE FOUND IT
+  // IS IN THE CRITERION'S OWN HEADING — `AC-TEN-0060` is titled "LEGACY tenant token remains valid", and the
+  // test carries the word `Legacy`.*** I searched the property description and never the criterion's own
+  // vocabulary.
   public void Access_token_issuer_emits_rs256_known_kid_and_exact_trusted_bindings()
   {
     using var scope = factory.Services.CreateScope();
@@ -92,6 +98,12 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
 
   [Fact]
   [Trait("Criterion", "AC-TEN-0074")]
+  // ***LOAD-BEARING SITE FOR `AC-TEN-0074`'s POSITIVE HALF.*** The other site — `PlatformAccessTokenClaims
+  // Tests.Eligible_active_principal_with_permissions_prepares_platform_claims` — is SUPPORTING, and the
+  // distinction is written at both because **a trait says a criterion is covered and never says by how
+  // much. With two sites of UNEQUAL strength, deleting the strong one leaves the id sitting on the weak one
+  // and the criterion degrades silently while staying green.**
+  //
   // `AC-TEN-0074`'s POSITIVE HALF AT ITS STRONGEST SITE — *"it carries `security_plane=platform` EXACTLY
   // ONCE plus `identity_id`, `session_id`, `client_id`, `security_version` …"*. `Assert.Single` on the plane
   // claim is *exactly once* literally, and the same form covers subject, identity, session and client.
@@ -304,6 +316,18 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0060")]
+  // `AC-TEN-0060`'s VALIDATION HALF, AND THIS IS THE LOAD-BEARING SITE FOR IT — *"A tenant access token
+  // WITHOUT a `security_plane` claim REMAINS VALID under the tenant profile (absence => tenant)."* The token
+  // is built with the required claims and nothing else, so the plane claim is absent by construction and the
+  // test name says that is the point. **The issuance half is on `Access_token_issuer_emits_rs256_known_kid_
+  // and_exact_trusted_bindings`, same trait.**
+  //
+  // ⚠ THE PAIR WITH `Explicit_tenant_security_plane_is_accepted` BELOW IS WHAT MAKES *absence => tenant* A
+  // RULE RATHER THAN A COINCIDENCE: claim absent is accepted here, claim present and set to `tenant` is
+  // accepted there, and `Unknown_or_wrong_case_security_plane_is_rejected` refuses everything else. **Three
+  // adjacent tests covering absent / correct / wrong, which is the complete case analysis over a claim that
+  // is optional.**
   public async Task Legacy_tenant_token_without_security_plane_is_accepted()
   {
     var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5));

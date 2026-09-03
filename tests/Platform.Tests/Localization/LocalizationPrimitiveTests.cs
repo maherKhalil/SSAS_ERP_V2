@@ -28,9 +28,32 @@ public sealed class LocalizationPrimitiveTests
   // matched to the one it carries rather than the theory being cited as a block:
   //
   //   `{name}`                  parser, the base case
-  //   `{a}{z}{a}` → `"a,z"`     REPETITION (`a` twice) and SET (distinct, and sorted — `z` follows `a`)
+  //   `{a}{z}{a}` → `"a,z"`     REPETITION — `a` appears twice and the set holds it once
+  //   `{z}{a}` → `"a,z"`        SET ORDERING, and it is the only row that can see it — see below
   //   `{{literal}} {amount}`    ESCAPING — `{{` is a literal brace and yields no name
   //   `مرحبا {userName}`        the surrounding text is non-ASCII and the name's CASE survives intact
+  //
+  // ⚠⚠⚠ THE `{z}{a}` ROW WAS ADDED BECAUSE THE FIXTURE WAS SHORT OF ITS OWN CITATION, AND A PLANT PROVED
+  // IT. `{a}{z}{a}` **is already in sorted order**, so insertion order and sorted order both yield
+  // `"a,z"` — the row was cited for SET and could only ever see the DISTINCT half of it. Removing
+  // `.Order(…)` from `PlaceholderSet` left every row here green.
+  //
+  // **`{z}{a}` is the smallest fixture that fails when the sort is removed**, and it is the difference
+  // between this theory carrying *set* and merely appearing to. ⚠ *AN ARRANGEMENT CAN BE SHORT OF ITS
+  // CITATION IN A WAY NO ASSERTION REVEALS* — nothing about the old rows looked incomplete, and the
+  // expected value `"a,z"` is identical either way.
+  //
+  // ⚠⚠ RE-PLANTED AFTER ADDING IT, BECAUSE THE EARLIER PLANT CERTIFIED A DIFFERENT FIXTURE. Removing
+  // `.Order(…)` again now fails **TWO** tests where it previously failed one:
+  //
+  //   `Parser_accepts_exact_valid_grammar(text: "{z}{a}", expected: "a,z")`   the new row
+  //   `Placeholder_fingerprint_uses_sorted_distinct_lf_utf8_sha256`           the pre-existing alarm
+  //
+  // **AND THE DIFFERENCE BETWEEN THE TWO FAILURE TEXTS IS THE WHOLE POINT OF ADDING THE ROW.** The
+  // fingerprint reports *Collections differ, Expected [100, 201, 33…] Actual [98, 240, 121…]* — bytes, with
+  // no mention of ordering, which invites re-baselining. **This row reports its own subject: the text
+  // `{z}{a}` and the expected `a,z`.** A misdescribed alarm now has a correctly-described companion that
+  // fails first alphabetically and says what actually broke.
   //
   // `Parser_rejects_malformed_tokens` carries MALFORMED over seven shapes, and
   // `Formatter_requires_exact_names_and_does_not_reparse_values` carries MISSING — `Format` with an empty
@@ -65,6 +88,7 @@ public sealed class LocalizationPrimitiveTests
   // unguarded; it is guarded by an alarm that describes the mechanism and not the property.***
   [InlineData("{name}", "name")]
   [InlineData("{a}{z}{a}", "a,z")]
+  [InlineData("{z}{a}", "a,z")]
   [InlineData("{{literal}} {amount}", "amount")]
   [InlineData("مرحبا {userName}", "userName")]
   [Trait("Criterion", "AC-LOC-0007")]

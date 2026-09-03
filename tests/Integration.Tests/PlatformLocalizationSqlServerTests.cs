@@ -205,6 +205,20 @@ public sealed class PlatformLocalizationSqlServerTests
   }
 
   [Fact]
+  // ⚠ CITES THE APPEND-AND-NUMBER HALF OF `AC-LOC-0011` — *"Each mutation appends ONE unmodifiable,
+  // UNIQUELY NUMBERED version and atomically advances current/settings versions."*
+  //
+  // A create yields `CurrentVersionNumber` 1 and `TenantLocalizationVersion` 2, and exactly one domain
+  // event — so one version was appended, numbered, and the settings version moved with it. The
+  // *unmodifiable* half is `LocalizationArchitectureTests.Localization_history_has_no_public_mutation_or_
+  // setter_api`, structurally.
+  //
+  // ⚠⚠ IT DOES NOT CARRY *ATOMICALLY*. This observes the FINAL STATE OF A SUCCESS, and atomicity is a claim
+  // about what survives a failure BETWEEN the two writes — a success cannot distinguish *both advanced
+  // together* from *both advanced, in either order, with a window between them*. See the note on
+  // `Concurrent_application_create_has_one_deterministic_loser`, which is the only test that could observe
+  // it and cannot report whether it did.
+  [Trait("Criterion", "AC-LOC-0011")]
   public async Task Application_mutations_use_trusted_context_and_preserve_lineage_and_no_op_behavior()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();
@@ -327,6 +341,35 @@ public sealed class PlatformLocalizationSqlServerTests
   }
 
   [Fact]
+  // ⚠⚠⚠ THE ONLY CANDIDATE FOR `AC-LOC-0011`'s ATOMICITY CLAUSE, AND IT CANNOT REPORT WHETHER IT REACHED IT.
+  //
+  // *"Each mutation appends one unmodifiable, uniquely numbered version and ATOMICALLY ADVANCES
+  // current/settings versions."* Atomicity is not observable from a success: it is about what survives a
+  // FAILURE BETWEEN THE TWO WRITES. A real contender is the only way to produce one, which is why this test
+  // is the candidate and the success-path tests are not.
+  //
+  // **AND THE LOSER'S ERROR HAS TWO CAUSES THAT LOOK IDENTICAL FROM HERE:**
+  //
+  //   `CreateTenantLocalizationOverrideCommandHandler:73`   PRE-CHECK — `existing is not null`. NO WRITE
+  //                                                         WAS ATTEMPTED, so nothing was rolled back and
+  //                                                         this run says nothing about atomicity.
+  //   `:101-102`                                            SAVE FAILED on `UniqueConstraintViolation`,
+  //                                                         MAPPED to the same error. A version append and
+  //                                                         a settings advance WERE attempted and undone.
+  //
+  // `Assert.Single(results, result => result.Error == OverrideAlreadyExists)` is satisfied by both. **So on
+  // a run where the loser lost at the pre-check this test exercises the duplicate guard and not atomicity,
+  // and on a run where it lost at the constraint it exercises both — and the assertions cannot say which
+  // happened.** The final-state checks below (one version row, settings at 2) WOULD demonstrate a complete
+  // rollback, but only on the runs that reached the constraint.
+  //
+  // ⚠⚠ NOT CITED FOR THAT CLAUSE. A criterion id here would publish atomicity as covered by a test whose
+  // coverage of it is decided by a race. **The fix is not another assertion but a DISCRIMINATOR** — the
+  // loser's cause has to be observable before this can carry the clause.
+  //
+  // ⚠ THIRD INSTANCE TONIGHT of one error value serving two causes with no way to tell them apart, after
+  // `Position.GradeInactive` (two relationships) and `ParentInactive` (three operations). In those two the
+  // ambiguity cost a test's discriminating power; here it costs a CITATION.
   public async Task Concurrent_application_create_has_one_deterministic_loser()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();

@@ -71,6 +71,30 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
   // ⚠⚠ `AC-TEN-0085` IS ALSO THE ONLY CRITERION IN THE PACKAGE WHOSE SUBJECT IS A TEST. It does not describe
   // product behaviour; it requires that an ARCHITECTURE GUARD exist. **When 4E lands, satisfying `0085` means
   // writing a guard — and the criterion is closed by the guard's existence, not by anything the guard finds.**
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ READ THIS BEFORE WRITING THAT GUARD: ***A CRITERION SATISFIED BY A GUARD'S EXISTENCE IS SATISFIED
+  // BY A VACUOUS GUARD.***
+  // ==================================================================================================
+  //
+  // If closure is *"the architecture guard exists"*, then a guard whose matcher matches nothing, or whose
+  // walk enumerates an empty set, closes `AC-TEN-0085` completely — **green forever, criterion cited,
+  // nothing observed.** Every other criterion in this package is closed by BEHAVIOUR, which makes an
+  // anti-vacuity control a quality improvement. **HERE THE CONTROL *IS* THE SATISFACTION CONDITION**, so
+  // the one criterion in the package whose subject is a test is the one most likely to be closed by a test
+  // that cannot fail.
+  //
+  // ⚠ THE REMEDY IS IN THIS VERY METHOD AND SHOULD BE COPIED, NOT REDESIGNED. The body below carries both
+  // halves already, each recorded against the incident that motivated it:
+  //   * a FLOOR on the scanned population — `scanned.Length >= 20` — because **three tests here once passed
+  //     over an EMPTY type set (T-258)**; the floor is on what was scanned, not on what was found, since an
+  //     empty result is this test's success condition.
+  //   * a MATCHER CONTROL — the same `Name.Contains` run for a term that MUST be present (T-263) — because
+  //     **a ban whose matcher matches nothing is green for the wrong reason.**
+  //
+  // So when the 4E guard is written: give it a floor, give it a known-positive, and PLANT it — a
+  // plane-specific endpoint with a bare `RequireAuthenticatedUser` must redden it. **Without that, `0085`
+  // is met by a test that has never been able to fail, and it will be cited exactly like the others.**
   [Fact]
   public void Phase_4E_plane_authentication_policy_taxonomy_is_not_pulled_into_phase_4B()
   {

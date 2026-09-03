@@ -130,6 +130,15 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0087")]
+  // `AC-TEN-0087`'s TENANT-TOKEN DENIAL — *"Listing/getting platform-support principals and their
+  // assignments requires `Platform.Support.Administer`; … a TENANT TOKEN [is] denied."*
+  //
+  // ⚠ THE FIXTURE IS WHAT MAKES THIS DISCRIMINATING: the tenant token CARRIES THE ADMINISTER NAME. A tenant
+  // token without it would be refused for lacking the permission text, proving nothing about planes —
+  // **this one is refused despite having the exact permission string, so the refusal can only be the plane.**
+  // Same construction as the reason-parameter matcher control: give the fixture the thing that would let a
+  // wrong implementation pass.
   public async Task Every_authority_route_rejects_a_tenant_plane_token_carrying_the_administer_name()
   {
     var unprotected = new List<string>();
@@ -160,6 +169,10 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0087")]
+  // `AC-TEN-0087`'s NON-ADMINISTER DENIAL — the other half of *"a non-`Administer` platform token and a
+  // tenant token are BOTH denied"*. **A criterion naming two callers is a set, and each member needs its own
+  // route sweep**; the tenant-token half is the test above, same trait.
   public async Task Every_authority_route_rejects_a_platform_token_without_administer()
   {
     var unprotected = new List<string>();
@@ -189,6 +202,14 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0059")]
+  // `AC-TEN-0059` at the ROUTE layer — the pipeline test proves the validator fails a mixed-plane token; this
+  // proves EVERY authority route is behind that validator. **Neither subsumes the other: a route mapped
+  // outside the authentication scheme would pass the pipeline test and fail this one.**
+  //
+  // ⚠ AND THE LOOP COLLECTS EVERY OFFENDER RATHER THAN ASSERTING INSIDE IT — worth keeping, because an
+  // assertion in the loop body stops at route one and reports a single failure where there may be six. **A
+  // sweep that fails fast tells you a route is unprotected; this one tells you WHICH routes are.**
   public async Task Every_authority_route_rejects_a_mixed_plane_token()
   {
     var unprotected = new List<string>();

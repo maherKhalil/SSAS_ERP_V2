@@ -112,6 +112,20 @@ public sealed class PlatformAuthorizationPipelineTests : IAsyncLifetime
   // ---- STEP 28 : mixed-plane token is rejected at authentication ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0059")]
+  // `AC-TEN-0059` — *"A token combining `security_plane=platform` with any `tenant_id` (or `tenant_user_id`)
+  // is rejected STRUCTURALLY, NOT IGNORED."*
+  //
+  // ⚠ **THE STATUS CODE IS THE WHOLE CITATION.** A 401 means `StrictAccessTokenValidator` failed the TOKEN;
+  // a 403 would have meant the token was accepted and the request merely unauthorized — which is precisely
+  // the *ignored* outcome the criterion forbids. **The two failures look equally red and mean opposite
+  // things**, so a future simplification that relaxed this to `Assert.False(IsSuccessStatusCode)` would keep
+  // the test green and delete the criterion.
+  //
+  // ⚠⚠ THE `tenant_user_id` HALF IS NOT COVERED. The criterion names `tenant_id` OR `tenant_user_id`; only
+  // `tenant_id` is planted here. **A validator that rejected one and ignored the other passes.** The route
+  // sweep in `PlatformSupportAuthorityAuthorizationTests.Every_authority_route_rejects_a_mixed_plane_token`
+  // carries the same trait and the same gap — it plants `tenant_id` too.
   public async Task Mixed_plane_token_is_rejected_at_authentication_before_authorization()
   {
     using var request = new HttpRequestMessage(HttpMethod.Get, "/platform-test/administer");

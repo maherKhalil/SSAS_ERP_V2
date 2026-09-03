@@ -14,6 +14,17 @@ namespace SSAS.Architecture.Tests;
 
 public sealed class LocalizationArchitectureTests
 {
+  // ⚠⚠ EXAMINED FOR `AC-LOC-0022` AND DELIBERATELY NOT CITED, WITH THE REASON, SO NOBODY RE-DERIVES IT.
+  //
+  // The criterion reads *"DOMAIN/APPLICATION remain provider/framework-neutral and bounded."* **This test's
+  // subject is `typeof(ResourceKey).Assembly` — `SSAS.BuildingBlocks.Localization`, a THIRD assembly the
+  // criterion does not name.** Its bans are also a different set (`SSAS.Platform` is forbidden here and is
+  // the Domain's own prefix), which is what a shared-kernel rule looks like rather than a layering one.
+  //
+  // Citing `AC-LOC-0022` here would be well-formed, resolvable and WRONG — a real criterion this test does
+  // not satisfy — and it would inflate the count toward the clause it does not cover. Recorded as
+  // EXAMINED-BUT-UNRESOLVED rather than uncovered: a criterion for the building-blocks boundary may exist
+  // and was not searched for.
   [Fact]
   public void Localization_building_blocks_has_no_platform_persistence_http_or_cache_dependency()
   {
@@ -95,7 +106,13 @@ public sealed class LocalizationArchitectureTests
   // `Data.SqlClient` reaches this tree TRANSITIVELY through `EntityFrameworkCore.SqlServer` and appears in
   // no project file — so a declared read on it would pass vacuously and emitted is the correct instrument
   // for that branch alone (`272` category 3). The other three are declarable and each has a real witness.
+  // ⚠ CITES THE FIRST CLAUSE OF `AC-LOC-0022` — *"Domain/Application remain PROVIDER/FRAMEWORK-NEUTRAL and
+  // bounded."* This is the neutrality half, and its subject is exactly the criterion's: the assemblies of
+  // `TenantLocalizationOverride` (Domain) and `LocalizationTextResolver` (Application), declared and
+  // emitted. The boundedness half is
+  // `Localization_application_boundaries_expose_neither_queryables_nor_persistence_types`.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0022")]
   public void Platform_localization_domain_and_application_respect_layer_boundaries()
   {
     var declarable = new[] { "Infrastructure", "EntityFrameworkCore", "AspNetCore" };
@@ -142,7 +159,28 @@ public sealed class LocalizationArchitectureTests
     Assert.Empty(ForbiddenDeclarations(application, declarable));
   }
 
+  // ⚠ CITES THE SECOND CLAUSE OF `AC-LOC-0022` — *"Domain/Application remain provider/framework-neutral
+  // and BOUNDED."* The neutrality half is
+  // `Platform_localization_domain_and_application_respect_layer_boundaries`; this is the boundedness half,
+  // over the nine Application boundary interfaces. The two split the criterion and neither covers it alone.
+  //
+  // ⚠⚠ AND THE FLOOR BELOW WAS ADDED WITH THIS CITATION, NOT BEFORE IT. Four `DoesNotContain` bans over a
+  // DERIVED signature list all pass over an EMPTY one, and `GetMethods()` returning nothing — an interface
+  // restructured, a type renamed out of the array — reads exactly like compliance. **`:258` in this same
+  // file already carries that floor with the reason written out; this one did not.**
+  //
+  // ⚠⚠⚠ IT IS PART OF THE CITATION RATHER THAN A SEPARATE TIDY-UP: attaching a criterion id to a test that
+  // can pass over an empty population publishes it as *covered* while nothing is being read. A citation is
+  // a claim, so the anti-vacuity control is what makes the claim true.
+  //
+  // ⚠ MEASURED BOTH WAYS, 2026-09-03, by forcing the walk empty with a `.Take(0)`:
+  //
+  //   empty walk, floor REMOVED   → PASSED. All four bans vacuous, exactly as the header says.
+  //   empty walk, floor PRESENT   → FAILED, `Assert.NotEmpty() Failure: Collection was empty`.
+  //
+  // So the floor is the whole difference, and it has now been observed to fail for the reason it claims.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0022")]
   public void Localization_application_boundaries_expose_neither_queryables_nor_persistence_types()
   {
     var boundaryTypes = new[]
@@ -161,6 +199,9 @@ public sealed class LocalizationArchitectureTests
       .SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType).Append(method.ReturnType))
       .Select(type => type.ToString())
       .ToArray();
+
+    // THE FLOOR. Without it all four bans below pass over an empty walk — see the header.
+    Assert.NotEmpty(signatures);
 
     Assert.DoesNotContain(signatures, signature => signature.Contains("IQueryable", StringComparison.Ordinal));
     Assert.DoesNotContain(signatures, signature => signature.Contains("DbContext", StringComparison.Ordinal));

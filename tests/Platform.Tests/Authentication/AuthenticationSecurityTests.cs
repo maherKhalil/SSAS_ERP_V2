@@ -15,6 +15,33 @@ using SSAS.Platform.Infrastructure.Identity;
 
 namespace SSAS.Platform.Tests.Authentication;
 
+// ⚠⚠⚠ `AC-IAM-0024` IS UNCOVERED, AND THIS FILE IS WHERE A READER WOULD LOOK FOR IT.
+//
+// *"No password, raw token, refresh token, or full claims collection appears IN LOGS."* The tests below
+// protect secrets at REST and in TRANSIT — hashing, exact-hash action tokens, oversized-input rejection,
+// compromised-password datasets. **NONE OF THEM OBSERVES A LOG LINE**, and nothing else does either.
+//
+// Searched by MECHANISM, twice, because a name search over "log" cannot be complete:
+//
+//   `ILogger|LogInformation|LogDebug|LogError` across `Architecture.Tests`   ZERO — so there is no
+//                                                                            source-scanning guard
+//   `FakeLogger|TestLogger|ILoggerProvider|CapturedLogs|LoggerFactory`       five files, of which ONE
+//     across all of `tests/`                                                 captures log output at all
+//                                                                            (`UniqueViolationLogging
+//                                                                            SqlServerTests`, about unique
+//                                                                            violations, not secrets)
+//
+// ⚠ THE BOUND: both searches key on the LOGGING API and on CAPTURE TYPES. A test asserting log content
+// through some other sink — a custom writer, `ITestOutputHelper` plumbing under another name — would be
+// missed. **What the searches do establish is that no ARCHITECTURE guard scans source for logged secrets,
+// and that log capture is a one-off in this repository rather than an idiom.**
+//
+// ⚠⚠ AND THE CRITERION IS THE HARDEST SHAPE TO COVER, WHICH IS PROBABLY WHY IT IS NOT: it is a UNIVERSAL
+// NEGATIVE OVER AN OPEN POPULATION — every log statement that exists or will exist. A behavioural test can
+// only ever check the call sites it drives, so the instrument that fits is a SOURCE SCAN (no logging call
+// takes a password/token-shaped argument), and that is the guard this repository has for query filters and
+// does not have for logs. Recorded rather than built: it is a new guard over a package I was not dispatched
+// to, and it needs its exemptions enumerated before it would be honest.
 public sealed class AuthenticationSecurityTests
 {
   private static readonly DateTimeOffset Now = new(2026, 7, 31, 12, 0, 0, TimeSpan.Zero);

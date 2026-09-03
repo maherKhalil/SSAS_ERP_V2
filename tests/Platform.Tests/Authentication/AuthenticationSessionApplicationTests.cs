@@ -232,6 +232,151 @@ public sealed class AuthenticationSessionApplicationTests
     Assert.NotNull(session.RefreshTokenRecords.Single(token => token.PublicId != predecessor.PublicId).RevokedUtc);
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ THE THREE TESTS BELOW EXIST BECAUSE `AC-TEN-0007`'s SECOND CLAUSE HAD NO WITNESS ANYWHERE, AND
+  // THE REASON IS THIS FILE'S OWN FAKE. MEASURED BEFORE THEY WERE WRITTEN.
+  // ==================================================================================================
+  //
+  // *"Suspending an Active Tenant makes current authentication eligibility false AND BLOCKS SUBSEQUENT
+  // TENANT SELECTION, NEW-SESSION, AND REFRESH ELIGIBILITY DECISIONS."* Three decisions, one per test
+  // below, **because a criterion naming three things is a SET and one test would claim all three.**
+  //
+  // WHAT THE PLANTS SHOWED, AT TASK SCOPE, BEFORE THESE EXISTED:
+  //   `IsEligible => Membership is not null && IsTenantEligible` cut to `=> Membership is not null`,
+  //   disabling the gate for SELECTION and NEW-SESSION at once   ---> GATE GREEN, zero of 3,291
+  //   the refresh gate's condition made dead                     ---> GATE GREEN, zero of 3,291
+  //
+  // **A suspended tenant could be selected into, could start a session, and could refresh indefinitely,
+  // and nothing said a word.** The guard was correct and unobserved — armed, not current.
+  //
+  // ⚠ THE CAUSE WAS NOT A MISSING TEST, IT WAS THE FAKE. `FakeMembershipService` returned
+  // `(membership, membership is not null)`, deriving the TENANT'S STATUS from WHETHER THE USER IS A
+  // MEMBER. `A && B` where `B` is defined as `A` is just `A`, so the tenant half was not weakly covered
+  // here — **it could not be expressed.** See the note on that class for why the two fields must stay
+  // independent.
+  //
+  // ⚠⚠ THE ABSENCE WAS BOUNDED THREE WAYS BEFORE BUILDING, AND THE INTEGRATION ONE IS THE STRONG FORM.
+  // By NAME: nothing in `tests/` references `AuthenticationSessionRevocationReason.TenantIneligible` or
+  // `IsTenantEligible` — and the only `TenantIneligible` matches in the tree are
+  // `LocalizationErrors.TenantIneligible`, **a different symbol in a different package that would have
+  // read as coverage to a name census.** By MECHANISM: six test files reach these handlers; three are
+  // structural Architecture tests and the rest arrive through this fake. By CONSTRUCTION at the
+  // Integration layer: `PlatformAuthenticationPersistenceTests` uses the REAL eligibility read service
+  // against a real database, so a tenant's actual status would matter there — and all three of its
+  // tenants are built with `Tenant.Create` (always `Provisioning`) and then `Activate`d by hand at
+  // `:704`, `:778` and `:902`, with no `Suspend` or `Archive` anywhere in the file. **Not "the token does
+  // not appear" — every tenant it builds is walked to Active deliberately, so the suspended state is not
+  // expressible there without new code.**
+  //
+  // ---- ⚠⚠⚠ PLANT MATRIX, RE-RUN AFTER THESE THREE EXISTED. THE POINT IS DISJOINTNESS, NOT REDNESS.
+  //
+  // Two plants, three tests. A single plant reddening all three would mean one control counted three
+  // times; what is wanted is that **each test observes ITS OWN decision and is blind to the others**,
+  // because the criterion names three decisions and a set is only covered member by member.
+  //
+  //                                              PLANT A                  PLANT B
+  //                                              `IsEligible` gate cut    refresh gate made dead
+  //   `..._at_tenant_selection`                  RED                      green
+  //   `..._single_membership_..._automatically`  RED                      green
+  //   `..._revokes_the_session_..._refresh`      green                    RED
+  //   every other test in 3,294                  green                    green
+  //
+  // Plant A reaches selection and new-session because both consult `IsEligible`; refresh reads
+  // `IsTenantEligible` directly and is correctly untouched by it. **The GREEN in each row is worth as much
+  // as the RED** — it is what says these are three witnesses rather than one witness counted three times.
+  //
+  // ⚠ AND ONE GATE-READING WARNING FOR WHOEVER RE-RUNS THESE. My first attempt at plant B was `if
+  // (false)`, which produced **GATE RED WITH EVERY SUITE PASSING** — red on compiler warning CS0162,
+  // unreachable code. THE COLOUR SAID CAUGHT AND THE TEXT SAID UNREACHABLE CODE, and stopping at the
+  // colour would have produced the exact opposite finding. **A plant that trips a warning is void the way
+  // a plant that fails to compile is void, and it is worse, because a build failure announces itself
+  // while this announces itself as a caught defect.** Plant B above instead uses a condition already false
+  // at that line — `Membership` is non-null by `:72` — which kills the branch with nothing constant in it.
+  [Fact]
+  [Trait("Acceptance", "AC-TEN-0007")]
+  public async Task Suspended_tenant_is_refused_at_tenant_selection()
+  {
+    var fixture = new Fixture();
+    var selected = fixture.AddEligibleMembership("Tenant One");
+    fixture.AddEligibleMembership("Tenant Two");
+    var begin = await fixture.BeginHandler().HandleAsync(new BeginTenantAccessCommand(fixture.Capability, Client));
+    var required = Assert.IsType<TenantSelectionRequired>(begin.Value);
+    var rawProof = required.SelectionProof.RevealOnce().Value;
+
+    // Suspended AFTER a valid proof was issued — the tenant was eligible when the user began.
+    fixture.Memberships.TenantEligible = false;
+
+    var result = await fixture.SelectHandler().HandleAsync(new SelectTenantCommand(
+      new SensitiveAuthenticationTokenInput(rawProof), Client, selected.TenantUserId, selected.TenantId));
+
+    Assert.True(result.IsFailure);
+    Assert.Empty(fixture.Sessions.Values);
+
+    // ⚠ THE PAIRED POSITIVE IS `Tenant_selection_creates_one_session_and_cannot_be_replayed`, which runs
+    // these exact steps with `TenantEligible` at its default of `true` and gets a session. Without it,
+    // this test is equally satisfied by selection failing for every tenant.
+  }
+
+  // ⚠⚠⚠ THE FLIP IS INSIDE THIS TEST RATHER THAN IN A NEIGHBOUR, BECAUSE `NoEligibleMembership` IS
+  // RETURNED FOR TWO DIFFERENT CAUSES AND THE ASSERTION ALONE CANNOT SAY WHICH FIRED.
+  // `BeginTenantAccessCommandHandler` returns it at `:43` for ZERO memberships and again at `:56` for an
+  // INELIGIBLE TENANT. `Begin_tenant_access_returns_no_membership_without_creating_authentication_state`
+  // already covers the first. **A handler that returned `NoEligibleMembership` unconditionally would
+  // satisfy both that test and the first half of this one**, so the second half flips the single variable
+  // and requires the outcome to change.
+  [Fact]
+  [Trait("Acceptance", "AC-TEN-0007")]
+  public async Task Suspended_tenant_is_refused_where_a_single_membership_would_be_selected_automatically()
+  {
+    var fixture = new Fixture();
+    fixture.AddEligibleMembership();
+    fixture.Memberships.TenantEligible = false;
+
+    var suspended = await fixture.BeginHandler().HandleAsync(new BeginTenantAccessCommand(fixture.Capability, Client));
+
+    Assert.IsType<NoEligibleMembership>(suspended.Value);
+    Assert.Empty(fixture.Sessions.Values);
+    Assert.Single(fixture.Memberships.Values);
+
+    // ONE VARIABLE CHANGES. The membership, the account and the client are the same objects.
+    fixture.Memberships.TenantEligible = true;
+
+    var active = await fixture.BeginHandler().HandleAsync(new BeginTenantAccessCommand(fixture.Capability, Client));
+
+    Assert.IsType<TenantSelectedAutomatically>(active.Value);
+    Assert.Single(fixture.Sessions.Values);
+  }
+
+  // ⚠ NO AMBIGUITY TO RESOLVE HERE: the revocation reason is a unique observable. Refresh does not merely
+  // refuse a suspended tenant, it REVOKES the session, and `TenantIneligible` is reachable from exactly
+  // one branch — `RefreshAuthenticationSessionCommandHandler:77-80`. Asserting the reason rather than the
+  // failure is what makes this about tenant status rather than about refresh failing for any of its six
+  // other reasons.
+  [Fact]
+  [Trait("Acceptance", "AC-TEN-0007")]
+  public async Task Suspended_tenant_revokes_the_session_when_a_refresh_is_attempted()
+  {
+    var fixture = new Fixture();
+    var membership = fixture.AddEligibleMembership();
+    var session = NewPersistedSession(801, fixture.Account.IdentityId, membership, Now);
+    var generated = fixture.TokenService.GenerateRefreshToken(session.Id, session.TokenFamilyId, Client);
+    var raw = generated.SensitiveToken.RevealOnce().Value;
+    var initial = session.CreateInitialRefreshToken(generated.PublicId, generated.SecretHash, Now, Guid.NewGuid());
+    SetId(initial, 901);
+    fixture.Sessions.Values.Add(session);
+    fixture.Sessions.Locator = new RefreshTokenSessionLocator(session.Id, session.IdentityId, session.TenantUserId, session.TenantId);
+
+    // The session was created while the tenant was eligible; it is suspended between issue and refresh.
+    fixture.Memberships.TenantEligible = false;
+
+    var result = await fixture.RefreshHandler().HandleAsync(
+      new RefreshAuthenticationSessionCommand(new SensitiveAuthenticationTokenInput(raw), Client));
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, session.Status);
+    Assert.Equal(AuthenticationSessionRevocationReason.TenantIneligible, session.RevocationReason);
+  }
+
   [Fact]
   public async Task Current_session_logout_revokes_only_the_bound_session_and_is_terminally_idempotent()
   {
@@ -351,15 +496,39 @@ public sealed class AuthenticationSessionApplicationTests
     public Task AddAsync(AuthenticationAccount account, CancellationToken cancellationToken = default) => Task.CompletedTask;
   }
 
+  // ⚠⚠⚠ THIS FAKE USED TO COLLAPSE TWO INDEPENDENT CONDITIONS INTO ONE, AND THAT MADE A PRODUCTION GUARD
+  // UNREACHABLE FROM EVERY TEST IN THIS FILE.
+  //
+  // It returned `new IdentityTenantMembershipEligibility(membership, membership is not null)` — **the
+  // TENANT'S STATUS was set to WHETHER THE USER IS A MEMBER**, which are unrelated facts. Since
+  // `IsEligible => Membership is not null && IsTenantEligible`, that degenerates to `Membership is not
+  // null`, so the tenant-status half of the condition was not weakly covered here: **IT COULD NOT BE
+  // EXPRESSED.** Deleting the tenant check from `SelectTenantCommandHandler`, from
+  // `BeginTenantAccessCommandHandler` and from `RefreshAuthenticationSessionCommandHandler` left the whole
+  // gate GREEN — measured, see the three tests above.
+  //
+  // ⚠ AND THE STUB IS THE REASON A SHARED MECHANISM HAD NO WITNESSES. `IsTenantEligible` is reached by three
+  // handlers, which ought to accumulate coverage from three directions; every one of them arrived through
+  // this fake. **A collaborator that is stubbed identically by all of its consumers is not shared for
+  // coverage purposes — it is absent from all of them.**
+  //
+  // `TenantEligible` now defaults to `true`, so every pre-existing test in this file behaves exactly as
+  // before, and the null-membership branch mirrors `IdentityTenantMembershipReadService:69-81` — which
+  // returns `(null, false)` for a missing membership and the TENANT'S ACTUAL STATUS otherwise.
   private sealed class FakeMembershipService : IIdentityTenantMembershipReadService
   {
     public List<EligibleTenantMembership> Values { get; } = [];
+
+    public bool TenantEligible { get; set; } = true;
+
     public Task<IReadOnlyList<EligibleTenantMembership>> ListEligibleMembershipsAsync(long identityId, CancellationToken cancellationToken = default) =>
       Task.FromResult<IReadOnlyList<EligibleTenantMembership>>(Values.Where(value => value.IdentityId == identityId).ToArray());
     public Task<IdentityTenantMembershipEligibility> GetMembershipEligibilityForUpdateAsync(long identityId, long tenantUserId, Guid tenantId, CancellationToken cancellationToken = default)
     {
       var membership = Values.SingleOrDefault(value => value.IdentityId == identityId && value.TenantUserId == tenantUserId && value.TenantId == tenantId);
-      return Task.FromResult(new IdentityTenantMembershipEligibility(membership, membership is not null));
+      return Task.FromResult(membership is null
+        ? new IdentityTenantMembershipEligibility(null, false)
+        : new IdentityTenantMembershipEligibility(membership, TenantEligible));
     }
   }
 

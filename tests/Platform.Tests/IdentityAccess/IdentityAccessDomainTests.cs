@@ -178,7 +178,30 @@ public sealed class IdentityAccessDomainTests
     Assert.True(user.AssignRole(role, "actor", Guid.NewGuid(), Now).IsFailure);
   }
 
+  // ⚠ CITES `AC-IAM-0015` — *"A role grants no permission merely because of its name"* — AND THE
+  // *"including a role named Administrator"* CLAUSE OF `AC-IAM-0004`. The role is built with the literal
+  // name the criteria worry about, and the assertion is that nothing follows from it.
+  //
+  // ⚠⚠ THE NAME IS LOAD-BEARING AND LOOKS ARBITRARY, WHICH IS WHY THIS NOTE EXISTS. `"Administrator"` here
+  // is not a sample string: it is the exact name two criteria call out, because it is the one a
+  // name-matching shortcut would most plausibly be written against. **Change it to `"Manager"` and both
+  // citations quietly stop being observed while the test keeps passing** — an arrangement carrying the
+  // discrimination, with nothing in the source saying so.
+  //
+  // ⚠⚠⚠ AND IT IS THE ONLY PLACE THE CLAUSE CAN LIVE. `PlatformPlaneAuthorizationArchitectureTests` proves
+  // a tenant token cannot carry a PlatformSupport permission, but its filter takes PERMISSION NAMES — no
+  // role passes through it, so it cannot observe a role name however it is arranged. **The scope mechanism
+  // and the name clause are at different layers and need different tests; I first credited the filter test
+  // with both and that was wrong.**
+  //
+  // ⚠ ANTI-VACUITY: `Assert.Empty` over a freshly-created role is weak alone — a role that could hold no
+  // permissions at all would pass it. **`Custom_tenant_role_still_accepts_a_tenant_scoped_permission` at
+  // `:88` is the control**: it assigns a Tenant-scoped catalog permission and asserts it APPEARS in
+  // `ActivePermissions`. So *empty here* means *nothing came from the name*, not *nothing ever arrives*.
+  // The two tests are a pair and neither states it.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0015")]
+  [Trait("Criterion", "AC-IAM-0004")]
   public void Administrator_role_name_does_not_imply_permissions()
   {
     var role = CreateCustomRole(Guid.NewGuid(), "Administrator");

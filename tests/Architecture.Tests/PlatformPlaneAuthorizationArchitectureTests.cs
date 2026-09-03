@@ -55,12 +55,23 @@ public sealed class PlatformPlaneAuthorizationArchitectureTests
   // the tenant-token filter and only Tenant-scoped ones survive, so a tenant role naming a PlatformSupport
   // permission grants nothing at issuance.
   //
-  // ⚠⚠ THE *"including a role named Administrator"* CLAUSE IS SATISFIED BY CONSTRUCTION, NOT BY A CASE.
-  // The filter keys on SCOPE and never on a name, so there is no Administrator special case to test — the
-  // criterion anticipates a shortcut the implementation does not take. **Recorded because a reader looking
-  // for an `"Administrator"` literal here will not find one and could reasonably conclude the clause is
-  // uncovered; the absence of the name IS the coverage.** (`AC-IAM-0015`, *no permission by role name*, is
-  // the criterion that owns names as its subject, and it is not cited here.)
+  // ⚠⚠ THE *"including a role named Administrator"* CLAUSE IS **NOT** CARRIED HERE, AND MY FIRST VERSION OF
+  // THIS COMMENT CLAIMED IT WAS — *"satisfied by construction, the filter keys on scope and never on a
+  // name."* **THAT WAS TRUE-BY-CONSTRUCTION REASONING AND IT IS NOT AN OBSERVATION.** It described today's
+  // implementation; the clause exists because of tomorrow's.
+  //
+  // ⚠⚠⚠ AND THE CHECK THAT KILLED IT IS WORTH KEEPING: **NO ROLE FLOWS THROUGH THIS TEST AT ALL, NAMED OR
+  // OTHERWISE.** `FilterToTenantScope` takes PERMISSION NAMES, so there was never an Administrator case here
+  // to be subsumed — the question *does a role named Administrator reach this filter* has the answer
+  // *no role reaches this filter*. **A clause cannot be satisfied by construction in a test whose subject is
+  // one layer below the clause's subject.**
+  //
+  // The clause IS observed, elsewhere and directly: `IdentityAccessDomainTests.Administrator_role_name_
+  // does_not_imply_permissions` builds a custom role literally named `"Administrator"` and asserts
+  // `ActivePermissions` is empty. **That is the case this file cannot contain.**
+  //
+  // So what THIS test carries is the SCOPE mechanism of `AC-IAM-0004` — a tenant token cannot carry a
+  // PlatformSupport permission however it was granted — and not the name clause.
   //
   // ⚠⚠⚠ AND THE ANTI-VACUITY CONTROL IS ALREADY IN THE TEST, WHICH IS WHY THE CITATION IS SAFE. A filter
   // that returned NOTHING would satisfy *no PlatformSupport permission survives* perfectly. The second

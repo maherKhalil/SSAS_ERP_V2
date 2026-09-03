@@ -82,6 +82,24 @@ public sealed class AuthenticationSessionApplicationTests
   // item 208's 32 uncited criteria, found by spot-check and confirmed here against the BODY: one eligible
   // membership in, `TenantSelectedAutomatically` out, and the tenant matches.
   [Trait("Acceptance", "AC-AUTH-0002")]
+  // ⚠ ALSO CITES `AC-IAM-0006` — *"When an identity has EXACTLY ONE active tenant membership, selection is
+  // completed automatically and no selection UI is required."* Same behaviour, two packages' criteria:
+  // `FP-002` cares that a session is created, `FP-001` cares that the user is not asked. **`FP-001` is not
+  // named anywhere in this file's subject, which is why the trait is worth more than the comment.**
+  //
+  // ⚠⚠ AND IT IS THE THREE-WAY POPULATION THAT MAKES THIS MEAN *automatically* RATHER THAN *always*:
+  //
+  //   ZERO memberships   `Begin_tenant_access_returns_no_membership_without_creating_authentication_state`
+  //   ONE  membership    here — `TenantSelectedAutomatically`, and a session EXISTS
+  //   MANY memberships   `Begin_tenant_access_creates_single_use_selection_proof_for_multiple_memberships`
+  //                      — `TenantSelectionRequired`, and `Sessions` is EMPTY
+  //
+  // **A handler that auto-selected the first of many would satisfy this test alone.** The *many* row is what
+  // makes *exactly one* a condition rather than a description of the fixture.
+  //
+  // Key is `Acceptance` to match this file, not `Criterion`: both carry `AC-` ids repo-wide and nothing
+  // validates either, so local consistency is the only thing a reader can rely on.
+  [Trait("Acceptance", "AC-IAM-0006")]
   public async Task Begin_tenant_access_automatically_selects_one_revalidated_membership()
   {
     var fixture = new Fixture();
@@ -96,7 +114,23 @@ public sealed class AuthenticationSessionApplicationTests
     Assert.Single(fixture.Sessions.Values[0].RefreshTokenRecords);
   }
 
+  // ⚠ CITES `AC-IAM-0007` — *"When an identity has multiple active memberships, a tenant must be selected
+  // BEFORE A TENANT-SCOPED TOKEN IS ISSUED."* The criterion has two halves and this test carries both, but
+  // only one of them is in the assertions a reader notices:
+  //
+  //   *a tenant must be selected*   `TenantSelectionRequired` with both memberships offered
+  //   *before a token is issued*    **`Assert.Empty(fixture.Sessions.Values)`** — no session, so nothing
+  //                                 tenant-scoped exists yet
+  //
+  // ⚠⚠ **THE EMPTY-SESSIONS LINE IS THE WHOLE SECOND CLAUSE AND READS AS BOOKKEEPING.** A handler that
+  // returned the selection prompt AND created a session would satisfy every other assertion here while
+  // issuing exactly the token the criterion forbids. **Do not delete it as redundant with the prompt.**
+  //
+  // Paired with `Begin_tenant_access_automatically_selects_one_revalidated_membership` (`AC-IAM-0006`):
+  // that one asserts a session EXISTS for a single membership, this one that none exists for several.
+  // **Neither alone separates a working rule from a handler stuck on one branch.**
   [Fact]
+  [Trait("Acceptance", "AC-IAM-0007")]
   public async Task Begin_tenant_access_creates_single_use_selection_proof_for_multiple_memberships()
   {
     var fixture = new Fixture();

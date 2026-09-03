@@ -172,7 +172,27 @@ public sealed class ExpiredTenantGateTests
   //
   // The snapshot is read once and cached; the second request crosses the term boundary with **no write
   // and no invalidation**. This is the clock-advance proof at the HTTP surface rather than in isolation.
+  //
+  // ⚠ CITES `AC-SUB-0032` — *"A cached entitlement entry DOES NOT OUTLIVE `TermEndUtc`. A tenant cached as
+  // entitled at `TermEndUtc − 1s` is refused at `TermEndUtc + 1s` WITHOUT ANY INVALIDATION EVENT HAVING
+  // OCCURRED."* **The two `Assert.Equal(1, reader.Reads)` calls are the criterion's real content** — the
+  // first establishes the entry was cached, the second that it was never re-read. Without the second, a
+  // cache that silently evicted on every request would pass and the criterion would be about nothing.
+  //
+  // ⚠ AND CITES `AC-SUB-0028` — *"Advancing the clock past `TermEndUtc` changes the resolved state from
+  // `InTerm` to `Expired` WITH NO ROW WRITTEN AND NO JOB RUN."* *No job run* is the same `Reads == 1`;
+  // **`no row written` is carried by this host having no persistence at all rather than by an assertion**,
+  // which is weaker than it looks and is why the domain-level statement matters more: `HasExpiredAt` is a
+  // pure function of the term against the clock, so there is nothing that COULD write.
+  //
+  // ⚠⚠ THE BOUNDARY PRECISION IS NOT HERE AND DOES NOT NEED TO BE. The criterion says `−1s` and `+1s`;
+  // this crosses by a day either side. The tick-exact boundary is asserted in
+  // `SubscriptionInvariantTests.A_fixed_term_expires_after_its_end` — `HasExpiredAt(end)` false,
+  // `HasExpiredAt(end + 1 tick)` true. **Two files, one criterion: the precision lives in the domain test
+  // and the cache behaviour lives here**, and neither alone is the criterion.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0032")]
+  [Trait("Criterion", "AC-SUB-0028")]
   public async Task A_request_before_expiry_caches_a_snapshot_that_still_refuses_after_it()
   {
     var reader = new StubReader(SubscriptionTerm.Fixed(Noon, Noon.AddDays(30)).Value);

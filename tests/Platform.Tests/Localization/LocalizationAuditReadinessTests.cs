@@ -19,11 +19,28 @@ public sealed class LocalizationAuditReadinessTests
 {
   private static readonly Guid TenantId = Guid.Parse("4b878586-566a-4b86-b3c5-c58d3d3ad962");
 
+  // ⚠ CITES THE *"NO SQL STATE CHANGE"* CLAUSE OF `AC-LOC-0064`, ACROSS ALL FOUR MUTATION HANDLERS. Every
+  // repository call count is 0, `SaveChanges` is 0, `Commit` is 0 and `Rollback` is 1 — so the transaction
+  // is not merely uncommitted but actively unwound. `LocalizationAuditReadinessApiTests` carries the HTTP
+  // half (503 and the code); this is the handler half, and the four rows are the four handlers.
+  //
+  // ⚠⚠ THE *"Production"* QUALIFIER IS NOT EXERCISED HERE AND MUST NOT BE READ INTO THIS. The criterion
+  // says *"an otherwise authorized PRODUCTION localization mutation"*, and the environment logic lives
+  // ENTIRELY inside the real `LocalizationManagementAuditReadiness`, which this fixture replaces with a stub
+  // that returns whatever it is given. **The real class returns `Unavailable` unless an explicit
+  // development/test bypass is configured — so the environment condition is a separate subject with a
+  // separate test, and a dropped mode qualifier here would read as though this file covered it.**
+  //
+  // ⚠⚠⚠ AND THREE SIDE-EFFECT KINDS THE SENTENCE NAMES ARE NOT ASSERTED: *Domain event*, *cache eviction*
+  // and *submitted-text logging*. Nothing in this fixture can observe them — there is no event collector,
+  // no cache and no logger. **The clause covered is one of four in that list**, and the count is stated
+  // because *no side effects* is exactly the phrase a reader compresses into *all of them*.
   [Theory]
   [InlineData("create")]
   [InlineData("update")]
   [InlineData("undo")]
   [InlineData("restore")]
+  [Trait("Criterion", "AC-LOC-0064")]
   public async Task Direct_mutation_handler_fails_without_side_effects_when_audit_is_not_ready(string operation)
   {
     var fixture = new Fixture(LocalizationManagementAuditReadinessResult.Unavailable);
@@ -41,7 +58,17 @@ public sealed class LocalizationAuditReadinessTests
     Assert.Equal(1, fixture.UnitOfWork.Transaction.RollbackCalls);
   }
 
+  // ⚠ CITES THE *"no INTERNAL-CAUSE DISCLOSURE"* CLAUSE OF `AC-LOC-0064`, and it is the one clause in that
+  // sentence with a *positive* observable rather than a count of zero: the provider throws carrying
+  // `provider-secret-reason`, and that string is absent from the error the caller receives.
+  //
+  // ⚠⚠ IT ALSO CARRIES *FAILS CLOSED*, WHICH IS THE HARDER HALF AND IS EASY TO LOSE. The stub is
+  // constructed `Ready` and then given an exception — **so the readiness result that WOULD have permitted
+  // the mutation is present, and the throw is what stops it.** A handler that swallowed the exception and
+  // proceeded on the `Ready` value would satisfy the disclosure assertion and violate the criterion; the
+  // `Settings.Calls`/`SaveCalls` zeroes are what exclude it.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0064")]
   public async Task Operational_readiness_exception_fails_closed_without_disclosing_the_reason()
   {
     var fixture = new Fixture(LocalizationManagementAuditReadinessResult.Ready);
@@ -55,7 +82,20 @@ public sealed class LocalizationAuditReadinessTests
     Assert.Equal(0, fixture.UnitOfWork.SaveCalls);
   }
 
+  // ⚠ CITES THE *"an OTHERWISE AUTHORIZED … mutation"* QUALIFIER OF `AC-LOC-0064`. A suspended tenant is
+  // refused with `TenantIneligible` and `Readiness.Calls` is **0** — the audit gate is never consulted, so
+  // the criterion's subject really is a mutation that has already passed authorization. **Without this, the
+  // sentence would be satisfiable by a handler that ran the audit check first and reported audit failure for
+  // an unauthorized caller — leaking that audit is unavailable to someone with no right to know.**
+  //
+  // ⚠⚠ AND IT PINS *WHICH* ELIGIBILITY READ THE HANDLERS USE, WHICH IS A SAFETY PROPERTY NO CRITERION
+  // COVERS. `LockedCalls` is 1 and `UnlockedCalls` is 0 — the handlers take `GetEligibilityForUpdateAsync`,
+  // the locked read. That is the positive counterpart of the guard in `RequestTenantEligibilityTests`, whose
+  // `GetEligibilityForUpdateAsync` THROWS *"Request eligibility must never replace the locked mutation
+  // check."* **One test proves the request-scoped cache refuses to serve the locked path; this one proves
+  // the mutation handlers actually ask for it. Neither alone establishes the pair.**
   [Fact]
+  [Trait("Criterion", "AC-LOC-0064")]
   public async Task Locked_live_tenant_denial_precedes_the_audit_gate()
   {
     var fixture = new Fixture(LocalizationManagementAuditReadinessResult.Unavailable, TenantStatus.Suspended);
@@ -67,6 +107,16 @@ public sealed class LocalizationAuditReadinessTests
     Assert.Equal(0, fixture.Readiness.Calls);
   }
 
+  // ⚠⚠⚠ THIS IS THE ANTI-VACUITY CONTROL FOR EVERY ZERO ABOVE, AND IT IS THE LOAD-BEARING TEST IN THE FILE.
+  // *No SQL state change when audit is unavailable* is a property ONLY IF THE MUTATION OTHERWISE HAPPENS.
+  // Were the handlers broken — a repository never called, a transaction never opened — every count above
+  // would still be 0 and every assertion would still pass. **This test is what makes those zeroes mean
+  // *refused* rather than *inert*:** `Overrides.Added` is non-null, `SaveCalls` is 1, `CommitCalls` is 1.
+  //
+  // ⚠ THE SAME SHAPE AS THE RAW-TEMPLATE PAIR AND THE 422/400 PAIR — a positive over a contrasting
+  // producer, carrying a property that no single assertion can hold. Here it is not a citation but a
+  // control, and it is cited to no criterion deliberately: **the criterion is about what does NOT happen,
+  // and this test exists to give that a denominator.**
   [Fact]
   public async Task Ready_create_continues_through_domain_save_and_commit()
   {

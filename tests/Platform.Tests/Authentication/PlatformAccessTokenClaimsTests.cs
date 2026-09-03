@@ -53,6 +53,16 @@ public sealed class PlatformAccessTokenClaimsTests
   // ---- Claims provider eligibility + sourcing ----
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0074")]
+  // `AC-TEN-0074`'s POSITIVE HALF — *"it carries … `identity_id`, `session_id`, `client_id`,
+  // `security_version`, and one or more active catalog-valid PlatformSupport permission claims."* The ban
+  // half is on `PlatformPlaneAuthorizationArchitectureTests.Platform_access_token_claims_carry_no_tenant_
+  // or_role_shaped_fields`, which carries the same trait.
+  //
+  // ⚠ **THE TWO HALVES CANNOT LIVE IN ONE TEST**: a ban is a claim about the TYPE's members and the positive
+  // is a claim about a produced INSTANCE's values. Splitting them across a structural and a behavioural site
+  // is not duplication — **neither could make the other's assertion** — and the id is on both so that
+  // deleting either leaves the criterion visibly half-carried rather than silently so.
   public async Task Eligible_active_principal_with_permissions_prepares_platform_claims()
   {
     var provider = Build(
@@ -102,6 +112,16 @@ public sealed class PlatformAccessTokenClaimsTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0063")]
+  // `AC-TEN-0063` — *"At issuance, a LIVE STATUS CHECK denies a platform token when
+  // `PlatformSupportPrincipal.Status == Disabled`; no token-carried status is authoritative."*
+  //
+  // ⚠ THE *LIVE* IN THIS CRITERION IS EXPRESSIBLE AND `AC-TEN-0070`'s IS NOT, WHICH IS A DISTINCTION WORTH
+  // KEEPING. Here *live* means the decision is taken from the PRINCIPAL RECORD rather than from the token —
+  // a claim about the SOURCE, and the fake can present a disabled principal. `0070`'s *re-derived live on
+  // refresh* is a claim about REPEATING the read, and this file's permission fake answers identically on
+  // every call, so a cache and a re-read are indistinguishable. **A constant-returning double can express a
+  // STATE and cannot express a CHANGE.**
   public async Task Disabled_principal_denies()
   {
     var disabled = ActivePrincipal();
@@ -127,6 +147,10 @@ public sealed class PlatformAccessTokenClaimsTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0061")]
+  // `AC-TEN-0061` — *"A principal with ZERO active catalog-valid `PermissionScope.PlatformSupport`
+  // permissions is not eligible; platform token issuance is DENIED."* Expressible for the same reason as
+  // `0063`: the fake's array is fixed per test but CHOSEN per test, so an empty set is a state it can hold.
   public async Task Zero_valid_permissions_fails_closed()
   {
     var provider = Build(EligibleAccount(), ActivePrincipal(), permissions: []);
@@ -214,6 +238,31 @@ public sealed class PlatformAccessTokenClaimsTests
     field!.SetValue(entity, id);
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ WHAT THE DOUBLES BELOW CANNOT EXPRESS — READ BEFORE CITING A CRITERION HERE.
+  // ==================================================================================================
+  //
+  //   LIVENESS / RE-DERIVATION   `FakePermissionReadService` returns a FIXED array and IGNORES the principal
+  //                              id it is asked about. Every call answers identically, so **a provider that
+  //                              CACHED permissions and one that RE-READ them are indistinguishable.**
+  //                              `AC-TEN-0070` — *"platform refresh RE-DERIVES permission claims LIVE; no
+  //                              stale snapshot is reused"* — is therefore NOT CITABLE HERE. Its witness
+  //                              needs a double whose answer MOVES between two calls.
+  //
+  //   WHAT THE PROVIDER READS    `AC-TEN-0071` — *"issuance reads only Identity, Account, Principal and
+  //                              Assignment; BOOTSTRAP CONFIGURATION NEVER PARTICIPATES"* — is not citable
+  //                              either, for the opposite reason: **there is no configuration double here to
+  //                              record an access**, so a provider that also read configuration would be
+  //                              invisible. A capability no double offers is one no test can prove is unused.
+  //
+  //   LOCK / FOR-UPDATE          `GetByIdentityIdForUpdateAsync` returns exactly the unlocked result.
+  //
+  //   EVERYTHING ELSE            every other repository member throws `NotSupportedException`.
+  //
+  // ⚠ NONE OF THIS IS A DEFECT — these are correct choices for a claims-provider test. **And note the two
+  // failures are OPPOSITE: `0070` fails because a double answers too CONSTANTLY, `0071` because a double is
+  // ABSENT.** Too much stability and too little presence both produce a criterion that cannot be witnessed
+  // in the file that looks like its home.
   private sealed class FakeIdentityRepository : IIdentityRepository
   {
     public Task<Identity?> GetByIdAsync(long identityId, CancellationToken cancellationToken = default) =>

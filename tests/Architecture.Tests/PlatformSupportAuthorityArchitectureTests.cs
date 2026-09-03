@@ -150,6 +150,18 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0055")]
+  // `AC-TEN-0055` — *"`PlatformAuthenticationSession` is not `ITenantOwnedEntity`/`ICompanyOwnedEntity`,
+  // RECEIVES NO TENANT QUERY FILTER, and contains no `TenantId`, `TenantUserId`, or `CompanyId`."* All three
+  // clauses are here, and the middle one is carried by the first rather than separately:
+  // **`PersistenceDbContext.ConfigureTenantFilter<TEntity>` applies the global filter to every
+  // `ITenantOwnedEntity`, so NOT IMPLEMENTING IT *IS* NOT HAVING THE FILTER** — the interface is the
+  // selector, not a label. Same argument as `AC-TEN-0018` on `Tenant` itself.
+  //
+  // ⚠ FOUND BY ASKING WHERE A TYPE-SHAPE CLAIM COULD BE WITNESSED, NOT BY OPENING THE FILE THE CRITERION'S
+  // SUBJECT NAMES. `0055` sits in the token-and-session block, so the obvious home was
+  // `PlatformAccessTokenClaimsTests` — where it would have been an assertion about behaviour that this
+  // criterion never makes. **The criterion is structural, so its witness is structural.**
   public void Platform_authentication_session_is_global_and_not_tenant_or_company_owned()
   {
     var session = typeof(PlatformAuthenticationSession);
@@ -170,6 +182,22 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0069")]
+  // ⚠ `AC-TEN-0069` CITED FOR ITS SECOND HALF ONLY, AND THE FIRST HALF IS NAMED SO THE ID DOES NOT BURY IT.
+  //
+  // *"`StrictAccessTokenValidator` SELECTS THE TENANT/PLATFORM PROFILE STRUCTURALLY BY `security_plane` ‖ and
+  // PERFORMS NO DATABASE OR LIVE PRINCIPAL-STATUS LOOKUP."*
+  //
+  //   after the bar   CARRIED — no `DbContext`, repository or read-service field, on a static class.
+  //   before the bar  NOT CARRIED — nothing here observes that the profile is chosen by the
+  //                   `security_plane` claim rather than by any other route. A validator that picked the
+  //                   profile from the issuer, the audience, or a hard-coded default would pass every line
+  //                   of this test.
+  //
+  // **The two halves live in different layers — one is a field-shape claim and the other is a behavioural
+  // one — and citing the whole id here would have put a green test over the untested half.** Same shape as
+  // `AC-TEN-0007`, whose eligibility clause is asserted in the domain while its three-consumer clause is
+  // not. The structural-selection half wants a behavioural test over the validator's profile choice.
   public void Strict_access_token_validator_is_stateless_and_holds_no_persistence_dependency()
   {
     // Phase 3C-2 adds a platform profile branch but the validator must remain structural/stateless:

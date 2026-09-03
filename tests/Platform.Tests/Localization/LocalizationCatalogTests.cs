@@ -19,9 +19,20 @@ public sealed class LocalizationCatalogTests
   //   manifest, expecting 0.
   //   `SemanticCatalogValidator` — the only validation entry point in the tool — is referenced by NO TEST.
   //
-  // **So all five named rejections — duplicate, reordered, invalid, renamed, reused-retired — have no
-  // test.** Searched by ENTRY POINT rather than by name, because a name search over "validate" cannot be
-  // complete and a call-site search over one runner can.
+  // **THE EXACT CLAIM, WHICH IS NARROWER AND STRONGER THAN *the refusal paths are never entered*: the
+  // validator IS entered — once, on the CHECKED-IN manifest, expecting 0. NO INPUT THAT SHOULD BE REJECTED
+  // IS EVER PASSED TO IT.** That forecloses the obvious rebuttal, and *never entered* would have been false.
+  //
+  // ⚠ HOW MANY REJECTIONS ARE NAMED IS AMBIGUOUS IN THE CRITERION ITSELF, SO IT IS LEFT AMBIGUOUS HERE:
+  // *duplicate/reordered, invalid, renamed, or reused retired* is **FOUR comma-groups, the first a
+  // slash-pair — four listed groups, five rejections if that pair splits.** The sentence does not say, and
+  // resolving it silently would be inventing a denominator. None of them is covered either way.
+  //
+  // Searched by ENTRY POINT rather than by name, because a name search over "validate" cannot be complete
+  // and a call-site search over one runner can. ⚠⚠ **That is also why this MISS is a strong result rather
+  // than a weak one: a miss confirms weakly when the query is shaped by the verb you disposed on, and
+  // strongly when it is an entry-point enumeration over a completable mechanism — the emptiness is not
+  // *I looked for the wrong thing*, it is THERE IS EXACTLY ONE DOOR AND NOBODY WENT THROUGH IT.**
   //
   // ⚠ Everything this test does assert is a REPOSITORY FACT rather than a criterion: six resources, schema
   // and catalog version 1, every resource at version 1 with both defaults non-empty. Those are worth having

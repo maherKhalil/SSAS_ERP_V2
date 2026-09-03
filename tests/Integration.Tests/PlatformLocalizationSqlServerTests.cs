@@ -370,6 +370,26 @@ public sealed class PlatformLocalizationSqlServerTests
   // ⚠ THIRD INSTANCE TONIGHT of one error value serving two causes with no way to tell them apart, after
   // `Position.GradeInactive` (two relationships) and `ParentInactive` (three operations). In those two the
   // ambiguity cost a test's discriminating power; here it costs a CITATION.
+  //
+  // ---- ⚠⚠⚠ AND A QUALIFICATION FOUND MINUTES AFTER THE ABOVE WAS WRITTEN, WHICH NARROWS IT.
+  //
+  // **The pre-check is not an ordinary read.** `TenantLocalizationOverrideRepository.GetForUpdateAsync:17`
+  // issues `SELECT … WITH (UPDLOCK, HOLDLOCK)`. So the second caller's pre-check does not run freely
+  // alongside the first — **it blocks on the lock**, and if that lock is still held when the winner
+  // commits, the loser then READS THE COMMITTED ROW and leaves by the pre-check at `:73`.
+  //
+  // **Under that reading the loser's path is not decided by a race at all: it is deterministically the
+  // pre-check, and `:101-103` is a defensive arm this test never reaches.** Which would make the clause
+  // uncarried for a different and simpler reason than the one above.
+  //
+  // ⚠⚠ WHAT DECIDES BETWEEN THE TWO READINGS IS TRANSACTION SCOPE, AND I HAVE NOT ESTABLISHED IT.
+  // `HOLDLOCK` holds only to the end of the enclosing transaction. If the pre-check runs outside one and
+  // `SaveChangesAsync` opens its own, the lock is released immediately and the free race is back.
+  //
+  // **So: NOT CITED either way, and the reason is now one of two — a race, or a lock that makes the
+  // constraint arm unreachable.** The search that settles it is whether these handlers run inside an
+  // ambient transaction spanning the pre-check and the save. Recorded rather than guessed, because the
+  // paragraph above was written before this line was read and would otherwise stand as the whole story.
   public async Task Concurrent_application_create_has_one_deterministic_loser()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();

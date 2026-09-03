@@ -137,6 +137,58 @@ namespace SSAS.API.Tests.IdentityAccess;
 // built ahead of an application layer is ordinary. **The class is about what the documentation claims, not
 // about anyone's competence.**
 //
+// ==================================================================================================
+// ⚠⚠⚠ THREE CLASSES, AND THE USEFUL QUESTION IS NOT *WHAT ARE THEY* BUT ***COULD AN INSTRUMENT SEE THIS.***
+// ==================================================================================================
+//
+// The classes below came out of the `IAM` and `SUB` citation passes. **They are recorded together because
+// they differ on exactly one axis that decides where effort should go**, and that axis is not severity.
+//
+// ---- CLASS 1. A CRITERION'S SUBJECT EXISTS, IS CORRECT, AND IS ON NO EXECUTED PATH. (3 instances, above)
+//
+// **NO INSTRUMENT CAN SEE IT.** The exposure in every instance arrives when the missing execution path is
+// built — which is also the moment nobody is looking at the guard. ***A defect that requires future
+// correct-looking work to become live is invisible to every instrument this repository has, because every
+// one of them observes what exists.*** This class needs a reader, and saying so is the honest consequence
+// rather than a failure to try.
+//
+// ---- CLASS 2. TOLD, NOT DISCOVERING — THE PRECONDITION THE CRITERION SAYS IS DETERMINED ARRIVES AS A
+// ---- PARAMETER. (3 instances)
+//
+//   `AC-SUB-0004` clause 2   two CONCURRENT appends — `TenantSubscription.Append(…, currentMaximum, …)`
+//                            takes the maximum as an argument, so it is never read under contention
+//   `AC-SUB-0002`            criterion names `EntitlementAt(TENANT, T)`; the test calls
+//                            `InForceAt(RECORDS, T)` — the lookup replaced by a parameter
+//   `Role.Retire`            `Retire(bool hasActiveUserAssignments, …)` — the domain honours the flag and
+//                            says nothing about who computes it; one caller computes it from a live query
+//
+// **AN INSTRUMENT COULD SEE THIS, and the tell is mechanical: the domain method takes a parameter carrying
+// a fact the criterion says the SYSTEM must establish.** In the `AC-SUB-0002` case it is sharper still —
+// **the criterion's named function and the test's called function differ in ARITY**, the tenant argument
+// having become a records argument. ⚠ Calibration: that sharp form needs the criterion to NAME a function,
+// which two of the three do not. So this is a guard CANDIDATE, not a guard, and the honest strength is
+// *detectable by a reviewer following a written rule* rather than *checkable by reflection*.
+//
+// ---- CLASS 3. A CONJUNCTION WHOSE HALVES ARE EACH TESTED AND NEVER TOGETHER. (1 instance)
+//
+// `AC-SUB-0021`, at `Infrastructure/ExpiredTenantGateTests`. The authentication flows are covered with no
+// entitlement configured; the entitlement refusal is covered on invented routes. The AND is asserted
+// nowhere. **Each half being thoroughly tested is exactly what makes the gap invisible** — there is no
+// thin coverage anywhere to attract attention.
+//
+// **AN INSTRUMENT COULD SEE THIS ONE MOST EASILY: two file sets with an empty intersection** — files
+// registering `ITenantEntitlementReader`, files using `HostWebApplicationFactory` — **and the emptiness is
+// the finding.**
+//
+// ⚠⚠ AND THE GENERAL FORM EXPLAINS WHY NO COVERAGE METRIC WILL EVER REPORT IT: ***COVERAGE IS MEASURED PER
+// ITEM AND REQUIREMENTS ARE CONJUNCTIONS.*** Every line, branch, criterion and route in both halves reads
+// as covered; **the AND is not an item, so nothing counts it.** That is not a gap in these instruments —
+// it is a gap in what an instrument of that shape can represent.
+//
+// ---- SO THE ARTEFACT IS THE SPLIT, NOT THE INSTANCES: **two of the three classes are guardable and the
+// worst one is not.** Anyone spending effort here should spend it on 2 and 3, and accept that 1 is bought
+// only with attention.
+//
 // ---- THE EXPECTATION WAS READ OFF THE RUNNING SURFACE, SO THE GREEN IS AN ARTEFACT.
 //
 // Planted on its own — `employee-link/remove` renamed — which failed. `DEC-L-070` per inventory, T-114's

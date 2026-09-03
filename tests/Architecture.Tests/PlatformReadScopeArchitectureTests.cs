@@ -102,8 +102,23 @@ public sealed class PlatformReadScopeArchitectureTests
         return comment >= 0 ? line[..comment] : line;
       }));
 
+  // ⚠⚠⚠ NO `AC-IAM-0001` TRAIT, DELIBERATELY, AND THE FIRST VERSION OF THIS FILE HAD ONE.
+  //
+  // This guard defends exactly that criterion's exposure — *"a tenant administrator sees only users from
+  // the current tenant"* — so citing it feels obviously right. **It would be false.** The criterion's
+  // subject is that the listing RETURNS ONLY ONE TENANT'S ROWS; this asserts that a predicate or a marker
+  // is PRESENT and that `IgnoreQueryFilters` is ABSENT. Nothing here executes a query or observes a row.
+  //
+  // ***A STRUCTURAL GUARANTEE READS AS BEHAVIOURAL COVERAGE AND IS NOT IT.*** This repository has a
+  // measured instance: an architecture test asserted every read-service interface method requires a scope
+  // — total, cheap, passing — **while two of the six services it covered could not run at all**, one of
+  // them a financial report that threw on every call.
+  //
+  // **So `AC-IAM-0001` stays UNCOVERED and the link is recorded instead of claimed.** A reader arriving at
+  // either end finds the other; the criterion keeps its honest status; nothing asserts a witness that does
+  // not exist. `COVERED ≠ CITED` has a mirror, and this is it — **the link is worth writing down precisely
+  // when the coverage claim would be false.**
   [Fact]
-  [Trait("Criterion", "AC-IAM-0001")]
   public void Every_platform_read_service_that_ignores_query_filters_supplies_its_own_scope()
   {
     var files = Directory
@@ -164,8 +179,9 @@ public sealed class PlatformReadScopeArchitectureTests
   // change and would be updated in the same commit without a thought. **A number forces the question to be
   // asked out loud in the diff.** The number is derived below, never typed — the assertion is that it has
   // not FALLEN, so adding a new read service that relies on the filter is free and taking one away is not.
+  // No `AC-IAM-0001` trait here either, for the reason given on the test above: this counts files, it does
+  // not read rows.
   [Fact]
-  [Trait("Criterion", "AC-IAM-0001")]
   public void The_platform_read_services_relying_on_the_global_tenant_filter_do_not_shrink()
   {
     var files = Directory

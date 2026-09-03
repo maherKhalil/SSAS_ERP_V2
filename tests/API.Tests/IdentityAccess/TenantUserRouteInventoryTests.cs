@@ -66,8 +66,24 @@ namespace SSAS.API.Tests.IdentityAccess;
 // isolation from the user list, and no test anywhere would fail.**
 //
 // ⚠ The outcome is therefore none of *broken*, *fine and tested*, or *dead*: **correct, load-bearing on a
-// mechanism named nowhere near it, and undefended.** Recorded rather than repaired — a test for it needs
-// the query filter and a real context, which is `Integration.Tests` and outside this loop's gate.
+// mechanism named nowhere near it, and undefended.**
+//
+// ---- ⚠⚠ IT IS NO LONGER UNDEFENDED, AND `AC-IAM-0001` IS STILL UNCOVERED. BOTH ARE TRUE.
+//
+// `PlatformReadScopeArchitectureTests` now requires every Platform read service that ignores the global
+// tenant filter to supply its own `TenantId ==` predicate or declare itself cross-tenant, and floors the
+// count that relies on the filter. **Planted: `IgnoreQueryFilters()` in `TenantUserReadService.ListAsync`
+// reddens both of its tests.** So the edit that would leak the user list is now caught.
+//
+// **THAT GUARD IS NOT CITED FOR `AC-IAM-0001` AND MUST NOT BE.** The criterion says the listing RETURNS
+// ONLY ONE TENANT'S ROWS; the guard asserts a predicate is present and a call is absent, and never
+// executes a query. **A structural guarantee reads as behavioural coverage and is not it** — this
+// repository's own instance is an architecture test that passed over two read services which could not
+// run at all.
+//
+// The link is recorded at both ends so a reader finds the other; the criterion keeps its honest status.
+// A behavioural witness still needs the query filter and a real context — `Integration.Tests`, outside
+// this loop's gate.
 //
 // **That is recorded here rather than fixed**: building the read surface is a feature. The inventory's job
 // is to make the gap legible to whoever picks it up, and a list of four POSTs with no GET is the clearest

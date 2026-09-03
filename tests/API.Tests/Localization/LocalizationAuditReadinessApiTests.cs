@@ -127,6 +127,30 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
     Assert.Equal(0, state.SaveCalls);
   }
 
+  // ⚠⚠⚠ EXAMINED FOR `AC-LOC-0017` AND **NOT CITED**, BECAUSE THE TOKEN IS EMPTY RATHER THAN WRONG.
+  //
+  // *"View, Manage, and ViewHistory grant ONLY THEIR EXACT OPERATIONS under trusted live Active Tenant
+  // scope."* The discriminating content of *only their exact* is OVER-GRANTING — a permission that opens
+  // an operation it should not. **`includeManagePermission: false` sends NO `X-Test-Permission` header at
+  // all** (`:382-385`), so this is *no permission ⇒ refused*, which is a weaker and different claim. **An
+  // empty token cannot detect over-granting: every permission over-grants equally when the caller holds
+  // none.**
+  //
+  // ⚠ THE FIXTURE THAT WOULD CARRY IT, NAMED SO THE GAP IS CONCRETE: a token holding `ViewLocalization`
+  // sent to one of these three mutation routes, refused. And for the other direction, `ManageLocalization`
+  // sent to the history route.
+  //
+  // ⚠⚠ SEARCHED BY MECHANISM, BECAUSE THE CLAIM IS AN ABSENCE. To exercise over-granting a test must SEND
+  // one of those permissions; the only channel is the `X-Test-Permission` header. `ViewLocalization` and
+  // `ViewLocalizationHistory` across all of `tests/` appear in exactly two places — the ROUTE INVENTORY,
+  // which declares which permission each route requires, and the PERMISSION CATALOG test, which asserts the
+  // names exist. **Neither sends one. No test in the repository presents a View or ViewHistory token to any
+  // route.**
+  //
+  // **So the criterion's *exact* is held structurally — the inventory pins each route to its own permission
+  // and the shared pipeline enforces policies — and behaviourally by nothing for localization.** That is
+  // the declaration/realisation split again, and the reason this test is a poor citation for it: it is a
+  // real assertion about a different proposition.
   [Theory]
   [MemberData(nameof(MutationRequests))]
   public async Task Missing_manage_permission_returns_403_before_audit_readiness(string path, object body)

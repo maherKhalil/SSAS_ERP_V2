@@ -31,10 +31,25 @@ public sealed class LocalizationAuditReadinessTests
   // development/test bypass is configured — so the environment condition is a separate subject with a
   // separate test, and a dropped mode qualifier here would read as though this file covered it.**
   //
-  // ⚠⚠⚠ AND THREE SIDE-EFFECT KINDS THE SENTENCE NAMES ARE NOT ASSERTED: *Domain event*, *cache eviction*
-  // and *submitted-text logging*. Nothing in this fixture can observe them — there is no event collector,
-  // no cache and no logger. **The clause covered is one of four in that list**, and the count is stated
-  // because *no side effects* is exactly the phrase a reader compresses into *all of them*.
+  // ⚠⚠⚠ AND THE FRACTION, WITH ITS DENOMINATOR NAMED — BECAUSE A FRACTION WHOSE DENOMINATOR IS AMBIGUOUS IS
+  // WORSE THAN NO FRACTION. `AC-LOC-0064` has FOUR ELEMENTS, not one list:
+  //
+  //   (a) *proceeds ONLY WHEN readiness succeeds*   — the gate itself
+  //   (b) HTTP **503**                              — `LocalizationAuditReadinessApiTests`
+  //   (c) the code `localization.audit_readiness_unavailable` — same, and `LocalizationTransportContract
+  //                                                   Tests` for the mapper
+  //   (d) *with no …* — A FIVE-ITEM SIDE-EFFECT LIST: SQL state change · Domain event · cache eviction ·
+  //       submitted-text logging · internal-cause disclosure
+  //
+  // **THE FRACTION BELOW IS OVER (d) ALONE.** This theory carries the FIRST of those five; the disclosure
+  // item is carried by `Operational_readiness_exception_fails_closed_without_disclosing_the_reason` in this
+  // file. **So: 2 OF THE 5 SIDE EFFECTS — not 2 of `AC-LOC-0064`**, whose (b) and (c) live at the transport
+  // layer and are cited there.
+  //
+  // ⚠ THE REMAINING THREE — *Domain event*, *cache eviction*, *submitted-text logging* — CANNOT BE OBSERVED
+  // IN THIS FIXTURE AT ALL: there is no event collector, no cache and no logger. **That is a *cannot*, not a
+  // *did not*.** The count is spelled out because *no side effects* reads as ATOMIC and is five things —
+  // the multiplicity is hidden inside one noun phrase, like *fully validated* or *cleanly rolled back*.
   [Theory]
   [InlineData("create")]
   [InlineData("update")]

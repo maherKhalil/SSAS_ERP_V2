@@ -246,6 +246,80 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
     Assert.DoesNotContain("candidate-do-not-echo", responseBody, StringComparison.Ordinal);
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ THE WRONG PERMISSION, WHICH THREE CRITERIA ASK FOR AND NOTHING IN THIS REPOSITORY PRESENTED.
+  // ==================================================================================================
+  //
+  // Until this test, **no test anywhere sent a `ViewLocalization` or `ViewLocalizationHistory` token to any
+  // route.** Both names appeared in exactly two places — the route inventory, which DECLARES which
+  // permission each route requires, and the permission catalog, which asserts the names EXIST. Neither
+  // sends one. The nearest thing was `Missing_manage_permission_…` above, which sends NO permission at all,
+  // and **an empty token cannot discriminate among non-empty ones: every permission over-grants equally
+  // when the caller holds none.**
+  //
+  // ---- ONE FIXTURE, THREE CRITERIA, AND EACH ROW CARRIES A DIFFERENT CLAUSE.
+  //
+  //   `AC-LOC-0017`  *"View, Manage, and ViewHistory grant ONLY THEIR EXACT OPERATIONS."*  — all four rows
+  //   `AC-LOC-0051`  *"Each exact permission succeeds ONLY for its documented operations."* — the *only*
+  //                  half, which the two success tests below cannot reach: they show Manage succeeding AT
+  //                  its operations, never failing elsewhere
+  //   `AC-LOC-0052`  *"WRONG permission … and HISTORY WITHOUT VIEWHISTORY are denied."* — rows 1-2 are
+  //                  *wrong permission*; rows 3-4 are *history without ViewHistory*
+  //
+  // ⚠⚠ ROW 4 IS THE ONE THE PACKAGE ARGUES FOR EXPLICITLY, AND IT IS NOT AN OBVIOUS CASE.
+  // `PlatformLocalizationRouteInventoryTests:60-61` records the reason: *"Reading a resource and reading
+  // its history are SEPARATE GRANTS, because history exposes prior override VALUES and therefore prior
+  // business wording."* **So `ViewLocalization` — the permission for reading the resource — must NOT open
+  // the history of that same resource.** A reader who thought *View covers reading* would merge them, and
+  // until now nothing would have objected.
+  //
+  // ⚠ ROW 3 IS THE MIRROR AND IT MATTERS FOR A DIFFERENT REASON: `ManageLocalization` is the STRONGEST
+  // localization grant, and it still does not open history. **A permission model where the write grant
+  // implies every read grant is the ordinary shape**, and this package deliberately does not have it.
+  //
+  // ---- WHAT THE COUNTERS ADD BEYOND THE STATUS.
+  //
+  // `RepositoryCalls == 0` on every row: the refusal happens before any handler touches storage. A route
+  // that authorized loosely and then filtered would answer `403` from inside the handler and satisfy a
+  // status-only assertion while having already read the tenant's data.
+  [Theory]
+  [InlineData("ViewLocalization on a write", PlatformPermissionNames.ViewLocalization, false)]
+  [InlineData("ViewLocalizationHistory on a write", PlatformPermissionNames.ViewLocalizationHistory, false)]
+  [InlineData("ManageLocalization on history", PlatformPermissionNames.ManageLocalization, true)]
+  [InlineData("ViewLocalization on history", PlatformPermissionNames.ViewLocalization, true)]
+  [Trait("Criterion", "AC-LOC-0017")]
+  [Trait("Criterion", "AC-LOC-0051")]
+  [Trait("Criterion", "AC-LOC-0052")]
+  public async Task A_permission_does_not_open_an_operation_it_does_not_document(
+    string because, string permission, bool history)
+  {
+    state.Reset();
+
+    using var request = history
+      ? new HttpRequestMessage(
+        HttpMethod.Get, "/api/platform/localization/resources/platform.common.actions.save/history")
+      : new HttpRequestMessage(
+        HttpMethod.Put, "/api/platform/localization/resources/platform.common.actions.save/overrides/en")
+      {
+        Content = JsonContent.Create(new { value = "Store", expectedRowVersion = (string?)null })
+      };
+
+    request.Headers.Add("X-Test-Tenant", TenantId.ToString());
+    request.Headers.Add("X-Test-Permission", permission);
+
+    var response = await Client.SendAsync(request);
+
+    // `because` names the pair in the failure text. A theory over four permission/operation combinations
+    // reports only its `[InlineData]` values otherwise, and `"Platform.Localization.View", false` does not
+    // say which grant was expected to stay shut.
+    Assert.True(
+      response.StatusCode == HttpStatusCode.Forbidden,
+      $"{because}: expected 403, got {(int)response.StatusCode}. That permission opened an operation it "
+      + "does not document.");
+    Assert.Equal(0, state.RepositoryCalls);
+    Assert.Equal(0, state.SaveCalls);
+  }
+
   // ⚠ CITES `AC-LOC-0051`'s *SUCCEEDS* HALF — *"Each exact permission SUCCEEDS only for its documented
   // operations."* A `ManageLocalization` token reaches the create route and gets `Created`, with
   // `SaveCalls == 1` and `Added` non-null so the success is a WRITE rather than a status.

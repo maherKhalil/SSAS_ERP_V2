@@ -48,10 +48,8 @@ public sealed class IdentityAccessDomainTests
   // layer is the primary one.** A reader who found only the filter test would think the rule lived at token
   // issuance; a reader who found only these would think a corrupt row could still leak.
   //
-  // ⚠⚠ AND THE ANTI-VACUITY CONTROL IS `Custom_tenant_role_still_accepts_a_tenant_scoped_permission` AT
-  // `:88`. `Assert.Empty(role.ActivePermissions)` after a refused assignment is satisfied just as well by a
-  // role that can hold nothing; the `:88` test assigns a Tenant-scoped catalog permission and asserts it
-  // APPEARS. **Every `Assert.Empty` in this group means *refused* only because that one exists.**
+  // ⚠⚠ THE ANTI-VACUITY CONTROL FOR THIS GROUP IS `Custom_tenant_role_still_accepts_a_tenant_scoped_
+  // permission`, and the reason is written THERE rather than repeated here — see its note.
   //
   // ⚠⚠⚠ NOTE THE SECOND AND THIRD TESTS TAKE THEIR PERMISSIONS FROM THE REAL CATALOG AND ASSERT THE SCOPE
   // THEY EXPECT (`:62`) BEFORE USING IT. That is what stops them going vacuous if `ViewTenants` were ever
@@ -111,6 +109,17 @@ public sealed class IdentityAccessDomainTests
     Assert.Empty(role.ActivePermissions);
   }
 
+  // ⚠⚠⚠ **DO NOT DELETE OR NARROW THIS TEST: FOUR REFUSAL TESTS IN THIS FILE ARE VACUOUS WITHOUT IT.**
+  //
+  // `Tenant_role_rejects_platform_support_permission`, both `…cannot_acquire_platform_tenant_permission`
+  // theories, and `Administrator_role_name_does_not_imply_permissions` all end in
+  // `Assert.Empty(role.ActivePermissions)` — **which a role that could hold NO permission at all would
+  // satisfy just as well.** This is the only test in the file that shows a permission ARRIVING, so it is
+  // what makes every one of those empties mean *refused* rather than *inert*.
+  //
+  // Those four carry `AC-IAM-0004` and `AC-IAM-0015`. **The dependency is stated HERE, once, rather than
+  // four times on the dependents — four copies would rot independently and could drift out of agreement
+  // with each other; one sentence at the site with the fan-in cannot.**
   [Fact]
   public void Custom_tenant_role_still_accepts_a_tenant_scoped_permission()
   {
@@ -264,11 +273,8 @@ public sealed class IdentityAccessDomainTests
   // and the name clause are at different layers and need different tests; I first credited the filter test
   // with both and that was wrong.**
   //
-  // ⚠ ANTI-VACUITY: `Assert.Empty` over a freshly-created role is weak alone — a role that could hold no
-  // permissions at all would pass it. **`Custom_tenant_role_still_accepts_a_tenant_scoped_permission` at
-  // `:88` is the control**: it assigns a Tenant-scoped catalog permission and asserts it APPEARS in
-  // `ActivePermissions`. So *empty here* means *nothing came from the name*, not *nothing ever arrives*.
-  // The two tests are a pair and neither states it.
+  // ⚠ ANTI-VACUITY: this is the fourth of the tests that depend on
+  // `Custom_tenant_role_still_accepts_a_tenant_scoped_permission`; the dependency is stated there, once.
   [Fact]
   [Trait("Criterion", "AC-IAM-0015")]
   [Trait("Criterion", "AC-IAM-0004")]
@@ -290,11 +296,28 @@ public sealed class IdentityAccessDomainTests
   // EXISTS and is INACTIVE. `Assert.Single(user.RoleAssignments)` is the preservation; `Assert.False(…
   // IsActive)` is what stops preservation being confused with the assignment still counting.
   //
-  // ⚠⚠⚠ NOTE WHAT DECIDES `Retire`'s OUTCOME: THE CALLER PASSES `user.ActiveRoleIds.Contains(role.Id)` —
-  // the aggregate is TOLD whether an active assignment exists rather than discovering it. **So this proves
-  // the domain honours the flag, and NOT that any caller computes it correctly.** The application layer
-  // owns that, and a caller passing a stale or hardcoded `false` would retire an assigned role with every
-  // assertion here still green. Stated because *cannot be retired* reads as a guarantee about the system.
+  // ⚠⚠⚠ WHAT DECIDES `Retire`'s OUTCOME IS AN ARGUMENT, NOT A LOOKUP: the caller passes
+  // `user.ActiveRoleIds.Contains(role.Id)`. **So this test proves the domain HONOURS the flag and nothing
+  // about who computes it.** *An argument proves a value was passed, not that it was right* — so the
+  // guarantee moves to the caller, and the callers were enumerated rather than assumed:
+  //
+  //   PRODUCTION   `RetireRoleCommandHandler:38-39` — the ONLY production caller of `Role.Retire`. It
+  //                awaits `ITenantUserRepository.HasActiveAssignmentToRoleAsync(role.Id)` and passes the
+  //                result directly. **A live query, not a constant and not a cached set.**
+  //   SQL          `PlatformIdentityAccessSqlServerBehaviorTests:268-282` exercises that repository method
+  //                against real SQL through four states — assigned (true), user DEACTIVATED (false),
+  //                reactivated (true), role removed (false). **The deactivated case is the subtle one and
+  //                it is covered.**
+  //
+  // **So `AC-IAM-0018` holds end to end and the check lives in the handler.** The earlier version of this
+  // note called that a doubt; it was an unfinished search, and the search came back clean.
+  //
+  // ⚠ THE RESIDUAL THAT REPLACES IT IS NARROWER AND REAL: **NOTHING CONSTRUCTS `RetireRoleCommandHandler`.
+  // No test in the repository references it.** Both halves are proved separately and their JOIN is not —
+  // and the integration test above does not close it, because it ASSEMBLES the same composition BY HAND
+  // (`role.Retire(await repository.HasActiveAssignmentToRoleAsync(...))`). **A test that reproduces what a
+  // handler does is a SUBSTITUTE for the handler, not a witness of it**: reorder the handler to query
+  // before a status change, or cache the flag, and every assertion cited here stays green.
   [Fact]
   [Trait("Criterion", "AC-IAM-0018")]
   [Trait("Criterion", "AC-IAM-0020")]

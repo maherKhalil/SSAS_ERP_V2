@@ -10,7 +10,34 @@ public sealed class LocalizationTransportContractTests
 {
   private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+  // ⚠ CITES THE SECOND CLAUSE OF `AC-LOC-0054` — *"Every future route rejects unknown TenantId and NO INPUT
+  // CHANNEL CAN ALTER CURRENT SCOPE."* Five transport request types carry no `TenantId`, `ActorId` or
+  // `UserId` property, so no caller can express the change.
+  //
+  // ⚠⚠ AND THE VERB IS WHY THIS IS CITABLE WHERE A NEARLY IDENTICAL TEST WAS NOT.
+  // `LocalizationArchitectureTests.Localization_commands_never_accept_tenant_or_actor_identity` asserts the
+  // same structural absence and was deliberately left UNCITED, because the criteria it was near say DTOs
+  // *REJECT* a field and paths *DERIVE* the tenant — both ACTIONS, which an absence does not perform.
+  // **This clause says *CAN ALTER*, which is a CAPABILITY — and a property that does not exist is precisely
+  // what makes *cannot* true.** Structural absence satisfies a capability claim and not an action claim.
+  //
+  // Clause 1, *rejects unknown TenantId*, is the strict-binding test in
+  // `LocalizationAuditReadinessApiTests`, which sends a forged `tenantId` and requires `400`.
+  //
+  // ⚠ THE FLOOR BELOW WENT IN WITH THIS CITATION, for the reason a citation is a claim: five NAMED types
+  // cannot vanish silently, but their property walk can still collapse, and an empty walk would publish
+  // this criterion as covered while inspecting nothing.
+  //
+  // ⚠⚠ MEASURED BOTH WAYS RATHER THAN ASSUMED FROM THE IDENTICAL CASE ONE FILE OVER, by forcing the walk
+  // empty with a `.Take(0)`:
+  //
+  //   empty walk, floor REMOVED   → PASSED. The ban is vacuous over an empty collection.
+  //   empty walk, floor PRESENT   → FAILED: *"5 transport types yielded only 0 properties…"*
+  //
+  // The message carries both numbers, so whoever hits it learns the walk collapsed rather than that some
+  // property was named wrongly.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0054")]
   public void Transport_requests_expose_no_writable_tenant_or_actor_identity()
   {
     var requests = new[]
@@ -20,8 +47,17 @@ public sealed class LocalizationTransportContractTests
       typeof(EffectiveLocalizationBatchRequest)
     };
 
-    Assert.Empty(requests.SelectMany(type => type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
-      .Where(property => property.Name is "TenantId" or "ActorId" or "UserId"));
+    var properties = requests
+      .SelectMany(type => type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+      .ToArray();
+
+    // THE FLOOR. Five types are NAMED so they cannot go missing silently, but `GetProperties` can still
+    // come back empty from records that were restructured — and then the ban below reads nothing.
+    Assert.True(properties.Length >= requests.Length,
+      $"{requests.Length} transport types yielded only {properties.Length} properties; the walk has "
+      + "collapsed and the identity ban would pass without inspecting a single member.");
+
+    Assert.Empty(properties.Where(property => property.Name is "TenantId" or "ActorId" or "UserId"));
   }
 
   [Fact]

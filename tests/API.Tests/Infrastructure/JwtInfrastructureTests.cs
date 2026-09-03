@@ -98,6 +98,17 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
 
   [Fact]
   [Trait("Criterion", "AC-TEN-0074")]
+  [Trait("Criterion", "AC-TEN-0025")]
+  // ⚠ `AC-TEN-0025`'s **FIRST** HALF ONLY — *"A platform-support token CARRIES `security_plane=platform` and
+  // NO `tenant_id` or `tenant_user_id`"*. Its second half — *"a token COMBINING `security_plane=platform`
+  // with `tenant_id` is REJECTED as invalid"* — is `AC-TEN-0059` word for word, and is cited on the three
+  // rejection sites.
+  //
+  // ⚠⚠ SO `0025` CONTAINS `0059` RATHER THAN DUPLICATING IT, AND THE DISTINCTION MATTERS FOR WHOEVER TIDIES
+  // THE CRITERIA. **A duplicate can be deleted; a container cannot** — deleting `0025` as "redundant with
+  // `0059`" would lose the issuance half, which `0059` does not mention at all. **Saying WHICH half each
+  // site carries is the only thing that stops a containment being read as a duplicate later.**
+  //
   // ***LOAD-BEARING (STRENGTH) AND NARROWEST (BREADTH) SITE FOR `AC-TEN-0074`'s POSITIVE HALF — it isolates
   // the ISSUER, so a failure here names the issuer and nothing else. The end-to-end login in
   // `PlatformSupportAuthenticationEndToEndTests` is BROADEST and least diagnostic; the claims record is
@@ -456,6 +467,11 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
 
   [Fact]
   [Trait("Criterion", "AC-TEN-0059")]
+  [Trait("Criterion", "AC-TEN-0025")]
+  // `AC-TEN-0025`'s **SECOND** half, which is `AC-TEN-0059` restated inside a larger criterion — *"a token
+  // combining `security_plane=platform` with `tenant_id` is rejected as invalid."* Its first half, the
+  // issued token's shape, is on `Platform_token_issuer_emits_the_platform_profile_and_no_tenant_claims`.
+  //
   // `AC-TEN-0059` AT THE AUTHENTICATION LAYER AND FROM THE OTHER DIRECTION — the two sites in
   // `PlatformAuthorizationPipelineTests` and `PlatformSupportAuthorityAuthorizationTests` add `tenant_id` to
   // a PLATFORM-shaped token; this takes a TENANT-shaped token and claims the platform plane. Same criterion,

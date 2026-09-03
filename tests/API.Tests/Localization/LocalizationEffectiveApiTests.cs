@@ -117,10 +117,31 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
     Assert.Equal(0, state.GroupCalls);
   }
 
+  // ⚠⚠⚠ CITES `AC-LOC-0004`'s PROVENANCE CLAUSE — *"Every read/write/history/cache path DERIVES TenantId
+  // FROM TRUSTED CONTEXT and returns no other Tenant's state"* — AND IT CLOSES A RESIDUAL I WROTE EARLIER
+  // TONIGHT.
+  //
+  // When `LocalizationResolverTests.Cache_keys_are_tenant_complete…` was cited for this criterion's CACHE
+  // path, I recorded that it could not carry *derives from trusted context* because **the test supplies the
+  // tenant ids itself** — a test cannot witness where a value came from when the test is where it came
+  // from. **The third row here is the witness that residual said was missing.**
+  //
+  // `…&tenantId=ignored` is a caller ATTEMPTING TO SUPPLY THE TENANT, and it is answered `400` with
+  // `GroupCalls == 0` — refused before resolution rather than accepted and ignored. **That is the clause
+  // stated positively: the tenant cannot come from the request, so it comes from context.** A route that
+  // bound the parameter and then quietly overrode it would answer `200` and satisfy every isolation test in
+  // the package.
+  //
+  // ⚠ THE `GroupCalls` COLUMN IS WHAT MAKES THE THREE ROWS DIFFERENT CLAIMS RATHER THAN ONE REPEATED.
+  // `en-US` reaches the resolver and is refused there (`1`); the empty module and the forged tenant are
+  // refused BEFORE it (`0`). **Without that assertion all three are just `400`**, and the row that matters
+  // for this criterion — the forged tenant never touching the resolver — is indistinguishable from a
+  // culture rejection.
   [Theory]
   [InlineData("/api/platform/localization/effective?culture=en-US&module=platform&group=common.actions")]
   [InlineData("/api/platform/localization/effective?culture=en&module=&group=common.actions")]
   [InlineData("/api/platform/localization/effective?culture=en&module=platform&group=common.actions&tenantId=ignored")]
+  [Trait("Criterion", "AC-LOC-0004")]
   public async Task Effective_group_rejects_invalid_or_unbounded_query_contracts(string path)
   {
     state.Reset();

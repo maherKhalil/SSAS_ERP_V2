@@ -79,6 +79,14 @@ public sealed class LocalizationCatalogTests
   // and a filter that matched nothing would fail `Assert.Equal(2, …)` before reaching the `Assert.All`.
   // **The population floor and the criterion's first clause are the same line here** — no separate floor is
   // needed, and removing the count to "simplify" would silently make the two bans below vacuous.
+  //
+  // ⚠⚠ THIS IS THE INVERSE OF THE USUAL WARNING AND NOTHING ABOUT THE LINE'S SHAPE SAYS SO. *A floor that
+  // binds nothing is insurance* — the standing advice is to report the bound rather than the value.
+  // **HERE THE FLOOR *IS* THE CLAUSE.** `Assert.Equal(2, …)` looks like bookkeeping and is the only
+  // assertion in the repository that would object to a build adding one authentication key per failure
+  // cause, which is precisely the enumeration `AC-LOC-0009` forbids. **Deleting it as a simplification
+  // removes a criterion clause AND the population guard in a single edit**, and a reviewer would see a
+  // tidy-up.
   [Fact]
   [Trait("Criterion", "AC-LOC-0009")]
   public void Authentication_resources_are_non_overridable_and_generic()

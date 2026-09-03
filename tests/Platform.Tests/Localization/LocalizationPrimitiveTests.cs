@@ -40,13 +40,29 @@ public sealed class LocalizationPrimitiveTests
   // enforced`, which passes an extra `["other"]` and gets `PlaceholderMismatch`. **Cited there is not cited
   // here**, and the criterion needs both files.
   //
-  // ⚠⚠⚠ AND *ACCEPT REORDER* IS THE ONE PROPERTY NOTHING ASSERTS, THOUGH THE MECHANISM FOR IT IS VISIBLE.
+  // ⚠⚠⚠ AND *ACCEPT REORDER* IS THE ONE PROPERTY NOTHING STATES, THOUGH THE MECHANISM FOR IT IS ASSERTED.
   // Sorting the set is what makes order irrelevant — `{a}{z}{a}` yields `a,z` and so would `{z}{a}` — and
   // `Placeholder_fingerprint_uses_sorted_distinct_lf_utf8_sha256` below fingerprints the SORTED DISTINCT
   // set for exactly that reason. **But no test parses two texts that differ ONLY in placeholder order and
-  // shows them equal or compatible.** The property is a consequence of an implementation detail that is
-  // itself asserted; it is not asserted directly, and a change from sorted to insertion order would break
-  // reorder acceptance while leaving every row above green.
+  // shows them equal or compatible.**
+  //
+  // ⚠⚠ PLANTED, BECAUSE MY FIRST VERSION OF THIS PARAGRAPH PREDICTED THE BLAST RADIUS INSTEAD OF MEASURING
+  // IT — AND THE PREDICTION WAS WRONG. I wrote that removing the sort *would leave every row above green*.
+  // Removing `.Order(StringComparer.Ordinal)` from `PlaceholderSet.cs:11` in `src/`, reverted afterwards:
+  //
+  //   **ONE test reddened — `Placeholder_fingerprint_uses_sorted_distinct_lf_utf8_sha256`**, with
+  //   *Assert.Equal() Failure: Collections differ, Expected: [100, 201, 33, …] Actual: [98, 240, 121, …]*.
+  //   Every row of THIS theory stayed green, and so did the other 1,104 Platform tests.
+  //
+  // ⚠ THE ROWS SURVIVED FOR A REASON THAT INDICTS THE ARRANGEMENT: **`{a}{z}{a}` is already in sorted
+  // order**, so insertion order and sorted order produce the same `"a,z"`. The one row that could have
+  // discriminated would need a name out of order — `{z}{a}` — and no row here has one.
+  //
+  // **SO THE ALARM EXISTS AND NAMES THE WRONG THING.** A change that breaks reorder acceptance is caught,
+  // but it is reported as *this fingerprint's bytes moved* — true, and about the hash rather than about the
+  // property. Whoever meets that failure re-baselines the expected bytes and the real consequence goes
+  // unnoticed. ***A PROPERTY GUARDED ONLY BY THE ASSERTED IMPLEMENTATION OF ITS MECHANISM is not
+  // unguarded; it is guarded by an alarm that describes the mechanism and not the property.***
   [InlineData("{name}", "name")]
   [InlineData("{a}{z}{a}", "a,z")]
   [InlineData("{{literal}} {amount}", "amount")]

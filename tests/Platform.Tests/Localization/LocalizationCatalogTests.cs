@@ -59,7 +59,28 @@ public sealed class LocalizationCatalogTests
     });
   }
 
+  // ⚠ CITES `AC-LOC-0009` — *"All protected causes retain ONE GENERIC code/ResourceKey and CANNOT BE
+  // TENANT-OVERRIDDEN."* — AS THE CATALOG HALF OF A TWO-SITE PAIR.
+  //
+  // **CLAUSE 1 IS `Assert.Equal(2, resources.Count())`, and it is the assertion most likely to be read as
+  // bookkeeping.** *One generic code* means the authentication surface maps every failure cause onto a
+  // small fixed set of keys rather than one key per cause — the catalog's own description of
+  // `authentication_failed` is *"Generic non-enumerating authentication failure."* **A build that added a
+  // key per cause would be enumerating exactly what the criterion forbids, and this count is the only line
+  // that would object.**
+  //
+  // ⚠⚠ CLAUSE 2 IS SPLIT ACROSS TWO FILES AND THIS IS THE FLAG HALF. `TenantOverridable` false plus the
+  // `SecuritySensitiveNonOverridable` classification are DECLARATIONS; `LocalizationDomainTests.Security_
+  // sensitive_resource_cannot_create_override` is the BEHAVIOUR that reads them. **A flag nothing consults
+  // satisfies this end; a hard-coded refusal ignoring the flag satisfies that end.** Two independent
+  // failure modes, so the pair is disjointness rather than redundancy and neither citation is duplicate.
+  //
+  // ⚠ ANTI-VACUITY IS THE COUNT ITSELF, WHICH IS UNUSUAL AND WORTH NAMING: `resources` is a filtered walk,
+  // and a filter that matched nothing would fail `Assert.Equal(2, …)` before reaching the `Assert.All`.
+  // **The population floor and the criterion's first clause are the same line here** — no separate floor is
+  // needed, and removing the count to "simplify" would silently make the two bans below vacuous.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0009")]
   public void Authentication_resources_are_non_overridable_and_generic()
   {
     var resources = GeneratedLocalizationCatalog.Instance.Resources

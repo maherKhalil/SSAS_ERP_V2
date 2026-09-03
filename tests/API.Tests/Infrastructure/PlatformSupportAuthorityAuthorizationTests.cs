@@ -89,6 +89,20 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
   private WebApplication Application =>
     application ?? throw new InvalidOperationException("the host has not been initialised");
 
+  // ⚠⚠⚠ ALL FOUR TESTS IN THIS FILE ASSERT A REFUSAL, AND THE POSITIVE THAT MAKES THEM MEAN ANYTHING IS IN
+  // A DIFFERENT FILE.
+  //
+  // Anonymous · tenant-plane token carrying the name · platform token without `Administer` · mixed-plane
+  // token. **A PIPELINE THAT REFUSED EVERY REQUEST SATISFIES ALL FOUR.** What separates *the gate
+  // discriminates* from *the gate is shut* is `PlatformAuthorizationPipelineTests.Valid_platform_token_
+  // with_the_required_permission_is_authorized`, which carries `AC-IAM-0003`'s permit half.
+  //
+  // **The dependency runs both ways and neither file stated it**: without these four, a pipeline that
+  // ALLOWED everything would satisfy that one. Written here rather than there because this file grows a
+  // row whenever an authority route is added, so this is the side a future editor is standing on.
+  //
+  // ⚠ Same discipline as the seven-guard class, arriving from the other side: there a suite of refusals
+  // could not prove a guard STOPS firing; here the proof existed one file away and was unnamed.
   [Fact]
   public async Task Every_authority_route_rejects_an_anonymous_request()
   {

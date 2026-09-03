@@ -29,9 +29,19 @@ namespace SSAS.API.Tests.IdentityAccess;
 //
 //   `CreateTenantUserMembershipCommandHandler`   constructed in `IdentityAccessApplicationTests`      ✓
 //   `SetTenantUserBranchesCommandHandler`        constructed in `TenantBranchLifecycleSqlServerTests`  ✓
-//   `ListTenantUsersQueryHandler`                NO TEST NAMES IT
-//   `GetTenantUserByIdQueryHandler`              NO TEST NAMES IT
-//   `UpdateTenantUserProfileCommandHandler`      NO TEST NAMES IT
+//   `ListTenantUsersQueryHandler`                NO TEST CONSTRUCTS IT
+//   `GetTenantUserByIdQueryHandler`              NO TEST CONSTRUCTS IT
+//   `UpdateTenantUserProfileCommandHandler`      NO TEST CONSTRUCTS IT
+//
+// ⚠ THE WORDING WAS *NO TEST NAMES IT* AND A RESIDUAL AUDIT MADE IT FALSE — because THIS COMMENT NAMES
+// ALL THREE, and so does `PlatformReadScopeArchitectureTests`. **Writing the absence down is what
+// falsified it.** The claim was always about CONSTRUCTION, so it now says so.
+//
+// **That is the mirror problem at the level of PROSE rather than of an instrument**: the same shape as a
+// citation guard resolving against text that includes its own comments, or an allow-list whose entries
+// satisfy the search that reads it. ⚠⚠ **AN ABSENCE CLAIM STATED IN THE SEARCH SPACE IT QUANTIFIES OVER
+// IS SELF-REFUTING** — and a `grep` for the name is exactly how a future reader would check it, which is
+// how they would meet the false version.
 //
 // **So three of the five are neither routed NOR constructed by any test.** *Exists* is the part that
 // holds; *is tested* was the part nobody checked, and it is the sentence that makes the gap look safe.

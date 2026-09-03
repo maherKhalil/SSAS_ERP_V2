@@ -433,7 +433,23 @@ public sealed class LocalizationArchitectureTests
       type.Name.Contains("AuditReadiness", StringComparison.Ordinal));
   }
 
+  // ⚠ CITES THE WIRING OF `AC-LOC-0064` — *"An otherwise authorized Production localization mutation
+  // PROCEEDS ONLY WHEN AUDIT READINESS SUCCEEDS; otherwise it returns HTTP 503 … with no SQL state change,
+  // Domain event, cache eviction, submitted-text logging, or internal-cause disclosure."*
+  //
+  // **What this asserts is that ALL FOUR mutation handlers call the guard at all** — the structural
+  // precondition without which the criterion is unreachable on some path. That is a real and citable part
+  // of it, and it is the part a new fifth handler would silently miss.
+  //
+  // ⚠⚠ WHAT IT DOES NOT ASSERT, WHICH IS MOST OF THE CRITERION: that the mutation is REFUSED when readiness
+  // fails, that the status is 503, that the code is `localization.audit_readiness_unavailable`, or any of
+  // the five must-not-happens. **And it is a SOURCE-TEXT match** — `Assert.Contains` on the file — so it
+  // proves the call is WRITTEN, not that it is REACHED or that its result is honoured.
+  //
+  // ⚠ The population cannot silently empty: the four handlers are named and `File.ReadAllText` throws on a
+  // missing one, so a renamed handler is a red rather than a vacuum.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0064")]
   public void Every_localization_mutation_handler_retains_locked_tenant_eligibility_and_audit_readiness()
   {
     var root = FindRepositoryRoot();
@@ -454,6 +470,17 @@ public sealed class LocalizationArchitectureTests
     }
   }
 
+  // ⚠⚠ EXAMINED AGAINST `AC-LOC-0064` AND LEFT UNRESOLVED — THE SCOPES DO NOT LINE UP, IN BOTH DIRECTIONS.
+  //
+  // That criterion bans *submitted-text logging* **on the audit-readiness-failure path**, as one of five
+  // must-not-happens attached to the 503. This test bans localized and placeholder values **anywhere in
+  // `LocalizationDiagnostics.cs`** — broader in reach, narrower in file, and it never establishes that the
+  // audit-failure path logs THROUGH that file.
+  //
+  // **A superset ban in one file does not satisfy a clause scoped to one path**, and citing it would claim
+  // the 503's logging guarantee is covered when nothing has shown the two meet. Recorded as
+  // EXAMINED-BUT-UNRESOLVED: the criteria compared were `AC-LOC-0064` and `AC-LOC-0005`, and the search
+  // that would settle it is *which logger the audit-failure path actually calls*.
   [Fact]
   public void Localization_diagnostics_never_log_localized_or_placeholder_values()
   {

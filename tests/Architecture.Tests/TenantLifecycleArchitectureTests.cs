@@ -104,9 +104,34 @@ public sealed class TenantLifecycleArchitectureTests
     });
   }
 
+  // ⚠ CITES `AC-TEN-0011` — *"NO Domain operation, command, repository method, API contract, OR MIGRATION
+  // CASCADE physically deletes a Tenant."* **Five named sites, and this test reaches three of them:**
+  //
+  //   repository method   `ITenantRepository` carries no `Delete`/`Remove` and returns no `IQueryable`
+  //   command             the source scan bans `DeleteTenantCommand`/`Handler`
+  //   Domain operation    the same scan bans `Tenants.Remove(` in every file importing the Tenants
+  //                       namespaces
+  //
+  // ⚠⚠⚠ AND THE FOURTH SITE IS EXCLUDED BY THIS TEST'S OWN FILTER, WHICH IS INVISIBLE UNLESS YOU READ THE
+  // WALK. `:119` drops every path under `Migrations`, and *migration cascade* is one of the five things the
+  // criterion names. **The exclusion is correct — a migration file legitimately contains `DROP` and
+  // `DELETE` for unrelated objects, so scanning them would false-positive — but it means this test cannot
+  // speak for the clause however green it is.**
+  //
+  // THAT HALF IS COVERED, AND ELSEWHERE: `DeleteBehaviourArchitectureTests.Every_reference_foreign_key_
+  // still_restricts` asserts every REFERENCE foreign key in the composed model uses `Restrict`, which is
+  // the model-level fact a cascade migration would have to be generated from. **Package-agnostic guard,
+  // so nothing in either file names the other** — recorded here because a reader auditing `AC-TEN-0011`
+  // against this test alone would find four of five and conclude the fifth is unguarded.
+  //
+  // ⚠ THE FIFTH — *API contract* — IS NOT COVERED AND CORRECTLY SO: `AC-TEN-0020` defers the tenant
+  // endpoints entirely, and `Tenant_endpoints_remain_deferred…` below is what asserts that. **There is no
+  // API contract yet to refuse a delete**, so the clause is satisfied by the surface not existing, and it
+  // becomes live the day those endpoints ship.
   [Fact]
   [Trait("Decision", "DEC-TEN-0007")]
   [Trait("Scenario", "TS-TEN-0031")]
+  [Trait("Acceptance", "AC-TEN-0011")]
   public void Tenant_repository_and_source_expose_no_generic_query_or_physical_delete_boundary()
   {
     Assert.False(typeof(ITenantRepository).IsGenericType);
@@ -130,9 +155,27 @@ public sealed class TenantLifecycleArchitectureTests
       RegexOptions.CultureInvariant)));
   }
 
+  // ⚠ CITES `AC-TEN-0015`'s SECOND CLAUSE — *"…no event contains CREDENTIALS, TOKENS, COMPLETE CLAIMS,
+  // BILLING DETAILS, or HTTP CONTEXT."* The banned-name regex carries the criterion's list item for item —
+  // `Credential`, `Token`, `Claim`, `Billing`, `Http` — and bans more besides (`Subscription`, `Company`,
+  // `ReasonText`, `Actor`, `Correlation`, `Request`, `Trace`). **Banning a superset satisfies the clause;
+  // it is the subset direction that would not.**
+  //
+  // ⚠⚠ NOT THE FIRST CLAUSE. *"Every successful lifecycle change RAISES the corresponding safe event AFTER
+  // PERSISTENCE"* is two behavioural claims — that an event is raised at all, and that it is raised after
+  // the write — and **a reflection walk over event TYPES cannot see either.** A package that defined all
+  // seven events and raised none would pass this test completely.
+  //
+  // ⚠ `Assert.Equal(7, eventTypes.Length)` IS THE ANTI-VACUITY CONTROL AND IT IS LOAD-BEARING TWICE OVER.
+  // The walk is filtered by base type, namespace, name prefix AND a six-name exclusion list, so there are
+  // four ways for it to collapse to nothing — and an empty walk satisfies `Assert.Empty(unsafeProperties)`
+  // perfectly. **The count is what makes the ban a claim about seven real types.** Unlike the count in
+  // `LocalizationCatalogTests`, this one is a floor and not itself a criterion clause: `AC-TEN-0015` states
+  // no number.
   [Fact]
   [Trait("Security", "SEC-TEN-0205")]
   [Trait("Scenario", "TS-TEN-0035")]
+  [Trait("Acceptance", "AC-TEN-0015")]
   public void Tenant_events_contain_only_safe_lifecycle_values()
   {
     var eventTypes = typeof(Tenant).Assembly.GetTypes()

@@ -146,6 +146,21 @@ public sealed class PlatformSupportAuthorityTests
   [Fact]
   [Trait("Acceptance", "AC-TEN-0038")]
   [Trait("Acceptance", "AC-TEN-0041")]
+  [Trait("Criterion", "AC-TEN-0047")]
+  // ⚠ `AC-TEN-0047` — *"The FIRST `Disable` or `Re-enable` POPULATES `StatusChangedUtc` and
+  // `StatusChangedBy`; every SUBSEQUENT transition OVERWRITES them with the latest transition metadata."*
+  // **The two-step arrangement is what makes *overwrites* observable**: the Disable stamps `Now+1`/`disabler`
+  // and the Re-enable stamps `Now+2`/`enabler`, so **a write-once field would fail the second pair while
+  // passing the first.** Different actor AND different instant, deliberately.
+  //
+  // The *first* half is `Register_starts_active_with_no_status_transition_metadata`, which shows both fields
+  // empty before any transition — **without it, "populates" is unverifiable, because a field already holding
+  // a value cannot be seen to be populated.**
+  //
+  // ⚠⚠ THE CRITERION'S LAST CLAUSE IS NOT HERE: *"while `ModifiedUtc`/`ModifiedBy` continue under the normal
+  // audit"*. Nothing in this test reads either field, so **a transition that silently stopped maintaining
+  // the ordinary audit stamps passes every line.**
+  //
   // `AC-TEN-0038`'s two LEGAL transitions, and `AC-TEN-0041`'s first clause — *"While `Disabled`, active
   // assignment rows REMAIN PERSISTED (not deleted, not revoked)"* — which is the `without_touching_
   // assignments` half of the name. The grant/revoke clauses are the two tests below, same trait.

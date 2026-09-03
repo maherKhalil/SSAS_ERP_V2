@@ -32,6 +32,39 @@ namespace SSAS.API.Tests.Infrastructure;
 // The ungated route below asserts exactly that — not that it returns 200, but that **entitlement is
 // never asked**. A route that succeeded because the resolver happened to say yes would pass a weaker
 // test and fail the day the answer changed.
+//
+// ==================================================================================================
+// ⚠⚠⚠ `AC-SUB-0021` IS **NOT** CITED HERE, AND THE REASON IS THE ROUTE THIS FILE MOUNTS.
+// ==================================================================================================
+//
+// *"A tenant with NO ENTITLEMENT AT ALL can still AUTHENTICATE, SELECT ITS TENANT, REFRESH, LOG OUT, and
+// reach PLATFORM SUPPORT and the SUBSCRIPTION SURFACE."* `TS-SUB-0020` calls it **the lock-out scenario**
+// — *"if it fails, a lapsed tenant cannot be restored without a database edit."*
+//
+// **`/platform-plane` is a route this test invents.** It exists nowhere in the product. So what is proved
+// is the MECHANISM — an ungated route never consults entitlement — and **not one of the six named
+// capabilities.** Citing `AC-SUB-0021` here would be adjacent-scope: right subject, right mechanism, and
+// no assertion about anything a customer can actually do.
+//
+// ⚠ SEARCHED BY MECHANISM, NOT BY NAME, BECAUSE THE CLAIM IS AN ABSENCE. To express *a tenant with no
+// entitlement* a test MUST configure entitlement, so it must register `ITenantEntitlementReader` or
+// `ITenantModuleEntitlement`. **Eight files do**; the six that build a host all mount synthetic routes
+// (`/gated`, `/platform-plane`, `/module/Payroll`), and the other two touch no host at all. **No test that
+// configures entitlement mounts a product authentication, tenant-selection, refresh, logout, support or
+// subscription route.** The converse also holds and is why: the real-host tests use
+// `HostWebApplicationFactory` and **configure no entitlement**, so they cannot express *a tenant with no
+// entitlement* even though they drive the real routes.
+//
+// ⚠⚠ SO THE SHAPE IS NOT THE UNEXECUTED-PATH CLASS — IT IS A **CONJUNCTION WHOSE HALVES ARE EACH TESTED
+// AND NEVER TOGETHER.** The authentication flows are well covered with no entitlement configured; the
+// entitlement refusal is well covered on invented routes. `AC-SUB-0021` is the AND of the two, and the AND
+// is asserted nowhere. **Each half being thoroughly tested is exactly what makes the gap invisible.**
+//
+// What DOES bear on it structurally: `ModuleEnablementCoverageTests.No_platform_plane_endpoint_is_gated`
+// proves over the REAL host that no platform-plane endpoint carries the gate. That is a strong argument
+// and it is still an argument — **it asserts metadata is absent, never that a lapsed tenant logs in.**
+// Recorded at both ends; the criterion keeps its honest status. A behavioural witness needs the real host
+// with a lapsed subscription, which is `Integration.Tests` and outside this loop's gate.
 public sealed class ExpiredTenantGateTests
 {
   private const string ModuleKey = "Payroll";

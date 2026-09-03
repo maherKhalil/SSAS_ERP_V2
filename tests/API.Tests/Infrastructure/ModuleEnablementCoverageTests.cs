@@ -162,6 +162,13 @@ public sealed class ModuleEnablementCoverageTests(HostWebApplicationFactory fact
   // loss** — every route here is a minimal-API lambda and they all carry `MethodInfo`. So this is a stated
   // residual, not a defect and not a request for another test. It is recorded because the criterion asserts
   // the control exists, and the control is complete for one of the two halves rather than for both.
+  //
+  // ⚠⚠ THIS TEST IS THE STRONGEST EVIDENCE FOR `AC-SUB-0021` AND IS **NOT** CITED FOR IT. That criterion —
+  // *a tenant with no entitlement can still authenticate, select its tenant, refresh, log out, and reach
+  // platform support and the subscription surface* — is about six things a customer does. **This asserts
+  // that a piece of metadata is absent from the real host's endpoints, and never runs one of them.** The
+  // full reasoning, and the mechanism search showing no test drives those flows for an unentitled tenant,
+  // is at `ExpiredTenantGateTests`; the link is recorded at both ends so a reader finds the other.
   [Fact]
   [Trait("Criterion", "AC-SUB-0020")]
   public void No_platform_plane_endpoint_is_gated()

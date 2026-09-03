@@ -377,6 +377,12 @@ public static class LocalizationEndpointRouteBuilderExtensions
         return false;
       }
 
+      // ⚠ `!requested.Contains(resource.Name)` ABOVE IS ALSO ENFORCED IN `HasValidPlaceholderResourceScope`.
+      // Measured 2026-09-03: deleting EITHER site alone leaves the WHOLE test suite green; only deleting
+      // both reddens (`LocalizationEffectiveRealResolverApiTests`, the unrequested-map row). **So each site
+      // reads as dead to coverage tooling while both are live** — do not remove one on a *nothing covers
+      // this* finding without reading the note at the other.
+
       var seenPlaceholders = new HashSet<string>(StringComparer.Ordinal);
       foreach (var placeholder in resource.Value.EnumerateObject())
       {
@@ -387,6 +393,21 @@ public static class LocalizationEndpointRouteBuilderExtensions
     return true;
   }
 
+  // ⚠⚠ THE THREE CLAUSES BELOW ARE NOT EQUALLY REACHABLE, AND THE DIFFERENCE MATTERS BEFORE ANYONE PRUNES.
+  //
+  // `EffectiveBatchAsync` runs `IsStrictEffectiveBatchJson` over the RAW BODY first, and it already rejects
+  // a map key outside `resourceKeys`. **So `!requested.Contains(resourceKey)` here is SHADOWED — no HTTP
+  // input can reach it, because the earlier validator answers 400 for exactly that case.** Measured
+  // 2026-09-03: deleting either site alone leaves the whole suite green; only deleting both reddens.
+  //
+  // ⚠⚠⚠ BUT THIS FUNCTION IS NOT REDUNDANT AS A WHOLE, AND DELETING IT WOULD REMOVE A LIVE CHECK.
+  // `!catalog.TryGet(parsed.Value, out _)` is **unique to this site** — the raw validator only checks that
+  // the key PARSES (`ResourceKey.Create`), never that the resource EXISTS. A map key that is well-formed,
+  // present in `resourceKeys`, and absent from the catalog reaches this line and nothing else.
+  //
+  // ⚠ That input is CONSTRUCTIBLE and is not among the four rows of
+  // `LocalizationEffectiveRealResolverApiTests.Effective_batch_strictly_rejects_invalid_placeholder_map_
+  // shapes` — stated as a bound on that theory, which was read, rather than as a claim about the suite.
   private static bool HasValidPlaceholderResourceScope(
     EffectiveLocalizationBatchRequest request,
     ILocalizationCatalog catalog)

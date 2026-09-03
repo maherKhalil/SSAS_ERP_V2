@@ -171,6 +171,22 @@ public sealed class LocalizationEffectiveRealResolverApiTests : IAsyncLifetime
   // usual reading of a green suite is the opposite: redundant guards look like defence in depth and behave,
   // under test, like a single guard whose location nothing pins. **Reading only the diagonal — baseline
   // green, both-deleted red — would have shown a working control and hidden this entirely.**
+  //
+  // ⚠⚠ AND THE HARM IS CONCRETE: EACH SITE READS AS DEAD TO COVERAGE TOOLING WHILE BOTH ARE LIVE. Anyone
+  // pruning on a *nothing covers this line* finding deletes either one and the suite ENDORSES it. Both
+  // sites now carry a note naming the other.
+  //
+  // ⚠⚠⚠ AND ONE SITE CANNOT BE PINNED SEPARATELY AT ALL, WHICH IS THE ANSWER TO *IS A TEST CONSTRUCTIBLE
+  // THAT REACHES ONE WITHOUT THE OTHER*. `EffectiveBatchAsync` runs the raw-JSON validator FIRST, so the
+  // `!requested.Contains` clause in `HasValidPlaceholderResourceScope` is **SHADOWED — unreachable through
+  // HTTP by construction**, not merely uncovered. Ordered checks again: only the first refusal is ever
+  // observed, and here the second is not reachable by any input.
+  //
+  // ⚠ WHICH ALSO SETTLES *REMOVE A SITE*: NO. Only ONE CLAUSE is duplicated. `HasValidPlaceholderResource
+  // Scope` uniquely holds `!catalog.TryGet(...)` — the raw validator checks only that a key PARSES, never
+  // that the resource EXISTS — so deleting the function removes a live check. **The reachable-and-untested
+  // input is a key that is well-formed, present in `resourceKeys`, and absent from the catalog; it is not
+  // among the four rows above.** Bounded to this theory, which was read, rather than claimed of the suite.
   [Trait("Criterion", "AC-LOC-0050")]
   public async Task Effective_batch_strictly_rejects_invalid_placeholder_map_shapes(string body)
   {

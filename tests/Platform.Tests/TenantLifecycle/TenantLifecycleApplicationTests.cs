@@ -127,7 +127,30 @@ public sealed class TenantLifecycleApplicationTests
   [Trait("Decision", "DEC-IAM-0013")]
   [Trait("Requirement", "FR-AUTH-0120")]
   [Trait("Acceptance", "AC-AUTH-0018")]
+  [Trait("Acceptance", "AC-IAM-0021")]
   [Trait("Scenario", "TS-TEN-0012")]
+  // ⚠ `AC-IAM-0021` ADDED — its SECOND half, *"…or new tenant-scoped TOKENS."* The `Suspended` row returns
+  // `eligible: false` with reason `Suspended`, and eligibility is the gate token issuance consults, so this
+  // is where the token half of an IAM criterion is actually decided. `AuthorizationPipelineTests` carries
+  // the first half (*normal application access*) at the route layer.
+  //
+  // ⚠⚠ CROSS-PACKAGE, AND THE PRECEDENT IS ON THE LINE ABOVE: this test already carries `AC-AUTH-0018` and
+  // `DEC-IAM-0013`. Tenant suspension is `FP-003` behaviour that `FP-001` and `FP-002` both have criteria
+  // about, because each cares about a different consequence. **A trait claims EVIDENCE, not OWNERSHIP** —
+  // and whoever maintains this theory should know an IAM criterion now rests on the `Suspended` row.
+  //
+  // ⚠⚠⚠ AND THE KEY IS `Acceptance`, NOT `Criterion`, DELIBERATELY. Both keys carry `AC-` ids in this repo
+  // and nothing validates either; this file uses `Acceptance` throughout, so `Criterion` here would make the
+  // file internally inconsistent to buy consistency with a different file. **The key is a per-file
+  // convention rather than a meaning, which is exactly why any future checker must read all four.**
+  //
+  // ⚠ ADJACENT-SCOPE CHECKED: `Suspended` is its own `[InlineData]` row with its own expected reason, so
+  // the criterion is carried by an exercised case and not by a class-membership argument.
+  //
+  // NOT cited on `TenantLifecycleDomainTests.Every_approved_transition_updates_trusted_metadata_and_raises_
+  // safe_event`, which also asserts `IsAuthenticationEligible` is false after `Suspend()`. That test's
+  // subject is transition metadata and events; the eligibility line is incidental to it and a legitimate
+  // refactor could drop it. **A criterion should not rest on an assertion its own test is not about.**
   public void Eligibility_is_derived_exactly_and_has_no_name(
     TenantStatus? status,
     bool exists,

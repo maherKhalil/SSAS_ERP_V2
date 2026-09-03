@@ -189,8 +189,18 @@ public sealed class PersistenceArchitectureTests
   // A generic repository is a SHAPE in the source — `IRepository<T>` — and a type that was never written
   // does not exist to be reflected over. Reflection could ask "is any interface generic and named
   // Repository", which is a narrower question than the one being asked.
+  // ⚠ SECOND SCENARIO TRAIT ADDED: this rule is `TS-IAM-0047` as well as `TS-AUTH-0071`. `FP-001`'s
+  // `test-scenarios.md` defines `TS-IAM-0047` as *"no generic repository exists"* — the same rule, named
+  // independently by a second package, and this test was the only thing asserting it for either.
+  //
+  // ⚠⚠ ONE TEST SERVING TWO PACKAGES AND CITING ONE IS UNDER-CITATION, AND IT IS NOT A CRITERION-AXIS
+  // PHENOMENON: it happens on any axis a sweep is keyed to, because **the evidence sits where the behaviour
+  // lives and the citation sits where someone happened to be working.** Measured before adding: repeated
+  // traits are preserved and BOTH values remain filterable — checked in both directions, since a second
+  // trait REPLACING the first would look identical when you only filter on the new one.
   [Fact]
   [Trait("Scenario", "TS-AUTH-0071")]
+  [Trait("Scenario", "TS-IAM-0047")]
   public void Production_source_does_not_define_a_generic_repository()
   {
     var files = ProductionSourceFiles();

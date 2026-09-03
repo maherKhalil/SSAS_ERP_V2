@@ -14,7 +14,23 @@ public sealed class LocalizationAdministrationTemplateTests
 {
   private static readonly Guid TenantId = Guid.Parse("bb401f10-3cdc-4c94-9245-1bcba39f61a7");
 
+  // ⚠ CITES ONE CLAUSE FROM EACH OF `AC-LOC-0042` (list) AND `AC-LOC-0043` (detail) — *"…safe RAW-TEMPLATE
+  // PROJECTION… ; placeholder-bearing templates require NO INTERPOLATION VALUES."* Both handlers return
+  // `"{fieldName} is required."` with the brace intact, and detail returns the parsed placeholder set.
+  //
+  // ⚠⚠ THOSE CRITERIA ARE ROUTE CRITERIA AND THIS TEST DRIVES THE QUERY HANDLERS DIRECTLY. It asserts
+  // NOTHING about authentication, `View`, current-live-tenant, strict bounded filters, paging, status
+  // codes, cross-Tenant denial or OpenAPI — every other clause in both sentences. **What it does carry is
+  // the projection clause, at the layer where the projection is produced**; the route adds transport around
+  // it and is tested elsewhere.
+  //
+  // ⚠⚠⚠ AND THE ASSERTION IS THE RIGHT ONE FOR *NO INTERPOLATION*, WHICH IS EASY TO GET BACKWARDS: it
+  // checks the brace SURVIVES. A test asserting some interpolated output would prove the opposite property
+  // while reading as though it proved this one — the criterion wants the template UNRESOLVED, because an
+  // administrator editing a resource must see `{fieldName}` and not a sample value.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0042")]
+  [Trait("Criterion", "AC-LOC-0043")]
   public async Task Administration_list_and_detail_preserve_effective_templates_without_placeholder_interpolation()
   {
     var currentTenant = new TestCurrentTenant(TenantId);

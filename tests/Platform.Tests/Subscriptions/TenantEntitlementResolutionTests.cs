@@ -39,7 +39,18 @@ public sealed class TenantEntitlementResolutionTests
   // WHICH RECORD IS IN FORCE — DERIVED BY ORDERING, NEVER STORED.
   // ==================================================================================================
 
+  // ⚠ CITES `AC-SUB-0002` — *"`EntitlementAt(tenant, T)` for a `T` EARLIER THAN THE SECOND RECORD'S
+  // `EffectiveFromUtc` resolves the FIRST record. History is queryable by instant, not only as an audit
+  // list."* Day 5 falls before the second record's day 10 and resolves `first`; the day-10 row is the
+  // boundary (at, not after) and the day-99 row shows the answer does not decay.
+  //
+  // ⚠⚠ SCOPE THE CITATION DOES NOT REACH, AND IT IS VISIBLE IN THE SIGNATURE: the criterion names
+  // `EntitlementAt(TENANT, T)`. This calls `InForceAt(RECORDS, T)`. **The criterion's function looks the
+  // tenant's records up; this one is HANDED them** — so the ordering rule is covered and the lookup that
+  // feeds it is not. Same "told, not discovering" shape as `AC-SUB-0004`'s `currentMaximum` next door: the
+  // domain honours its input and says nothing about who assembles it.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0002")]
   public void The_record_in_force_is_the_greatest_effective_from_at_or_before_the_instant()
   {
     var plan = PlanWith();
@@ -57,7 +68,20 @@ public sealed class TenantEntitlementResolutionTests
   //
   // With no backfill and no default plan (`CON-0001`), a tenant with no subscription is entitled to nothing.
   // The caller must handle it; treating it as a fault is how a missing row becomes a 500 instead of a 403.
+  //
+  // ⚠ CITES `AC-SUB-0012` — *"A tenant with NO subscription record resolves to NO MODULES — not an error,
+  // and emphatically NOT ALL MODULES. A missing record is a state, not a failure to configure."* All three
+  // of the criterion's alternatives are separated here: `Assert.Empty` is *no modules* rather than *all*,
+  // and the absence of a throw is *not an error*. **The `Assert.Empty` is the load-bearing one** — a
+  // resolver that treated "no plan" as "unrestricted" would return every module and fail only that line.
+  //
+  // ⚠⚠ THE THIRD ALTERNATIVE THE CRITERION DOES NOT NAME BUT `TS-SUB-0007` DOES: *not a null a caller might
+  // treat as "unrestricted"*. `ModulesAt` returns an empty collection and `LimitAt` returns null — and
+  // those are different answers for a reason. An absent CAP is genuinely unknown; an absent MODULE SET is
+  // known to be empty. Asserted separately on the two lines below, which is why this test reads as three
+  // assertions of one fact and is not.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0012")]
   public void A_tenant_with_no_record_resolves_to_nothing_rather_than_failing()
   {
     Assert.Null(TenantEntitlement.InForceAt([], Noon));
@@ -155,7 +179,31 @@ public sealed class TenantEntitlementResolutionTests
   //
   // **Remove `RaiseLimit`'s refusal entirely and this test still passes.** That is the point: the invariant
   // is a property of the resolution function rather than a rule a future author must remember.
+  //
+  // ⚠ CITES `AC-SUB-0017`, BOTH CLAUSES — *"The resolved cap is `max(plan, grants)`. A grant row carrying a
+  // LOWER value than the plan — HOWEVER IT CAME TO EXIST — does not lower the resolved cap."* The
+  // `planLimitValue: null` construction is *however it came to exist* made executable: it is how a corrupt
+  // row, a direct insert, or a future write path would arrive, and it is the only way to reach this state
+  // at all, since the factory refuses it when told the truth. `Assert.Equal(5, lowering.LimitValue)` is not
+  // decoration — **it proves the grant really carries the lower value**, so the following assertion is
+  // about `max` and not about a value that was silently clamped on the way in.
+  //
+  // ANTI-VACUITY IS ALREADY HERE AND IS THE REASON THIS PAIR WORKS: `A_raising_grant_wins` and
+  // `The_highest_of_several_grants_wins` are the positives. A `LimitAt` that ignored grants entirely and
+  // always returned the plan's cap would pass THIS test and fail BOTH of those. Neither test alone
+  // distinguishes `max(plan, grants)` from a constant.
+  //
+  // ⚠⚠⚠ AND THE HEADER ABOVE — *"the write-time refusal is tested next door; this suite tests that removing
+  // it would still leave the invariant standing"* — UNDERSTATES WHAT THIS SUITE NOW CARRIES. The refusal
+  // is not merely removable in principle: **it is already unreachable in production.** `RaiseLimit` and
+  // `GrantModule` are `TenantEntitlementGrant`'s only two factories and neither is called anywhere in
+  // `src/`; the trial seed writes five tables and not this one; and the migration that creates the table
+  // ASSERTS IT IS EMPTY afterwards. **So `max(plan, grants)` is not the second of two guards — it is the
+  // only one in effect**, and `TS-SUB-0005`'s note that the two are tested separately *"because either
+  // alone would let the other rot"* has already come true in one direction. Detail in
+  // `SubscriptionInvariantTests`.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0017")]
   public void A_grant_naming_a_lower_value_cannot_lower_the_cap()
   {
     var plan = PlanWith((PlanLimit.Seats, 100));

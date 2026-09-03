@@ -129,13 +129,50 @@ public sealed class SubscriptionInvariantTests
   // callers in the repository are four test files**, this one among them.
   //
   // The type IS persisted and IS read — `TenantEntitlementGrantConfiguration`, the migrations, and
-  // `TenantEntitlementReader` are all real — so grant rows can exist and be resolved. **They just cannot be
-  // created through the domain by anything that ships.**
+  // `TenantEntitlementReader` are all real, so a grant row that existed would be resolved correctly.
+  // **Nothing that ships can create one**; see the SQL and migration checks below for how far that goes.
   //
   // ⚠ MECHANISM, NOT NAMES: two factories and a private constructor are the complete set of ways this
-  // aggregate comes into being in C#, so the search is exhaustive over source. What it does not cover is EF
-  // materialisation and raw SQL — **which is precisely the *"however it came to exist"* path `AC-SUB-0017`
-  // names, and right now it is the ONLY path.**
+  // aggregate comes into being in C#, so the search is exhaustive over source. **The name search is only
+  // corroboration, and it OVER-INCLUDES as well as under-includes** — `SubscriptionPlan.GrantModule` is a
+  // different method sharing the name, in `src/`, in the same namespace. The mechanism argument is what
+  // carries this, not the grep.
+  //
+  // ⚠⚠ AND SQL WAS CHECKED SEPARATELY, BECAUSE A RAW INSERT NAMES NO C# SYMBOL. Searching `src/` for the
+  // TABLE name finds create, constrain, index, map and read — **and no writer of any kind.** The trial seed
+  // (`TrialSubscriptionSeed.Sql`) inserts into `SubscriptionPlans`, `SubscriptionPlanModules`,
+  // `SubscriptionPlanPrices`, `ModuleDefinitions` and `TenantSubscriptions`: five tables, not this one.
+  //
+  // ⚠⚠⚠ AND THE MIGRATION THAT CREATES THE TABLE ASSERTS IT IS **EMPTY**.
+  // `20260826031515_AddSubscriptionCommercialPlane.cs:289-304` counts plans, subscriptions and grants after
+  // creating them and FAILS THE MIGRATION if any is non-zero, quoting `CON-0001` and `OD-SUB-0004` —
+  // *"entitlement is recorded, never assumed."* **So the table is guaranteed empty at creation, has no
+  // writer, and its only production consumer is a reader.** `AC-SUB-0017`'s *"however it came to exist"* is
+  // not merely the only remaining path; the schema refuses at migration time the very row that would
+  // exercise it.
+  //
+  // ---- WHAT THIS IS AND IS NOT, WITH THE BENIGN READING FIRST BECAUSE IT IS PROBABLY THE TRUE ONE.
+  //
+  // **`FP-014` is a young package under construction, and a domain and schema built ahead of the
+  // application layer is ordinary rather than a defect.** Nothing here says anyone did anything wrong.
+  // **The finding is about what the DOCUMENTATION CLAIMS, not about the missing handler.**
+  //
+  // ⚠⚠⚠ AND THE RISK IS NOT CURRENT — IT IS **ARMED**. Today the exposure is nil: no writer, and the table
+  // asserted empty at creation, so the resolution guard protects a set that cannot be non-empty. **The
+  // exposure arrives the day someone wires up grant creation** — and on that day the guard that catches a
+  // lowering grant is documented as *the redundant half of a pair* whose loud half has never run. **A
+  // reader tidying away belt-and-braces removes the only enforcement there is, and every test stays green,
+  // because no grant row can exist to fail one.**
+  //
+  // So the shape is not *something is broken*. It is ***a correct-looking redundancy claim that is false in
+  // the direction which makes removal look safe, and that becomes load-bearing later.***
+  //
+  // ⚠ THIS IS THE THIRD INSTANCE OF ONE CLASS AND THE CLASS IS WRITTEN UP ONCE, IN
+  // `API.Tests/IdentityAccess/TenantUserRouteInventoryTests.cs` — *a criterion's subject exists, is
+  // correct, and is on no executed path*. The other two are `AC-IAM-0001`'s user listing
+  // (defended-but-unwitnessed) and three unrouted tenant-user handlers (unrouted-and-untested). **This one
+  // is the worst of the three precisely because it is the least broken**: the other two announce their
+  // gaps, and this one is described in its own source as safe by redundancy.
   //
   // ⚠⚠ THAT INVERTS THE BELT-AND-BRACES READING. `SubscriptionErrors.cs` calls the write refusal *"the loud
   // half"* of a deliberate pair. **The loud half is unreachable in production, so the resolution-side

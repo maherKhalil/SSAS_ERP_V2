@@ -99,6 +99,44 @@ namespace SSAS.API.Tests.IdentityAccess;
 // is to make the gap legible to whoever picks it up, and a list of four POSTs with no GET is the clearest
 // statement of it that exists anywhere in the tests.
 //
+// ==================================================================================================
+// ⚠⚠⚠ THE CLASS THIS FILE IS TWO INSTANCES OF: **A CRITERION'S SUBJECT EXISTS, IS CORRECT, AND IS ON NO
+// EXECUTED PATH.**
+// ==================================================================================================
+//
+// Three instances found on 2026-09-02/03, across two packages. Collected here because **three instances of
+// one cause is a property of the codebase; three findings is a list of complaints** — and because the
+// three are NOT equivalent, which is the part a list would lose.
+//
+//   1. DEFENDED-BUT-UNWITNESSED — `AC-IAM-0001`, above. The tenant-scoping of the user listing is real,
+//      enforced two layers away by `ConfigureTenantFilter`, and now structurally guarded. **No test ever
+//      observes the behaviour**, because there is no route and the handler is on no executed path.
+//
+//   2. UNROUTED-AND-UNTESTED — the three handlers above. `ListTenantUsers`, `GetTenantUserById`,
+//      `UpdateTenantUserProfile`: named in no `SSAS.Platform.API` file and constructed by no test.
+//      Searched by CONSTRUCTION SITE, the completable search, since a handler must be named to be built.
+//
+//   3. UNREACHABLE-AND-DOCUMENTED-AS-REDUNDANT — `AC-SUB-0016`, in
+//      `Platform.Tests/Subscriptions/SubscriptionInvariantTests.cs`. `TenantEntitlementGrant`'s two
+//      factories have no caller in `src/`; the trial seed writes five other tables; the creating migration
+//      asserts the table is EMPTY. Searched by TABLE NAME as well as type name, because a raw `INSERT`
+//      names no C# symbol.
+//
+// ⚠ **THE THIRD IS THE WORST, AND NOT BECAUSE IT IS THE MOST BROKEN — IT IS THE LEAST BROKEN.** In 1 and 2
+// the gap is legible: no route, no test, nothing claims otherwise. In 3 the source **documents the
+// unreachable guard as one half of a deliberate redundant pair**, so the reader most likely to touch it is
+// one tidying away a duplication that is not one. **The redundancy claim is false in exactly the direction
+// that makes removal look safe.**
+//
+// ⚠⚠ AND ALL THREE ARE *ARMED* RATHER THAN *CURRENT*. Nothing is broken today in any of them: the exposure
+// in each case arrives when the missing execution path is built, which is also the moment nobody is
+// looking at the guard. **A defect that requires future correct-looking work to become live is invisible
+// to every instrument this repository has**, because every one of them observes what exists.
+//
+// The benign reading is stated at each site and is probably the true one in all three: a domain and schema
+// built ahead of an application layer is ordinary. **The class is about what the documentation claims, not
+// about anyone's competence.**
+//
 // ---- THE EXPECTATION WAS READ OFF THE RUNNING SURFACE, SO THE GREEN IS AN ARTEFACT.
 //
 // Planted on its own — `employee-link/remove` renamed — which failed. `DEC-L-070` per inventory, T-114's

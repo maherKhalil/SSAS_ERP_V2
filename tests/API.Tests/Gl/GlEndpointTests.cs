@@ -508,6 +508,101 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
       "5200", document.RootElement.GetProperty("detail").GetString(), StringComparison.Ordinal);
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ THE CAPABILITY HALF OF `BR-GL-0004`, AND THE FIRST SUCCESSFUL POST THIS SUITE HAS EVER MADE.
+  // ==================================================================================================
+  //
+  // *"Accounts marked as inactive cannot receive transactions"* has an unstated other half — **an account
+  // that is active CAN** — and a suite of refusals proves a guard FIRES, never that it STOPS firing.
+  //
+  // ---- WHY THIS IS NOT ALREADY COVERED, ESTABLISHED BY READING RATHER THAN ASSUMED.
+  //
+  // The refusal is asserted at three layers: `AccountDomainTests:64` (domain),
+  // `Posting_to_an_inactive_account_…` above (this suite, stubs) and `GlPostingChainSqlServerTests:226`
+  // (the real handler, real SQL). **The capability is asserted at exactly one** —
+  // `AccountDomainTests:92`, `EnsureCanReceiveTransactions().IsSuccess` after `Reactivate()`, which is the
+  // domain predicate in isolation and never a posting.
+  //
+  // ⚠ AND THE GAP IS WIDER THAN THIS ONE RULE. **All four `/posting` requests in this file are refusals** —
+  // `422 unbalanced`, `409 conflict` twice, `409 account_inactive`. Until this test there was no successful
+  // post at the API layer at all, so *posting works* was asserted by nothing here and every refusal above
+  // was uncontrolled: a handler that refused EVERY draft satisfied all four.
+  //
+  // ---- THE DIFFERENTIAL IS THE DESIGN, AND ONE BIT IS ALL THAT MOVES.
+  //
+  // The arrangement is the refusal test's, unchanged — same two accounts, same balanced draft, same fiscal
+  // year, same request. **The account is reactivated between the two calls and nothing else differs**, so
+  // the `201` cannot be attributed to a friendlier fixture. `Assert.Empty(host.Journals.Added)` before and
+  // `Assert.Single(…)` after is the same claim at the repository: **no entry existed, then exactly one
+  // did.** A refusal that quietly posted anyway, or a success that posted twice, fails one of those.
+  //
+  // ⚠⚠ `Reactivate()` IS CALLED ON THE INSTANCE THE STUB HOLDS, which is what makes this a live-state
+  // check rather than a re-arrangement: `EnsureCanReceiveTransactions` reads `IsActive` at post time
+  // (`Account.cs:132-137` — *asked at post time against live state*), so the second request sees the
+  // mutation without the draft, the year or the repository being rebuilt.
+  //
+  // ⚠⚠⚠ PLANTED, AND THE PLANT SETTLED A DISPUTED CLAIM RATHER THAN MERELY CONFIRMING THIS TEST.
+  // `Account.Reactivate()` was made a no-op in `src/` and reverted, `git diff -- src/` clean afterwards.
+  // **TWO tests reddened and no others:**
+  //
+  //   this one                                                        the posting layer
+  //   `AccountDomainTests.Deactivation_is_reversible_…`               the domain predicate, `:92`
+  //
+  // **So the domain capability half is REAL and detecting** — it was recorded elsewhere as not existing,
+  // and the plant is what settles that, because a capability assertion that survives its own mechanism
+  // being deleted is decoration. ⚠ It also shows the two do not substitute for each other: the domain test
+  // cannot see a handler that never calls the guard, and this one cannot see `IsActive` directly.
+  //
+  // ⚠ INHERITED, NOT INTRODUCED: the draft carries `DateTimeOffset.UtcNow` against a fiscal year fixed to
+  // 2026, copied from the refusal test so the two arrangements stay identical. **It is a wall-clock
+  // dependency and it will fail on 2027-01-01** — recorded here because the differential's whole value is
+  // that the two tests share one arrangement, and diverging to fix this in only one of them would cost more
+  // than it saves. Fix both together or neither.
+  [Fact]
+  [Trait("Decision", "BR-GL-0004")]
+  public async Task Reactivating_an_account_restores_its_ability_to_receive_a_posting()
+  {
+    var account = Account.Create("5200", "Office Supplies").Value;
+    account.Deactivate();
+    host.Accounts.Accounts[account.Id] = account;
+
+    var other = Account.Create("1000", "Cash").Value;
+    host.Accounts.Accounts[other.Id] = other;
+
+    var draft = JournalDraft.Create(DateTimeOffset.UtcNow, "Posting", null).Value;
+    draft.CompanyId = GlApiTestHost.CompanyA;
+    draft.ReplaceLines([(account.Id, 100m, 0m, null), (other.Id, 0m, 100m, null)]);
+    host.Drafts.Drafts[draft.Id] = draft;
+
+    var year = SSAS.GL.Domain.Calendar.FiscalYear.Create(
+      "FY2026",
+      new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      [("FY", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+    year.CompanyId = GlApiTestHost.CompanyA;
+    host.Calendar.Years[year.Id] = year;
+
+    // ---- THE CONTROL: this arrangement really is refused while the account is inactive.
+    var refused = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/journal-drafts/{draft.Id}/posting",
+      host.TokenWith(GlPermissionNames.PostJournals)));
+
+    Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+    Assert.Equal("gl.account_inactive", await GlApiTestHost.ProblemCodeAsync(refused));
+    Assert.Empty(host.Journals.Added);
+
+    // ---- ONE BIT MOVES.
+    account.Reactivate();
+
+    var posted = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/journal-drafts/{draft.Id}/posting",
+      host.TokenWith(GlPermissionNames.PostJournals)));
+
+    Assert.Equal(HttpStatusCode.Created, posted.StatusCode);
+    Assert.Single(host.Journals.Added);
+  }
+
   // ================================================================================================
   // RESPONSES
   // ================================================================================================

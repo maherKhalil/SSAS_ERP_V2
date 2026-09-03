@@ -23,10 +23,35 @@ public sealed class LocalizationPrimitiveTests
   }
 
   [Theory]
+  // ⚠ CITES `AC-LOC-0007` — *"Exact PARSER/ESCAPING/REPETITION/CASE/SET rules ACCEPT REORDER and reject
+  // every MISSING/UNKNOWN/MALFORMED placeholder."* Eight named properties in one sentence, so each row is
+  // matched to the one it carries rather than the theory being cited as a block:
+  //
+  //   `{name}`                  parser, the base case
+  //   `{a}{z}{a}` → `"a,z"`     REPETITION (`a` twice) and SET (distinct, and sorted — `z` follows `a`)
+  //   `{{literal}} {amount}`    ESCAPING — `{{` is a literal brace and yields no name
+  //   `مرحبا {userName}`        the surrounding text is non-ASCII and the name's CASE survives intact
+  //
+  // `Parser_rejects_malformed_tokens` carries MALFORMED over seven shapes, and
+  // `Formatter_requires_exact_names_and_does_not_reparse_values` carries MISSING — `Format` with an empty
+  // value map fails.
+  //
+  // ⚠⚠ UNKNOWN IS NOT HERE. It is `LocalizationResolverTests.Batch_limits_and_placeholder_contracts_are_
+  // enforced`, which passes an extra `["other"]` and gets `PlaceholderMismatch`. **Cited there is not cited
+  // here**, and the criterion needs both files.
+  //
+  // ⚠⚠⚠ AND *ACCEPT REORDER* IS THE ONE PROPERTY NOTHING ASSERTS, THOUGH THE MECHANISM FOR IT IS VISIBLE.
+  // Sorting the set is what makes order irrelevant — `{a}{z}{a}` yields `a,z` and so would `{z}{a}` — and
+  // `Placeholder_fingerprint_uses_sorted_distinct_lf_utf8_sha256` below fingerprints the SORTED DISTINCT
+  // set for exactly that reason. **But no test parses two texts that differ ONLY in placeholder order and
+  // shows them equal or compatible.** The property is a consequence of an implementation detail that is
+  // itself asserted; it is not asserted directly, and a change from sorted to insertion order would break
+  // reorder acceptance while leaving every row above green.
   [InlineData("{name}", "name")]
   [InlineData("{a}{z}{a}", "a,z")]
   [InlineData("{{literal}} {amount}", "amount")]
   [InlineData("مرحبا {userName}", "userName")]
+  [Trait("Criterion", "AC-LOC-0007")]
   public void Parser_accepts_exact_valid_grammar(string text, string expected)
   {
     var result = LocalizationPlaceholderParser.Parse(text);
@@ -108,7 +133,35 @@ public sealed class LocalizationPrimitiveTests
     Assert.Equal(32, first.Bytes.Length);
   }
 
+  // ⚠ CITES `AC-LOC-0008` FOR THREE OF ITS FOUR CLAUSES — *"PlainText/MultilineText enforce EXACT CONTROL
+  // and 512/4000 UTF-16 LIMITS BEFORE PERSISTENCE and use FORMAT-MATCHING `nvarchar(512)`/`nvarchar(4000)`
+  // COLUMNS while PRESERVING VALID TEXT."*
+  //
+  // ⚠⚠ AND THE EMOJI IS THE WHOLE POINT OF THE FIRST LINE, WHICH READS LIKE ARBITRARY PADDING.
+  // `new string('x', 510) + 😀` is **511 CODEPOINTS AND 512 UTF-16 UNITS** — the emoji is a surrogate pair.
+  // So this row accepts at exactly 512 UTF-16 and the next rejects at 513. **A limit counting CODEPOINTS
+  // would see 511 here, accept the `+ "x"` row, and fail only this test** — which is what makes the
+  // criterion's words *UTF-16 LIMITS* observable rather than decorative. Replace the emoji with an `x` and
+  // the test still passes while checking a different property.
+  //
+  // *Exact control* is the two rows below it: `"a\nb"` is refused as PlainText and `"a\r\nb\tc"` is
+  // accepted as MultilineText, so the rule is per-FORMAT and not global. *Preserving valid text* is the
+  // `Assert.Equal` on that same line — the accepted value comes back byte-for-byte rather than normalised.
+  //
+  // ⚠⚠⚠ TWO RESIDUALS, AND THE FIRST IS HALF OF A NUMBER PAIR THE CRITERION STATES AS ONE.
+  //
+  //   **4000 IS ASSERTED BY NOTHING.** The criterion says *512/4000*; only 512 has a boundary here, and
+  //   `MultilineText` is exercised for CONTROL rules and never for LENGTH. Searched: `4000` across `tests/`
+  //   returns JWT guids, payroll amounts and an sqlcmd constant — **no localization length assertion at
+  //   all.** A `MultilineText` limit wrong by any amount would be caught by nothing.
+  //
+  //   *Format-matching `nvarchar(512)`/`nvarchar(4000)` columns* is a SCHEMA claim and cannot be made
+  //   here — these are value-object constructions. It belongs to the EF configuration and its SQL tests.
+  //
+  // **So the citation is for the domain half of a criterion whose sentence spans domain and schema**, and
+  // the numeric pair it states is half-covered.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0008")]
   public void Text_validation_uses_utf16_boundaries_and_preserves_input()
   {
     var plain = new string('x', 510) + char.ConvertFromUtf32(0x1F600);

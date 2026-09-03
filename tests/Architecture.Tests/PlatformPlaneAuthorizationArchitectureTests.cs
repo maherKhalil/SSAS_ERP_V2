@@ -50,7 +50,30 @@ public sealed class PlatformPlaneAuthorizationArchitectureTests
       permission => Assert.Equal(PermissionScope.Tenant, permission.Scope));
   }
 
+  // ⚠ CITES `AC-IAM-0004` — *"A tenant role, INCLUDING A ROLE NAMED ADMINISTRATOR, does not grant
+  // platform-support access."* This is the mechanism that makes it true: every catalog name is offered to
+  // the tenant-token filter and only Tenant-scoped ones survive, so a tenant role naming a PlatformSupport
+  // permission grants nothing at issuance.
+  //
+  // ⚠⚠ THE *"including a role named Administrator"* CLAUSE IS SATISFIED BY CONSTRUCTION, NOT BY A CASE.
+  // The filter keys on SCOPE and never on a name, so there is no Administrator special case to test — the
+  // criterion anticipates a shortcut the implementation does not take. **Recorded because a reader looking
+  // for an `"Administrator"` literal here will not find one and could reasonably conclude the clause is
+  // uncovered; the absence of the name IS the coverage.** (`AC-IAM-0015`, *no permission by role name*, is
+  // the criterion that owns names as its subject, and it is not cited here.)
+  //
+  // ⚠⚠⚠ AND THE ANTI-VACUITY CONTROL IS ALREADY IN THE TEST, WHICH IS WHY THE CITATION IS SAFE. A filter
+  // that returned NOTHING would satisfy *no PlatformSupport permission survives* perfectly. The second
+  // assertion pins `filtered.Count` to the exact number of Tenant-scoped permissions in the catalog, so the
+  // universal is over a set proved non-empty and proved complete. `The_platform_support_family_is_exactly_
+  // the_approved_permissions` closes the other side by exact set equality, so *PlatformSupport* is a fixed
+  // population rather than whatever happens to be scoped that way today.
+  //
+  // NOT cited: `AC-IAM-0003` (*platform support CAN access an authorized tenant, and the action is
+  // audited*). That is the permissive direction plus an audit obligation, and nothing here grants access or
+  // observes an audit record — this file only proves the tenant plane cannot reach the platform one.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0004")]
   public void Tenant_token_claim_filter_removes_every_platform_support_permission()
   {
     // Claim issuance must scope-filter: no PlatformSupport catalog permission can survive into a tenant token.

@@ -35,7 +35,31 @@ public sealed class IdentityAccessDomainTests
     Assert.Equal(valid, PermissionName.Create(value).IsSuccess);
   }
 
+  // ⚠ THE NEXT THREE TESTS CITE `AC-IAM-0004` — *"A tenant role … does not grant platform-support
+  // access"* — AT THE ASSIGNMENT LAYER, WHICH IS THE STRONGEST OF ITS THREE. The criterion is enforced in
+  // three places and each proves something the others cannot:
+  //
+  //   ASSIGNMENT  (here)      a tenant role cannot ACQUIRE a PlatformSupport permission at all
+  //   ISSUANCE    (arch)      `PlatformPlaneAuthorizationArchitectureTests` — one that got assigned anyway,
+  //                           by corruption or a force-seeded row, cannot reach a tenant token
+  //   NAMING      (:181)      `Administrator_role_name_does_not_imply_permissions` — the name confers none
+  //
+  // **The issuance layer's own source calls itself *defence in depth*, which is only true because THIS
+  // layer is the primary one.** A reader who found only the filter test would think the rule lived at token
+  // issuance; a reader who found only these would think a corrupt row could still leak.
+  //
+  // ⚠⚠ AND THE ANTI-VACUITY CONTROL IS `Custom_tenant_role_still_accepts_a_tenant_scoped_permission` AT
+  // `:88`. `Assert.Empty(role.ActivePermissions)` after a refused assignment is satisfied just as well by a
+  // role that can hold nothing; the `:88` test assigns a Tenant-scoped catalog permission and asserts it
+  // APPEARS. **Every `Assert.Empty` in this group means *refused* only because that one exists.**
+  //
+  // ⚠⚠⚠ NOTE THE SECOND AND THIRD TESTS TAKE THEIR PERMISSIONS FROM THE REAL CATALOG AND ASSERT THE SCOPE
+  // THEY EXPECT (`:62`) BEFORE USING IT. That is what stops them going vacuous if `ViewTenants` were ever
+  // re-scoped to Tenant: the row would fail at the scope assertion rather than passing a refusal that no
+  // longer means anything. **The first test hand-builds its `PermissionDefinition` instead, so it tests the
+  // guard against a shape the catalog does not contain — deliberate, and a different question.**
   [Fact]
+  [Trait("Criterion", "AC-IAM-0004")]
   public void Tenant_role_rejects_platform_support_permission()
   {
     var role = CreateCustomRole(Guid.NewGuid());
@@ -54,6 +78,7 @@ public sealed class IdentityAccessDomainTests
   [InlineData(PlatformPermissionNames.ViewTenants)]
   [InlineData(PlatformPermissionNames.ManageTenants)]
   [InlineData(PlatformPermissionNames.TenantLifecycle)]
+  [Trait("Criterion", "AC-IAM-0004")]
   public void Custom_tenant_role_cannot_acquire_platform_tenant_permission(string permissionName)
   {
     var role = CreateCustomRole(Guid.NewGuid());
@@ -71,6 +96,7 @@ public sealed class IdentityAccessDomainTests
   [InlineData(PlatformPermissionNames.ViewTenants)]
   [InlineData(PlatformPermissionNames.ManageTenants)]
   [InlineData(PlatformPermissionNames.TenantLifecycle)]
+  [Trait("Criterion", "AC-IAM-0004")]
   public void System_tenant_role_cannot_acquire_platform_tenant_permission(string permissionName)
   {
     var role = Role.CreateSystem(Guid.NewGuid(), RoleName.Create("Tenant Administrator").Value, null);
@@ -113,7 +139,24 @@ public sealed class IdentityAccessDomainTests
     Assert.False(catalog.TryGet("platform.Users.View", out _));
   }
 
+  // ⚠ CITES `AC-IAM-0011` — *"An eligible same-tenant role can be assigned EXACTLY ONCE to an active tenant
+  // user"* — and it is `:152` that carries it: the second `AssignRole` of the SAME role fails. The
+  // surrounding successes are what make that failure mean *exactly once* rather than *assignment is broken*.
+  //
+  // ⚠⚠ AND `AC-IAM-0014` ONLY IN PART. That criterion is *"A user may hold MULTIPLE ROLES and receives the
+  // DISTINCT UNION of their permissions"* — two clauses. **This test carries the first and says nothing
+  // about the second: no permission is assigned to either role, so no union is computed and a duplicate
+  // across roles is never exercised.** Cited for clause 1, with clause 2 named as not covered here — *union*
+  // is the clause a reader would assume from *multiple roles*, and it is the one that is absent.
+  //
+  // ⚠⚠⚠ AND `:153-157` IS THE ANTI-VACUITY CONTROL FOR THE *EXACTLY ONCE* CLAIM, WHICH IS EASY TO MISREAD AS
+  // *NEVER TWICE*: after removing the first role it is assigned AGAIN and succeeds, leaving 3 assignments of
+  // which 2 are active. **So the rule is one ACTIVE assignment at a time, not one assignment ever — and the
+  // history row survives the removal, which is `AC-IAM-0017`'s no-deletion property showing up in the role
+  // graph rather than on the user.**
   [Fact]
+  [Trait("Criterion", "AC-IAM-0011")]
+  [Trait("Criterion", "AC-IAM-0014")]
   public void Tenant_user_supports_multiple_roles_and_keeps_removed_assignment_history()
   {
     var tenantId = Guid.NewGuid();
@@ -131,7 +174,23 @@ public sealed class IdentityAccessDomainTests
     Assert.Equal(2, user.RoleAssignments.Count(item => item.IsActive));
   }
 
+  // ⚠ TWO CRITERIA, ONE PER HALF, AND THE TEST NAME SAYS SO — *cross_tenant* AND *inactive*:
+  //
+  //   `AC-IAM-0012`  *"A role from one tenant cannot be assigned to a user in another tenant."*  `:166`
+  //   `AC-IAM-0019`  *"A role PENDING RETIREMENT or retired cannot receive new user assignments."*  `:169-170`
+  //
+  // ⚠⚠ `AC-IAM-0019` NAMES TWO STATES AND THIS EXERCISES ONE. `RequestRetirement` puts the role in
+  // `RetirementPending`; **a fully `Retired` role is not assigned against here.** `Role_can_retire_after_
+  // its_active_user_assignment_is_removed` below reaches `Retired`, but asserts about retirement rather
+  // than about assignment to a retired role. Cited as the pending half.
+  //
+  // ⚠⚠⚠ AND `AC-IAM-0012` ALREADY HAS A CITER IN COMMENT FORM: `TenantUserAssignmentAndConcurrencyTests`
+  // carries it as prose with `TS-IAM-0043` named. **That is prior B18 work at a different layer, and this
+  // is a second, independent witness at the domain layer — not a conversion of it.** Worth separating,
+  // because converting a comment to a trait moves a number without adding evidence and this does add one.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0012")]
+  [Trait("Criterion", "AC-IAM-0019")]
   public void Tenant_user_rejects_cross_tenant_and_inactive_role_assignment()
   {
     var user = CreateTenantUser(Guid.NewGuid());
@@ -144,7 +203,18 @@ public sealed class IdentityAccessDomainTests
     Assert.True(user.AssignRole(sameTenantRole, "actor", Guid.NewGuid(), Now).IsFailure);
   }
 
+  // ⚠ CITES `AC-IAM-0017` — *"No API or domain operation physically deletes a user"* — AT THE DOMAIN LAYER.
+  // `PersistenceArchitectureTests` carries it as a source-shape ban (there is no delete to call); this
+  // carries the positive form: the operation that LOOKS like removal is a reversible status change, and the
+  // membership survives it.
+  //
+  // ⚠⚠ AND IT IS DELIBERATELY **NOT** CITED TO `AC-IAM-0016` — *"A deactivated user cannot obtain or refresh
+  // usable tenant ACCESS."* That criterion is about ACCESS; this test asserts a STATUS TRANSITION and the
+  // survival of a membership row, and never attempts to obtain or refresh anything. **Adjacent-verb: same
+  // subject, wrong predicate.** A reader could easily take *Deactivation_is_reversible* as covering
+  // deactivation's whole story; it covers the half that is about the record rather than about the door.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0017")]
   public void Deactivation_is_reversible_and_never_removes_the_membership()
   {
     var user = CreateTenantUser(Guid.NewGuid());
@@ -209,7 +279,25 @@ public sealed class IdentityAccessDomainTests
     Assert.Empty(role.ActivePermissions);
   }
 
+  // ⚠ CITES `AC-IAM-0018` — *"A role assigned to any ACTIVE user cannot be retired"* — and it is the
+  // ORDERED pair that carries it: `Retire` fails while the assignment is active, the assignment is removed,
+  // `Retire` then succeeds. **The success is the load-bearing half.** Without it, the failure is satisfied
+  // by a role that can never retire at all, and the criterion would read as covered while the product was
+  // broken in the opposite direction.
+  //
+  // ⚠⚠ AND `AC-IAM-0020` — *"Retiring a role PRESERVES ASSIGNMENTS and audit history required for
+  // traceability"* — is carried by the two assertions after the retirement: the assignment row still
+  // EXISTS and is INACTIVE. `Assert.Single(user.RoleAssignments)` is the preservation; `Assert.False(…
+  // IsActive)` is what stops preservation being confused with the assignment still counting.
+  //
+  // ⚠⚠⚠ NOTE WHAT DECIDES `Retire`'s OUTCOME: THE CALLER PASSES `user.ActiveRoleIds.Contains(role.Id)` —
+  // the aggregate is TOLD whether an active assignment exists rather than discovering it. **So this proves
+  // the domain honours the flag, and NOT that any caller computes it correctly.** The application layer
+  // owns that, and a caller passing a stale or hardcoded `false` would retire an assigned role with every
+  // assertion here still green. Stated because *cannot be retired* reads as a guarantee about the system.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0018")]
+  [Trait("Criterion", "AC-IAM-0020")]
   public void Role_can_retire_after_its_active_user_assignment_is_removed()
   {
     var tenantId = Guid.NewGuid();

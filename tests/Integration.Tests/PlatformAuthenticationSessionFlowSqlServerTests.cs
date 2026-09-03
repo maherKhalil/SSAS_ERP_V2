@@ -89,6 +89,23 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0072")]
+  // `AC-TEN-0072` — *"Platform session-limit accounting is SEPARATE from tenant accounting; a reused
+  // `MaximumActiveSessions` applies INDEPENDENTLY within platform-session persistence, and THE TWO PLANES
+  // ARE NEVER COUNTED AGAINST EACH OTHER."*
+  //
+  //   independent within platform persistence   CARRIED — limit of 1, second creation revokes the first
+  //                                             with `SessionLimitExceeded`.
+  //   never counted against each other          ⚠ NOT CARRIED. The last line asserts the TENANT table is
+  //                                             EMPTY, which proves the platform flow created no tenant
+  //                                             rows — **not that PRE-EXISTING tenant sessions would leave
+  //                                             the platform limit alone.**
+  //
+  // ***A CROSS-COUNTING BUG NEEDS TENANT SESSIONS PRESENT TO MANIFEST, AND THIS FIXTURE HAS NONE.*** The
+  // confound is absent rather than controlled: with zero tenant rows, an implementation counting BOTH
+  // planes and one counting only platform are indistinguishable. **The discriminating fixture seeds a
+  // tenant session first and then shows the platform limit unmoved** — the arm-only lesson again, in a
+  // fixture that looks complete because it checks the other table at all.
   public async Task Session_limit_revokes_oldest_platform_sessions_only()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();

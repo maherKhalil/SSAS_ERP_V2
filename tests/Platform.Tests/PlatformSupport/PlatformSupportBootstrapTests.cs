@@ -287,6 +287,20 @@ public sealed class PlatformSupportBootstrapTests
 
   [Fact]
   [Trait("Acceptance", "AC-TEN-0031")]
+  [Trait("Criterion", "AC-TEN-0037")]
+  // ⚠ `AC-TEN-0037` — *"Bootstrap/recovery NEVER CHANGES a `Disabled` principal's status; re-enable is a
+  // separate explicit lifecycle operation. Configuration membership is NOT RE-ENABLE AUTHORITY."* — IS THE
+  // THIRD *SATISFIED BY A BROADER GUARD* CASE TONIGHT, AND THE SHAPE IS NOW FAMILIAR.
+  //
+  // `local:bob` is skipped here because it ALREADY OWNS A PRINCIPAL — **not because that principal is
+  // Disabled.** The service's rule is new-principal-only: any identity holding a principal is skipped,
+  // whatever its status. ***SO A DISABLED PRINCIPAL IS NEVER RE-ENABLED BECAUSE ITS IDENTITY IS NEVER
+  // SELECTED, AND NO FIXTURE HERE CONTAINS A DISABLED PRINCIPAL AT ALL.***
+  //
+  // The criterion holds and the guard that holds it is not about disablement — **it would still be there if
+  // the re-enable rule vanished.** Same shape as `AC-TEN-0024`'s system-role clause and `AC-TEN-0045`'s
+  // unexercised exception: **covered, and untestable at this site as stated.**
+  //
   // `AC-TEN-0031`'s ELIGIBILITY HALF — *"must resolve to an … authentication-capable, ACTIVE
   // `AuthenticationAccount`; a missing or INELIGIBLE subject creates no platform authority."* `local:alice`
   // has an ineligible account and is skipped; `local:carol` seeds the plane. **`local:bob` is skipped for a

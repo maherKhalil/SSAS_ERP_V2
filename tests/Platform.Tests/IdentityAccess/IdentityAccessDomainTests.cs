@@ -116,10 +116,16 @@ public sealed class IdentityAccessDomainTests
   // three.** The row set also asserts each permission IS `PermissionScope.PlatformSupport` before assigning,
   // so a permission silently re-scoped to `Tenant` reddens rather than passing.
   //
-  // ⚠⚠ THE *SYSTEM ROLE* CLAUSE IS SATISFIED BY A BROADER GUARD AND NOT BY THIS TEST: `AssignPermission`
-  // refuses a `RoleType.System` role BEFORE reaching the scope check, so a system role rejects EVERY
-  // permission, platform or tenant. **The criterion's clause is true for a reason that has nothing to do
-  // with planes**, and this fixture uses a CUSTOM role, so the system case is untested here.
+  // ⚠⚠ THE *SYSTEM ROLE* CLAUSE IS SATISFIED BY A BROADER GUARD, AND IT IS NOT MERELY UNTESTED — IT IS
+  // ***UNEXERCISABLE AS STATED***. `AssignPermission` refuses a `RoleType.System` role BEFORE the scope check
+  // runs, so **any input that would test the plane rule on a system role is refused before reaching it.**
+  // A system role rejects EVERY permission, platform or tenant.
+  //
+  // **This is not vacuity — the assertion below can fail — and not adjacent-verb, because the citation is
+  // right.** The criterion's clause HOLDS, for a reason that has nothing to do with planes, **and the guard
+  // that satisfies it would still be there if the plane rule vanished entirely.** ⚠ It is the
+  // ordered-refusals problem with the EARLIER guard accidentally satisfying a criterion about the LATER one:
+  // *satisfied by a broader guard, unexercisable as stated.*
   //
   // ⚠⚠⚠ THIS TEST ALREADY CARRIED `AC-IAM-0004`, SO IT DID NOT READ AS UNCITED — the same blind spot as
   // `AC-TEN-0016`. **It was found by a PLANT, not a search**: `git grep` for `PlatformPermissionRejected`

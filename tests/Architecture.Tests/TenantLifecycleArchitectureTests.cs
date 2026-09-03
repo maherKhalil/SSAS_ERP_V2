@@ -124,6 +124,16 @@ public sealed class TenantLifecycleArchitectureTests
   // so nothing in either file names the other** — recorded here because a reader auditing `AC-TEN-0011`
   // against this test alone would find four of five and conclude the fifth is unguarded.
   //
+  // ⚠⚠ AND THE CASCADE IS NOT MERELY GUARDED, IT IS NOT CONSTRUCTIBLE — MEASURED ON 2026-09-03 RATHER THAN
+  // REASONED. Across EVERY migration in `src/`, `ReferentialAction` appears 96 times: **95 `Restrict` and
+  // exactly ONE `Cascade`.** That one is `RelaxOwnershipDeleteBehaviour`, and it moves three
+  // `SubscriptionPlan` OWNERSHIP keys — limits, modules, prices. **No cascading foreign key anywhere in
+  // the schema references `Tenants`**, so there is no path by which deleting a row cascades into a Tenant.
+  //
+  // **So the disposal is *not constructible*, not *unguarded*** — a distinction worth the two commands it
+  // cost, because the remedies differ: an unguarded live path wants a test, and an unconstructible one
+  // wants exactly this sentence and nothing else.
+  //
   // ⚠ THE FIFTH — *API contract* — IS NOT COVERED AND CORRECTLY SO: `AC-TEN-0020` defers the tenant
   // endpoints entirely, and `Tenant_endpoints_remain_deferred…` below is what asserts that. **There is no
   // API contract yet to refuse a delete**, so the clause is satisfied by the surface not existing, and it

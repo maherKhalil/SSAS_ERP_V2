@@ -268,9 +268,33 @@ public sealed class TenantLifecycleDomainTests
     Assert.Empty(tenant.DomainEvents);
   }
 
+  // ⚠ CITES `AC-TEN-0011`'s *DOMAIN OPERATION* SITE — *"No DOMAIN OPERATION, command, repository method,
+  // API contract, or migration cascade physically deletes a Tenant."* `:278` bans the name over
+  // `typeof(Tenant).GetMethods()`.
+  //
+  // ⚠⚠ AND IT IS THE STRONGER OF THE TWO SITES THAT CARRY THAT CLAUSE. `TenantLifecycleArchitectureTests.
+  // Tenant_repository_and_source_expose_no_generic_query_or_physical_delete_boundary` reaches the same
+  // clause by SOURCE TEXT — it greps files importing the Tenants namespaces. **This reads the COMPILED
+  // TYPE**, so it cannot be defeated by a namespace alias, a partial class, or a file the path filter
+  // misses. Neither subsumes the other: that one covers commands and call sites this cannot see, and this
+  // covers a method this one's file filter would skip. Recorded at both ends.
+  //
+  // ⚠⚠⚠ ALSO CITES `AC-TEN-0018`'s TENANT-FILTER CLAUSE — *"…Tenant itself HAS NO TENANT QUERY FILTER,
+  // while existing tenant-owned entities retain their isolation filters."* `:279` asserts `Tenant` does not
+  // implement `ITenantOwnedEntity`, **and that interface is not a label — it is the SELECTOR**:
+  // `PersistenceDbContext.ConfigureTenantFilter<TEntity>` applies the global filter to every
+  // `ITenantOwnedEntity`. So not implementing it IS not having the filter, and this assertion is the
+  // mechanism rather than a proxy for it.
+  //
+  // ⚠ THE REST OF `0018` IS NOT HERE and is a different kind of claim: *uses the existing Platform context,
+  // schema, connection, migration history and Unit of Work*, and *existing tenant-owned entities RETAIN
+  // their filters*. The second half is the anti-vacuity twin of this line — a change that dropped the
+  // filter for everyone would satisfy `:279` perfectly — and it lives in the persistence guards, not here.
   [Fact]
   [Trait("Security", "SEC-TEN-0206")]
   [Trait("Scenario", "TS-TEN-0031")]
+  [Trait("Acceptance", "AC-TEN-0011")]
+  [Trait("Acceptance", "AC-TEN-0018")]
   public void Tenant_exposes_no_delete_or_tenant_owned_behavior()
   {
     var methods = typeof(Tenant).GetMethods().Select(method => method.Name).ToArray();

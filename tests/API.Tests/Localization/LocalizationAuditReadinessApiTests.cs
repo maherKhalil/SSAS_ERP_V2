@@ -140,8 +140,26 @@ public sealed class LocalizationAuditReadinessApiTests : IAsyncLifetime
     Assert.Equal(0, state.ReadinessCalls);
   }
 
+  // ⚠ CITES THE *"current live Tenant"* CLAUSE OF `AC-LOC-0044` (PUT), `AC-LOC-0045` (Undo) AND
+  // `AC-LOC-0046` (Restore-Default) — THREE IDS FOR THE THREE ROWS OF `MutationRequests`, and the mapping is
+  // one-to-one rather than approximate. A suspended tenant reaches each of the three real routes and gets
+  // 403; nothing else in either sentence is asserted here.
+  //
+  // ⚠⚠ THIS IS THE ROUTE-LAYER LEG THAT `RequestTenantEligibilityTests` DELIBERATELY DOES NOT CARRY. That
+  // file proves the eligibility MECHANISM computes liveness correctly and touches no endpoint; a clause
+  // saying a ROUTE ENFORCES liveness needs a route. **`ReadinessCalls` staying at 0 is the ordering half —
+  // the tenant check runs BEFORE audit readiness, so a suspended tenant cannot probe audit state.**
+  //
+  // ⚠⚠⚠ AND THE RESIDUAL IS `Suspended` ALONE. `TenantStatus` has four members; this drives ONE non-Active
+  // status through the localization routes. The other two reach these routes only through the shared
+  // pipeline (`AuthorizationPipelineTests.Non_active_or_missing_tenant_is_rejected`, which enumerates all
+  // three plus `null` but against a TEST route) — **so the full status population is covered at the pipeline
+  // and one member of it is covered here, and neither location covers both axes.**
   [Theory]
   [MemberData(nameof(MutationRequests))]
+  [Trait("Criterion", "AC-LOC-0044")]
+  [Trait("Criterion", "AC-LOC-0045")]
+  [Trait("Criterion", "AC-LOC-0046")]
   public async Task Inactive_tenant_returns_403_without_disclosing_audit_state(string path, object body)
   {
     state.Reset();

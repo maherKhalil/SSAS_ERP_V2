@@ -16,8 +16,15 @@ namespace SSAS.Platform.Tests.Localization;
 // ⚠⚠ WHAT THIS FILE DOES ESTABLISH, AND IT IS WORTH RECORDING EVEN WITHOUT A CITATION:
 //
 //   *live* really means live. `New_scope_observes_suspension_after_an_active_request` suspends the tenant
-//   BETWEEN requests and shows the next scope observing it, while the in-flight scope keeps its answer.
-//   That is the difference between *live* and *decided once at login*, and no route test states it.
+//   BETWEEN requests and shows the next scope observing it, while the in-flight scope keeps its answer —
+//   the difference between *live* and *decided once at login*.
+//
+//   ⚠⚠⚠ CORRECTION TO THIS FILE'S FIRST VERSION, WHICH SAID *"and no route test states it"*. **THAT WAS
+//   FALSE AND IT WAS AN ABSENCE CLAIM I HAD NOT SEARCHED FOR.** `AuthorizationPipelineTests.Already_issued_
+//   token_is_immediately_rejected_after_tenant_suspension` states exactly this AT THE ROUTE LAYER: a token
+//   issued while Active, the tenant suspended, the request answered 403. What is true is narrower and worth
+//   keeping — this file shows the SCOPE BOUNDARY that makes it work (the in-flight request keeps its
+//   answer, the next one does not), which the route test cannot see.
 //
 //   The mutation path cannot be served from this cache: `GetEligibilityForUpdateAsync` throws
 //   *"Request eligibility must never replace the locked mutation check."* A read-scoped cache silently
@@ -30,7 +37,20 @@ namespace SSAS.Platform.Tests.Localization;
 //
 // ⚠ THE RESIDUAL IS THE USUAL ONE AND IT IS NOT FIXED HERE: exhaustive TODAY. A fifth `TenantStatus`
 // member would be denied by nothing and named by no test, and nothing in this file pins the enum's size.
-// A one-line count control would close it; that is a logic change and is left for a separate decision.
+//
+// ⚠⚠ DELIBERATELY LEFT AS A RESIDUAL RATHER THAN GUARDED, ON EVIDENCE: `git log -S "enum TenantStatus"`
+// returns ONE commit — `174fe31 feat(platform): implement FP-003 tenant lifecycle`, the one that created
+// it. **The enum has never gained a member.** A guard against a thing that has never happened consumes the
+// attention a real check would have earned, so the written residual IS the artefact here. If it ever does
+// gain one, the fix is a DERIVED `[MemberData]` from `Enum.GetValues<TenantStatus>()` minus the permitted
+// set — which reddens ON THE ASSERTION and forces whoever adds a member to decide its eligibility — rather
+// than a count, which only reports that something changed.
+//
+// ⚠⚠⚠ THE SAME HAND-ENUMERATION EXISTS AT THE ROUTE LAYER AND IS **NOT** EXHAUSTIVE THERE:
+// `LocalizationEffectiveApiTests` already records its own `B20` note, and
+// `LocalizationAuditReadinessApiTests.Inactive_tenant_returns_403_without_disclosing_audit_state` drives
+// only `Suspended`. **The full status population is covered at the shared pipeline against a TEST route;
+// the localization routes cover one member of it. Neither location covers both axes.**
 public sealed class RequestTenantEligibilityTests
 {
   [Fact]

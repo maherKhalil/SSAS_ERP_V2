@@ -46,7 +46,23 @@ namespace SSAS.Architecture.Tests;
 //   The `CROSS-TENANT BY DESIGN` marker removed from `IdentityTenantMembershipReadService` — **PASSED on
 //   the first version of this test, which was a defect in the guard, not in the code.** See `Code(...)`.
 //
-// Both planted, both read as TEXT rather than as a colour, both reverted.
+// Both planted, both read as TEXT rather than as a colour, both reverted. **The leak plant was re-run
+// after `Code(...)` was replaced by the repository's own `StripComments`, because a STRONGER stripper can
+// over-strip: adopting it without re-planting would have been trusting a change to the instrument on the
+// strength of a plant run against the previous one.**
+//
+// ---- ⚠ AND THE SIBLINGS DO NOT SHARE THE DEFECT. Checked rather than assumed, because *my fix was easy*
+// is the tell that says look for the same class elsewhere.
+//
+//   `EmployeeReadScopeArchitectureTests`    `ReadHrCode` IS `StripComments(ReadHrSource(...))`
+//   `PositionReadScopeArchitectureTests`    strips, same implementation
+//   `DepartmentReadScopeArchitectureTests`  strips, same implementation
+//
+// **All three were already immune, and `EmployeeReadService.cs:25` proves it is load-bearing rather than
+// incidental: that file DISCUSSES `IgnoreQueryFilters` in a comment, and its guard asserts
+// `DoesNotContain` over the source. Without the strip, that guard would be permanently red.** So the
+// convention exists because someone already hit this — the answer was *mine was the outlier*, not *fix
+// them all*.
 public sealed class PlatformReadScopeArchitectureTests
 {
   private const string CrossTenantMarker = "CROSS-TENANT BY DESIGN";
@@ -62,14 +78,29 @@ public sealed class PlatformReadScopeArchitectureTests
   // runs both ways — `IgnoreQueryFilters` is also discussed in comments in sibling read services, which
   // would have put files into the *ignoring* set for mentioning the hazard they avoid.
   //
-  // ⚠ THE BOUND, STATED: this strips FULL-LINE `//` comments only. A trailing comment after code on the
-  // same line survives, and so does a `//` inside a string literal — neither occurs in this directory
-  // today, and both would fail SAFE here (extra text can only make a file look MORE compliant, so the
-  // residual risk is a false pass, not a false red). The marker check deliberately still runs over the raw
-  // source: the marker IS a comment, and requiring it in code would be nonsense.
+  // ⚠⚠ AND THIS IS THE REPOSITORY'S OWN `StripComments`, COPIED RATHER THAN INVENTED — `EmployeeReadScope`,
+  // `PositionReadScope` and `DepartmentReadScope` each carry it verbatim, and `ReadHrCode` is defined as
+  // `StripComments(ReadHrSource(...))`. **The convention already solved this and mine was the outlier.**
+  //
+  // My first version dropped only FULL-LINE comments. Theirs cuts at the first `//` on ANY line, so a
+  // TRAILING comment after code is stripped too — strictly stronger, and the difference is exactly the
+  // case my version would have missed: `.AsNoTracking() // never IgnoreQueryFilters here` would have put a
+  // clean file into the ignoring set. **Adopting theirs rather than keeping mine, so a reader meets one
+  // idiom in four files instead of two.**
+  //
+  // ⚠ THE SHARED BOUND: a `//` inside a string literal truncates that line. None occurs in this directory
+  // and the same is true of the three siblings, which have run this way for longer than tonight. The marker
+  // check deliberately still reads the RAW source — the marker IS a comment, and requiring it in code would
+  // be nonsense.
   private static string Code(string source) => string.Join(
-    '\n',
-    source.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+    Environment.NewLine,
+    source
+      .Split('\n')
+      .Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 ? line[..comment] : line;
+      }));
 
   [Fact]
   [Trait("Criterion", "AC-IAM-0001")]

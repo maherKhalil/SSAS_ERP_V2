@@ -130,9 +130,28 @@ public sealed class TenantLifecycleArchitectureTests
   // `SubscriptionPlan` OWNERSHIP keys — limits, modules, prices. **No cascading foreign key anywhere in
   // the schema references `Tenants`**, so there is no path by which deleting a row cascades into a Tenant.
   //
-  // **So the disposal is *not constructible*, not *unguarded*** — a distinction worth the two commands it
-  // cost, because the remedies differ: an unguarded live path wants a test, and an unconstructible one
-  // wants exactly this sentence and nothing else.
+  // ⚠⚠⚠ CORRECTION, SAME SESSION: *NOT CONSTRUCTIBLE* WAS TOO STRONG, AND ASKING **WHY** IT WAS
+  // UNCONSTRUCTIBLE IS WHAT BROKE IT. The 95-to-1 count is a fact about the migrations AS THEY STAND, not
+  // an impossibility. There are two routes to a cascading Tenant foreign key and they are not alike:
+  //
+  //   THROUGH THE MODEL — genuinely closed. `Every_reference_foreign_key_still_restricts` walks
+  //   `context.Model` and reddens on any non-`Restrict` reference key, so a model change cannot introduce
+  //   one quietly.
+  //
+  //   ⚠ THROUGH A HAND-WRITTEN MIGRATION — OPEN, AND DEMONSTRATED IN THIS REPOSITORY. That guard reads the
+  //   MODEL; a hand-written migration changes the DATABASE. `RelaxOwnershipDeleteBehaviour` is exactly such
+  //   a migration and its own comment states the mechanism: *"migrations are diffed snapshot-against-model
+  //   rather than database-against-model — so no future scaffold will ever notice."*
+  //
+  // **THE TWO BLIND SPOTS COMPOSE ONTO THE ONE MECHANISM THAT HAS ACTUALLY BEEN USED HERE.** The model
+  // guard cannot see a migration; this test excludes `Migrations/` by path. A hand-written migration adding
+  // `ON DELETE CASCADE` to a Tenant reference key would leave both green, and the repository has already
+  // used that exact route once — deliberately, with reasons, which is what makes it a normal act rather
+  // than an exotic one.
+  //
+  // **So the honest disposal is: CLOSED THROUGH THE MODEL, OPEN THROUGH A HAND-WRITTEN MIGRATION, and the
+  // grounds are a caller-side practice rather than a type-level impossibility** — it holds exactly as long
+  // as nobody hand-writes that migration, and nothing in the suite would report it if they did.
   //
   // ⚠ THE FIFTH — *API contract* — IS NOT COVERED AND CORRECTLY SO: `AC-TEN-0020` defers the tenant
   // endpoints entirely, and `Tenant_endpoints_remain_deferred…` below is what asserts that. **There is no

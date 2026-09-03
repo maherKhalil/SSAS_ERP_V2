@@ -254,11 +254,22 @@ public sealed class PlatformSupportBootstrapTests
   // MISSING or ineligible subject creates no platform authority."* `local:alice` is deliberately absent from
   // the identity repository and is skipped rather than created.
   //
-  // ⚠ THE CRITERION'S LAST SENTENCE — *"Bootstrap NEVER CREATES IDENTITIES"* — IS NOT ASSERTED ANYWHERE, AND
-  // IT IS NOT ASSERTABLE THROUGH THIS FAKE. The identity repository double exposes no create path, so the
-  // property holds by the SHAPE OF THE TEST DOUBLE rather than by anything the product is observed not to
-  // do. **A capability the fake cannot offer is a capability the test cannot prove is unused** — the same
-  // defect class as the one-slot recorder below, in the opposite direction.
+  // ⚠ THE CRITERION'S LAST SENTENCE — *"Bootstrap NEVER CREATES IDENTITIES"* — IS NOT ASSERTABLE THROUGH
+  // THIS FAKE. The identity repository double exposes no create path, so the property holds by the SHAPE OF
+  // THE TEST DOUBLE rather than by anything the product is observed not to do. **A capability the fake
+  // cannot offer is a capability the test cannot prove is unused** — the same defect class as the one-slot
+  // recorder below, in the opposite direction.
+  //
+  // ⚠⚠ CORRECTED: I FIRST WROTE THAT THIS CLAUSE WAS *"NOT ASSERTED ANYWHERE"*, WHICH WAS AN UNBOUNDED
+  // ABSENCE AND TOO WIDE. **`PlatformSupportAuthorityEndToEndTests.Register_creates_exactly_one_principal_
+  // and_creates_no_identity_or_account` asserts the SAME PROPERTY for the sibling operation** — counting
+  // rows in `platform.Identities` and `platform.AuthenticationAccounts` before and after, against a real
+  // database.
+  //
+  // **The clause remains uncarried FOR THE BOOTSTRAP PATH**, which is a narrower and defensible statement —
+  // Register and bootstrap are different operations and only one of them is exercised end-to-end. ⚠ And the
+  // Register test hands over the idiom that would close it: **a before/after row count needs no cooperation
+  // from a double at all**, which is exactly why it can witness a non-creation that this file cannot.
   public async Task A_missing_first_candidate_is_skipped_for_the_next_eligible_one()
   {
     var identities = new FakeIdentityRepository();

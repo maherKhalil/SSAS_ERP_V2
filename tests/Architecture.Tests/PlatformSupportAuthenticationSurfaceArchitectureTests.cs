@@ -52,6 +52,25 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
       property.Name.Contains("Principal", StringComparison.OrdinalIgnoreCase));
   }
 
+  // ⚠⚠⚠ THIS GUARD IS THE EVIDENCE THAT `AC-TEN-0084`, `0085` AND `0086` ARE **DEFERRED, NOT UNCOVERED**,
+  // AND IT CORRECTS A PARTITION I PUBLISHED. I classified `0021`-`0091` by cluster and put `0084`-`0091` in
+  // the LIVE bucket on the strength of routes and policies existing. **The Phase-4E plane-authentication
+  // POLICY TAXONOMY does not exist**, and this test is what says so: no type named `PlatformAuthenticatedUser`
+  // is present in Host.API or Platform.API, and the platform logout route is secured by a narrow inline
+  // `security_plane=platform` check rather than by the deferred policy infrastructure (`DEC-TEN-0024`).
+  //
+  //   `AC-TEN-0084` *"tenant-authenticated, PLATFORM-AUTHENTICATED … and plane-neutral policies EXIST"*
+  //   `AC-TEN-0085` *"an architecture guard rejects a plane-specific endpoint using a bare
+  //                  `RequireAuthenticatedUser`"* — needs the taxonomy to have something to reject
+  //   `AC-TEN-0086` *"…require the TENANT-AUTHENTICATED POLICY"* — names a policy that is not built
+  //
+  // **All three name the taxonomy this guard proves absent**, so their subjects are Phase 4E. My partition's
+  // deferred bucket was 6 and is 9. ⚠ I flagged this risk when I published it — *"I classified at CLUSTER
+  // granularity and did not open all 62 individually"* — and this is that risk landing.
+  //
+  // ⚠⚠ `AC-TEN-0085` IS ALSO THE ONLY CRITERION IN THE PACKAGE WHOSE SUBJECT IS A TEST. It does not describe
+  // product behaviour; it requires that an ARCHITECTURE GUARD exist. **When 4E lands, satisfying `0085` means
+  // writing a guard — and the criterion is closed by the guard's existence, not by anything the guard finds.**
   [Fact]
   public void Phase_4E_plane_authentication_policy_taxonomy_is_not_pulled_into_phase_4B()
   {

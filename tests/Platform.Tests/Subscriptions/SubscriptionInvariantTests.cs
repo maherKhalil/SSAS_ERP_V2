@@ -11,6 +11,40 @@ namespace SSAS.Platform.Tests.Subscriptions;
 // Monotonic append and additive-only grants. Neither is expressible as a database constraint — the first
 // spans rows, the second spans two aggregates and varies with time — so both are domain rules, and a domain
 // rule with no test is a comment.
+//
+// ==================================================================================================
+// ⚠⚠⚠ WHERE THE `SUB` CITATION PASS STOPPED, AND WHY IT IS A FINDING RATHER THAN A PLACE IT RAN OUT.
+// ==================================================================================================
+//
+// **`AC-SUB-0034` through `AC-SUB-0043` — ten consecutive criteria — describe a product that does not
+// exist yet.** Reading them one at a time would produce ten restatements of one fact, so the fact is
+// recorded once, here, and the pass stopped.
+//
+//   *Reading and disclosure* (`0034`, `0035`) — a platform caller with `Platform.Subscriptions.View`
+//   reading across tenants, and a tenant caller refused from every commercial read route. **No such
+//   permission name exists on either plane** (`AC-SUB-0008` says so itself, over all 28 platform names),
+//   and there are no commercial read routes to be refused from.
+//
+//   *The commercial record* (`0036`–`0043`) — invoice immutability and number reuse, one line per
+//   subscription record in a billed period, seat usage stamped with the record in force, overage judged
+//   against the plan in force then, mid-term proration. **There is no invoice, invoice line, seat usage
+//   sample, payment attempt or proration anywhere in `src/`.**
+//
+// ⚠ ESTABLISHED BY MECHANISM, NOT BY NAME, BECAUSE EVERY ONE OF THOSE CRITERIA NEEDS A PERSISTED RECORD.
+// `20260826031515_AddSubscriptionCommercialPlane` — the migration that builds this plane — creates exactly
+// **seven tables**: `ModuleDefinitions`, `SubscriptionPlans`, `TenantEntitlementGrants`,
+// `SubscriptionPlanLimits`, `SubscriptionPlanModules`, `SubscriptionPlanPrices`, `TenantSubscriptions`.
+// **Nothing billing-shaped is among them, and no later migration adds one.**
+//
+// ⚠⚠ THE HONEST READING IS THE UNALARMING ONE AND IT IS ALSO THE POINT. This is a package built in
+// dependency order — entitlement resolution before billing — and **an unbuilt feature is not a defect.**
+// What is worth recording is that **these ten read exactly like the twelve that ARE built**: same table,
+// same voice, same specificity about boundary cases. *Nothing in the criteria document distinguishes a
+// criterion describing shipped behaviour from one describing intended behaviour*, which is the same
+// property that made `AC-SUB-0019`'s silence persuasive — **a document that declares some of its gaps and
+// not others teaches a reader to trust the ones it does not mention.**
+//
+// The `SUB` pass therefore covers `AC-SUB-0002` through `AC-SUB-0032` and stops there deliberately.
 public sealed class SubscriptionInvariantTests
 {
   private static readonly DateTimeOffset Noon = new(2026, 8, 26, 12, 0, 0, TimeSpan.Zero);

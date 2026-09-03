@@ -64,10 +64,17 @@ public sealed class RolesEndpointTests : IAsyncLifetime
   // carries a valid tenant claim and NO permission claim, so the 401/403 boundary is exercised rather than
   // assumed: the caller is authenticated and still refused.
   //
-  // **Together with `Unauthenticated_request_returns_401` this is the pair that makes either meaningful.**
-  // A pipeline that returned 401 for everything satisfies the first criterion and violates this one; a
-  // pipeline that returned 403 for everything does the reverse. **Neither test alone distinguishes a
-  // working boundary from a stuck one.**
+  // ⚠⚠ **THIS TEST AND `Unauthenticated_request_returns_401` ARE A PAIR AND NEITHER MEANS ANYTHING ALONE.**
+  // A pipeline that returned 401 for everything satisfies `AC-IAM-0009` and violates this one; a pipeline
+  // that returned 403 for everything does the reverse. **Neither test alone distinguishes a working
+  // boundary from a stuck one — what carries the property is that the two statuses DIFFER for inputs that
+  // differ in exactly one way.**
+  //
+  // ⚠⚠⚠ AND A PER-CRITERION SWEEP CAN NEVER SEE THIS. Each criterion has a test, each test passes, each
+  // citation is accurate — **and the thing being proved lives BETWEEN them, in two different criteria, so
+  // no instrument keyed to one criterion at a time can observe it.** Written on this test because the
+  // permission side is the more likely of the two to be edited; deleting or weakening either one silently
+  // empties the other.
   [Fact]
   [Trait("Criterion", "AC-IAM-0010")]
   public async Task Authenticated_without_view_permission_returns_403()
@@ -216,12 +223,21 @@ public sealed class RolesEndpointTests : IAsyncLifetime
   // **400 `request.invalid` rather than 403.** The criterion is satisfied because the input has nowhere to
   // land, not because anything compares the supplied id to the trusted one.
   //
-  // ⚠⚠⚠ AND THAT IS WHY THIS IS AN OBSERVATION RATHER THAN A *satisfied by construction* ARGUMENT: the
-  // parameter is actually supplied and the refusal is actually seen. **But the protection is a property of
-  // the parameter list, so it would evaporate silently if the endpoint ever gained a legitimate `tenantId`
-  // — for paging, filtering, anything.** A future reader adding one would see this test go red and could
-  // reasonably read it as a strict-binding test to update rather than a tenant-isolation guarantee to
-  // preserve. **It is the second.**
+  // This is an OBSERVATION rather than a *satisfied by construction* argument — the parameter is actually
+  // supplied and the refusal is actually seen. **But the protection is a property of the PARAMETER LIST,
+  // and a property that holds by ABSENCE disappears without a diff anyone would flag.**
+  //
+  // ⚠⚠⚠ READ THIS IF THE TEST IS RED. IF IT FAILED BECAUSE THE ENDPOINT GAINED A `tenantId` PARAMETER —
+  // for paging, filtering, an admin view, anything — THEN TENANT ISOLATION HERE IS NO LONGER STRUCTURAL.
+  //
+  //   **DO NOT relax this test to accept the parameter.** That is the obvious repair and it is the defect:
+  //   it removes the guarantee, leaves every other test green, and nothing else in the suite would notice.
+  //
+  //   **DO add an explicit comparison against the trusted tenant** — the handler must reject a supplied id
+  //   that differs from `ICurrentTenant`, and this test must then assert THAT refusal (403, not 400).
+  //
+  // **The failure this test produces recruits the next person into removing the property it protects**, so
+  // the instruction is written here rather than only the rationale.
   [Fact]
   [Trait("Criterion", "AC-IAM-0002")]
   public async Task A_caller_supplied_tenant_id_query_is_rejected_as_unknown()

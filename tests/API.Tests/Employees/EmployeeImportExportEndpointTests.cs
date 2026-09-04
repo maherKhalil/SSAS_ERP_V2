@@ -419,6 +419,73 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.DoesNotContain("scope", body, StringComparison.OrdinalIgnoreCase);
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ T23. THE EXPORT RUN RECORD — WRITTEN BY THE PRODUCT, RECORDED BY THE FIXTURE, READ BY NOBODY.
+  // ================================================================================================
+  //
+  // `AC-DOC-0015` — *"Every export writes a run record naming the column set and the scope in force. A
+  // failed export writes none, because nothing left the system."*
+  //
+  // ***`StubExportRunRepository` HAS COLLECTED EVERY EXPORT RUN THIS SUITE HAS EVER PRODUCED, IN A PUBLIC
+  // `Runs` LIST, AND NOT ONE ASSERTION HAS EVER LOOKED AT IT.*** Measured: `host.ImportRuns.Runs` is
+  // asserted in five places — empty after a refusal, `Single()` for the file name, `Outcome` after validate
+  // — and **`host.ExportRuns.Runs` in none.** *A value that is never read cannot be reached by any
+  // assertion, and the twin sitting beside it is what makes the omission visible rather than invisible.*
+  //
+  // ⚠ AND THE STAKES ARE THE ONES THE AGGREGATE ITSELF STATES: *"for an export, the run record is the ONLY
+  // control that survives the data leaving. Everything else — the permission, the scope, the column set —
+  // acted before the bytes went out and cannot be re-applied afterwards."* **An export that answered `200`
+  // and wrote no record would satisfy every existing assertion in this file, including `T11`'s.**
+  //
+  // ⚠⚠ `T15` DOES NOT CARRY THIS AND THE NAMES INVITE THE OPPOSITE READING. It asserts the wire shape
+  // carries the column set **and no scope** (`DEC-DOC-0016`); the criterion says the RECORD names the column
+  // set **and the scope in force**. *Those agree — the scope is recorded server-side and withheld from the
+  // caller — but only one of them is about the record, and `T15` is about the response.*
+  //
+  // ⚠⚠⚠ THE SECOND CLAUSE NEEDS A REFUSAL THAT REACHES THE HANDLER, WHICH IS WHY THE PAGING PARAMETER IS
+  // USED RATHER THAN A PERMISSION FAILURE. **A `403` refused at the authorization filter proves nothing
+  // about the export path — no record would be written by a route that was never entered.** *A `400` on a
+  // rejected paging parameter is refused inside the endpoint, so `Empty` is a statement about the export
+  // deciding not to record rather than about the request never arriving.*
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0015")]
+  public async Task T23_A_successful_export_records_its_column_set_and_scope_and_a_refused_one_records_nothing()
+  {
+    host.Reads.ExportRows =
+    [
+      new("E-1", "Layla Haddad", new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+        "ENG", "DEV", SSAS.HR.Domain.Employees.EmployeeStatus.Active)
+    ];
+
+    using var exported = await host.Client.SendAsync(EmployeeApiTestHost.Request(
+      HttpMethod.Get, "/api/hr/employees/export",
+      host.TokenWith(HrPermissionNames.ExportEmployees, HrPermissionNames.ViewEmployees)));
+
+    Assert.Equal(HttpStatusCode.OK, exported.StatusCode);
+
+    var run = Assert.Single(host.ExportRuns.Runs);
+    Assert.Contains("employeeNumber", run.ColumnSet, StringComparison.Ordinal);
+    Assert.Contains("positionCode", run.ColumnSet, StringComparison.Ordinal);
+    Assert.Equal(1, run.RowCount);
+    Assert.NotEmpty(run.ExecutedBy);
+
+    // ---- THE SCOPE IN FORCE, WHICH IS THE HALF THE COLUMN SET CANNOT SUBSTITUTE FOR.
+    //
+    // "Who exported?" is answerable from the actor; "could that person have exported THIS employee?" is not,
+    // unless the scope at the time is on the record. Scope changes, so reconstructing it later from current
+    // authorization is unsound — the aggregate's own header says so.
+    Assert.NotEmpty(run.ScopeCompanyIds);
+
+    host.ExportRuns.Reset();
+
+    using var refused = await host.Client.SendAsync(EmployeeApiTestHost.Request(
+      HttpMethod.Get, "/api/hr/employees/export?page=1",
+      host.TokenWith(HrPermissionNames.ExportEmployees, HrPermissionNames.ViewEmployees)));
+
+    Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+    Assert.Empty(host.ExportRuns.Runs);
+  }
+
   [Theory]
   [InlineData("/api/hr/employees/import-runs?pageSize=0")]
   [InlineData("/api/hr/employees/import-runs?pageNumber=0")]

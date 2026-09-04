@@ -207,6 +207,67 @@ public sealed class LocalizationCatalogToolTests
     }
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ FOUR CLOSED SETS, EACH DECLARED TWICE IN TWO LANGUAGES, TIED TOGETHER BY NOTHING.
+  // ==================================================================================================
+  //
+  // `AC-LOC-0028` opens *"Only Ordinary and SecuritySensitiveNonOverridable exist…"*. **That is a CLOSED-SET
+  // claim, and this repository states it twice: once as a C# `enum` the compiler checks, and once as a JSON
+  // Schema `enum` array the compiler has never heard of.** *Nothing reads one against the other.*
+  //
+  // ⚠ THE FAILURE IS SILENT IN BOTH DIRECTIONS AND NEITHER IS EXOTIC. Add a third C# member and the manifest
+  // validator keeps rejecting it as schema-invalid — a value the domain accepts and the catalog cannot
+  // express. Add a third SCHEMA value and manifests carrying it parse, then fail deserialisation at a layer
+  // that has no idea a schema promised it. **Both changes are one line, both compile, and every existing
+  // test stays green:** the schema is a raw string literal as far as the build is concerned, checked by
+  // nothing until something is built that reads it.
+  //
+  // ⚠⚠ ALL FOUR SETS ARE CHECKED, NOT JUST THE CRITERION'S ONE. `securityClassification` and `textFormat`
+  // are both inputs to `CompatibilityFingerprint.Calculate`, so drift in either silently changes what
+  // "compatible" means for every tenant override — the criterion names one and the mechanism has two.
+  // *`lifecycle` and `category` come along because the cost of a fifth line is nothing and the cost of
+  // discovering the gap again is what this comment cost.*
+  //
+  // ⚠⚠⚠ SET EQUALITY, DELIBERATELY, NOT SEQUENCE EQUALITY. These values cross the boundary AS STRINGS, so
+  // reordering either declaration is semantically inert. **An ordered assertion would redden on a harmless
+  // tidy of the schema, and this file already documents where that leads — a failure whose obvious remedy is
+  // to re-baseline it teaches the reader to silence the alarm.** *Sorted comparison is the claim that is
+  // actually true: the same NAMES exist on both sides.*
+  //
+  // ---- THE OTHER TWO CLAUSES OF `AC-LOC-0028` ARE NOT CARRIED HERE AND ARE NOT CARRIED ANYWHERE I FOUND.
+  //
+  // *"non-overridable mutation fails"* IS covered — `LocalizationDomainTests.Security_sensitive_resource_
+  // cannot_create_override`, cited there to `AC-LOC-0009`.
+  // ⚠ *"non-overridable PREVIEW fails"* IS NOT. `LocalizationPreviewTests` has two tests: a placeholder
+  // accept/reject pair over an ORDINARY resource, and a suspended-tenant refusal. **Neither previews a
+  // `SecuritySensitiveNonOverridable` resource**, so a preview handler that happily previewed one would be
+  // caught by nothing. Recorded rather than fixed: it is a new fixture case, not a missing assertion.
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0028")]
+  public void Schema_closed_sets_match_the_domain_enums()
+  {
+    var schema = JsonNode.Parse(File.ReadAllText(GetPaths().Schema))!;
+    var properties = schema["$defs"]!["resource"]!["properties"]!;
+
+    (string Property, string[] Names)[] pairs =
+    [
+      ("securityClassification", Enum.GetNames<LocalizationSecurityClassification>()),
+      ("textFormat", Enum.GetNames<LocalizationTextFormat>()),
+      ("lifecycle", Enum.GetNames<LocalizationResourceLifecycle>()),
+      ("category", Enum.GetNames<LocalizationResourceCategory>())
+    ];
+
+    foreach (var (property, names) in pairs)
+    {
+      var declared = properties[property]!["enum"]!.AsArray()
+        .Select(value => value!.GetValue<string>())
+        .OrderBy(value => value, StringComparer.Ordinal)
+        .ToArray();
+
+      Assert.Equal(names.OrderBy(name => name, StringComparer.Ordinal).ToArray(), declared);
+    }
+  }
+
   private static (string Manifest, string Schema, string Backend, string Client) GetPaths()
   {
     var directory = new DirectoryInfo(AppContext.BaseDirectory);

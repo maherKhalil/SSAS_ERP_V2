@@ -151,7 +151,33 @@ public sealed class LocalizationResolverTests
     Assert.Equal(1, fixture.VersionReader.Calls);
   }
 
+  // ⚠ CITES `AC-LOC-0037` FOR THE FIRST OF ITS TWO CLAUSES — *"Suspension after cache population prevents
+  // Tenant override USE and MANAGEMENT on the next authorized path."*
+  //
+  // **USE is what this test judges, and the arrangement is the assertion.** The first resolve populates the
+  // cache while the tenant is Active and is asserted to come back as `TenantOverride`; only then is the
+  // status flipped. ***WITHOUT THAT FIRST RESOLVE THE TEST WOULD PASS ON A RESOLVER THAT NEVER CACHED
+  // ANYTHING*** — "suspended tenants get the default" is a much weaker property than "a suspended tenant
+  // gets the default even though their override is already in the cache", and only the second is the
+  // criterion. ⚠⚠ `OverrideReader.Calls == 1` is what pins it: the second resolve did NOT re-read, so the
+  // cache was live and was declined on status rather than missed.
+  //
+  // ---- MANAGEMENT IS NOT ASSERTED HERE, AND ITS HOME IS WORTH NAMING BECAUSE IT IS TRUE FOR A DIFFERENT
+  // REASON RATHER THAN FOR THE SAME ONE.
+  //
+  // `LocalizationAuditReadinessTests.Locked_live_tenant_denial_precedes_the_audit_gate` states it: a
+  // Suspended tenant invoking `create` is refused `TenantIneligible`, with `LockedCalls == 1`.
+  // ⚠⚠⚠ **AND *AFTER CACHE POPULATION* IS VACUOUS ON THAT PATH BY CONSTRUCTION — THERE IS NO CACHE ON IT TO
+  // GO STALE.** Mutation handlers call `GetEligibilityForUpdateAsync`, and `IRequestTenantEligibility` — the
+  // request-scoped cache's interface — declares only `GetEligibilityAsync`, **so a management caller cannot
+  // reach the cached answer even by mistake.** *Interface separation, not a runtime check.*
+  //
+  // ⚠ A reader chasing that guarantee will find the message *"Request eligibility must never replace the
+  // locked mutation check."* in `RequestTenantEligibilityTests` — **that throw is in a TEST DOUBLE**, and it
+  // guards a real but narrower thing: that the cache never DELEGATES a for-update call to its inner service.
+  // The guarantee consumers rely on is the interface, and the two are easy to confuse from a search hit.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0037")]
   public async Task Cached_override_is_bypassed_immediately_when_tenant_is_suspended()
   {
     var fixture = new ResolverFixture(TenantId, TenantStatus.Active);

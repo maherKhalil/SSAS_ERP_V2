@@ -86,6 +86,27 @@ public sealed class CutoverManifestArchitectureTests
   // arrive. **The criterion's clause is satisfied by the first half; the second half is an addition the
   // criterion did not ask for, not a substitute for what it did.**
   [Trait("Criterion", "AC-ATT-0035")]
+  // ⚠ CITES THE FIRST CLAUSE OF `AC-GL-0021` — *"Every GL entity implementing `ITenantOwnedEntity` appears
+  // in the E3 cutover manifest, AND THE SITE INVENTORY IN `DEC-POS-0022` IS UPDATED IN THE SAME CHANGE THAT
+  // ADDS IT."* **GL's SEVEN — `Account`, `FiscalPeriod`, `FiscalYear`, `JournalDraft`, `JournalDraftLine`,
+  // `JournalEntry`, `JournalLine` — are in the derived set and in the exact list below, so both directions
+  // hold: the engine cannot MISS one, and a human must SEE a new one.**
+  //
+  // ⚠ *The first version of this line said "GL's five" and named a `Journal` entity that does not exist —
+  // typed from memory rather than read off the list twelve lines below it. **The draft/entry split is the
+  // whole shape of this module's posting model, and I had flattened it into one name.** Corrected in place,
+  // because the correction is the more useful record: an identifier invented while citing a list is exactly
+  // what a reader cannot distinguish from one that was checked.*
+  //
+  // ⚠⚠ ***THE SECOND CLAUSE IS CITED BY NOTHING AND MUST NOT BE READ AS COVERED. `DEC-POS-0022`'s NINE-SITE
+  // MAP IS ENFORCED BY NO TEST IN THIS REPOSITORY — its only trace in `tests/` is a COMMENT, at
+  // `EmployeeHostCompositionTests.cs:240`.*** *Part of it is unwitnessable by construction — "in the same
+  // CHANGE" is a claim about a commit, and no fixture can read git history — but the OUTCOME half is not:
+  // nothing asserts that the manifest list and that document's list agree at all, which a test could do.*
+  //
+  // ⚠ So this criterion is discharged one clause by a fixture, one clause by nobody — recorded here rather
+  // than left for a reader to infer from the citation's presence.
+  [Trait("Criterion", "AC-GL-0021")]
   public void C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity()
   {
     var composed = CutoverTenantModel.Source.Model;

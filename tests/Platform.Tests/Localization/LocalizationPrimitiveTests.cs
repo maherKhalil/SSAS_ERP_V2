@@ -151,6 +151,62 @@ public sealed class LocalizationPrimitiveTests
     Assert.Equal(SHA256.HashData([]), PlaceholderFingerprint.Calculate(PlaceholderSet.Create([]).Value).Bytes);
   }
 
+  // ==============================================================================================
+  // ⚠⚠⚠ THE SIBLING ABOVE PINS ITS BYTES AND THIS ONE DID NOT — SAME FILE, SAME PRIMITIVE, TWO STANDARDS.
+  // ==============================================================================================
+  //
+  // `AC-LOC-0031` reads, in full: *"Canonical policy input produces deterministic SHA-256; wording-only
+  // changes do not alter it."* **The test below is named `…ignores_wording_and_changes_with_policy` and its
+  // body varies THE POLICY FLAG, never any wording** — it asserts `first != second` and a length of 32.
+  //
+  // ⚠ *32 BYTES IS NOT SHA-256 AND TWO CALLS WITH DIFFERENT INPUTS ARE NOT DETERMINISM.* Any 32-byte digest
+  // passes the length check, and **an implementation that mixed in a timestamp or a salt would satisfy every
+  // assertion in that test** — `Calculate` is invoked in exactly one test in the whole tree, and never twice
+  // with the SAME input. *The near-miss with the right name is the hardest gap to see, because the name
+  // answers the question a reader came to ask.*
+  //
+  // ---- WHAT THIS ROW ADDS, AND WHY IT IS A PIN RATHER THAN A SECOND COMPARISON.
+  //
+  // **The expected hex is derived from the CANONICAL FORM, not re-baselined from the implementation's own
+  // output**: the fields joined by `\n`, UTF-8, SHA-256 — computed independently and written down. That
+  // makes ONE assertion carry four properties at once: it is SHA-256 (not merely 32 bytes), it is
+  // deterministic (a second identical call must equal the same constant), the FIELD ORDER is the canonical
+  // one, and the separator and encoding are `\n`/UTF-8. **A re-baselined constant would carry none of them.**
+  // *This is the discipline `Placeholder_fingerprint_uses_sorted_distinct_lf_utf8_sha256` already applies
+  // twelve lines up; the asymmetry between the two was the whole finding.*
+  //
+  // ⚠⚠ THE SECOND CLAUSE IS NOT ASSERTED HERE AND MUST NOT BE READ AS COVERED BY THIS CITATION.
+  // *"wording-only changes do not alter it"* is true **BY THE SIGNATURE**: `Calculate` takes a key, a
+  // format, a classification, a bool and a placeholder set — **no text parameter exists, so no wording can
+  // reach the hash.** That is real enforcement and the compiler is the thing enforcing it: adding a text
+  // parameter breaks every call site. ***BUT IT IS UNWRITABLE AS A TEST — you cannot vary an argument the
+  // method does not take — and an unwritable clause is exactly how a criterion gets quietly marked covered.***
+  // It is named here so the citation states which clause a fixture judges and which one the type system does.
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0031")]
+  public void Compatibility_fingerprint_is_a_deterministic_canonical_lf_utf8_sha256()
+  {
+    var key = ResourceKey.Create("platform.common.validation.required").Value;
+    var placeholders = PlaceholderSet.Create(["fieldName"]).Value;
+
+    var first = CompatibilityFingerprint.Calculate(
+      key,
+      LocalizationTextFormat.PlainText,
+      LocalizationSecurityClassification.Ordinary,
+      true,
+      placeholders);
+    var again = CompatibilityFingerprint.Calculate(
+      key,
+      LocalizationTextFormat.PlainText,
+      LocalizationSecurityClassification.Ordinary,
+      true,
+      placeholders);
+
+    // "platform.common.validation.required\nPlainText\nOrdinary\ntrue\nfieldName", UTF-8, SHA-256.
+    Assert.Equal("c05b1efb6fbfb8130dd4b232b703d93c5aa7fed5470bbeb4199074c3bcd82686", first.Hex);
+    Assert.Equal(first.Hex, again.Hex);
+  }
+
   [Fact]
   public void Compatibility_fingerprint_ignores_wording_and_changes_with_policy()
   {

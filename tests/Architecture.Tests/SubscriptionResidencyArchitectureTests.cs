@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Domain.Subscriptions;
 
@@ -64,6 +65,107 @@ public sealed class SubscriptionResidencyArchitectureTests
   // is worth asserting: they LOOK tenant-owned. The tenant is the **subject** of the agreement, never its
   // owner (`DEC-SUB-0002`) — the rows are platform-administered commercial records about a tenant, and a
   // tenant cannot read, still less write, its own.
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0030")]
+  [Trait("Criterion", "AC-SUB-0029")]
+  // ==================================================================================================
+  // `AC-SUB-0030`, pasted — *"Expiry writes nothing to `Tenant`. The tenant's `TenantStatus` remains
+  // `Active`, and a suspended tenant that is paid up remains `Suspended`"*
+  //
+  // `AC-SUB-0029`, pasted — *"A tenant whose term has expired **authenticates successfully** and is refused
+  // every gated module. A **suspended or archived** tenant is still refused at authentication, and the two
+  // outcomes remain **distinct** — one is commercial and reversible by the customer, the other
+  // administrative"*
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ THE TWO CRITERIA ARE ONE STRUCTURAL PROPERTY WRITTEN FROM BOTH ENDS, AND THE PAIR OF GUARDS IS
+  // WHAT MAKES *DISTINCT* MECHANICAL RATHER THAN OBSERVED:
+  //
+  //   `The_authentication_surface_cannot_see_entitlement`   authentication cannot refuse for a COMMERCIAL
+  //   (`AuthenticationMilestoneArchitectureTests`)          reason, because it cannot see one
+  //   this test                                             the commercial surface cannot change an
+  //                                                         ADMINISTRATIVE outcome, because it cannot
+  //                                                         reach `TenantStatus`
+  //
+  // ***TWO OUTCOMES ARE DISTINCT WHEN NEITHER MECHANISM CAN REACH THE OTHER'S INPUT.*** A behavioural pair
+  // — an expired tenant logging in, a suspended one refused — shows they ARE distinct today. **These two
+  // guards show they CANNOT CONVERGE**, which is the claim `AC-SUB-0029` actually makes about a
+  // reversible-by-the-customer state versus an administrative one.
+  //
+  // ⚠ AND `AC-SUB-0030`'s FIRST SENTENCE IS AN ABSENCE OF A WRITE, WHICH HAS NO BEHAVIOURAL WITNESS AT
+  // ALL. *"Expiry writes nothing to `Tenant`"* — there is no expiry EVENT: `HasExpiredAt` is a pure
+  // function of the term against the clock, nothing is written when a term ends and no job runs
+  // (`OD-SUB-0010`, quoted in `AC-SUB-0026`). **So there is no moment at which the write could be observed
+  // not to happen, and the only assertable form is that the code which would do it does not exist.**
+  //
+  // ⚠⚠ THE BAN IS ON `TenantStatus` AND THE LIFECYCLE VERBS, NOT ON THE WORD `Tenant`. The commercial
+  // surface names tenants constantly — `TenantSubscription`, `TenantEntitlementGrant`, `TenantId` — and a
+  // ban on `Tenant` would be a false red on every file it is meant to protect. **A guard whose false
+  // positives outnumber its true ones is one somebody switches off.**
+  public void The_commercial_surface_cannot_reach_tenant_status()
+  {
+    var root = FindRepositoryRoot();
+    var commercialFiles = new[]
+      {
+        Path.Combine(root, "src", "Platform", "SSAS.Platform.Domain", "Subscriptions"),
+        Path.Combine(root, "src", "Platform", "SSAS.Platform.Application", "Subscriptions")
+      }
+      .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+      .ToArray();
+
+    // The floor is 10 against 13 files today. ⚠ It is deliberately BELOW the count rather than at it: its
+    // job is to catch the FILTER COLLAPSING — a renamed namespace directory returning nothing — not to
+    // pin the file count, and a floor set at the current number turns every legitimate file removal into
+    // a red with a misleading message. **My first attempt guessed 15 and failed on a correct tree**, which
+    // is the same defect one level down: a floor asserted from expectation rather than from the population.
+    Assert.True(commercialFiles.Length >= 10,
+      $"only {commercialFiles.Length} commercial files were scanned; the walk has stopped matching and " +
+      "'the commercial surface cannot reach tenant status' would mean nothing.");
+
+    const string lifecycleVocabulary = @"(?:TenantStatus|\.Suspend\(|\.Archive\(|\.Activate\(|TenantStatusChangeReason)";
+    // The matcher control: it must match the real forms and not match the commercial surface's own
+    // tenant-shaped names, which is the false red this ban is designed to avoid.
+    Assert.Matches(lifecycleVocabulary, "if (tenant.TenantStatus != TenantStatus.Active)");
+    Assert.Matches(lifecycleVocabulary, "tenant.Suspend(reason, actor, eventId, now);");
+    Assert.DoesNotMatch(lifecycleVocabulary, "public Guid TenantId { get; private set; }");
+    Assert.DoesNotMatch(lifecycleVocabulary, "var grant = new TenantEntitlementGrant();");
+
+    var offenders = commercialFiles
+      .Where(path => Regex.IsMatch(CodeOnly(path), lifecycleVocabulary, RegexOptions.CultureInvariant))
+      .Select(Path.GetFileName)
+      .ToArray();
+
+    Assert.Empty(offenders);
+  }
+
+  // ---- ⚠ A FOURTH PRIVATE COPY OF THESE TWO HELPERS, ADDED KNOWINGLY RATHER THAN SILENTLY.
+  //
+  // `AdminTransportArchitectureTests`, `AuthenticationMilestoneArchitectureTests` and
+  // `AuthenticationSessionArchitectureTests` each carry their own. **Extracting them is a separate task —
+  // it touches four green guards to change nothing observable**, which is the kind of edit the
+  // `PlatformRouteInventory` header already stops for the same reason. *Recorded here so the count is
+  // visible to whoever does extract them; four copies is the number, not "a few".*
+  private static string FindRepositoryRoot()
+  {
+    for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)
+    {
+      if (File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln"))) return directory.FullName;
+    }
+
+    throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
+  }
+
+  // ⚠ THE BAN READS CODE, NOT PROSE. A commercial file explaining WHY it must not touch `TenantStatus`
+  // would otherwise fail the rule for documenting the rule — the false red this suite has met before.
+  private static string CodeOnly(string path) =>
+    string.Join(
+      "\n",
+      File.ReadAllText(path).Split('\n').Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 ? line[..comment] : line;
+      }));
+
   [Fact]
   public void No_commercial_type_is_tenant_owned()
   {

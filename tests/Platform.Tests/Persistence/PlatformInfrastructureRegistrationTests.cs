@@ -56,6 +56,91 @@ public sealed class PlatformInfrastructureRegistrationTests
       provider.GetRequiredService<IOptions<AuthenticationPolicyOptions>>().Value);
   }
 
+  [Theory]
+  [InlineData("SSAS-ERP-WEB")]
+  [InlineData("Ssas-Erp-Web")]
+  [InlineData("ssas-erp-web-2")]
+  [InlineData("unknown-client")]
+  [Trait("Criterion", "AC-AUTH-0025")]
+  // ==================================================================================================
+  // `AC-AUTH-0025`'s allow-list, ON THE PRODUCTION REGISTRY. **No compile-scope test constructed it.**
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ THE TEST THAT LOOKS LIKE THIS ONE ASSERTS A THREE-LINE TEST DOUBLE.
+  // `AuthenticationSessionApplicationTests.V1_client_allowlist_is_ordinal_and_maximum_length_is_enforced`
+  // reads `var registry = new AllowedClientRegistry();` — **and `AllowedClientRegistry` is a private
+  // nested class in that test file whose whole body is `IsAllowed(clientId) => clientId == Client;`.**
+  // Its casing assertions pass because a record's `==` is ordinal, and they say nothing whatever about
+  // `AuthenticationClientRegistry`'s `HashSet<string>(…, StringComparer.Ordinal)`.
+  //
+  // ***THE DOUBLE IS NAMED LIKE THE PRODUCTION TYPE — `AllowedClientRegistry` against
+  // `AuthenticationClientRegistry` — SO THE LINE READS AS THE REAL ALLOW-LIST AT A GLANCE.*** The
+  // production type is constructed only in `Integration.Tests`, which `GATE_SCOPE=TASK` compiles and does
+  // not run, so at compile scope the only registries that exist are two doubles.
+  //
+  // ⚠⚠ MEASURED, NOT INFERRED: `StringComparer.Ordinal` -> `StringComparer.OrdinalIgnoreCase` in the
+  // production registry. **All seven suites green.** The allow-list could match case-insensitively — which
+  // is precisely the *casing differences* the criterion names — and nothing said so.
+  //
+  // ⚠ `ssas-erp-web-2` is here for the same reason as in the token theory: it is the row that catches a
+  // `StartsWith` or `Contains` rewrite, and a `HashSet` today does not stop that being written tomorrow.
+  public void Production_client_registry_allows_only_the_exact_ordinal_client_id(string clientId)
+  {
+    var registry = new AuthenticationClientRegistry(Options.Create(new AuthenticationClientOptions
+    {
+      AllowedClientIds = [AuthenticationClientId.V1Web]
+    }));
+
+    // The positive is in the same test and against the same instance: without it, a registry that allowed
+    // NOTHING would satisfy all four rows.
+    Assert.True(registry.IsAllowed(AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value));
+    Assert.False(registry.IsAllowed(AuthenticationClientId.Create(clientId).Value));
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0025")]
+  // ==================================================================================================
+  // `AC-AUTH-0025`'s DEPLOYMENT half — and the test I set out to write was UNREACHABLE, which is itself
+  // the finding.
+  // ==================================================================================================
+  //
+  // The options carry `.Validate(… AllowedClientIds.Contains("ssas-erp-web") …)` with the message *"The V1
+  // production client ssas-erp-web must be allowlisted."* The obvious witness is a configuration that omits
+  // it, asserting startup fails. **That test cannot be written.**
+  //
+  // ⚠⚠⚠ `AllowedClientIds` IS DECLARED `= ["ssas-erp-web"]`, AND THE CONFIGURATION BINDER **APPENDS** TO A
+  // DEFAULTED ARRAY RATHER THAN REPLACING IT. Measured, not assumed: binding
+  // `Authentication:Clients:AllowedClientIds:0 = "some-other-client"` produced
+  // **`ssas-erp-web,some-other-client`**. ***So no deployment can remove the V1 client, and that
+  // `.Validate` clause is unreachable from configuration — it guards a change to the DEFAULT, in code,
+  // and nothing else.***
+  //
+  // ⚠ That is not a defect and the clause should stay: it is the assertion that fires the day someone
+  // changes the initialiser to `= []`. **But a citation claiming the deployment case is covered would have
+  // been false, and the test proving it would have been unwritable — a combination that normally ends with
+  // the criterion quietly marked covered.**
+  //
+  // So this pins the property that IS reachable and IS load-bearing: **a configuration naming only another
+  // client still admits the V1 browser.** It fails if the default is emptied, if the binder's append
+  // semantics change under a framework upgrade, or if the section is renamed.
+  public void Configuration_naming_another_client_cannot_remove_the_v1_client_from_the_allowlist()
+  {
+    var services = new ServiceCollection();
+    var configuration = CreateConfiguration(new Dictionary<string, string?>
+    {
+      ["Authentication:Clients:AllowedClientIds:0"] = "some-other-client"
+    });
+    services.AddPlatformInfrastructure(configuration);
+    using var provider = services.BuildServiceProvider();
+
+    var options = provider.GetRequiredService<IOptions<AuthenticationClientOptions>>().Value;
+
+    Assert.Contains(AuthenticationClientId.V1Web, options.AllowedClientIds, StringComparer.Ordinal);
+    // ⚠ AND THE APPEND ITSELF IS ASSERTED, because it is the mechanism the line above depends on. Were the
+    // binder to start REPLACING, the assertion above would fail and this one would name why.
+    Assert.Contains("some-other-client", options.AllowedClientIds, StringComparer.Ordinal);
+  }
+
   [Fact]
   public void Platform_persistence_is_module_qualified_scoped_and_uses_one_context_per_scope()
   {

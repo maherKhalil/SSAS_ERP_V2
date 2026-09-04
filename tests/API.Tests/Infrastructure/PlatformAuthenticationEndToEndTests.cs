@@ -391,9 +391,25 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
   [Fact]
   [Trait("Criterion", "AC-AUTH-0042")]
   // ==================================================================================================
-  // `AC-AUTH-0042`'s *"REFRESH AND LOGOUT **REQUIRE** THE … CSRF COOKIE/HEADER PAIR"* — THE CLAUSE THAT HAD
-  // NO WITNESS, AND THE ONLY SHAPE THAT CAN CARRY IT.
+  // `AC-AUTH-0042`, QUOTED TO ITS TERMINAL FULL STOP — *"Refresh and logout require the exact
+  // Data-Protection-signed CSRF cookie/header pair bound to current session, refresh selector, and
+  // ClientId; state rotates and clears with refresh state and production key-ring startup fails closed."*
   // ==================================================================================================
+  //
+  // **THIS TEST CARRIES ONE WORD OF IT: *REQUIRE*.** The full clause map — the pair, the signing, the three
+  // bindings, rotation, clearing, and the key-ring startup — is on
+  // `AuthenticationCsrfTests.Protected_csrf_value_requires_exact_cookie_header_selector_and_session_binding`,
+  // which also names the two clauses nothing witnesses.
+  //
+  // ⚠⚠⚠ AND THIS COMMENT WAS THE TRUNCATED-QUOTATION DEFECT, CAUGHT BY THE SWEEP BUILT FOR IT, IN THE
+  // SAME COMMIT THAT DESCRIBED THE CLASS. It read *"refresh and logout require the … CSRF cookie/header
+  // pair"* and stopped — **174 characters unquoted, and the ellipsis made it look deliberate.** The rule is
+  // QUOTE TO THE TERMINAL FULL STOP, and an elision inside a quotation is not an exemption from it: *an
+  // ellipsis signals that something was cut, and conceals how much.*
+  //
+  // ⚠ The instrument earned its keep here, and not in the way I expected: it was written to audit OTHER
+  // people's citations and its only real find was its author's, four commits later. **A sweep you run once
+  // over history measures the past; a sweep you re-run measures YOU.**
   //
   // ⚠⚠⚠ EVERY EXISTING CSRF TEST DRIVES `AuthenticationCsrfService` DIRECTLY. They are good tests —
   // tampered header, absent header, empty cookie, wrong selector, wrong ClientId, expired payload,

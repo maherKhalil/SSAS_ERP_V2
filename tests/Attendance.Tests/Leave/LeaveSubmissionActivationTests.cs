@@ -126,6 +126,26 @@ public sealed class LeaveSubmissionActivationTests
   // ⚠ NO `Criterion` TRAIT: this is a fixture control and satisfies no clause of `AC-ATT-0022`. It exists
   // so the refusal above cannot be coming from the construction. Tagging it would count the criterion twice
   // for one assertion.
+  //
+  // ---- ⚠⚠⚠ AND IT IS THE ONLY THING IN THE GATE THAT WITNESSES `AC-ATT-0043`, WHICH IS WHY IT STILL
+  // CARRIES NO TRAIT.
+  //
+  // *"A leave request whose range falls outside the employee's employment window is refused, on the same
+  // boundary reading as `AC-ATT-0007`."* **Measured: short-circuiting the leave employment-window check in
+  // `LeaveCommandHandlers` to `Result.Success()` reddens THIS test and nothing else in seven suites.**
+  //
+  // ***SO THE REFUSAL IS WITNESSED AND ITS CRITERION IS UNANCHORED.*** The assertion is TRUE, it WITNESSES,
+  // and it is INCIDENTAL: the code is asserted as a SENTINEL for "the activation guard released", by a test
+  // whose subject is activation. **Citing `AC-ATT-0043` here would attach a criterion to an assertion that
+  // exists to prove something else, and a legitimate change to the window's error code — a refactor this
+  // test is designed to be brittle against for its OWN purpose — would then read as a criterion
+  // regression.**
+  //
+  // ⚠ WHAT `AC-ATT-0043` ACTUALLY LACKS: a test that submits a request outside the window and asserts the
+  // refusal ON ITS OWN TERMS, including which boundary — `RequestBeforeEmployment` versus
+  // `RequestAfterTermination` — since the criterion inherits `AC-ATT-0007`'s inclusive reading and nothing
+  // in the gate pins that the END date is what is checked against termination. **Recorded, not built:
+  // the citation convention is with the owner.**
   [Fact]
   [Trait("BusinessRule", "BR-ATT-0009")]
   public async Task An_active_leave_type_gets_past_the_activation_guard()

@@ -343,6 +343,61 @@ public sealed class AuthenticationMilestoneArchitectureTests
     Assert.NotEmpty(asymmetric);
   }
 
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0021")]
+  // ==================================================================================================
+  // `AC-SUB-0021`, pasted — *"A tenant with **no entitlement at all** can still authenticate, select its
+  // tenant, refresh, log out, and reach platform support and the subscription surface"*
+  // ==================================================================================================
+  //
+  // ⚠⚠ A "STILL WORKS" CRITERION HAS NO NATURAL PLANT, WHICH IS WHY THIS IS A STRUCTURAL GUARD RATHER THAN
+  // A BEHAVIOURAL TEST. The happy path is already exercised — `PlatformAuthenticationEndToEndTests` seeds a
+  // tenant with **no subscription row at all** and logs in successfully, so *authenticate* and *select* are
+  // witnessed incidentally. **But a passing happy-path test cannot be planted against: the change that
+  // would break this criterion is "make authentication consult entitlement", which is a feature, not an
+  // edit.**
+  //
+  // ***SO THE GUARD ASSERTS THE MECHANISM THAT MAKES THE CRITERION TRUE: THE AUTHENTICATION SURFACE CANNOT
+  // REFUSE FOR ENTITLEMENT BECAUSE IT CANNOT SEE IT.*** That is a claim about references, it is
+  // plant-verifiable, and it fails on the FIRST line of the feature that would violate the criterion
+  // rather than after somebody notices logins breaking.
+  //
+  // ⚠ THE BAN IS THE ENTITLEMENT VOCABULARY, ENUMERATED FROM `src/` RATHER THAN GUESSED:
+  // `ITenantEntitlementCache`, `ITenantEntitlementReader` (Platform Application) and
+  // `ITenantModuleEntitlement` (BuildingBlocks Api) are the whole of it — three interfaces, and the
+  // unanchored `TenantEntitlement`/`ModuleEntitlement` stems catch every derived name.
+  public void The_authentication_surface_cannot_see_entitlement()
+  {
+    var root = FindRepositoryRoot();
+    var authenticationFiles = new[]
+      {
+        Path.Combine(root, "src", "Platform", "SSAS.Platform.Application", "Authentication"),
+        Path.Combine(root, "src", "Platform", "SSAS.Platform.API", "Authentication")
+      }
+      .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+      .ToArray();
+
+    // `EnumerateFiles` throws on a missing directory, so a renamed project is an exception rather than a
+    // silent empty walk. The floor guards the FILTER, which is the part that can collapse quietly.
+    Assert.True(authenticationFiles.Length >= 40,
+      $"only {authenticationFiles.Length} authentication files were scanned; the walk has stopped matching " +
+      "and 'authentication cannot see entitlement' would mean nothing.");
+
+    const string entitlementVocabulary = @"(?:TenantEntitlement|ModuleEntitlement|IsEntitled)";
+    // The matcher control: it must match the real names and not match its neighbours.
+    Assert.Matches(entitlementVocabulary, "ITenantEntitlementReader reader");
+    Assert.Matches(entitlementVocabulary, "ITenantModuleEntitlement entitlement");
+    Assert.Matches(entitlementVocabulary, "if (!IsEntitled(module))");
+    Assert.DoesNotMatch(entitlementVocabulary, "IAuthenticationSessionRepository sessions");
+
+    var offenders = authenticationFiles
+      .Where(path => Regex.IsMatch(CodeOnly(path), entitlementVocabulary, RegexOptions.CultureInvariant))
+      .Select(path => Path.GetFileName(path))
+      .ToArray();
+
+    Assert.Empty(offenders);
+  }
+
   private static string FindRepositoryRoot()
   {
     for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)

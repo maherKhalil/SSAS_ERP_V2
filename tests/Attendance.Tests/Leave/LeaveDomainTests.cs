@@ -11,7 +11,12 @@ public sealed class LeaveTypeTests
   private static readonly Guid Company = Guid.NewGuid();
 
   [Fact]
+  // ⚠ CITES `AC-ATT-0021` FOR ITS FIRST CLAUSE ONLY. *"A leave type's `Code` cannot be changed after
+  // creation"* is asserted here. *"...and an update request carrying one is refused as an unknown property"*
+  // is a TRANSPORT claim about the update DTO and is not asserted by this domain test — the id must not be
+  // read as covering it.
   [Trait("Requirement", "REQ-ATT-0010")]
+  [Trait("Criterion", "AC-ATT-0021")]
   public void A_leave_type_code_is_immutable_from_creation()
   {
     var leaveType = LeaveType.Create(Company, "ANN", "Annual", LeaveBehaviour.PaidFromBalance, false).Value;
@@ -182,7 +187,11 @@ public sealed class LeaveRequestTests
   // TS-ATT-0010. LEAVE CONSUMES WORKING DAYS, COMPUTED FROM THE CALENDAR AT SUBMISSION.
   // ================================================================================================
   [Fact]
+  // ⚠ CITES `AC-ATT-0016`. The consumption is PINNED at 2, not bracketed — and "only the working days
+  // inside it" quantifies over a COMPLEMENT, so the range deliberately contains two non-working days for
+  // the word to mean anything.
   [Trait("Requirement", "REQ-ATT-0013")]
+  [Trait("Criterion", "AC-ATT-0016")]
   public void A_request_spanning_a_weekend_consumes_only_the_working_days_inside_it()
   {
     var calendar = WorkingCalendar.Create(
@@ -200,7 +209,10 @@ public sealed class LeaveRequestTests
   }
 
   [Fact]
+  // ⚠ CITES `AC-ATT-0017`. `Assert.Equal(before - 1, after)` pins the DELTA rather than a literal, so
+  // it stays exact if the range changes — a reduction of two fails it, which "fewer than before" would not.
   [Trait("Requirement", "REQ-ATT-0013")]
+  [Trait("Criterion", "AC-ATT-0017")]
   public void A_request_spanning_a_holiday_consumes_one_fewer_day()
   {
     var calendar = WorkingCalendar.Create(

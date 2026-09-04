@@ -63,6 +63,10 @@ public sealed class AttendanceRecordTests
 
   [Fact]
   [Trait("Requirement", "REQ-ATT-0007")]
+  // ⚠ CITES `AC-ATT-0011` — *"Overtime is recorded as a quantity with a tier label and **no
+  // multiplier** — the rate lives in Payroll."* Both halves are here: the tier is required and the absence
+  // of a multiplier is asserted structurally rather than left to a reader.
+  [Trait("Criterion", "AC-ATT-0011")]
   public void Overtime_carries_a_tier_and_no_multiplier()
   {
     var record = Observe(overtime: 3m, tier: "NIGHT");
@@ -81,6 +85,11 @@ public sealed class AttendanceRecordTests
 
   [Fact]
   [Trait("Requirement", "REQ-ATT-0008")]
+  // ⚠ CITES `AC-ATT-0039` FOR ITS FIRST CLAUSE ONLY. *"Paid and unpaid absence are recorded as
+  // **separate quantities**"* is asserted here. *"...and only the unpaid quantity reaches the Payroll
+  // summary as a deduction driver"* is a claim about `IAttendanceSummary`, which this record test never
+  // touches — the id does not carry it.
+  [Trait("Criterion", "AC-ATT-0039")]
   public void Paid_and_unpaid_absence_are_separate_quantities()
   {
     var record = Observe(worked: 0m, paidAbsence: 1m, unpaidAbsence: 2m);

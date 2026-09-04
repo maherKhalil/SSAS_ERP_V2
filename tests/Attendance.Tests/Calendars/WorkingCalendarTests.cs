@@ -19,8 +19,15 @@ public sealed class WorkingCalendarTests
   // `BR-ATT-0001` exists because the weekend is not universal, and a single-case test is exactly how a
   // hardcoded constant survives review: it would pass, and it would be wrong for a large share of this
   // product's market in a way that produces plausible numbers rather than an error.
+  // ⚠ CITES `AC-ATT-0001` — *"A calendar with a Fri/Sat weekend reports Sunday as a working day and Friday
+  // as not — **the weekend pattern is read from data, and no test may pass by assuming Sat/Sun**."* The
+  // first two rows are the criterion's own example; the Sat/Sun rows are its complement and the Thu/Fri
+  // rows are a third pattern the criterion does not require. ***THE CRITERION'S LAST CLAUSE IS A CLAIM
+  // ABOUT THE TEST SUITE, AND THIS THEORY IS WHAT MAKES IT TRUE: a single-case test is exactly what a
+  // hardcoded constant survives*** — which the header above already said before any criterion was attached.
   [Theory]
   [Trait("Requirement", "REQ-ATT-0001")]
+  [Trait("Criterion", "AC-ATT-0001")]
   // Fri/Sat: Sunday works, Friday does not.
   [InlineData(DayOfWeek.Friday, DayOfWeek.Saturday, "2026-09-13", true)]
   [InlineData(DayOfWeek.Friday, DayOfWeek.Saturday, "2026-09-11", false)]
@@ -37,8 +44,13 @@ public sealed class WorkingCalendarTests
     Assert.Equal(isWorking, calendar.IsWorkingDay(DateOnly.Parse(date, System.Globalization.CultureInfo.InvariantCulture)));
   }
 
+  // ⚠ CITES `AC-ATT-0002` — *"Adding a holiday on an existing working day reduces `WorkingDaysBetween` for
+  // a range containing it by exactly one."* **The quantity is PINNED, not bracketed: the assertion is the
+  // exact delta, so a change that reduced the count by two would fail here rather than satisfying a
+  // "fewer than before" reading.**
   [Fact]
   [Trait("Requirement", "REQ-ATT-0002")]
+  [Trait("Criterion", "AC-ATT-0002")]
   public void A_holiday_on_a_working_day_reduces_the_count_by_exactly_one()
   {
     var calendar = Calendar(DayOfWeek.Saturday, DayOfWeek.Sunday);

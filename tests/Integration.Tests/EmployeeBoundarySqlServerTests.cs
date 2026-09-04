@@ -2918,8 +2918,21 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // The headline observability criterion. A partial-success import would leave the system in a state no
   // single file describes, and the operator with no way to know which 999 landed.
+  // ⚠ CITES `AC-DOC-0021` — *"All-or-nothing is OBSERVABLE, not just documented. A 1,000-row file with one
+  // invalid row creates ZERO employees... On an applied run, `acceptedCount` EQUALS `rowCount` exactly."*
+  //
+  // **The criterion's own example, at its own size: a thousand rows, one bad at 743, and
+  // `EmployeeCountAsync("BULK-")` is `0`.** *The size is not decoration — "observable, not just documented"
+  // is a claim about a REAL transaction rolling back, and a three-row file would not distinguish a rollback
+  // from a handler that validates everything before writing anything.*
+  //
+  // ⚠⚠ THE SECOND CLAUSE IS `I1`'S, AND THE PAIR IS THE CRITERION: this row shows a REFUSED run accepts
+  // nothing; `I1` shows an APPLIED run's `AcceptedCount` equals its `RowCount`. **Between them they give
+  // both reachable outcomes.** *The criterion's "there is no reachable response in which they differ" is a
+  // universal that two examples cannot prove — named here rather than claimed.*
   [Fact]
   [Trait("Decision", "OD-DOC-003")]
+  [Trait("Criterion", "AC-DOC-0021")]
   public async Task I2_One_bad_row_in_a_thousand_leaves_no_employees_at_all()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2954,8 +2967,21 @@ public sealed class EmployeeBoundarySqlServerTests
   // ---- I3. EVERY ROW IS VALIDATED, NOT THE FIRST (DEC-DOC-0003).
   //
   // A report naming one bad row in a thousand costs the operator a thousand round trips to find the rest.
+  // ⚠ CITES `AC-DOC-0003` — *"Every row is validated. A file with errors in rows 14 and 902 reports BOTH.
+  // The report is not truncated at the first failure, and `rejectedCount` EQUALS THE NUMBER OF DISTINCT ROWS
+  // IN ERROR."*
+  //
+  // ***THE WORD "DISTINCT" IS THE WHOLE OF THE THIRD CLAUSE AND THIS TEST IS THE ONLY THING THAT SEPARATES
+  // IT: `Errors` HAS FOUR ENTRIES — `[2, 3, 4, 4]` — AND `RejectedCount` IS THREE.*** **Row 4 carries two
+  // problems, a bad date and a bad position code, and it is ONE rejected row.** *An implementation counting
+  // errors rather than rows produces `4`, is off by one for every multi-problem file, and every other
+  // assertion here still passes.*
+  //
+  // ⚠⚠ The first two clauses are the sequence itself: three bad rows in, three row numbers out, so the
+  // report is neither truncated at the first failure nor summarised into a count.
   [Fact]
   [Trait("Decision", "DEC-DOC-0003")]
+  [Trait("Criterion", "AC-DOC-0003")]
   public async Task I3_Every_bad_row_is_reported_rather_than_the_first()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

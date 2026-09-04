@@ -85,6 +85,7 @@ public sealed class CutoverManifestArchitectureTests
   // what makes a new entity appear with no registration, and the literal list is what makes a human see it
   // arrive. **The criterion's clause is satisfied by the first half; the second half is an addition the
   // criterion did not ask for, not a substitute for what it did.**
+  [Trait("Criterion", "AC-ATT-0035")]
   public void C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity()
   {
     var composed = CutoverTenantModel.Source.Model;

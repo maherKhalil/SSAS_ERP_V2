@@ -171,10 +171,14 @@ public sealed class EmployeeImportCsvParserTests
   // with a header reports `rowNumber: 2`."* **The criterion's own example is the first element of the
   // expected sequence; the two after it are what stop `2` being a constant.**
   //
-  // ⚠⚠ *A parser numbering from ZERO, or from ONE ignoring the header, gives `[0,1,2]` or `[1,2,3]` — both
-  // plausible, both wrong, and both indistinguishable from correct if only the first number were asserted.*
-  // **The criterion is about an OFFSET, and an offset needs at least two points to be pinned as an offset
-  // rather than as a first value.**
+  // ⚠⚠ **THE CRITERION IS ABOUT AN OFFSET, AND ONE POINT CANNOT DISTINGUISH A MAPPING FROM A LITERAL.** A
+  // parser that returned the constant `2` for every row satisfies the criterion's own example exactly; the
+  // `3` and the `4` are what make it a numbering. *An offset needs two points.*
+  //
+  // ⚠ **AN EARLIER VERSION OF THIS NOTE ALSO CLAIMED `[0,1,2]` AND `[1,2,3]` WOULD BE "INDISTINGUISHABLE
+  // FROM CORRECT IF ONLY THE FIRST NUMBER WERE ASSERTED". THAT IS FALSE — they begin `0` and `1`, so a
+  // first-element assertion of `2` catches both.** *Corrected rather than deleted: a false sentence inside a
+  // correct citation is the thing hardest to see, because the conclusion it supports is sound.*
   [Fact]
   [Trait("Decision", "DEC-DOC-0003")]
   [Trait("Criterion", "AC-DOC-0004")]

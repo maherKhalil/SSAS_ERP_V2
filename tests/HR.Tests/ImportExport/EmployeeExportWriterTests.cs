@@ -140,8 +140,27 @@ public sealed class EmployeeExportWriterTests
   // strip the `status` column first, and the stripper was itself a source of error — it began as "everything
   // after the last comma", which is not the column separator when a quoted name contains one. Removing it
   // removes a test helper that could have been wrong about the thing it was helping to test.
+  // ⚠ CITES `AC-DOC-0016` — *"A file produced by export, unmodified, is a legal import file: its header
+  // satisfies the column contract and its rows parse. Where `OD-DOC-006` removes a column from exports,
+  // that column is optional on import so the property still holds."*
+  //
+  // **BOTH CLAUSES, AND THE ARRANGEMENT IS WHAT MAKES IT A ROUND TRIP RATHER THAN TWO CONTRACTS AGREEING ON
+  // PAPER: the input is `ExportEmployeesQueryHandler.Write(…)` — the REAL writer's bytes — fed to the REAL
+  // parser.** *Two hand-written strings that happened to match would prove the test author consistent, not
+  // the product.*
+  //
+  // ⚠⚠ THE VALUE ASSERTIONS ARE THE SECOND CLAUSE. `IsSuccess` alone says the HEADER satisfies the contract;
+  // *"and its rows parse"* needs the row back out with its fields in the right columns — a writer emitting
+  // its columns in a different ORDER from the one it declares would still produce a parseable header and
+  // put `DEV` under `departmentCode`.
+  //
+  // ⚠ AND THE `OD-DOC-006` CLAUSE HOLDS WITHOUT A LINE HERE: `nationalId` is never exported (asserted
+  // structurally by `ImportExportArchitectureTests.No_export_column_or_row_field_can_carry_a_national_id`)
+  // and is optional on import (`The_optional_national_id_column_may_be_present_or_absent`). **The removed
+  // column and its optionality are each pinned; this test needs neither.**
   [Fact]
   [Trait("Decision", "OD-DOC-010")]
+  [Trait("Criterion", "AC-DOC-0016")]
   public void The_exported_header_parses_as_an_import_header()
   {
     var parsed = EmployeeImportCsvParser.Parse(ExportEmployeesQueryHandler.Write([Row()]));

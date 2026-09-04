@@ -37,12 +37,20 @@ public sealed class PayrollArchitectureTests
   // row**, which is the assembly that legitimately holds the contract reference — so the clause is live and
   // is evaluated against a real reference rather than passing over an empty set.
   //
-  // ⚠⚠ THE BOUND, WHICH THE CRITERION'S WORDING DOES NOT DISTINGUISH AND THIS INSTRUMENT DOES:
-  // `GetReferencedAssemblies` reads EMITTED metadata, so **it catches CONSUMPTION, not DECLARATION.** A
-  // `ProjectReference` to `SSAS.Attendance.Domain` that no Payroll type ever uses is pruned by the compiler
-  // and would not appear here. *That is the same limitation recorded on the EF-free guard in
-  // `PersistenceArchitectureTests`, and the same remedy exists if it is ever wanted — read the `.csproj`
-  // as well. It is not built here and the citation does not claim it.*
+  // ⚠⚠ THE BOUND OF *THIS* TEST: `GetReferencedAssemblies` reads EMITTED metadata, so **it catches
+  // CONSUMPTION, not DECLARATION.** A `ProjectReference` to `SSAS.Attendance.Domain` that no Payroll type
+  // ever uses is pruned by the compiler and would not appear here.
+  //
+  // ⚠⚠⚠ **BUT THAT IS NOT A BOUND ON THE CRITERION, AND I FIRST RECORDED IT AS ONE.**
+  // `AttendanceArchitectureTests.Payroll_references_the_attendance_contracts_and_no_attendance_implementation`
+  // already existed, already asserted this criterion, and **closes the declared half** — its plant record
+  // shows an unused `SSAS.Attendance.Domain` reference passing the emitted assertion and reddening the
+  // declared one. *I cited here before finding it, which is the same search failure as the permission-plane
+  // duplicate: I searched the Payroll files and not the Attendance one, while reading the Attendance one.*
+  //
+  // **Both keep the citation because neither subsumes the other:** that test is EXHAUSTIVE and covers
+  // declared + emitted but only `SSAS.Payroll.Application`; this one covers **all four Payroll assemblies**
+  // and is emitted-only. A reference from `SSAS.Payroll.API` is caught only here.
   [Theory]
   [Trait("Decision", "ADR-012")]
   [Trait("Criterion", "AC-ATT-0026")]

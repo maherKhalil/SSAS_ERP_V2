@@ -177,8 +177,25 @@ public sealed class AttendanceArchitectureTests
   // ================================================================================================
   // MODULE ISOLATION, IN BOTH DIRECTIONS (ADR-012).
   // ================================================================================================
+  // ---- ⚠⚠⚠ CITES `AC-ATT-0026`, AND THIS IS THE CRITERION'S PROPER HOME — I CITED IT ELSEWHERE FIRST.
+  //
+  // *"Payroll consumes the contract **without an assembly reference** to any Attendance implementation
+  // project — asserted by an architecture test, not by inspection."*
+  //
+  // **I cited that on `PayrollArchitectureTests.Payroll_assemblies_reach_other_modules_only_through_contracts`
+  // before finding this, and recorded a bound there — *reads EMITTED metadata, so an unused
+  // `ProjectReference` is pruned before the test sees it.* THAT BOUND IS FALSE FOR THE CRITERION, because
+  // THIS test closes it: it asserts the DECLARED dependencies too, and its plant record shows an unused
+  // `SSAS.Attendance.Domain` reference passing the emitted half and reddening the declared one.**
+  //
+  // ⚠ THE TWO ARE COMPLEMENTARY AND NEITHER SUBSUMES THE OTHER, WHICH IS WHY BOTH KEEP THE CITATION:
+  // **this one is EXHAUSTIVE (`Assert.Equal(["SSAS.Attendance.Contracts"])`, not a list of assemblies
+  // somebody thought of) and covers DECLARED + EMITTED, but only `SSAS.Payroll.Application`.** The other
+  // covers **all four Payroll assemblies** and is emitted-only. *A reference from `SSAS.Payroll.API` would
+  // be caught only there; an unused one from Application only here.*
   [Fact]
   [Trait("Decision", "DEC-ATT-0002")]
+  [Trait("Criterion", "AC-ATT-0026")]
   public void Payroll_references_the_attendance_contracts_and_no_attendance_implementation()
   {
     var payrollApplication = typeof(SSAS.Payroll.Application.Runs.CalculatePayrollRunCommandHandler).Assembly;

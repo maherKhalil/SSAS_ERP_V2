@@ -270,6 +270,55 @@ public sealed class AuthenticationMilestoneArchitectureTests
     Assert.DoesNotContain("PRIVATE KEY", configuration, StringComparison.Ordinal);
   }
 
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0040")]
+  public void No_symmetric_signing_path_remains_active_anywhere_under_src()
+  {
+    // `AC-AUTH-0040`'s LAST CLAUSE: *"no symmetric path remains active."* Every other clause of that
+    // criterion is a claim about how one token is judged, and `JwtInfrastructureTests` witnesses each by
+    // presenting a token. **THIS CLAUSE IS NOT ABOUT A TOKEN AT ALL — it is about what the tree contains**,
+    // and no token can witness it: `Algorithm_substitution_is_rejected` proves the CONFIGURED validator
+    // refuses HS256, which is compatible with a second, symmetric issuer sitting unused elsewhere in `src/`
+    // waiting to be wired up. *Remains active* is a property of the code, so the guard reads the code.
+    //
+    // ⚠ THE BAN IN `Milestone_four_keeps_token_framework_types_out_of_domain_and_application` ALREADY NAMES
+    // `SymmetricSecurityKey` AND DOES NOT COVER THIS. It scans Platform Domain and Application — the two
+    // assemblies where a JWT type has no business existing. **The symmetric path would live where the
+    // asymmetric one does, in `SSAS.Host.API`, which that walk never visits.** A guard naming the right
+    // type over the wrong scope reads, at a glance, exactly like this one.
+    var sourceFiles = Directory
+      .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .ToArray();
+    Assert.True(sourceFiles.Length >= 400,
+      $"only {sourceFiles.Length} source files were scanned; the walk has collapsed and the ban below " +
+      "would pass over an empty set.");
+
+    const string symmetricSigning = @"(?:SymmetricSecurityKey|HmacSha(?:256|384|512)|""HS(?:256|384|512)"")";
+    // The matcher control. Each alternative is asserted against the form it would really appear in.
+    Assert.Matches(symmetricSigning, "var key = new SymmetricSecurityKey(secret);");
+    Assert.Matches(symmetricSigning, "SecurityAlgorithms.HmacSha256");
+    Assert.Matches(symmetricSigning, @"ValidAlgorithms = [""HS256""],");
+    Assert.DoesNotMatch(symmetricSigning, "SecurityAlgorithms.RsaSha256");
+
+    var symmetric = sourceFiles
+      .Where(path => Regex.IsMatch(CodeOnly(path), symmetricSigning, RegexOptions.CultureInvariant))
+      .ToArray();
+    Assert.Empty(symmetric);
+
+    // ⚠⚠ AND THE POSITIVE HALF, WITHOUT WHICH THE BAN IS FREE. *No symmetric path remains active* is
+    // perfectly satisfied by a tree that signs nothing at all — delete `AccessTokenIssuer` and the
+    // assertion above goes green. **A ban states what must be absent and therefore cannot notice that the
+    // thing it was protecting has gone**, which is the same shape as `AC-AUTH-0040`'s own *accepts only*:
+    // the refusals need an acceptance beside them or they are satisfied vacuously. So the asymmetric path
+    // is required to be present, in the same walk, by the same instrument.
+    var asymmetric = sourceFiles
+      .Where(path => Regex.IsMatch(CodeOnly(path), "SecurityAlgorithms.RsaSha256", RegexOptions.CultureInvariant))
+      .ToArray();
+    Assert.NotEmpty(asymmetric);
+  }
+
   private static string FindRepositoryRoot()
   {
     for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)

@@ -50,6 +50,18 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   [Fact]
   [Trait("Criterion", "AC-IAM-0008")]
   [Trait("Criterion", "AC-TEN-0060")]
+  [Trait("Criterion", "AC-AUTH-0037")]
+  [Trait("Criterion", "AC-AUTH-0005")]
+  // `AC-AUTH-0037` — *"Every issued access token has the EXACT REQUIRED CLAIMS AND FORMATS."* This asserts
+  // the issued token member by member: subject, tenant, roles and permissions in deterministic order, the
+  // 15-minute lifetime, a `jti` parseable as `N`-format, the size ceiling, and the absence of email/name.
+  //
+  // `AC-AUTH-0005` — *"Every tenant access token has EXACTLY ONE tenant claim."* `Assert.Single` on the
+  // `tenant_id` claim is the ISSUANCE half. ⚠ **The VALIDATION half is `Tenant_profile_rejects_duplicate_
+  // singleton_claims`, which plants a SECOND `tenant_id` and requires rejection** — same trait. **An issuer
+  // that emits one and a validator that would accept two are different failures, and *exactly one* needs
+  // both: emitting one proves nothing about what is accepted.**
+  
   // `AC-TEN-0060`'s ISSUANCE HALF — *"A tenant access token WITHOUT a `security_plane` claim … no
   // tenant-issuer change is required in Phase 3C."* The last assertion in this method is that the issued
   // tenant token carries NO `security_plane` claim at all, and it already names `DEC-TEN-0022` in its own
@@ -192,6 +204,23 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0019")]
+  // ==================================================================================================
+  // `AC-AUTH-0019` — *"Invalid JWT SIGNATURE, ISSUER, AUDIENCE, EXPIRY, or CLAIMS is rejected."*
+  // FIVE NAMED FAILURE MODES, AND THE FILE HAS A TEST FOR EACH — the enumeration mapped once, here:
+  // ==================================================================================================
+  //   SIGNATURE   this test (a token the handler cannot verify) and `Algorithm_substitution_is_rejected`
+  //   ISSUER      `Wrong_issuer_or_audience_is_rejected` — a theory, one row per field
+  //   AUDIENCE    the same theory's other row
+  //   EXPIRY      `Expired_jwt_is_rejected_...` and `Not_yet_valid_token_is_rejected` — **both ENDS of the
+  //               validity window, which *expiry* alone would not have required**
+  //   CLAIMS      `Malformed_identifier_and_duplicate_claims_are_rejected`
+  //
+  // ⚠ **A DISJUNCTION OF FIVE NEEDS FIVE ARM-ONLY FIXTURES, AND HERE IT HAS THEM** — each test invalidates
+  // exactly one property and leaves the rest well-formed, so a validator that checked four of five reddens
+  // on the fifth. **Contrast the single fixture that carries several arms at once: it looks richer and
+  // cannot isolate any of them.** All five carry this trait.
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Invalid_jwt_is_rejected_by_the_registered_authentication_handler()
   {
     var token = CreateToken("DifferentTestSigningKey-ForInvalidSignature-NotASecret", DateTime.UtcNow.AddMinutes(5));
@@ -202,6 +231,8 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0019")]
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Expired_jwt_is_rejected_by_the_registered_authentication_handler()
   {
     var key = factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
@@ -213,6 +244,45 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0040")]
+  // ==================================================================================================
+  // `AC-AUTH-0040`, QUOTED IN FULL BECAUSE THE SHORT FORM OF IT IS A DIFFERENT CRITERION:
+  //
+  //   *"Strict JWT validation accepts only RS256 with known enabled `kid` and valid exact issuer,
+  //   audience, signature, lifetime, `nbf`, cardinality, and formats; no symmetric path remains active."*
+  //
+  // ⚠⚠ THE FIRST DRAFT OF THIS COMMENT QUOTED IT AS FAR AS *"known enabled `kid`"* AND STOPPED, then
+  // enumerated the four `kid`/algorithm refusals as though they discharged it. **A truncated quotation is
+  // not a shorter claim, it is a NARROWER ONE — and the citation is read later against the criterion's
+  // real text, not against the fragment**, so eight named properties would have counted as covered on the
+  // strength of tests that never touch them. Every clause is therefore listed with its witness:
+  // ==================================================================================================
+  //   RS256 ONLY     `Unsigned_alg_none_token_is_rejected`, `Algorithm_substitution_is_rejected`
+  //   KNOWN kid      this test
+  //   ENABLED kid    `Production_key_provider_keeps_enabled_overlap_keys_and_excludes_disabled_keys` —
+  //                  *enabled* is decided at the key provider, not by presenting a token
+  //   (kid present)  `Missing_kid_is_rejected`
+  //   ISSUER         `Wrong_issuer_or_audience_is_rejected`, first row
+  //   AUDIENCE       the same theory's second row
+  //   SIGNATURE      `Invalid_jwt_is_rejected_...`, `Algorithm_substitution_is_rejected`
+  //   LIFETIME       `Expired_jwt_is_rejected_...`
+  //   `nbf`          `Not_yet_valid_token_is_rejected` — **a clause `AC-AUTH-0019` does not have, which is
+  //                  why 0019 and 0040 are not the same citation on the same set**
+  //   CARDINALITY    `Tenant_profile_rejects_duplicate_singleton_claims`, `Duplicate_security_plane_is_rejected`
+  //   FORMATS        `Malformed_identifier_and_duplicate_claims_are_rejected`
+  //   NO SYMMETRIC   ***NOT WITNESSABLE BY ANY TOKEN IN THIS FILE.*** Refusing an HS256 token proves what
+  //                  the CONFIGURED validator does; *no symmetric path REMAINS* is a claim about what the
+  //                  tree still contains, and an unwired symmetric issuer sitting in `src/` satisfies every
+  //                  assertion here. Witness added as an architecture guard:
+  //                  `AuthenticationMilestoneArchitectureTests.No_symmetric_signing_path_remains_active_anywhere_under_src`.
+  //
+  // **The permitted side is `Token_from_the_access_token_issuer_passes_strict_bearer_validation`** —
+  // without it, *accepts only* is satisfied by a validator that accepts nothing.
+  //
+  // ⚠ AND THIS TEST'S NAME CARRIES AN EXTRA CLAIM THE CRITERION DOES NOT: *without trying the active key*.
+  // **That is a claim about WHAT THE VALIDATOR DID NOT DO — a stronger property than refusal, because a
+  // validator that fell back to the active key would still reject a forged token and would silently accept
+  // one signed with a retired key.** The criterion does not ask for it; the test provides it.
   public async Task Unknown_kid_is_rejected_without_trying_the_active_key()
   {
     var key = factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
@@ -224,6 +294,7 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Missing_kid_is_rejected()
   {
     var key = factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
@@ -235,6 +306,7 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Unsigned_alg_none_token_is_rejected()
   {
     var now = DateTimeOffset.UtcNow;
@@ -251,6 +323,8 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0040")]
+  [Trait("Criterion", "AC-AUTH-0019")]
   public async Task Algorithm_substitution_is_rejected()
   {
     var key = factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
@@ -264,6 +338,8 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   [Theory]
   [InlineData("https://wrong-issuer.test", HostWebApplicationFactory.Audience)]
   [InlineData(HostWebApplicationFactory.Issuer, "wrong-audience")]
+  [Trait("Criterion", "AC-AUTH-0019")]
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Wrong_issuer_or_audience_is_rejected(string issuer, string audience)
   {
     var key = factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
@@ -275,6 +351,7 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Not_yet_valid_token_is_rejected()
   {
     var key = factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
@@ -286,6 +363,8 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0019")]
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Malformed_identifier_and_duplicate_claims_are_rejected()
   {
     var key = factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
@@ -302,6 +381,10 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0040")]
+  // `AC-AUTH-0040`'s PERMITTED SIDE. ***A CRITERION SAYING "ACCEPTS ONLY X" IS HALF A REFUSAL LIST AND HALF
+  // AN ACCEPTANCE, AND A SUITE OF REFUSALS ALONE IS SATISFIED BY A VALIDATOR THAT ACCEPTS NOTHING.*** The
+  // four refusal tests carry the *only*; this carries the *accepts*.
   public async Task Token_from_the_access_token_issuer_passes_strict_bearer_validation()
   {
     var issuer = factory.Services.GetRequiredService<IAccessTokenIssuer>();
@@ -441,6 +524,7 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Duplicate_security_plane_is_rejected()
   {
     var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
@@ -512,6 +596,16 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   [Theory]
   [InlineData(JwtClaimTypes.TenantId, "b1b7c1e2-0000-4000-8000-000000000003")]
   [InlineData(JwtClaimTypes.TenantUserId, "9")]
+  [Trait("Criterion", "AC-AUTH-0005")]
+  // `AC-AUTH-0005`'s VALIDATION half — a token carrying a SECOND `tenant_id` (or `tenant_user_id`) is
+  // refused. **The issuance half is on `Access_token_issuer_emits_rs256_known_kid_and_exact_trusted_
+  // bindings`, same trait.**
+  //
+  // ⚠ THE FIXTURE IS ADVERSARIAL AND ITS DUPLICATE LOOKS LIKE A MISTAKE: a token with two tenant claims is
+  // malformed by construction, which is exactly the state a tidy-up removes. **It is the only state in which
+  // *exactly one* can fail**, and the two rows cover both singleton claims separately rather than trusting
+  // one to stand for the pair.
+  [Trait("Criterion", "AC-AUTH-0040")]
   public async Task Tenant_profile_rejects_duplicate_singleton_claims(string type, string extraValue)
   {
     var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
@@ -546,6 +640,15 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0022")]
+  // `AC-AUTH-0022` — *"Signing-key OVERLAP supports CONTROLLED ROTATION."* Three real certificates on disk —
+  // an active PFX with its private key, a retained public CER, and a disabled one — so the provider is
+  // exercised against the artefacts a rotation actually produces rather than against a stub.
+  //
+  // ⚠ **OVERLAP IS A THREE-STATE CLAIM AND ALL THREE ARE PRESENT: active (signs), RETAINED (validates but
+  // does not sign), disabled (neither).** A two-state fixture — active and absent — would satisfy *rotation*
+  // and say nothing about *overlap*, **because overlap IS the retained state.** Its refusal twin is
+  // `Production_key_provider_rejects_duplicate_kid_and_insufficient_overlap`, same trait.
   public void Production_key_provider_keeps_enabled_overlap_keys_and_excludes_disabled_keys()
   {
     var directory = Path.Combine(Path.GetTempPath(), $"ssas-jwt-{Guid.NewGuid():N}");
@@ -587,6 +690,10 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0022")]
+  // `AC-AUTH-0022`'s REFUSAL twin — duplicate `kid` and insufficient overlap both rejected. **The permitted
+  // side is the test above; a criterion about a supported CAPABILITY needs the success, and a criterion about
+  // a CONTROLLED one needs the refusals.**
   public void Production_key_provider_rejects_duplicate_kid_and_insufficient_overlap()
   {
     var directory = Path.Combine(Path.GetTempPath(), $"ssas-jwt-{Guid.NewGuid():N}");

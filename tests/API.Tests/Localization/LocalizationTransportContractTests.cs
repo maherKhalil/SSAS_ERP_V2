@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Api.Transport;
+using SSAS.BuildingBlocks.Domain;
 using System.Reflection;
 using System.Text.Json;
 using SSAS.Platform.API.Localization;
@@ -130,6 +131,56 @@ public sealed class LocalizationTransportContractTests
 
     Assert.Equal(400, error.StatusCode);
     Assert.Equal("localization.rowversion_invalid", error.Code);
+  }
+
+  // ==================================================================================================
+  // ⚠⚠⚠ FOUR REFUSALS, FOUR MAPPER ARMS, AND NOT ONE OF THE FOUR CODES APPEARED IN ANY TEST.
+  // ==================================================================================================
+  //
+  // `AC-LOC-0035` — *"Stale/no-target/wrong-target/incompatible map exactly to approved 409/409/422/422
+  // codes."* **The criterion's whole content is the MAPPING: which refusal becomes which status and which
+  // code.** The four arms exist and are correct. *Measured before writing this: of the 26 `localization.*`
+  // API codes declared in `src/`, ELEVEN are named anywhere in `tests/` — and none of these four is among
+  // them.*
+  //
+  // ⚠ SO THE FAILURE MODE THIS GUARDS IS NOT "UNDO IS BROKEN" BUT "UNDO REFUSES CORRECTLY AND SAYS THE
+  // WRONG THING". A 422 sliding to 409 tells a client the request was a conflict to retry when it was a
+  // request to fix; the two undo-target codes swapping tells them the target was the wrong version when it
+  // was an incompatible one. **The domain behaviour is covered by `LocalizationDomainTests` (`AC-LOC-0012`,
+  // *repeated undo walks explicit lineage*, and the arbitrary/incompatible rejection); what nothing covered
+  // is the sentence a caller actually receives.**
+  //
+  // ⚠⚠ THE PAIRS ARE THE POINT AND A LOOSER TEST WOULD MISS THEM. **Two codes share 409 and two share 422**,
+  // so asserting statuses alone passes a swap WITHIN each pair, and asserting codes alone passes a swap of
+  // the statuses. *Both are asserted per arm, which is what makes this a mapping test rather than two
+  // independent set checks.*
+  //
+  // ⚠⚠⚠ AND THE DOMAIN ERROR IS THE INPUT, NOT A STRING LITERAL. `TryMap` is fed
+  // `LocalizationErrors.X.Code` rather than a retyped `"localization.…"`, so **renaming a domain code
+  // reddens this test instead of silently testing a string that no longer exists.** A literal on both sides
+  // of a mapping asserts only that the mapper agrees with the test.
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0035")]
+  public void Error_mapper_maps_the_four_undo_refusals_to_their_approved_statuses_and_codes()
+  {
+    (Error Error, int StatusCode, string Code)[] expected =
+    [
+      (SSAS.Platform.Domain.Localization.LocalizationErrors.UndoNotAvailable,
+        409, "localization.undo_not_available"),
+      (SSAS.Platform.Domain.Localization.LocalizationErrors.OverrideAlreadyDefault,
+        409, "localization.override_already_default"),
+      (SSAS.Platform.Domain.Localization.LocalizationErrors.UndoTargetInvalid,
+        422, "localization.undo_target_invalid"),
+      (SSAS.Platform.Domain.Localization.LocalizationErrors.UndoTargetIncompatible,
+        422, "localization.undo_target_incompatible")
+    ];
+
+    foreach (var (error, statusCode, code) in expected)
+    {
+      Assert.True(LocalizationApiErrorMapper.TryMap(error.Code, out var mapped), error.Code);
+      Assert.Equal(statusCode, mapped.StatusCode);
+      Assert.Equal(code, mapped.Code);
+    }
   }
 
   [Fact]

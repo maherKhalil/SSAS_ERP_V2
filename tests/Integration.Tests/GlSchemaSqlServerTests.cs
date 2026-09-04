@@ -394,7 +394,27 @@ public sealed class GlSchemaSqlServerTests
   // reader concludes a leak -- the natural remedy for which is to add a predicate to correct code. The
   // cases below turn *nobody filtered here* into *filtering here is forbidden*, by asserting that a scope
   // for company B sees the SAME account.
+  // ⚠ CITES `AC-GL-0015`'s FIRST CLAUSE — *"An account balance enquiry returns only movements within the
+  // caller's authorized scope"* — at SITE 6 below. **Both companies posted 100 to the same tenant-wide
+  // account, and an A-only scope reads 100 rather than 200: the chart is SHARED and the money is NOT.**
+  //
+  // ⚠⚠⚠ ***TIER 2 — UNGATED.*** `Integration.Tests` does not run in `GATE_SCOPE=TASK`; green 2026-09-01,
+  // 862 passing. **This is the clause that CARRIES the criterion, so the criterion is tier 2 regardless of
+  // anything gated elsewhere.**
+  //
+  // ---- ⚠⚠ THE SECOND CLAUSE IS ENFORCED BY CONSTRUCTION AND NO FIXTURE CAN WITNESS IT.
+  //
+  // *"...and its total equals the sum of the movements it returned."* **`AccountBalance` exposes
+  // `TotalDebits` and `TotalCredits`, and `Balance` is a COMPUTED PROPERTY — `=> TotalDebits - TotalCredits`.
+  // There is no setter, so the total cannot disagree with the sides it is derived from.** *A test would have
+  // to construct a state the type does not admit.* `GlReadModels.cs` names the criterion at that record and
+  // says the same: the claim is *"only checkable if both are present"*, and both are present as the totals.
+  //
+  // ⚠ **AND NOTHING WATCHES THE SHAPE THAT PROVIDES IT.** Replace the computed property with a stored field
+  // and the clause silently stops being enforced, with no fixture to redden — the same residual as any
+  // type-system discharge. *Named here rather than left for a reader to infer from the citation's presence.*
   [Fact]
+  [Trait("Criterion", "AC-GL-0015")]
   public async Task A_scope_authorized_for_one_company_reads_none_of_the_others_rows()
   {
     await using var fixture = await GlFixture.CreateAsync();

@@ -207,6 +207,70 @@ public sealed class LocalizationCatalogToolTests
     }
   }
 
+  // ==================================================================================================
+  // ⚠⚠ A SECOND NEVER-FIRED VALIDATOR BRANCH, AND DELIBERATELY CITED TO NOTHING.
+  // ==================================================================================================
+  //
+  // `SemanticCatalogValidator` refuses a resource whose English or Arabic default is not valid text. **Like
+  // the BOM branch below, its reject path had never executed**: every `validate` assertion in this tree was
+  // accept-side, and `LocalizationCatalogTests:56` asserts `NotEmpty(resource.ArabicDefault)` over the six
+  // checked-in resources — ***WHICH SAYS THE CURRENT CATALOG IS COMPLETE, NOT THAT AN INCOMPLETE ONE WOULD
+  // BE REFUSED.*** *That is the declaration-versus-realisation split: the artefact satisfying a rule is not
+  // the rule being enforced, and only one of the two survives someone adding a seventh resource.*
+  //
+  // ---- ⚠⚠⚠ WHAT THE FIRST VERSION OF THIS TEST ASSERTED, AND WHY ITS FAILURE IS THE FINDING.
+  //
+  // It blanked one resource's Arabic default and expected *"Invalid localized default for …"*.
+  // ***THE ERRORS COLLECTION CAME BACK EMPTY. A RESOURCE SHIPPING `"ar": ""` VALIDATES CLEANLY.*** Measured
+  // in both enforcers: the schema declares `"required": ["en", "ar"]` with `maxLength` and **no
+  // `minLength`**, and `LocalizationText.Create` rejects `null`, over-length and invalid characters —
+  // **never emptiness.** *So the rule is enforced at the level of KEY PRESENCE, not of TEXT.*
+  //
+  // ⚠⚠ `AC-LOC-0001` opens *"Production validation accepts an Active resource only with both `en` and
+  // `ar`"*, and **an Arabic default of `""` satisfies every mechanical reading of that while rendering as
+  // nothing to every Arabic user.** *Whether an empty default is legitimate is a product question and is
+  // reported rather than decided here* — so this test pins ONLY the boundary that is actually enforced, and
+  // the comment carries the rest. **Asserting that the empty case PASSES would freeze a possible defect
+  // into the suite as intended behaviour, which is the one thing a test must never do.**
+  //
+  // ⚠ CITED TO NOTHING. `AC-LOC-0001` has five clauses — the other four are about what a NON-PRODUCTION
+  // resolution does with an incomplete resource (flagged, diagnoses culture, English fallback, not
+  // promotable), runtime behaviour in a different component that nothing here observes. *One of five would
+  // read as five, and the first clause is not even wholly true, so the citation is refused and the test
+  // kept: the branch is worth firing whether or not a criterion gets to claim it.*
+  [Fact]
+  public async Task Validate_rejects_a_resource_whose_arabic_default_is_absent()
+  {
+    var paths = GetPaths();
+    var temporary = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    Directory.CreateDirectory(temporary);
+
+    try
+    {
+      var manifest = Path.Combine(temporary, "localization-catalog.json");
+      File.Copy(paths.Manifest, manifest);
+
+      var document = JsonNode.Parse(await File.ReadAllTextAsync(manifest))!;
+      document["resources"]!.AsArray()[0]!["defaults"]!.AsObject().Remove("ar");
+      await File.WriteAllTextAsync(manifest, document.ToJsonString());
+
+      var incomplete = await SemanticCatalogValidator.ValidateAsync(manifest, paths.Schema);
+      Assert.False(incomplete.IsValid);
+      Assert.Contains(
+        incomplete.Errors,
+        error => error.Contains("localization-catalog.schema.v1.json", StringComparison.Ordinal));
+
+      // The control: the unmodified manifest through the SAME temporary path must validate, so the refusal
+      // above is the removed key and not the copy, the directory, or a missing sibling file.
+      File.Copy(paths.Manifest, manifest, overwrite: true);
+      Assert.True((await SemanticCatalogValidator.ValidateAsync(manifest, paths.Schema)).IsValid);
+    }
+    finally
+    {
+      Directory.Delete(temporary, true);
+    }
+  }
+
   // ⚠ CITES THE FIRST CLAUSE OF `AC-LOC-0025` — *"Only one UTF-8-no-BOM JSON manifest/schema is
   // authoritative; YAML and mutable SQL defaults are rejected."*
   //

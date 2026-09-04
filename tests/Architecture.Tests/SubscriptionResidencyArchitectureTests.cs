@@ -104,23 +104,7 @@ public sealed class SubscriptionResidencyArchitectureTests
   // positives outnumber its true ones is one somebody switches off.**
   public void The_commercial_surface_cannot_reach_tenant_status()
   {
-    var root = FindRepositoryRoot();
-    var commercialFiles = new[]
-      {
-        Path.Combine(root, "src", "Platform", "SSAS.Platform.Domain", "Subscriptions"),
-        Path.Combine(root, "src", "Platform", "SSAS.Platform.Application", "Subscriptions")
-      }
-      .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
-      .ToArray();
-
-    // The floor is 10 against 13 files today. ⚠ It is deliberately BELOW the count rather than at it: its
-    // job is to catch the FILTER COLLAPSING — a renamed namespace directory returning nothing — not to
-    // pin the file count, and a floor set at the current number turns every legitimate file removal into
-    // a red with a misleading message. **My first attempt guessed 15 and failed on a correct tree**, which
-    // is the same defect one level down: a floor asserted from expectation rather than from the population.
-    Assert.True(commercialFiles.Length >= 10,
-      $"only {commercialFiles.Length} commercial files were scanned; the walk has stopped matching and " +
-      "'the commercial surface cannot reach tenant status' would mean nothing.");
+    var commercialFiles = CommercialSourceFiles();
 
     const string lifecycleVocabulary = @"(?:TenantStatus|\.Suspend\(|\.Archive\(|\.Activate\(|TenantStatusChangeReason)";
     // The matcher control: it must match the real forms and not match the commercial surface's own
@@ -136,6 +120,86 @@ public sealed class SubscriptionResidencyArchitectureTests
       .ToArray();
 
     Assert.Empty(offenders);
+  }
+
+  [Fact]
+  // ⚠⚠⚠ DELIBERATELY NO `[Trait]`. `AC-SUB-0026` DECLARES ITS OWN VACUITY, so this GUARDS the vacuity
+  // and does not WITNESS the criterion — a trait here would enter the census as coverage, which is what
+  // the guard exists to prevent being recorded. Same precedent as the `AC-SUB-0008` guard in
+  // `PlatformInfrastructureRegistrationTests`. *A bucket meaning "not cited" cannot be implemented with
+  // the thing that means "cited".*
+  //
+  // ==================================================================================================
+  // `AC-SUB-0026`, pasted — *"Losing entitlement to a module deletes **no row** in that module's tables —
+  // counts before and after are identical — and every record is readable again on re-entitlement.
+  // ⚠ **The guarantee holds and the TEST IT ASKS FOR CANNOT BE WRITTEN (2026-08-30).** There is no
+  // entitlement-lapse event: `HasExpiredAt` is a pure function of the term against the clock, nothing is
+  // written when a term ends and no job runs, **so there is no moment at which a deletion could occur and
+  // no before-and-after to count** (`OD-SUB-0010`). **It is satisfied by the absence of the mechanism it
+  // guards against, which is not the same as being implemented** — whoever builds a lapse path must
+  // re-check this criterion, because that commit is the one that can violate it"*
+  // ==================================================================================================
+  //
+  // ***THE CRITERION NAMES ITS OWN RE-CHECK CONDITION AND THEN LEAVES IT TO A HUMAN NOTICING.*** "Whoever
+  // builds a lapse path must re-check this" is a rule with no event to hang on: the person building that
+  // path is the one least likely to read a criterion filed under a guarantee that currently holds.
+  // **This test is that event.** The day a deletion or a scheduled job appears in the commercial surface,
+  // it reddens and the author has to open `AC-SUB-0026` and decide.
+  //
+  // ⚠⚠ THE BAN IS ON THE MECHANISM THE VACUITY RESTS ON, NOT ON THE CRITERION'S SUBJECT. The criterion is
+  // about rows in a MODULE's tables; those tables are not FP-014's and a ban over them would be
+  // unmaintainable. **What is assertable is that the commercial surface contains nothing that could delete
+  // anything and nothing that runs on a timer** — which is precisely what `OD-SUB-0010` claims and what a
+  // lapse path would have to introduce.
+  //
+  // ⚠ IT IS ALSO NOT A PROOF THAT NO LAPSE PATH COULD EXIST ELSEWHERE. A deletion written into a MODULE's
+  // own code would not be seen here. **The guard covers the surface whose absence of a mechanism the
+  // criterion cites**, which is the claim actually made — and saying so is the difference between a bound
+  // and an overstatement.
+  public void The_commercial_surface_contains_no_lapse_mechanism()
+  {
+    var commercialFiles = CommercialSourceFiles();
+
+    const string lapseVocabulary =
+      @"(?:\.Remove\(|\.RemoveRange\(|ExecuteDelete|BackgroundService|IHostedService|new Timer\()";
+    // The matcher control: it must match the forms a lapse path would take, and not match the reads and
+    // appends this surface is made of.
+    Assert.Matches(lapseVocabulary, "context.TenantSubscriptions.Remove(row);");
+    Assert.Matches(lapseVocabulary, "public sealed class LapseSweeper : BackgroundService");
+    Assert.DoesNotMatch(lapseVocabulary, "context.TenantSubscriptions.Add(row);");
+    Assert.DoesNotMatch(lapseVocabulary, "if (Term is null || Term.HasExpiredAt(instant))");
+
+    var offenders = commercialFiles
+      .Where(path => Regex.IsMatch(CodeOnly(path), lapseVocabulary, RegexOptions.CultureInvariant))
+      .Select(Path.GetFileName)
+      .ToArray();
+
+    Assert.Empty(offenders);
+  }
+
+  // ---- SHARED BY THE TWO SURFACE SCANS ABOVE, because they walk the same population and a second copy of
+  // ---- the walk is a second thing to keep in step.
+  private static string[] CommercialSourceFiles()
+  {
+    var root = FindRepositoryRoot();
+    var files = new[]
+      {
+        Path.Combine(root, "src", "Platform", "SSAS.Platform.Domain", "Subscriptions"),
+        Path.Combine(root, "src", "Platform", "SSAS.Platform.Application", "Subscriptions")
+      }
+      .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+      .ToArray();
+
+    // The floor is 10 against 13 files today. ⚠ It is deliberately BELOW the count rather than at it: its
+    // job is to catch the FILTER COLLAPSING — a renamed namespace directory returning nothing — not to
+    // pin the file count, and a floor set at the current number turns every legitimate file removal into
+    // a red with a misleading message. **A first attempt guessed 15 and failed on a correct tree**, which
+    // is the same defect one level down: a floor asserted from expectation rather than from the population.
+    Assert.True(files.Length >= 10,
+      $"only {files.Length} commercial files were scanned; the walk has stopped matching and every " +
+      "absence asserted over it would mean nothing.");
+
+    return files;
   }
 
   // ---- ⚠ A FOURTH PRIVATE COPY OF THESE TWO HELPERS, ADDED KNOWINGLY RATHER THAN SILENTLY.

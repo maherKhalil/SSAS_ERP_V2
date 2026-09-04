@@ -191,7 +191,25 @@ public sealed class PlatformAccessTokenClaimsTests
     Assert.True(result.IsFailure);
   }
 
+  // ⚠ CITES `AC-TEN-0071` — *"Platform token issuance reads ONLY `Identity`, `AuthenticationAccount`,
+  // `PlatformSupportPrincipal`, and `PlatformPermissionAssignment`; bootstrap subject lists/configuration
+  // NEVER participate."* **The criterion's four sources are this constructor's four parameters, in order, and
+  // the second half is the absence the exact list enforces.**
+  //
+  // ⚠⚠ AN EXACT LIST IS A BIND, NOT A BAN, WHICH IS WHY IT DISCHARGES BOTH HALVES AT ONCE: *a
+  // `DoesNotContain("Bootstrap…")` would pass on any newly-invented configuration type nobody thought to
+  // name* — **here an ADDED dependency of any kind reddens as loudly as a removed one.**
+  //
+  // ⚠⚠⚠ AND THE FAILURE IT GUARDS IS TEMPTING RATHER THAN HYPOTHETICAL, WHICH IS WHAT EARNS A GUARD.
+  // ***THE BOOTSTRAP PARADOX — "how does the FIRST platform administrator obtain claims before a principal row
+  // exists?" — HAS AN OBVIOUS WRONG ANSWER: consult the bootstrap subject list here.*** *That would make
+  // issuance depend on configuration rather than on persisted state, which is exactly what this forbids.*
+  //
+  // ⚠ The compiler notices such an addition (the tests below construct this provider directly) — **but only
+  // until the call sites are repaired, which is ordinary work that looks like nothing.** *This is what still
+  // objects afterwards.*
   [Fact]
+  [Trait("Criterion", "AC-TEN-0071")]
   public void Provider_consumes_no_bootstrap_or_options_configuration()
   {
     // Durable: the platform claims provider must not depend on bootstrap subjects/options or the

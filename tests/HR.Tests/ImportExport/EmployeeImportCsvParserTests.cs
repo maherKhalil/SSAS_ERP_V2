@@ -167,8 +167,17 @@ public sealed class EmployeeImportCsvParserTests
   //
   // The operator's job is to open the file and fix that line, so the number has to be the one their editor
   // shows. A 1-based index over data rows would be off by one against every editor and every spreadsheet.
+  // ⚠ CITES `AC-DOC-0004` — *"Row numbers are file line numbers. An error in the first data row of a file
+  // with a header reports `rowNumber: 2`."* **The criterion's own example is the first element of the
+  // expected sequence; the two after it are what stop `2` being a constant.**
+  //
+  // ⚠⚠ *A parser numbering from ZERO, or from ONE ignoring the header, gives `[0,1,2]` or `[1,2,3]` — both
+  // plausible, both wrong, and both indistinguishable from correct if only the first number were asserted.*
+  // **The criterion is about an OFFSET, and an offset needs at least two points to be pinned as an offset
+  // rather than as a first value.**
   [Fact]
   [Trait("Decision", "DEC-DOC-0003")]
+  [Trait("Criterion", "AC-DOC-0004")]
   public void Row_numbers_are_the_line_numbers_the_operators_editor_shows()
   {
     var parsed = EmployeeImportCsvParser.Parse(

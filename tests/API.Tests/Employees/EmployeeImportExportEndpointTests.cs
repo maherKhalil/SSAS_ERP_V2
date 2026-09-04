@@ -542,6 +542,53 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
   // ================================================================================================
   // T18. THE IMPORT KEY REPLAY RETURNS THE ORIGINAL RESULT (DEC-DOC-0004)
   // ================================================================================================
+  // ================================================================================================
+  // ⚠⚠⚠ T24. A REFUSED RUN OCCUPIES ITS KEY, AND THE REPLAY MUST RETURN THE REFUSAL — NOT IMPORT.
+  // ================================================================================================
+  //
+  // `AC-DOC-0009` — *"A refused submission still consumes its key. After a refusal, replaying the same key
+  // returns the refusal rather than importing, so a failed run cannot be silently retried under the key
+  // meant to prevent exactly that."*
+  //
+  // ⚠ TWO EXISTING TESTS BETWEEN THEM ALMOST SAY THIS, AND THE GAP BETWEEN THEM IS THE WHOLE CRITERION.
+  // `ImportExportRunDomainTests.A_refused_run_accepts_nothing_and_still_consumed_its_key` shows a refused
+  // run RECORDS the normalized key — that the key is occupied. `T18` shows a replay returns the original
+  // run — for an APPLIED one. ***NEITHER DRIVES A REFUSED RUN THROUGH A REPLAY, AND "the outcome is
+  // returned unchanged" IS AN INFERENCE FROM READING THE HANDLER RATHER THAN A THING A FIXTURE SAYS.***
+  //
+  // ⚠⚠ AND THE INFERENCE IS THE DANGEROUS KIND, BECAUSE THE OPPOSITE BEHAVIOUR IS THE PLAUSIBLE ONE. *A
+  // reasonable person implementing replay would be tempted to let a FAILED run be retried* — it reads as
+  // helpfulness rather than as a hole. **The criterion exists to forbid exactly that, and it is the clause
+  // no test was making.** `Repository.Added` staying empty is what separates "returned the refusal" from
+  // "returned the refusal and imported anyway".
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0009")]
+  public async Task T24_Replaying_a_refused_import_key_returns_the_refusal_and_imports_nothing()
+  {
+    var refused = EmployeeImportRun.Refused(
+      EmployeeApiTestHost.TenantId, EmployeeApiTestHost.CompanyA,
+      ImportKey.Create("refused-key").Value, "bad.csv", 40_960, 1_000, rejectedCount: 2,
+      DateTimeOffset.UtcNow, "someone-else").Value;
+
+    host.ImportRuns.Existing = refused;
+
+    using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=refused-key",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+    var root = document.RootElement;
+
+    Assert.Equal(refused.Id, root.GetProperty("importRunId").GetGuid());
+    Assert.Equal("Refused", root.GetProperty("outcome").GetString());
+    Assert.Equal(2, root.GetProperty("rejectedCount").GetInt32());
+
+    // The half that makes it a refusal rather than a retry.
+    Assert.Empty(host.Repository.Added);
+  }
+
   // ⚠ CITES `AC-DOC-0008` — *"Submitting a file under an `importKey` already recorded for the company
   // returns the ORIGINAL run's result and creates no additional employees. The second call answers `200`,
   // not a conflict status."* **All three clauses.**

@@ -184,6 +184,126 @@ public sealed class PersistenceArchitectureTests
       string.Join("\n  ", violations.OrderBy(text => text, StringComparer.Ordinal)));
   }
 
+  // ---- THE AUDIT MARKER IS OPT-IN, AND UNTIL NOW NOTHING ASSERTED WHO OPTED IN.
+  //
+  // `PersistenceDbContext.ApplyPersistenceRules` stamps `ChangeTracker.Entries<IAuditableEntity>()` and,
+  // one screenful later, assigns tenants for `Entries<ITenantOwnedEntity>()`. **Two opt-in markers, one
+  // method.** Membership of the second is asserted by nine test files; membership of the first was asserted
+  // by nothing — measured, 49 declaring types and **zero** structural assertions.
+  //
+  // ⚠ THE ONE TEST OF THE MECHANISM PROVES THE MECHANISM AND NOT THE MEMBERSHIP.
+  // `PersistenceFoundationTests.Save_changes_assigns_utc_audit_fields_and_the_trusted_tenant` saves a
+  // `TestAggregate` and asserts all four fields are stamped. It is correct and it is a PROBE — a test-only
+  // type that opts in on purpose. **A probe is the right design for testing a guard and it can never witness
+  // that a production type is inside the enumeration**, which is why the guard here is well covered and the
+  // membership was not covered at all.
+  //
+  // ---- ⚠⚠ WHY THIS IS KEYED ON THE PROPERTIES AND NOT ON A LIST OF THE 49.
+  //
+  // A named list is only necessary when removal leaves nothing to key on. **Removal leaves a trace here:
+  // the four properties are the type's own, so they survive the marker's deletion.** Keying on them catches
+  // removal AND the likelier failure in a growing tree — the new entity that declares audit columns and
+  // forgets the marker — which a named list cannot see at all.
+  //
+  // ---- ⚠ THE POPULATION IS THE 15 THAT NEED IT, AND THAT IS NOT AN OVERSIGHT.
+  //
+  // Measured over interface maps: of 49 carriers, **34 implement the members EXPLICITLY** (`DateTimeOffset
+  // IAuditableEntity.CreatedUtc` forwarding to a `private set` property) and 15 have plain public setters.
+  // Dropping the marker from one of the 34 is `CS0540` and **the compiler refuses the build** — measured by
+  // a plant that FAILED TO COMPILE, not predicted. So the walk covers exactly the set whose marker can be
+  // removed silently, and the compiler covers the rest.
+  //
+  // ---- ⚠⚠ WHY THE KEY IS A *PUBLIC SETTER* AND NOT MERELY THE FOUR NAMES.
+  //
+  // The first version keyed on the names alone and **failed on the current tree with six offenders, none of
+  // them a defect** — which is the answer to "is this a guard or a bug report", and it was a bug report.
+  // Three were DTOs (`CompanyDto`, `TenantDto`, `PlatformSupportPrincipalDto`), which are never tracked and
+  // must never be stamped. Three were platform aggregates — `Tenant`, `SubscriptionPlan`,
+  // `ModuleDefinition` — which **self-stamp in the domain**, assigning `CreatedUtc`/`CreatedBy` from an
+  // explicit `occurredUtc`/`actor` parameter rather than from ambient infrastructure.
+  //
+  // **`{ get; set; }` and `{ get; private set; }` are the discriminator, and they are two different design
+  // statements.** A public setter says *something outside this type assigns this*, and the only thing
+  // outside that does is `ApplyPersistenceRules` — so a public setter without the marker means nobody
+  // assigns it. A private setter says *this type assigns its own*, which is a deliberate alternative and
+  // not this test's business.
+  //
+  // ⚠ THE BOUNDARY THAT BUYS: a new entity that declares `private set` audit columns and neither
+  // self-stamps nor carries the marker is INVISIBLE here. That failure is indistinguishable from `Tenant`
+  // by shape alone, and a rule that cannot separate them would fail on `Tenant` forever.
+  //
+  // ---- ⚠⚠⚠ WHAT THIS DOES NOT ENFORCE, BECAUSE A MARKER WALK NEXT TO AUDIT COLUMNS WILL BE READ AS THE
+  // AUDIT-TRAIL GUARD AND IT IS NOT ONE.
+  //
+  // `BR-PLT-0004` requires *"Every business transaction shall create an immutable audit record"* carrying
+  // nine fields: User, Date, Time, Company, Tenant, Action, Entity, Old Values, New Values. **These four
+  // columns supply at most three of the nine and none of the remaining six.** And `ModifiedUtc`/`ModifiedBy`
+  // are overwritten in place on every change, which **destroys** the previous values — the inverse of an
+  // immutable record, not a partial one.
+  //
+  // **So this test is deliberately UNCITED.** It asserts membership of the stamping mechanism. It asserts
+  // nothing whatever about `BR-PLT-0004`, and citing it here would certify as met a rule this mechanism
+  // cannot express.
+  [Fact]
+  public void Every_type_declaring_the_audit_properties_opts_in_to_audit_stamping()
+  {
+    string[] auditProperties =
+      [nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.CreatedUtc),
+       nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.CreatedBy),
+       nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc),
+       nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedBy)];
+
+    var declaring = new List<Type>();
+
+    foreach (var assembly in DomainAndApplicationAssemblies())
+    {
+      foreach (var type in assembly.GetExportedTypes())
+      {
+        // ⚠ A DOMAIN ENTITY, ESTABLISHED BY THE BASE CHAIN RATHER THAN BY ASSEMBLY NAME. `Entity<TId>` is
+        // generic with no non-generic base and no marker interface, so the chain is walked. This is what
+        // excludes the DTOs: they carry the same four names and are never tracked, and an assembly-name
+        // proxy would have to be re-argued every time a type moves.
+        if (!IsDomainEntity(type))
+        {
+          continue;
+        }
+
+        var publiclySettable = type
+          .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+          .Where(property => property.CanRead && property.SetMethod is { IsPublic: true })
+          .Select(property => property.Name)
+          .ToHashSet(StringComparer.Ordinal);
+
+        if (auditProperties.All(publiclySettable.Contains))
+        {
+          declaring.Add(type);
+        }
+      }
+    }
+
+    // ⚠ THE ANTI-VACUITY FLOOR, SET BELOW THE MEASURED POPULATION RATHER THAN AT A ROUND NUMBER.
+    //
+    // The selection is four links long — assembly loaded, type exported, property public and declared here,
+    // both accessors present — and the offender list is empty if ANY link stops matching. A floor set ABOVE
+    // the population is worse than none: it fails on a correct tree, which is how a floor gets deleted.
+    // 15 implicit carriers measured today; 10 survives a few migrating to explicit implementation and still
+    // fails loudly if the walk collapses.
+    Assert.True(declaring.Count >= 10,
+      $"only {declaring.Count} types were found declaring all four audit properties with public setters; " +
+      "the selection chain has stopped matching and the check below would judge nothing.");
+
+    var offenders = declaring
+      .Where(type => !typeof(SSAS.BuildingBlocks.Domain.IAuditableEntity).IsAssignableFrom(type))
+      .Select(type => type.FullName!)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(offenders.Length == 0,
+      "these types declare CreatedUtc, CreatedBy, ModifiedUtc and ModifiedBy but do not implement " +
+      "IAuditableEntity, so PersistenceDbContext.ApplyPersistenceRules never stamps them and the columns " +
+      "stay at their default values forever:\n  " + string.Join("\n  ", offenders));
+  }
+
   // ---- NOT CONVERTED: genuinely a question about source text, so it keeps a floor instead.
   //
   // A generic repository is a SHAPE in the source — `IRepository<T>` — and a type that was never written
@@ -278,6 +398,22 @@ public sealed class PersistenceArchitectureTests
       files.Any(path => path.Contains($"{Path.DirectorySeparatorChar}Platform{Path.DirectorySeparatorChar}", StringComparison.Ordinal)),
       "the walk found files but none under Platform, so the path filters the Platform rules depend on are " +
       "matching nothing. This is the exact shape that made this file pass while measuring nothing.");
+  }
+
+  // `Entity<TId>` is the root of every persisted domain type and is generic, so identity is the base chain
+  // rather than a single `IsAssignableFrom`.
+  private static bool IsDomainEntity(Type type)
+  {
+    for (var current = type.BaseType; current is not null; current = current.BaseType)
+    {
+      if (current.IsGenericType
+        && current.GetGenericTypeDefinition() == typeof(SSAS.BuildingBlocks.Domain.Entity<>))
+      {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private static IReadOnlyCollection<string> ProductionSourceFiles() => [.. Directory

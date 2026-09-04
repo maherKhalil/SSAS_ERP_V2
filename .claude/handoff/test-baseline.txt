@@ -28,9 +28,9 @@
 #     it exists to raise. A fix for a misreading, introducing a misreading inside itself.)
 #
 # suite|configuration|total
-API|Debug|982
+API|Debug|985
 API|Release|972
-Architecture|Debug|668
+Architecture|Debug|670
 Architecture|Release|628
 Attendance|Debug|92
 Attendance|Release|87
@@ -42,5 +42,5 @@ Integration|Debug|862
 Integration|Release|862
 Payroll|Debug|93
 Payroll|Release|93
-Platform|Debug|1124
+Platform|Debug|1129
 Platform|Release|1101

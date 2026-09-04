@@ -123,6 +123,29 @@ public sealed class TranslatedErrorCodeReachesAMapperTests
     // twice: the exempt handler must NOT be found, and `CreateCompanyCommandHandler` — injected as a method
     // parameter by `SSAS.Platform.API`, in the same assemblies, through the same idiom — MUST be. *An inline
     // copy of the matcher would certify its own vacuity.*
+    //
+    // ==============================================================================================
+    // ⚠⚠⚠ BEFORE DELETING THIS AS DUPLICATIVE — IT IS REDUNDANT FOR ONE CAUSE AND THE SOLE WITNESS FOR TWO.
+    // ==============================================================================================
+    //
+    // **Break the glob and THREE tests redden**: this one, `Every_mapper_exposes_an_entry_point_this_test_
+    // _can_invoke`, and the `mappers.Count >= 8` floor. *Measured, not predicted.* Breaking the glob is the
+    // first thing anyone auditing this file will try, and the obvious conclusion from three reds is that
+    // this assertion is carrying nothing. ***THAT CONCLUSION IS WRONG, AND REDUNDANT ENFORCEMENT MAKING
+    // EACH SITE LOOK DEAD IS EXACTLY HOW A SOLE WITNESS GETS TIDIED AWAY.***
+    //
+    //   cause 2, the glob          REDUNDANT — two siblings already redden
+    //   cause 3, a RENAME          ***SOLE WITNESS***
+    //   cause 4, the idiom         ***SOLE WITNESS***
+    //
+    // **The siblings key on `type.Name.EndsWith("ApiErrorMapper")` and `method.Name.StartsWith("Map")`, and
+    // their `GetParameters()` calls inspect THE MAPPER'S OWN SIGNATURE (`typeof(Error)`, `typeof(string)`) —
+    // never a handler name. Line 130 below is the only parameter-type-NAME scan in this file.** *So a rename
+    // of `CreateTenantCommandHandler`, or endpoints moving to constructor injection, is invisible to every
+    // other test here and silently retires the exemption.*
+    //
+    // ⚠ **A string comparison against a type name is not a hypothetical failure — it is the one thing a
+    // refactoring tool changes silently**, because it renames the type and cannot see the string.
     bool Reaches(string handlerTypeName) => ApiAssemblies()
       .SelectMany(assembly => assembly.GetTypes())
       .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic

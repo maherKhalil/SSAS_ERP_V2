@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Infrastructure.Persistence.Seeding;
 using SSAS.Platform.Domain;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Subscriptions;
@@ -61,6 +62,117 @@ public sealed class SubscriptionInvariantTests
   // ==================================================================================================
   // MONOTONIC APPEND.
   // ==================================================================================================
+
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0052")]
+  [Trait("Criterion", "AC-SUB-0054")]
+  // ==================================================================================================
+  // `AC-SUB-0052`, pasted — *"Every tenant existing when the seed migration runs holds the **all-module
+  // plan on a `Fixed` 14-day term**. **No status filter** — suspended and archived tenants are seeded like
+  // any other, because `OD-SUB-0010` made subscription state and `TenantStatus` orthogonal and a filter
+  // here is that coupling. **No history is reconstructed**: `EffectiveFromUtc` is the instant the seed ran,
+  // never the tenant's creation date"*
+  // ==================================================================================================
+  //
+  // ⚠⚠ THE SUBJECT IS A **SQL STRING**, WHICH IS WHY THIS IS EXEC-SCOPE AT ALL. `TrialSubscriptionSeed.Sql`
+  // is a constant in the Infrastructure assembly; the migration merely hands it to `migrationBuilder.Sql`.
+  // **So the seed's content is readable without a database**, and the two clauses that are about its
+  // CONTENT — no status filter, and the instant it uses — are assertable here rather than only against
+  // SQL Server.
+  //
+  // ⚠ What is NOT assertable here is the EFFECT: that every tenant ends up holding the plan. That needs
+  // rows, and `TrialSubscriptionSeedSqlServerTests` is where they are. **Named rather than counted:
+  // this test carries the two content clauses and neither of the outcome ones.**
+  //
+  // ⚠⚠⚠ THE STATUS ASSERTION IS SCOPED TO THE TENANT SELECT, AND THAT SCOPING IS THE WHOLE TEST. The seed
+  // writes `[Status]` into the PLANS insert, legitimately — **a blanket ban on the word would be a false
+  // red on a correct seed**, which is the failure mode that gets a guard deleted. So the assertion reads
+  // only the statement that selects tenants, from `FROM [platform].[Tenants]` onward.
+  //
+  // `AC-SUB-0054`'s SQL SIDE: the same statement carries `WHERE NOT EXISTS (… TenantSubscriptions …)`,
+  // which is the *already holds **any** subscription record* guard — **the same rule the C# issuer applies
+  // in `TrialSubscriptionIssuer`, asserted here on the OTHER writer.** Two paths, one rule; a divergence
+  // between them is what `DEC-L-034` forbids and what neither test alone would catch.
+  public void The_trial_seed_selects_every_tenant_regardless_of_status_and_stamps_the_seed_instant()
+  {
+    var sql = TrialSubscriptionSeed.Sql;
+    Assert.True(sql.Length > 1000, $"the seed SQL is {sql.Length} characters; it has not been loaded.");
+
+    // The floor's companion: the statement this test is about must actually be present, or every
+    // assertion below reads an empty string and passes.
+    var tenantSelect = sql[sql.IndexOf("FROM [platform].[Tenants]", StringComparison.Ordinal)..];
+    Assert.True(tenantSelect.Length > 100, "the tenant-selection statement was not found in the seed SQL.");
+
+    // ---- NO STATUS FILTER, scoped to the statement that chooses tenants.
+    Assert.DoesNotContain("Status", tenantSelect, StringComparison.OrdinalIgnoreCase);
+
+    // ---- AND THE CONTROL FOR THAT SCOPING: the seed DOES write a status elsewhere, so an assertion that
+    // ---- passed over the whole string would be passing for the wrong reason.
+    Assert.Contains("[Status]", sql, StringComparison.Ordinal);
+
+    // ---- THE INSTANT IS THE SEED'S OWN, NOT A TENANT COLUMN.
+    Assert.Contains("TODATETIMEOFFSET(SYSUTCDATETIME(), 0)", sql, StringComparison.Ordinal);
+    Assert.DoesNotContain("tenant.[CreatedUtc]", sql, StringComparison.Ordinal);
+
+    // ---- `AC-SUB-0054` ON THE SQL WRITER: any existing record, not any existing TRIAL.
+    Assert.Contains("NOT EXISTS", tenantSelect, StringComparison.Ordinal);
+    Assert.Contains("TenantSubscriptions", tenantSelect, StringComparison.Ordinal);
+    Assert.DoesNotContain("SubscriptionPlanId] = @planId", tenantSelect, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0046")]
+  // ==================================================================================================
+  // `AC-SUB-0046`, pasted — *"The migration that creates these tables **inserts no subscription row and
+  // seeds no plan.** Immediately after it runs every existing tenant is unentitled, which is correct under
+  // `CON-0001` and is exactly why `AC-SUB-0047` exists"*
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ THE PRODUCT ALREADY ENFORCES THIS AT MIGRATION TIME, AND THAT IS THE INTERESTING PART. The
+  // table-creating migration ends by COUNTING plans, subscriptions and grants and **throwing 51014 if any
+  // is non-zero** — *"this migration must create the commercial plane EMPTY"*. So the criterion is not
+  // merely true; it is self-enforcing on every database the migration touches.
+  //
+  // ⚠⚠ WHICH MEANS THERE ARE TWO SEPARABLE CLAIMS AND THIS TEST MAKES BOTH, BECAUSE THEY FAIL
+  // DIFFERENTLY:
+  //
+  //   THE MECHANISM   the migration contains no insert of a plan or subscription. **This is what makes the
+  //                   criterion true.** Delete the guard below and it stays true.
+  //   THE SAFETY NET  the emptiness assertion is present. **This is what makes it STAY true** when someone
+  //                   adds a convenient backfill — and deleting it is invisible to the mechanism claim.
+  //
+  // *A test asserting only the mechanism would go green on the day the net was removed, and a test
+  // asserting only the net would go green on the day an insert was added beside it.*
+  public void The_commercial_plane_migration_inserts_nothing_and_asserts_its_own_emptiness()
+  {
+    var migration = File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure", "Persistence", "Migrations",
+      "20260826031515_AddSubscriptionCommercialPlane.cs"));
+    Assert.True(migration.Length > 5000, $"the migration is {migration.Length} characters; it was not read.");
+    // The walk found A file; this proves it found THE file, so the absences below are about the migration
+    // that creates these tables rather than about whatever else that path might one day hold.
+    Assert.Contains("CreateTable(", migration, StringComparison.Ordinal);
+    Assert.Contains("TenantSubscriptions", migration, StringComparison.Ordinal);
+
+    // ---- THE MECHANISM.
+    Assert.DoesNotContain("InsertData(", migration, StringComparison.Ordinal);
+    Assert.DoesNotContain("INSERT INTO [platform].[SubscriptionPlans]", migration, StringComparison.Ordinal);
+    Assert.DoesNotContain("INSERT INTO [platform].[TenantSubscriptions]", migration, StringComparison.Ordinal);
+
+    // ---- THE SAFETY NET.
+    Assert.Contains("THROW 51014", migration, StringComparison.Ordinal);
+    Assert.Contains("must create the commercial plane EMPTY", migration, StringComparison.Ordinal);
+  }
+
+  private static string RepositoryRoot()
+  {
+    for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)
+    {
+      if (File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln"))) return directory.FullName;
+    }
+
+    throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
+  }
 
   [Fact]
   public void The_first_record_for_a_tenant_appends_with_no_current_maximum()

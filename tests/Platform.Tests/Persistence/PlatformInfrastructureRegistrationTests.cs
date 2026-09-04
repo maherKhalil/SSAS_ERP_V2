@@ -3,10 +3,12 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Options;
 using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.Domain.Subscriptions;
 using SSAS.BuildingBlocks.Application.Abstractions.Diagnostics;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
@@ -226,6 +228,106 @@ public sealed class PlatformInfrastructureRegistrationTests
       (property.GetColumnType() ?? string.Empty).Replace(" ", string.Empty, StringComparison.Ordinal),
       "decimal(19,4)",
       StringComparison.OrdinalIgnoreCase);
+
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0033")]
+  // ==================================================================================================
+  // `AC-SUB-0033`, pasted — *"**No trial state, flag, column or enum member exists anywhere in the
+  // package.** A trial is a plan with a short term and nothing else. The criterion is the absence"*
+  // ==================================================================================================
+  //
+  // FOUR CATEGORIES, AND AN ABSENCE IS ONLY AS GOOD AS THE ARGUMENT THAT THE SEARCH SPACE IS CLOSED. So the
+  // closure is stated per category rather than left to a `grep`:
+  //
+  //   ENUM MEMBER  every enum TYPE in the package, found by REFLECTION over the domain assembly rather
+  //                than by naming the three I know of — `SubscriptionBillingPeriod`, `SubscriptionPlanStatus`,
+  //                `SubscriptionTermKind`. **A fourth enum added tomorrow is inside the walk automatically.**
+  //   COLUMN       every MAPPED property of every subscription entity, taken from the EF model. *A column
+  //                is a model fact, so the model is the complete source* — a source scan could miss one
+  //                added by configuration rather than by a property.
+  //   FLAG         a bool is a property; mapped ones are covered by COLUMN, unmapped ones by STATE below.
+  //                **The category is not separately searchable and does not need to be** — saying so is
+  //                the point, because "I checked for flags" would otherwise be an unbacked claim.
+  //   STATE        every public property of every type in the subscription domain namespace, mapped or not.
+  //
+  // ⚠⚠⚠ AND THE EXEMPTION ASSERTS ITS GROUNDS RATHER THAN BEING A HOLE. **`TrialSubscription` EXISTS** — a
+  // static class holding the trial plan's id, code and name. That is not a violation, it is the criterion's
+  // own second sentence: *a trial is a PLAN with a short term and nothing else.* The grounds are asserted
+  // mechanically below: it declares **no instance properties** and is **not an entity in the model**, so it
+  // contributes no state, no flag, no column and no enum member. *A name-based ban with a hand-written
+  // exclusion list would have hidden a real violation behind the same exclusion.*
+  // ---- THE PLANT MATRIX. THREE PLANTS, AND THE POINT IS THAT THE WALKS ARE INDEPENDENT.
+  //
+  //   `SubscriptionTermKind.Trial` added        -> `enum member SubscriptionTermKind.Trial`
+  //   `bool IsTrial { get; private set; }`      -> **BOTH** `property …IsTrial` AND `column …IsTrial`
+  //   `bool TrialAppearsHere => false;`         -> `property …TrialAppearsHere` ONLY — **no column**
+  //
+  // ⚠⚠ THE THIRD IS THE ONE THAT JUSTIFIES HAVING TWO WALKS. An expression-bodied property is not mapped,
+  // so **the model walk cannot see it and a column-only test would have called that state absent.** The
+  // second plant firing on both is the complement: it shows the walks OVERLAP without either subsuming the
+  // other. *A single walk would have been wrong in one direction or the other, and green either way.*
+  public void No_trial_state_flag_column_or_enum_member_exists_in_the_subscription_package()
+  {
+    var assembly = typeof(SubscriptionPlan).Assembly;
+    var packageTypes = assembly.GetTypes()
+      .Where(type => (type.Namespace ?? string.Empty).StartsWith("SSAS.Platform.Domain.Subscriptions", StringComparison.Ordinal)
+        || ((type.Namespace ?? string.Empty).StartsWith("SSAS.Platform.Domain.Enums", StringComparison.Ordinal)
+          && type.Name.StartsWith("Subscription", StringComparison.Ordinal)))
+      .ToArray();
+    Assert.True(packageTypes.Length >= 10,
+      $"only {packageTypes.Length} subscription types were reflected; the namespace filter has stopped " +
+      "matching and every absence below would be a claim about nothing.");
+
+    // The enum walk must actually find enums, or ENUM MEMBER is unchecked.
+    var enums = packageTypes.Where(type => type.IsEnum).ToArray();
+    Assert.True(enums.Length >= 3, $"only {enums.Length} subscription enums found; the enum filter has broken.");
+
+    // ---- THE EXEMPTION'S GROUNDS, ASSERTED BEFORE IT IS APPLIED.
+    var trial = packageTypes.Single(type => type.Name == "TrialSubscription");
+    Assert.Empty(trial.GetProperties(BindingFlags.Public | BindingFlags.Instance));
+    Assert.DoesNotContain(SubscriptionModel().GetEntityTypes(), entity => entity.ClrType == trial);
+
+    var offenders = new List<string>();
+    foreach (var type in packageTypes.Where(type => type != trial))
+    {
+      if (type.IsEnum)
+      {
+        offenders.AddRange(Enum.GetNames(type)
+          .Where(name => name.Contains("Trial", StringComparison.OrdinalIgnoreCase))
+          .Select(name => $"enum member {type.Name}.{name}"));
+        continue;
+      }
+
+      offenders.AddRange(type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        .Where(property => property.Name.Contains("Trial", StringComparison.OrdinalIgnoreCase))
+        .Select(property => $"property {type.Name}.{property.Name}"));
+    }
+
+    foreach (var entity in SubscriptionModel().GetEntityTypes()
+      .Where(entity => (entity.ClrType.FullName ?? string.Empty)
+        .StartsWith("SSAS.Platform.Domain.Subscriptions", StringComparison.Ordinal)))
+    {
+      offenders.AddRange(entity.GetProperties()
+        .Where(property => property.Name.Contains("Trial", StringComparison.OrdinalIgnoreCase))
+        .Select(property => $"column {entity.ClrType.Name}.{property.Name}"));
+    }
+
+    Assert.Empty(offenders);
+  }
+
+  private static IModel SubscriptionModel()
+  {
+    var services = new ServiceCollection();
+    services.AddLogging();
+    services.AddSingleton<ICurrentUser, TestRequestContext>();
+    services.AddSingleton<ICurrentTenant, TestRequestContext>();
+    services.AddSingleton<ICorrelationContext, TestRequestContext>();
+    services.AddSingleton<IRequestMetadata, TestRequestContext>();
+    services.AddSingleton<IDateTimeProvider, TestRequestContext>();
+    services.AddPlatformInfrastructure(CreateConfiguration(new Dictionary<string, string?>()));
+    var provider = services.BuildServiceProvider();
+    return provider.CreateScope().ServiceProvider.GetRequiredService<PlatformDbContext>().Model;
+  }
 
   [Fact]
   [Trait("Criterion", "AC-SUB-0006")]

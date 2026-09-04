@@ -163,8 +163,19 @@ public sealed class AttendanceArchitectureTests
   // `EmploymentTypeAssumptionTests`, which pins `AttendanceSummaryResult`'s components exactly; between the
   // two, an added field is caught there and a suspiciously-named one is caught here.*
   [Fact]
+  // ⚠⚠ ALSO CITES `AC-ATT-0027` — *"The contract does not disclose leave **type** if `OD-ATT-0013`(3) rules
+  // it sensitive — the contract may not be laxer than the module's own HTTP surface."* **The `LeaveType`
+  // ban below is that clause**, and the comment beside it already gave the criterion's own reason before
+  // any criterion was attached to it.
+  //
+  // ⚠⚠⚠ AND THE DISTINCTION FROM `AC-ATT-0045`, WHICH IS NOT CITED HERE AND MUST NOT BE READ AS COVERED:
+  // this asserts the CONTRACT carries no leave type AT ALL. `0045` is about the module's own HTTP reads —
+  // *leave type is not returned on any read a caller holds only `Attendance.Leave.View` for* — which is
+  // PER-ROW REDACTION in `AttendanceReadService`, decided at runtime by a permission. **A structural absence
+  // and a conditional redaction are different mechanisms; this test reaches only the first.**
   [Trait("Decision", "DEC-ATT-0002")]
   [Trait("Criterion", "AC-ATT-0023")]
+  [Trait("Criterion", "AC-ATT-0027")]
   public void The_summary_contract_exposes_totals_and_no_per_event_data()
   {
     var names = typeof(AttendanceSummaryResult).GetProperties().Select(property => property.Name).ToArray();

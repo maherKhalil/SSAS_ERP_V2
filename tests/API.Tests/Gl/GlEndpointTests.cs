@@ -329,6 +329,25 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // again and the caller must change the code. Same 409, different instruction.
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
+  // ⚠ CITES THE SECOND HALF OF `AC-GL-0007` — *"...a duplicate code is refused WITH A NAMED ERROR."*
+  //
+  // ***THE PROOF IS IN THE CODE ASSERTED, NOT IN THE STATUS.*** The test injects the FLOOR's generic
+  // `Persistence.UniqueConstraint` and asserts `gl.conflict`, **which is not what the floor produces** —
+  // `GlApiErrorMapper` maps `Persistence.UniqueConstraint` to `gl.unique_conflict` and only
+  // `Gl.AccountCodeConflict` to `gl.conflict`. *So a 409 alone would prove nothing; the CODE is what says
+  // the handler translated rather than the floor caught.*
+  //
+  // ⚠⚠ THE FIRST HALF OF THE CRITERION — uniqueness within the owning scope — IS SEPARATE AND UNGATED:
+  // `GlSchemaSqlServerTests.Two_accounts_cannot_share_a_code_within_a_tenant` inserts twice against real SQL.
+  // **That half is TIER 2; this half is gated.**
+  //
+  // ⚠⚠⚠ AND TWO THINGS IN THIS CRITERION'S TEXT ARE STALE AND ARE THE OWNER'S, NOT FIXED HERE:
+  // it names **`GL.Accounts.Manage`, a permission that has never existed** (this module carries
+  // `Create`/`Update`/`Deactivate`/`View`) — the same defect `T-136` recorded for `api-contracts.md` and did
+  // not record for `acceptance-criteria.md` — and its note presents `OD-GL-0003` as an OPEN question when
+  // `authorization-model.md` records it as ruled TENANT-LEVEL and
+  // `GlArchitectureTests.The_account_table_has_no_company_column_in_the_composed_model` enforces the ruling.
+  [Trait("Criterion", "AC-GL-0007")]
   public async Task A_persistence_conflict_on_account_create_maps_to_409_rather_than_500()
   {
     host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
@@ -431,6 +450,23 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
 
   [Fact]
   [Trait("Decision", "DEC-DEP-0027")]
+  // ⚠ CITES `AC-GL-0013` — *"Two journals in the same fiscal year cannot share a journal number; the second
+  // is refused with `Gl.JournalNumberConflict`."*
+  //
+  // **The CODE is what discharges it.** `GlApiErrorMapper` sends `Gl.JournalNumberConflict` to `gl.conflict`
+  // and the floor's `Persistence.UniqueConstraint` to `gl.unique_conflict`, so asserting `gl.conflict` says
+  // the handler TRANSLATED rather than the floor caught — the distinction the comment above spells out.
+  //
+  // ⚠⚠ ***THE SCHEMA TEST DOES NOT WITNESS THIS CRITERION AND IS NOT CITED TO IT.***
+  // `GlSchemaSqlServerTests.Journal_numbers_are_unique_within_company_and_fiscal_year` asserts that an index
+  // **NAMED** `UX_GlJournalEntries_Tenant_Company_Year_Number` exists with `is_unique = 1` — *not its
+  // columns.* **An index of that name over the wrong columns passes**, and a migration is exactly where a
+  // definition changes while a name is kept. *It asserts the NAME of the enforcer; the criterion is about
+  // its EFFECT.*
+  //
+  // ⚠ The criterion's own note is worth carrying: it asserts UNIQUENESS ONLY. Gaplessness was raised under
+  // `OD-GL-0004` and **deliberately not promised**, so nothing here should be read as claiming it.
+  [Trait("Criterion", "AC-GL-0013")]
   public async Task A_duplicate_journal_number_is_409_rather_than_500()
   {
     var debit = Account.Create("5300", "Rent").Value;

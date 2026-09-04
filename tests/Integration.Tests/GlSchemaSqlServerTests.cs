@@ -182,6 +182,25 @@ public sealed class GlSchemaSqlServerTests
 
   [Fact]
   [Trait("Decision", "BR-GL-0002")]
+  // ⚠ CITES `AC-GL-0005` — *"An attempt to update or delete a posted journal or any of its lines is refused,
+  // BY WHATEVER PATH IT IS ATTEMPTED — repository, direct context, or a future path nobody has written yet."*
+  //
+  // ***"BY WHATEVER PATH" IS A CLAIM ABOUT AN UNBOUNDED SET, AND ONLY A WRITE-BOUNDARY GUARD CAN DISCHARGE
+  // IT.*** The comment below already makes that argument — a repository test proves only *"there is no
+  // repository method for it"* — and the criterion asks for the stronger thing this test does.
+  //
+  // **THE THREE TESTS TOGETHER COVER THE CRITERION'S FOUR VARIABLES:** update (here) and delete
+  // (`A_posted_journal_line_cannot_be_deleted`), entry (here) and line (there).
+  // ⚠⚠ AND `A_draft_by_contrast_can_be_edited_and_deleted` IS THE ANTI-VACUITY CONTROL: without it, a
+  // context that refused EVERY write would satisfy both refusal tests. *It is what makes the guard SELECTIVE
+  // rather than a blanket, and it lives in the arrangement rather than in an assertion.*
+  //
+  // ⚠⚠⚠ ***TIER 2 — THIS WITNESS IS UNGATED.*** `Integration.Tests` does not run in `GATE_SCOPE=TASK`, so
+  // this criterion is **verified at a dated commit, not continuously**: green 2026-09-01, 862 passing. **A
+  // reader must not take this citation as gated coverage** — the marker half (`JournalEntryDomainTests
+  // .Posted_journals_and_their_lines_are_marked_append_only`) IS gated, but the REFUSAL half is not, and the
+  // marker without the guard is, in this file's own words, *the appearance of immutability and none of it*.
+  [Trait("Criterion", "AC-GL-0005")]
   public async Task A_posted_journal_cannot_be_modified_by_attaching_it_directly_to_the_context()
   {
     // ---- THIS IS THE TEST THAT MATTERS, AND IT IS WHY THE INTERFACE EXISTS.

@@ -229,6 +229,60 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
   }
 
+  // ==============================================================================================
+  // ⚠⚠⚠ CITES `AC-GL-0008`. THE GUARDED FAILURE IS A SILENT OVERWRITE IN THE GENERAL LEDGER.
+  // ==============================================================================================
+  //
+  // *"An account's name may be updated. Concurrent updates are detected by `RowVersion` and THE LOSER IS
+  // REFUSED RATHER THAN SILENTLY OVERWRITING."*
+  //
+  // **Written because GL had no such test while its siblings did:** `concurrency.conflict` is asserted 21
+  // times across this repository — `CompaniesMutationEndpointTests` twice, `DepartmentEndpointTests` once,
+  // and others — **and ZERO times under `tests/API.Tests/Gl/` or `tests/Finance.Tests/`.** *The mechanism was
+  // already present (`RenameAccountCommandHandler.ApplyConcurrencyToken`), so the failure was constructible
+  // and merely unwitnessed.*
+  //
+  // ---- ⚠⚠⚠ *"RATHER THAN SILENTLY OVERWRITING"* CANNOT BE WITNESSED AT THIS LAYER, AND I TRIED.
+  //
+  // My first version read the name back and asserted it was unchanged. **It failed — the account WAS
+  // renamed** — and that is a property of the FIXTURE, not a defect: *`host.Accounts` is an in-memory stub
+  // and the object IS the store*, so `account.Rename(...)` is visible the instant the handler calls it,
+  // whether or not the save then fails. **Against a real context the same mutation sits on a tracked entity
+  // and a failed `SaveChangesAsync` never commits it.**
+  //
+  // ***SO THE CLAUSE IS TIER-2 BY CONSTRUCTION: only a database can distinguish "mutated then rolled back"
+  // from "mutated and kept", and that is the same argument as `AC-DOC-0015`'s — a stub proves the handler
+  // ACTED, only the database proves the row SURVIVED.*** *The sibling this test follows knows it:
+  // `CompaniesMutationEndpointTests` asserts `SaveCount == 0` rather than reading the entity back, and GL's
+  // shared `StubUnitOfWork` exposes no such counter.*
+  //
+  // ⚠⚠ **WHAT IS GATED HERE IS THEREFORE THE REFUSAL AND ITS CODE, WHICH IS THE HALF A CALLER SEES** — and
+  // it is the half that was previously asserted nowhere in this module.
+  //
+  // ---- ⚠ AND WHAT THIS DOES **NOT** COVER, STATED SO IT IS NOT READ AS COVERED.
+  //
+  // The criterion says the conflict is DETECTED BY `RowVersion`. **This test injects the persistence
+  // layer's verdict and asserts what the route does with it; it does not prove `RowVersion` is the thing
+  // that produced the verdict.** *That is EF configuration (`AccountConfiguration` marks it a concurrency
+  // token) and is asserted semantically by nothing — the migration-drift guard notices a change to it, but
+  // drift is not concurrency.*
+  [Fact]
+  [Trait("Criterion", "AC-GL-0008")]
+  public async Task An_account_rename_losing_the_row_version_race_is_refused_and_changes_nothing()
+  {
+    host.Accounts.Accounts[GlApiTestHost.AccountId] = Account.Create("4100", "Receivables").Value;
+    host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
+      "Persistence.ConcurrencyConflict", "The row was modified by another caller.");
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Put, $"/api/gl/accounts/{GlApiTestHost.AccountId}",
+      host.TokenWith(GlPermissionNames.UpdateAccounts),
+      """{"name":"Renamed by the loser","rowVersion":"AAAAAAAAB9E="}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("concurrency.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   public async Task A_malformed_row_version_has_its_own_code()
   {

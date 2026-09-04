@@ -49,8 +49,25 @@ public sealed class TenantEntitlementResolutionTests
   // tenant's records up; this one is HANDED them** — so the ordering rule is covered and the lookup that
   // feeds it is not. Same "told, not discovering" shape as `AC-SUB-0004`'s `currentMaximum` next door: the
   // domain honours its input and says nothing about who assembles it.
+  // ---- ⚠ ALSO CITES `AC-SUB-0001`, WHICH THIS FIXTURE ALREADY WITNESSES AND WHICH NOTHING CITED.
+  //
+  // *"Appending a second subscription record makes it the one in force, and the first remains readable and
+  // unchanged — byte for byte, including its `EffectiveFromUtc`."* **This test constructs exactly that: a
+  // first record and a second appended ten days later.** `Assert.Equal(second, …day 10)` is the first
+  // clause; `Assert.Equal(first, …day 5)` shows the first record is still resolvable at its own instant,
+  // which is its `EffectiveFromUtc` unchanged.
+  //
+  // ⚠⚠ THE BYTE-FOR-BYTE HALF IS NOT ASSERTED HERE AND IS NOT UNASSERTED: `PlatformAppendOnlyGuardTests`
+  // refuses `Modified` and `Deleted` for `TenantSubscription` and carries `AC-SUB-0003`. **This citation is
+  // for the in-force ordering; that one is for the immutability.** Neither test alone carries the whole
+  // criterion, and saying which half each holds is the point of writing it down.
+  //
+  // ⚠ AND THE SCOPE BOUND ABOVE APPLIES UNCHANGED — `InForceAt(RECORDS, T)` is HANDED the records, so the
+  // ordering rule is covered and the lookup that assembles them is not. Adding a second criterion to this
+  // test does not widen what it reaches.
   [Fact]
   [Trait("Criterion", "AC-SUB-0002")]
+  [Trait("Criterion", "AC-SUB-0001")]
   public void The_record_in_force_is_the_greatest_effective_from_at_or_before_the_instant()
   {
     var plan = PlanWith();

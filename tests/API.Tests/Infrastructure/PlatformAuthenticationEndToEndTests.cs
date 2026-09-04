@@ -383,6 +383,95 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
     accessor.HttpContext = null;
   }
 
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0042")]
+  // ==================================================================================================
+  // `AC-AUTH-0042`'s *"REFRESH AND LOGOUT **REQUIRE** THE … CSRF COOKIE/HEADER PAIR"* — THE CLAUSE THAT HAD
+  // NO WITNESS, AND THE ONLY SHAPE THAT CAN CARRY IT.
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ EVERY EXISTING CSRF TEST DRIVES `AuthenticationCsrfService` DIRECTLY. They are good tests —
+  // tampered header, absent header, empty cookie, wrong selector, wrong ClientId, expired payload,
+  // rotation — and **they prove the SERVICE refuses. Not one proves either ENDPOINT asks it.** The
+  // criterion's verb is REQUIRE, which is a claim about the caller.
+  //
+  // MEASURED: `!csrf.TryValidate(…) && false` in the refresh route — the call still runs, its answer
+  // discarded — left all seven suites green.
+  //
+  // ⚠⚠ AND THE ENFORCEMENT SET WAS ENUMERATED BEFORE THAT GREEN WAS BELIEVED, because a green after a
+  // plant means *something else also enforces this* unless the set has one member. `TryValidate` has
+  // **exactly four call sites in `src/`** — tenant refresh, tenant logout, support refresh, support logout
+  // — `AuthenticationCsrfService` is the only CSRF implementation and is registered once, and there is no
+  // `IAntiforgery`, `UseAntiforgery` or `ValidateAntiForgeryToken` anywhere in the tree. **So for THIS
+  // route the set has size one, the plant removed the only member, and the green is a statement about the
+  // tests rather than about a sibling holding the property up.**
+  //
+  // ⚠ WHAT THE PLANT DOES NOT REMOVE, stated so the claim is not read wider than it is: the refresh-cookie
+  // PRESENCE check survives it. A request with no refresh cookie is still refused.
+  //
+  // ⚠⚠⚠ AND A CORRECTION TO WHAT THE PLANT SHOWS, MEASURED AGAINST THIS TEST: the planted build answers
+  // **500, not 200.** `TryValidate`'s `out` parameter is a record CLASS, so on the discarded-failure path
+  // `csrfPayload` is null and the next line dereferences it for the rate-limit partition key.
+  //
+  // ***SO THE PLANT ESTABLISHES "NOTHING WATCHED THIS CHECK", NOT "A CSRF-LESS REFRESH WOULD SUCCEED".***
+  // Those are different claims and the second is the alarming one. **This test asserts the refusal
+  // DIRECTLY — `Forbidden` plus the exact code — so it does not depend on which way a broken build
+  // happens to fail.** A weaker assertion here (`NotEqual(OK)`) would have been satisfied by that 500 and
+  // would have gone on reporting itself as a witness.
+  //
+  // THE CONTROL IS THE SECOND HALF OF THIS TEST and is not decoration: the identical request WITH the
+  // header must succeed. Without it, a route that refused everything — a broken cookie jar, a wrong path,
+  // a rate limit — would satisfy the refusal and read as a witness.
+  public async Task Refresh_requires_the_csrf_header_even_with_a_valid_refresh_cookie()
+  {
+    var (email, _, _) = await SeedTenantMemberAsync(tenantCount: 1);
+    var login = await LoginAsync(email);
+    Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+    var cookies = CookieJar(login);
+    Assert.True(cookies.ContainsKey("__Secure-ssas-refresh"), "login did not set the refresh cookie");
+    Assert.True(cookies.ContainsKey("__Secure-ssas-xsrf"), "login did not set the CSRF cookie");
+
+    var withoutHeader = await SendWithCookiesAsync("/refresh", cookies, includeCsrfHeader: false);
+
+    Assert.Equal(HttpStatusCode.Forbidden, withoutHeader.StatusCode);
+    Assert.Contains("authentication.request_rejected",
+      await withoutHeader.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+    // ---- THE CONTROL: same cookies, same route, header present.
+    var withHeader = await SendWithCookiesAsync("/refresh", cookies, includeCsrfHeader: true);
+    Assert.Equal(HttpStatusCode.OK, withHeader.StatusCode);
+  }
+
+  private Task<HttpResponseMessage> SendWithCookiesAsync(
+    string path,
+    Dictionary<string, string> cookies,
+    bool includeCsrfHeader)
+  {
+    var request = new HttpRequestMessage(HttpMethod.Post, $"{Prefix}{path}");
+    request.Headers.Add("Origin", Origin);
+    request.Headers.Add("Cookie", string.Join("; ", cookies.Select(pair => $"{pair.Key}={pair.Value}")));
+    if (includeCsrfHeader && cookies.TryGetValue("__Secure-ssas-xsrf", out var csrf))
+    {
+      request.Headers.Add("X-XSRF-TOKEN", csrf);
+    }
+
+    return host.Client.SendAsync(request);
+  }
+
+  private static Dictionary<string, string> CookieJar(HttpResponseMessage response)
+  {
+    var jar = new Dictionary<string, string>(StringComparer.Ordinal);
+    if (!response.Headers.TryGetValues("Set-Cookie", out var headers)) return jar;
+    foreach (var header in headers)
+    {
+      var pair = header.Split(';', 2)[0];
+      var separator = pair.IndexOf('=', StringComparison.Ordinal);
+      if (separator > 0) jar[pair[..separator]] = pair[(separator + 1)..];
+    }
+
+    return jar;
+  }
+
   // ---- SEEDING.
   //
   // ⚠ `TenantUser` is tenant-owned, and `PersistenceDbContext.AssignTenant` REFUSES to save one without a

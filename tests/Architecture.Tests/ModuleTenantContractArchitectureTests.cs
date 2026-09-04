@@ -102,10 +102,28 @@ public sealed class ModuleTenantContractArchitectureTests
     Assert.Contains("SSAS.BuildingBlocks.Tenancy", projects["SSAS.HR.Application"]);
     Assert.Contains("SSAS.BuildingBlocks.Tenancy", projects["SSAS.HR.Infrastructure"]);
 
+    // ⚠⚠⚠ THE MODULE SET IS DERIVED, AND IT USED TO BE TWO NAMES.
+    //
+    // This loop filtered on `SSAS.HR.` and `SSAS.GL.` — the modules that existed when it was written.
+    // **Payroll and Attendance shipped afterwards and were never added, so a test whose NAME claims
+    // "modules consume without referencing one another" asserted it over half the modules.**
+    //
+    // ***ADDING THE TWO NAMES WOULD HAVE BEEN THE SAME DEFECT ONE COMMIT LATER***, leaving a fifth module to
+    // be forgotten by the mechanism that forgot these two. **The prefixes come from the folders under
+    // `src/Modules` instead, so a module is covered the day its project exists** — the same derivation
+    // `PersistenceArchitectureTests.Every_domain_and_application_project_is_actually_examined` uses against
+    // the same failure.
+    var modulePrefixes = ModulePrefixes();
+
+    // The anti-vacuity control. An empty or short set makes both bans below hold over nothing, and the test
+    // passes loudest exactly then. Four modules today: HR, GL, Payroll, Attendance.
+    Assert.True(modulePrefixes.Length >= 4,
+      $"only {modulePrefixes.Length} module prefixes were derived from src/Modules — the derivation has " +
+      "stopped matching and the isolation bans below cover nothing: " + string.Join(", ", modulePrefixes));
+
     foreach (var (project, references) in projects)
     {
-      if (project.StartsWith("SSAS.HR.", StringComparison.Ordinal) ||
-        project.StartsWith("SSAS.GL.", StringComparison.Ordinal))
+      if (modulePrefixes.Any(prefix => project.StartsWith(prefix, StringComparison.Ordinal)))
       {
         Assert.DoesNotContain(
           references,
@@ -116,11 +134,27 @@ public sealed class ModuleTenantContractArchitectureTests
       {
         Assert.DoesNotContain(
           references,
-          reference => reference.StartsWith("SSAS.HR.", StringComparison.Ordinal) ||
-            reference.StartsWith("SSAS.GL.", StringComparison.Ordinal));
+          reference => modulePrefixes.Any(prefix => reference.StartsWith(prefix, StringComparison.Ordinal)));
       }
     }
   }
+
+  // ---- THE MODULE PREFIXES, FROM DISK RATHER THAN FROM A LIST.
+  //
+  // `src/Modules/Finance` ships `SSAS.GL.*`, so the FOLDER name is not the prefix — the prefix is taken from
+  // the project names the folder actually contains, cut at the second dot. That is why this reads projects
+  // rather than directories.
+  private static string[] ModulePrefixes() =>
+    [.. Directory
+      .EnumerateFiles(Path.Combine(RepositoryRoot(), "src", "Modules"), "*.csproj", SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+        && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Select(RepositoryPaths.ProjectNameFromFile)
+      .Select(name => name.Split('.'))
+      .Where(segments => segments.Length >= 2)
+      .Select(segments => $"{segments[0]}.{segments[1]}.")
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(prefix => prefix, StringComparer.Ordinal)];
 
   // ---- A MODULE MAPS ITS OWN ENTITIES THROUGH A CONTRACT NEITHER SIDE OWNS.
   //

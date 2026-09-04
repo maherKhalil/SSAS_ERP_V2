@@ -302,6 +302,16 @@ public sealed class AuthenticationMilestoneArchitectureTests
     Assert.Matches(symmetricSigning, @"ValidAlgorithms = [""HS256""],");
     Assert.DoesNotMatch(symmetricSigning, "SecurityAlgorithms.RsaSha256");
 
+    // ⚠⚠⚠ THE SCOPE IS `src/` AND WIDENING IT TO `tests/` WOULD BE A TRAP THAT LOOKS LIKE A TIGHTENING.
+    // `JwtInfrastructureTests` FORGES symmetric tokens on purpose — `CreateToken` builds a
+    // `SymmetricSecurityKey` with `HmacSha256` so that `Invalid_jwt_is_rejected_...` and
+    // `Algorithm_substitution_is_rejected` have something to present. **A reader who widened this walk to
+    // the test tree would get an immediate red whose obvious repair is deleting that helper — and deleting
+    // it deletes the only fixtures proving the symmetric algorithm is refused.** The ban would then be
+    // green, the criterion less covered than before, and nothing would say so.
+    //
+    // *The criterion says no symmetric path remains ACTIVE. A forgery in a test is not an active path; it
+    // is the evidence that the path is closed.*
     var symmetric = sourceFiles
       .Where(path => Regex.IsMatch(CodeOnly(path), symmetricSigning, RegexOptions.CultureInvariant))
       .ToArray();

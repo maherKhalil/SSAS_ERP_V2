@@ -641,6 +641,27 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
 
   [Fact]
   [Trait("Criterion", "AC-AUTH-0022")]
+  [Trait("Criterion", "AC-AUTH-0039")]
+  // `AC-AUTH-0039` — *"`kid` is derived from certificate DER bytes, one active signing key is selected from
+  // an immutable snapshot, invalid key identifiers fail closed, and ROLLOVER RETAINS OLD VERIFICATION FOR AT
+  // LEAST LIFETIME PLUS 30-SECOND SKEW."* Clause by clause:
+  //
+  //   DER-DERIVED `kid`   `Kid()` at the foot of this file recomputes `Base64Url(SHA256(RawData))` and the
+  //                       assertions compare the provider's key ids against it. ⚠ **A REIMPLEMENTATION, NOT
+  //                       A SHARED CALL — so it catches the provider switching to `Thumbprint`, a serial, or
+  //                       a GUID, and it CANNOT catch the formula being wrong in both places at once.** That
+  //                       is the honest strength of it: the derivation's SOURCE is pinned, its CORRECTNESS
+  //                       is not.
+  //   ONE ACTIVE KEY      `Snapshot.ActiveSigningKey` is singular by type. Structural, not asserted here.
+  //   FAIL CLOSED         `Unknown_kid_is_rejected_without_trying_the_active_key`, `Missing_kid_is_rejected`.
+  //   OVERLAP >= LIFETIME `AccessTokenLifetime` is 15 min and `ClockSkewSeconds` 30, so the criterion's
+  //   + SKEW              threshold is 15m30s. This test retires at 16 min and PASSES; the refusal twin
+  //                       retires at 15 min and THROWS. ⚠⚠ **THE PAIR BRACKETS THE THRESHOLD, IT DOES NOT
+  //                       PIN IT** — every value in (15m, 16m] is consistent with both, so a provider
+  //                       demanding a full 16 minutes satisfies this file while violating the criterion.
+  //                       Recorded rather than papered over: closing it needs a 15m30s row, and the two
+  //                       existing values were chosen for rotation, not for the boundary.
+  //
   // `AC-AUTH-0022` — *"Signing-key OVERLAP supports CONTROLLED ROTATION."* Three real certificates on disk —
   // an active PFX with its private key, a retained public CER, and a disabled one — so the provider is
   // exercised against the artefacts a rotation actually produces rather than against a stub.
@@ -719,6 +740,71 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
         [new VerificationCertificateOptions { Path = retainedPath, RetireAfterUtc = DateTimeOffset.UtcNow.AddMinutes(15) }]);
       Assert.Throws<InvalidOperationException>(() =>
         new SigningKeyProvider(Options.Create(insufficientOverlap), new TestHostEnvironment("Production")));
+    }
+    finally
+    {
+      Directory.Delete(directory, true);
+    }
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0038")]
+  // ==================================================================================================
+  // `AC-AUTH-0038` — *"Production signs only with a deployment-mounted X.509 RSA private key OF AT LEAST
+  // 2048 BITS through an abstract provider; development and tests use only their approved non-production
+  // key sources."*
+  //
+  // ⚠⚠ THE SIZE FLOOR WAS ENFORCED IN THREE PLACES IN `src/` AND EXERCISED ONLY FROM ABOVE. Every
+  // certificate this file builds comes from `CreateCertificate`, which called `RSA.Create(2048)` with the
+  // size hard-coded — **the boundary value itself, so the floor was satisfied by every fixture and
+  // contradicted by none.** Delete all three `KeySize < 2048` checks from `SigningKeyProvider` and the
+  // suite stays green. *A check that only ever sees conforming input is indistinguishable from no check.*
+  //
+  // ⚠ AND THE PARAMETER IS THE WHOLE FIX. The helper needed one optional argument; the reason nobody
+  // supplied an undersized key is that **there was no way to ASK for one**, and a fixture builder with a
+  // constant where the criterion has a threshold quietly removes the threshold from the test space.
+  //
+  // ⚠⚠⚠ TWO CHECKS, TWO PATHS, AND THE ORDER HIDES ONE OF THEM. `ValidateActive` runs before any
+  // verification certificate is read, so an undersized ACTIVE key throws before the verification floor is
+  // ever reached: **a build with the verification check deleted passes an active-key test.** The two cases
+  // are therefore separated — the second pairs an undersized verification certificate with a CONFORMING
+  // active one — and each asserts on the message, because both throw `InvalidOperationException` and the
+  // type alone cannot say which floor fired.
+  // ==================================================================================================
+  public void Production_key_provider_rejects_an_rsa_key_below_the_approved_size()
+  {
+    var directory = Path.Combine(Path.GetTempPath(), $"ssas-jwt-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+      const string password = "test-only-password";
+      using var undersizedActive = CreateCertificate("undersized-active", 1024);
+      using var conformingActive = CreateCertificate("conforming-active");
+      using var undersizedVerification = CreateCertificate("undersized-verification", 1024);
+      var undersizedActivePath = Path.Combine(directory, "undersized-active.pfx");
+      var conformingActivePath = Path.Combine(directory, "conforming-active.pfx");
+      var undersizedVerificationPath = Path.Combine(directory, "undersized-verification.cer");
+      File.WriteAllBytes(undersizedActivePath, undersizedActive.Export(X509ContentType.Pfx, password));
+      File.WriteAllBytes(conformingActivePath, conformingActive.Export(X509ContentType.Pfx, password));
+      File.WriteAllBytes(undersizedVerificationPath, undersizedVerification.Export(X509ContentType.Cert));
+
+      var activeFailure = Assert.Throws<InvalidOperationException>(() => new SigningKeyProvider(
+        Options.Create(ProductionOptions(undersizedActivePath, password, [])),
+        new TestHostEnvironment("Production")));
+      Assert.Contains("active JWT RSA key", activeFailure.Message, StringComparison.Ordinal);
+
+      var verificationFailure = Assert.Throws<InvalidOperationException>(() => new SigningKeyProvider(
+        Options.Create(ProductionOptions(conformingActivePath, password,
+        [
+          new VerificationCertificateOptions
+          {
+            Path = undersizedVerificationPath,
+            Enabled = true,
+            RetireAfterUtc = DateTimeOffset.UtcNow.AddMinutes(16)
+          }
+        ])),
+        new TestHostEnvironment("Production")));
+      Assert.Contains("verification certificate", verificationFailure.Message, StringComparison.Ordinal);
     }
     finally
     {
@@ -810,9 +896,9 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
       VerificationCertificates = verificationCertificates
     };
 
-  private static X509Certificate2 CreateCertificate(string name)
+  private static X509Certificate2 CreateCertificate(string name, int keySizeBits = 2048)
   {
-    using var rsa = RSA.Create(2048);
+    using var rsa = RSA.Create(keySizeBits);
     var request = new CertificateRequest($"CN=SSAS JWT {name}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
     return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
   }

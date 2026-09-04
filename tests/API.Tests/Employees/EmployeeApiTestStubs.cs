@@ -231,11 +231,19 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
 
   public bool NationalIdExists { get; set; }
 
+  // ⚠ ADDED BECAUSE A CRITERION COULD NOT BE STATED WITHOUT IT. `AddAsync` returned `Task.CompletedTask`
+  // and dropped the employee on the floor, so **no test in this file could say anything about whether an
+  // employee was created** — and `AC-DOC-0008`'s middle clause is exactly that: *"creates no additional
+  // employees"*. ***A TEST DOUBLE BOUNDS THE VOCABULARY OF CLAIMS ITS FILE CAN MAKE***, and the missing
+  // word here was the safety-relevant one: idempotency without it is only a statement about the RESPONSE.
+  public List<Employee> Added { get; } = [];
+
   public void Reset()
   {
     Employee = NewEmployee(EmployeeStatus.Active);
     NumberExists = false;
     NationalIdExists = false;
+    Added.Clear();
   }
 
   public static Employee NewEmployee(EmployeeStatus status)
@@ -298,7 +306,12 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
     Guid companyId, string normalizedNationalId, CancellationToken cancellationToken = default) =>
     Task.FromResult(NationalIdExists);
 
-  public Task AddAsync(Employee employee, CancellationToken cancellationToken = default) => Task.CompletedTask;
+  public Task AddAsync(Employee employee, CancellationToken cancellationToken = default)
+  {
+    Added.Add(employee);
+
+    return Task.CompletedTask;
+  }
 
   public Task AppendBranchAssignmentAsync(
     EmployeeBranchAssignment assignment, CancellationToken cancellationToken = default) => Task.CompletedTask;

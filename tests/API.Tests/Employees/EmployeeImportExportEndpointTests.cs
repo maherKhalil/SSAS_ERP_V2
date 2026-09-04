@@ -542,8 +542,12 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
   // ================================================================================================
   // T18. THE IMPORT KEY REPLAY RETURNS THE ORIGINAL RESULT (DEC-DOC-0004)
   // ================================================================================================
+  // ⚠ CITES `AC-DOC-0008` — *"Submitting a file under an `importKey` already recorded for the company
+  // returns the ORIGINAL run's result and creates no additional employees. The second call answers `200`,
+  // not a conflict status."* **All three clauses.**
   [Fact]
   [Trait("Decision", "DEC-DOC-0004")]
+  [Trait("Criterion", "AC-DOC-0008")]
   public async Task T18_Replaying_an_import_key_returns_the_original_run_over_http()
   {
     var original = EmployeeImportRun.Applied(
@@ -566,6 +570,18 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.Equal(original.Id, root.GetProperty("importRunId").GetGuid());
     Assert.Equal("Applied", root.GetProperty("outcome").GetString());
     Assert.Equal(7, root.GetProperty("rowCount").GetInt32());
+
+    // ⚠⚠⚠ *"CREATES NO ADDITIONAL EMPLOYEES"* — THE CLAUSE THAT MAKES THIS IDEMPOTENCY RATHER THAN A
+    // CACHED RESPONSE, AND IT COULD NOT BE STATED HERE UNTIL THE DOUBLE COULD SPEAK.
+    //
+    // `StubEmployeeRepository.AddAsync` returned `Task.CompletedTask` and discarded the employee, so **the
+    // three assertions above are entirely about the RESPONSE BODY**: a replay that answered with the
+    // original run's numbers AND re-imported every row would have satisfied all of them.
+    //
+    // ⚠⚠ MEASURED, NOT ARGUED. Disabling the replay short-circuit in `ImportEmployeesCommandHandler`
+    // reddens this test WITH THE THREE ASSERTIONS ABOVE SILENCED — so this line is an independent witness
+    // rather than a passenger on theirs.
+    Assert.Empty(host.Repository.Added);
   }
 
   // ================================================================================================

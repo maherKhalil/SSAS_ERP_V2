@@ -130,6 +130,76 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
   // So when the 4E guard is written: give it a floor, give it a known-positive, and PLANT it — a
   // plane-specific endpoint with a bare `RequireAuthenticatedUser` must redden it. **Without that, `0085`
   // is met by a test that has never been able to fail, and it will be cited exactly like the others.**
+  // ==================================================================================================
+  // ⚠⚠⚠ THIS IS A TRIPWIRE, NOT A CONSTRAINT. IT IS SUPPOSED TO REDDEN ONE DAY, AND WHEN IT DOES THE
+  // CORRECT RESPONSE IS TO DELETE IT — AFTER REVISITING THE SEVEN DISPOSITIONS THAT DEPEND ON IT.
+  // ==================================================================================================
+  //
+  // **Nothing here forbids a tenant-administration surface.** `DEC-TEN-0024` schedules it; when Phase 4D
+  // lands, `/api/platform/tenants` is correct and this test is obsolete. ***THE RED IS THE SIGNAL, NOT THE
+  // OBSTACLE.***
+  //
+  // ---- WHY IT EXISTS: SEVEN CRITERIA ARE RECORDED AS UNBUILT ON THE STRENGTH OF A MEASUREMENT.
+  //
+  // `AC-TEN-0012`, `0021`, `0022`, `0023`, `0026`, `0027` and `0028` all describe AUTHORIZATION on
+  // `/api/platform/tenants` routes. **They are uncited because that surface does not exist** — measured over
+  // a closed population: every `"/api/platform/…"` literal in `src/` resolves to `auth`, `companies`,
+  // `localization`, `roles` or `support`, and none to `tenants`.
+  //
+  // ⚠⚠ ***BUT AN UNBUILT-BY-MEASUREMENT DISPOSITION DECAYS SILENTLY. IT BECOMES FALSE THE DAY SOMEONE
+  // BUILDS THE THING, AND NOTHING TELLS THE PEOPLE HOLDING THE LEDGER.*** *That is the same rot we record
+  // against stale specification notes elsewhere in this repository — a claim that was true when written and
+  // is quietly wrong afterwards.* **Its sibling below does not have that problem: it REDDENS if the Phase-4E
+  // taxonomy appears, so those three dispositions announce their own expiry. These seven did not.**
+  //
+  // ⚠ AND THE SIBLING WOULD NOT HAVE CAUGHT THIS ONE: it bans two TYPE NAMES — `PlatformAuthorityEndpoint`
+  // and `PlatformSessionEndpoint` — so a tenant-administration file called anything else walks past it. *The
+  // ROUTE LITERAL is the thing a new surface cannot avoid writing, whatever its types are named.*
+  //
+  // ---- ⚠ WRITE THE PURPOSE ON A TRIPWIRE OR LOSE IT. The guard next door records the reason:
+  // *"a stale criterion misleads; a stale RATIONALE invites a DELETION."* **A reader who cannot see why this
+  // exists will remove it — correctly, for the wrong reason — and the seven dispositions will go on reading
+  // as measured fact.**
+  [Fact]
+  public void No_tenant_administration_route_surface_exists_yet()
+  {
+    var sources = Directory
+      .EnumerateFiles(Path.Combine(RepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
+      .Where(path =>
+        !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+        !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .ToArray();
+
+    // FLOOR on the walk. A source scan that found nothing would satisfy the ban below in silence.
+    Assert.True(sources.Length >= 300,
+      $"only {sources.Length} source files were walked; the scan has broken and the ban below judges nothing.");
+
+    var texts = sources.Select(File.ReadAllText).ToArray();
+
+    // MATCHER CONTROL: the same search, run for a route literal that MUST be present. Without it a change to
+    // how routes are written would silence the ban rather than trip it.
+    Assert.Contains(texts, text => text.Contains("\"/api/platform/support/auth", StringComparison.Ordinal));
+
+    // ⚠ THE OPENING QUOTE IS LOAD-BEARING: it matches a STRING LITERAL rather than any mention. Without it
+    // a comment saying *"`/api/platform/tenants` arrives in Phase 4D"* trips this — **a red for prose, on a
+    // guard whose every red is supposed to mean the surface now exists.** *A tripwire that cries wolf is a
+    // tripwire someone deletes, which is the exact failure the header warns about.*
+    Assert.DoesNotContain(texts, text => text.Contains("\"/api/platform/tenants", StringComparison.Ordinal));
+  }
+
+  private static string RepositoryRoot()
+  {
+    for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+    {
+      if (File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln")))
+      {
+        return directory.FullName;
+      }
+    }
+
+    throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
+  }
+
   [Fact]
   public void Phase_4E_plane_authentication_policy_taxonomy_is_not_pulled_into_phase_4B()
   {

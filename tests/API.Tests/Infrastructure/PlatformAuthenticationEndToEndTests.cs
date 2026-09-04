@@ -293,6 +293,34 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
 
   [Fact]
   [Trait("Criterion", "AC-AUTH-0004")]
+  [Trait("Criterion", "AC-AUTH-0027")]
+  // ==================================================================================================
+  // `AC-AUTH-0027`, QUOTED TO ITS TERMINAL FULL STOP — *"Pre-tenant discovery returns only active
+  // memberships owned by the verified Identity whose Tenants are eligible, without exposing aggregates or
+  // another Identity's memberships."*
+  // ==================================================================================================
+  //   only ACTIVE memberships   this test — a deactivated one is absent from the menu
+  //   TENANTS are eligible      the `Tenants.Where(Status == Active)` join; exercised by
+  //                             `Suspended_tenant_is_refused_where_a_single_membership_would_be_selected_
+  //                             automatically` in the Platform suite
+  //   owned by the VERIFIED     see below — witnessed, but not by design
+  //   identity / not another's
+  //   without exposing          `ListEligibleMembershipsAsync` returns `EligibleTenantMembership`, a
+  //   AGGREGATES                projection record; the entities never leave the query. Structural, and
+  //                             asserted by nothing here.
+  //
+  // ⚠⚠⚠ THE IDENTITY CLAUSE IS WITNESSED BY TWENTY-THREE TESTS AND NOT ONE OF THEM MEANT TO. Planted:
+  // `user.IdentityId == identityId` removed from the discovery query — **23 API tests red.** They fail
+  // because this collection SHARES ONE DATABASE, so by the time any login runs, other tests have seeded
+  // other identities' memberships and the unscoped query returns them.
+  //
+  // ***THAT IS REAL COVERAGE AND IT IS COVERAGE NOBODY DESIGNED, WHICH MAKES IT COVERAGE NOBODY WOULD
+  // NOTICE LOSING.*** Isolate the database per test, split the collection, or run a single test with
+  // `--filter` on a fresh database, and all twenty-three go green with the identity filter still deleted.
+  // **The strength of this witness is a property of the FIXTURE TOPOLOGY, not of any assertion** — so it
+  // is recorded here rather than counted silently, and a purpose-built two-identity discovery test would
+  // be a real improvement rather than a duplicate.
+  //
   // `AC-AUTH-0004`'s LISTING half, and the reason it needs its own test: with TWO memberships the user is
   // OFFERED a choice instead of being auto-selected, **so `ListEligibleMembershipsAsync` is the only gate
   // the response passes through** and the for-update revalidation never runs. One membership is

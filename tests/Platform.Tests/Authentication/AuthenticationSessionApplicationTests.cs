@@ -353,6 +353,33 @@ public sealed class AuthenticationSessionApplicationTests
   // at that line — `Membership` is non-null by `:72` — which kills the branch with nothing constant in it.
   [Fact]
   [Trait("Acceptance", "AC-TEN-0007")]
+  [Trait("Acceptance", "AC-AUTH-0023")]
+  // ==================================================================================================
+  // `AC-AUTH-0023`, QUOTED TO ITS TERMINAL FULL STOP — *"Tenant resolution, selection, session creation,
+  // and refresh use FP-003 eligibility; only an existing Active Tenant is eligible."*
+  // ==================================================================================================
+  //
+  // FOUR NAMED FLOWS, AND THE THREE TESTS BELOW ALREADY COVER THREE OF THEM WITH A DISJOINTNESS MATRIX
+  // (see the plant matrix above): selection here, session creation on the auto-select twin, refresh on the
+  // third. **The criterion names a SET of flows, and a set is only covered member by member** — which is
+  // exactly why those three exist separately rather than as one test.
+  //
+  //   RESOLUTION       `Login_offering_multiple_memberships_omits_a_deactivated_one` (E2E) for the
+  //                    membership half; the tenant half is the `Tenants.Where(Status == Active)` join,
+  //                    exercised through the single-membership twin below.
+  //   SELECTION        this test
+  //   SESSION CREATION `..._where_a_single_membership_would_be_selected_automatically`
+  //   REFRESH          `..._revokes_the_session_when_a_refresh_is_attempted`
+  //
+  // ⚠ *ONLY AN EXISTING ACTIVE TENANT* HAS TWO WORDS AND ONLY ONE IS WITNESSED. *Active* is these three
+  // tests. **EXISTING is not** — no fixture presents a tenant id that resolves to no row, and the
+  // `TenantEligible` flag models a tenant that exists and is ineligible. *A non-existent tenant and a
+  // suspended one reach the same refusal by different paths, and only one of them is tested.*
+  //
+  // ⚠⚠ THE CROSS-PACKAGE CITATION IS THE POINT, NOT AN AFTERTHOUGHT: these tests were written for
+  // `AC-TEN-0007` and this file's subject never mentions FP-002. **A reader auditing AUTH's coverage would
+  // not find them by name, by file, or by package** — which is the concentration hazard cross-package
+  // traits create and also the thing that fixes it.
   public async Task Suspended_tenant_is_refused_at_tenant_selection()
   {
     var fixture = new Fixture();
@@ -385,6 +412,7 @@ public sealed class AuthenticationSessionApplicationTests
   // and requires the outcome to change.
   [Fact]
   [Trait("Acceptance", "AC-TEN-0007")]
+  [Trait("Acceptance", "AC-AUTH-0023")]
   public async Task Suspended_tenant_is_refused_where_a_single_membership_would_be_selected_automatically()
   {
     var fixture = new Fixture();
@@ -413,6 +441,7 @@ public sealed class AuthenticationSessionApplicationTests
   // other reasons.
   [Fact]
   [Trait("Acceptance", "AC-TEN-0007")]
+  [Trait("Acceptance", "AC-AUTH-0023")]
   public async Task Suspended_tenant_revokes_the_session_when_a_refresh_is_attempted()
   {
     var fixture = new Fixture();

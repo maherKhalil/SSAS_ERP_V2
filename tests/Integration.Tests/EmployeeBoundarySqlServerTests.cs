@@ -3327,8 +3327,22 @@ public sealed class EmployeeBoundarySqlServerTests
   // caller shapes that could plausibly differ: the confined user and the administrator, with and without
   // every HR permission the module defines. The employee genuinely HAS a national identifier, so the
   // absence is a distinction rather than an empty-database artefact.
+  // ⚠ CITES `AC-DOC-0023`'s BEHAVIOURAL HALF — *"No export carries `nationalId`. Asserted over EVERY
+  // export the surface can produce — every filter combination, every scope mode, every permission set."*
+  //
+  // **This half varies the CALLER: administrator and confined user, with and without every HR permission the
+  // module defines, against an employee that genuinely HAS a national identifier — so the absence is a
+  // distinction rather than an empty-database artefact.** *`ImportExportArchitectureTests
+  // .No_export_column_or_row_field_can_carry_a_national_id` carries the other half structurally, closing the
+  // column contract and the row type so no filter can open a third path.*
+  //
+  // ⚠⚠ **NEITHER IS SUFFICIENT ALONE AND THE REASON IS THE CRITERION'S OWN QUANTIFIER.** A caller-shape
+  // sweep is still a SAMPLE over filters; a structural closure says nothing about whether the query actually
+  // projects what the contract declares. *The structural half bounds what CAN be emitted; this half shows
+  // what IS, through real SQL.*
   [Fact]
   [Trait("Decision", "OD-DOC-006")]
+  [Trait("Criterion", "AC-DOC-0023")]
   public async Task X2_No_caller_shape_can_make_an_export_carry_a_national_identifier()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -3416,8 +3430,17 @@ public sealed class EmployeeBoundarySqlServerTests
   // "Who exported employee data?" is answerable from the actor alone. "Could that person have exported THIS
   // employee?" is not, unless the scope in force at the time is recorded — and scope changes over time, so
   // reconstructing it later from current authorization is unsound.
+  // ⚠ CITES `AC-DOC-0015` AGAINST REAL SQL — *"Every export writes a run record naming the column set and
+  // the scope in force. A failed export writes none."* **The gated half is
+  // `EmployeeImportExportEndpointTests.T23`, which asserts the same property through a STUB repository;
+  // this one asserts it through a database that actually stores the row.**
+  //
+  // ⚠⚠ *A stub proves the handler CALLED the repository. Only this proves the record SURVIVES the write* —
+  // the column set and the scope snapshot are text columns with their own constraints, and a record the
+  // application composes correctly and the database refuses is a record that does not exist.
   [Fact]
   [Trait("Decision", "SEC-DOC-0404")]
+  [Trait("Criterion", "AC-DOC-0015")]
   public async Task X5_The_export_run_records_the_column_set_and_the_scope_that_was_in_force()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

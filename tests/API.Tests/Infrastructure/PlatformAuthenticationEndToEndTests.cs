@@ -603,6 +603,73 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
     return (email, tenantIds, tenantUserIds, identityId);
   }
 
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0048")]
+  // ==================================================================================================
+  // `AC-AUTH-0048`, QUOTED TO ITS TERMINAL FULL STOP — *"Tenant-selection-required returns ONLY the
+  // reveal-once proof and eligible summaries containing TenantId, TenantUserId, and TenantDisplayName FROM
+  // FP-003 TenantName, with EVERY PROHIBITED FIELD ABSENT."*
+  // ==================================================================================================
+  //
+  // TWO claims that need different instruments, so both are here:
+  //
+  //   *EVERY PROHIBITED FIELD ABSENT* is a claim about the COMPLEMENT, and a response body asserted
+  //   field-by-field cannot carry one — three fields asserted present is satisfied by four existing. **The
+  //   member pin is the whole content of the word**, and it is over the TYPE rather than over one
+  //   serialized instance, because a field that happens to be null in this fixture is still a field.
+  //
+  //   *FROM FP-003 TenantName* is a PROVENANCE claim: not that a display name is present, but that it is
+  //   the tenant's NAME. ⚠ The seed's code and name differ deliberately (`T4A2B1C9` versus
+  //   `Tenant T4A2B1C9`), so a provider returning the CODE — the plausible wrong field, and the one a
+  //   tidy-up would reach for — fails. Asserting non-empty would not distinguish them.
+  //
+  // ⚠⚠ AND THIS SURFACE IS DELIBERATELY EXEMPT FROM THE TREE-WIDE TENANT-LEAK GUARD.
+  // `ResponseWireContractTests` exempts the whole `SSAS.Platform.API.Authentication` namespace, correctly:
+  // **the tenant IS the subject of these answers rather than an attribute leaking out of them.** So the
+  // one guard that would otherwise constrain these records by construction does not, and that is exactly
+  // why the pin has to exist here. *A correct exemption removes cover; it does not remove the criterion.*
+  public async Task Tenant_selection_required_returns_exactly_the_approved_fields_and_the_tenant_name()
+  {
+    // ---- THE COMPLEMENT CLAIM, OVER THE TYPES.
+    Assert.Equal(
+      ApprovedSelectionResponseFields,
+      typeof(TenantSelectionRequiredResponse).GetProperties()
+        .Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+    Assert.Equal(
+      ApprovedMembershipSummaryFields,
+      typeof(TenantMembershipResponse).GetProperties()
+        .Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+
+    // ---- THE PROVENANCE CLAIM, OVER A REAL RESPONSE.
+    var (email, tenantIds, _) = await SeedTenantMemberAsync(tenantCount: 2);
+    var selection = await ReadAsync<TenantSelectionRequiredResponse>(await LoginAsync(email));
+
+    Assert.Equal("TenantSelectionRequired", selection.Outcome);
+    Assert.False(string.IsNullOrWhiteSpace(selection.SelectionProof));
+    Assert.Equal(2, selection.Memberships.Count);
+
+    await using var scope = host.Application.Services.CreateAsyncScope();
+    var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    foreach (var membership in selection.Memberships)
+    {
+      var tenantId = membership.TenantId;
+      var tenant = await context.Tenants.AsNoTracking().SingleAsync(item => item.Id == tenantId);
+      Assert.Contains(tenantId, tenantIds);
+      // The criterion's *from FP-003 TenantName*, not merely "a non-empty string".
+      Assert.Equal(tenant.TenantName.Value, membership.TenantDisplayName);
+      Assert.NotEqual(tenant.TenantCode.Value, membership.TenantDisplayName);
+      Assert.True(membership.TenantUserId > 0);
+    }
+  }
+
+  // Hoisted for CA1861, and they are the SUBJECT of their assertions rather than incidental data: these
+  // are the approved wire fields, and the assertion is that there are no others.
+  private static readonly string[] ApprovedSelectionResponseFields =
+    ["Memberships", "Outcome", "SelectionExpiresUtc", "SelectionProof"];
+
+  private static readonly string[] ApprovedMembershipSummaryFields =
+    ["TenantDisplayName", "TenantId", "TenantUserId"];
+
   // ---- SEEDING.
   //
   // ⚠ `TenantUser` is tenant-owned, and `PersistenceDbContext.AssignTenant` REFUSES to save one without a

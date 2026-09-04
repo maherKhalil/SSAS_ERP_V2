@@ -121,8 +121,26 @@ public sealed class PlatformLocalizationRouteInventoryTests(HostWebApplicationFa
   // lost `.RequireAuthorization()` entirely ALSO reports a null policy. **Checking presence separately, and
   // first, is what distinguishes *authenticated with no permission* from *not authorized at all*.** A single
   // policy comparison would have made the anonymous route indistinguishable from the intended one.
+  // ⚠ ALSO CITES `AC-LOC-0053`'s FIRST CLAUSE — *"Milestone 2 exposes no anonymous localization HTTP
+  // route."* **Two criteria, one property**: `AC-LOC-0062` states it as *all nine M2 routes are
+  // non-anonymous* and `AC-LOC-0053` as *no anonymous route is exposed*, and the `HasAuthorization` check
+  // below judges both. *Citing one and not the other would have left `AC-LOC-0053` reading as unwitnessed
+  // while its property was pinned here all along.*
+  //
+  // ⚠⚠ ITS SECOND CLAUSE — *"Effective HTTP requires trusted Tenant selection"* — IS NOT HERE. It lives in
+  // `LocalizationEffectiveApiTests.Untrusted_or_non_active_tenant_is_denied`, which is about WHICH tenant a
+  // caller may select rather than whether a caller is authenticated at all. **This file cannot see it: an
+  // inventory reads route metadata and never sends a request.**
+  //
+  // ⚠⚠⚠ AND ITS THIRD CLAUSE IS UNWITNESSABLE BY ANY TEST, WHICH IS WORTH SAYING RATHER THAN LEAVING AS AN
+  // APPARENT GAP: *"future public system-default HTTP groups require an explicitly approved contract"* is a
+  // rule about how a FUTURE route must be authorised into existence — **a governance commitment, not a
+  // property of the running system.** No fixture can fail if it is broken, because breaking it happens in a
+  // review that does not occur. *An unwritable clause named is a known gap; an unwritable clause silently
+  // folded into a citation is a false green.*
   [Fact]
   [Trait("Criterion", "AC-LOC-0062")]
+  [Trait("Criterion", "AC-LOC-0053")]
   public void Every_route_requires_the_permission_the_inventory_names()
   {
     // ---- THE PROPERTY THE SET COMPARISON CANNOT SEE.

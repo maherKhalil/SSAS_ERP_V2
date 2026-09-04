@@ -104,7 +104,14 @@ public sealed class LocalizationEffectiveApiTests : IAsyncLifetime
   [InlineData("ce2bea1d-dc51-433d-8168-1afce01a7bbb", TenantStatus.Provisioning)]
   [InlineData("ce2bea1d-dc51-433d-8168-1afce01a7bbb", TenantStatus.Suspended)]
   [InlineData("ce2bea1d-dc51-433d-8168-1afce01a7bbb", TenantStatus.Archived)]
+  // ⚠ ALSO CITES `AC-LOC-0053`'s SECOND CLAUSE — *"Effective HTTP requires trusted Tenant selection."*
+  // The first row supplies a claim tenant that is NOT the trusted one and is refused `403` with
+  // `GroupCalls == 0`, so the refusal precedes resolution rather than following it. **Its first clause —
+  // *no anonymous localization HTTP route* — is carried by `PlatformLocalizationRouteInventoryTests
+  // .Every_route_requires_the_permission_the_inventory_names`, which judges all nine routes; this theory
+  // enumerates only the effective ones and cannot speak for the surface.**
   [Trait("Criterion", "AC-LOC-0062")]
+  [Trait("Criterion", "AC-LOC-0053")]
   public async Task Untrusted_or_non_active_tenant_is_denied(string claimTenantId, TenantStatus status)
   {
     state.Reset();

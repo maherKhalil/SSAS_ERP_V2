@@ -256,6 +256,13 @@ public sealed class AuthorizationPipelineTests : IAsyncLifetime
   [Fact]
   [Trait("Criterion", "AC-TEN-0019")]
   [Trait("Criterion", "AC-IAM-0021")]
+  [Trait("Criterion", "AC-AUTH-0045")]
+  // ALSO `AC-AUTH-0045`'s FIRST CLAUSE — *"every ordinary tenant-scoped authenticated business request
+  // authorizes only after ONE LIVE FP-003 LOOKUP confirms Active status."* **An already-issued token
+  // stopping the moment the tenant is suspended IS what *live* means**: a cached or token-carried status
+  // would keep admitting it. Cross-package; the criterion's other two clauses are witnessed in
+  // `TenantAccessTokenClaimSetTests` and `PlatformAuthenticationEndToEndTests`, and the full map is on
+  // `Logout_still_succeeds_after_the_tenant_is_suspended`.
   public async Task One_token_admitted_while_active_is_refused_once_the_tenant_is_suspended()
   {
     var bearer = CreateToken([

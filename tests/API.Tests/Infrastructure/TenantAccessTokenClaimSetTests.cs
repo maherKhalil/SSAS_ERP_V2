@@ -47,6 +47,12 @@ public sealed class TenantAccessTokenClaimSetTests(HostWebApplicationFactory fac
   ];
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0045")]
+  // ALSO `AC-AUTH-0045`'s LAST CLAUSE — *"… and TenantStatus is ABSENT from JWTs."* ⚠ **The set equality
+  // above is a stronger witness for that than a `DoesNotContain("tenant_status")` would be**, because a
+  // denylist only refuses the exclusions someone thought of, while a set equality reddens when ANY claim
+  // is added — which is the direction this prohibition needs guarding, the risk being a future claim
+  // rather than a missing one. *The clause names one forbidden claim; the assertion forbids all of them.*
   public void The_tenant_token_carries_exactly_the_specified_claim_types_and_no_others()
   {
     var token = Issue();

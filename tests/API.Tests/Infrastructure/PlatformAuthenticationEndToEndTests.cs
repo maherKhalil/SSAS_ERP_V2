@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.Platform.API.Authentication;
+using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Authentication;
 using SSAS.Platform.Application.Authentication;
 using SSAS.Platform.Application.Permissions;
@@ -494,7 +495,8 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
   private Task<HttpResponseMessage> SendWithCookiesAsync(
     string path,
     Dictionary<string, string> cookies,
-    bool includeCsrfHeader)
+    bool includeCsrfHeader,
+    string? bearer = null)
   {
     var request = new HttpRequestMessage(HttpMethod.Post, $"{Prefix}{path}");
     request.Headers.Add("Origin", Origin);
@@ -502,6 +504,11 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
     if (includeCsrfHeader && cookies.TryGetValue("__Secure-ssas-xsrf", out var csrf))
     {
       request.Headers.Add("X-XSRF-TOKEN", csrf);
+    }
+
+    if (bearer is not null)
+    {
+      request.Headers.Authorization = new("Bearer", bearer);
     }
 
     return host.Client.SendAsync(request);
@@ -697,6 +704,81 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
 
   private static readonly string[] ApprovedMembershipSummaryFields =
     ["TenantDisplayName", "TenantId", "TenantUserId"];
+
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0045")]
+  // ==================================================================================================
+  // `AC-AUTH-0045`'s MIDDLE CLAUSE — *"… while SUSPENDED-TENANT LOGOUT REMAINS POSSIBLE …"*
+  // ==================================================================================================
+  //
+  // The criterion in full: *"Every ordinary tenant-scoped authenticated business request authorizes only
+  // after one live FP-003 lookup confirms Active status, while suspended-tenant logout remains possible and
+  // TenantStatus is absent from JWTs."* Three clauses, three witnesses in three suites:
+  //
+  //   ONE LIVE LOOKUP    `AuthorizationPipelineTests.One_token_admitted_while_active_is_refused_once_the_
+  //                      tenant_is_suspended` — an already-issued token stops working the moment the
+  //                      tenant is suspended, which is what *live* means.
+  //   LOGOUT REMAINS     this test
+  //   NO `TenantStatus`  `TenantAccessTokenClaimSetTests.The_tenant_token_carries_exactly_the_specified_
+  //   IN THE JWT         claim_types_and_no_others` — **a SET equality, which reddens when a claim is
+  //                      ADDED**, the direction this prohibition actually needs.
+  //
+  // ⚠⚠ THIS CLAUSE IS AN ABSENCE-OF-GATING CLAIM AND THEREFORE HAS NO NATURAL HOME. The other two are
+  // properties of a mechanism; this one says a mechanism must NOT reach here. **Nothing fails when it is
+  // violated except a user who cannot log out of a suspended tenant** — and there is nobody to notice,
+  // because the account is already unusable for everything else.
+  //
+  // ⚠ IT IS ALSO THE CLAUSE MOST LIKELY TO BE BROKEN BY A CORRECT-LOOKING CHANGE: widening the eligibility
+  // gate from "tenant-permission-gated routes" to "all authenticated routes" reads as tightening security
+  // and would strand every user of a suspended tenant with a live session and no way to end it.
+  //
+  // THE CONTROL IS THE SUSPENSION ITSELF: an ordinary gated route is asserted refused for the same
+  // caller, in the same state, with the same cookies. **Without it, a 204 from logout proves only that
+  // logout works — not that it works WHILE SUSPENDED.**
+  public async Task Logout_still_succeeds_after_the_tenant_is_suspended()
+  {
+    var (email, tenantIds, _) = await SeedTenantMemberAsync(tenantCount: 1);
+    var login = await LoginAsync(email);
+    Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+    var authenticated = await ReadAsync<AuthenticatedResponse>(login);
+    var cookies = CookieJar(login);
+
+    await SuspendTenantAsync(tenantIds[0]);
+
+    // ---- THE CONTROL, AND WHY IT IS A READ RATHER THAN A REQUEST.
+    //
+    // ⚠ THE OBVIOUS CONTROL IS UNAVAILABLE IN THIS HOST: an ordinary gated route refused for the same
+    // caller in the same state. **This host maps `MapPlatformSupportAuthenticationEndpoints` and
+    // `MapPlatformAuthenticationEndpoints` and nothing else** — there is no business route here to be
+    // refused, and my first attempt asserted `403` from `/api/platform/roles` and got `404`. *A control
+    // against a route that does not exist is a control against the router.*
+    //
+    // So the control asserts the ARRANGEMENT instead — the tenant really is Suspended, read back rather
+    // than assumed from `Suspend()` having returned success — and the contrasting behaviour (an ordinary
+    // request refused while suspended) is witnessed in another suite by
+    // `AuthorizationPipelineTests.One_token_admitted_while_active_is_refused_once_the_tenant_is_suspended`.
+    // **Two suites, one criterion, and the split is a property of what each host maps.**
+    await using (var verify = host.Application.Services.CreateAsyncScope())
+    {
+      var context = verify.ServiceProvider.GetRequiredService<PlatformDbContext>();
+      var tenant = await context.Tenants.AsNoTracking().SingleAsync(item => item.Id == tenantIds[0]);
+      Assert.Equal(TenantStatus.Suspended, tenant.Status);
+    }
+
+    var logout = await SendWithCookiesAsync("/logout", cookies, includeCsrfHeader: true, bearer: authenticated.AccessToken);
+
+    Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+  }
+
+  private async Task SuspendTenantAsync(Guid tenantId)
+  {
+    await using var scope = host.Application.Services.CreateAsyncScope();
+    var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    var tenant = await context.Tenants.SingleAsync(item => item.Id == tenantId);
+    Assert.True(tenant.Suspend(
+      TenantStatusChangeReason.Administrative, "e2e-seed", Guid.NewGuid(), Now.AddMinutes(5)).IsSuccess);
+    await context.SaveChangesAsync();
+  }
 
   // ---- SEEDING.
   //

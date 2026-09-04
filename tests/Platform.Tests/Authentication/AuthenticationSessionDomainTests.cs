@@ -93,6 +93,87 @@ public sealed class AuthenticationSessionDomainTests
     Assert.Contains(transaction.DomainEvents, domainEvent => domainEvent is TenantMembershipSelected);
   }
 
+  // Hoisted because CA1861 is enforced as an error by the gate: an inline array argument in an assertion
+  // trips it. Both lists are the SUBJECT of their assertions, not incidental data.
+  private static readonly string[] ApprovedSessionStatuses = ["Active", "Compromised", "Revoked"];
+
+  private static readonly string[] ApprovedSessionOperations =
+  [
+    "ClearBranch", "CreateInitialRefreshToken", "FindRefreshToken", "IsUsable",
+    "MarkCompromised", "Revoke", "Rotate", "SelectBranch"
+  ];
+
+  [Fact]
+  [Trait("Acceptance", "AC-AUTH-0026")]
+  // ==================================================================================================
+  // `AC-AUTH-0026` — *"A session is IMMUTABLY BOUND to one Identity, membership, Tenant, ClientId, and
+  // token family and PERSISTS ONLY Active, Revoked, or Compromised status."* TWO claims, and the second is
+  // a claim about a COMPLEMENT.
+  // ==================================================================================================
+  //
+  // ⚠ *PERSISTS ONLY …* IS AN ENUM-VOCABULARY CLAIM AND NOTHING PINNED IT. Every test that touches
+  // `AuthenticationSessionStatus` asserts a session HAS one of the three; **a fourth member added tomorrow
+  // satisfies all of them and violates the criterion.** A presence assertion cannot carry an *only*; the
+  // arity pin is the whole content of the word, and this is the same idiom
+  // `Status_and_reason_vocabularies_are_exact` uses for tenants.
+  //
+  // ⚠⚠ AND THE *IMMUTABLY BOUND* HALF CANNOT BE A "NO PUBLIC SETTER" CHECK, WHICH IS THE OBVIOUS TEST AND
+  // THE WRONG ONE. **Every property on this aggregate is `private set`, including `Status`, `RevokedUtc`
+  // and `IdleExpiresUtc`, which the aggregate mutates on purpose** — so that assertion passes for all
+  // twenty-one and discriminates none of them. *Immutable* here means NO OPERATION CHANGES THEM, so the
+  // test drives the operations.
+  //
+  // ⚠⚠⚠ AND IT PINS THE MUTATOR SET RATHER THAN SAMPLING IT. Exercising four methods proves nothing about
+  // a fifth added later, so the public/internal instance-method surface is asserted to be exactly this
+  // list: **a new operation forces this test to be updated, which is the only way an enumeration of
+  // behaviour stays complete.** Without it the test decays silently the first time the aggregate grows.
+  public void Session_bindings_survive_every_operation_and_the_status_vocabulary_is_exact()
+  {
+    // ---- THE COMPLEMENT CLAIM.
+    Assert.Equal(
+      ApprovedSessionStatuses,
+      Enum.GetNames<AuthenticationSessionStatus>().OrderBy(name => name, StringComparer.Ordinal).ToArray());
+
+    // ---- THE MUTATOR SET, PINNED SO THE ENUMERATION BELOW CANNOT GO STALE.
+    var mutators = typeof(AuthenticationSession)
+      .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+      .Where(method => !method.IsPrivate && !method.IsSpecialName)
+      .Select(method => method.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+    Assert.Equal(ApprovedSessionOperations, mutators);
+
+    var session = NewPersistedSession(100, 90);
+    var bindings = (session.IdentityId, session.TenantUserId, session.TenantId, session.ClientId, session.TokenFamilyId);
+
+    // ---- EVERY OPERATION THAT CHANGES STATE, IN AN ORDER THAT LETS EACH SUCCEED.
+    Assert.True(session.SelectBranch(Guid.NewGuid()).IsSuccess);
+    session.ClearBranch();
+    var predecessor = session.CreateInitialRefreshToken(Guid.NewGuid(), new byte[32], Now, Guid.NewGuid());
+    SetIdentity(predecessor, 200);
+    var rotation = session.Rotate(
+      predecessor, Guid.NewGuid(), Enumerable.Repeat((byte)7, 32).ToArray(), Now.AddDays(1), TimeSpan.FromDays(30), Guid.NewGuid());
+    Assert.True(rotation.IsSuccess);
+    SetIdentity(rotation.Value, 201);
+    Assert.True(session.MarkCompromised(predecessor, Guid.NewGuid(), Guid.NewGuid(), Now.AddDays(2)).IsSuccess);
+
+    Assert.Equal(
+      bindings,
+      (session.IdentityId, session.TenantUserId, session.TenantId, session.ClientId, session.TokenFamilyId));
+
+    // The control: the session DID change, so the equality above is a survival claim rather than a
+    // statement that nothing happened. Without this, a no-op aggregate would satisfy every line.
+    //
+    // ⚠ PLANTS, AND THE FIRST ONE FOUND SOMETHING I WAS NOT LOOKING FOR. Rebinding `TenantUserId` in
+    // `SelectBranch` reddens the tuple above, naming the field. **Rebinding `TokenFamilyId` in `Rotate`
+    // reddens too — but by THROWING from `RefreshTokenRecord.LinkReplacement`, which independently
+    // validates the family.** So that one binding is guarded twice and the aggregate refuses the change
+    // before this test can observe it; the other four rest on this assertion alone. *Worth knowing which
+    // of the five are load-bearing here, because a plant that reddens for the wrong reason still reads as
+    // a passing plant.*
+    Assert.Equal(AuthenticationSessionStatus.Compromised, session.Status);
+  }
+
   [Fact]
   [Trait("Acceptance", "AC-AUTH-0030")]
   // ==================================================================================================

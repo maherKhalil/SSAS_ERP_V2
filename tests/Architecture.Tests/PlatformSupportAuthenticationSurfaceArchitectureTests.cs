@@ -52,6 +52,41 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
       property.Name.Contains("Principal", StringComparison.OrdinalIgnoreCase));
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ TWO OF `AC-TEN-0082`'s CLAUSES ARE ENFORCED BY WHAT THIS HANDLER CANNOT REACH, AND UNTIL NOW
+  // NOTHING WATCHED THAT.
+  // ==================================================================================================
+  //
+  // *"`AuthenticationAccount.SecurityVersion` is unchanged"* and *"the already-issued access JWT remains valid
+  // until natural expiry"* are not behaviours the handler performs — **they are behaviours it is INCAPABLE of.**
+  // It takes a session repository, a unit of work and a clock. *It cannot touch an account because it cannot
+  // reach one; it cannot invalidate a token because it has no token service.*
+  //
+  // ⚠⚠ SO NEITHER CLAUSE HAS A FIXTURE, AND NEITHER CAN: ***you cannot break the absence of a line, and adding
+  // the dependency IS the change the clause forbids.*** **The guarantee lives in the constructor, so the
+  // constructor is what has to be guarded.**
+  //
+  // ⚠⚠⚠ AND THE FAILURE IS EXPRESSIBLE AND TEMPTING, WHICH IS WHAT EARNS A GUARD RATHER THAN A COMMENT.
+  // ***"LOGOUT SHOULD INVALIDATE THE TOKEN" IS THE MOST OBVIOUS THING A COMPETENT PERSON WOULD THINK, AND
+  // INJECTING A TOKEN SERVICE IS EXACTLY HOW THEY WOULD DO IT*** — which is precisely what clause 6 forbids,
+  // for a deliberate reason: the access JWT is short-lived and stateless, and revoking it early would require
+  // exactly the shared mutable state (`SecurityVersion`) that clause 5 protects the TENANT plane from.
+  //
+  // ⚠ AN EXACT LIST, NOT A BAN, SO IT IS A BIND RATHER THAN A FLOOR: **an ADDED dependency reddens this as
+  // loudly as a removed one.** *A `DoesNotContain("IToken…")` would pass on any dependency nobody thought to
+  // name, which is every dependency that has not been invented yet.*
+  [Fact]
+  [Trait("Criterion", "AC-TEN-0082")]
+  public void The_platform_logout_handler_can_reach_no_account_and_no_token_service()
+  {
+    var constructor = Assert.Single(
+      typeof(RevokeCurrentPlatformAuthenticationSessionCommandHandler).GetConstructors());
+
+    Assert.Equal(
+      ["IPlatformAuthenticationSessionRepository", "IPlatformUnitOfWork", "IDateTimeProvider"],
+      constructor.GetParameters().Select(parameter => parameter.ParameterType.Name));
+  }
+
   // ⚠⚠⚠ THIS GUARD IS THE EVIDENCE THAT `AC-TEN-0084`, `0085` AND `0086` ARE **DEFERRED, NOT UNCOVERED**,
   // AND IT CORRECTS A PARTITION I PUBLISHED. I classified `0021`-`0091` by cluster and put `0084`-`0091` in
   // the LIVE bucket on the strength of routes and policies existing. **The Phase-4E plane-authentication

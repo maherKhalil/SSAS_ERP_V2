@@ -150,8 +150,21 @@ public sealed class AttendanceArchitectureTests
   // The other half of the same ruling, asserted positively: the contract carries TOTALS and no per-event or
   // time-of-day data (`DEC-ATT-0002`). A contract exposing punch-level movement would let every future
   // Payroll feature read minute-by-minute employee location with no call-site change for anyone to review.
+  // ⚠ CITES `AC-ATT-0023` — *"The summary contract returns totals for one employee and one period, and
+  // exposes **no punch-level, per-event or time-of-day data**."* **The second clause is what this asserts,
+  // by name, over the record's own properties.** The first clause is carried by the contract's SIGNATURE —
+  // `GetSummaryAsync` takes one employee and one date inside one period — which the type system enforces
+  // and no test needs to restate.
+  //
+  // ⚠⚠ THE ASSERTION IS A NAME BAN, SO ITS REACH IS THE VOCABULARY IT LISTS. A per-event field named
+  // something none of `Punch`, `ClockIn`, `ClockOut`, `TimeOfDay` or `Event` matches would pass — `Movement`
+  // or `Swipe`, say. **That is the honest bound of a name-shaped guard and it is why the ban is broad
+  // rather than exact.** *The structural alternative — assert the exact property set — exists next door in
+  // `EmploymentTypeAssumptionTests`, which pins `AttendanceSummaryResult`'s components exactly; between the
+  // two, an added field is caught there and a suspiciously-named one is caught here.*
   [Fact]
   [Trait("Decision", "DEC-ATT-0002")]
+  [Trait("Criterion", "AC-ATT-0023")]
   public void The_summary_contract_exposes_totals_and_no_per_event_data()
   {
     var names = typeof(AttendanceSummaryResult).GetProperties().Select(property => property.Name).ToArray();

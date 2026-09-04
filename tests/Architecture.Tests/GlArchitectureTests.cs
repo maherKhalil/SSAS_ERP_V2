@@ -186,8 +186,27 @@ public sealed class GlArchitectureTests
   // PERMISSIONS (DEC-GL-0003, FP-006P)
   // ================================================================================================
 
+  // ⚠ CITES `AC-GL-0018` — *"A permission name that no catalog contributor defines authorizes nothing, AND
+  // THIS IS ASSERTED RATHER THAN ASSUMED."*
+  //
+  // ***THE SECOND CLAUSE IS A META-REQUIREMENT AND THIS TEST IS ITS DISCHARGE: the criterion does not ask
+  // for the property to be TRUE, it asks for it to be ASSERTED*** — and the comment below records the
+  // `FP-006P` failure that made the difference matter, where HR's constants existed, no catalog defined
+  // them, and every endpoint refused every caller silently.
+  //
+  // ⚠⚠ THE SET EQUALITY IS BIDIRECTIONAL AND `Assert.NotEmpty(named)` IS THE ANTI-VACUITY CONTROL: a name
+  // without a definition fails, a definition without a name fails, and an empty `GlPermissionNames` — which
+  // would satisfy any set comparison — fails first. *Without that line the whole assertion passes on a module
+  // that names no permissions at all.*
+  //
+  // ⚠⚠⚠ PLANTED, AND THE ENFORCEMENT SET IS **TWO**, NOT ONE. Deleting `ViewDrafts` from the contributor
+  // while leaving the constant reddens this test AND `EndpointPermissionCatalogJoinTests
+  // .Every_permission_an_endpoint_requires_is_defined_by_the_composed_catalog`. **The second is the stronger
+  // of the pair on the criterion's FIRST clause** — it joins what endpoints actually REQUIRE to the composed
+  // catalog, so it speaks to *authorizes nothing* rather than to the naming symmetry this one checks.
   [Fact]
   [Trait("Decision", "DEC-GL-0003")]
+  [Trait("Criterion", "AC-GL-0018")]
   public void Every_named_permission_is_defined_by_the_catalog_contributor()
   {
     // ---- NAMING IS NOT REGISTERING, AND THIS IS THE TEST THAT SAYS SO.

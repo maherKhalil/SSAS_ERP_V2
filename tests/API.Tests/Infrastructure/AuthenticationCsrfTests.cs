@@ -130,6 +130,32 @@ public sealed class AuthenticationCsrfTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0044")]
+  // ==================================================================================================
+  // `AC-AUTH-0044`, TO ITS TERMINAL FULL STOP — *"Exact HTTPS Origin, restrictive credentialed CORS, and
+  // approved direct/trusted-proxy client-IP rules are enforced, with invalid Production origin or proxy
+  // configuration rejected at startup."*
+  // ==================================================================================================
+  //   exact HTTPS Origin   this test — three cases: the configured origin accepted, a DIFFERENT origin
+  //                        refused, and the SAME origin over `http` refused. Two independent ways to fail.
+  //   credentialed CORS    `Exact_cors_policy_allows_credentials_only_for_configured_https_origin` —
+  //                        `SupportsCredentials` true AND the origin list exact AND no `*`. ⚠ The `*` check
+  //                        is not redundant beside the equality: it is the assertion that survives someone
+  //                        widening the list, which is the change that would actually be made.
+  //   client-IP rules      `Forwarded_headers_are_used_only_from_an_explicit_trusted_proxy`
+  //   rejected at startup  `Invalid_origin_configuration_fails_startup` (five rows: wildcard, wildcard
+  //                        subdomain, http, path, query) and
+  //                        `Trusted_proxy_mode_without_an_explicit_proxy_or_network_fails_startup`
+  //
+  // ⚠⚠ THE WORD *PRODUCTION* IN THAT LAST CLAUSE, AND WHY THE DEVELOPMENT FIXTURE IS THE RIGHT ONE HERE.
+  // Those startup tests run under `TestHostEnvironment`, which is **Development** — the criterion says
+  // *Production*. Normally that is the dropped-mode-qualifier defect. It is not, here, and the reason is in
+  // the source rather than the test: **the origin and proxy validation runs UNCONDITIONALLY, before the
+  // `if (!environment.IsDevelopment())` block that guards the HMAC and key-ring requirements.** So refusing
+  // in Development is the STRONGER observation: it proves the check is not environment-gated, and
+  // *Production* follows. ⚠ **A test in Production would have been the weaker one** — it could not
+  // distinguish an unconditional check from one gated on Production, and the gating is the thing that
+  // would actually break.
   public void Authentication_request_security_requires_https_and_an_exact_configured_origin()
   {
     var security = new AuthenticationRequestSecurity(Options.Create(new AuthenticationTransportOptions
@@ -149,6 +175,7 @@ public sealed class AuthenticationCsrfTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0043")]
   public async Task Login_and_logout_limits_reject_without_queueing_after_the_approved_counts()
   {
     var limiter = new AuthenticationEndpointRateLimiter(Options.Create(new AuthenticationTransportOptions()),
@@ -171,6 +198,11 @@ public sealed class AuthenticationCsrfTests
   [InlineData(AuthenticationEndpointKind.TenantSelection, 10)]
   [InlineData(AuthenticationEndpointKind.Refresh, 10)]
   [InlineData(AuthenticationEndpointKind.Logout, 5)]
+  [Trait("Criterion", "AC-AUTH-0043")]
+  // `AC-AUTH-0043`'s *"EXACT zero-queue limits"* — and both words are asserted. **EXACT**, because the
+  // limit-th request is required to be ALLOWED and only the next refused, so an off-by-one in either
+  // direction fails; **ZERO-QUEUE**, because the refusal is the immediate return value rather than a wait.
+  // ⚠ A test that only asserted the refusal would be satisfied by a limit of one.
   public async Task Partitioned_endpoint_limits_reject_the_first_request_above_the_exact_limit(
     AuthenticationEndpointKind endpoint,
     int limit)
@@ -187,6 +219,7 @@ public sealed class AuthenticationCsrfTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0043")]
   public async Task Login_enforces_both_identity_and_trusted_ip_limits()
   {
     var context = NewRateLimitContext();
@@ -202,6 +235,7 @@ public sealed class AuthenticationCsrfTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0044")]
   public async Task Exact_cors_policy_allows_credentials_only_for_configured_https_origin()
   {
     var configuration = Configuration("Direct");
@@ -224,6 +258,7 @@ public sealed class AuthenticationCsrfTests
   [InlineData("http://app.example.test")]
   [InlineData("https://app.example.test/path")]
   [InlineData("https://app.example.test?query=1")]
+  [Trait("Criterion", "AC-AUTH-0044")]
   public void Invalid_origin_configuration_fails_startup(string origin)
   {
     var configuration = Configuration("Direct", origin);
@@ -234,6 +269,7 @@ public sealed class AuthenticationCsrfTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0044")]
   public void Trusted_proxy_mode_without_an_explicit_proxy_or_network_fails_startup()
   {
     var services = new ServiceCollection();
@@ -247,6 +283,12 @@ public sealed class AuthenticationCsrfTests
   // `AC-AUTH-0042`'s last clause — *"production key-ring startup fails closed."* The only clause of this
   // criterion that is about STARTUP rather than a request, and therefore the only one a request-shaped
   // fixture could never have reached.
+  [Trait("Criterion", "AC-AUTH-0043")]
+  // Shared with `AC-AUTH-0042`'s key-ring clause above: **one startup validation refuses TWO different
+  // missing deployment inputs**, and each criterion owns one of them. Cited on both rather than split,
+  // because the assertion is a single `Assert.Throws` and cannot distinguish which requirement fired.
+  // ⚠ That is a real limit of this fixture, not a note about its style: strengthen it by asserting the
+  // message, as `Production_key_provider_rejects_an_rsa_key_below_the_approved_size` does.
   public void Production_transport_without_shared_rate_limit_and_data_protection_configuration_fails_startup()
   {
     var services = new ServiceCollection();
@@ -259,6 +301,7 @@ public sealed class AuthenticationCsrfTests
   [InlineData("Direct", null, "127.0.0.1|http")]
   [InlineData("TrustedProxy", "127.0.0.1", "203.0.113.10|https")]
   [InlineData("TrustedProxy", "10.0.0.1", "127.0.0.1|http")]
+  [Trait("Criterion", "AC-AUTH-0044")]
   public async Task Forwarded_headers_are_used_only_from_an_explicit_trusted_proxy(
     string proxyMode,
     string? knownProxy,
@@ -340,6 +383,62 @@ public sealed class AuthenticationCsrfTests
     Assert.Equal(2, deleted.Length);
     AssertCookie(deleted.Single(value => value.StartsWith("__Secure-ssas-refresh=", StringComparison.Ordinal)), true, true, DateTimeOffset.UnixEpoch);
     AssertCookie(deleted.Single(value => value.StartsWith("__Secure-ssas-xsrf=", StringComparison.Ordinal)), false, true, DateTimeOffset.UnixEpoch);
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0043")]
+  // ==================================================================================================
+  // `AC-AUTH-0043`'s THIRD CLAUSE — *"protects partition inputs with deployment HMAC"* — WHICH NOTHING
+  // WITNESSED, AND WHICH NO BEHAVIOURAL TEST CAN.
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ MEASURED FIRST: `Hash(material)` replaced by `material` in `AuthenticationEndpointRateLimiter`,
+  // HMAC computed and discarded. **All seven suites green.** The limiter partitions identically either
+  // way, because the key is internal and the concatenation already carries `\0` separators — **removing
+  // the entire control changes no observable behaviour.**
+  //
+  // ***THAT IS NOT AN OVERSIGHT IN THE TESTS. IT IS THE NATURE OF THE CONTROL.*** The point of hashing the
+  // partition input is that the raw value — an email address, a session id, a refresh selector — is NOT
+  // RETAINED IN MEMORY as a dictionary key. **A property whose whole content is that something is absent
+  // from a private data structure has no behavioural consequence to observe**, so every test that drives
+  // the limiter through its public surface is blind to it by construction, however thorough.
+  //
+  // ⚠⚠ SO THE WITNESS READS THE STRUCTURE, and the criterion is what licenses that. Reflecting into a
+  // private field is normally a smell; here **the private field IS the subject of the clause.** This file
+  // already reaches for `BindingFlags.NonPublic` in `InvokeEndpointCookieMethod`, so the idiom is not new.
+  //
+  // ⚠ AND THE ASSERTIONS ARE THREE, NOT ONE, BECAUSE THEY FAIL FOR DIFFERENT REASONS: the raw material is
+  // absent (the clause's actual content), the client IP is absent (the second sensitive input, which a fix
+  // hashing only the caller-supplied half would leave behind), and the key is exactly 64 uppercase hex
+  // characters (SHA-256 length — **which is what makes "absent" mean HASHED rather than merely renamed**;
+  // a key of `"redacted"` would satisfy the first two).
+  public async Task Rate_limit_partition_keys_are_hmac_derived_and_retain_no_raw_material()
+  {
+    const string material = "user@example.test";
+    const string ip = "203.0.113.20";
+    var limiter = new AuthenticationEndpointRateLimiter(
+      Options.Create(new AuthenticationTransportOptions { RateLimitHmacSecret = new string('k', 32) }),
+      new TestHostEnvironment());
+    var context = new DefaultHttpContext();
+    context.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(ip);
+
+    Assert.True((await limiter.AcquireAsync(AuthenticationEndpointKind.Login, context, material)).Allowed);
+    Assert.True((await limiter.AcquireAsync(AuthenticationEndpointKind.Refresh, context, material)).Allowed);
+
+    var field = typeof(AuthenticationEndpointRateLimiter)
+      .GetField("windows", BindingFlags.NonPublic | BindingFlags.Instance);
+    Assert.NotNull(field);
+    var keys = ((System.Collections.IDictionary)field.GetValue(limiter)!).Keys.Cast<string>().ToArray();
+
+    // Login partitions twice (ip, then identity+ip) and refresh once: three windows. The count is asserted
+    // because an empty dictionary would satisfy every assertion in the loop below.
+    Assert.Equal(3, keys.Length);
+    foreach (var key in keys)
+    {
+      Assert.DoesNotContain(material, key, StringComparison.OrdinalIgnoreCase);
+      Assert.DoesNotContain(ip, key, StringComparison.Ordinal);
+      Assert.Matches("^[0-9A-F]{64}$", key);
+    }
   }
 
   private static AuthenticationEndpointRateLimiter NewLimiter() => new(

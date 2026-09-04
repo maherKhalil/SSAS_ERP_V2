@@ -311,6 +311,89 @@ public sealed class AuthenticationApplicationTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0033")]
+  // ==================================================================================================
+  // `AC-AUTH-0033`'s LAST CLAUSE — *"… and REVOKES EVERY ACTIVE SESSION USING `PasswordReset`."*
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ MEASURED FIRST: the handler's revocation loop fed an EMPTY list — the repository still called, its
+  // result emptied, so no unread-parameter warning. **All seven suites green.** Password reset could stop
+  // revoking sessions entirely and nothing would say so.
+  //
+  // ⚠⚠ AND THE REASON IS THE FIXTURE, NOT THE FAKE. `FakeAuthenticationSessionRepository` implements
+  // `ListActiveByIdentityForUpdateAsync` correctly, filtering on identity AND `Active`. **No test in this
+  // file has ever added a session to it**, so the branch is unreachable and the fake's correctness is
+  // moot. *A stub that is right about a population nobody populates is a coverage sink with no tell* —
+  // it reads as supported behaviour at every call site.
+  //
+  // THE OTHER FOUR CLAUSES are on `Password_reset_is_non_enumerating_and_completion_advances_security_
+  // state_once`: SecurityVersion advances, the token is single-use (the replay fails), lockout is cleared
+  // (`FailedAttemptCount` 0 and `LockoutEndUtc` null). ⚠ *Changes the password* is asserted by neither —
+  // no test verifies the new credential works or that the stored hash moved.
+  //
+  // ⚠ THE SECOND IDENTITY IS THE CRITERION'S SCOPE, NOT DECORATION. *Every active session* means every one
+  // OF THAT IDENTITY'S; a handler revoking the whole table would satisfy a single-session fixture. **This
+  // is the same "only over a population of one" trap as the logout test**, met a second time, so the
+  // fixture carries three sessions across two identities and one already-revoked.
+  public async Task Password_reset_revokes_every_active_session_for_that_identity_only()
+  {
+    var scope = new TestScope();
+    var identity = scope.AddIdentity("local:9b21439677f44164b2efc7bf5af09e91");
+    var account = scope.AddActiveAccount(identity.Id, "reset-sessions@example.com");
+    var other = scope.AddIdentity("local:4c31439677f44164b2efc7bf5af09e92");
+
+    var first = NewSession(account.IdentityId);
+    var second = NewSession(account.IdentityId);
+    var foreign = NewSession(other.Id);
+    var alreadyRevoked = NewSession(account.IdentityId);
+    Assert.True(alreadyRevoked.Revoke(
+      AuthenticationSessionRevocationReason.Administrative, "ops", Guid.NewGuid(), Now).IsSuccess);
+    scope.Sessions.Values.AddRange([first, second, foreign, alreadyRevoked]);
+
+    var issued = await scope.CreateResetIssuanceHandler().HandleAsync(
+      new IssuePasswordResetCommand("reset-sessions@example.com"));
+    var rawToken = issued.Value.SensitiveToken!.RevealOnce().Value;
+
+    var result = await scope.CreateResetCompletionHandler().HandleAsync(
+      new CompletePasswordResetCommand(rawToken, "Replacement password 123"));
+
+    Assert.True(result.IsSuccess);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, first.Status);
+    Assert.Equal(AuthenticationSessionRevocationReason.PasswordReset, first.RevocationReason);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, second.Status);
+    Assert.Equal(AuthenticationSessionRevocationReason.PasswordReset, second.RevocationReason);
+
+    // EVERY: two, not "one of the two the handler happened to reach".
+    // ONLY THAT IDENTITY'S: the foreign session is untouched.
+    Assert.Equal(AuthenticationSessionStatus.Active, foreign.Status);
+    Assert.Null(foreign.RevocationReason);
+
+    // ⚠ AND THE ALREADY-REVOKED ONE KEEPS ITS ORIGINAL REASON. The handler fails the whole command if any
+    // `Revoke` returns a failure, so a handler that fed ALL sessions rather than the active ones would
+    // either overwrite this reason or refuse the reset outright. **This assertion is what distinguishes
+    // "revokes every ACTIVE session" from "revokes every session".**
+    Assert.Equal(AuthenticationSessionRevocationReason.Administrative, alreadyRevoked.RevocationReason);
+  }
+
+  // ⚠⚠ WHICH OF THE ABOVE ARE PLANT-VERIFIED, STATED RATHER THAN IMPLIED. Only the first pair is: the
+  // handler's list emptied -> `Expected Revoked / Actual Active`. **The foreign-session and
+  // already-revoked assertions cannot be planted from `src/` without rewriting WHICH repository method the
+  // handler calls** — identity scoping and the Active filter both live inside
+  // `ListActiveByIdentityForUpdateAsync`, so any plant against them is a plant against the fake, which
+  // would be planting the instrument rather than the product.
+  //
+  // *They are kept as guards against a specific future change* — swapping that call for an unscoped or
+  // all-status listing, which is one identifier's difference and would read as a widening rather than a
+  // defect. **Labelled so nobody counts three verified legs where there is one.**
+
+  // No identifier is set: the handler iterates the repository's answer and never reads `Id`, so giving
+  // these sessions ids would be arrangement that no assertion depends on. Object identity is what the
+  // assertions use.
+  private static AuthenticationSession NewSession(long identityId) =>
+    AuthenticationSession.Create(
+      identityId, 31, Guid.NewGuid(), "ssas-erp-web", Guid.NewGuid(), 1, Now, Now.AddDays(30), Now.AddDays(90));
+
+  [Fact]
   [Trait("BusinessRequirement", "BR-AUTH-0008")]
   [Trait("BusinessRule", "BRULE-AUTH-0010")]
   [Trait("BusinessRule", "BRULE-AUTH-0011")]

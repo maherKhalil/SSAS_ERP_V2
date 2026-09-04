@@ -452,4 +452,108 @@ public sealed class SubscriptionInvariantTests
   [Trait("Criterion", "AC-SUB-0027")]
   public void Rehydrating_a_fixed_term_with_no_end_is_refused() =>
     Assert.True(SubscriptionTerm.Rehydrate(SubscriptionTermKind.Fixed, Noon, null).IsFailure);
+
+  // ==================================================================================================
+  // NO PLAN ATTRIBUTE IS COPIED ONTO A SUBSCRIPTION ROW (`AC-SUB-0005`).
+  // ==================================================================================================
+  //
+  // *"A plan is referenced by many tenants; amending it changes no subscription record, and no plan
+  // attribute is copied into a subscription row at assignment."*
+  //
+  // ---- ⚠ WHAT THE CLAUSE IS FOR, WHICH DECIDES WHAT COUNTS AS A COPY.
+  //
+  // **Divergence.** Copy the plan's name or price onto the row and a plan amendment stops propagating —
+  // which is the failure `AC-SUB-0015` names from the other side. **A DUPLICATED SINGLE-VALUED ATTRIBUTE
+  // CAN DRIFT FROM ITS SOURCE; A SELECTION FROM A SET CANNOT, because there is no source value to drift
+  // from.**
+  //
+  // ---- ⚠⚠ `BillingCurrencyCode` IS A SELECTION, AND ITS GROUNDS ARE ASSERTED BELOW RATHER THAN CLAIMED.
+  //
+  // The row carries which of the plan's currencies this tenant is billed in — **a fact about the
+  // subscription that exists nowhere on the plan.** That reading depends entirely on the plan being
+  // genuinely multi-currency, so the test asserts it: `SubscriptionPlan.Prices` is a COLLECTION of
+  // `PlanPrice`, each with its own `CurrencyCode`. ***IF A PLAN EVER BECOMES SINGLE-CURRENCY, THAT
+  // ASSERTION FAILS AND THIS EXEMPTION IS WITHDRAWN AUTOMATICALLY*** — the grounds are checked, not
+  // recorded, which is what stops it becoming a name in an exclusion list nobody re-examines.
+  //
+  // ⚠⚠⚠ AND THE HONEST WEIGHT OF THAT ASSERTION, MEASURED: **IT COULD NOT BE PLANTED.** Making `Prices`
+  // single-valued does not compile — `SubscriptionPlanConfiguration` owns it as a collection and the EF
+  // model refuses. **So the compiler, not this line, is what actually prevents a single-currency plan.**
+  // The assertion stays because it states the dependency at the place that depends on it and costs
+  // nothing; it is belt-and-braces over a guarantee the build already gives, and reporting it as the
+  // guard would overstate it.
+  //
+  // ---- THE AUDIT NAMES ARE EXCLUDED, AND READ FROM THE INTERFACE RATHER THAN TYPED HERE.
+  //
+  // Both types declare `CreatedUtc` and a `ModifiedBy`-shaped actor. Those are each row's own provenance,
+  // not the plan's attributes, and a name match on them is a false positive. **The exclusion is the member
+  // list of `IAuditableEntity` plus `RowVersion`, read reflectively**, so it cannot drift from the
+  // interface and is not a hand-written list of convenient names.
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0005")]
+  public void No_single_valued_plan_attribute_is_duplicated_onto_a_subscription_record()
+  {
+    var provenance = typeof(IAuditableEntity).GetProperties()
+      .Select(property => property.Name)
+      .Append("RowVersion")
+      .Append("ChangedBy")
+      .ToHashSet(StringComparer.Ordinal);
+
+    // THE GROUNDS FOR THE ONE SELECTION, ASSERTED FIRST. A plan offers many currencies, so holding one is
+    // a choice and not a duplicate. If this stops being true the exemption below stops with it.
+    var prices = typeof(SubscriptionPlan).GetProperty(nameof(SubscriptionPlan.Prices));
+    Assert.NotNull(prices);
+    Assert.True(
+      typeof(System.Collections.IEnumerable).IsAssignableFrom(prices!.PropertyType)
+        && prices.PropertyType != typeof(string),
+      "SubscriptionPlan.Prices is no longer a collection, so a plan may be single-currency and " +
+      "TenantSubscription.BillingCurrencyCode would be a COPY rather than a selection. AC-SUB-0005's " +
+      "reading depends on this.");
+
+    // ⚠ THE IDENTIFIER IS NOT AN ATTRIBUTE, AND THE GROUNDS ARE THE CRITERION'S OWN FIRST CLAUSE:
+    // *"A plan is REFERENCED by many tenants."* `TenantSubscription.SubscriptionPlanId` is that reference —
+    // **it is what makes copying unnecessary, so counting it as a copy inverts the rule.** The name is
+    // derived from the type rather than written as a literal, so renaming `SubscriptionPlan` carries the
+    // exclusion with it instead of silently reopening this as a false positive.
+    var identifier = typeof(SubscriptionPlan).Name + "Id";
+
+    var planAttributes = Declared(typeof(SubscriptionPlan))
+      .Where(property => property.Name != identifier)
+      .Where(property => !provenance.Contains(property.Name))
+      .Where(property => !typeof(System.Collections.IEnumerable).IsAssignableFrom(property.PropertyType)
+        || property.PropertyType == typeof(string))
+      .ToArray();
+
+    var subscriptionProperties = Declared(typeof(TenantSubscription))
+      .Where(property => !provenance.Contains(property.Name))
+      .ToArray();
+
+    // ⚠ TWO FLOORS, BECAUSE EITHER SIDE COLLAPSING MAKES THE COMPARISON VACUOUS AND GREEN. A filter that
+    // matched nothing on the plan side would report no copies of nothing.
+    Assert.True(planAttributes.Length >= 3,
+      $"only {planAttributes.Length} single-valued plan attributes were found; the reflection has stopped " +
+      "matching and no copy could be detected.");
+    Assert.True(subscriptionProperties.Length >= 5,
+      $"only {subscriptionProperties.Length} subscription properties were found; same problem.");
+
+    // A copy is a NAME match — the shape the criterion forbids, and the one that drifts. Type matching is
+    // deliberately not used: `Guid`, `string` and `DateTimeOffset` recur for unrelated reasons on both
+    // types and would report every row as a copy of every other.
+    var copies = subscriptionProperties
+      .Where(subscription => planAttributes.Any(plan => plan.Name == subscription.Name))
+      .Select(property => property.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(copies.Length == 0,
+      "these TenantSubscription properties duplicate a single-valued SubscriptionPlan attribute, so a plan " +
+      "amendment would stop propagating to subscriptions that name it and the two would silently " +
+      $"diverge: {string.Join(", ", copies)}. A value CHOSEN from a plan-offered set is not a copy — if " +
+      "one of these is such a selection, assert the grounds as Prices is asserted above.");
+  }
+
+  private static System.Reflection.PropertyInfo[] Declared(Type type) =>
+    type.GetProperties(System.Reflection.BindingFlags.Public
+      | System.Reflection.BindingFlags.Instance
+      | System.Reflection.BindingFlags.DeclaredOnly);
 }

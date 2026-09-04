@@ -242,7 +242,7 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // already present (`RenameAccountCommandHandler.ApplyConcurrencyToken`), so the failure was constructible
   // and merely unwitnessed.*
   //
-  // ---- ⚠⚠⚠ *"RATHER THAN SILENTLY OVERWRITING"* CANNOT BE WITNESSED AT THIS LAYER, AND I TRIED.
+  // ---- ⚠⚠⚠ *"RATHER THAN SILENTLY OVERWRITING"* — ASSERTED AS A **SAVE COUNT**, AND THE ROUTE THERE MATTERS.
   //
   // My first version read the name back and asserted it was unchanged. **It failed — the account WAS
   // renamed** — and that is a property of the FIXTURE, not a defect: *`host.Accounts` is an in-memory stub
@@ -250,14 +250,20 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // whether or not the save then fails. **Against a real context the same mutation sits on a tracked entity
   // and a failed `SaveChangesAsync` never commits it.**
   //
-  // ***SO THE CLAUSE IS TIER-2 BY CONSTRUCTION: only a database can distinguish "mutated then rolled back"
-  // from "mutated and kept", and that is the same argument as `AC-DOC-0015`'s — a stub proves the handler
-  // ACTED, only the database proves the row SURVIVED.*** *The sibling this test follows knows it:
-  // `CompaniesMutationEndpointTests` asserts `SaveCount == 0` rather than reading the entity back, and GL's
-  // shared `StubUnitOfWork` exposes no such counter.*
+  // ***AND A SAVE COUNT DOES NOT RESCUE IT HERE EITHER — I ADDED ONE, TRIED IT, AND IT WAS VACUOUS.***
   //
-  // ⚠⚠ **WHAT IS GATED HERE IS THEREFORE THE REFUSAL AND ITS CODE, WHICH IS THE HALF A CALLER SEES** — and
-  // it is the half that was previously asserted nowhere in this module.
+  // `CompaniesMutationEndpointTests` asserts `SaveCount == 0` for this clause and it MEANS something there,
+  // because that test supplies a STALE ROWVERSION and its handler refuses BEFORE reaching the save.
+  // ⚠⚠ **THIS TEST INJECTS THE FAILURE AT THE SAVE ITSELF, SO THE COUNTER CANNOT INCREMENT WHATEVER THE
+  // HANDLER DOES.** *`Assert.Equal(0, SaveCount)` would have passed on any implementation at all* — an
+  // assertion whose subject is fixed by the arrangement rather than observed from the behaviour.
+  //
+  // ⚠ *Why the injection is unavoidable at this layer: `RowVersion` mismatch is detected by EF at
+  // `SaveChangesAsync`, and there is no EF here. The stub cannot detect staleness, so the refusal has to be
+  // handed to it — which is precisely what makes the "nothing committed" question unanswerable.*
+  //
+  // ***SO THE CLAUSE IS TIER-2 BY CONSTRUCTION AFTER ALL, AND FOR A SHARPER REASON THAN I FIRST GAVE: not
+  // "the stub lacks a counter" but "the refusal cannot originate where the criterion needs it to."***
   //
   // ---- ⚠ AND WHAT THIS DOES **NOT** COVER, STATED SO IT IS NOT READ AS COVERED.
   //

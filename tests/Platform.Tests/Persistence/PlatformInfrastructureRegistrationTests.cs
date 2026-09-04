@@ -256,6 +256,31 @@ public sealed class PlatformInfrastructureRegistrationTests
   // mechanically below: it declares **no instance properties** and is **not an entity in the model**, so it
   // contributes no state, no flag, no column and no enum member. *A name-based ban with a hand-written
   // exclusion list would have hidden a real violation behind the same exclusion.*
+  // ⚠⚠ CORRECTION TO WHAT THIS TEST'S FIRST COMMIT IMPLIED: IT IS NOT THE ONLY WITNESS.
+  // `TrialSubscriptionIssuanceTests.No_type_in_the_subscription_model_carries_a_trial_flag` already
+  // existed and covers part of the same criterion. **I did not find it, because my mechanism search for
+  // `AC-SUB-0033` enumerated `src/` and never asked whether a test already existed** — the search that
+  // would have found it is the one I run for every OTHER citation. The plant matrix below was true and
+  // its attribution was incomplete; the four-cell version is in that file and here.
+  //
+  // ⚠⚠⚠ TWO TESTS COVER THIS CRITERION AND THEY FAIL IN OPPOSITE DIRECTIONS. MEASURED, NOT REASONED:
+  //
+  //   plant                                        named-list test   walk test
+  //   `IsTrial` on a NAMED type                    RED               RED
+  //   `SubscriptionTermKind.Trial` (un-named enum) **green**         RED
+  //   unmapped `TrialAppearsHere` on a named type  RED               RED
+  //   a named type RENAMED or REMOVED              **fails to        walks whatever
+  //                                                COMPILE**         is left, silently
+  //
+  // ***A NAMED LIST CATCHES REMOVAL AND RENAME; A WALK CATCHES ADDITION. NEITHER CATCHES THE OTHER'S
+  // CASE.*** The list is coupled to its types at COMPILE time, so losing one is loud; the walk is coupled
+  // to a namespace, so gaining one is automatic and losing one is silent.
+  //
+  // ⚠ So this is not duplication and neither should be deleted. **The criterion is an ABSENCE over a
+  // package** — *no trial state, flag, column or enum member ANYWHERE* — which needs the walk; the file
+  // holding the named list states its own philosophy for naming (*"a scan could pass vacuously"*) and is
+  // right about the failure it is guarding.
+  //
   // ---- THE PLANT MATRIX. THREE PLANTS, AND THE POINT IS THAT THE WALKS ARE INDEPENDENT.
   //
   //   `SubscriptionTermKind.Trial` added        -> `enum member SubscriptionTermKind.Trial`

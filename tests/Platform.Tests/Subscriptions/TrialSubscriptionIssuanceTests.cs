@@ -187,6 +187,32 @@ public sealed class TrialSubscriptionIssuanceTests
   // mistake — the convenience column added because a query was awkward — which is how a second way to be
   // entitled arrives in practice.
   [Fact]
+  [Trait("Acceptance", "AC-SUB-0033")]
+  // `AC-SUB-0033`, pasted — *"**No trial state, flag, column or enum member exists anywhere in the
+  // package.** A trial is a plan with a short term and nothing else. The criterion is the absence"*
+  //
+  // ⚠ THIS TEST CARRIES PART OF IT. The criterion says ANYWHERE IN THE PACKAGE and this names two types
+  // and two enums — **`SubscriptionBillingPeriod` and `SubscriptionTermKind` are not among them**, so a
+  // `Trial` member added to either passes here. `PlatformInfrastructureRegistrationTests.No_trial_state_
+  // flag_column_or_enum_member_exists_in_the_subscription_package` walks the whole package and the model.
+  //
+  // ⚠⚠⚠ TWO TESTS COVER THIS CRITERION AND THEY FAIL IN OPPOSITE DIRECTIONS. MEASURED, NOT REASONED:
+  //
+  //   plant                                        named-list test   walk test
+  //   `IsTrial` on a NAMED type                    RED               RED
+  //   `SubscriptionTermKind.Trial` (un-named enum) **green**         RED
+  //   unmapped `TrialAppearsHere` on a named type  RED               RED
+  //   a named type RENAMED or REMOVED              **fails to        walks whatever
+  //                                                COMPILE**         is left, silently
+  //
+  // ***A NAMED LIST CATCHES REMOVAL AND RENAME; A WALK CATCHES ADDITION. NEITHER CATCHES THE OTHER'S
+  // CASE.*** The list is coupled to its types at COMPILE time, so losing one is loud; the walk is coupled
+  // to a namespace, so gaining one is automatic and losing one is silent.
+  //
+  // ⚠ So this is not duplication and neither should be deleted. **The criterion is an ABSENCE over a
+  // package** — *no trial state, flag, column or enum member ANYWHERE* — which needs the walk; the file
+  // holding the named list states its own philosophy for naming (*"a scan could pass vacuously"*) and is
+  // right about the failure it is guarding.
   public void No_type_in_the_subscription_model_carries_a_trial_flag()
   {
     var members = typeof(TenantSubscription).GetProperties()

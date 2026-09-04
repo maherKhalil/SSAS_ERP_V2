@@ -36,8 +36,20 @@ namespace SSAS.API.Tests.Infrastructure;
 // `[SUPERSEDED - ...]` mean materially different things — deferred is "not yet", superseded is "never", and
 // "built under another path" is not a gap at all. **This test does not adjudicate WHICH marker is right;
 // it only requires that an unbuilt row carries one.** Choosing the marker is a human reading the code.
+// ---- ⚠ MOVED INTO `HostIntegrationTestGroup` RATHER THAN EXEMPTED FROM THE RULE IN
+// `HostFixtureCollectionTests`.
+//
+// This was the only class taking `HostWebApplicationFactory` as an `IClassFixture` outside that collection.
+// `IClassFixture` mints a factory PER CLASS, and xUnit runs separate collections in PARALLEL — so two such
+// classes build two `WebApplicationFactory<Program>` instances at once and race on process-wide logging
+// state. **Measured: adding a second one produced `InvalidOperationException: The logger is already
+// frozen`, passing when its suite ran alone and failing under the gate.**
+//
+// It was safe only because it was alone, which is a property of the tree and not of this class. **Moving it
+// leaves that rule with no exemptions** — an exemption list with one name records a fact ("currently the
+// only one outside") that stops being true at exactly the moment the rule is needed.
+[Collection(HostIntegrationTestGroup.Name)]
 public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
-  : IClassFixture<HostWebApplicationFactory>
 {
   private static readonly Regex BareLine = new(
     @"^(GET|POST|PUT|DELETE|PATCH)\s+(/api/\S+)", RegexOptions.Compiled);

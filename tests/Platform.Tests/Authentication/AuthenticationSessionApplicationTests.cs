@@ -131,6 +131,15 @@ public sealed class AuthenticationSessionApplicationTests
   // **Neither alone separates a working rule from a handler stuck on one branch.**
   [Fact]
   [Trait("Acceptance", "AC-IAM-0007")]
+  [Trait("Acceptance", "AC-AUTH-0003")]
+  // `AC-AUTH-0003` — *"Multiple memberships require a SHORT-LIVED selection transaction."* Two eligible
+  // memberships produce exactly one selection transaction and **no session**, which is the *require* half:
+  // a handler that auto-selected one of many would leave `Sessions` non-empty.
+  //
+  // ⚠ *SHORT-LIVED* IS NOT WITNESSED HERE and this fixture cannot witness it — no clock advances. The
+  // five-minute lifetime belongs to `AC-AUTH-0028`, and the nearest thing to a witness is
+  // `Tenant_selection_creates_one_session_and_cannot_be_replayed`, which pins SINGLE-USE rather than
+  // EXPIRY. **Two different ways for a proof to stop working, and only one of them is tested.**
   public async Task Begin_tenant_access_creates_single_use_selection_proof_for_multiple_memberships()
   {
     var fixture = new Fixture();
@@ -148,6 +157,21 @@ public sealed class AuthenticationSessionApplicationTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0028")]
+  // `AC-AUTH-0028`, quoted to its terminal full stop — *"A tenant-selection proof is persisted only as
+  // selector plus exact 32-byte hash, uses the canonical 76-character format, lasts five minutes, is
+  // single-use, and is consumed only with successful session creation."* FIVE clauses; this test carries
+  // TWO of them:
+  //
+  //   single-use                    the replay fails and `Sessions` still holds exactly one
+  //   consumed only WITH successful `ConsumedUtc` is set on the transaction that produced the session —
+  //   session creation              the two are asserted together, which is what makes it *with* rather
+  //                                 than *before*
+  //
+  // ⚠ NOT WITNESSED HERE, and named rather than left to a reader to discover: **selector-plus-32-byte-hash
+  // persistence** (a storage-shape claim — the SQL Server suite asserts `binary(32)`), **the canonical
+  // 76-character format**, and **the five-minute lifetime** — no clock advances in this fixture, so
+  // *lasts five minutes* is unobservable here in either direction.
   public async Task Tenant_selection_creates_one_session_and_cannot_be_replayed()
   {
     var fixture = new Fixture();
@@ -207,6 +231,38 @@ public sealed class AuthenticationSessionApplicationTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0007")]
+  [Trait("Acceptance", "AC-AUTH-0008")]
+  // ==================================================================================================
+  // `AC-AUTH-0007` — *"Successful refresh invalidates the submitted refresh token."*
+  // `AC-AUTH-0008` — *"Reuse revokes the approved scope and requires reauthentication."*
+  // ==================================================================================================
+  //
+  // One fixture, two criteria, because the second is only reachable through the first: the reuse can only
+  // be DETECTED if the successful refresh invalidated the token it consumed.
+  //
+  //   0007  `Assert.NotNull(predecessor.ConsumedUtc)` — added here. ⚠ **Before it, 0007 was witnessed only
+  //         INDIRECTLY, by the second call failing** — which is evidence that reuse is refused, not that
+  //         the submitted token was invalidated. *A refusal has many possible causes and the criterion
+  //         names one.*
+  //
+  //         ⚠⚠ AND IT CANNOT BE SHOWN LOAD-BEARING BY A PLANT, WHICH IS WORTH SAYING RATHER THAN LEAVING
+  //         AS AN UNCLAIMED GAP. Consumption is WHY the reuse is detected, so any plant that nulls
+  //         `ConsumedUtc` also makes the second call SUCCEED — and `Assert.True(reuse.IsFailure)` fails
+  //         first, three lines earlier. **There is no state in the current implementation where this
+  //         assertion fails and the others pass**, which by the usual test makes it emphasis.
+  //
+  //         *It is kept anyway, and the reason is specific rather than sentimental:* **it pins WHICH
+  //         MECHANISM invalidates the token.** Move reuse detection to another carrier — a separate used
+  //         flag, a revocation row — and the reuse assertion still passes while this one fails. So it
+  //         constrains the implementation to the one the criterion names, and that is content, not
+  //         decoration. Labelled so nobody reads it as an independently verified leg.
+  //   0008  the session becomes `Compromised` and the SUCCESSOR carries `RevokedUtc` — the "approved
+  //         scope" being the whole token family, not merely the reused token.
+  //
+  // ⚠⚠ 0008's SECOND CLAUSE IS NOT WITNESSED HERE: *"and requires reauthentication."* A `Compromised`
+  // session cannot refresh, so the property plausibly follows — **but no test in this file drives a
+  // subsequent login, and "plausibly follows" is the reasoning a citation is supposed to replace.**
   public async Task Successful_refresh_rotates_once_and_verified_predecessor_reuse_compromises_session()
   {
     var fixture = new Fixture();
@@ -230,6 +286,9 @@ public sealed class AuthenticationSessionApplicationTests
     Assert.Equal(AuthenticationSessionStatus.Compromised, session.Status);
     Assert.Equal(2, session.RefreshTokenRecords.Count);
     Assert.NotNull(session.RefreshTokenRecords.Single(token => token.PublicId != predecessor.PublicId).RevokedUtc);
+    // `AC-AUTH-0007` directly: the SUBMITTED token was invalidated by the successful refresh, rather than
+    // the reuse merely having been refused for some other reason.
+    Assert.NotNull(predecessor.ConsumedUtc);
   }
 
   // ==================================================================================================
@@ -378,7 +437,11 @@ public sealed class AuthenticationSessionApplicationTests
   }
 
   [Fact]
-  [Trait("Criterion", "AC-AUTH-0010")]
+  // Key is `Acceptance`, not `Criterion`: **this file states its own convention at `AC-IAM-0006` and gives
+  // the reason** — both keys carry `AC-` ids repo-wide, nothing validates either, so local consistency is
+  // all a reader can rely on. My first version of this citation used `Criterion` and was the only one of
+  // nine in the file; corrected rather than left as the exception that starts the drift.
+  [Trait("Acceptance", "AC-AUTH-0010")]
   // ==================================================================================================
   // `AC-AUTH-0010` — *"Current-session logout does not revoke unrelated sessions."*
   // ==================================================================================================

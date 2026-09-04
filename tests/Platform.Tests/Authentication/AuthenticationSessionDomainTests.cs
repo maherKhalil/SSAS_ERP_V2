@@ -94,6 +94,24 @@ public sealed class AuthenticationSessionDomainTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0030")]
+  // ==================================================================================================
+  // `AC-AUTH-0030` — *"Refresh atomically consumes one token, links exactly one replacement, UPDATES IDLE
+  // EXPIRATION WITHOUT EXTENDING ABSOLUTE EXPIRATION, and rolls back all changes on failed persistence."*
+  // ==================================================================================================
+  //
+  // The third clause is the one this test carries, and it is carried by `Assert.Equal(AbsoluteExpiresUtc,
+  // IdleExpiresUtc)` after rotating at `Now + 70d` with a 30-day idle lifetime — the `Min` clamp binds.
+  //
+  // ⚠⚠ THAT ASSERTION SITS AFTER A `MarkCompromised` CALL, SO TWO MECHANISMS COULD PRODUCE IT. A compromise
+  // that collapsed the idle window would give the same equality, and the green would say nothing about
+  // which. ***WHEN AN ASSERTION SITS DOWNSTREAM OF MORE THAN ONE MECHANISM THAT COULD PRODUCE IT, THE
+  // CITATION IS A CLAIM ABOUT ATTRIBUTION AND ONLY A PLANT SETTLES IT.*** Planted: `Min(utc.Add(idleLifetime),
+  // AbsoluteExpiresUtc)` replaced by `utc.Add(idleLifetime)` — THIS test reddens. Attributed to the rotation.
+  //
+  // ⚠ NOT WITNESSED HERE: *links exactly one replacement* — the count of records is asserted, but not that
+  // the predecessor POINTS at the successor; and *rolls back on failed persistence*, which needs a failing
+  // unit of work (`Access_token_issuance_failure_rolls_back_...`, `AC-AUTH-0046`, is the nearest).
   public void Rotation_consumes_predecessor_caps_idle_expiry_and_reuse_compromises_descendants()
   {
     var session = NewPersistedSession(100, 90);

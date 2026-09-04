@@ -587,6 +587,19 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
 
     // The half that makes it a refusal rather than a retry.
     Assert.Empty(host.Repository.Added);
+
+    // ⚠⚠⚠ THE `Refused` OUTCOME IN THE FIXTURE IS LOAD-BEARING AND THIS TEST MUST NOT BE WIDENED.
+    //
+    // `AC-DOC-0005` requires the OPPOSITE for a different outcome: *"a subsequent real import of the same
+    // file succeeds"* after a validate-only run. **The production short-circuit filters on nothing but the
+    // key's PRESENCE, so it cannot satisfy both criteria** — `Refused` must block, `Validated` must not, and
+    // `Applied` must return the original. *That is a three-state requirement met by a two-state model, and
+    // it is an open product decision.*
+    //
+    // ***SO THIS TEST DELIBERATELY SEEDS `Refused` AND ASSERTS ONLY ABOUT `Refused`. A three-way fix passes
+    // it unchanged.*** **Rewriting it to assert that ANY existing key short-circuits would put a green test
+    // in the gate that BLOCKS the correct implementation of `AC-DOC-0005`** — a citation building a gate
+    // against the fix its neighbour requires.
   }
 
   // ⚠ CITES `AC-DOC-0008` — *"Submitting a file under an `importKey` already recorded for the company

@@ -2890,6 +2890,25 @@ public sealed class EmployeeBoundarySqlServerTests
   // would have to remember all four, and this is what would notice when it forgot one.
   [Fact]
   [Trait("Decision", "BRULE-DOC-0603")]
+  // ⚠ CITES `AC-DOC-0006` — *"An imported employee is INDISTINGUISHABLE from a created one. Same normalized
+  // uniqueness, same stamped branch, exactly one initial branch assignment, one department assignment and
+  // one position assignment, same audit fields. No import-specific relaxation is observable."*
+  //
+  // ***I REFUSED THIS ONCE, ON THE GROUND THAT "same normalized uniqueness" AND "same audit fields" ARE
+  // ASSERTED BY NOTHING. THAT WAS THE WRONG QUESTION.*** **The criterion is not a list of properties to
+  // check one by one — it is a claim that THERE IS ONLY ONE CREATION PATH**, and every listed property is
+  // then whatever that path does, by construction. *`ImportEmployeesCommandHandler` injects
+  // `CreateEmployeeCommandHandler` and its own header says why: "an import that assembled `Employee.Create`
+  // itself would be a second place an employee can come into existence."*
+  //
+  // ⚠⚠ **SO THE WITNESS IS THE TEST THAT WOULD DETECT A SECOND PATH, AND THIS IS IT.** The four rows per
+  // employee are what a hand-rolled import would have to remember; *the assertion is not "imports produce
+  // four rows" but "imports go through the thing that produces four rows."* **A criterion of the form
+  // "X is indistinguishable from Y" is discharged by showing X and Y ARE THE SAME CODE, not by enumerating
+  // the properties they share** — an enumeration is a sample and this is a proof.
+  //
+  // ⚠⚠⚠ ***TIER 2 — UNGATED.*** `Integration.Tests` does not run in `GATE_SCOPE=TASK`; green 2026-09-01.
+  [Trait("Criterion", "AC-DOC-0006")]
   public async Task I1_An_applied_import_creates_every_employee_through_the_ordinary_create_path()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();

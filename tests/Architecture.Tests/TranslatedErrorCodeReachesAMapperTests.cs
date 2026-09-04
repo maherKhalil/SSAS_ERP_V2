@@ -103,12 +103,41 @@ public sealed class TranslatedErrorCodeReachesAMapperTests
   [Fact]
   public void The_exempt_code_is_still_unreachable_because_no_endpoint_serves_it()
   {
-    var reachable = ApiAssemblies()
+    // ⚠⚠⚠ THE FALSIFIER NEEDED A FALSIFIER, AND THIS FILE ALREADY KNEW WHY.
+    //
+    // `Every_mapper_exposes_an_entry_point_this_test_can_invoke` exists because *"a mapper could simply not
+    // be invoked, every code it owns would look unmapped, and the failure would point at the codes rather
+    // than at the omission."* **The same argument applies to THIS instrument and had not been made:**
+    // `Assert.False(reachable)` passes whenever the search finds nothing, and finding nothing has FOUR
+    // causes, only one of which is the intended one.
+    //
+    //   the handler genuinely reaches no endpoint      <- the claim
+    //   `ApiAssemblies()` matched no files             <- a glob over `SSAS.*.API.dll` in the output dir
+    //   the type was RENAMED                           <- the search is `ParameterType.Name ==`, a STRING
+    //   the injection idiom changed                    <- constructor injection is not a method parameter
+    //
+    // ***THE LAST THREE ALL GO GREEN, AND ALL THREE MEAN "THIS EXEMPTION IS NO LONGER BEING CHECKED" RATHER
+    // THAN "THE EXEMPTION STILL HOLDS".*** A rename is not hypothetical — the string is not a `typeof`.
+    //
+    // ⚠⚠ THE CONTROL SHARES THE INSTRUMENT RATHER THAN RE-IMPLEMENTING IT. `Reaches` is the one search, used
+    // twice: the exempt handler must NOT be found, and `CreateCompanyCommandHandler` — injected as a method
+    // parameter by `SSAS.Platform.API`, in the same assemblies, through the same idiom — MUST be. *An inline
+    // copy of the matcher would certify its own vacuity.*
+    bool Reaches(string handlerTypeName) => ApiAssemblies()
       .SelectMany(assembly => assembly.GetTypes())
       .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
         | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
       .SelectMany(method => method.GetParameters())
-      .Any(parameter => parameter.ParameterType.Name == "CreateTenantCommandHandler");
+      .Any(parameter => parameter.ParameterType.Name == handlerTypeName);
+
+    Assert.True(
+      Reaches("CreateCompanyCommandHandler"),
+      "the positive control failed: this search can no longer find a handler that IS served by an endpoint, " +
+      "so its negative answer below means nothing. Check that SSAS.*.API.dll is in the test output, that " +
+      "CreateCompanyCommandHandler still exists under that name, and that endpoints still take handlers as " +
+      "method parameters.");
+
+    var reachable = Reaches("CreateTenantCommandHandler");
 
     Assert.False(reachable,
       $"an API surface now reaches CreateTenantCommandHandler, so `{UnreachableUntilTenantAdminExists}` " +

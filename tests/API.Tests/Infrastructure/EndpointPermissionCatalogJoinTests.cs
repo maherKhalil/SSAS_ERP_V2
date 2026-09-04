@@ -99,7 +99,33 @@ public sealed class EndpointPermissionCatalogJoinTests(HostWebApplicationFactory
   // with no current instance is the one that catches the future mistake — the same reason a clean-tree
   // report is printed rather than omitted. If it is ever removed for looking redundant, that is the removal
   // this comment exists to argue with.
+  // ---- ⚠ CITED FOR `AC-SUB-0045`, WHICH THIS HAS ASSERTED ALL ALONG AND WHICH NOTHING CITED.
+  //
+  // The criterion: *"**Every permission name in the platform-plane set** — `Platform.Support.*` included,
+  // not only this package's six — is used **only** with `RequirePlatformPermission` and never with
+  // `RequirePermission`, and every tenant-plane name is used only with `RequirePermission`."* It then rules
+  // out the shortcut: *"The `Platform.` prefix does not distinguish the planes: `Platform.Users.View` is
+  // tenant-plane and `Platform.Support.Administer` is platform-plane. So `REQ-SUB-0004` is enforced by this
+  // guard or by careful reading, and careful reading is not a control."*
+  //
+  // **This is that guard.** The plane comes from the policy prefix the endpoint actually carries and the
+  // scope from `IPermissionCatalog`, so neither half is read off the name — which is the thing the criterion
+  // says must not be done. The population is every mapped route in the composed Host, so it is the whole set
+  // and not this package's six.
+  //
+  // ⚠⚠ WHAT IT DOES NOT COVER, SO THE ID DOES NOT CARRY MORE THAN IT SHOULD: a catalogued name that NO route
+  // uses is untouched here. Such a name satisfies the criterion vacuously — there is no usage to be on the
+  // wrong plane — but a reader who takes this as "every catalogued name is checked" has read more than it
+  // says. It checks every USE.
+  //
+  // ⚠⚠⚠ AND THE HONEST PROVENANCE: I BUILT A DUPLICATE OF THIS TEST BEFORE FINDING IT. My search was for
+  // `RequirePlatformPermission` in `tests/`, and this file never names the helper — it works from
+  // `PermissionPolicyNames.PlatformPrefix`, the constant the helper attaches. **A name search for the
+  // mechanism's ENTRY POINT missed the file that keys on its OUTPUT.** The duplicate was deleted; this test
+  // is stronger than what I wrote, because it asserts non-vacuity PER DIRECTION where mine had one combined
+  // floor that a single populated plane would have satisfied.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0045")]
   public void Every_route_is_mapped_on_the_plane_its_permission_is_scoped_to()
   {
     var catalog = factory.Services.GetRequiredService<IPermissionCatalog>();

@@ -180,6 +180,17 @@ public sealed class CalendarDomainTests
 
   [Fact]
   [Trait("Decision", "BR-GL-0003")]
+  // ⚠ CITES `AC-GL-0012`'s FIRST CLAUSE — *"Posting into a closed period is refused with
+  // `Gl.FiscalPeriodClosed`."* **And it asserts more than the criterion asks: CLOSED is distinguished from
+  // NOT-FOUND, which is the difference between "reopen the period" and "define the calendar."**
+  //
+  // ⚠⚠ ***THE SECOND CLAUSE IS NOT SEPARATELY WITNESSED HERE AND I HAVE NOT VERIFIED IT.*** *"The check
+  // runs against the period's state AT POST TIME, so a journal prepared while the period was open is still
+  // refused once it closes."* **This test closes the period and then resolves, which exercises the RESOLVER
+  // rather than the straddle — no draft is prepared while open and posted after closing.** *The mechanism
+  // points the right way (resolution happens at post time, not at draft time), but a mechanism is not a
+  // fixture, and I am recording this as UNVERIFIED rather than absent because I have not planted it.*
+  [Trait("Criterion", "AC-GL-0012")]
   public void A_closed_period_refuses_posting_and_says_so_distinctly_from_being_absent()
   {
     var year = FiscalYear.Create("FY2026", YearStart, YearEnd, TwelveMonths()).Value;

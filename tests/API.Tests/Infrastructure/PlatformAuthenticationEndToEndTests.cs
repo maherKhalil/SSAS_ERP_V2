@@ -8,6 +8,11 @@ using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.Platform.API.Authentication;
 using SSAS.Platform.Domain.Authentication;
+using SSAS.Platform.Application.Authentication;
+using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.Domain.Permissions;
+using SSAS.Platform.Domain.Roles;
+using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Platform.Domain.Identities;
 using SSAS.Platform.Domain.Tenants;
 using SSAS.Platform.Domain.TenantUsers;
@@ -470,6 +475,116 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
     }
 
     return jar;
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0006")]
+  // ==================================================================================================
+  // `AC-AUTH-0006` — *"Roles and permissions belong ONLY to the SELECTED tenant."*
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ MEASURED FIRST: `AccessTokenClaimsProvider` runs its role and permission queries under
+  // `IgnoreQueryFilters()`, so the global tenant filter is off and the hand-written predicates are the only
+  // tenant scoping there is. **Removing all three `TenantId == tenantId` predicates left seven suites
+  // green** — before this test existed. It reddens them now.
+  //
+  // ⚠⚠ AND THE PLANT SEQUENCE IS WORTH THE SPACE, BECAUSE IT TOOK FOUR TRIES TO MAKE THIS TEST FAIL AND
+  // EACH GREEN MEANT SOMETHING DIFFERENT. The role path has THREE MUTUALLY SUFFICIENT scoping predicates:
+  //
+  //   `assignment.TenantId == tenantId`          on the role assignment
+  //   `assignment.TenantUserId == tenantUserId`  — **already tenant-scoping, because one identity has a
+  //                                              SEPARATE `TenantUser` row per tenant**
+  //   `role.TenantId == tenantId`                on the role itself
+  //
+  //   removed: the three TenantId predicates   -> still green; `TenantUserId` alone kept it true
+  //   removed: TenantUserId + role.TenantId     -> still green; `assignment.TenantId` alone kept it true
+  //   removed: all three on the role path       -> **RED: `["ROLE-A", "ROLE-B"]`**
+  //
+  // ***SO NO INDIVIDUAL PREDICATE IS WITNESSED, AND THAT IS INHERENT TO REDUNDANCY RATHER THAN A DEFECT IN
+  // THE TEST.*** This test witnesses the CRITERION — the observable property that a token carries only the
+  // selected tenant's grants — which is what the criterion states. **A test that isolated one predicate
+  // would have to break the other two first, which is not a state the product can be in.**
+  //
+  // ⚠ What remains genuinely unwitnessed is the defence-in-depth case those predicates exist for: a
+  // CORRUPT row — an assignment in tenant A pointing at a role in tenant B — which no well-formed fixture
+  // can produce. The analogous test exists for the platform-support plane
+  // (`Corrupt_platform_support_assignment_is_excluded_from_tenant_access_token_claims`, `AC-TEN-0030`), and
+  // it uses raw SQL to force the row. Named rather than left as a silent gap.
+  //
+  // ⚠⚠ AND THE TWO INTEGRATION CALL SITES I READ CANNOT DISCRIMINATE EITHER. `EmployeeBoundarySqlServer
+  // Tests.ClaimedPermissionsAsync` and `PlatformAuthenticationPersistenceTests` both drive the real
+  // provider — **each against a SINGLE tenant.** *A one-tenant fixture cannot witness a claim about which
+  // tenant's rows are excluded*, the same shape as a one-session `only` and a zero-membership `cannot`.
+  // (I have not read every Integration call site; that is the bound on this sentence.)
+  //
+  // ⚠ `PlatformReadScopeArchitectureTests` names this file as a hand-written-predicate reader — which
+  // asserts a predicate EXISTS, not that it is on the right column of the right table, and not that all
+  // three survive. **Structural cover for a behavioural claim.**
+  //
+  // THE FIXTURE IS THE CRITERION: one identity, two active tenants, a role and permission granted in
+  // **each**. Claims for tenant A must carry A's role and A's permission and neither of B's. ⚠ Granting in
+  // BOTH is what makes it a scoping test rather than an emptiness test — **with a role only in B, "no
+  // roles for A" is also satisfied by a provider that returns nothing at all.**
+  public async Task Access_token_claims_carry_only_the_selected_tenants_roles_and_permissions()
+  {
+    var (_, tenantIds, tenantUserIds, identityId) = await SeedRoleGrantsInTwoTenantsAsync();
+
+    await using var scope = host.Application.Services.CreateAsyncScope();
+    var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    var session = AuthenticationSession.Create(
+      identityId, tenantUserIds[0], tenantIds[0], "ssas-erp-web", Guid.NewGuid(), 1,
+      Now, Now.AddDays(30), Now.AddDays(90));
+    context.AuthenticationSessions.Add(session);
+    await context.SaveChangesAsync();
+
+    var claims = await new AccessTokenClaimsProvider(context, new PlatformPermissionCatalog()).GetClaimsAsync(
+      session.Id, identityId, tenantUserIds[0], tenantIds[0],
+      AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value, 1);
+
+    Assert.True(claims.IsSuccess, claims.IsFailure ? claims.Error.Code : null);
+    // The POSITIVE half: tenant A's grant is present, so an empty answer cannot pass.
+    Assert.Equal(["ROLE-A"], claims.Value.Roles);
+    Assert.Contains(PlatformPermissionNames.ViewCompanies, claims.Value.Permissions);
+    // The criterion: tenant B's grant is absent.
+    Assert.DoesNotContain("ROLE-B", claims.Value.Roles);
+    Assert.DoesNotContain(PlatformPermissionNames.ViewRoles, claims.Value.Permissions);
+  }
+
+  private async Task<(string Email, Guid[] TenantIds, long[] TenantUserIds, long IdentityId)>
+    SeedRoleGrantsInTwoTenantsAsync()
+  {
+    var (email, tenantIds, tenantUserIds) = await SeedTenantMemberAsync(tenantCount: 2);
+    await using var scope = host.Application.Services.CreateAsyncScope();
+    var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    var accessor = scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>();
+    var identityId = await context.TenantUsers.IgnoreQueryFilters()
+      .Where(user => user.Id == tenantUserIds[0]).Select(user => user.IdentityId).SingleAsync();
+
+    var catalog = new PlatformPermissionCatalog();
+    var grants = new[]
+    {
+      (Index: 0, RoleName: "ROLE-A", Permission: PlatformPermissionNames.ViewCompanies),
+      (Index: 1, RoleName: "ROLE-B", Permission: PlatformPermissionNames.ViewRoles)
+    };
+
+    foreach (var (index, roleName, permission) in grants)
+    {
+      accessor.HttpContext = TenantContext(tenantIds[index]);
+      var role = Role.CreateCustom(
+        tenantIds[index], RoleName.Create(roleName).Value, null, Guid.NewGuid(), Now);
+      Assert.True(catalog.TryGet(permission, out var definition));
+      Assert.True(role.AssignPermission(definition, "e2e-seed", Guid.NewGuid(), Now).IsSuccess);
+      context.Roles.Add(role);
+      await context.SaveChangesAsync();
+
+      var member = await context.TenantUsers.IgnoreQueryFilters()
+        .SingleAsync(user => user.Id == tenantUserIds[index]);
+      Assert.True(member.AssignRole(role, "e2e-seed", Guid.NewGuid(), Now).IsSuccess);
+      await context.SaveChangesAsync();
+      accessor.HttpContext = null;
+    }
+
+    return (email, tenantIds, tenantUserIds, identityId);
   }
 
   // ---- SEEDING.

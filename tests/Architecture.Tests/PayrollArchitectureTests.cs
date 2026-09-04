@@ -26,8 +26,26 @@ public sealed class PayrollArchitectureTests
   // MODULE ISOLATION, BOTH DIRECTIONS (ADR-012, DEC-PAY-0017, DEC-PAY-0018)
   // ================================================================================================
 
+  // ---- ⚠ CITES `AC-ATT-0026` — AND THE CRITERION IS WHY ATTENDANCE IS IN THE LIST BELOW AT ALL.
+  //
+  // *"Payroll consumes the contract **without an assembly reference** to any Attendance implementation
+  // project — asserted by an architecture test, not by inspection."* **This is that architecture test, and
+  // the last clause is the criterion telling you it must not be a review item.** Until `AC-ATT-0026` was
+  // worked, Attendance was absent from the forbidden list and this test asserted nothing about it.
+  //
+  // **Planted: removing the `SSAS.Attendance.Contracts` exemption reddens the `SSAS.Payroll.Application`
+  // row**, which is the assembly that legitimately holds the contract reference — so the clause is live and
+  // is evaluated against a real reference rather than passing over an empty set.
+  //
+  // ⚠⚠ THE BOUND, WHICH THE CRITERION'S WORDING DOES NOT DISTINGUISH AND THIS INSTRUMENT DOES:
+  // `GetReferencedAssemblies` reads EMITTED metadata, so **it catches CONSUMPTION, not DECLARATION.** A
+  // `ProjectReference` to `SSAS.Attendance.Domain` that no Payroll type ever uses is pruned by the compiler
+  // and would not appear here. *That is the same limitation recorded on the EF-free guard in
+  // `PersistenceArchitectureTests`, and the same remedy exists if it is ever wanted — read the `.csproj`
+  // as well. It is not built here and the citation does not claim it.*
   [Theory]
   [Trait("Decision", "ADR-012")]
+  [Trait("Criterion", "AC-ATT-0026")]
   [InlineData("SSAS.Payroll.Domain")]
   [InlineData("SSAS.Payroll.Application")]
   [InlineData("SSAS.Payroll.Infrastructure")]
@@ -43,7 +61,18 @@ public sealed class PayrollArchitectureTests
         // Another module's IMPLEMENTATION assemblies are out of reach. The two `.Contracts` assemblies are
         // the sanctioned doors and are deliberately not in this list.
         name!.StartsWith("SSAS.GL.", StringComparison.Ordinal) && name != "SSAS.GL.Contracts" ||
-        name.StartsWith("SSAS.HR.", StringComparison.Ordinal) && name != "SSAS.HR.Contracts")
+        name.StartsWith("SSAS.HR.", StringComparison.Ordinal) && name != "SSAS.HR.Contracts" ||
+        // ⚠⚠ ATTENDANCE WAS MISSING FROM THIS LIST UNTIL `AC-ATT-0026` WAS WORKED, AND THE MODULE HAD
+        // SHIPPED. GL and HR were named when this test was written; FP-013 added a fourth module that
+        // Payroll genuinely consumes — `SSAS.Payroll.Application` references `SSAS.Attendance.Contracts` —
+        // and the forbidden list was not extended with it.
+        //
+        // **The property was never violated: measured, no Payroll assembly references any Attendance
+        // IMPLEMENTATION project.** So this closes a hole in the GUARD rather than fixing a defect in the
+        // product. ***A LIST-SHAPED GUARD SILENTLY EXCLUDES EVERYTHING ADDED AFTER IT WAS WRITTEN, and its
+        // green is indistinguishable from a green that covers the new member.***
+        name.StartsWith("SSAS.Attendance.", StringComparison.Ordinal)
+          && name != "SSAS.Attendance.Contracts")
       .ToArray();
 
     Assert.Empty(forbidden);

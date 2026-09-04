@@ -73,6 +73,18 @@ public sealed class CutoverManifestArchitectureTests
   // (a human sees a new one). `Position`, `JobGrade`, `SalaryGrade` and `EmployeePositionAssignment` are
   // all named in it.
   [Trait("Criterion", "AC-POS-0052")]
+  // ⚠ ALSO CITES `AC-ATT-0035` — *"Every Attendance tenant entity appears in the E3 cutover manifest,
+  // **derived by reflection over `ITenantOwnedEntity`** rather than compared against a list someone typed."*
+  // All seven are named in the expected list below — `AttendanceRecord`, `AttendancePeriod`,
+  // `WorkingCalendar`, `CalendarHoliday`, `LeaveType`, `LeaveRequest`, `LeaveBalance` — and the set they are
+  // compared against is derived from the composed model.
+  //
+  // ⚠⚠ AND THE CRITERION'S LAST CLAUSE IS IN TENSION WITH THIS TEST, WHICH IS WHY IT IS WRITTEN OUT RATHER
+  // THAN GLOSSED: *"rather than compared against a list someone typed"* — **and the second half of this test
+  // is exactly such a comparison.** The tension is deliberate and already argued above: the DERIVATION is
+  // what makes a new entity appear with no registration, and the literal list is what makes a human see it
+  // arrive. **The criterion's clause is satisfied by the first half; the second half is an addition the
+  // criterion did not ask for, not a substitute for what it did.**
   public void C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity()
   {
     var composed = CutoverTenantModel.Source.Model;

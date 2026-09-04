@@ -45,8 +45,20 @@ public sealed class AttendanceArchitectureTests
   // So this is a commitment FP-013 makes rather than a rule it inherits. **The expected map is written out
   // and then checked against reflection**, so adding an entity without deciding its classification fails
   // here rather than shipping unclassified.
+  // ---- ⚠ CITES `AC-ATT-0036`, WHICH THIS ASSERTS EXACTLY AND WHICH NOTHING CITED.
+  //
+  // *"Every Attendance entity carries an explicit branch classification assertion — positive or negative,
+  // never absent."* **The expected map above is the "explicit", and checking it against reflection is the
+  // "never absent": an entity added without a decision fails here rather than shipping unclassified.**
+  //
+  // ⚠ HOW IT WAS FOUND, BECAUSE THE ROUTE IS WORTH MORE THAN THE CITATION: **this test reddened during an
+  // unrelated `ITenantOwnedEntity` plant hours earlier.** I read only whether the expected test fired and
+  // moved on. ***A PLANT NAMES EVERY TEST THAT WATCHES THE PROPERTY IT BREAKS, AND WE HAD BEEN READING ONE
+  // ROW OF THAT LIST.*** The other rows are free, already paid for, and answer *what watches what* — which
+  // is the question a citation pass exists to answer, in the one language that cannot be misread.
   [Fact]
   [Trait("Decision", "DEC-ATT-0014")]
+  [Trait("Criterion", "AC-ATT-0036")]
   public void Every_attendance_entity_carries_an_explicit_branch_classification()
   {
     var expected = new Dictionary<string, bool>(StringComparer.Ordinal)

@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using SSAS.Localization.CatalogTool;
 using SSAS.BuildingBlocks.Localization;
 using SSAS.BuildingBlocks.Localization.Generated;
@@ -133,6 +134,77 @@ public sealed class LocalizationCatalogToolTests
       ],
       impacts.Select(impact => impact.Kind));
     Assert.Contains(impacts, impact => impact.Kind == CatalogImpactKind.SecuritySensitiveIncompatible);
+  }
+
+  // ==================================================================================================
+  // ⚠⚠⚠ CLASSIFIED IS NOT BLOCKED, AND THE CRITERION SAYS *BLOCKS*.
+  // ==================================================================================================
+  //
+  // ---- FIRST, A CORRECTION TO THE COMMENT ABOVE `Impact_analysis_classifies_…`, WHICH IS FALSE.
+  //
+  // It reads *"NO ACCEPTANCE CRITERION MENTIONS IMPACT ANALYSIS AT ALL"* and concludes the analyzer is
+  // *covered, uncitable*. **`AC-LOC-0020` is the criterion for exactly this mechanism** — *"Validation
+  // reports incompatible retained overrides, BLOCKS SENSITIVE INCOMPATIBILITY, and requires ordinary
+  // review."* — and its three clauses map one-to-one onto the analyzer's own vocabulary. The spec says so
+  // in three places: `decisions-approved.md` (*"sensitive incompatibility blocks Production"*),
+  // `localization-resolution-model.md` (*"Security-sensitive incompatibility blocks Production; ordinary
+  // incompatibility requires explicit release review"*) and `requirements.md`.
+  //
+  // ⚠ **AN ABSENCE CLAIM IS THE ONE THAT ROTS FIRST, AND *covered, uncitable* IS A COMFORTABLE CONCLUSION
+  // THAT ENDS THE SEARCH.** The criterion was two documents away the whole time.
+  //
+  // ---- WHAT THIS TEST ADDS THAT THE CLASSIFIER TEST CANNOT.
+  //
+  // `Impact_analysis_classifies_release_changes_and_security_blockers` calls `CatalogImpactAnalyzer.Analyze`
+  // **directly** and asserts the six `CatalogImpactKind` values it returns. ***THAT IS THE REPORT, NOT THE
+  // REFUSAL.*** The block lives one layer up, in `CatalogToolRunner`: any `SecuritySensitiveIncompatible` or
+  // `RemovedProhibited` impact makes the tool exit **2**. **Measured before writing this: `RunAsync` is
+  // asserted five times across `tests/`, against exit codes 0 and 1 — *NEVER 2*.** So the classifier could
+  // have gone on naming the security case correctly while the release stopped being blocked, and every
+  // existing assertion would have held.
+  //
+  // ⚠⚠ THE FIRST ASSERTION IS THE ANTI-VACUITY CONTROL AND IT IS NOT DECORATION: an identical baseline must
+  // exit **0**. Without it, a runner that returned 2 unconditionally — or one that failed to load the
+  // baseline and bailed — would satisfy the interesting half. *The pair is what makes the exit code mean
+  // "this release is blocked" rather than "this tool returns 2".*
+  //
+  // ⚠⚠⚠ AND THE MUTATION IS CHOSEN TO REACH THE SENSITIVE ARM SPECIFICALLY RATHER THAN THE OTHER ONE.
+  // `RemovedProhibited` also exits 2 and would be far easier to arrange — delete a resource from the
+  // baseline — **but it would witness a DIFFERENT clause and leave the criterion's own word, *sensitive*,
+  // asserted by nothing.** Flipping `textFormat` on a `SecuritySensitiveNonOverridable` resource changes its
+  // compatibility fingerprint, so the analyzer reaches the classification branch that tests the security
+  // flag. *The resource is selected BY ITS CLASSIFICATION, not by name, so the test follows the catalog if
+  // the sensitive resources are ever renamed.*
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0020")]
+  public async Task Impact_blocks_security_sensitive_incompatibility_and_clears_an_unchanged_release()
+  {
+    var paths = GetPaths();
+    var temporary = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    Directory.CreateDirectory(temporary);
+
+    try
+    {
+      var baseline = Path.Combine(temporary, "baseline.json");
+      File.Copy(paths.Manifest, baseline);
+
+      Assert.Equal(0, await CatalogToolRunner.RunAsync([
+        "impact", "--manifest", paths.Manifest, "--schema", paths.Schema, "--baseline", baseline]));
+
+      var document = JsonNode.Parse(await File.ReadAllTextAsync(baseline))!;
+      var sensitive = document["resources"]!.AsArray()
+        .First(resource => resource!["securityClassification"]!.GetValue<string>()
+          == nameof(LocalizationSecurityClassification.SecuritySensitiveNonOverridable));
+      sensitive!["textFormat"] = nameof(LocalizationTextFormat.MultilineText);
+      await File.WriteAllTextAsync(baseline, document.ToJsonString());
+
+      Assert.Equal(2, await CatalogToolRunner.RunAsync([
+        "impact", "--manifest", paths.Manifest, "--schema", paths.Schema, "--baseline", baseline]));
+    }
+    finally
+    {
+      Directory.Delete(temporary, true);
+    }
   }
 
   private static (string Manifest, string Schema, string Backend, string Client) GetPaths()

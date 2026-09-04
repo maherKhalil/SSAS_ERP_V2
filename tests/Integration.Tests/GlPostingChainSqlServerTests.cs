@@ -91,6 +91,18 @@ public sealed class GlPostingChainSqlServerTests
     // The journal landed.
     Assert.Equal(1, await verify.Set<JournalEntry>().CountAsync());
 
+    // ---- ⚠⚠⚠ AND ITS LINES LANDED, WHICH THIS TEST DID NOT ASK UNTIL NOW.
+    //
+    // `AC-GL-0001` says the journal is persisted **WITH ALL ITS LINES**. Counting `JournalEntry` alone
+    // cannot see them: **a posting that wrote the header and dropped its children passed every assertion
+    // above.** *`SeedDraftAsync` gives the draft exactly two lines, twenty lines below.*
+    //
+    // ***THIS FILE ALREADY MADE THE ARGUMENT, FOR THE OTHER DIRECTION.*** The comment on the next test reads:
+    // *"FP-013's two defects were orphaned LINES, not missing headers — a header delete can succeed while its
+    // children survive, and A COUNT OF ONE TABLE CANNOT SEE THE OTHER."* **The write direction has the
+    // identical hole, and the same sentence covers it.**
+    Assert.Equal(2, await verify.Set<JournalLine>().CountAsync());
+
     // ---- AND THE DRAFT IS GONE, LINES INCLUDED. This is the assertion the cascade would have satisfied if
     // ---- the cascade worked, and it does not: the repository removes the lines explicitly, and nothing has
     // ---- ever checked that against a database.

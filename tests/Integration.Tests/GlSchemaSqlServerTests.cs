@@ -158,6 +158,95 @@ public sealed class GlSchemaSqlServerTests
     Assert.Equal(1, filtered);
   }
 
+  // ==============================================================================================
+  // ⚠⚠⚠ THE TWO INDEX ASSERTIONS ABOVE NAME THE ENFORCER. THESE TWO EXERCISE IT.
+  // ==============================================================================================
+  //
+  // `Journal_numbers_are_unique_…` and `Only_one_reversal_per_original_…` assert that an index EXISTS WITH A
+  // GIVEN NAME and `is_unique = 1` — ***not its columns, and not its filter predicate.*** **An index of that
+  // name over the wrong columns passes both, and a migration is exactly where a definition changes while a
+  // name is kept.** *The strong form was already in this file, by the same author:
+  // `Two_accounts_cannot_share_a_code_within_a_tenant` INSERTS TWICE and expects the failure.*
+  //
+  // ⚠⚠ **THE NAME ASSERTIONS ARE KEPT RATHER THAN REPLACED.** They fail differently and usefully: a renamed
+  // index reddens them and not these, which tells a reader the CONSTRAINT survived and its NAME did not.
+  //
+  // ⚠⚠⚠ ***NOT RUN. `Integration.Tests` IS OUTSIDE `GATE_SCOPE=TASK` AND I CANNOT EXECUTE IT — THESE ARE
+  // COMPILATION-VERIFIED ONLY.*** An unrun assertion is a claim, not a check, and it must not be reported as
+  // coverage until a `PHASE` run has seen it.
+  [Fact]
+  [Trait("Decision", "BR-GL-0005")]
+  public async Task A_second_journal_reusing_a_number_in_one_year_is_refused_by_the_database()
+  {
+    await using var fixture = await GlFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+
+    var debit = Account.Create("1000", "Cash").Value;
+    var credit = Account.Create("4100", "Receivables").Value;
+    context.Set<Account>().AddRange(debit, credit);
+    await context.SaveChangesAsync();
+
+    var year = FiscalYear.Create(
+      "FY2026",
+      new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      [("FY2026", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+    year.CompanyId = fixture.CompanyA;
+    context.Set<FiscalYear>().Add(year);
+    await context.SaveChangesAsync();
+
+    var period = year.Periods.First();
+
+    JournalEntry Numbered(string number, string reference)
+    {
+      var draft = JournalDraft.Create(fixture.EntryDate, $"Entry {reference}", reference).Value;
+      draft.CompanyId = fixture.CompanyA;
+      draft.ReplaceLines([(debit.Id, 100m, 0m, "debit"), (credit.Id, 0m, 100m, "credit")]);
+
+      return JournalEntry.Post(draft, year.Id, period.Id, number);
+    }
+
+    context.Set<JournalEntry>().Add(Numbered("1", "FIRST"));
+    await context.SaveChangesAsync();
+
+    // THE PREMISE, so this is not vacuous: the first entry really is there under number "1".
+    Assert.Equal(1, await context.Set<JournalEntry>().CountAsync());
+
+    context.Set<JournalEntry>().Add(Numbered("1", "SECOND"));
+
+    await Assert.ThrowsAnyAsync<DbUpdateException>(() => context.SaveChangesAsync());
+  }
+
+  // ⚠ THE FILTERED INDEX IS WHAT MAKES THE RACE UNWINNABLE, and the aggregate's own refusal is not enough:
+  // two concurrent requests can both read "not yet reversed". **This exercises the DATABASE's half.**
+  //
+  // ⚠⚠⚠ NOT RUN — compilation-verified only, as above.
+  [Fact]
+  [Trait("Decision", "OD-GL-0006")]
+  public async Task A_second_reversal_of_one_original_is_refused_by_the_database()
+  {
+    await using var fixture = await GlFixture.CreateAsync();
+    var originalId = await fixture.SeedPostedJournalAsync();
+
+    await using var context = fixture.CreateContext();
+
+    var original = await context.Set<JournalEntry>().FirstAsync(entry => entry.Id == originalId);
+    var period = original.FiscalPeriodId;
+
+    context.Set<JournalEntry>().Add(
+      JournalEntry.Reverse(original, period, "2", original.EntryDateUtc, "First correction"));
+    await context.SaveChangesAsync();
+
+    // THE PREMISE: one reversal exists, so the refusal below is about the SECOND rather than about any.
+    Assert.Equal(2, await context.Set<JournalEntry>().CountAsync());
+
+    context.Set<JournalEntry>().Add(
+      JournalEntry.Reverse(original, period, "3", original.EntryDateUtc, "Second correction"));
+
+    await Assert.ThrowsAnyAsync<DbUpdateException>(() => context.SaveChangesAsync());
+  }
+
   [Fact]
   [Trait("Decision", "DEC-GL-0007")]
   public async Task Posted_journal_tables_carry_no_row_version_column()

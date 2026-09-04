@@ -159,6 +159,63 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
     Assert.DoesNotContain("caller-value", body, StringComparison.Ordinal);
   }
 
+  // ==================================================================================================
+  // `AC-AUTH-0049`'s FIRST CLAUSE — *"Every authentication response has the four approved security
+  // headers…"* — WHICH NOTHING ASSERTED FOR THESE ROUTES.
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ MEASURED BEFORE WRITING: `ApplyResponseSecurity`'s four assignments replaced by `_ = context;`.
+  // **All seven suites green.** Every security header on the tenant authentication surface could be
+  // deleted without reddening anything.
+  //
+  // Other modules DO assert these headers — `CompaniesEndpointTests`, `EmployeeEndpointTests` and others
+  // check the same three names. ⚠ **That is what made the gap invisible: the property is visibly tested
+  // ACROSS THE API, on every surface except this one**, and a reader checking whether "we test security
+  // headers" finds nine hits and stops.
+  //
+  // ---- ⚠⚠ AND THE PLANT REVEALED TWO MECHANISMS, WHICH IS WHY THE EXPECTED VALUE IS A PARAMETER.
+  //
+  // Under the plant, `login`, `select-tenant` and `refresh` returned **no Cache-Control at all** — so on
+  // this surface the headers come SOLELY from `ApplyResponseSecurity`; no global middleware covers it.
+  // `logout` was **unchanged**, still `no-store, no-cache`.
+  //
+  // The reason is that `logout` alone carries `RequireAuthorization()`. An unauthenticated request is
+  // refused by the pipeline and **the handler never runs**, so its headers come from the API-wide response
+  // convention instead — the same `no-store, no-cache` the module suites assert.
+  //
+  // ***SO THE SAME API RETURNS TWO DIFFERENT CACHE-CONTROL VALUES FOR THE SAME CLAUSE, DECIDED BY WHICH
+  // LAYER ANSWERED.*** Both are safe (`no-store` is the stricter), and neither is wrong under a criterion
+  // that names the header rather than its value — **but a test asserting one uniform string would have
+  // been false, and a test asserting only the three uniform headers would have hidden the split.** Each
+  // row therefore pins its own value, and the `logout` row is the only witness for the second mechanism.
+  [Theory]
+  [InlineData("/login", "no-store")]
+  [InlineData("/select-tenant", "no-store")]
+  [InlineData("/refresh", "no-store")]
+  [InlineData("/logout", "no-store, no-cache")]
+  [Trait("Criterion", "AC-AUTH-0049")]
+  public async Task Every_authentication_route_answers_with_the_four_approved_security_headers(
+    string path,
+    string expectedCacheControl)
+  {
+    // A `text/plain` body is refused before the rate limiter is consulted on all four routes, so this
+    // theory costs nothing against the 30-per-minute `login-ip` budget documented above. **It also makes
+    // the assertion the stronger one: the headers are present on the REFUSAL path, which is where a
+    // cacheable error response would actually leak.**
+    using var request = new HttpRequestMessage(HttpMethod.Post, $"{Prefix}{path}")
+    {
+      Content = new StringContent(string.Empty, Encoding.UTF8, "text/plain")
+    };
+    request.Headers.Add("Origin", Origin);
+
+    var response = await host.Client.SendAsync(request);
+
+    Assert.Equal(expectedCacheControl, response.Headers.CacheControl?.ToString());
+    Assert.Equal("no-cache", response.Headers.Pragma.ToString());
+    Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
+    Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
+  }
+
   // ---- SEEDING.
   //
   // ⚠ `TenantUser` is tenant-owned, and `PersistenceDbContext.AssignTenant` REFUSES to save one without a

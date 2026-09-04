@@ -188,8 +188,20 @@ public sealed class PersistenceArchitectureTests
   //
   // `PersistenceDbContext.ApplyPersistenceRules` stamps `ChangeTracker.Entries<IAuditableEntity>()` and,
   // one screenful later, assigns tenants for `Entries<ITenantOwnedEntity>()`. **Two opt-in markers, one
-  // method.** Membership of the second is asserted by nine test files; membership of the first was asserted
-  // by nothing — measured, 49 declaring types and **zero** structural assertions.
+  // method.**
+  //
+  // ⚠⚠⚠ CORRECTION TO `c8edc4e`, WHICH INTRODUCED THIS TEST AND WHOSE COMMIT BODY CANNOT BE AMENDED ON A
+  // SHARED BRANCH. That commit says *"49 carriers, zero structural assertions"*. **THAT IS FALSE.** The
+  // census behind it matched two idioms — `typeof(M).IsAssignableFrom` and `IsAssignableTo<M>` — and missed
+  // a third, `Assert.Contains(typeof(M), interfaces)`, which occurs **six** times for this marker:
+  // `CompanyArchitectureTests:21`, `CompanyOwnershipArchitectureTests:72`, `DepartmentArchitectureTests:44`,
+  // `EmployeeArchitectureTests:33`, `ImportExportRunDomainTests:75`, `CompanyDomainTests:375`.
+  //
+  // ***THE TRUE STATEMENT IS NARROWER AND STRONGER THAN THE ZERO WAS: the structural assertions that exist
+  // name `Company`, `UserCompanyAccess`, `Department`, `Employee` and `ImportExportRun` — and NOT ONE of
+  // them is among the 15 types that can lose the marker silently.*** Coverage sits where attention was, not
+  // where the exposure is. **The exposed set is structurally unwitnessed, which is why the plant below went
+  // green and why this test has a job.**
   //
   // ⚠ THE ONE TEST OF THE MECHANISM PROVES THE MECHANISM AND NOT THE MEMBERSHIP.
   // `PersistenceFoundationTests.Save_changes_assigns_utc_audit_fields_and_the_trusted_tenant` saves a
@@ -281,13 +293,24 @@ public sealed class PersistenceArchitectureTests
       }
     }
 
-    // ⚠ THE ANTI-VACUITY FLOOR, SET BELOW THE MEASURED POPULATION RATHER THAN AT A ROUND NUMBER.
+    // ⚠⚠⚠ THIS FLOOR IS AN ANTI-VACUITY CONTROL AND **NOT** A MEMBERSHIP GUARD, AND THE DIFFERENCE DECIDES
+    // ITS VALUE. IT IS DELIBERATELY BELOW THE POPULATION AND MUST NOT BE RAISED TO TRACK IT.
     //
-    // The selection is four links long — assembly loaded, type exported, property public and declared here,
-    // both accessors present — and the offender list is empty if ANY link stops matching. A floor set ABOVE
-    // the population is worse than none: it fails on a correct tree, which is how a floor gets deleted.
-    // 15 implicit carriers measured today; 10 survives a few migrating to explicit implementation and still
-    // fails loudly if the walk collapses.
+    // `TenantOwnershipGuardCoverageTests` selects on its marker, so removal drops a type OUT of its
+    // population and its floor is the only defence — there, the floor must equal the count. **This walk is
+    // TRACE-KEYED: it selects on the four audit PROPERTIES, which survive the marker's removal. A type that
+    // loses the marker STAYS IN this population and fails the assertion BY NAME.** Measured: stripping
+    // `IAuditableEntity` from `LeaveType` reddened this test naming `LeaveType`, while leaving the
+    // marker-keyed walk green. ***A WALK THAT CAN NAME ITS OFFENDER IS NOT RELYING ON ITS FLOOR.***
+    //
+    // So this number defends one thing only: that the selection chain is alive. It is four links long —
+    // assembly loaded, type exported, property public and declared here, setter public — and the offender
+    // list is empty if ANY link stops matching. A floor set ABOVE the population is worse than none: it
+    // fails on a correct tree, which is how a floor gets deleted.
+    //
+    // ⚠ AND THE SLACK COSTS NOTHING HERE, WHICH IS NOT TRUE OF A MARKER-KEYED FLOOR. The five between 10 and
+    // today's 15 are not licensed removals: a type that stops declaring audit properties **is not a
+    // violation** — it is a type that is no longer auditable, and this test correctly has no opinion on it.
     Assert.True(declaring.Count >= 10,
       $"only {declaring.Count} types were found declaring all four audit properties with public setters; " +
       "the selection chain has stopped matching and the check below would judge nothing.");

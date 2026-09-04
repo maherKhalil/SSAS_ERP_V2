@@ -66,28 +66,53 @@ namespace SSAS.Architecture.Tests;
 // shared base, for the reason in the section above.
 public sealed class TenantOwnershipGuardCoverageTests
 {
+  // ---- ⚠⚠⚠ THE FLOOR IS THIS WALK'S ONLY MEMBERSHIP DEFENCE, AND AT 30 IT WAS NOT ONE.
+  //
+  // **This walk SELECTS on `ITenantOwnedEntity`. Strip the marker from a carrier and the type does not fail
+  // the assertion — it LEAVES THE POPULATION**, the set drops 35 → 34, every remaining member still passes,
+  // and a floor of 30 absorbed it in silence. Measured: `LeaveType` and `Account` were each stripped of the
+  // marker and **this test stayed green both times.** What actually reddened the gate was incidental — a
+  // per-module entity inventory and a cutover manifest that happen to count types.
+  //
+  // ***A SET-DRIVEN WALK KEYED ON A PREDICATE CANNOT WITNESS THAT PREDICATE'S REMOVAL.*** The walk proves a
+  // property of its members; it never proves membership. So the floor is not an anti-vacuity control here —
+  // **it is the guard**, and it must equal the population.
+  //
+  // ⚠ A FLOOR, NOT AN EQUALITY: `>= 35` fails at 34 and passes at 36, so removal is caught and a legitimate
+  // new carrier is not a false red.
+  //
+  // ⚠⚠ AND THE RESIDUAL, WHICH IS THE PART A LATER READER CANNOT RECONSTRUCT FROM THE NUMBER: **a floor
+  // DECAYS as the population grows.** At 36 carriers a floor of 35 tolerates one silent removal; at 40 it
+  // tolerates five. **Adding a carrier without raising this number silently buys a unit of tolerance.**
+  // Re-derive it — do not increment it — whenever a type gains the marker.
   [Fact]
   [Trait("Criterion", "AC-EMP-0002")]
   public async Task Every_tenant_owned_entity_in_the_tenant_model_is_refused_a_post_creation_tenant_change()
   {
     await using var context = TenantModelOnly();
 
-    await AssertEveryTypeIsRefusedAsync(context, floor: 30, model: "composed tenant model");
+    await AssertEveryTypeIsRefusedAsync(context, floor: 35, model: "composed tenant model");
   }
 
   // ---- ⚠ THE SEVEN THE TENANT MODEL DOES NOT REACH (item 231).
   //
   // `PlatformDbContext` needs no contributors — it configures itself from its own assembly, excluding the
   // tenant namespace — so the second walk is the same loop against a second model shell and cost almost
-  // nothing. **A floor of 5 against the seven declaring types: low enough to survive one of them moving
-  // to the tenant plane, high enough to fail if the model stops building.**
+  // nothing.
+  //
+  // ⚠ THE FLOOR WAS 5 AGAINST 7, AND THE REASONING BEHIND THAT NUMBER WAS THE MISTAKE THE SECTION ABOVE
+  // DESCRIBES. It read: *"low enough to survive one of them moving to the tenant plane, high enough to fail
+  // if the model stops building"* — **which sizes it as an anti-vacuity control.** It is not one: this walk
+  // selects on the marker, so the floor is the only thing standing between a removed marker and a green
+  // run, and slack in it is licensed silent removals. **A type genuinely moving to the tenant plane is a
+  // deliberate act, and re-deriving this number is part of it.**
   [Fact]
   [Trait("Criterion", "AC-EMP-0002")]
   public async Task Every_tenant_owned_entity_in_the_platform_model_is_refused_a_post_creation_tenant_change()
   {
     await using var context = PlatformModelOnly();
 
-    await AssertEveryTypeIsRefusedAsync(context, floor: 5, model: "platform model");
+    await AssertEveryTypeIsRefusedAsync(context, floor: 7, model: "platform model");
   }
 
   private static async Task AssertEveryTypeIsRefusedAsync(
@@ -105,9 +130,17 @@ public sealed class TenantOwnershipGuardCoverageTests
     // ⚠ THE ANTI-VACUITY FLOOR. The selection is four links long — built model, not owned, has a CLR
     // type, implements the interface — and the offender list below is empty if ANY of them stops
     // matching. Without this the test passes loudest when it is judging nothing.
+    // ⚠ THE MESSAGE NAMES BOTH CAUSES, BECAUSE THIS ASSERTION NOW HAS TWO JOBS AND THEY SEND A READER TO
+    // OPPOSITE PLACES. It used to say only "the selection chain has stopped matching" — which, once the
+    // floor became the membership guard, is a MISDESCRIBED ALARM: loud, correct that something is wrong, and
+    // wrong about what. A reader meeting it after a marker removal would go hunting a broken filter.
     Assert.True(types.Length >= floor,
-      $"only {types.Length} tenant-owned entity types were found in the {model}; the selection " +
-      "chain has stopped matching and the check below would judge nothing.");
+      $"expected at least {floor} tenant-owned entity types in the {model} and found {types.Length}. " +
+      "EITHER a type has LOST `ITenantOwnedEntity` — this walk selects on that interface, so a stripped " +
+      "marker removes the type from this population rather than failing the check below, and this floor is " +
+      "the only thing that notices — OR the selection chain (built model, not owned, has a CLR type, " +
+      "implements the interface) has stopped matching and the check below would judge nothing. " +
+      "Diff the interface against the previous commit before assuming the second.");
 
     var unguarded = new List<string>();
     var guarded = 0;

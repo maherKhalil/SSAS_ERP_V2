@@ -531,6 +531,22 @@ public sealed class PlatformLocalizationSqlServerTests
   }
 
   [Fact]
+  // ⚠ CITES `AC-LOC-0038` — *"Production startup refuses local CatalogVersion below highest activated and
+  // never lowers database state."* **Both clauses, and the second one twice.**
+  //
+  // REFUSES: with the highest activated at 2, `ActivateAsync(true)` — the production arm — over a catalog at
+  // version 1 throws `LocalizationCatalogActivationException`. *Refusal by exception, not by a return value
+  // a caller could ignore.*
+  //
+  // ⚠⚠ NEVER LOWERS IS ASSERTED ON BOTH SIDES OF THE POLICY, AND THE SECOND IS THE ONE THAT CARRIES IT.
+  // After the production throw the state is still 2 — **which a refusal would give you for free.** The
+  // development arm then runs the SAME lower version with `production: false`, does NOT throw, returns
+  // `DevelopmentLowerVersionWarning`, ***AND THE STATE IS STILL 2.*** *That is the case where lowering was
+  // actually reachable: a path that proceeds, warns, and must still leave the high-water mark alone.*
+  //
+  // The `Equal` and `Activated` outcomes above pin the other two arms, so the environment policy is judged
+  // over all three orderings rather than the interesting one alone.
+  [Trait("Criterion", "AC-LOC-0038")]
   public async Task Catalog_activation_enforces_equal_higher_and_lower_environment_policy()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();

@@ -207,6 +207,65 @@ public sealed class LocalizationCatalogToolTests
     }
   }
 
+  // ⚠ CITES THE FIRST CLAUSE OF `AC-LOC-0025` — *"Only one UTF-8-no-BOM JSON manifest/schema is
+  // authoritative; YAML and mutable SQL defaults are rejected."*
+  //
+  // **`SemanticCatalogValidator` checks the BOM — three bytes, `EF BB BF`, one `errors.Add`. NOTHING HAD
+  // EVER MADE THAT BRANCH FIRE.** The only `validate` assertions in the tree were accept-side (exit 0 for
+  // the checked-in manifest), which a validator that never rejected anything would also satisfy. *A guard
+  // whose failure path has never once executed is a guard nobody has confirmed is wired to its own alarm.*
+  //
+  // ⚠⚠⚠ THE FIRST VERSION OF THIS TEST ASSERTED THE TOOL'S **EXIT CODE**, AND THE PLANT PROVED IT A FALSE
+  // WITNESS. Breaking the BOM comparison in `SemanticCatalogValidator` — `0xEF` to `0xEE` — LEFT THE GATE
+  // GREEN. ***A BOM ALSO BREAKS `JsonDocument.Parse`, so the manifest is refused either way and `exit 1`
+  // cannot tell the BOM branch from the parser.*** **It was the near-miss with the right name: the exact
+  // defect described twelve lines below, written by the person describing it, and only the plant found it.**
+  //
+  // **So the assertion consumes the one signal that distinguishes them — the validator's own error TEXT —
+  // and calls the validator directly rather than through the runner.** *A test may only claim the resolution
+  // its instrument can actually resolve, and an exit code has one bit.*
+  //
+  // ⚠⚠ THE SECOND HALF IS THE CONTROL AND IT IS WHAT MAKES THE FIRST MEAN "BOM". **The same bytes are
+  // written back to THE SAME PATH without the three-byte prefix and must validate cleanly.** Without it, the
+  // rejection is satisfied by any difference between this temporary copy and the original — a path the tool
+  // dislikes, a permissions problem, a missing sibling file — *and every one of those would look exactly
+  // like a working BOM check.* One variable changes between the two runs and it is the BOM.
+  //
+  // ⚠⚠⚠ THE OTHER TWO CLAUSES ARE NOT CITED HERE AND ONE OF THEM IS DELIBERATELY NOT GUARDED ANYWHERE.
+  // *"Mutable SQL defaults are rejected"* is carried by `LocalizationArchitectureTests.Localization_phase_
+  // four_…`, which asserts the `AddLocalizationCore` migration contains no `LocalizationDefault` and creates
+  // exactly four tables. **`"YAML … rejected"` is TRUE BY CONSTRUCTION AND THE FAILURE IS NOT CONSTRUCTIBLE:
+  // the tool reads the one path it is handed and has no YAML reader to reject anything with.** *A guard
+  // against a shape nothing can produce would consume the attention a real check earns.*
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0025")]
+  public async Task Validate_rejects_a_manifest_carrying_a_utf8_bom()
+  {
+    var paths = GetPaths();
+    var temporary = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    Directory.CreateDirectory(temporary);
+
+    try
+    {
+      const string BomError = "The manifest must be UTF-8 without BOM.";
+      var manifest = Path.Combine(temporary, "localization-catalog.json");
+      var original = await File.ReadAllBytesAsync(paths.Manifest);
+
+      await File.WriteAllBytesAsync(manifest, [0xEF, 0xBB, 0xBF, .. original]);
+      var withBom = await SemanticCatalogValidator.ValidateAsync(manifest, paths.Schema);
+      Assert.Contains(BomError, withBom.Errors);
+
+      await File.WriteAllBytesAsync(manifest, original);
+      var withoutBom = await SemanticCatalogValidator.ValidateAsync(manifest, paths.Schema);
+      Assert.True(withoutBom.IsValid);
+      Assert.DoesNotContain(BomError, withoutBom.Errors);
+    }
+    finally
+    {
+      Directory.Delete(temporary, true);
+    }
+  }
+
   // ==================================================================================================
   // ⚠⚠⚠ FOUR CLOSED SETS, EACH DECLARED TWICE IN TWO LANGUAGES, TIED TOGETHER BY NOTHING.
   // ==================================================================================================

@@ -3056,7 +3056,20 @@ public sealed class EmployeeBoundarySqlServerTests
   // rejection message at a time — a spreadsheet as an enumeration oracle. The two rejections below are
   // compared FIELD BY FIELD rather than merely both being failures, because "both refused" would still hold
   // if one said `department.not_found` and the other said `company.scope_denied`.
+  // ⚠ CITES `AC-DOC-0022` — *"A `departmentCode` that exists only in a company the caller cannot see is
+  // reported as unresolvable, IN A MESSAGE INDISTINGUISHABLE FROM ONE FOR A CODE THAT EXISTS NOWHERE. An
+  // import cannot be used to enumerate another company's organizational structure one rejection at a time."*
+  //
+  // ***"INDISTINGUISHABLE" IS A CLAIM ABOUT TWO RESPONSES, AND THIS IS THE RARE TEST THAT ASSERTS IT AS
+  // ONE:*** outcome, column, error CODE and error MESSAGE are each compared BETWEEN the two runs rather than
+  // against a literal. **A test asserting each side matched an expected constant would pass while the two
+  // diverged in any field nobody thought to write down.**
+  //
+  // ⚠⚠ AND THE LAST LINE IS THE NON-VACUITY PREMISE WITHOUT WHICH THE WHOLE THING IS EMPTY: the department
+  // really does exist in `CompanyB`. *Two identical refusals prove nothing if the code was absent from both
+  // companies — the test would then be comparing "nowhere" with "nowhere".*
   [Fact]
+  [Trait("Criterion", "AC-DOC-0022")]
   [Trait("Decision", "OD-DOC-004")]
   public async Task I5_A_code_in_another_company_is_refused_identically_to_a_code_that_exists_nowhere()
   {
@@ -3448,7 +3461,17 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // The search has always behaved this way, and an export is a search that leaves the building. Asking by
   // name still works, so audit and payroll extracts remain possible.
+  // ⚠ CITES `AC-DOC-0013` — *"Terminated employees are excluded by default and includable by name."*
+  // **Both clauses, and they are asserted as a CONTRAST over one seeded employee rather than as two
+  // independent facts: `EXP-GONE` is absent from the routine export and present in the one that asks for
+  // `Statuses: [Terminated]`.**
+  //
+  // ⚠⚠ *THE PAIRING IS WHAT MAKES EITHER HALF MEAN ANYTHING.* An exclusion asserted alone is satisfied by
+  // an export that returns nobody; an inclusion asserted alone is satisfied by an export that ignores the
+  // filter and returns everybody. **Only the two together say the status is a FILTER rather than a
+  // constant** — and the same employee on both sides is what removes the seeding as an explanation.
   [Fact]
+  [Trait("Criterion", "AC-DOC-0013")]
   [Trait("Decision", "DEC-DOC-0009")]
   public async Task X4_Terminated_employees_are_excluded_unless_the_caller_asks_for_them()
   {

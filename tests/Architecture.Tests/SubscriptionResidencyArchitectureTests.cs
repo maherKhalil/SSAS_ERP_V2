@@ -102,7 +102,14 @@ public sealed class SubscriptionResidencyArchitectureTests
   // to anyone reading the model rather than the guard.
   [Fact]
   [Trait("Criterion", "AC-SUB-0003")]
-  // `AC-SUB-0003`'s OTHER HALF — *"An attempt to update or delete a subscription record is refused…"*
+  // `AC-SUB-0003`'s OTHER HALF, pasted whole — *"An attempt to update or delete a subscription record is
+  // **refused**, not silently ignored, and the refusal comes from the persistence guard rather than from a
+  // handler that remembered to check"*
+  //
+  // ⚠ The first version of this line quoted as far as *"is refused…"* and stopped. **Caught by the sweep,
+  // in the same commit that quoted this criterion IN FULL twelve lines away in another file** — so the
+  // failure is not ignorance of the rule or of the text, it is that an ellipsis is what you reach for when
+  // the rest of the sentence is not the part you are talking about.
   // **The subject is the SUBSCRIPTION RECORD, and this is the only test that says the record is inside the
   // guard's reach.** `PlatformAppendOnlyGuardTests` proves the guard refuses `IAppendOnlyEntity`, using a
   // test-only probe — **so strip `IAppendOnlyEntity` from `TenantSubscription` and all four of those tests

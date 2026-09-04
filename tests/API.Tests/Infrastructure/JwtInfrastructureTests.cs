@@ -614,6 +614,51 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
     Assert.False((await AuthenticateAsync(token)).Succeeded);
   }
 
+  [Theory]
+  [InlineData("SSAS-ERP-WEB")]
+  [InlineData("Ssas-Erp-Web")]
+  [InlineData(" ssas-erp-web")]
+  [InlineData("ssas-erp-web ")]
+  [InlineData("ssas-erp-web-2")]
+  [InlineData("attacker-client")]
+  [Trait("Criterion", "AC-AUTH-0025")]
+  // ==================================================================================================
+  // `AC-AUTH-0025` — *"Only exact allowlisted `ssas-erp-web` is accepted for the V1 browser; whitespace,
+  // casing differences, and arbitrary ClientId values are rejected."* THREE NAMED REJECTION KINDS, ONE ROW
+  // EACH, PLUS TWO THE CRITERION IMPLIES.
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ MEASURED FIRST: `StrictAccessTokenValidator`'s two `client_id` comparisons replaced by
+  // `!string.IsNullOrEmpty(...)`. **All seven suites green.** A token carrying `client_id:
+  // "attacker-client"` was accepted by every test in the repository.
+  //
+  // ⚠⚠ AND THE NEAR-MISS THAT EXPLAINS IT: `TenantAccessTokenClaimSetTests` already has a theory row for
+  // `JwtClaimTypes.ClientId` — for the claim being ABSENT. **A missing-claim test cannot witness *only
+  // exact* is accepted, because every wrong value is equally absent when the claim is absent.** Twenty-odd
+  // fixtures across the suite name this claim and every one of them supplies the correct value; the one
+  // test that varies it, varies it to nothing.
+  //
+  // ROWS: casing (two, because a single-case flip does not distinguish `ToUpper` from `ToLower`
+  // normalisation), leading and trailing whitespace SEPARATELY (`Trim()` on the wrong side passes one),
+  // ⚠ `ssas-erp-web-2` — **which is the row that catches a `StartsWith` or `Contains` comparison, and is
+  // the implementation somebody actually writes** — and an arbitrary value.
+  //
+  // ⚠ THE POSITIVE IS IN THE SAME TEST AND IS NOT DECORATION. Without it a broken `mutateClaims` would
+  // refuse every row and this theory would be six vacuous assertions. **The control is the SAME
+  // construction path with the CORRECT value**, so a refusal is attributable to the client id alone rather
+  // than to how the token was built.
+  public async Task Only_the_exact_allowlisted_client_id_is_accepted(string clientId)
+  {
+    var accepted = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => Replace(claims, JwtClaimTypes.ClientId, AuthenticationClientId.V1Web));
+    Assert.True((await AuthenticateAsync(accepted)).Succeeded);
+
+    var token = CreateRs256Token(ActiveKey(), DateTime.UtcNow.AddMinutes(5),
+      mutateClaims: claims => Replace(claims, JwtClaimTypes.ClientId, clientId));
+
+    Assert.False((await AuthenticateAsync(token)).Succeeded);
+  }
+
   private X509SecurityKey ActiveKey() => factory.Services.GetRequiredService<ISigningKeyProvider>().Snapshot.ActiveSigningKey;
 
   private static List<Claim> ToPlatformClaims(List<Claim> claims) =>

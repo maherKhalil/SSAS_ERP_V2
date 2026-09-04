@@ -257,8 +257,17 @@ public sealed class AuthorizationPipelineTests : IAsyncLifetime
   [Trait("Criterion", "AC-TEN-0019")]
   [Trait("Criterion", "AC-IAM-0021")]
   [Trait("Criterion", "AC-AUTH-0045")]
-  // ALSO `AC-AUTH-0045`'s FIRST CLAUSE — *"every ordinary tenant-scoped authenticated business request
-  // authorizes only after ONE LIVE FP-003 LOOKUP confirms Active status."* **An already-issued token
+  // ALSO `AC-AUTH-0045`, QUOTED TO ITS TERMINAL FULL STOP — *"Every ordinary tenant-scoped authenticated
+  // business request authorizes only after one live FP-003 lookup confirms Active status, while
+  // suspended-tenant logout remains possible and TenantStatus is absent from JWTs."*
+  //
+  // THIS TEST CARRIES THE FIRST CLAUSE. ⚠ The comment first quoted only that clause and stopped — caught by
+  // the truncation sweep, the SECOND self-catch in one session, and this one had a label ("FIRST CLAUSE")
+  // and a pointer to the full map. **The instrument cannot tell a LABELLED fragment from a silent one, and
+  // that is the right side to err on: a sweep with false positives is one somebody switches off, and
+  // quoting in full costs two lines.** So the practice is uniform rather than conditional.
+  //
+  // **An already-issued token
   // stopping the moment the tenant is suspended IS what *live* means**: a cached or token-carried status
   // would keep admitting it. Cross-package; the criterion's other two clauses are witnessed in
   // `TenantAccessTokenClaimSetTests` and `PlatformAuthenticationEndToEndTests`, and the full map is on

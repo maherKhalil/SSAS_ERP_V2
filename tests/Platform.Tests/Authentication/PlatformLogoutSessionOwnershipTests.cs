@@ -35,6 +35,30 @@ namespace SSAS.Platform.Tests.Authentication;
 // would disclose that the session exists. ***SO "IT SUCCEEDED" IS ALSO WHAT A HANDLER THAT REVOKED THE FOREIGN
 // SESSION WOULD RETURN.*** Asserting the status is still `Active` is the whole test; asserting only the result
 // would pass on the exact defect this branch prevents.
+// ---- ⚠⚠ WHERE THE OTHER SEVEN CLAUSES LIVE, SO THIS CITATION IS NOT READ AS CARRYING THEM.
+//
+// `AC-TEN-0082` has EIGHT clauses. This file closes the one that had a live branch and no driver; the rest
+// were already accounted for, and two of them are not closable by any fixture:
+//
+//   1 revokes the current platform session   `PlatformSupportAuthenticationEndToEndTests.Platform_logout_…`
+//   3 refresh after logout is denied          same test
+//   4 the tenant session is unaffected        same test — a before/after COUNT on the tenant session table
+//   7 a tenant token cannot call it           `PlatformSupportAuthenticationLogoutPipelineTests`
+//   8 a platform token cannot log out tenant  covered by clause 4's table check
+//   2 target from the validated claim only    ***THIS FILE***
+//
+//   5 `SecurityVersion` is unchanged          ⚠ STRUCTURAL — enforced by the DEPENDENCY LIST
+//   6 the issued JWT stays valid to expiry    ⚠ STRUCTURAL — same
+//
+// ***THE HANDLER TAKES A SESSION REPOSITORY, A UNIT OF WORK AND A CLOCK, AND NOTHING ELSE. It cannot change
+// `AuthenticationAccount.SecurityVersion` because it has no way to reach an account; it cannot invalidate a
+// JWT because it has no token service.*** **There is no plant for either: you cannot break the absence of a
+// line, and adding the dependency IS the change the clause forbids.**
+//
+// ⚠ AND NOTHING WATCHES THE DEPENDENCY LIST. *"Logout should invalidate the token" is the most obvious thing
+// a competent person would think, and adding a token service is exactly how they would do it* — which is
+// precisely what clause 6 forbids. **Expressible and tempting, so it earns a guard rather than a stamp; that
+// guard is recorded as outstanding work and is not in this file.**
 public sealed class PlatformLogoutSessionOwnershipTests
 {
   private static readonly DateTimeOffset Now = new(2026, 9, 4, 12, 0, 0, TimeSpan.Zero);

@@ -133,8 +133,9 @@ public sealed class TenantLifecycleDomainTests
   //   `AC-TEN-0016`  *returns EXACTLY five members* — closed instead by the member pin in
   //                  `TenantLifecycleArchitectureTests`, which is the same idiom on a different set.
   //   `AC-SUB-0031`  ***AND A FOURTH, FROM ANOTHER PACKAGE ENTIRELY*** — *"`TenantStatusChangeReason`
-  //                  contains NO COMMERCIAL MEMBER — no `NonPayment`, no `Expired`, no
-  //                  `SubscriptionLapsed`."* FP-014 keeps commerce out of the tenant lifecycle, and **the
+  //                  contains **no commercial member** — no `NonPayment`, no `Expired`, no
+  //                  `SubscriptionLapsed`. Asserted over the enum, so adding one fails the build's guards
+  //                  rather than review."* FP-014 keeps commerce out of the tenant lifecycle, and **the
   //                  reason vocabulary below is the only thing in the tree that stops a commercial member
   //                  being added.** A subscription package under delivery pressure is exactly where
   //                  `NonPayment` gets proposed, and it would arrive as a one-line enum addition.

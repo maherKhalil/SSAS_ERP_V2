@@ -46,6 +46,27 @@ public sealed class PlatformAppendOnlyGuardTests
   // The guard must refuse the SECOND write, not the first. A guard that refused Added as well would be
   // indistinguishable from a broken table, and every append-only record in the product is written once.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0044")]
+  // ==================================================================================================
+  // `AC-SUB-0044`, quoted to its terminal full stop and PASTED rather than retyped — *"**`PlatformDbContext`
+  // refuses `Modified` and `Deleted` for `IAppendOnlyEntity`**, by the same mechanism
+  // `TenantDbContext.PreventAppendOnlyMutation` uses and called from its own `SaveChangesAsync`. **No
+  // FP-014 entity may carry `IAppendOnlyEntity` until this exists** — the interface without the guard is
+  // the appearance of immutability with none of it."*
+  // ==================================================================================================
+  //
+  // ⚠ THE CRITERION IS PARTLY A SEQUENCING RULE, WHICH IS UNUSUAL AND WORTH NAMING: *no FP-014 entity may
+  // carry the interface UNTIL this exists.* Both halves now hold — the guard is at
+  // `PlatformDbContext:207`, called from `SaveChangesAsync` at `:163`, and `TenantSubscription` and
+  // `TenantEntitlementGrant` carry `IAppendOnlyEntity`. **The ordering itself is not assertable after the
+  // fact**: nothing here could tell whether the guard preceded the interface, and the criterion's point
+  // was to stop a window in which the marker existed without enforcement.
+  //
+  // ⚠⚠ THE FOUR TESTS IN THIS FILE ARE WHY THE CITATION IS SAFE, AND TWO OF THEM ARE THE INTERESTING ONES:
+  // beyond refusing `Modified` and `Deleted`, they close **the synchronous entry point** and **the inner
+  // overload** — *a guard called from one `SaveChangesAsync` overload is bypassed by every other route
+  // into the same change tracker*, which is exactly how "the appearance of immutability" survives a test
+  // that only drives the happy path. Planted: the guard's condition made unreachable — **all four red.**
   public async Task Modifying_a_written_append_only_record_is_refused()
   {
     await using var scope = await AppendOnlyScope.CreateAsync();

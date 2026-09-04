@@ -95,7 +95,7 @@ public sealed class PlatformPlaneAuthorizationArchitectureTests
   // audited*). That is the permissive direction plus an audit obligation, and nothing here grants access or
   // observes an audit record — this file only proves the tenant plane cannot reach the platform one.
   [Fact]
-  [Trait("Criterion", "AC-IAM-0004")]
+  [Trait("Acceptance", "AC-IAM-0004")]
   public void Tenant_token_claim_filter_removes_every_platform_support_permission()
   {
     // Claim issuance must scope-filter: no PlatformSupport catalog permission can survive into a tenant token.

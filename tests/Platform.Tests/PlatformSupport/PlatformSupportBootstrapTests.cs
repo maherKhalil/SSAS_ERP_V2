@@ -314,7 +314,7 @@ public sealed class PlatformSupportBootstrapTests
 
   [Fact]
   [Trait("Acceptance", "AC-TEN-0031")]
-  [Trait("Criterion", "AC-TEN-0037")]
+  [Trait("Acceptance", "AC-TEN-0037")]
   // ⚠ `AC-TEN-0037` — *"Bootstrap/recovery NEVER CHANGES a `Disabled` principal's status; re-enable is a
   // separate explicit lifecycle operation. Configuration membership is NOT RE-ENABLE AUTHORITY."* — IS THE
   // THIRD *SATISFIED BY A BROADER GUARD* CASE TONIGHT, AND THE SHAPE IS NOW FAMILIAR.

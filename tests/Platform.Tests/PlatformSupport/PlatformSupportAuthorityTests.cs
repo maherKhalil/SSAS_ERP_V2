@@ -130,7 +130,7 @@ public sealed class PlatformSupportAuthorityTests
   // `AC-TEN-0047`.
   [Fact]
   [Trait("Acceptance", "AC-TEN-0038")]
-  [Trait("Criterion", "AC-TEN-0047")]
+  [Trait("Acceptance", "AC-TEN-0047")]
   // `AC-TEN-0038` — *"A registered `PlatformSupportPrincipal` STARTS `Active`; the ONLY transitions are
   // `Active -> Disabled` and `Disabled -> Active`."* Two claims, and this test carries the first.
   //
@@ -165,7 +165,7 @@ public sealed class PlatformSupportAuthorityTests
   [Fact]
   [Trait("Acceptance", "AC-TEN-0038")]
   [Trait("Acceptance", "AC-TEN-0041")]
-  [Trait("Criterion", "AC-TEN-0047")]
+  [Trait("Acceptance", "AC-TEN-0047")]
   // ⚠ `AC-TEN-0047` — *"The FIRST `Disable` or `Re-enable` POPULATES `StatusChangedUtc` and
   // `StatusChangedBy`; every SUBSEQUENT transition OVERWRITES them with the latest transition metadata."*
   // **The two-step arrangement is what makes *overwrites* observable**: the Disable stamps `Now+1`/`disabler`

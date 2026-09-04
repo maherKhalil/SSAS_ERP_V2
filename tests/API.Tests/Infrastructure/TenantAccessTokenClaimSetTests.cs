@@ -48,11 +48,22 @@ public sealed class TenantAccessTokenClaimSetTests(HostWebApplicationFactory fac
 
   [Fact]
   [Trait("Criterion", "AC-SUB-0013")]
-  // ALSO `AC-SUB-0013`, QUOTED TO ITS TERMINAL FULL STOP — *"The access token issued AFTER AN ENTITLEMENT
-  // CHANGE carries exactly the `FP-002` claim set — no subscription, plan, term, cap or entitlement claim
-  // is added."* FP-014's guarantee that commerce never reaches the token, and **the set equality is the
-  // whole of it: a denylist of subscription-shaped claim names would refuse only the ones somebody thought
-  // of, while this reddens on ANY addition.**
+  // ALSO `AC-SUB-0013`, QUOTED TO ITS TERMINAL FULL STOP — *"The access token issued after an entitlement
+  // change carries **exactly** the `FP-002` claim set — no subscription, billing, plan, module or
+  // entitlement claim, and no additional claim of any name."* FP-014's guarantee that commerce never
+  // reaches the token, and **the set equality is the whole of it: a denylist of subscription-shaped claim
+  // names would refuse only the ones somebody thought of, while this reddens on ANY addition** — which is
+  // what the criterion's own last clause, *no additional claim of ANY NAME*, actually asks for.
+  //
+  // ⚠⚠⚠ THIS QUOTATION WAS WRONG IN A WAY WORSE THAN TRUNCATION AND THE SWEEP CAUGHT IT. My first version
+  // read *"no subscription, plan, term, cap or entitlement claim is added"* — **I invented `term` and `cap`
+  // and dropped `billing` and `module`.** Not a shortened quotation: a DIFFERENT LIST, reading plausibly,
+  // because I reconstructed it from the criterion's SENSE instead of copying its TEXT.
+  //
+  // ***THE RULE THAT ACTUALLY PREVENTS THIS IS MECHANICAL: PASTE THE DECLARATION, NEVER RETYPE IT.***
+  // Quote-to-the-full-stop assumes the words you are quoting are the document's. Transcribing from
+  // understanding produces a fluent paraphrase in quotation marks, and **nothing downstream can tell that
+  // from a quotation** — the reader trusts it exactly as much either way.
   //
   // ⚠⚠ THE QUALIFIER IS NOT SUPPLIED BY THIS FIXTURE AND THAT IS STATED RATHER THAN GLOSSED. *After an
   // entitlement change* is a MODE, and this test issues one token in one state with no entitlement change

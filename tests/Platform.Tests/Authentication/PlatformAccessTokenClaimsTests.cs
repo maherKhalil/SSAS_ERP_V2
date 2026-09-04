@@ -121,7 +121,7 @@ public sealed class PlatformAccessTokenClaimsTests
 
   [Fact]
   [Trait("Acceptance", "AC-TEN-0063")]
-  [Trait("Criterion", "AC-TEN-0039")]
+  [Trait("Acceptance", "AC-TEN-0039")]
   // ⚠⚠⚠ `AC-TEN-0039` AND `AC-TEN-0063` ARE THE SAME CRITERION WRITTEN TWICE, IN TWO BLOCKS.
   //   `0039` *"Platform token issuance performs a LIVE PRINCIPAL-STATUS CHECK and denies issuance for a
   //          `Disabled` principal; NO TOKEN-CARRIED STATUS IS AUTHORITATIVE."*

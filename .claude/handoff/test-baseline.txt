@@ -32,7 +32,7 @@ API|Debug|982
 API|Release|972
 Architecture|Debug|667
 Architecture|Release|628
-Attendance|Debug|89
+Attendance|Debug|92
 Attendance|Release|87
 Finance|Debug|51
 Finance|Release|51

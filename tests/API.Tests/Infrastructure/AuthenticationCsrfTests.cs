@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -230,6 +231,38 @@ public sealed class AuthenticationCsrfTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0041")]
+  // ==================================================================================================
+  // `AC-AUTH-0041`, QUOTED TO ITS TERMINAL FULL STOP — *"The exact refresh cookie is Secure, HttpOnly,
+  // SameSite Strict, host-only, scoped to `/api/platform/auth`, expiry-aligned, rotated on refresh, and
+  // cleared with identical attributes on logout or terminal refresh failure."* Nine clauses:
+  // ==================================================================================================
+  //   Secure / SameSite Strict / path   `AssertCookie`, on all four cookies
+  //   HttpOnly                          asserted as an EQUALITY, not a containment — the CSRF cookie must
+  //                                     NOT be HttpOnly (the browser has to read it) and the refresh
+  //                                     cookie must be. A `Contains` would have passed both ways round.
+  //   host-only                         `DoesNotContain("domain=")` — here the ABSENCE is the attribute
+  //   cleared with identical attributes  creation and deletion go through the SAME helper; sharing the
+  //                                     assertion is what makes *identical* a claim rather than two lists
+  //   EXPIRY-ALIGNED                    see below
+  //   rotated on refresh                ⚠ NOT WITNESSED HERE, and this test cannot witness it: it calls
+  //                                     `WriteCookies` directly and never performs a refresh.
+  //                                     `Csrf_rejects_missing_...and_rotates` pins that two `Create` calls
+  //                                     differ, which is rotation of the CSRF VALUE, not of the cookie
+  //                                     across a refresh round-trip. Named as the gap it is.
+  //   on logout OR TERMINAL REFRESH     ⚠ `ClearCookies` is called directly, so this proves the clearing
+  //   FAILURE                           SHAPE, not that either caller invokes it. The two call sites are
+  //                                     the endpoint's business.
+  //
+  // ⚠⚠ *EXPIRY-ALIGNED* WAS ASSERTED AS `Assert.Contains("expires=")` — THE ATTRIBUTE'S PRESENCE, NOT ITS
+  // VALUE. A cookie outliving its refresh token by a year contains `expires=`. **The criterion's word is
+  // ALIGNED, and alignment is a relation between two values; a containment check cannot express a relation
+  // at all, only that one side of it exists.** The expected instant is now passed in and compared.
+  //
+  // ⚠ Same family as the hard-coded 2048-bit fixture, approached from the other side: there a literal at
+  // the threshold meant no fixture could contradict it; here the value was never read, so no assertion
+  // could. **Both leave a criterion's quantity outside the test space while the file reads as thorough,
+  // and both are invisible to a reader who checks that the criterion is mentioned.**
   public void Refresh_and_csrf_cookie_creation_and_deletion_use_exact_matching_attributes()
   {
     var services = new ServiceCollection();
@@ -238,19 +271,20 @@ public sealed class AuthenticationCsrfTests
     var csrf = new AuthenticationCsrfService(provider.GetRequiredService<IDataProtectionProvider>());
     var refreshToken = $"{Guid.NewGuid():N}.{new string('A', 43)}";
     var context = new DefaultHttpContext();
+    var refreshExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(30);
 
-    InvokeEndpointCookieMethod("WriteCookies", context, refreshToken, 42L, DateTimeOffset.UtcNow.AddMinutes(30), csrf);
+    InvokeEndpointCookieMethod("WriteCookies", context, refreshToken, 42L, refreshExpiresUtc, csrf);
     var created = context.Response.Headers.SetCookie.Select(value => value!).ToArray();
     Assert.Equal(2, created.Length);
-    AssertCookie(created.Single(value => value.StartsWith("__Secure-ssas-refresh=", StringComparison.Ordinal)), true, false);
-    AssertCookie(created.Single(value => value.StartsWith("__Secure-ssas-xsrf=", StringComparison.Ordinal)), false, false);
+    AssertCookie(created.Single(value => value.StartsWith("__Secure-ssas-refresh=", StringComparison.Ordinal)), true, false, refreshExpiresUtc);
+    AssertCookie(created.Single(value => value.StartsWith("__Secure-ssas-xsrf=", StringComparison.Ordinal)), false, false, refreshExpiresUtc);
 
     context = new DefaultHttpContext();
     InvokeEndpointCookieMethod("ClearCookies", context);
     var deleted = context.Response.Headers.SetCookie.Select(value => value!).ToArray();
     Assert.Equal(2, deleted.Length);
-    AssertCookie(deleted.Single(value => value.StartsWith("__Secure-ssas-refresh=", StringComparison.Ordinal)), true, true);
-    AssertCookie(deleted.Single(value => value.StartsWith("__Secure-ssas-xsrf=", StringComparison.Ordinal)), false, true);
+    AssertCookie(deleted.Single(value => value.StartsWith("__Secure-ssas-refresh=", StringComparison.Ordinal)), true, true, DateTimeOffset.UnixEpoch);
+    AssertCookie(deleted.Single(value => value.StartsWith("__Secure-ssas-xsrf=", StringComparison.Ordinal)), false, true, DateTimeOffset.UnixEpoch);
   }
 
   private static AuthenticationEndpointRateLimiter NewLimiter() => new(
@@ -304,16 +338,36 @@ public sealed class AuthenticationCsrfTests
     method.Invoke(null, arguments);
   }
 
-  private static void AssertCookie(string value, bool httpOnly, bool deleted)
+  private static void AssertCookie(string value, bool httpOnly, bool deleted, DateTimeOffset expectedExpiry)
   {
     Assert.Contains("path=/api/platform/auth", value, StringComparison.OrdinalIgnoreCase);
     Assert.Contains("secure", value, StringComparison.OrdinalIgnoreCase);
     Assert.Contains("samesite=strict", value, StringComparison.OrdinalIgnoreCase);
-    Assert.Contains("expires=", value, StringComparison.OrdinalIgnoreCase);
     Assert.Contains("max-age=", value, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("domain=", value, StringComparison.OrdinalIgnoreCase);
     Assert.Equal(httpOnly, value.Contains("httponly", StringComparison.OrdinalIgnoreCase));
     Assert.Equal(deleted, value.Contains("max-age=0", StringComparison.OrdinalIgnoreCase));
+    // The expiry is READ, not merely found. `Assert.Contains("expires=")` passed for any instant whatever,
+    // so *expiry-aligned* was carried entirely by the attribute existing.
+    Assert.Equal(TruncateToSecond(expectedExpiry), ParseCookieExpiry(value));
+  }
+
+  // `Set-Cookie` carries an RFC 1123 date, so the comparison is at second resolution. The truncation is
+  // applied to the EXPECTED side only — never to the parsed side — so a cookie whose own value has been
+  // rounded or shifted still fails rather than being normalised into agreement.
+  private static DateTimeOffset TruncateToSecond(DateTimeOffset value) =>
+    new(value.UtcDateTime.AddTicks(-(value.UtcTicks % TimeSpan.TicksPerSecond)), TimeSpan.Zero);
+
+  private static DateTimeOffset ParseCookieExpiry(string setCookieValue)
+  {
+    var start = setCookieValue.IndexOf("expires=", StringComparison.OrdinalIgnoreCase);
+    Assert.True(start >= 0,
+      $"no expires attribute in '{setCookieValue}'; the alignment check has nothing to read.");
+    var rest = setCookieValue[(start + "expires=".Length)..];
+    var end = rest.IndexOf(';');
+    var text = (end >= 0 ? rest[..end] : rest).Trim();
+    return DateTimeOffset.Parse(text, CultureInfo.InvariantCulture,
+      DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
   }
 
   private sealed class TestHostEnvironment : IHostEnvironment

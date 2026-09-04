@@ -228,6 +228,17 @@ public sealed class AuthenticationMilestoneArchitectureTests
       $"only {platformFiles.Length} Platform Domain/Application files were scanned; the filters have " +
       "stopped matching and 'no deferred types' below would mean nothing.");
 
+    // ⚠⚠ `SymmetricSecurityKey` IS BANNED IN TWO PLACES IN THIS FILE AND THE OTHER ONE IS NOT A DUPLICATE.
+    // This ban is about LAYERING: no token-framework type may appear in Platform Domain or Application,
+    // whatever it is for. `No_symmetric_signing_path_remains_active_anywhere_under_src` is about an
+    // ALGORITHM: no symmetric signing anywhere in `src/`, including the assemblies where JWT work is
+    // legitimate. Neither contains the other — this one also bans `HttpContext` and `CookieOptions` in two
+    // assemblies; that one also bans `HmacSha*` in every assembly.
+    //
+    // ⚠ TWO SITES ENFORCING ONE NAME IS THE REDUNDANCY TOPOLOGY, IN WHICH EACH SITE INDIVIDUALLY LOOKS
+    // DEAD. Delete either and the other still refuses a `SymmetricSecurityKey` in Platform Application, so
+    // no test reddens and the deletion reads as tidying — **but the two cover different scopes, and half of
+    // that coin deletes the only guard over `SSAS.Host.API`.** Which is why both say which is which.
     const string deferredDeclaration =
       // ⚠ NO WORD ANCHORS, AND THE CONTROL BELOW IS WHY (T-263). This read `\b(?:...)\b`, and the
       // first known-positive assertion written against it FAILED: `\b` after `JwtSecurityToken` cannot
@@ -282,7 +293,10 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // waiting to be wired up. *Remains active* is a property of the code, so the guard reads the code.
     //
     // ⚠ THE BAN IN `Milestone_four_keeps_token_framework_types_out_of_domain_and_application` ALREADY NAMES
-    // `SymmetricSecurityKey` AND DOES NOT COVER THIS. It scans Platform Domain and Application — the two
+    // `SymmetricSecurityKey` AND DOES NOT COVER THIS. **That one is a LAYERING rule over two assemblies —
+    // no token-framework type in Domain or Application, whatever it is for. This one is an ALGORITHM rule
+    // over every assembly.** Neither subsumes the other, and the overlap on one type name is what makes
+    // each look like the other's duplicate; the note there says the same thing from the other side. It scans Platform Domain and Application — the two
     // assemblies where a JWT type has no business existing. **The symmetric path would live where the
     // asymmetric one does, in `SSAS.Host.API`, which that walk never visits.** A guard naming the right
     // type over the wrong scope reads, at a glance, exactly like this one.

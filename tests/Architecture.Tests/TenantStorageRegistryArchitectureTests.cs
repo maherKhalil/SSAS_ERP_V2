@@ -689,6 +689,34 @@ public sealed class TenantStorageRegistryArchitectureTests
         type.Name.Contains("TenantStorage", StringComparison.Ordinal))
       .ToArray();
 
+    // ==============================================================================================
+    // ⚠⚠⚠ THE ALLOWLIST IS USED ONLY TO SUBTRACT, AND A LIST THAT ONLY SUBTRACTS PROVES NOTHING ABOUT
+    // WHAT WAS INCLUDED. THIS BINDS IT TO THE WALK.
+    // ==============================================================================================
+    //
+    // **Both bans below are `Assert.Empty`, which is TRUE OF THE EMPTY SET.** The ROOT is compiler-bound —
+    // `typeof(ITenantDatabaseResolver).Assembly` cannot go missing without breaking the build — ***BUT THE
+    // FILTER IS A NAMESPACE STRING. Rename `TenantStorage` and `storageTypes` is empty, both bans pass, and
+    // the guard reports success having examined nothing.***
+    //
+    // ⚠ MEASURED, NOT ARGUED: replacing the three filter strings with names that match nothing left the gate
+    // **GREEN**. With this assertion in place the same edit reddens here, naming which declared types went
+    // missing.
+    //
+    // ⚠⚠ AND THIS IS A BIND RATHER THAN A FLOOR, WHICH MATTERS FOR WHAT IT CATCHES. A floor
+    // (`Assert.NotEmpty(storageTypes)`) would survive a filter that still matched SOMETHING while dropping
+    // the caches — *a partial narrowing, which is the likelier accident than a total one.* **Asserting the
+    // five DECLARED names were each FOUND ties the ban's population to the list the ban is written against,
+    // so the two verify each other.**
+    //
+    // *The five names were already here as data. Nothing said they had to exist.*
+    Assert.Equal(
+      declaredCacheTypes.OrderBy(name => name, StringComparer.Ordinal),
+      storageTypes
+        .Select(type => type.FullName ?? type.Name)
+        .Where(name => declaredCacheTypes.Contains(name, StringComparer.Ordinal))
+        .OrderBy(name => name, StringComparer.Ordinal));
+
     Assert.Empty(storageTypes
       .Where(type => type.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase))
       .Select(type => type.FullName ?? type.Name)

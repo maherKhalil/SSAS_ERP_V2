@@ -378,12 +378,35 @@ public sealed class AuthenticationSessionApplicationTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0010")]
+  // ==================================================================================================
+  // `AC-AUTH-0010` — *"Current-session logout does not revoke unrelated sessions."*
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ THIS TEST WAS NAMED *"revokes ONLY the bound session"* AND ITS FIXTURE HELD EXACTLY ONE SESSION.
+  // Every assertion was about that session's status and reason. **With one session in the world there is
+  // no unrelated session to leave alone, so the word ONLY was unobservable** — a logout that revoked every
+  // session for the identity passed every line.
+  //
+  // ***AN "ONLY" OVER A POPULATION OF ONE IS NOT A WEAK ASSERTION, IT IS NO ASSERTION*** — the same shape
+  // as a permission test whose caller holds no permissions, arriving here through a fixture's SIZE rather
+  // than through its contents. The name was accurate about intent and silent about the arrangement.
+  //
+  // A second Active session for the same identity is now present and required to survive. ⚠ It is for the
+  // SAME identity deliberately: a session belonging to somebody else would be left alone by any
+  // implementation that filters by identity at all, and the mistake this criterion guards against —
+  // wiring `AC-AUTH-0011`'s logout-all into this handler — filters by exactly that.
+  //
+  // ⚠ `ListActiveByIdentityForUpdateAsync` already exists on the repository for the session-limit rule, so
+  // the wrong implementation is one line away and would read as a feature.
   public async Task Current_session_logout_revokes_only_the_bound_session_and_is_terminally_idempotent()
   {
     var fixture = new Fixture();
     var membership = fixture.AddEligibleMembership();
     var session = NewPersistedSession(701, fixture.Account.IdentityId, membership, Now);
+    var sibling = NewPersistedSession(702, fixture.Account.IdentityId, membership, Now);
     fixture.Sessions.Values.Add(session);
+    fixture.Sessions.Values.Add(sibling);
     var current = new FakeCurrentAuthenticationSession(new CurrentAuthenticationSession(
       fixture.Account.IdentityId, membership.TenantId, membership.TenantUserId,
       session.Id, Client, fixture.Account.SecurityVersion));
@@ -397,6 +420,11 @@ public sealed class AuthenticationSessionApplicationTests
     Assert.True(second.IsSuccess);
     Assert.Equal(AuthenticationSessionStatus.Revoked, session.Status);
     Assert.Equal(AuthenticationSessionRevocationReason.UserLogout, session.RevocationReason);
+
+    // The criterion's actual subject. Both are asserted: a handler that revoked the sibling would set its
+    // status, and one that "revoked" it without a reason would set neither.
+    Assert.Equal(AuthenticationSessionStatus.Active, sibling.Status);
+    Assert.Null(sibling.RevocationReason);
   }
 
   private static AuthenticationSession NewPersistedSession(

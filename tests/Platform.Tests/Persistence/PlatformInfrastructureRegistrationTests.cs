@@ -228,7 +228,83 @@ public sealed class PlatformInfrastructureRegistrationTests
       StringComparison.OrdinalIgnoreCase);
 
   [Fact]
-  [Trait("Criterion", "AC-SUB-0008")]
+  [Trait("Criterion", "AC-SUB-0006")]
+  // ==================================================================================================
+  // `AC-SUB-0006`, pasted — *"The plan tables carry **no `TenantId` column**, and no route reachable on the
+  // tenant plane can create, amend or retire a plan"*
+  // ==================================================================================================
+  //
+  // TWO CLAUSES, AND ONLY THE FIRST IS REAL TODAY.
+  //
+  //   NO `TenantId` COLUMN   this test, over the model. **A plan is shared across tenants — that is the
+  //                          entire commercial design — and a `TenantId` column would not merely be
+  //                          redundant, it would make per-tenant plan rows EXPRESSIBLE**, which is the
+  //                          thing the criterion exists to prevent.
+  //   NO TENANT-PLANE ROUTE  ⚠⚠⚠ **VACUOUS: there are no plan routes at all, on either plane.**
+  //                          `grep` over `src/` finds no `Map*` for any subscription or plan path. Guarded
+  //                          separately in `PlatformRouteInventoryTests` so the vacuity self-revokes.
+  //
+  // ⚠⚠ AND THAT SECOND VACUITY IS **UNDECLARED**, WHICH IS THE DANGEROUS KIND. `AC-SUB-0008` says so in the
+  // document — *"satisfied vacuously as at 2026-08-30"* — and a reader is warned. **This one reads as a
+  // enforced separation and is an empty surface**, so a reader who checks that FP-014 keeps plans off the
+  // tenant plane finds a criterion, finds no violation, and concludes it is held.
+  //
+  // ⚠ THE CONTROL IS A KNOWN TENANT-OWNED ENTITY IN THE SAME MODEL. Without it, "no plan entity has a
+  // `TenantId` property" is equally satisfied by a property lookup that has stopped working — the same
+  // failure as a namespace filter matching nothing, one level down.
+  public void Plan_tables_carry_no_tenant_column()
+  {
+    var services = new ServiceCollection();
+    services.AddLogging();
+    services.AddSingleton<ICurrentUser, TestRequestContext>();
+    services.AddSingleton<ICurrentTenant, TestRequestContext>();
+    services.AddSingleton<ICorrelationContext, TestRequestContext>();
+    services.AddSingleton<IRequestMetadata, TestRequestContext>();
+    services.AddSingleton<IDateTimeProvider, TestRequestContext>();
+    services.AddPlatformInfrastructure(CreateConfiguration(new Dictionary<string, string?>()));
+    using var provider = services.BuildServiceProvider();
+    using var scope = provider.CreateScope();
+    var model = scope.ServiceProvider.GetRequiredService<PlatformDbContext>().Model;
+
+    var planEntities = model.GetEntityTypes()
+      .Where(entity => PlanTypeNames.Contains(entity.ClrType.Name, StringComparer.Ordinal))
+      .ToArray();
+    Assert.Equal(PlanTypeNames.Length, planEntities.Length);
+
+    // THE CONTROL: the instrument can find a tenant column when one exists.
+    var tenantOwned = model.GetEntityTypes()
+      .SingleOrDefault(entity => entity.ClrType.Name == "TenantUser");
+    Assert.NotNull(tenantOwned);
+    Assert.Contains(tenantOwned.GetProperties(), property => property.Name == "TenantId");
+
+    var offenders = planEntities
+      .SelectMany(entity => entity.GetProperties()
+        .Where(property => property.Name.Contains("TenantId", StringComparison.Ordinal))
+        .Select(property => $"{entity.ClrType.Name}.{property.Name}"))
+      .ToArray();
+
+    Assert.Empty(offenders);
+  }
+
+  // The plan side of FP-014: shared across tenants by design. `TenantSubscription` and
+  // `TenantEntitlementGrant` are deliberately NOT here — those are per-tenant records and carry a tenant.
+  private static readonly string[] PlanTypeNames =
+    ["SubscriptionPlan", "PlanPrice", "PlanModuleGrant", "PlanLimit"];
+
+  [Fact]
+  // ⚠⚠⚠ DELIBERATELY NO `[Trait]`, AND THE MISSING TRAIT IS THE POINT. This test GUARDS a criterion's
+  // declared vacuity; it does not WITNESS the criterion. **A trait here would enter the census as
+  // coverage** — which is precisely what the guard exists to prevent being recorded.
+  //
+  // I put one here first, then reported the criterion as *not cited, guarded* in the same breath. ***THE
+  // TRAIT AND THE BUCKET CONTRADICTED EACH OTHER, AND THE CENSUS BELIEVED THE TRAIT*** — a numerator that
+  // counted the same id as cited AND as not-cited, which is a definitional error rather than a miscount.
+  // *A bucket meaning "not cited" cannot be implemented with the thing that means "cited".*
+  //
+  // Same precedent as the architecture-guard retraction earlier in this loop: **the link is recorded in
+  // comments at both ends, with no trait**, and it is worth writing down PRECISELY BECAUSE the coverage
+  // claim would be false.
+  //
   // ==================================================================================================
   // `AC-SUB-0008`, pasted — *"**No tenant-plane permission name for subscription administration exists in
   // the composed catalog.** The criterion is the absence — there is nothing to grant by mistake.

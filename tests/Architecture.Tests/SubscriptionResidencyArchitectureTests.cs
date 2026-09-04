@@ -101,6 +101,16 @@ public sealed class SubscriptionResidencyArchitectureTests
   // invitation to the update `PreventAppendOnlyMutation` refuses, and it would make the type look editable
   // to anyone reading the model rather than the guard.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0003")]
+  // `AC-SUB-0003`'s OTHER HALF — *"An attempt to update or delete a subscription record is refused…"*
+  // **The subject is the SUBSCRIPTION RECORD, and this is the only test that says the record is inside the
+  // guard's reach.** `PlatformAppendOnlyGuardTests` proves the guard refuses `IAppendOnlyEntity`, using a
+  // test-only probe — **so strip `IAppendOnlyEntity` from `TenantSubscription` and all four of those tests
+  // stay green while subscription records become mutable.** Measured: this test is the only one in seven
+  // suites that reddens.
+  //
+  // ⚠ *A guard and the marker that admits a type to it are two claims, and a test of either alone reads as
+  // a test of both.*
   public void An_append_only_commercial_record_declares_no_rowversion_and_no_modified_columns()
   {
     Type[] appendOnly = [typeof(TenantSubscription), typeof(TenantEntitlementGrant)];

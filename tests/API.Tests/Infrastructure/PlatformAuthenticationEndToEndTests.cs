@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.Platform.API.Authentication;
@@ -216,13 +217,182 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
     Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
   }
 
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0004")]
+  // ==================================================================================================
+  // `AC-AUTH-0004` — *"A tenant without ACTIVE MEMBERSHIP cannot be selected."*
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ THE CRITERION IS ENFORCED TWICE, AND THIS TEST WITNESSES THE **CONJUNCTION**, NOT EITHER SITE.
+  //
+  //   A  `ListEligibleMembershipsAsync`           LINQ `.Where(… user.Status == Active)` — what is OFFERED
+  //   B  `GetMembershipEligibilityForUpdateAsync` raw SQL `AND [Status] = N'Active'` under `UPDLOCK` —
+  //                                               what may be SELECTED INTO, revalidated at the moment of use
+  //
+  // THE MEASURED MATRIX, because I twice guessed it wrong before running it:
+  //
+  //   plant        this test                       the listing test
+  //   -----        ---------                       ----------------
+  //   none         pass                            pass
+  //   A            pass  (B refuses instead)       **RED** — 3 memberships offered, not 2
+  //   B            pass  (A excludes it first)     pass
+  //   A + B        **RED**                         RED
+  //
+  // ***SO NEITHER SITE IS INDIVIDUALLY WITNESSED BY THIS TEST — EACH IS SUFFICIENT, SO REMOVING EITHER
+  // CHANGES NOTHING OBSERVABLE HERE.*** That is the redundancy topology in its pure form, and the lesson is
+  // about the METHOD: **a green after a plant means "something else also enforces this", never "nothing
+  // does", and the two are indistinguishable without planting the rest of the set.** I read the first green
+  // as "unwitnessed" and was wrong; then read the 401 as coming from B and was wrong again.
+  //
+  // Site A is witnessed on its own by `Login_offering_multiple_memberships_omits_a_deactivated_one`.
+  // Site B is witnessed on its own by `Tenant_selection_is_refused_when_the_membership_is_deactivated_after_login`,
+  // which is the only shape that can: it needs the membership to pass the listing and fail at use.
+  //
+  // ⚠⚠ AND THE TWO TESTS THAT LOOK LIKE THIS ONE CANNOT WITNESS IT — for two DIFFERENT reasons, which is
+  // why neither gap was visible:
+  //
+  //   `Begin_tenant_access_returns_no_membership_without_creating_authentication_state` seeds **ZERO**
+  //   memberships. ***A TEST OF THE NULL CASE CANNOT WITNESS A CLAIM ABOUT HOW THE NON-NULL CASES
+  //   DIFFER*** — with no membership at all, active and inactive are indistinguishable.
+  //
+  //   `Suspended_tenant_is_refused_at_tenant_selection` sets the fixture's `TenantEligible` false. **That
+  //   is the TENANT's status, not the MEMBERSHIP's** — a different column, a different join, a different
+  //   criterion (`AC-AUTH-0018`). The two read as the same English sentence and are not the same claim.
+  //
+  // So the discriminating fixture is a membership that EXISTS and is DEACTIVATED, which nothing built.
+  // `TenantUser.Deactivate` supplies it, and the seeding path is otherwise identical to the passing
+  // login tests — **the only difference between this test and a successful login is the membership's
+  // status**, which is what makes the 401 attributable to it.
+  //
+  // ⚠ Costs one login against the 30-per-minute `login-ip` budget documented above; headroom noted there
+  // was 17 at the time of writing, and this file's count rises by one.
+  public async Task Login_with_a_deactivated_membership_is_refused_and_creates_no_session()
+  {
+    var (email, _, tenantUserIds) = await SeedTenantMemberAsync(tenantCount: 1, deactivateMembership: true);
+
+    var response = await LoginAsync(email);
+
+    Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    var body = await response.Content.ReadAsStringAsync();
+    Assert.Contains("authentication.failed", body, StringComparison.Ordinal);
+
+    // The criterion's second half: refused AND nothing created. A handler that answered 401 after issuing
+    // a session would pass the assertions above.
+    await using var scope = host.Application.Services.CreateAsyncScope();
+    var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    var tenantUserId = tenantUserIds[0];
+    Assert.Empty(await context.AuthenticationSessions.AsNoTracking()
+      .Where(session => session.TenantUserId == tenantUserId)
+      .ToArrayAsync());
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0004")]
+  // `AC-AUTH-0004`'s LISTING half, and the reason it needs its own test: with TWO memberships the user is
+  // OFFERED a choice instead of being auto-selected, **so `ListEligibleMembershipsAsync` is the only gate
+  // the response passes through** and the for-update revalidation never runs. One membership is
+  // deactivated; the criterion is that it is not on the menu.
+  //
+  // ⚠ The active one is asserted present in the same breath. Without it, a listing that returned NOTHING
+  // would satisfy "the deactivated one is absent" — and the login would then have failed outright rather
+  // than offering a selection, which is a different response this test would not distinguish.
+  public async Task Login_offering_multiple_memberships_omits_a_deactivated_one()
+  {
+    // THREE memberships, one deactivated. ⚠ TWO would not do: deactivating one of two leaves a single
+    // active membership, which is AUTO-SELECTED — the response is then an authenticated session and the
+    // listing is never rendered at all. **The fixture size is what decides which code path is under test**,
+    // and the first version of this test asserted against a response shape the product never produced.
+    var (email, tenantIds, _) = await SeedTenantMemberAsync(tenantCount: 3, deactivateMembership: true, deactivateOnlyIndex: 2);
+
+    var response = await LoginAsync(email);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    var selection = await ReadAsync<TenantSelectionRequiredResponse>(response);
+
+    Assert.Equal(2, selection.Memberships.Count);
+    Assert.DoesNotContain(selection.Memberships, membership => membership.TenantId == tenantIds[2]);
+    Assert.Contains(selection.Memberships, membership => membership.TenantId == tenantIds[0]);
+    Assert.Contains(selection.Memberships, membership => membership.TenantId == tenantIds[1]);
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0004")]
+  // `AC-AUTH-0004` AT THE MOMENT OF USE — and the only shape that isolates the for-update revalidation.
+  //
+  // Login lists two eligible memberships and hands back a selection proof. **The membership is then
+  // deactivated, after it has already been offered.** The subsequent `select-tenant` must refuse it.
+  //
+  // ⚠⚠ THIS IS THE ONLY TEST IN WHICH THE LISTING FILTER CANNOT HELP: the row passed that filter, legally,
+  // before it changed. **Every other fixture deactivates BEFORE the listing, where site A refuses first and
+  // site B is never reached** — which is exactly why site B had no independent witness.
+  //
+  // ⚠ And it is the scenario the `UPDLOCK`/`HOLDLOCK` revalidation exists for. A design that trusted the
+  // proof would issue a session into a membership that was revoked while the user was looking at the menu;
+  // the window is however long the person takes to click.
+  //
+  // PLANT: the raw-SQL `AND [Status] = N'Active'` removed — this test reddens, `Expected Unauthorized /
+  // Actual ServiceUnavailable`. ⚠⚠ **THE PLANT DOES NOT PRODUCE A PERMISSIVE 200; IT PRODUCES A 503**,
+  // because with the row returned the flow proceeds and fails further down. So removing site B is LOUD
+  // rather than silent — *which is precisely why the assertion above must be the exact refusal.* A
+  // `NotEqual(OK)` would have called that 503 a pass and reported this test as witnessing a criterion it
+  // was no longer testing.
+  public async Task Tenant_selection_is_refused_when_the_membership_is_deactivated_after_login()
+  {
+    var (email, tenantIds, tenantUserIds) = await SeedTenantMemberAsync(tenantCount: 2);
+    var selection = await ReadAsync<TenantSelectionRequiredResponse>(await LoginAsync(email));
+    Assert.Equal(2, selection.Memberships.Count);
+    var chosen = selection.Memberships[0];
+
+    await DeactivateMembershipAsync(chosen.TenantUserId, chosen.TenantId);
+
+    var response = await PostAsync("/select-tenant", JsonSerializer.Serialize(new
+    {
+      selectionProof = selection.SelectionProof,
+      tenantId = chosen.TenantId,
+      tenantUserId = chosen.TenantUserId
+    }));
+
+    // ⚠⚠ THE EXACT REFUSAL, NOT MERELY "NOT OK". `Assert.NotEqual(OK)` was the first version and it is
+    // satisfied by a CRASH: with the for-update status filter removed this route answers **503**, and a
+    // not-OK assertion reports that as a pass. ***A NEGATIVE ASSERTION ABOUT A STATUS CODE CANNOT
+    // DISTINGUISH A CORRECT REFUSAL FROM A FAILURE TO ANSWER*** — measured, not anticipated.
+    Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    Assert.Contains("authentication.selection_failed", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+    // Refused AND nothing created. The seeded ids are used rather than the response body, which on a
+    // refusal carries neither.
+    Assert.Contains(chosen.TenantId, tenantIds);
+    Assert.Contains(chosen.TenantUserId, tenantUserIds);
+    await using var scope = host.Application.Services.CreateAsyncScope();
+    var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    var tenantUserId = chosen.TenantUserId;
+    Assert.Empty(await context.AuthenticationSessions.AsNoTracking()
+      .Where(session => session.TenantUserId == tenantUserId)
+      .ToArrayAsync());
+  }
+
+  private async Task DeactivateMembershipAsync(long tenantUserId, Guid tenantId)
+  {
+    await using var scope = host.Application.Services.CreateAsyncScope();
+    var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    var accessor = scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>();
+    accessor.HttpContext = TenantContext(tenantId);
+    var membership = await context.TenantUsers.SingleAsync(user => user.Id == tenantUserId);
+    Assert.True(membership.Deactivate(Guid.NewGuid(), Now.AddMinutes(3)).IsSuccess);
+    await context.SaveChangesAsync();
+    accessor.HttpContext = null;
+  }
+
   // ---- SEEDING.
   //
   // ⚠ `TenantUser` is tenant-owned, and `PersistenceDbContext.AssignTenant` REFUSES to save one without a
   // trusted tenant context — `CurrentTenant` reads the tenant claim off `IHttpContextAccessor`, which is
   // null outside a request. So the seeding scope installs an authenticated principal carrying the tenant
   // claim. That is the production accessor doing its real job, not a bypass: the write still has to match.
-  private async Task<(string Email, Guid[] TenantIds, long[] TenantUserIds)> SeedTenantMemberAsync(int tenantCount)
+  private async Task<(string Email, Guid[] TenantIds, long[] TenantUserIds)> SeedTenantMemberAsync(
+    int tenantCount,
+    bool deactivateMembership = false,
+    int? deactivateOnlyIndex = null)
   {
     await using var scope = host.Application.Services.CreateAsyncScope();
     var context = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
@@ -269,6 +439,14 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
         Now);
       context.TenantUsers.Add(membership);
       await context.SaveChangesAsync();
+      // ⚠ DEACTIVATED AFTER THE INSERT, NOT INSTEAD OF IT. The row must EXIST and be non-Active for
+      // `AC-AUTH-0004` to have a subject; a membership that was never created tests the null case.
+      if (deactivateMembership && (deactivateOnlyIndex is null || deactivateOnlyIndex == index))
+      {
+        Assert.True(membership.Deactivate(Guid.NewGuid(), Now.AddMinutes(2)).IsSuccess);
+        await context.SaveChangesAsync();
+      }
+
       accessor.HttpContext = null;
 
       tenantIds.Add(tenant.Id);

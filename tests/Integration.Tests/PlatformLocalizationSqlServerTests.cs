@@ -87,6 +87,21 @@ public sealed class PlatformLocalizationSqlServerTests
   }
 
   [Fact]
+  // ⚠ CITES `AC-LOC-0027` — *"A missing settings row initializes transactionally; concurrent first writes
+  // converge on one row and retry safely."* — **ACROSS TWO TESTS, AND NEITHER HALF IS THE CRITERION ALONE.**
+  //
+  // *INITIALIZES TRANSACTIONALLY* is this test: the read returns `null` and leaves `COUNT = 0`, so the
+  // absence is observed WITHOUT being repaired by the observation, and only the mutation — inside an
+  // explicit `BeginTransactionAsync` — creates the row at version 1.
+  // ⚠⚠ **THE `Assert.Null` PLUS `COUNT = 0` PAIR IS THE LOAD-BEARING PART AND IT IS EASY TO READ AS SETUP.**
+  // A repository whose *read* silently self-healed would satisfy every later line in this test — the row
+  // would exist, the version would be 1 — *and would be a read that writes.*
+  //
+  // *CONVERGE ON ONE ROW AND RETRY SAFELY* is `Concurrent_first_settings_creation_produces_one_retained_row`
+  // below: two concurrent initializations, `[1L, 1L]` returned to BOTH callers and exactly one row retained.
+  // **Both getting `1` is what makes it a safe retry rather than a silent second row** — the loser observed
+  // the winner's state instead of its own.
+  [Trait("Criterion", "AC-LOC-0027")]
   public async Task Missing_settings_read_is_non_mutating_and_first_mutation_self_heals()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();
@@ -111,6 +126,23 @@ public sealed class PlatformLocalizationSqlServerTests
   }
 
   [Fact]
+  // Second half of `AC-LOC-0027`; the reasoning is above `Missing_settings_read_…`, which carries the other.
+  //
+  // ⚠⚠⚠ AND THIS TEST IS ONE OF ONLY TWO MEMBERS `AC-LOC-0056` HAS — *"Real SQL Server proves concurrent
+  // create/update/Undo/Restore/settings initialization yield deterministic single winners."* **THAT IS A
+  // LIST OF FIVE OPERATIONS, NOT ONE PROPERTY, AND IT IS DISTRIBUTED OVER SUBJECTS WITH HOLES:**
+  //
+  //   create                  ✓  Concurrent_application_create_has_one_deterministic_loser
+  //   settings initialization ✓  this test
+  //   update                  ✗  no concurrent test exists
+  //   Undo                    ✗  no concurrent test exists
+  //   Restore                 ✗  no concurrent test exists
+  //
+  // **The only other `Concurrent_…` test in this file is `Concurrent_catalog_activation_serializes_and_never
+  // _lowers_state`, and catalog activation is not a member of the criterion's list.** ⚠ *So `AC-LOC-0056` is
+  // deliberately NOT cited on either member: two of five is a citation that would read as five.* **A
+  // collective predicate is a SET, and citing it from a sample claims the whole set.**
+  [Trait("Criterion", "AC-LOC-0027")]
   public async Task Concurrent_first_settings_creation_produces_one_retained_row()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();
@@ -448,6 +480,23 @@ public sealed class PlatformLocalizationSqlServerTests
   // ⚠⚠ AND DO NOT DEFEAT THE LOCK TO REACH THE OTHER ARM. Building a fixture that holds one caller between
   // its pre-check and its save would be constructing a barrier to defeat a product safeguard in order to
   // exercise a defensive branch — the guard exists precisely to prevent that interleave.
+  // ⚠ CITES THREE OF THE FOUR CLAUSES OF `AC-LOC-0015` — *"Competing writes yield one committed winner;
+  // losers receive deterministic conflict without extra version/stamp/event."*
+  //
+  //   ONE COMMITTED WINNER   `Assert.Single(… IsSuccess)` and one row in `TenantLocalizationOverrides`.
+  //   DETERMINISTIC CONFLICT the loser's error is `OverrideAlreadyExists` BY NAME, not merely a failure.
+  //   NO EXTRA VERSION/STAMP one `…OverrideVersions` row, and settings at exactly 2 — advanced once.
+  //
+  // ⚠⚠⚠ ***"WITHOUT EXTRA EVENT" IS ASSERTED BY NOTHING, AND THE FIXTURE IS HOLDING THE INSTRUMENT THAT
+  // WOULD ASSERT IT.*** The handler is constructed with a `RecordingDomainEventDispatcher` — **it records,
+  // and nothing reads the recording.** *A value that is never read cannot be reached by any assertion*, so a
+  // losing write that dispatched a spurious `…OverrideCreated` would leave every line below green while
+  // downstream projectors saw two creations for one row.
+  //
+  // ⚠⚠ NOT FIXED HERE, AND THE REASON IS THE SUITE RATHER THAN THE DIFFICULTY: the fix is one assertion on
+  // the recorder's count, but this file is outside `GATE_SCOPE=TASK` and needs a real SQL Server, so I
+  // cannot execute it. **An unrun assertion added to an unrun suite is a claim, not a check.**
+  [Trait("Criterion", "AC-LOC-0015")]
   public async Task Concurrent_application_create_has_one_deterministic_loser()
   {
     await using var database = await LocalizationSqlDatabase.CreateAsync();

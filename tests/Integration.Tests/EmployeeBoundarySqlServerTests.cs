@@ -3000,6 +3000,22 @@ public sealed class EmployeeBoundarySqlServerTests
     // Every row appears, and so does every problem WITHIN a row — the same argument applies inside a row as
     // between rows, so row 4 reports both its date and its position code.
     Assert.Equal([2, 3, 4, 4], report.Value.Errors.Select(error => error.RowNumber));
+
+    // ⚠⚠⚠ THE GAP IS THE CLAIM, AND UNTIL THIS LINE IT WAS AN ACCIDENT OF THE FIXTURE.
+    //
+    // `AC-DOC-0003` says `rejectedCount` equals the number of DISTINCT rows in error. **The only thing that
+    // distinguishes that from "count the errors" is a row with TWO problems**, and row 4 is it. *A later
+    // tidy giving each fixture row a single error would leave both counts at 3, every assertion green, and
+    // a count-the-errors implementation passing forever after.*
+    //
+    // Stated as a RELATION rather than as two more literals: `4 > 3` is what the criterion's word means, and
+    // it survives the fixture growing. **Entailed by the two assertions above, so it cannot newly fail here
+    // — it makes the property they already encode legible instead of latent.**
+    Assert.True(
+      report.Value.Errors.Count > report.Value.RejectedCount,
+      "the fixture no longer contains a row with two errors, so this test can no longer tell " +
+      "`rejectedCount` counting DISTINCT ROWS from it counting ERRORS.");
+
     Assert.Equal(0, await fixture.EmployeeCountAsync("MULTI-"));
   }
 

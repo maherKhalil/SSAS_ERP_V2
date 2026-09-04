@@ -531,6 +531,59 @@ public sealed class LocalizationArchitectureTests
     Assert.Equal(4, Regex.Matches(migrationSource, "migrationBuilder.CreateTable", RegexOptions.CultureInvariant).Count);
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ THE CYCLE IS PREVENTED BY A COLUMN THAT DOES NOT EXIST, AND NOTHING WAS WATCHING THE ABSENCE.
+  // ==================================================================================================
+  //
+  // `AC-LOC-0032` — *"Aggregate/version creation succeeds with enforced constraints and no CurrentVersionId
+  // cycle."* **Its first clause is carried by `PlatformLocalizationSqlServerTests.Aggregate_and_history_
+  // enforce_coherence_uniqueness_fingerprints_and_immutability`, which inserts an aggregate and its version
+  // against a real schema with every constraint enabled. This test carries the SECOND.**
+  //
+  // ---- WHY AN ABSENCE, AND WHY IT IS WORTH A TEST WHEN SO MANY ABSENCES ARE NOT.
+  //
+  // `data-model.md` states the design: *"There is no CurrentVersionId or composite FK from current state to
+  // versions. The sole physical relationship is the version's restricted FK to its aggregate."* **The
+  // aggregate points at its current version by NUMBER, not by key** — so there is nothing for a cycle to
+  // close through, and "no cycle" is not enforced by a constraint but by the shape of the schema.
+  //
+  // ⚠ **THE FAILURE IS CONSTRUCTIBLE AND IT IS THE OBVIOUS REFACTOR.** *A `CurrentVersionId` FK is what an
+  // ORM-minded reader would ADD* — it makes the navigation property work and looks like a missing
+  // relationship rather than a deliberate omission. **That is the distinction from the other absences in
+  // this feature: nobody accidentally writes a YAML reader, and everybody is tempted to add this key.**
+  // Adding it makes the two tables mutually dependent, and the ordered insert the whole write path relies on
+  // — aggregate first, then version — stops being expressible.
+  //
+  // ⚠⚠ ASSERTED OVER THE MIGRATION SOURCE, WHICH IS THE ONLY GATED PLACE THE SCHEMA EXISTS. No gate-run
+  // suite materialises a database, so the physical FK topology cannot be read back from SQL Server here;
+  // the migration is the schema's source of truth and it is a file. **The floor below is what stops a
+  // renamed or emptied migration passing this by containing nothing.**
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0032")]
+  public void Localization_current_state_has_no_key_back_to_its_versions()
+  {
+    var migration = Directory.EnumerateFiles(
+        Path.Combine(FindRepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure", "Persistence", "Migrations"),
+        "*AddLocalizationCore.cs")
+      .Single(path => !path.EndsWith(".Designer.cs", StringComparison.Ordinal));
+    var source = File.ReadAllText(migration);
+
+    // ANTI-VACUITY: a renamed or gutted migration would satisfy every `DoesNotContain` below by holding
+    // nothing at all. Four tables is what this migration creates and what the neighbouring test pins.
+    Assert.Equal(4, Regex.Matches(source, "migrationBuilder.CreateTable", RegexOptions.CultureInvariant).Count);
+
+    Assert.DoesNotContain("CurrentVersionId", source, StringComparison.Ordinal);
+
+    // The versions table is a PRINCIPAL to nothing. One FK names the aggregate as principal — the version's
+    // own — and no FK anywhere names the versions table, which is what makes a cycle unconstructible rather
+    // than merely absent.
+    Assert.DoesNotContain("principalTable: \"TenantLocalizationOverrideVersions\"", source, StringComparison.Ordinal);
+    Assert.Single(Regex.Matches(
+      source,
+      "principalTable: \"TenantLocalizationOverrides\"",
+      RegexOptions.CultureInvariant));
+  }
+
   // ⚠ EXAMINED AND LEFT UNRESOLVED. `AC-LOC-0064` is the only criterion about audit readiness and its
   // subject is RUNTIME BEHAVIOUR — a mutation proceeds only when readiness succeeds, else 503. **This test
   // asserts WHERE THE TYPE LIVES**: interface in Application, implementation in Infrastructure, nothing

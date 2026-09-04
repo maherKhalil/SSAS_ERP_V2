@@ -22,6 +22,43 @@ namespace SSAS.API.Tests.Infrastructure;
 public sealed class AuthenticationCsrfTests
 {
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0042")]
+  // ==================================================================================================
+  // `AC-AUTH-0042`, QUOTED TO ITS TERMINAL FULL STOP — *"Refresh and logout REQUIRE the exact
+  // Data-Protection-signed CSRF cookie/header pair bound to current session, refresh selector, and
+  // ClientId; state rotates and clears with refresh state and production key-ring startup fails closed."*
+  // ==================================================================================================
+  //   the exact PAIR         this test: header tampered by one character, header absent, cookie empty —
+  //                          each refused. Both halves must be present AND equal.
+  //   Data-Protection-signed the value is produced by a time-limited protector and the tampered value is
+  //                          refused; `Csrf_rejects_...` also forges a payload with the real protector
+  //   refresh selector       `Csrf_rejects_...` presents a well-formed value against a DIFFERENT token
+  //   ClientId               the same test protects a payload carrying `wrong-client`
+  //   state rotates          `Assert.NotEqual(first, rotated)` — two `Create` calls with identical inputs
+  //   clears with refresh    `Refresh_and_csrf_cookie_creation_and_deletion_...` clears both cookies with
+  //                          one helper
+  //   key-ring fails closed  `Production_transport_without_shared_rate_limit_and_data_protection_
+  //                          configuration_fails_startup`
+  //
+  // ⚠⚠⚠ TWO CLAUSES HAVE NO WITNESS AT COMPILE SCOPE, AND BOTH WERE SETTLED BY DELETING THE MECHANISM
+  // RATHER THAN BY SEARCHING FOR THE ASSERTION — a name search cannot establish that nothing tests a thing.
+  //
+  //   *REFRESH AND LOGOUT **REQUIRE** THE PAIR.* Everything above tests `AuthenticationCsrfService` in
+  //   isolation: it proves the service REFUSES, never that either endpoint ASKS it. Plant: neutering the
+  //   CSRF guard in the refresh route (`... && false`, so `TryValidate` still runs and its answer is
+  //   discarded) left all seven suites green — **all 3296 compile-scope tests pass with the refresh route's CSRF check
+  //   inoperative.**
+  //
+  //   *BOUND TO CURRENT SESSION.* `TryValidate` RETURNS the session id; it does not take one to compare
+  //   against, so the binding cannot live in this file at all — it is the caller's comparison. ⚠ And the
+  //   two routes differ by necessity: logout compares `currentSession...AuthenticationSessionId` against
+  //   the payload, and **refresh cannot, because it is anonymous — there is no current session at refresh
+  //   time, which is the point of refreshing.** On refresh the binding is the SELECTOR, tested above.
+  //   Plant: deleting logout's comparison left all seven suites green.
+  //
+  // ⚠ NEITHER PLANT IS EVIDENCE ABOUT `tests/Integration.Tests/`, which `GATE_SCOPE=TASK` compiles and does
+  // not run. The claim is bounded to the seven compile-scope suites, and the SQL-backed suites are the
+  // likeliest home for a route-level witness.
   public void Protected_csrf_value_requires_exact_cookie_header_selector_and_session_binding()
   {
     var services = new ServiceCollection();
@@ -44,6 +81,20 @@ public sealed class AuthenticationCsrfTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0042")]
+  // `AC-AUTH-0042`'s REFUSAL half — five distinct rejections plus rotation, clause map on
+  // `Protected_csrf_value_requires_exact_cookie_header_selector_and_session_binding`.
+  //
+  // ⚠ THE EXPIRED AND WRONG-CLIENT ROWS FORGE THEIR PAYLOAD WITH THE REAL PROTECTOR AND THE REAL PURPOSE
+  // STRING (`SSAS.ERP.Authentication.Csrf.v1`). **That is what makes them test the PAYLOAD rather than the
+  // signature**: a corrupted blob is refused by the data-protection layer and would prove nothing about
+  // whether anyone reads `ExpiresUnixTimeSeconds` or `ClientId`. Each row is correctly signed and wrong in
+  // exactly one field.
+  //
+  // ⚠⚠ WHICH MAKES THE PURPOSE STRING A SILENT COUPLING: it is duplicated here from the service, and if the
+  // service changes it, these two rows stop being forgeries and become unreadable blobs — **still refused,
+  // still green, and no longer testing the field they name.** A refusal test cannot notice that its input
+  // stopped being the input it meant to construct.
   public void Csrf_rejects_missing_malformed_expired_wrong_selector_and_wrong_client_values_and_rotates()
   {
     var services = new ServiceCollection();
@@ -192,6 +243,10 @@ public sealed class AuthenticationCsrfTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0042")]
+  // `AC-AUTH-0042`'s last clause — *"production key-ring startup fails closed."* The only clause of this
+  // criterion that is about STARTUP rather than a request, and therefore the only one a request-shaped
+  // fixture could never have reached.
   public void Production_transport_without_shared_rate_limit_and_data_protection_configuration_fails_startup()
   {
     var services = new ServiceCollection();

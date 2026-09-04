@@ -137,7 +137,24 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   // ---- Refresh ----
 
+  // ⚠ CITES `AC-TEN-0070` — *"Platform refresh RE-DERIVES permission claims LIVE from
+  // `IPlatformSupportPermissionReadService`; no stale permission snapshot from the prior token/session is
+  // reused."*
+  //
+  // ***THE ARRANGEMENT IS THE PROOF: `ViewTenants` IS GRANTED **AFTER** THE SESSION EXISTS, AND THEN APPEARS
+  // IN THE REISSUED CLAIMS.*** **A permission that was not in the world when the session was created cannot
+  // have come from a snapshot taken at creation** — so its presence is positive evidence of a live read,
+  // which no assertion about the claim set alone could give.
+  //
+  // ⚠⚠ AND `AdministerPlatformSupport` IS ASSERTED BESIDE IT AS THE CONTROL: *without it, a refresh that
+  // returned ONLY the new permission — a re-derivation that had lost the original set — would also pass.*
+  // The pair says the claims were re-derived COMPLETELY rather than merely changed.
+  //
+  // ⚠⚠⚠ ***TIER 2 — UNGATED.*** `Integration.Tests` does not run in `GATE_SCOPE=TASK`: green 2026-09-01,
+  // 862 passing. *And it is tier-2 by CAPABILITY rather than by filing — the test needs a database it can
+  // create and seed a permission grant into, which no gated suite can do.*
   [Fact]
+  [Trait("Criterion", "AC-TEN-0070")]
   [Trait("Decision", "DEC-TEN-0022")]
   public async Task Refresh_rotates_the_token_and_reissues_with_live_permissions()
   {

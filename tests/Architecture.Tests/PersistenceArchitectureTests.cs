@@ -327,6 +327,117 @@ public sealed class PersistenceArchitectureTests
       "stay at their default values forever:\n  " + string.Join("\n  ", offenders));
   }
 
+  // ---- THE SAME GAP IN THE MARKER THAT GATES AN AUTHORIZATION CHECK RATHER THAN A METADATA STAMP.
+  //
+  // `ICompanyOwnedEntity` drives `TenantDbContext.ApplyCompanyRulesAsync`: entries of that type make the
+  // save call `AuthorizeCurrentCompanyAsync` and receive the trusted `CompanyId`. Its own declaration is
+  // explicit that the failure is silent — *"An entity that should have been company-scoped and was not is
+  // readable by every company in the tenant, and nothing about it looks wrong."*
+  //
+  // ⚠⚠⚠ MEASURED PER CARRIER, NOT ARGUED: 24 carriers, each stripped of the marker one at a time and put
+  // through the full seven-suite gate. **13 of the 24 lost the marker with the gate STAYING GREEN.**
+  // `Department` was caught by one test and `PayElement` by nothing at all — same marker, same removal,
+  // opposite results. The exposed 13 were `AttendancePeriod`, `AttendanceRecord`, `EmployeeCompensation`,
+  // `JournalDraft`, `JournalEntry`, `LeaveBalance`, `LeaveRequest`, `LeaveType`, `OneOffPayment`,
+  // `PayElement`, `PayrollPeriod`, `PayrollRun` and `WorkingCalendar`.
+  //
+  // ---- ⚠ WHAT THE 13 WERE AND WERE NOT. **They were EXPOSED, never BROKEN.** All 24 carry the marker
+  // today and this walk passes on the current tree. It does not fix thirteen defects; it turns thirteen
+  // silently-removable markers into zero, in one assertion.
+  //
+  // ---- THE COVERAGE THAT EXISTED WAS DELIBERATE AND SIMPLY NEVER REACHED THESE MODULES.
+  //
+  // Every witnessed carrier outside HR was `FiscalYear`, and its test is not incidental —
+  // `Finance.Tests/Calendar/CalendarDomainTests.cs:26`
+  // `A_fiscal_year_is_company_owned_which_is_what_makes_closing_a_company_scoped_write`, whose comment
+  // reads:
+  //
+  //   > The interface is the mechanism, not the column: ICompanyOwnedEntity is what makes
+  //   > TenantDbContext.ApplyCompanyRulesAsync run AuthorizeCurrentCompanyAsync before a close reaches SQL.
+  //
+  // **That sentence is quoted here rather than referenced because it is the only part of the reasoning that
+  // survives being read by a stranger.** A considered assertion and a generic interface enumeration are
+  // written identically — `Assert.Contains(typeof(M), interfaces)` — and ***INTENT IS NOT RECOVERABLE FROM
+  // FORM, ONLY FROM THE AUTHOR'S OWN SENTENCE AT THE SITE.*** This walk generalises that assertion so the
+  // next module does not depend on somebody remembering to write it again.
+  //
+  // ---- ⚠⚠ WHY THE KEY IS A PUBLICLY SETTABLE `CompanyId`, AND WHY THE INTERFACE ITSELF LICENSES IT.
+  //
+  // The marker leaves a trace: the property outlives it. And `ICompanyOwnedEntity` states what a public
+  // setter MEANS — *"THE SETTER EXISTS SO THE SERVER CAN STAMP IT, and for no other reason."* So a domain
+  // entity with a publicly settable `CompanyId` and no marker is a type declaring that the server stamps a
+  // value the server has never been told about.
+  //
+  // ⚠ Same boundary as the audit walk, and it is the honest half: a `private set` `CompanyId` says the type
+  // assigns its own, and such a type is invisible here. That is deliberate — `Tenant` and `SubscriptionPlan`
+  // self-stamp their audit columns for the same reason, and a rule that could not tell them apart would fail
+  // on correct code forever.
+  //
+  // ---- ⚠ UNCITED, AND THE SEARCH THAT ESTABLISHED IT WAS OVER ALL FOURTEEN PACKAGES.
+  //
+  // No criterion governs company-scope membership tree-wide. What exists is two narrower kinds, and neither
+  // is what this asserts:
+  //
+  //   * PER-TYPE membership — `AC-DEP-0051` (`Department`) and `AC-POS-0057` (`EmployeePositionAssignment`).
+  //     Each names one type and also asserts a NEGATIVE about `IBranchOwnedEntity` that this says nothing
+  //     about, and each already has a test that witnesses it directly and more strongly than this would.
+  //   * BEHAVIOURAL authorization — `AC-EMP-0026` and `FP-006`'s scope criteria, which are about a CALLER
+  //     being refused when scope is revoked. That is the authorizer's behaviour, not which types reach it.
+  //
+  // `AC-GL-0007` mentions `AuthorizeCurrentCompanyAsync`, but in a commentary note about which scope owns an
+  // account — not in a clause. **Citing any of them here would attach a tree-wide claim to a criterion that
+  // does not make one**, which is the `BR-PLT-0004` mistake in a fresh costume.
+  [Fact]
+  public void Every_domain_entity_with_a_server_stamped_company_opts_in_to_company_scoping()
+  {
+    var declaring = new List<Type>();
+
+    foreach (var assembly in DomainAndApplicationAssemblies())
+    {
+      foreach (var type in assembly.GetExportedTypes())
+      {
+        if (!IsDomainEntity(type))
+        {
+          continue;
+        }
+
+        var stamped = type
+          .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+          .Any(property =>
+            property.Name == nameof(SSAS.BuildingBlocks.Domain.ICompanyOwnedEntity.CompanyId)
+            && property.PropertyType == typeof(Guid)
+            && property.SetMethod is { IsPublic: true });
+
+        if (stamped)
+        {
+          declaring.Add(type);
+        }
+      }
+    }
+
+    // ⚠ AN ANTI-VACUITY CONTROL, NOT A MEMBERSHIP GUARD — the same distinction as the audit walk above and
+    // the opposite of `TenantOwnershipGuardCoverageTests`. This walk is TRACE-KEYED: a type that loses the
+    // marker keeps its `CompanyId` property, stays in this population, and fails the assertion BY NAME. The
+    // floor only proves the selection chain is alive, so it sits below the measured population deliberately
+    // and must NOT be raised to track it.
+    Assert.True(declaring.Count >= 15,
+      $"only {declaring.Count} domain entities were found declaring a publicly settable Guid CompanyId; " +
+      "the selection chain has stopped matching and the check below would judge nothing.");
+
+    var offenders = declaring
+      .Where(type => !typeof(SSAS.BuildingBlocks.Domain.ICompanyOwnedEntity).IsAssignableFrom(type))
+      .Select(type => type.FullName!)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(offenders.Length == 0,
+      "these domain entities declare a publicly settable CompanyId but do not implement " +
+      "ICompanyOwnedEntity, so TenantDbContext.ApplyCompanyRulesAsync never sees them: their writes skip " +
+      "AuthorizeCurrentCompanyAsync entirely and CompanyId is never stamped from the trusted company " +
+      "context. The row is then readable by every company in the tenant and nothing about it looks " +
+      "wrong:\n  " + string.Join("\n  ", offenders));
+  }
+
   // ---- NOT CONVERTED: genuinely a question about source text, so it keeps a floor instead.
   //
   // A generic repository is a SHAPE in the source — `IRepository<T>` — and a type that was never written

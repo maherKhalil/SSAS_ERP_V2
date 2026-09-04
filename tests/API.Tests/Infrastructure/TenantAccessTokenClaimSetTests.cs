@@ -47,6 +47,21 @@ public sealed class TenantAccessTokenClaimSetTests(HostWebApplicationFactory fac
   ];
 
   [Fact]
+  [Trait("Criterion", "AC-SUB-0013")]
+  // ALSO `AC-SUB-0013`, QUOTED TO ITS TERMINAL FULL STOP — *"The access token issued AFTER AN ENTITLEMENT
+  // CHANGE carries exactly the `FP-002` claim set — no subscription, plan, term, cap or entitlement claim
+  // is added."* FP-014's guarantee that commerce never reaches the token, and **the set equality is the
+  // whole of it: a denylist of subscription-shaped claim names would refuse only the ones somebody thought
+  // of, while this reddens on ANY addition.**
+  //
+  // ⚠⚠ THE QUALIFIER IS NOT SUPPLIED BY THIS FIXTURE AND THAT IS STATED RATHER THAN GLOSSED. *After an
+  // entitlement change* is a MODE, and this test issues one token in one state with no entitlement change
+  // anywhere in it. **The set is pinned for the state this fixture builds, not for every state** — so a
+  // claim added only on the post-entitlement-change path would pass here.
+  //
+  // ⚠ It is still the right anchor: the issuer builds its claim list from one place, so a
+  // state-dependent claim would be a strange thing to write. *But "would be strange to write" is the
+  // reasoning a citation is supposed to replace, so the gap is named rather than argued away.*
   [Trait("Criterion", "AC-AUTH-0045")]
   // ALSO `AC-AUTH-0045`'s LAST CLAUSE — *"… and TenantStatus is ABSENT from JWTs."* ⚠ **The set equality
   // above is a stronger witness for that than a `DoesNotContain("tenant_status")` would be**, because a

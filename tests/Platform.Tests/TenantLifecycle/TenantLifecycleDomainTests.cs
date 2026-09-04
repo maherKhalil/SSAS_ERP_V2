@@ -132,9 +132,21 @@ public sealed class TenantLifecycleDomainTests
   //                  refusals are the whole complement only because the complement is three.
   //   `AC-TEN-0016`  *returns EXACTLY five members* — closed instead by the member pin in
   //                  `TenantLifecycleArchitectureTests`, which is the same idiom on a different set.
+  //   `AC-SUB-0031`  ***AND A FOURTH, FROM ANOTHER PACKAGE ENTIRELY*** — *"`TenantStatusChangeReason`
+  //                  contains NO COMMERCIAL MEMBER — no `NonPayment`, no `Expired`, no
+  //                  `SubscriptionLapsed`."* FP-014 keeps commerce out of the tenant lifecycle, and **the
+  //                  reason vocabulary below is the only thing in the tree that stops a commercial member
+  //                  being added.** A subscription package under delivery pressure is exactly where
+  //                  `NonPayment` gets proposed, and it would arrive as a one-line enum addition.
   //
   // A fifth `TenantStatus` added after this test is gone would arrive with no row covering it, no refusal
   // covering it, and a green suite.
+  //
+  // ⚠⚠ AND THE FOURTH DEPENDANT SHARPENS THE WARNING RATHER THAN LENGTHENING IT: **three of the four are
+  // FP-003 criteria a reader of this file might plausibly know about. The fourth is FP-014's, in a package
+  // this file never mentions** — so the person weighing whether this test earns its place cannot see the
+  // whole cost of removing it from anything in front of them. *That is the argument for listing dependants
+  // AT the depended-on test rather than at the depending ones.*
   //
   // ⚠ THE REASON THIS IS WORTH SHOUTING IS THAT IT IS THE HIGHEST-VALUE TARGET IN A TIDY-UP. It asserts an
   // enum against its own names; it reads as ceremony; every argument for removing dead tests points here
@@ -145,6 +157,7 @@ public sealed class TenantLifecycleDomainTests
   // ⚠⚠ IF THE VOCABULARY GENUINELY MUST CHANGE, that is fine and expected — change it here, then go to the
   // three sites above and add the row, the refusal, or the member. **The failure mode is not editing this
   // test; it is REMOVING it**, because editing forces the question and removing answers it silently.
+  [Trait("Acceptance", "AC-SUB-0031")]
   public void Status_and_reason_vocabularies_are_exact()
   {
     Assert.Equal(

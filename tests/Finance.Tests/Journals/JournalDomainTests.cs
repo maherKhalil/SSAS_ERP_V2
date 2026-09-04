@@ -233,8 +233,16 @@ public sealed class JournalEntryDomainTests
     Assert.Equal(original.TotalCredits, reversal.TotalDebits);
   }
 
+  // ⚠ CITES THE SECOND CLAUSE OF `AC-GL-0006` — *"...The original is unchanged."* The first clause,
+  // *"a reversing journal whose lines MIRROR the original's debits and credits"*, is the per-line loop in
+  // the test above, whose own comment gives the reason totals are not enough: **"equal totals would also
+  // hold for a reversal that moved the amounts between the wrong accounts."**
+  //
+  // ⚠⚠ *AND THE TWO CLAUSES FAIL IN DIFFERENT DIRECTIONS, WHICH IS WHY BOTH ARE NEEDED: a reversal could
+  // mirror perfectly while stamping the original, or leave the original alone while mirroring wrongly.*
   [Fact]
   [Trait("Decision", "OD-GL-0006")]
+  [Trait("Criterion", "AC-GL-0006")]
   public void The_original_is_untouched_by_being_reversed()
   {
     var original = JournalEntry.Post(BalancedDraft(Guid.NewGuid()), Guid.NewGuid(), Guid.NewGuid(), "1");

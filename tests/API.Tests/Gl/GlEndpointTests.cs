@@ -281,6 +281,19 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
 
   [Fact]
   [Trait("Decision", "api-contracts.md")]
+  // ⚠ CITES `AC-GL-0010`'s SECOND CLAUSE — *"an account outside it is reported as NOT FOUND rather than as
+  // FORBIDDEN."* **`A_missing_account_is_404` is its necessary pair: the criterion asks for the two cases to
+  // be INDISTINGUISHABLE, and one test alone cannot state a relation between two responses.**
+  //
+  // ⚠⚠ The first clause — *"a caller sees only accounts within their authorized scope"* — is asserted in
+  // `GlSchemaSqlServerTests.A_scope_authorized_for_one_company_reads_none_of_the_others_rows`, which
+  // enumerates SEVEN read sites with a present/absent pair at each. ***THAT HALF IS TIER 2 AND UNGATED;
+  // THIS HALF IS GATED.***
+  //
+  // ⚠ `Assert.NotEqual(Forbidden)` below is SUBSUMED by the `Assert.Equal(NotFound)` above it — if the
+  // status is `NotFound` it cannot be `Forbidden`. *It is emphasis naming the criterion's word, not a second
+  // check*, and is recorded as such so nobody counts it as one.
+  [Trait("Criterion", "AC-GL-0010")]
   public async Task An_account_outside_the_callers_scope_is_reported_as_absent_and_not_as_forbidden()
   {
     // Deliberately indistinguishable from "no such account". Reporting 403 would let a caller enumerate the

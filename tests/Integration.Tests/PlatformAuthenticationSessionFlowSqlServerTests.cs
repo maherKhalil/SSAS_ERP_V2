@@ -577,6 +577,56 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
   }
 
   // ---- Phase 4B: L1 create-vs-disable serialization (DEC-TEN-0023) ----
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ `AC-TEN-0083` IS CITED HERE FROM 2026-09-05, AND IT WAS UNCITED FOR ONE REASON ONLY: THE THREE
+  // TESTS BELOW NAMED THE DECISION AND NOT THE CRITERION.
+  // ==================================================================================================
+  //
+  // *"Before platform-session creation is exposed over HTTP (4B), the create-vs-disable concurrency item is
+  // closed by **serialization**… Correctness must **not** depend on `READ_COMMITTED_SNAPSHOT` being disabled
+  // or on deployment isolation settings. Required invariant: once a `Disable` commits, no concurrent creation
+  // may commit an `Active` session for that principal (**both interleavings safe**); proven by a **real
+  // two-connection SQL concurrency test** under actual supported SQL Server settings."*
+  //
+  // ***THE CLAUSE-TO-FIXTURE MAP, WHICH IS WHAT LICENSES THE CITATION — every clause has a test that would
+  // fail if it were false:***
+  //
+  //   *both interleavings safe*      `L1_create_first_commits_the_session_and_the_disable_then_revokes_it`
+  //                                  `L1_disable_first_makes_the_concurrent_creation_fail_closed`
+  //   *no Active session after a
+  //    committed Disable*            the second asserts `PrincipalDisabled` **and** no usable continuation
+  //   *not dependent on RCSI*        `L1_holds_when_read_committed_snapshot_isolation_is_disabled` — asserts
+  //                                  RCSI ON as EF created it, flips it OFF, asserts OFF, re-runs the race.
+  //                                  **Both regimes exercised, not one asserted and one assumed.**
+  //   *real two-connection SQL test* two contexts driven against a SQL `LockGate` over seeded seek volume
+  //
+  // ⚠⚠ **GREEN AT A DATE, NOT GATED. This is `Integration.Tests`, which the merge gate skips** — last green
+  // 2026-09-01. ***A READER MUST NOT TAKE THIS CITATION AS CONTINUOUSLY VERIFIED; it is verified at a commit,
+  // and `src/` has moved since.*** That is a third state, neither "gated" nor "unrun", and it travels with
+  // the citation rather than being discoverable from it.
+  //
+  // ⚠⚠⚠ **AND IT IS GREEN-AT-A-DATE RATHER THAN *PARTIAL-EXECUTION*, WHICH WAS CHECKED RATHER THAN ASSUMED.**
+  // *A method present at the baseline ran at the baseline IN WHATEVER FORM IT THEN HAD* — so a later commit
+  // that adds assertions to an existing method leaves the name, the classifier and the date all unchanged
+  // while the new assertions have never executed. ***THE RCSI TEST IS EXACTLY THAT SHAPE: an isolation-regime
+  // assertion is the kind of thing added to a pre-existing concurrency test months later.***
+  //
+  // **Measured, not reasoned: the 150-line span holding all four L1 methods is BYTE-IDENTICAL between
+  // `ce9b28f1a603b9b7eb3674f76f7ae74721af61c9` and HEAD** — `diff` of the extracted ranges is empty, the RCSI
+  // assertions included. *So every assertion these three tests make did run in the last green Integration
+  // pass.* **Presence would not have shown that; the bodies did.**
+  //
+  // ⚠ AND THE PRECONDITION IS ALREADY CROSSED, WHICH IS WHY THE CITATION MATTERS RATHER THAN BEING TIDINESS:
+  // the criterion says *"before … exposed over HTTP"*, and `PlatformAuthenticationSessionCreator` is reached
+  // from the platform-support login route today. **The gate the criterion describes is behind us; what these
+  // tests hold is the invariant it demanded, and nothing else does.**
+  //
+  // ⚠⚠⚠ HOW THIS WAS NEARLY MISSED, RECORDED BECAUSE THE METHOD GENERALISES: a first pass read this file's
+  // header — *"Closes F3C-1, F3C-2 (Disable-vs-refresh race)"* — found no create-vs-disable, and treated the
+  // header as a statement of scope. ***THIS SECTION IS 250 LINES FURTHER DOWN, PAST THE SEARCH WINDOW.***
+  // **A file header describes what its author had in mind when they wrote the header.** *The absence was
+  // caught by widening the search, not by re-reading — which is the only move that works on a window error.*
 
   // The L1 invariant (DEC-TEN-0023): platform-session creation serializes its Active-eligibility decision against
   // a concurrent principal Disable on a transactionally-effective lock. The GLOBAL LOCK ORDER is
@@ -591,6 +641,7 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0023")]
+  [Trait("Criterion", "AC-TEN-0083")]
   public async Task L1_create_first_commits_the_session_and_the_disable_then_revokes_it()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();
@@ -626,6 +677,7 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0023")]
+  [Trait("Criterion", "AC-TEN-0083")]
   public async Task L1_disable_first_makes_the_concurrent_creation_fail_closed()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();
@@ -662,6 +714,7 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0023")]
+  [Trait("Criterion", "AC-TEN-0083")]
   public async Task L1_holds_when_read_committed_snapshot_isolation_is_disabled()
   {
     // The guarantee must come from the UPDLOCK/HOLDLOCK reads, NOT the deployment isolation level. EF Core's SQL

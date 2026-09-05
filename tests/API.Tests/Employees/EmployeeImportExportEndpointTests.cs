@@ -21,6 +21,50 @@ namespace SSAS.API.Tests.Employees;
 // What only this level can establish: which content types are accepted, which permission each route
 // carries, what a refusal looks like on the wire, whether the export's bytes carry a byte order mark, and
 // whether the headers the contract promises are actually set.
+// ==================================================================================================
+// ⚠⚠⚠ `AC-DOC-0017`, `AC-DOC-0018`, `AC-DOC-0019` AND `AC-DOC-0020` EXIST, ARE APPROVED, AND SIT OUTSIDE
+// EVERY COVERAGE NUMBER THIS PROJECT PUBLISHES. CENSUSED 2026-09-05. NONE IS CITED, AND NONE CAN BE.
+// ==================================================================================================
+//
+// **Recorded here because this is where a reader meets the `AC-DOC` prefix**: `AC-DOC-0001`–`0016` are
+// FP-009's and are cited in this file and its siblings. *Four more share the prefix, and nothing in the test
+// tree mentions them.*
+//
+// ---- HOW THEY LEFT THE COUNT, WHICH IS A BOOKKEEPING STORY AND NOT A LOST FEATURE.
+//
+// `FP-009/acceptance-criteria.md:10` — *"**Approved 2026-08-22. Sixteen criteria** — `AC-DOC-0017`–`0020`
+// travelled to FP-010 with the documents material."* — and `:119-123` names all four and where they went.
+// ***THE TRANSFER IS DELIBERATE, DOCUMENTED AT BOTH ENDS, AND KEPT THE IDENTIFIERS.***
+//
+// **FP-010 has no `acceptance-criteria.md`.** It holds a `README.md`, a `carried-analysis.md` — which is where
+// the four are declared, as a first-shape table — and a `decisions-open.md`. ⚠ ***SO THE FEATURE IS PARKED,
+// NOT UNSTARTED, AND THE FOLDER FALLS OUTSIDE A POPULATION FILTER THAT KEYS ON A FILE NAME.*** The gated walk
+// returns 602 declarations and the ungated walk returns 606; **these four are the entire difference.**
+//
+// ---- WHAT THEY REQUIRE, AND WHY NO TEST CAN CARRY THEM TODAY.
+//
+//   `AC-DOC-0017`  content type verified against the BYTES — a PDF renamed `.png` and declared
+//                  `image/png` is refused
+//   `AC-DOC-0018`  metadata visibility does not grant content — `View` without `Download` can list and
+//                  cannot obtain bytes through any route; **the refusal is `403`, not `404`**
+//   `AC-DOC-0019`  document reads inherit the employee's scope — an out-of-scope employee's document
+//                  answers `404` **identically** whether it exists, belongs to another company, or never
+//                  existed
+//   `AC-DOC-0020`  withdrawal is one-way and metadata survives it — a second withdrawal is `409`;
+//                  uploader and timestamp stay readable whatever happened to the bytes
+//
+// ***THE SUBJECT DOES NOT EXIST. `src/` CONTAINS NO `EmployeeDocument` TYPE, NO UPLOAD PATH AND NO WITHDRAWAL
+// PATH*** — zero hits across the whole of `src/` for the document aggregate or either verb. **So all four are
+// correctly uncited: there is nothing to witness.**
+//
+// ⚠⚠ **THESE ARE FOUR CONSIDERED SECURITY DECISIONS, NOT PLACEHOLDERS.** *`0018`'s `403`-not-`404` and
+// `0019`'s `404`-for-everything are opposite disclosure rulings made on purpose for two different questions* —
+// whether a caller may know a document EXISTS, versus whether they may know an EMPLOYEE does. **Whoever
+// builds the subsystem needs both, and neither is discoverable from a coverage report that cannot see them.**
+//
+// ⚠⚠⚠ **AND THE GENERAL POINT, BECAUSE IT IS THE REASON THIS PARAGRAPH EXISTS: A CRITERION DOES NOT LEAVE
+// THE COUNT WHEN IT IS RETIRED. IT LEAVES WHEN THE FILE HOLDING IT IS RENAMED.** *Four approved criteria
+// became invisible to every published figure by an act nobody would recognise as a change to coverage.*
 public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeApiTestHost>
 {
   private const string Header = "employeeNumber,fullName,employmentDate,departmentCode,positionCode";

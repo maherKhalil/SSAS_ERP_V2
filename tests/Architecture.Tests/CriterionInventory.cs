@@ -147,15 +147,26 @@ internal static class CriterionInventory
   // "discussed" and this population would collapse into the declared set.* **The signal would have to be an
   // ANNOTATION, which has no reliable form. Stated as a bound rather than chased.**
   //
-  // **2. ⚠⚠ A DISPOSITION NAMING A RANGE MATCHES ONLY ITS FIRST MEMBER.**
-  // `TenantLifecycleApplicationTests` disposes of *"the `AC-TEN-0021..0030` block, deferred with the
-  // endpoints"* — **ten criteria considered, one id matched.** *`AC-TEN-0022`, `0023`, `0026`, `0027` and
-  // `0028` then read as though nobody had ever looked at them, when one sentence looked at all ten.*
+  // **2. ⚠⚠ A HUMAN ABBREVIATION OF A LIST OF IDS MATCHES ONLY ITS FIRST MEMBER. TWO FORMS, BOTH PRESENT.**
   //
-  // ***THAT IS THE FIFTH MATCHER FAILURE MODE THIS PROJECT HAS LOGGED — after CASE, WORD-BOUNDARY, WINDOW and
-  // READING DIRECTION — AND IT IS NOTATION: A HUMAN RANGE IS NOT AN ENUMERATION.*** **The remedy is a writing
-  // convention rather than a regex: a disposition covering several criteria should NAME them, because a range
-  // is the one form neither a reader's grep nor any instrument can expand.**
+  //   ***THE RANGE***    `TenantLifecycleApplicationTests`: *"the `AC-TEN-0021..0030` block, deferred with
+  //                the endpoints"* — ten criteria considered, one id matched.
+  //   ***THE ELIDED PREFIX***  `PlatformSupportAuthenticationSurfaceArchitectureTests:163`:
+  //                ``  `AC-TEN-0012`, `0021`, `0022`, `0023`, `0026`, `0027` and `0028` all describe  ``
+  //                ``  AUTHORIZATION on `/api/platform/tenants` routes  `` — **seven considered, ONE matched.**
+  //
+  // ⚠⚠⚠ **CORRECTED 2026-09-05: THE RANGE WAS PUBLISHED AS THE CAUSE AND THE ELIDED PREFIX IS THE ONE THAT
+  // ACTUALLY HID THEM.** *`AC-TEN-0022`, `0023`, `0026`, `0027` and `0028` sat in the "nobody has ever written
+  // about this" bucket while the site above disposed of all seven over a CLOSED POPULATION — every
+  // `"/api/platform/…"` literal in `src/` resolving to something other than `tenants`.* **That is a stronger
+  // disposition than the range one, and it was invisible for a shallower reason: the author wrote the prefix
+  // once, the way anyone would.**
+  //
+  // ***THIS IS THE FIFTH MATCHER FAILURE MODE THIS PROJECT HAS LOGGED — after CASE, WORD-BOUNDARY, WINDOW and
+  // READING DIRECTION — AND IT IS NOTATION.*** **A range is not an enumeration; a list with the prefix written
+  // once is not an enumeration either.** *The remedy is the same writing convention for both and it cannot be
+  // a regex: a disposition covering several criteria must spell every id in full, because these are the forms
+  // no reader's grep and no instrument can expand.*
   public static IReadOnlyCollection<string> DiscussedInComments() =>
     [.. AllSources()
       .SelectMany(file => AnyId.Matches(CommentsOnly(File.ReadAllText(file))))

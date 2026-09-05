@@ -264,6 +264,51 @@ public sealed class AuthenticationSessionApplicationTests
     Assert.Equal(10, fixture.Sessions.Values.Count(session => session.IdentityId == fixture.Account.IdentityId && session.Status == AuthenticationSessionStatus.Active));
   }
 
+  // ---- ⚠⚠⚠ `AC-AUTH-0032`'s TIE-BREAK, WHICH ITS OWN CITED TEST CANNOT EXERCISE.
+  //
+  // *"revokes the oldest by `CreatedUtc` **THEN `AuthenticationSessionId`**"*. The sibling above seeds every
+  // session at a distinct `Now.AddMinutes(index)`, **so no two ever tie and the secondary key is never
+  // consulted.** *Measured: deleting `.ThenBy(session => session.Id)` from `AuthenticationSessionCreator`
+  // leaves that test GREEN.* A guard that cannot fail for its stated reason because the fixture never
+  // presents the case.
+  //
+  // ⚠⚠⚠ **AND THE FIXTURE ORDER IS LOAD-BEARING, WHICH IS THE WHOLE DIFFICULTY OF WRITING THIS.** LINQ's
+  // `OrderBy` is a **STABLE** sort, so on a tie it preserves insertion order. **Seed the lower id first and
+  // the stable sort returns the correct answer with no `ThenBy` at all** — the test would pass, prove
+  // nothing, and read as though it had. ***So 201 IS INSERTED BEFORE 200: the only way to reach the right
+  // answer is to compare the ids.*** *A test that is correct by ordering accident is indistinguishable from
+  // one that is correct.*
+  //
+  // Three-state plant, state 1 first: plant alone GREEN (the hole), plant + this test RED, this test alone
+  // GREEN.
+  [Fact]
+  [Trait("Acceptance", "AC-AUTH-0032")]
+  public async Task Sessions_tied_on_created_instant_are_revoked_by_the_lower_session_id()
+  {
+    var fixture = new Fixture();
+    var membership = fixture.AddEligibleMembership();
+
+    // The two oldest share an instant, and the HIGHER id is added first so insertion order disagrees with
+    // id order. Everything else is strictly newer, so exactly one of these two is the revocation target.
+    fixture.Sessions.Values.Add(NewPersistedSession(201, fixture.Account.IdentityId, membership, Now));
+    fixture.Sessions.Values.Add(NewPersistedSession(200, fixture.Account.IdentityId, membership, Now));
+    for (var index = 2; index < 10; index++)
+    {
+      fixture.Sessions.Values.Add(NewPersistedSession(300 + index, fixture.Account.IdentityId, membership, Now.AddMinutes(index)));
+    }
+
+    var created = await fixture.Creator.CreateAsync(fixture.Account, membership, Client, Now.AddHours(1), default);
+
+    Assert.True(created.IsSuccess);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, fixture.Sessions.Values.Single(session => session.Id == 200).Status);
+
+    // The paired half, and it is the one the tie-break is about: the session sharing the instant but holding
+    // the higher id survives. Asserting only the revocation would pass for a creator that revoked both.
+    Assert.Equal(AuthenticationSessionStatus.Active, fixture.Sessions.Values.Single(session => session.Id == 201).Status);
+    Assert.Equal(10, fixture.Sessions.Values.Count(session =>
+      session.IdentityId == fixture.Account.IdentityId && session.Status == AuthenticationSessionStatus.Active));
+  }
+
   [Fact]
   [Trait("Acceptance", "AC-AUTH-0007")]
   [Trait("Acceptance", "AC-AUTH-0008")]

@@ -259,6 +259,30 @@ internal static class CriterionInventory
   // scan cannot see, and a criterion with **no subject to cite**. *A zero from this bit is a prompt to read,
   // never a verdict.*
   //
+  // ---- ⚠⚠⚠ THE RULE THAT WOULD HAVE SAVED THE EIGHT READS, AND IT IS THE STATISTICAL FORM OF ONE WE
+  // ALREADY HOLD.
+  //
+  // *For each clause, name the fixture that would fail if it were false* has a counterpart for samples:
+  // ***COMPUTE WHAT THE NULL PREDICTS BEFORE YOU COLLECT THE SAMPLE.*** **A sample whose expected yield
+  // under the null is below one cannot produce a negative result — and you can know that in advance, for
+  // free, from a base rate you already measured.** *Eight cells at a 5% base rate expect 0.4 hits; the
+  // reads were spent on an experiment that could not have come out any other way.*
+  //
+  // ⚠ **The operand check applied to an experiment rather than to an instrument.** *Asking "what are this
+  // instrument's operands" before naming it is a rule this project learned three times over; asking "what
+  // is this sample's expected yield" before spending it is the same question about a different object.*
+  //
+  // ---- ⚠⚠ AND A SCOPING WARNING FOR ANY FUTURE INSTRUMENT, BECAUSE THIS TREE DEFEATS NAME-BASED SCOPING
+  // ON A SECOND AXIS.
+  //
+  // Feature locality by file name was already known to be unsound here. ***SO IS SECURITY-PLANE LOCALITY:
+  // "PLATFORM" MEANS THE ASSEMBLY IN ONE FILE NAME AND THE SECURITY PLANE IN ANOTHER.*** Measured —
+  // `PlatformAuthenticationPersistenceTests` carries **32 tenant-plane table references and 0 platform-plane**
+  // despite its name, while `PlatformAuthenticationSessionFlowSqlServerTests` carries **45 and 43**, so its
+  // methods cannot be assigned to a plane by file at all. **The tell was a TABLE name, never a file name.**
+  // *A file-level heuristic gets this wrong in the flattering direction, which is the standing direction of
+  // error for every shape-based shortcut in this audit.*
+  //
   // ⚠ **NO COUNT IS ASSERTED ANYWHERE**, for the reason this file gives at the top: a number pinning a
   // growing surface reddens on the next ordinary commit. The companion test checks the scan still finds
   // sites and still distinguishes the two scopes.

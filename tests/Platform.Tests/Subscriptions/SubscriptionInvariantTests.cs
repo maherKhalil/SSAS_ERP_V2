@@ -219,7 +219,28 @@ public sealed class SubscriptionInvariantTests
   // **a guard asserting a criterion's subject does not exist is the opposite of a witness for it**, and
   // the counting matcher reads `Criterion`, `Acceptance`, `Decision` and `AcceptanceCriteria` alike.
   // *Tagging this pair `Criterion` would mark two more unbuilt criteria as covered.*
+  // ================================================================================================
+  // ⚠⚠⚠ AND `AC-SUB-0007` JOINS THEM — UNFALSIFIABLE AS WRITTEN, WHICH IS *NOT* WHAT `AC-SUB-0008` WAS.
+  // ================================================================================================
+  //
+  // *"A tenant-plane caller holding **every permission the product defines** receives `403` from every
+  // subscription, plan, grant and invoice write route"* — pasted whole, 183 characters, one table row.
+  //
+  // ***THE GRAMMAR DECIDES THE DISPOSITION, AND THESE TWO CRITERIA SIT ON OPPOSITE SIDES OF IT:***
+  //
+  //     `AC-SUB-0008`  **"NO tenant-plane permission name ... EXISTS"**  → NEGATIVE EXISTENTIAL.
+  //                    *True now, FAILS the day one appears.* A guard asserting it IS a witness — cited.
+  //     `AC-SUB-0007`  **"...403 from EVERY ... write route"**          → UNIVERSAL OVER AN EMPTY SET.
+  //                    ***There are no such routes, so no test can ever fail. Adding one does not falsify
+  //                    it — it merely makes it testable.*** **Not citable. Dispositioned here.**
+  //
+  // ⚠⚠ AND NO NEW GUARD WAS BUILT FOR IT, DELIBERATELY. **The route ban below already detects three of the
+  // four nouns 0007 quantifies over** — subscription, plan, invoice — *so the lower-noise design with the
+  // same detection is the one that already exists.* **That is the test the deleted exact-set half failed,
+  // and applying it to my own next idea is the point of having it.** The fourth noun, `grants`, is added to
+  // the ban below rather than given a second test.
   [Fact]
+  [Trait("Tripwire", "AC-SUB-0007")]
   [Trait("Tripwire", "AC-SUB-0034")]
   [Trait("Tripwire", "AC-SUB-0035")]
   public void No_commercial_read_surface_exists_yet_and_two_dispositions_depend_on_that()
@@ -297,7 +318,15 @@ public sealed class SubscriptionInvariantTests
       route.Contains("subscription", StringComparison.OrdinalIgnoreCase) ||
       route.Contains("invoice", StringComparison.OrdinalIgnoreCase) ||
       route.Contains("entitlement", StringComparison.OrdinalIgnoreCase) ||
-      route.Contains("plan", StringComparison.OrdinalIgnoreCase));
+      route.Contains("plan", StringComparison.OrdinalIgnoreCase) ||
+      // ⚠ PLURAL, AND THE `s` IS LOAD-BEARING. `AC-SUB-0007` names a "grant write route", but a real
+      // route `/{principalId}/grant` already exists and is a PERMISSION grant, not a commercial one —
+      // banning the singular would redden on existing, unrelated work the day it was written. Measured
+      // against the clean tree: "grants" matches ZERO current routes, "grant" matches that one.
+      // *A collection reads `/grants`; the existing verb reads `/grant`.* **Residual gap stated rather
+      // than hidden: a commercial route named `/grant` singular still evades this, and so does
+      // `/commerce`.**
+      route.Contains("grants", StringComparison.OrdinalIgnoreCase));
   }
 
   private static string[] PlatformApiRouteLiterals()

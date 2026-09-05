@@ -286,6 +286,54 @@ internal static class CriterionInventory
   // ⚠ **NO COUNT IS ASSERTED ANYWHERE**, for the reason this file gives at the top: a number pinning a
   // growing surface reddens on the next ordinary commit. The companion test checks the scan still finds
   // sites and still distinguishes the two scopes.
+  //
+  // ==================================================================================================
+  // ---- ⚠⚠⚠ EXECUTION STATE, NOT CITATION STATE: THE TEN INTEGRATION BODIES WHOSE CURRENT ASSERTIONS
+  // HAVE NEVER RUN. **THIS BLOCK GOES STALE THE MOMENT INTEGRATION NEXT PASSES — SEE THE CONDITION BELOW.**
+  // ==================================================================================================
+  //
+  // Integration is excluded from the task gate, so its evidence is *green at a date*. Diffing every one of
+  // the **810** `[Fact]`/`[Theory]` bodies against the last green run (`ce9b28f`, 2026-09-01) splits them:
+  //
+  //     ***GREEN AT A DATE  778***    body unchanged since the baseline
+  //     ***NEVER EXECUTED    22***    the method did not exist then
+  //     ***PARTIAL           10***    it existed, and non-comment lines inside it changed
+  //
+  // ***THE TEN, BY PATH AND METHOD*** — for each, the assertions as they stand today have not been run:
+  //
+  //   `EmployeeBoundarySqlServerTests`    `R23_The_composed_model_filters_on_tenant_only`
+  //                                       `I3_Every_bad_row_is_reported_rather_than_the_first`
+  //                                       `H4_The_export_history_reports_the_column_set_and_never_the_scope_snapshot`
+  //                                       `H5_The_run_histories_are_gated_on_the_employee_read_permission`
+  //   `GlPostingChainSqlServerTests`      `Posting_a_persisted_draft_writes_the_journal_and_removes_the_draft_and_its_lines`
+  //   `PayrollChainSqlServerTests`        `The_journal_the_chain_posted_cannot_afterwards_be_modified`
+  //   `PositionSchemaSqlServerTests`      `No_position_table_stores_a_currency`
+  //   `TenantBranchLifecycleSqlServerTests` `An_update_carrying_a_stale_row_version_is_refused`
+  //   `TenantCompanyOrganizationSqlServerTests` `Company_migration_enforces_schema_uniqueness_and_cross_tenant_isolation`
+  //   `TenantCutoverCopySqlServerTests`   `The_template_every_test_restores_from_carries_only_what_the_migrations_wrote`
+  //
+  // ⚠⚠ **AND WHAT THE TWO EXAMINED CHANGES TURNED OUT TO BE IS THE REASON THIS IS WORTH KNOWING RATHER
+  // THAN ALARMING.** *`I3` gained "the fixture no longer contains a row with two errors, so this test can no
+  // longer tell `rejectedCount` counting DISTINCT ROWS from it counting ERRORS"; `No_position_table_stores_a_
+  // currency` gained "the column query found no amount columns on SalaryGrades, so its zeroes below mean
+  // nothing".* ***BOTH ADDITIONS ARE ANTI-VACUITY CONTROLS. THE RISK IS CONCENTRATED IN THE GUARD RATHER
+  // THAN IN THE CLAIM — unverified improvement, not decay.***
+  //
+  // ⚠ **THE CONDITION THAT RETIRES THIS BLOCK: the next green Integration run at or after HEAD.** *After
+  // that these ten are green-at-a-later-date and the list means nothing. **Delete it then rather than
+  // updating it** — a stale execution list is a false comment, and a false comment can be load-bearing.*
+  //
+  // ⚠⚠⚠ **HOW IT WAS DERIVED, BECAUSE THE INSTRUMENT FAILED ITS POSITIVE CONTROL TWICE FIRST.** A first pass
+  // reported **56** partial among the 176 trait-carrying methods where an independent body-hash comparison
+  // reported **2**. *Diagnosed as comment edits; filtering comment-only hunks moved it to **53**.* ***THAT
+  // THREE-OF-FIFTY-FOUR MOVEMENT REFUTED THE DIAGNOSIS AND WAS NOT READ AS REFUTING IT.*** The real cause:
+  // a method's span ran to the NEXT method's signature, so a newly added method's attribute block and prose
+  // landed inside the PRECEDING method's span. ***THE ERROR SCALED WITH NEW-METHOD GROWTH — THE VERY
+  // QUANTITY BEING MEASURED — WHICH IS WHY AN ELEVEN-FOLD OVER-COUNT LOOKED PLAUSIBLE.***
+  //
+  // ***THE RULE, WHICH IS THE HALF WE DID NOT HAVE: THE MAGNITUDE OF A CORRECTION TESTS THE DIAGNOSIS. IF
+  // THE REPAIR BARELY MOVES THE NUMBER, THE CAUSE YOU NAMED WAS NOT THE CAUSE — AND A FIX VALIDATED BY
+  // REASONING RATHER THAN BY RE-RUNNING THE CONTROL IS NOT VALIDATED AT ALL.***
   public readonly record struct CitationSite(string File, string Id, int AdjacentCommentLines, bool IsTypeScoped);
 
   public static IReadOnlyList<CitationSite> CitationSites()

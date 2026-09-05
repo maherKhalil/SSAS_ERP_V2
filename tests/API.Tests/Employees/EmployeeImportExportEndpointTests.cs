@@ -845,6 +845,49 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
   }
 
   // ================================================================================================
+  // ⚠⚠⚠ TWO MORE UNCITED CRITERIA IN THIS FEATURE, AND WHY (2026-09-05).
+  // ================================================================================================
+  //
+  // ---- `AC-DOC-0007` — **THE PRODUCT DOES NOT SATISFY IT. TWO CLAUSES OF THREE ARE FALSE.**
+  //
+  // *"A file over 10 MB or over 5,000 data rows is refused **with a message naming the limit and the actual
+  // value**, and the refusal happens **without the file being parsed**."*
+  //
+  // ***THE LITERALS MATCH AND THAT PROVED NOTHING.*** `EmployeeImportLimits(int MaximumRows = 5_000,
+  // int MaximumBytes = 10 * 1024 * 1024)` is exactly the criterion's numbers — **and a literal matching a
+  // criterion is evidence about the NUMBER and nothing about the RULE.** *The two failures live at the call
+  // sites, not the declaration:*
+  //
+  //   • ***NO MESSAGE NAMES ANYTHING.*** `ByteLimitExceeded` and `RowLimitExceeded` are `static readonly
+  //     Error` values — *"The submitted file is larger than an import may carry."* **No limit, no actual
+  //     value, and no parameter that could carry either.**
+  //   • ***THE ROW CAP IS CHECKED AFTER THE PARSE.*** The byte cap is tested before
+  //     `EmployeeImportCsvParser.Parse` runs; the row cap is tested after it, **because counting data rows
+  //     requires reading the file.** *So the row half may be UNSATISFIABLE AS WRITTEN rather than merely
+  //     unimplemented — which is a spec repair, not a product fix, and the two have different owners.*
+  //
+  // **Owner's: fix the product, or amend the criterion. Both readings are live and neither is mine to pick.**
+  //
+  // ---- `AC-DOC-0011` — **NOT WITNESSABLE HERE, AND NOT WITNESSED ANYWHERE.**
+  //
+  // *"Two callers with different branch authorizations exporting the same company get different row sets,
+  // and the narrower caller's rows are a **subset** of the wider caller's."*
+  //
+  // ***THE SEAM IS STUBBABLE AND STUBBING IT DESTROYS THE CLAIM.*** `ExportEmployeesQueryHandler` resolves a
+  // scope and hands it to `employees.ExportEmployeesAsync(scope, ...)` — **the handler does not filter, the
+  // read service does, in SQL.** *A gated test faking `IEmployeeReadService` would have to implement the
+  // subset behaviour itself, and would then be asserting my stub.*
+  //
+  // ⚠⚠ **AND NO INTEGRATION TEST COVERS IT EITHER.** `EmployeeBoundarySqlServerTests` is thorough on branch
+  // WRITES (`AC-EMP-0021`–`0025`) and silent on export row-set subsetting. ***SO THE CRITERION IS
+  // UNWITNESSED AT BOTH LEVELS*** — and writing the Integration test today buys a NEVER-EXECUTED citation,
+  // because `GATE_SCOPE=PHASE` is owner-parked. **A citation nobody has ever run is a claim, not a check.**
+  //
+  // ⚠ A gated test that the handler PASSES the resolved scope through unmodified is constructible and is
+  // deliberately not written: *it would witness "the export is scoped", sit beside an uncited `0011`, and
+  // invite the next reader to cite the criterion from it.* **The half it cannot reach is the whole content.**
+
+  // ================================================================================================
   // AN IMPORT CANNOT CROSS A COMPANY BOUNDARY (AC-DOC-0010, SEC-DOC-0403).
   // ================================================================================================
   //

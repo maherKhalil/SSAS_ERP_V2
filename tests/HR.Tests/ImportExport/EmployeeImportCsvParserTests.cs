@@ -10,6 +10,62 @@ namespace SSAS.HR.Tests.ImportExport;
 // a company and a database.
 public sealed class EmployeeImportCsvParserTests
 {
+  // ================================================================================================
+  // ⚠⚠⚠ TWO CRITERIA DESCRIBE THE MECHANISMS BELOW AND NEITHER IS CITED. HERE IS WHY (2026-09-05).
+  // ================================================================================================
+  //
+  // **The tests in this file assert the header contract. `AC-DOC-0001` and `AC-DOC-0002` describe that
+  // contract. *Neither is cited, and the omission is deliberate rather than an oversight.*** Recorded here
+  // because a finding that lives only in a report dies with the reporter, and this file is where the next
+  // person will look.
+  //
+  // ---- `AC-DOC-0001` — **UNRECONCILED. THE PRODUCT ANSWERS SOMETHING ELSE, DELIBERATELY.**
+  //
+  // *"A file missing a required column is refused before any row is read, and so is a file carrying an
+  // unrecognized column. **Both answer `400 request.invalid`, and the response names the offending
+  // column.** Column order does not matter and header casing does not matter."*
+  //
+  // **Order-independence and case-insensitivity are TRUE and tested below.** *The other two clauses are not:*
+  //
+  //   • ***IT DOES NOT ANSWER `400`.*** `ImportEmployeesCommandHandler.RefuseAsync` returns
+  //     `Result.Success` carrying a refused run, and the endpoint maps `report.IsFailure ? Problem :
+  //     Results.Ok(...)` — so a header failure answers ***`200 OK` WITH A REFUSED RUN***. **The handler
+  //     argues the case in its own comment:** *"A HEADER FAILURE IS A REFUSED RUN, not merely a 400. It
+  //     consumed the key like any other attempt, and the audit trail records that somebody tried to import
+  //     a file this company would not accept."*
+  //   • ***THE RESPONSE DOES NOT NAME THE COLUMN.*** `HeaderColumnUnknown` and `HeaderColumnMissing` are
+  //     `static readonly Error` values with fixed text — no parameter, nothing to carry a column name.
+  //
+  // ***A CONSIDERED PRODUCT DECISION AND A RATIFIED CRITERION SAYING THE OPPOSITE, WITH NEITHER CITING A
+  // RATIFICATION. THAT IS UNRECONCILED, NOT STALE*** — stale would pre-decide that the product is right.
+  // **Owner's to rule: ratify the 200, or restore the 400.** *A test enforcing either reading would make the
+  // gate defend a guess.*
+  //
+  // ---- `AC-DOC-0002` — **NOT UNRECONCILED. ITS BODY IS STALE AGAINST A RULING FOUR LINES ABOVE IT.**
+  //
+  // *"A file carrying `companyId`, `branchId`, `tenantId` **or `status`** is refused by the unknown-column
+  // rule — not accepted-and-ignored, and not accepted-and-validated."*
+  //
+  // ***`status` IS A DECLARED OPTIONAL COLUMN.*** `EmployeeImportColumns.Optional = [nationalId, status]`,
+  // and it is accepted and constrained by value — **precisely the state the criterion body excludes by
+  // name.** The other three behave exactly as written.
+  //
+  // ⚠⚠ **BUT THE SPEC ALREADY RECORDS THIS AND I MISSED IT TWICE.** `acceptance-criteria.md` line 22
+  // carries: *"**`status` AMENDED 2026-08-22 by `OD-DOC-010`.** It is now a RECOGNIZED optional column
+  // rather than an unknown one… `companyId`, `branchId` and `tenantId` are unchanged and still absent by
+  // construction."*
+  //
+  // ***SO THE RATIFICATION EXISTS AND IS NAMED, AND THE DEFECT IS THAT THE CRITERION'S BODY WAS NEVER
+  // REWRITTEN TO MATCH ITS OWN AMENDMENT.*** **A reader who reads both gets the truth; a reader who reads
+  // the body alone is misled.** *Remedy is named and cheap: rewrite the body to drop `status`.* **This is a
+  // documentation defect, not an open question — which is why it is filed differently from `0001`.**
+  //
+  // ⚠⚠⚠ AND THE READING FAILURE IS WORTH MORE THAN THE FINDING: **the amendment sits ABOVE the
+  // criterion it amends.** *Every reader I built read each criterion from its declaration line FORWARD to
+  // the terminal full stop — hardened against reading too little AFTER, and blind to what sat BEFORE.*
+  // ***A QUALIFIER ATTACHED ABOVE A DECLARATION IS INVISIBLE TO A READER THAT STARTS AT THE DECLARATION,
+  // AND THAT IS WHERE THIS FILE PUTS THEM.***
+
   private const string Header = "employeeNumber,fullName,employmentDate,departmentCode,positionCode";
 
   // ================================================================================================

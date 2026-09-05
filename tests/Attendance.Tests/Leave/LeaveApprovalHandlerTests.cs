@@ -134,6 +134,83 @@ public sealed class LeaveApprovalHandlerTests
     Assert.Equal(LeaveRequestStatus.Submitted, request.Status);
   }
 
+  // ---- ⚠⚠⚠ APPROVAL CONSUMES *THE REQUEST'S* DAYS, AND THAT NUMBER WAS ASSERTED NOWHERE (AC-ATT-0018).
+  //
+  // *"Approval decrements the balance by exactly `WorkingDaysConsumed`."* **The balance aggregate's own
+  // arithmetic is well covered — `Consume(5m)` leaves 5 consumed — but that is `LeaveBalance` being asked
+  // the right question, not the HANDLER asking it.** *No test in this suite touched a balance at all: its
+  // stubs deliberately return an unmetered leave type so every existing case exercises the approval bar and
+  // never the balance path.*
+  //
+  // ⚠ SO A HANDLER PASSING THE WRONG QUANTITY WOULD HAVE PASSED EVERYTHING. A hardcoded `1m`, the
+  // entitlement, a rounded figure — **nothing anywhere compared what was consumed against what the request
+  // said.** This is the pay-date shape again: *the value a handler hands to another aggregate.*
+  //
+  // ⚠⚠ THE THREE NUMBERS ARE DISTINCT ON PURPOSE. The request carries **3** days, the entitlement is **20**,
+  // and the balance starts at **0** consumed. *A handler consuming the entitlement, or a constant, or
+  // nothing, each lands somewhere this assertion can see* — three fields against one shared value would
+  // have hidden all three.
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0018")]
+  public async Task Approval_consumes_exactly_the_days_the_request_recorded()
+  {
+    var request = SubmittedByTheManager();
+    var balance = LeaveBalance.Create(Company, Manager, request.LeaveTypeId, 2026, 20m).Value;
+
+    // THE PREMISE. Starting at zero is what makes the assertion below read as "consumed 3" rather than
+    // "happens to hold 3".
+    Assert.Equal(0m, balance.ConsumedQuantity);
+
+    var world = new World(
+      request, resolvesTo: Guid.NewGuid(),
+      meteredType: LeaveType.Create(Company, "ANN", "Annual", LeaveBehaviour.PaidFromBalance, false).Value,
+      balance: balance);
+
+    var approved = await world.Approve();
+
+    Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : string.Empty);
+    Assert.Equal(request.WorkingDaysConsumed, balance.ConsumedQuantity);
+    Assert.Equal(3m, balance.ConsumedQuantity);
+  }
+
+  // ---- ⚠⚠⚠ REJECTION CANNOT DECREMENT, AND THE PROOF IS THE DEPENDENCY LIST RATHER THAN THE BALANCE.
+  //
+  // *"...rejection and cancellation decrement nothing."* **A net-zero observation cannot carry this
+  // clause.** Asserting the balance is unchanged after a rejection passes equally on "never moved" and on
+  // "consumed three and released three" — *the endpoint value is the one thing that cannot tell those
+  // apart*, and the second is a violation.
+  //
+  // ***SO THE CLAUSE IS ASSERTED WHERE IT IS ACTUALLY DECIDED: `RejectLeaveRequestCommandHandler` HAS NO
+  // BALANCE REPOSITORY.*** Seven dependencies and none of them can reach a `LeaveBalance`, so rejection
+  // cannot decrement one however the body is written. **That is stronger than any observation of a number,
+  // because it forbids the movement rather than checking its net effect.**
+  //
+  // ⚠ THE LIST IS EXACT RATHER THAN A BAN ON `ILeaveBalanceRepository` ALONE. A ban names the one type
+  // somebody thought of; **an exact set also fails when a balance arrives wrapped in something else** — a
+  // unit-of-work exposing balances, a read service, a repository of a different name.
+  //
+  // ⚠⚠ AND THE CANCELLATION HALF IS NOT HERE. `LeaveCancellationHandlerTests.The_days_actually_go_back`
+  // shows cancellation moving a balance from 3 consumed to 0 — a RELEASE, the opposite direction — and that
+  // handler does take a balance repository, because returning days is its job. *Cited there, not here.*
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0018")]
+  public void Rejection_cannot_decrement_a_balance_because_it_cannot_reach_one()
+  {
+    var constructor = Assert.Single(typeof(RejectLeaveRequestCommandHandler).GetConstructors());
+
+    Assert.Equal(
+      [
+        nameof(ILeaveRequestRepository),
+        nameof(ILeaveApprovalRouter),
+        nameof(IAttendanceScopeResolver),
+        nameof(ICurrentUser),
+        nameof(ICurrentTenantUser),
+        nameof(IUserEmployeeResolver),
+        nameof(ITenantUnitOfWork)
+      ],
+      constructor.GetParameters().Select(parameter => parameter.ParameterType.Name));
+  }
+
   private static LeaveRequest SubmittedByTheManager() =>
     LeaveRequest.Submit(
       Company, Manager, Guid.NewGuid(),
@@ -149,7 +226,8 @@ public sealed class LeaveApprovalHandlerTests
     private readonly RecordingUnitOfWork unitOfWork = new();
     private readonly RecordingRouter router;
 
-    public World(LeaveRequest request, Guid? resolvesTo)
+    public World(LeaveRequest request, Guid? resolvesTo,
+      LeaveType? meteredType = null, LeaveBalance? balance = null)
     {
       this.request = request;
       Resolver = new RecordingResolver(resolvesTo);
@@ -164,7 +242,7 @@ public sealed class LeaveApprovalHandlerTests
         new SelfOnlyChain(Manager, Department), scope));
 
       approve = new ApproveLeaveRequestCommandHandler(
-        requests, new EmptyLeaveTypes(), new EmptyBalances(), router, scope,
+        requests, new EmptyLeaveTypes(meteredType), new EmptyBalances(balance), router, scope,
         currentUser, tenantUser, Resolver, unitOfWork);
 
       reject = new RejectLeaveRequestCommandHandler(
@@ -235,10 +313,11 @@ public sealed class LeaveApprovalHandlerTests
       Task.CompletedTask;
   }
 
-  private sealed class EmptyLeaveTypes : ILeaveTypeRepository
+  private sealed class EmptyLeaveTypes(LeaveType? metered = null) : ILeaveTypeRepository
   {
     public Task<LeaveType?> GetByIdAsync(Guid leaveTypeId, CancellationToken cancellationToken = default) =>
-      Task.FromResult<LeaveType?>(LeaveType.Create(Company, "ANN", "Annual", LeaveBehaviour.PaidWithoutBalance, false).Value);  // PaidWithoutBalance does NOT consume, so these tests exercise the BAR and never the balance path
+      Task.FromResult<LeaveType?>(metered
+        ?? LeaveType.Create(Company, "ANN", "Annual", LeaveBehaviour.PaidWithoutBalance, false).Value);  // PaidWithoutBalance does NOT consume, so these tests exercise the BAR and never the balance path
 
     public Task<bool> CodeExistsAsync(Guid companyId, string normalizedCode, CancellationToken cancellationToken = default) =>
       Task.FromResult(false);
@@ -246,15 +325,15 @@ public sealed class LeaveApprovalHandlerTests
     public Task AddAsync(LeaveType leaveType, CancellationToken cancellationToken = default) => Task.CompletedTask;
   }
 
-  private sealed class EmptyBalances : ILeaveBalanceRepository
+  private sealed class EmptyBalances(LeaveBalance? balance = null) : ILeaveBalanceRepository
   {
     public Task<LeaveBalance?> GetByIdAsync(Guid leaveBalanceId, CancellationToken cancellationToken = default) =>
-      Task.FromResult<LeaveBalance?>(null);
+      Task.FromResult(balance);
 
     public Task<LeaveBalance?> GetForEmployeeAsync(
       Guid companyId, Guid employeeId, Guid leaveTypeId, int periodYear,
       CancellationToken cancellationToken = default) =>
-      Task.FromResult<LeaveBalance?>(null);
+      Task.FromResult(balance);
 
     public Task AddAsync(LeaveBalance balance, CancellationToken cancellationToken = default) => Task.CompletedTask;
   }

@@ -72,7 +72,21 @@ public sealed class LeaveCancellationHandlerTests
     Assert.True(world.Saved);
   }
 
+  // ---- ⚠ CITES `AC-ATT-0018`'s CANCELLATION CLAUSE — *"...rejection and cancellation decrement
+  // nothing."*
+  //
+  // **This shows the movement's DIRECTION, which is what the clause is about.** The balance goes from 3
+  // consumed to 0: a RELEASE. *Cancellation is the one path here that legitimately takes a balance
+  // repository — returning days is its job — so "decrements nothing" cannot be argued from a missing
+  // dependency the way the rejection half is.*
+  //
+  // ⚠⚠ THE APPROVAL AND REJECTION HALVES ARE IN `LeaveApprovalHandlerTests`:
+  // `Approval_consumes_exactly_the_days_the_request_recorded`, and
+  // `Rejection_cannot_decrement_a_balance_because_it_cannot_reach_one` — the latter asserted on the
+  // handler's dependency list, because a net-zero balance cannot distinguish "never moved" from "moved
+  // and moved back".
   [Fact]
+  [Trait("Criterion", "AC-ATT-0018")]
   public async Task The_days_actually_go_back()
   {
     var balance = SomeBalance();

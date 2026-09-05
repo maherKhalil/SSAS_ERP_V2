@@ -81,6 +81,15 @@ namespace SSAS.Platform.Tests.Localization;
 // `LocalizationCatalogToolTests.Compatibility_fingerprint_ignores_wording_and_changes_with_policy` (untagged);
 // **the claim about RESOLUTION RESULTS changing is asserted nowhere.**
 //
+// ⚠ **CHECKED AGAINST THE REQUIREMENTS 2026-09-05 AND THE VERDICT STANDS, BUT ITS SHAPE IS SHARPER.** The
+// criterion's two clauses live in two layers: *"preserves compatible overrides"* is `requirements.md:122`, a
+// CATALOG VALIDATION property; *"changes unoverridden/restored results"* is `FR-LOC-0106`'s resolution chain.
+// ***SO IT IS A TWO-LAYER CRITERION LIKE `AC-LOC-0058`, AND THE UNWITNESSED HALF IS THE RESOLUTION ONE.***
+//
+// **What is missing is specific and buildable: no test RELEASES a second catalog version and re-resolves.**
+// *Every resolution test in this file reads one catalog. A wording-only release is a two-version scenario,
+// and the fixture for it does not exist.*
+//
 // ---- ⚠⚠⚠ `AC-LOC-0016` — UPGRADED 2026-09-05 FROM A CORPUS CLAIM TO A SUBJECT ONE. THERE IS NO PRECEDENCE.
 //
 // *"Anonymous/authenticated precedence is exact, unsupported values fall through, switch needs no logout, and

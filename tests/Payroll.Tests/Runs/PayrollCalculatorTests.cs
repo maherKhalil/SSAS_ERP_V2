@@ -286,6 +286,51 @@ public sealed class PayrollCalculatorTests
     Assert.Contains(nameof(AttendanceSummaryResult.UnpaidAbsenceQuantity), summary);
   }
 
+  // ---- ⚠⚠⚠ THE REPLACEMENT ITSELF, ASSERTED (AC-ATT-0044). A CRITERION WHOSE SUBJECT IS THIS SUITE.
+  //
+  // *"After the Payroll-side follow-up, `No_attendance_driven_behaviour_exists_because_attendance_is_unbuilt`
+  // **no longer exists under that name**, and the two replacement guards are present and green. **A run in
+  // which it was simply deleted fails this criterion**."*
+  //
+  // ***THE LAST SENTENCE IS THE CRITERION GUARDING AGAINST ITS OWN VACUOUS SATISFACTION*** — *"X no longer
+  // exists under that name"* is satisfied perfectly by deleting X and writing nothing. **Its author saw that
+  // and wrote the anti-deletion clause into the criterion**, which is the job we usually have to do to a
+  // test after the fact.
+  //
+  // ⚠⚠⚠ AND THE TWO `Contains` ASSERTIONS CANNOT FAIL AT RUNTIME, WHICH IS THE POINT AND NOT A DEFECT
+  // — BUT IT HAD TO BE MEASURED, BECAUSE MY FIRST DESCRIPTION OF THEM WAS WRONG.
+  //
+  // I wrote them as the anti-vacuity control. **They are not**: `nameof` cannot name a method that does not
+  // exist, so if either successor were deleted or renamed **THIS FILE WOULD NOT COMPILE.** *Planted a
+  // rename to check, and got `error CS0103` rather than a red test.*
+  //
+  // ***SO THE CRITERION'S ANTI-DELETION CLAUSE IS ENFORCED BY THE COMPILER, WHICH IS STRICTLY STRONGER THAN
+  // A TEST COULD BE*** — a deletion cannot reach a test run at all. **The runtime assertion that can
+  // actually fail is the third one: somebody RE-ADDING a method under the dead name**, which no compiler
+  // objects to and which would mean the superseded guard had come back alongside its replacements.
+  //
+  // ⚠ A bare string for the successors would have made the presence checks runtime-capable and WEAKER:
+  // deletion would then be caught at test time instead of build time. *The dead name is a literal because
+  // it must be; the live ones are symbols because that buys the stronger enforcement.*
+  //
+  // ⚠⚠⚠ AND *"AND GREEN"* IS CARRIED BY WHERE THIS SITS, NOT BY AN ASSERTION. These are `[Fact]`s in a
+  // gated suite: if either successor were red the gate would be red and this commit could not exist. **A
+  // test asserting that other tests pass would be asserting the gate's own result** — the bound worth
+  // stating is the other one: *this guard lives in the file it guards, so deleting the whole file takes the
+  // guard with it.* Nothing inside a suite can defend against that, and pretending otherwise would be the
+  // vacuity this criterion warns about, one level up.
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0044")]
+  public void The_superseded_guard_was_replaced_rather_than_deleted()
+  {
+    var methods = typeof(PayrollCalculatorTests).GetMethods().Select(method => method.Name).ToArray();
+
+    Assert.Contains(nameof(The_attendance_driven_behaviours_exist_now_that_attendance_supplies_them), methods);
+    Assert.Contains(nameof(No_pay_element_behaviour_exists_without_an_input_this_product_has), methods);
+
+    Assert.DoesNotContain("No_attendance_driven_behaviour_exists_because_attendance_is_unbuilt", methods);
+  }
+
   [Fact]
   [Trait("Decision", "DEC-PAY-0002")]
   public void No_pay_element_behaviour_exists_without_an_input_this_product_has()

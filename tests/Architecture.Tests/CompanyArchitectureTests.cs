@@ -56,8 +56,23 @@ namespace SSAS.Architecture.Tests;
 // id did not, and only the id is machine-readable.*
 //
 // `0019` is the same shape one clause wider — `UserCompanyAccess` is the user↔company assignment it says M1
-// introduces none of, and the GL fiscal calendar ships. **Both are historically true and neither describes
-// the product; a reader meeting them today reads them as false.**
+// introduces none of, and the GL fiscal calendar ships.
+//
+// ---- ⚠⚠⚠ CORRECTED 2026-09-05: "DECAYED" IS THE WRONG WORD, AND FP-005's README SAYS SO.
+//
+// **A first draft called both DECAYED, which implies rot. ***`README.md:88` DEFERS EXACTLY THESE THINGS BY
+// NAME:*** *"Fiscal calendar, additional currencies, language, and numbering sequences are acknowledged and
+// **deferred to later milestones**."* And `README.md:39` opens *"## Scope (Milestone 1)"*.
+//
+// ***SO THESE TWO STATED AN M1 BOUNDARY THAT LATER MILESTONES WERE ALWAYS PLANNED TO CROSS, AND THEY
+// CROSSED IT. THAT IS COMPLETION, NOT DECAY*** — the criteria are uncitable now for the same reason a passed
+// phase gate is uncitable, and nothing went wrong. **Both name their own milestone in their own sentences,
+// so a forward reader meets the qualifier; `AC-CMP-0018` is the outlier precisely because it does not.**
+//
+// ⚠ **This correction is one of five tonight that all ran the same way: *what the audit attributed to defect,
+// the tree had recorded as plan* — and in every case the record was in a document the criterion does not
+// name.** *`README.md` here; `business-rules.md` and `data-model.md` for `AC-EMP-0001`; `api-contracts.md`
+// for three FP-014 criteria; `localization-resolution-model.md` for `AC-LOC-0016`.*
 //
 // ---- `AC-CMP-0009` — WITNESSED IN PART, HERE, AND THE PART THAT IS MISSING IS NAMED.
 //

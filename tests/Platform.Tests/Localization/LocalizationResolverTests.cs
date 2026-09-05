@@ -141,14 +141,35 @@ namespace SSAS.Platform.Tests.Localization;
 //
 // ---- AND TWO THAT ARE NOT ACCEPTANCE CRITERIA AT ALL.
 //
-// `AC-LOC-0010` — *"Localization changes no code, key, status/type, authorization, validation, claim,
-// permission, or control flow."* ***THAT IS A CLAIM ABOUT A DIFF, NOT ABOUT THE PRODUCT.*** No state of the
-// running system satisfies or violates it.
+// ---- ⚠⚠⚠ `AC-LOC-0010` — CORRECTED 2026-09-05. I CALLED IT "NOT AN ACCEPTANCE CRITERION". IT IS ONE.
 //
-// `AC-LOC-0024` — *"M1 contains only approved backend core/migration/tests; HTTP/OpenAPI stay M2."*
-// ***M2 HAS SHIPPED*** — nine HTTP routes exist and seven of their criteria are cited. **Historically true,
-// and a reader meeting it today reads it as false.** *Same shape as `AC-CMP-0016`/`0019` in FP-005, and
-// unlike `AC-CMP-0018` it states its own scope, which is why it decays gracefully instead of misleading.*
+// **The one-liner reads *"Localization changes no code, key, status/type, authorization, validation, claim,
+// permission, or control flow"*, and I read *changes* as being about a DIFF — a statement about the commit,
+// which no running system could satisfy or violate.**
+//
+// ***`requirements.md:232` SETTLES IT: "Localization never changes technical codes, HTTP status/type,
+// authorization, validation, claims, permission names, resource keys, or control flow."***
+//
+// **That is a STANDING PROPERTY OF THE SUBSYSTEM, not a property of a changeset.** *A resolved message must
+// not alter the `Error.Code` it decorates; a localized response keeps its HTTP status; resolution does not
+// reach a permission name or a resource key.* ***IT IS TESTABLE, AND IT IS UNCITED BECAUSE I MISREAD THE
+// VERB IN A ONE-LINE PRÉCIS.***
+//
+// ⚠ **Left uncited rather than hastily cited: the criterion names EIGHT things localization must not change,
+// and a witness for one of eight would be the partial-citation error.** *Recorded as a live, buildable
+// criterion — which is a completely different disposition from "not an acceptance criterion".*
+//
+// ---- `AC-LOC-0024` — NOT DECAY. A PHASE BOUNDARY, CORRECTLY STATED, SUBSEQUENTLY CROSSED ON SCHEDULE.
+//
+// *"M1 contains only approved backend core/migration/tests; HTTP/OpenAPI stay M2."* **`README.md:43-51`
+// spells both phases out: *"Milestone 1 excludes HTTP endpoints, OpenAPI, Angular runtime/screens…"* and
+// *"Milestone 2 implements the nine approved routes, the three code-owned permissions, exact ProblemDetails
+// mappings, OpenAPI…"*.**
+//
+// ***SO THE CRITERION STATED AN M1 BOUNDARY THAT M2 WAS ALWAYS PLANNED TO CROSS, AND M2 SHIPPED.*** **A first
+// draft called this DECAYED, which implies rot. It is completion, and both phases are documented.** *The
+// criterion is uncitable now for the same reason a passed milestone gate is uncitable — not because anything
+// went wrong.*
 public sealed class LocalizationResolverTests
 {
   private static readonly Guid TenantId = Guid.Parse("9b7fc347-a31f-4724-8bf1-3dc83fac6c85");

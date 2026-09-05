@@ -7,6 +7,37 @@ namespace SSAS.HR.Tests.Departments;
 //
 // `DepartmentManager` is CURRENT STATE keyed by the department; `EmployeeDepartmentAssignment` is APPEND-ONLY
 // HISTORY. They are tested together because what distinguishes them is the point.
+// ==================================================================================================
+// ⚠⚠⚠ `AC-DEP-0023` — THE VERDICT NO LONGER RESTS ON A PRODUCTION COMMENT. VERIFIED 2026-09-05.
+// ==================================================================================================
+//
+// *"Assigning an employee as manager of the department they belong to is refused, and moving an employee
+// into the department they manage is refused."*
+//
+// **`acceptance-criteria.md` records this as ADOPTED AND NEVER BUILT, and its evidence is a quoted comment in
+// `DepartmentManagerCommandHandlers`: *"department membership is not consulted either, in either direction…
+// `Employee.DepartmentId == Department.Id` is explicitly NOT a rule."*** ⚠ ***A COMMENT IS PROSE IN A CODE
+// FILE, CHECKED BY NOBODY, AND THE FALSEHOOD IN A FALSE COMMENT LIVES IN ITS VERB.*** *So the guard sets were
+// enumerated instead, at every layer that could hold the rule.*
+//
+//   ***ASSIGN, handler*** (`DepartmentManagerCommandHandlers`) — three refusals, and that is the whole list:
+//     `ManagerEmployeeNotFound` (covers tenant) · `ManagerInDifferentCompany` · `ManagerTerminated`.
+//   ***ASSIGN, domain*** (`DepartmentManager.Assign`) — two: empty `departmentId`/`employeeId`, invalid actor.
+//     ⚠⚠ ***AND IT IS REFUSED BY ARITY, NOT BY OMISSION: the factory takes `departmentId, tenantId,
+//     companyId, employeeId, actor, occurredUtc` — IT IS NEVER GIVEN THE EMPLOYEE'S OWN `DepartmentId`, so
+//     it could not check membership if it wanted to.***
+//   ***MOVE*** (`ChangeEmployeeDepartmentCommandHandler`) — eight failure branches: `InvalidActor`,
+//     `WritePermissionDenied`, `NotFound`, `InvalidTransition`, `DepartmentUnchanged`,
+//     `ConcurrencyConflict`, the destination validation (company + active only), and the domain's own error.
+//     **`Employee.ChangeDepartment` runs on an aggregate with no visibility of `DepartmentManagers` at all.**
+//
+// ***SO THE CRITERION IS UNENFORCED IN BOTH DIRECTIONS, ESTABLISHED OVER CLOSED GUARD SETS AT THREE SITES
+// AND BY THE ARITY OF THE ONE FACTORY THAT COULD HAVE HELD THE RULE.*** **The comment happens to be true;
+// nothing here depends on it any more.**
+//
+// ⚠ **NOT CITED AND NOT TRIPWIRED.** *The owner closed `OD-DEP-003` adopting a reading that requires this
+// refusal, and the product does the opposite — that is UNRECONCILED, and a tripwire would assert the
+// product's behaviour is correct, which is the question under dispute.*
 public sealed class DepartmentAssociationDomainTests
 {
   private static readonly DateTimeOffset Now = new(2026, 8, 20, 9, 0, 0, TimeSpan.Zero);

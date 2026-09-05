@@ -224,79 +224,40 @@ public sealed class SubscriptionInvariantTests
   [Trait("Tripwire", "AC-SUB-0035")]
   public void No_commercial_read_surface_exists_yet_and_two_dispositions_depend_on_that()
   {
-    // ---- THE PERMISSION PLANE, AS AN EXACT SET.
+    // ================================================================================================
+    // ⚠⚠⚠ THE PERMISSION-PLANE HALF WAS HERE AND WAS **DELETED BY RULING** ON 2026-09-05. DO NOT REBUILD IT.
+    // ================================================================================================
     //
-    // A ban on the word "Subscription" would miss `Platform.Billing.View` or `Platform.Plans.View`. The
-    // exact set cannot be evaded by naming, and it is the assertion that carries this half.
+    // It asserted the exact set of all 28 `PlatformPermissionNames` constants. **It worked.** It is gone
+    // anyway, and the record is here because *a guard removed by its author leaves no trace, while a guard
+    // removed by ruling leaves one that stops it being rebuilt.*
     //
-    // ---- ⚠⚠⚠ THIS WILL GO RED ROUGHLY EVERY TWO WEEKS, AND ALMOST ALWAYS INNOCENTLY. READ THIS FIRST.
+    // ***FOUR GROUNDS, AND THE LAST IS DECISIVE:***
     //
-    // **Measured 2026-09-05 over the preceding 90 days: SIX commits touched `PlatformPermissionNames`, and
-    // ALL SIX CHANGED THE NAME SET — 15 names to 28, additive every time, nothing ever removed.** *So the
-    // expected firing rate is about twenty-six a year, and on the evidence roughly five in six will be an
-    // ordinary new permission that has nothing to do with subscriptions.*
+    //   1. **DUPLICATIVE.** A permission genuinely added — declared AND `Define`d in the catalogue — already
+    //      reddens `PlatformInfrastructureRegistrationTests.No_subscription_permission_exists_on_either_plane`
+    //      and `PermissionCatalogTests.Catalog_has_exactly_the_reviewed_permissions_split_by_scope`.
+    //   2. **NOISY.** Six commits in 90 days, all six changing the name set, 15 names → 28. About 26 firings
+    //      a year, roughly five in six innocent.
+    //   3. **ITS UNIQUE CATCH WAS WORTHLESS.** The one thing it caught alone was a constant declared and
+    //      never registered — *a dead name, which grants nothing and harms nobody.*
+    //   4. ***THE TREE ALREADY HELD A CONSIDERED REJECTION OF THIS EXACT DESIGN.*** The guard in
+    //      `PlatformInfrastructureRegistrationTests` says, in its own comment: *"A TERM BAN RATHER THAN A
+    //      FULL MEMBER PIN, DELIBERATELY. Pinning all 28 names would redden on every unrelated permission
+    //      addition — a guard whose false positives outnumber its true ones is one somebody switches off."*
     //
-    // ***THAT IS NOT A DEFECT IN THE GUARD, IT IS ITS PRICE, AND IT IS WRITTEN DOWN HERE BECAUSE A GUARD
-    // GETS DELETED WHEN ITS RED IS CONFUSING — NOT WHEN ITS RED IS FREQUENT.*** **If you are reading this
-    // because the test is red: you added a permission name. THE QUESTION IS ONLY** *"is the name I just
-    // added a commercial read or administration permission?"* **If NO — add it to the list below and move
-    // on, that is the whole remedy and it costs one line. If YES — `AC-SUB-0034` and `AC-SUB-0035` have
-    // just acquired a subject, and the disposition recorded above them is now wrong.**
+    // ⚠⚠⚠ AND THE METHOD ERROR THAT LET ME SHIP IT, WHICH IS THE PART TO REMEMBER: **my plant added the
+    // constant and never registered it, so it never reached the two existing guards' input and they stayed
+    // silent.** ***A GUARD IS INVISIBLE TO A PLANT THAT DOES NOT REACH ITS INPUT.*** I read that silence as
+    // "enforcement set of zero" and built a guard the tree had already argued against.
     //
-    // ⚠⚠ I REFUSED A CONSUMPTION GUARD FOR `AC-SUB-0022` ON A MEASURED 100%/60-DAY CHANGE RATE AND THEN
-    // SHIPPED THIS ONE WITHOUT MEASURING IT. **Measured afterwards, honestly: this set moves too. The
-    // difference that keeps it — and it is a real difference, not a rescue — is that *every change to THIS
-    // set is a change to the guard's own subject*, so a red is always about the right question. **The
-    // refused guard would have fired on response types that had nothing to do with entitlement.** *A guard
-    // that fires often on its own subject is maintainable; one that fires often on somebody else's is not.*
+    // ⚠⚠ THE PRECEDENCE THIS SETTLES, because I argued the opposite here for three hours: *on-subject does
+    // NOT rescue a noisy design when a quieter design catches the same thing.* **The order is (1) is it
+    // on-subject, (2) IS THERE A LOWER-NOISE DESIGN WITH THE SAME DETECTION, and only then (3) an
+    // interpretable red justifies a frequent one.** *Test 2 is the one this guard failed.*
     //
-    // ⚠⚠⚠ CORRECTION 2026-09-05: **"THE ENFORCEMENT SET IS ZERO" WAS WRONG, AND THE PLANT IS WHY.**
-    //
-    // This file previously claimed that a plant adding
-    // `public const string ViewSubscriptions = "Platform.Subscriptions.View";` to `PlatformPermissionNames`
-    // left all 2,812 gated tests green with only this assertion reddening. *That measurement was real and
-    // the conclusion drawn from it was not.*
-    //
-    // ***THE PLANT ADDED THE CONSTANT AND NEVER `Define`d IT IN `PlatformPermissionCatalog`, SO IT PLANTED A
-    // DEAD NAME — WHICH IS NOT WHAT ANYONE ADDING A PERMISSION ACTUALLY DOES.*** Re-planted properly, in
-    // BOTH the names class and the catalog, **THREE tests redden and two of them predate this file:**
-    //
-    //     `PlatformInfrastructureRegistrationTests.No_subscription_permission_exists_on_either_plane`
-    //     `PermissionCatalogTests.Catalog_has_exactly_the_reviewed_permissions_split_by_scope`
-    //     this one
-    //
-    // ⚠⚠⚠ AND THE FIRST OF THOSE IS THE SAME GUARD, BUILT EARLIER AND BUILT BETTER. It pastes
-    // `AC-SUB-0008` in full, deliberately declines to cite it for the reason this file uses the `Tripwire`
-    // key, and **explicitly REJECTS pinning all 28 names** — *"a guard whose false positives outnumber its
-    // true ones is one somebody switches off"*. **That is the objection this file re-derived from scratch as
-    // a churn measurement three commits later.** *The design was considered and rejected before I built it.*
-    //
-    // ⚠⚠ SO THE HONEST STANDING OF THE EXACT-SET HALF IS: it uniquely catches a name added to the class
-    // and never registered — a dead constant — and is otherwise DUPLICATIVE of two better-targeted guards
-    // while costing ~26 firings a year. **Recorded here rather than quietly deleted, because the deletion is
-    // a judgement about a committed disposition and not mine alone to make.**
-    //
-    // ⚠ THE GENERAL LESSON, WHICH IS THE PART WORTH KEEPING: *an ADDITIVE plant must add the WHOLE change a
-    // real contributor would make.* A half-landed addition compiles, reddens something, and reports a
-    // smaller enforcement set than the truth — failing in the direction that makes your own work look novel.
-    Assert.Equal(
-      [
-        "Platform.Companies.Lifecycle", "Platform.Companies.Manage", "Platform.Companies.View",
-        "Platform.EmployeeLinks.Link", "Platform.EmployeeLinks.Unlink", "Platform.Localization.Manage",
-        "Platform.Localization.View", "Platform.Localization.ViewHistory", "Platform.Permissions.View",
-        "Platform.RolePermissions.Assign", "Platform.RolePermissions.Remove", "Platform.Roles.Create",
-        "Platform.Roles.RequestRetirement", "Platform.Roles.Retire", "Platform.Roles.Update",
-        "Platform.Roles.View", "Platform.Support.Administer", "Platform.Tenant.Administer",
-        "Platform.Tenants.Lifecycle", "Platform.Tenants.Manage", "Platform.Tenants.View",
-        "Platform.UserRoles.Assign", "Platform.UserRoles.Remove", "Platform.Users.Create",
-        "Platform.Users.Deactivate", "Platform.Users.Reactivate", "Platform.Users.Update",
-        "Platform.Users.View"
-      ],
-      typeof(PlatformPermissionNames)
-        .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
-        .Where(field => field.IsLiteral && field.FieldType == typeof(string))
-        .Select(field => (string)field.GetRawConstantValue()!)
-        .OrderBy(name => name, StringComparer.Ordinal));
+    // **The `AC-SUB-0034`/`0035` disposition survives on the route ban below, which four plants established
+    // is the SOLE detector for a commercial route that exists in source but is not yet registered.**
 
     // ---- AND THE ROUTE SURFACE, AS A BAN. THE WEAK HALF, PLACED SECOND AND LABELLED.
     //

@@ -197,6 +197,24 @@ public sealed class AttendanceArchitectureTests
   // population of one, checked rather than assumed — so the criterion's *"any attendance row"* is exactly
   // this one type, and the code that refuses it is `TenantDbContext.PreventAppendOnlyMutation`.
   //
+  // ⚠⚠⚠ ***AND THERE ARE TWO METHODS OF THAT NAME. `PlatformDbContext` HAS ONE TOO, AND ONLY IT HAS A
+  // GATED BEHAVIOURAL TEST.*** `PlatformAppendOnlyGuardTests` drives the refusal for real — the exact
+  // message, the row surviving — and its own header says it *"drive[s] `PlatformDbContext` directly."*
+  // **It watches the OTHER class.** Same name, same body shape, different owner, and the tenant one is the
+  // one `AttendanceRecord`, `PayrollRunLine` and `JournalLine` all rest on.
+  //
+  // *Measured, not inferred:* removing `EntityState.Deleted` from the TENANT method leaves delete
+  // unrefused and **1,131 `Platform.Tests` pass, including every test in that file.** So the behavioural
+  // gate for this class's rule is `Integration` — green at a date — and this source guard is the only
+  // gated thing watching it. `TenantAppendOnlyGuardTests` was written to close that; until it existed,
+  // this assertion was alone.
+  //
+  // ⚠ A CORRECTION BELONGS HERE BECAUSE THE COMMIT THAT ADDED THIS TEST STATED ITS FINDING ON A VOID
+  // PLANT AND A COMMIT MESSAGE CANNOT BE AMENDED. That plant ADDED a condition — `periodClosed` — which
+  // was true exactly when there was something to refuse, so it changed no behaviour, and its green proved
+  // only that a source guard reads source. **The conclusion survived re-derivation on a SUBTRACTIVE plant;
+  // the original reasoning did not.** *Prefer subtractive plants: a removal cannot be tautological.*
+  //
   // ⚠⚠⚠ THE BAN LIST IS THE WEAK HALF AND IT IS PLACED SECOND DELIBERATELY. Naming `Period`, `Status`,
   // `Closed` catches the conditions somebody would plausibly add and cannot catch one nobody thought of.
   // **The load-bearing assertion is the first: the walk is over `Entries<IAppendOnlyEntity>()` with no

@@ -122,6 +122,18 @@ internal static class CriterionInventory
   //
   // ⚠ IT IS EVIDENCE OF ATTENTION AND NOT OF COVERAGE, AND THE DIFFERENCE IS THE WHOLE POINT. A discussed
   // criterion may be discussed in order to REFUSE it. **Nothing here should ever be added to a cited count.**
+  //
+  // ---- ⚠⚠⚠ THIS POPULATION IS SELF-AFFECTING, AND THAT IS CORRECT RATHER THAN BROKEN. DO NOT "FIX" IT.
+  //
+  // ***WRITING ABOUT A CRITERION MAKES IT DISCUSSED. AN AUDITOR WHO TAKES NOTES MOVES THE POPULATION.***
+  // Measured: **36 at `c945332`, 38 at `f99a28c`** — and the two new members are the two ids the commit in
+  // between spelled out in its own prose. *The alternative, excluding the auditor's own writing, would make
+  // the measure depend on who counts as an auditor, which is worse than the property it removes.*
+  //
+  // ***SO THE CAVEAT IS PERMANENT AND BELONGS HERE RATHER THAN IN WHOEVER'S REPORT: THIS COUNT CANNOT BE A
+  // TREND LINE WITHOUT NAMING WHO WAS WRITING DURING THE INTERVAL.*** **A delta on it is a fact about
+  // somebody's attention, not about the tree — and the first person to diff two runs will read their own
+  // notes as the subject improving.**
   public static IReadOnlyCollection<string> DiscussedInComments() =>
     [.. AllSources()
       .SelectMany(file => AnyId.Matches(CommentsOnly(File.ReadAllText(file))))

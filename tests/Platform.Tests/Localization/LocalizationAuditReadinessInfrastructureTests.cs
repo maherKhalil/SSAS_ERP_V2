@@ -7,6 +7,69 @@ using SSAS.Platform.Infrastructure.Localization;
 
 namespace SSAS.Platform.Tests.Localization;
 
+// ==================================================================================================
+// ⚠⚠⚠ `AC-LOC-0040` DESCRIBES A SUBSYSTEM THAT DOES NOT EXIST, AND `AC-LOC-0039` IS SATISFIED BY THAT
+// ABSENCE. LOCALIZATION MANAGEMENT CANNOT SUCCEED IN PRODUCTION. RECORDED 2026-09-05.
+// ==================================================================================================
+//
+// **This is written here, in the file that holds the production type's only witness, because it was found in
+// a cross-session audit and lived nowhere else.** *If both sessions had ended, the next person would have met
+// `LocalizationManagementAuditReadiness` with a well-built fail-closed test beside it and no reason to look
+// further — which is the exact condition that produced the state below.*
+//
+// ---- WHAT WAS MEASURED, AND IT IS THREE ABSENCES RATHER THAN ONE.
+//
+// `AC-LOC-0040`: *"Protected projector obtains prior/new text from immutable committed versions, including
+// restored inactive state."*
+//
+//   ***NO PROJECTOR.*** `Projector`/`projector` appears in no file under `src/`.
+//   ***NO OLD/NEW TEXT.*** `OldValue|NewValue|PreviousText|OldText|NewText|PriorText` — zero hits in `src/`.
+//   ***NO AUDIT STORE*** for a projector to read or a criterion to constrain.
+//
+// ⚠⚠⚠ **AND THE READINESS PROVIDER IS NOT A READINESS CHECK. IT IS A PERMANENT STUB**, and it is the whole
+// implementation — one production registration, `PlatformPersistenceServiceCollectionExtensions.cs:438`:
+//
+//     var isExplicitDevelopmentOrTestBypass = options.Value.DevelopmentBypassEnabled &&
+//       (environment.IsDevelopment() || environment.IsEnvironment("Test"));
+//     return Task.FromResult(isExplicitDevelopmentOrTestBypass ? Ready : Unavailable);
+//
+// ***IT CONSULTS NO AUDIT STORE. SO BUILDING THE AUDIT STORE WOULD NOT ENABLE THE FEATURE.*** Four command
+// handlers take this interface — Create, Update, Undo, Restore — and `LocalizationManagementAuditGuard` turns
+// `Unavailable` into a refusal. **Every localization management write is refused in Production, permanently,
+// by construction.**
+//
+// ---- ⚠⚠ WHY THIS SURVIVED, AND IT IS THE TEST DIRECTLY BELOW.
+//
+// `AC-LOC-0039` reads *"Production management refuses when audit persistence/retention/readiness is absent"*,
+// so **the refusal is SPECIFIED and correct, and `Production_is_fail_closed_even_when_development_bypass_is_
+// configured` pins it with a deliberately-arranged anti-confound fixture.** ***THE TEST IS RIGHT. THE 2×2 IS
+// RIGHT. `AC-LOC-0064` IS CITED TWELVE TIMES AND THE COVERAGE IS GOOD.***
+//
+// ***WHAT NOTHING ASSERTS — AND NOTHING COULD — IS THAT A `Ready` RESULT IS REACHABLE IN PRODUCTION AT ALL.
+// IT IS NOT, AND NO TEST ASKS FOR ONE, BECAUSE ASKING WOULD REQUIRE EXPECTING ONE.*** **Fail-closed was
+// verified; reachability was never asked.**
+//
+// ⚠ **A reader meeting `AC-LOC-0039` reasonably concludes *"management is refused because audit is degraded;
+// fix audit and it works."* THAT IS FALSE.** The guard is not protecting a degraded state — **it IS the
+// state**, and the remedy the criterion implies does not exist. *`AC-LOC-0039` is satisfied vacuously; its
+// sibling `AC-LOC-0040` describes the subsystem nobody has started.*
+//
+// ⚠⚠⚠ **AND THE SHAPE IS THE ONE THIS TREE KEEPS PRODUCING: A CONFIDENT, CONSIDERED ARTEFACT STOPS THE
+// READER.** Elsewhere a handler comment saying *"that is the whole list"* concealed a missing rule. Here a
+// test named *fail-closed*, with a 2×2, an anti-confound arrangement, and a note explaining its own
+// attribution, makes a method that consults nothing look complete. ***THE BETTER THE ARTEFACT, THE LESS
+// ANYONE ASKS THE NEXT QUESTION.***
+//
+// ---- NEITHER CRITERION IS CITED AND NEITHER SHOULD BE.
+//
+// `0040`'s subject is unbuilt, so there is nothing to witness. `0064` already carries the behaviour `0039`
+// describes, and citing `0039` would record a vacuous satisfaction as coverage — **the one thing that would
+// make this harder to find, not easier.**
+//
+// ***THE OWNER QUESTION, WHICH IS NOT OURS: IS LOCALIZATION MANAGEMENT INTENDED TO WORK IN PRODUCTION TODAY?***
+// **If yes, it cannot, and no amount of building audit persistence changes that without also replacing this
+// method. If no, then `0039` is satisfied vacuously and `0040` describes unstarted work.** *Both readings are
+// consistent with everything measured; choosing between them needs intent, not evidence.*
 public sealed class LocalizationAuditReadinessInfrastructureTests
 {
   // ⚠ CITES THE *"Production"* QUALIFIER OF `AC-LOC-0064` — the one element

@@ -7,6 +7,87 @@ using SSAS.Platform.Domain.Companies;
 
 namespace SSAS.Architecture.Tests;
 
+// ==================================================================================================
+// FP-005's UNCITED CRITERIA, CENSUSED 2026-09-05. FOUR OF THE SEVEN ARE DISPOSED HERE. NONE IS CITED.
+// ==================================================================================================
+//
+// ***WHY THIS IS WRITTEN DOWN RATHER THAN REPORTED.*** The census that produced it was delivered as prose
+// between two sessions, and a tree-wide sweep then partitioned the 85 uncited criteria into **9 tripwired ·
+// 36 disposed in a comment · 40 recorded nowhere** — ***and twenty-five of that last forty were cells
+// examined that same evening.*** **They counted as unexamined because the examination lived in a
+// conversation.** *A finding delivered in a message is on the same path as a script in a scratchpad: alive
+// while the session is, gone after.* **The 36 that survived are the ones somebody stopped and wrote down.**
+//
+// ⚠ **NOTHING BELOW IS A CITATION AND NONE OF IT SHOULD BE COUNTED AS COVERAGE.** These are dispositions —
+// what was checked, what was found, and why no trait follows.
+//
+// ---- ⚠⚠⚠ `AC-CMP-0018` IS **FALSE AS WRITTEN**, AND IT IS THE ONLY FALSE CELL IN 23 CENSUSED.
+//
+// *"Company uses the existing **Platform** context, schema, connection, migration history, and Unit of Work."*
+//
+// **`TenantDbContext.cs:84` — `public DbSet<Company> Companies => Set<Company>();`** The configuration lives
+// at `Persistence/TenantErp/Configurations/CompanyConfiguration.cs`. Migration
+// `20260814110659_MoveCompanyToTenantDatabase.cs:8`, verbatim: ***"Relinquishes platform ownership of Company
+// (ADR-017). Company now belongs to the tenant ERP"***. **Company is not in the Platform context.**
+//
+// ⚠⚠ **THE QUALIFIER THAT RESCUES IT IS IN YAML FRONTMATTER, LINE 7, ~75 LINES ABOVE THE DECLARATION AND
+// ABOVE THE `# Acceptance Criteria` HEADING: `milestone: Milestone 1`.** Under that scope the sentence is
+// historically true. ***THIS IS THE READING-DIRECTION FAILURE AT DOCUMENT SCALE*** — every reader in this
+// project, and the trait matcher, reads FORWARD from a declaration.
+//
+// ⚠ **AND THE BLAST RADIUS IS ONE, WHICH IS WORTH STATING BECAUSE THE OPPOSITE WAS ASSUMED.** Only two
+// `acceptance-criteria.md` files carry a `milestone:` key (FP-005, FP-006). **Every other scoped criterion in
+// both puts the scope IN ITS OWN SENTENCE** — `AC-CMP-0016` and `AC-CMP-0019` open *"Milestone 1 introduces
+// no…"*, FP-006's three deferrals open *"FP-006 introduces no…"*, and `AC-EMP-0047` was corrected to that
+// form on 2026-08-31 for exactly this reason. **`AC-CMP-0018` is the single lapse in a convention the tree
+// otherwise keeps.** *Owner item: it needs its scope in its sentence, not a new file layout.*
+//
+// ---- `AC-CMP-0016` AND `AC-CMP-0019` — DECAYED MILESTONE-SCOPE CLAIMS, AND THE TEST BELOW ALREADY SAYS SO.
+//
+// `0016`: *"Milestone 1 introduces no `ICompanyOwnedEntity` interface, no company query filter, no company
+// write guard, and no current-company / scope-resolution persistence."* ***ALL FOUR NOW EXIST*** —
+// `BuildingBlocks.Domain/ICompanyOwnedEntity.cs` implemented across roughly thirty domain types,
+// `TenantDbContext.ApplyCompanyRulesAsync`, `CompanyWriteAuthorizer`, `CurrentCompany`.
+//
+// ⚠ **`ICompanyOwnedEntity_is_a_separate_opt_in_contract_that_company_does_not_implement` BELOW ALREADY TELLS
+// THIS STORY IN FULL** — *"This assertion previously required that `ICompanyOwnedEntity` did NOT exist. That
+// was correct for FP-005 Milestone 1 and only for it."* ***IT JUST NEVER NAMED THE CRITERION, WHICH IS WHY
+// THE CELL READ AS UNEXAMINED.*** *That is the whole write-back in one instance: the reasoning existed, the
+// id did not, and only the id is machine-readable.*
+//
+// `0019` is the same shape one clause wider — `UserCompanyAccess` is the user↔company assignment it says M1
+// introduces none of, and the GL fiscal calendar ships. **Both are historically true and neither describes
+// the product; a reader meeting them today reads them as false.**
+//
+// ---- `AC-CMP-0009` — WITNESSED IN PART, HERE, AND THE PART THAT IS MISSING IS NAMED.
+//
+// *"No Domain operation, command, repository method, API contract, or migration cascade physically deletes a
+// Company."* **FIVE CHANNELS.** `Company_uses_a_guid_aggregate_key_and_exposes_no_physical_delete` covers the
+// DOMAIN one; `Company_repository_is_aggregate_specific_without_delete_or_queryable` covers the REPOSITORY
+// one; `CompanyApiArchitectureTests.Company_route_builder_exposes_no_delete_reactivate_restore_or_suspend_
+// route` covers the API CONTRACT one. **A runtime guard also exists — `TenantDbContext.PreventCompanyDeletion`
+// throws on a tracked `Deleted` Company.**
+//
+// ***THE MIGRATION-CASCADE CHANNEL IS ASSERTED BY NOTHING, SO THE CRITERION IS NOT CITED.*** *Four of five
+// would read as five* — the failure this project refuses everywhere else, and refusing it here costs a
+// citation and keeps the sentence honest.
+//
+// ---- THE OTHER THREE OF FP-005's SEVEN, DISPOSED ELSEWHERE AND POINTED AT FROM HERE SO THE SET IS CLOSED.
+//
+// `AC-CMP-0003` (*a normalized code may repeat across tenants*) — **structurally guaranteed by
+// `CompanyConfiguration.cs:86`, `HasIndex(new { TenantId, NormalizedCompanyCode }).IsUnique()`: per-tenant
+// uniqueness is the index's SHAPE.** Witnessed exactly by `TenantCompanyOrganizationSqlServerTests`
+// (`Company_migration_enforces_schema_uniqueness_and_cross_tenant_isolation`, which inserts the same code
+// into a second tenant). ⚠⚠ ***IT IS THE ONLY CELL IN 23 WITH A WHOLE-SENTENCE WITNESS AVAILABLE — AND THE
+// WITNESS IS IN THE INTEGRATION SUITE, WHICH IS GREEN AT A DATE RATHER THAN GATED.*** **So the one cell where
+// "uncited" understates coverage is also one where "covered" would overstate it.** *Uncited · untagged ·
+// green-at-a-date · unrecorded: four words that all render to a reader as "not covered".*
+//
+// `AC-CMP-0011` and `AC-CMP-0012` — partially witnessed. `0012`'s SEPARABILITY clause is visible in the route
+// declarations themselves: seven company routes across THREE distinct permissions (`ViewCompanies` ×2,
+// `ManageCompanies` ×2, `CompanyLifecycle` ×3). **Its cross-tenant clause is not asserted there, so no trait.**
+//
+// `AC-CMP-0013` is disposed in `CompanyApiArchitectureTests`, where its body channel is witnessed.
 public sealed class CompanyArchitectureTests
 {
   [Fact]

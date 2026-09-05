@@ -9,6 +9,46 @@ namespace SSAS.HR.Tests.Employees;
 // what transfer refuses, and what the events do and do not carry. The rules that need authoritative state —
 // uniqueness, the ownership boundaries, scope authorization and the sanctioned transfer channel — are proven
 // against real SQL Server, because an in-memory provider would agree with all of them and prove none.
+// ==================================================================================================
+// ⚠⚠⚠ `AC-EMP-0001` IS CORRECTLY UNCITED AND THE REASON GIVEN FOR IT IS FALSE. CHECKED 2026-09-05.
+// ==================================================================================================
+//
+// **The criterion is the creation roll-up, and its own document disposes of it (`acceptance-criteria.md:20`,
+// noted 2026-08-31): a roll-up must not be cited, because citing it on one test presents a summary as a
+// single assertion and citing it on all of them repeats the clause-level criteria.** ***THAT RULING IS
+// RIGHT AND IS NOT DISTURBED HERE.***
+//
+// **THE GROUND GIVEN FOR IT IS NOT.** The note reads *"**Every** clause in it — the identifier, the trusted
+// tenant, the trusted company, the server-stamped branch, the normalized number, the initial state — is
+// specified again, ON ITS OWN, in a criterion below"*, and closes *"a criterion that indexes other criteria
+// is verified by verifying them."*
+//
+// ***ALL 47 `### AC-EMP-` DECLARATIONS WERE ENUMERATED AND THE SIX CLAUSES CHECKED AGAINST THEM:***
+//
+//     trusted `TenantId`         → `AC-EMP-0002`   ✓
+//     trusted `CompanyId`        → `AC-EMP-0003`   ✓
+//     server-stamped `BranchId`  → `AC-EMP-0004`   ✓
+//     normalized number          → `AC-EMP-0006`   ✓
+//     ***nonempty Guid `EmployeeId`  → NOTHING***
+//     ***trimmed NAME                → NOTHING***  (`0006` covers the NUMBER's display casing, not the name)
+//     begins in `Active`         → `AC-EMP-0012` only as *"Create→Active is a permitted TRANSITION"*, which
+//                                  is a different sentence from *"creation begins in Active"*
+//
+// ⚠⚠ ***SO TWO CLAUSES ARE SPECIFIED NOWHERE AT CRITERION LEVEL, AND THE UNIVERSAL THAT LICENSES THE RULING
+// DOES NOT HOLD OVER THE POPULATION IT QUANTIFIES.*** **Owner item: either the two clauses get criteria of
+// their own, or the note's *every* becomes *most* and names the exceptions.**
+//
+// ---- ⚠⚠⚠ AND THE SHAPE IS WORTH MORE THAN THE CELL: **A CORRECT DISPOSAL RESTING ON A WRONG UNIVERSAL.**
+//
+// ***A CORRECT CONCLUSION WITH A FALSE JUSTIFICATION IS WORSE THAN A WRONG CONCLUSION, BECAUSE NOBODY
+// RE-EXAMINES A RULING THEY AGREE WITH — THEY REUSE ITS ARGUMENT.*** **The ruling survives; the reasoning
+// does not, and the reasoning is the part a later reader would carry to the next roll-up.**
+//
+// ⚠ **THE GAP IS AT CRITERION LEVEL AND THAT IS THE ONLY CLAIM MADE HERE.** *Whether some test happens to
+// observe a nonempty identifier or a trimmed name was NOT checked, deliberately* — **it would not change the
+// finding, and asserting it unverified is the failure this whole census exists to catch.** ***What is
+// established is that nothing in the SPECIFICATION requires either outcome: a change removing one would
+// violate no criterion, and a citation sweep would report nothing missing.***
 public sealed class EmployeeDomainTests
 {
   private static readonly Guid Tenant = Guid.Parse("11111111-1111-1111-1111-111111111111");

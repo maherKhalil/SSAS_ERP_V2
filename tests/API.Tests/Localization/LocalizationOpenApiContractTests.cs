@@ -9,6 +9,56 @@ using SSAS.Platform.Domain.Enums;
 
 namespace SSAS.API.Tests.Localization;
 
+// ==================================================================================================
+// FP-004's UNCITED ROUTE AND TRANSPORT CRITERIA, CENSUSED 2026-09-05. NONE IS CITED, AND ONE OF THEM
+// IS THE ONLY GENUINE HOLE THE CENSUS FOUND.
+// ==================================================================================================
+//
+// **The resolver-layer cells are recorded in `LocalizationResolverTests`, which also states the placement
+// convention these follow.** *Nothing here is a citation.*
+//
+// ---- ⚠⚠⚠ `AC-LOC-0033`: A SPECIFIED REFUSAL THAT NO TEST HAS EVER ASSERTED.
+//
+// *"Null expectedRowVersion creates only when absent; existing/inactive returns 409
+// `localization.override_already_exists`."*
+//
+// ***THAT ERROR CODE APPEARS IN ZERO TEST FILES IN THE REPOSITORY.*** Five files hold it: the domain error,
+// the API mapper, an architecture reachability guard, and two documents. ⚠ **And the grep crosses the mapping
+// boundary cleanly — checked first, because a token that crosses a mapper usually changes its name: the
+// domain's `"localization.override_already_exists"` maps to the API's `"localization.override_already_exists"`,
+// identical, so a renamed downstream spelling is not hiding a witness.**
+//
+// **Its three sibling codes ARE asserted** — `undo_not_available` and `override_already_default` in
+// `LocalizationTransportContractTests` under `AC-LOC-0035`, and `override_missing` once, incidentally, in
+// `LocalizationAuditReadinessApiTests`. ***FOUR CODES, ONE UNTESTED, AND IT IS THE CREATE-COLLISION ONE.***
+//
+// ⚠ **BOUND, UNDISCHARGED: some test may assert that a duplicate create FAILS without asserting the code.
+// What is established is that the specified 409 is asserted nowhere.** `AC-LOC-0034` is the weaker sibling —
+// its `override_missing` half is witnessed only incidentally, in a file about audit readiness.
+//
+// ---- ⚠⚠ `AC-LOC-0047` AND `AC-LOC-0048`: ONE ASSERTION LICENSES FOUR CRITERIA AND CARRIES TWO TRAITS.
+//
+// `Generated_document_exposes_exactly_the_nine_approved_localization_routes_and_authentication` below cites
+// **the *"exact OpenAPI"* clause** of `AC-LOC-0042` and `AC-LOC-0043`, and its comment is scrupulous about
+// the nine clauses it does not assert.
+//
+// ***BUT `AC-LOC-0047` (history) ENDS "…and OpenAPI" AND `AC-LOC-0048` (Preview) ENDS "…and OpenAPI", AND
+// BOTH ROUTES ARE AMONG THE NINE THE SAME ASSERTION PINS*** — `:172` reads the preview path's description by
+// name. **Identical clause, identical witness, no trait.**
+//
+// ⚠ **THIS IS NOT SLOPPINESS AND SAYING SO MATTERS.** The citation is disciplined and discloses its own
+// limits in prose. **What did not happen is that the same disclosure was carried across to the other two
+// criteria the same assertion reaches.** ***Whichever policy is right — cite a clause and disclose, or refuse
+// a one-of-nine citation — the tree is applying BOTH to ONE assertion.*** *That is an owner-facing
+// consistency question, not a missing test, and adding two traits here would settle it by fait accompli.*
+//
+// ---- THE SQL CELLS, FOR COMPLETENESS OF THE TWENTY.
+//
+// `AC-LOC-0055` (SQL uniqueness/coherence) is observed inside
+// `PlatformLocalizationSqlServerTests.Aggregate_and_history_enforce_coherence_uniqueness_fingerprints_and_
+// immutability`, which carries `AC-LOC-0029`. `AC-LOC-0056` names **five** concurrent operations —
+// create, update, Undo, Restore, settings initialisation — and **only create and settings-initialisation
+// have concurrency tests**; update, Undo and Restore have none. *Two of five would read as five.*
 [Collection(HostIntegrationTestGroup.Name)]
 public sealed class LocalizationOpenApiContractTests(HostWebApplicationFactory factory)
 {

@@ -76,6 +76,28 @@ namespace SSAS.API.Tests.Infrastructure;
 // the product against it**; the vacuity was two steps downstream. *Looking for undeclared gaps is sampling
 // by expectation, which is the thing that fails.* **Check the product against each clause and vacuity
 // surfaces as a consequence.**
+//
+// ==================================================================================================
+// ⚠⚠ RE-CHECKED 2026-09-05. ONE BLOCKER MOVED, THE VACUITY DID NOT, AND THE TWO ARE INDEPENDENT.
+// ==================================================================================================
+//
+// **Re-verified rather than restated: `module-not-enabled` appears in `docs/` and in two comments in this
+// file, and in NO line of `src/`.** ***THE PROBLEM TYPE STILL DOES NOT EXIST, SO THE CRITERION IS STILL
+// SATISFIED BY THE ABSENCE OF THE THING IT CONSTRAINS.*** The paragraphs above hold unchanged.
+//
+// **What DID move is a blocker that was recorded against this criterion as a reason it could not be stated:
+// *"every gated route" had no enumerated population.* It has one now — `GatedRouteInventory` (`1cfcc05`)
+// closes the set off the running host's `EndpointDataSource`.** ⚠ *And neither of the two people holding
+// this criterion noticed: one wrote the blocker, the other built the remedy six hours later, and it took a
+// machine-readable list of untagged-but-discussed ids to put them in the same sentence.* **The same
+// propagation failure `CriterionCommentGuardTests` was written about, landing on its authors.**
+//
+// ⚠⚠⚠ **AND THE ORDER OF THESE FACTS MATTERS, BECAUSE A CLOSED POPULATION IS EASILY MISREAD AS PROGRESS
+// TOWARDS A CITATION.** *Two conditions were recorded for stating the criterion — an enumerated population
+// (now satisfied) and a UNIT for the quantifier, 116 endpoints or 91 patterns (still an owner question).*
+// ***BUT THE REASON NOT TO CITE IS NEITHER OF THEM. IT IS THAT THE SUBJECT IS UNBUILT.*** **Both conditions
+// are about whether the sentence can be STATED; the vacuity is about whether there is anything to state it
+// over — and satisfying every stating-condition would leave a citation over an empty set.**
 public sealed class ModuleEnablementGateTests
 {
   private const string ModuleKey = "Payroll";

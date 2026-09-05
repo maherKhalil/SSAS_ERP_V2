@@ -16,6 +16,78 @@ using SSAS.Platform.Infrastructure.Persistence.Queries;
 
 namespace SSAS.Platform.Tests.Localization;
 
+// ==================================================================================================
+// FP-004's UNCITED CRITERIA — THE RESOLVER-LAYER CELLS, CENSUSED 2026-09-05. NONE IS CITED.
+// ==================================================================================================
+//
+// **FP-004 declares 64 and cites 44. All twenty uncited were read against the product; this records the ones
+// whose subject is the resolver.** The route and transport cells are recorded in
+// `LocalizationOpenApiContractTests`; `AC-LOC-0039`/`0040` in `LocalizationAuditReadinessInfrastructureTests`.
+//
+// ---- ⚠ THE PLACEMENT CONVENTION, DECIDED ONCE SO A LATER READER FINDS A RULE RATHER THAN FIFTEEN CHOICES.
+//
+// ***A DISPOSITION GOES BESIDE THE NEAREST TEST THAT TOUCHES THE CRITERION'S SUBJECT — the mechanism, the
+// type, or the guard. WHERE NOTHING TOUCHES THE SUBJECT AT ALL, IT GOES BESIDE THE TEST A READER AUDITING
+// THAT CRITERION WOULD OPEN, AND SAYS SO IN THOSE WORDS.*** *That is not invented here — it is what
+// `AuthenticationSecurityTests` already does for `AC-IAM-0024` (**"this file is where a reader would look for
+// it"**), and a convention already in use beats a better one nobody follows.*
+//
+// ---- ⚠⚠⚠ `AC-LOC-0060` IS **TRUE BY INERTNESS**, AND IT IS A CLASS THIS TREE HAD NOT NAMED.
+//
+// *"Changing text culture alone changes neither timezone nor currency/number/date context."*
+//
+// **`FormattingContext` EXISTS** — `BuildingBlocks.Localization/FormattingContext.cs`, five nullable fields
+// (`TimeZone`, `DateCulture`, `NumberCulture`, `CurrencyCulture`, `CurrencyCode`), every one defaulting to
+// `null`. It appears in **six files in the whole repository**: its declaration, three documents, the three
+// request records that carry it as an optional parameter, and **ONE forwarding line** —
+// `LocalizationTextResolver:51` passes it from the single request into the batch request.
+//
+// ***NO FIELD OF IT IS EVER READ. ZERO OCCURRENCES IN `tests/`.*** **So the criterion is true the way a
+// deleted feature is true: text culture cannot affect the formatting context because nothing CONSUMES the
+// formatting context, and no test could distinguish a correct implementation from removing the type.**
+//
+// ⚠⚠ **DISTINCT FROM THE UNIVERSAL-OVER-AN-EMPTY-SET DEFECT, AND THE DISTINCTION IS WHAT MAKES IT A CLASS.**
+// There the quantified set is empty. **Here the set is non-empty — five fields, declared, plumbed three
+// layers deep — and the criterion is unfalsifiable because the values are never consumed.** ***A CARRIER
+// NOBODY READS LOOKS EXACTLY LIKE A FEATURE FROM EVERY ANGLE EXCEPT THE ONE THAT MATTERS.***
+//
+// ⚠ **AND IT WAS NEARLY FILED AS UNBUILT**: the token search over the Localization DOMAIN returned nothing,
+// and widening to `src/` found it. *An absence over the wrong scope, caught by widening rather than by
+// publishing.* **This is recorded here because `LocalizationResolutionRequest` is constructed throughout this
+// file and its `FormattingContext` parameter is never supplied — which is the observation, not a gap.**
+//
+// ---- THE CONJUNCTIVE CELLS: PARTLY WITNESSED, AND CITING ONE WOULD CLAIM ALL.
+//
+// `AC-LOC-0003` — *"An eligible Tenant can maintain compatible `en` and `ar` overrides independently without
+// changing defaults."* Override resolution is asserted throughout this file; **the INDEPENDENCE clause and
+// the defaults-unchanged clause are not.**
+//
+// `AC-LOC-0006` — *"A wording-only default release changes unoverridden/restored results and preserves
+// compatible overrides."* The wording-only half is witnessed at the TOOL layer by
+// `LocalizationCatalogToolTests.Compatibility_fingerprint_ignores_wording_and_changes_with_policy` (untagged);
+// **the claim about RESOLUTION RESULTS changing is asserted nowhere.**
+//
+// `AC-LOC-0016` — *"Anonymous/authenticated precedence is exact, unsupported values fall through, switch needs
+// no logout, and formatting is independent."* **Four clauses; `precedence` appears in no localization test in
+// the tree, and the fourth clause is `AC-LOC-0060`'s subject above — unfalsifiable for the same reason.**
+//
+// `AC-LOC-0013` (restore semantics) and `AC-LOC-0030` (version types) are each observed INSIDE tests carrying
+// a neighbouring criterion's trait — `LocalizationDomainTests.Restore_default_is_a_deterministic_no_op_when_
+// already_inactive` and `LocalizationPrimitiveTests.Positive_versions_do_not_wrap`, both untagged.
+// `AC-LOC-0041` (retirement, five clauses) has **only** the release tool's `CatalogImpactKind.Retired`
+// classification; none of *stays in history · cannot receive overrides · leaves ordinary groups · never
+// reused · transfers nothing* is asserted.
+//
+// ---- AND TWO THAT ARE NOT ACCEPTANCE CRITERIA AT ALL.
+//
+// `AC-LOC-0010` — *"Localization changes no code, key, status/type, authorization, validation, claim,
+// permission, or control flow."* ***THAT IS A CLAIM ABOUT A DIFF, NOT ABOUT THE PRODUCT.*** No state of the
+// running system satisfies or violates it.
+//
+// `AC-LOC-0024` — *"M1 contains only approved backend core/migration/tests; HTTP/OpenAPI stay M2."*
+// ***M2 HAS SHIPPED*** — nine HTTP routes exist and seven of their criteria are cited. **Historically true,
+// and a reader meeting it today reads it as false.** *Same shape as `AC-CMP-0016`/`0019` in FP-005, and
+// unlike `AC-CMP-0018` it states its own scope, which is why it decays gracefully instead of misleading.*
 public sealed class LocalizationResolverTests
 {
   private static readonly Guid TenantId = Guid.Parse("9b7fc347-a31f-4724-8bf1-3dc83fac6c85");

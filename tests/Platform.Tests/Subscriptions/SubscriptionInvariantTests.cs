@@ -538,14 +538,32 @@ public sealed class SubscriptionInvariantTests
   // the tenant model. *That is the opposite direction*: it catches platform types leaking INTO the tenant
   // model, not a tenant table that ought to have been platform-resident.**
   //
-  // ⚠ **BOUND ON THE MEASUREMENT, STATED BECAUSE THE TWO SHAPES DIFFER:** the plant added migration TEXT and
-  // no entity type, so model-walking guards were structurally unable to see it. **A realistic billing table
-  // would arrive WITH an entity — and I have not planted that shape**, so the claim that it too would pass
-  // is reasoning rather than measurement. *What is measured is that the migration-text shape passes.*
+  // ---- ⚠⚠ AND THE SECOND SHAPE WAS PLANTED TOO, BECAUSE THE FIRST MEASUREMENT COULD NOT REACH IT.
   //
-  // ***SO THIS TRIPWIRE'S SCOPE IS DEFENSIBLE AND ITS FALLBACK DOES NOT EXIST. A BOUNDARY THAT DELEGATES IS
-  // ONLY AS GOOD AS THE GUARD IT DELEGATES TO, AND AN UNTESTED DELEGATION IS A FALSE REASSURANCE WRITTEN
-  // INTO A FILE — WORSE THAN THE GAP IT DESCRIBES, BECAUSE A READER STOPS LOOKING.***
+  // The migration-text plant added no ENTITY, so model-walking guards were structurally unable to see it —
+  // *the class of guard most likely to catch a real billing table was never given the chance.* **So a second
+  // plant added the realistic shape: a `PlantInvoice : ITenantOwnedEntity` with a tenant configuration
+  // mapping it to `tenant.Invoices`.** ***THE GATE WENT RED. FIVE GUARDS FIRED:***
+  //
+  //   `TenantModelEntityCountArchitectureTests.The_composed_tenant_model_has_exactly_the_expected_number_of_entities`
+  //   `TenantModelHasNoPendingChangesTests.The_tenant_model_has_no_changes_that_no_migration_carries`
+  //   `CutoverManifestArchitectureTests.C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity`
+  //   `CutoverManifestArchitectureTests.C6_14_A_contributor_free_plan_silently_omits_both_hr_tables`
+  //   `TenantCutoverCopyPlanTests.The_manifest_covers_every_tenant_owned_entity_in_the_tenant_model`
+  //
+  // ⚠⚠⚠ **BUT READ WHAT THEY SAY, BECAUSE IT IS NOT WHAT A RESIDENCY GUARD WOULD SAY.** *Every one of them
+  // reports **"a new tenant entity appeared"* — an entity count, a pending model change, a manifest that no
+  // longer covers the model.* ***NONE OF THEM SAYS "THIS BELONGS IN THE PLATFORM DATABASE".*** **An author
+  // meeting these five reds resolves them by adding the entity to the manifest and bumping the count — and
+  // the billing table is then legitimately tenant-resident with a green gate.**
+  //
+  // ***SO THE PRECISE STATEMENT IS: THE ENTITY SHAPE IS WATCHED, THE MIGRATION-TEXT SHAPE IS NOT, AND WHAT
+  // WATCHES THE ENTITY SHAPE FORCES A HUMAN TO LOOK WITHOUT FORCING THE RIGHT ANSWER.*** *That is worth more
+  // than "covered" and more than "unwatched", and neither could have been reached by reading.*
+  //
+  // ***A BOUNDARY THAT DELEGATES IS ONLY AS GOOD AS THE GUARD IT DELEGATES TO. AN UNTESTED DELEGATION IS A
+  // FALSE REASSURANCE WRITTEN INTO A FILE — WORSE THAN THE GAP IT DESCRIBES, BECAUSE A READER STOPS
+  // LOOKING.***
   private static string[] PlatformTablesCreatedByMigrations()
   {
     var directory = Path.Combine(

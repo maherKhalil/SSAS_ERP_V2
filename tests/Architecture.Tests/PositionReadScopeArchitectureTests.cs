@@ -179,6 +179,40 @@ public sealed class PositionReadScopeArchitectureTests
   // The population here is DELIBERATELY WIDER than the two read services: a repository calling
   // `IgnoreQueryFilters` on a position-family set is the same defect arriving through the write side, and
   // scoping this ban to the read services would exempt the files most likely to do it for a good reason.
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ THE TWO TESTS IN THIS FILE ARE OPEN TO THE CARELESS READ AND CLOSED TO THE DELIBERATE ONE.
+  // ==================================================================================================
+  //
+  // Measured 2026-09-06, both directions, whole gate each time. An HR production file that is NEITHER
+  // `PositionReadService.cs` NOR `GradeReadServices.cs`, reaching `Set<Position>()` with no company
+  // predicate:
+  //
+  //     the ordinary read                    -> [GATE GREEN]  -- nothing caught it
+  //     the same file + `IgnoreQueryFilters` -> [GATE RED]    -- caught, by THIS test, by name
+  //
+  // ***THE UNION OF THE TWO TESTS COVERS THE DELIBERATE BYPASS EVERYWHERE IN HR, AND THE MISSING
+  // PREDICATE ONLY IN TWO NAMED FILES.*** The predicate test above is filtered to `ReadServices`; this
+  // one enumerates all of `src/Modules/HR` but matches only the `IgnoreQueryFilters` token. So the gap is
+  // a real read, in HR, that simply forgets the predicate — and forgetting is what an author DOES, while
+  // `IgnoreQueryFilters` has to be typed on purpose.
+  //
+  // ⚠ **THE COVERAGE IS ANTI-CORRELATED WITH THE LIKELIHOOD**, and the two comments explaining the two
+  // populations are each locally true, which is why reading the file top-to-bottom is reassuring. The
+  // mechanism-derived test is the one with the NARROW trigger; the name-filtered test is the one with the
+  // BROAD trigger. Each is the opposite of what its own derivation suggests.
+  //
+  // ---- AND THE SAME MEASUREMENT AT A SECOND ADDRESS, WHICH IS WHY WIDENING `ReadServices` IS NOT THE FIX.
+  //
+  // `PositionFamilyPaths()` enumerates `src/Modules/HR`, so BOTH tests are blind to the whole of
+  // `SSAS.Host.API` — which references `SSAS.HR.Infrastructure` and can therefore reach these sets. A real
+  // `Set<Position>()` read placed there was GREEN with the bypass AND green without it. `Department` and
+  // `Employee` behave identically at that address, each plant-verified separately.
+  //
+  // No remedy is asserted here because the remedy is a scope decision, not a test edit: widening the
+  // predicate population would redden files that legitimately compose no predicate, and widening the
+  // directory would put a Host assembly inside a module guard. Recorded so the next reader starts from
+  // the measurement rather than from the reassuring impression.
   [Fact]
   [Trait("Decision", "ADR-025")]
   [Trait("Criterion", "AC-POS-0051")]

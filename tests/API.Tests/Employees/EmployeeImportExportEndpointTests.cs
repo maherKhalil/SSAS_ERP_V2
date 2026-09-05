@@ -843,4 +843,110 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.Single(host.Repository.Added);
     Assert.Equal(2, host.ImportRuns.Runs.Count);
   }
+
+  // ================================================================================================
+  // AN IMPORT CANNOT CROSS A COMPANY BOUNDARY (AC-DOC-0010, SEC-DOC-0403).
+  // ================================================================================================
+  //
+  // *"Employees are created in the caller's established company context. There is no file value that
+  // changes which company they land in."*
+  //
+  // ---- ⚠⚠⚠ THE SECOND CLAUSE IS AN ABSENCE, AND IT IS ASSERTED AGAINST THE COLUMN SET RATHER THAN
+  // ---- AGAINST A SEARCH FOR "A FILE VALUE THAT CHANGES THE COMPANY".
+  //
+  // **"No file value" quantifies over every possible file, which no test can enumerate.** *What CAN be
+  // enumerated is the closed set of columns an accepted file may carry* — `EmployeeImportColumns.All` —
+  // **and if no member of it names a company, then no accepted file can carry one.** The unknown-column
+  // rule refuses everything else, so the two together close the population.
+  //
+  // ⚠⚠ THE GROUND IS THE COLUMN SET, NOT `AC-DOC-0002`, AND THE DISTINCTION IS DELIBERATE. `0002` states
+  // this same property and **`0002` IS FALSE AS WRITTEN**: it names `status` among columns *"refused by the
+  // unknown-column rule"*, and `status` is a declared optional column that is accepted and validated. *Three
+  // of its four named columns behave as it says; the fourth does not.* ***SO THIS CITES THE MECHANISM `0002`
+  // DESCRIBES WITHOUT CITING `0002` — grounding a true criterion on a false one would poison the true one.***
+  //
+  // ⚠ AND THE ENUMERATION BELOW IS THE REASON THAT DISTINCTION WAS AVAILABLE AT ALL: reading the RULE said
+  // ownership columns are refused; reading the MEMBERS said `status` is not one of them. **A rule being
+  // correct is not the members being in it.**
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0010")]
+  public async Task An_import_stamps_the_callers_company_and_no_column_can_name_a_different_one()
+  {
+    using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=doc0010",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    // ---- NON-VACUITY FIRST. "EVERY created employee" is trivially true of none, and an import that
+    // created nothing would satisfy the company assertion below while witnessing nothing at all.
+    Assert.NotEmpty(host.Repository.Added);
+
+    // ---- CLAUSE 1: THE COMPANY IS THE CALLER'S ESTABLISHED ONE, ASSERTED ON THE ASSIGNMENT.
+    //
+    // ⚠⚠⚠ NOT ON `employee.CompanyId`, AND THE REASON IS A FINDING THIS TEST PRODUCED BY FAILING.
+    //
+    // My first version asserted `employee.CompanyId == CompanyA` and got `Guid.Empty`. **Nothing in `src/`
+    // ever assigns `Employee.CompanyId`** — `Employee.Create` takes no company parameter and the private
+    // constructor sets none, unlike every other aggregate in the tree, which all assign it in their
+    // constructors. ***IT IS STAMPED AT THE PERSISTENCE BOUNDARY: `TenantDbContext` line 465,
+    // `entity.CompanyId = companyId;`, during `SaveChanges`.***
+    //
+    // **This host drives the real endpoint against an in-memory repository, so it never reaches that
+    // stamp.** *So the employee ROW's company is Integration's to witness and cannot be gated here* — the
+    // same shape as `AC-DOC-0011`, found the same way, and I would have reported a product defect if I had
+    // stopped at "no application code assigns it".
+    //
+    // ⚠⚠ WHAT IS GATED, AND IT IS THE CRITERION'S ACTUAL SUBJECT: **the company from `ICurrentCompany`
+    // reaches the aggregate at creation time.** `StampInitialAssignment` carries it onto the branch
+    // assignment from the caller's established context, in domain code, before any persistence. *That is
+    // "created in the caller's established company context" observed at the layer that decides it.*
+    var assignments = host.Repository.Added.SelectMany(employee => employee.BranchAssignments).ToArray();
+    Assert.NotEmpty(assignments);
+    Assert.All(assignments, assignment => Assert.Equal(EmployeeApiTestHost.CompanyA, assignment.CompanyId));
+
+    // ---- CLAUSE 2: NO COLUMN AN ACCEPTED FILE MAY CARRY NAMES A COMPANY, TENANT OR BRANCH.
+    //
+    // Enumerated over the whole declared set rather than spot-checked, and asserted on the SET so a column
+    // added later is caught. The matcher is deliberately broader than the three names AC-DOC-0002 lists:
+    // a future `owningCompany` would defeat a name-equality check and is caught here.
+    Assert.DoesNotContain(
+      EmployeeImportColumns.All,
+      column => column.Contains("company", StringComparison.OrdinalIgnoreCase)
+        || column.Contains("tenant", StringComparison.OrdinalIgnoreCase)
+        || column.Contains("branch", StringComparison.OrdinalIgnoreCase));
+
+    // MATCHER CONTROL: the set really was read, and the predicate really can match. Without this, an empty
+    // or unreadable `All` would satisfy the ban by containing nothing.
+    Assert.Contains("employeeNumber", EmployeeImportColumns.All);
+    Assert.Contains(EmployeeImportColumns.All, column => column.Contains("employee", StringComparison.OrdinalIgnoreCase));
+  }
+
+  // ---- AND A FILE THAT TRIES ANYWAY IS REFUSED, WITH THE REFUSAL SHAPE RECORDED AS IT ACTUALLY IS.
+  //
+  // ⚠⚠⚠ THIS DOES NOT ANSWER `400`. IT ANSWERS **`200 OK` CARRYING A REFUSED RUN**, and that is a
+  // deliberate product decision: the handler's own comment says *"A HEADER FAILURE IS A REFUSED RUN, not
+  // merely a 400. It consumed the key like any other attempt, and the audit trail records that somebody
+  // tried to import a file this company would not accept."*
+  //
+  // ***`AC-DOC-0001` SAYS SUCH A FILE ANSWERS `400 request.invalid`. IT DOES NOT. THAT CRITERION AND THIS
+  // PRODUCT DISAGREE, NEITHER CITES A RATIFICATION, AND THE DISAGREEMENT IS RECORDED HERE RATHER THAN
+  // SILENTLY ACCOMMODATED.*** **This test asserts what the product does; it does NOT cite `AC-DOC-0001`.**
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0010")]
+  public async Task A_file_naming_a_company_column_is_refused_as_an_unknown_column()
+  {
+    using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=doc0010-company",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees),
+      $"{Header},companyId\n{OneRow},{Guid.NewGuid()}"));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+    Assert.Equal("Refused", document.RootElement.GetProperty("outcome").GetString());
+
+    // AND NOTHING WAS WRITTEN. A refusal that still created the employee would satisfy the outcome check.
+    Assert.Empty(host.Repository.Added);
+  }
 }

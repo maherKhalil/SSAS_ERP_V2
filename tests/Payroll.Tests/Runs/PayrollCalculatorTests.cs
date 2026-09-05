@@ -18,6 +18,10 @@ public sealed class PayrollCalculatorTests
 
   private static readonly Guid Employee = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000001");
 
+  // The second person in the run. Every other test in this file calculates for ONE employee, which is
+  // exactly what `Two_employees_each_get_their_own_lines_numbered_from_zero` exists to break.
+  private static readonly Guid SecondEmployee = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
+
   [Fact]
   [Trait("Decision", "OD-PAY-0008")]
   // ⚠ CITED BY B18 pass 15, body-confirmed: ⚠ PARTLY PINNED, and the clause names matter here.
@@ -53,6 +57,89 @@ public sealed class PayrollCalculatorTests
     var run = ApprovedRun(period, lines);
     Assert.Equal(run.Lines.Sum(line => line.Amount), run.TotalEarnings + run.TotalDeductions);
     Assert.Equal(run.TotalEarnings - run.TotalDeductions, run.NetPay);
+  }
+
+  // ---- ⚠⚠⚠ TWO EMPLOYEES, BECAUSE EVERY QUANTIFIER IN THESE TWO CRITERIA IS TRIVIAL AT N=1.
+  //
+  // `AC-PAY-0013` is *"Calculating produces one line per applicable element per included employee, and a net
+  // amount."* `AC-PAY-0010` is *"A run is created for one company and one period, and includes every
+  // employee employed for at least one day of it."* **Both quantify over the EMPLOYEE axis.**
+  //
+  // ⚠ AND THAT AXIS WAS PINNED AT ONE EVERYWHERE, WHICH WAS MEASURED RATHER THAN ASSUMED. Every
+  // `PayrollCalculator.Calculate` call site in this suite was parsed — balanced parens, third top-level
+  // argument, top-level commas inside the collection literal — and **the number passing more than one
+  // employee was ZERO across all 17.** The Integration chain seeds one employee too.
+  //
+  // ***"EVERY EMPLOYEE" OVER A POPULATION OF ONE IS TRUE OF THE SINGLETON FOR ANY IMPLEMENTATION, AND A
+  // CROSS PRODUCT WITH ONE AXIS PINNED AT ONE IS NOT A CROSS PRODUCT.*** The ELEMENT axis is exercised
+  // hard by the tests around this one — unassigned, inactive, the net-pay exclusion, evaluation order. The
+  // employee axis did no work at all. *A `NotEmpty` floor is specifically blind to this: N≥1 is satisfied
+  // by the singleton, and the singleton is exactly where a quantifier stops meaning anything.*
+  //
+  // ⚠⚠ THE TWO BASE SALARIES DIFFER, AND THAT IS LOAD-BEARING. With both employees on the same base, lines
+  // attributed to the wrong `EmployeeId` would be invisible — every assertion would still find the amount
+  // it expected. Here the amount is what ties a line to a person.
+  //
+  // ⚠⚠⚠ AND THE SEQUENCE RESTART IS THE ASSERTION NOBODY WOULD THINK TO WRITE. `var sequence = 0` sits
+  // INSIDE the per-employee loop, and the unique index `(PayrollRunId, EmployeeId, Sequence)` is keyed on
+  // it being per-employee. **Hoisting that one line out of the loop makes the sequence global — and at N=1
+  // a global sequence and a per-employee sequence are the same sequence.** This is the only test that can
+  // tell them apart.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0010")]
+  [Trait("Criterion", "AC-PAY-0013")]
+  public void Two_employees_each_get_their_own_lines_numbered_from_zero()
+  {
+    var basic = PayrollTestData.Element(
+      "BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+    var housing = PayrollTestData.Element(
+      "HOUSING", PayElementKind.Earning, PayElementBehaviour.PercentageOfBaseSalary, 10m, 1, AllowanceAccount);
+
+    var period = PayrollTestData.Period();
+    var hired = period.StartUtc.AddYears(-1);
+
+    var first = PayrollTestData.Employee(
+      Employee, hired, null, PayrollTestData.Compensation(Employee, hired, 1000m, (housing.Id, null)));
+    var second = PayrollTestData.Employee(
+      SecondEmployee, hired, null,
+      PayrollTestData.Compensation(SecondEmployee, hired, 2000m, (housing.Id, null)));
+
+    var result = PayrollCalculator.Calculate(Guid.NewGuid(), period, [first, second], [basic, housing]);
+    Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : string.Empty);
+
+    var lines = result.Value;
+
+    // ---- ONE LINE PER APPLICABLE ELEMENT PER INCLUDED EMPLOYEE, AS AN EXACT COUNT RATHER THAN A FLOOR.
+    // Two elements times two people. A floor would pass on three lines, which is the likelier failure.
+    Assert.Equal(4, lines.Count);
+
+    // ---- EVERY EMPLOYEE IS INCLUDED, AND NEITHER ABSORBED THE OTHER'S LINES.
+    Assert.Equal(2, lines.Count(line => line.EmployeeId == Employee));
+    Assert.Equal(2, lines.Count(line => line.EmployeeId == SecondEmployee));
+
+    // ---- AND THE MONEY FOLLOWED THE RIGHT PERSON.
+    Assert.Equal(
+      1000m, lines.Single(line => line.EmployeeId == Employee && line.PayElementId == basic.Id).Amount);
+    Assert.Equal(
+      2000m, lines.Single(line => line.EmployeeId == SecondEmployee && line.PayElementId == basic.Id).Amount);
+
+    // The derived element asserted RELATIONALLY — the second person's allowance is twice the first's,
+    // because their base is. Stated as a relation between the two rather than against a constant, so it
+    // remains an assertion about ATTRIBUTION rather than about the percentage arithmetic, which the tests
+    // above already own. The non-vacuity premise is that the first is positive.
+    var firstHousing =
+      lines.Single(line => line.EmployeeId == Employee && line.PayElementId == housing.Id).Amount;
+    var secondHousing =
+      lines.Single(line => line.EmployeeId == SecondEmployee && line.PayElementId == housing.Id).Amount;
+
+    Assert.True(firstHousing > 0m);
+    Assert.Equal(firstHousing * 2m, secondHousing);
+
+    // ---- THE SEQUENCE RESTARTS PER EMPLOYEE. A global counter would number these 0,1,2,3.
+    Assert.Equal(
+      [0, 1], lines.Where(line => line.EmployeeId == Employee).Select(line => line.Sequence).Order());
+    Assert.Equal(
+      [0, 1], lines.Where(line => line.EmployeeId == SecondEmployee).Select(line => line.Sequence).Order());
   }
 
   [Fact]

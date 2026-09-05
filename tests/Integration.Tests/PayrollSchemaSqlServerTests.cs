@@ -199,6 +199,80 @@ public sealed class PayrollSchemaSqlServerTests
     Assert.Empty(await context.Set<PayrollRunDraftLine>().Where(l => l.PayrollRunId == runId).ToListAsync());
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ COMPANY-SCOPED CODE UNIQUENESS, ASSERTED BY INSERTING TWICE (AC-PAY-0008).
+  // ================================================================================================
+  //
+  // *"Two elements in the same company cannot share a code; the same code is free in another company."*
+  // **Both clauses live in ONE index key** — `(TenantId, CompanyId, NormalizedCode)`, unique — and before
+  // these two tests ***nothing in the tree exercised it, and nothing named it either.*** No test mentioned
+  // a pay element's `NormalizedCode` at all; this file asserted column types, the eight-table migration,
+  // two foreign-key boundaries and the append-only guards, and **contained no index assertion of any kind.**
+  //
+  // ⚠ ASSERTED BEHAVIOURALLY RATHER THAN BY NAME. An index test that reads a NAME and an `is_unique` flag
+  // out of `sys.indexes` **passes for an index of that name over the WRONG COLUMNS** — which is precisely
+  // the failure this criterion is about, since the columns ARE the claim. Inserting twice cannot be
+  // satisfied that way: either the database refuses the second row or it does not.
+  //
+  // ⚠⚠ THE TWO TESTS ARE A PAIR AND NEITHER IS SUFFICIENT ALONE. The refusal is satisfied by a
+  // TENANT-WIDE unique index — the wrong rule, and the one `Account` deliberately uses — which would then
+  // fail the second test. The acceptance is satisfied by NO index at all. ***Together they pin the key's
+  // column list***, which is what `OD-PAY-0005` actually ruled, and the configuration's own comment names
+  // the contrast: *"two companies in one tenant may each have their own BASIC."*
+  //
+  // ⚠⚠⚠ ***NOT RUN. `Integration.Tests` IS OUTSIDE `GATE_SCOPE=TASK` AND I CANNOT EXECUTE IT — THESE ARE
+  // COMPILATION-VERIFIED ONLY.*** An unrun assertion is a claim, not a check, and must not be reported as
+  // coverage until a `PHASE` run has seen it.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0008")]
+  public async Task A_second_element_reusing_a_code_in_one_company_is_refused_by_the_database()
+  {
+    await using var fixture = await PayrollFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+
+    var first = PayElement.Create(
+      fixture.CompanyA, "BASIC", "Basic", PayElementKind.Earning,
+      PayElementBehaviour.BaseSalary, 0m, 0).Value;
+    context.Set<PayElement>().Add(first);
+    await context.SaveChangesAsync();
+
+    // A DIFFERENT element in every respect except the code, so the refusal can only be about the code.
+    var duplicate = PayElement.Create(
+      fixture.CompanyA, "BASIC", "Basic again", PayElementKind.Deduction,
+      PayElementBehaviour.FixedAmount, 5m, 1).Value;
+    context.Set<PayElement>().Add(duplicate);
+
+    await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0008")]
+  public async Task The_same_element_code_is_free_in_a_second_company()
+  {
+    await using var fixture = await PayrollFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+
+    context.Set<PayElement>().Add(PayElement.Create(
+      fixture.CompanyA, "BASIC", "Basic", PayElementKind.Earning,
+      PayElementBehaviour.BaseSalary, 0m, 0).Value);
+    context.Set<PayElement>().Add(PayElement.Create(
+      fixture.CompanyB, "BASIC", "Basic", PayElementKind.Earning,
+      PayElementBehaviour.BaseSalary, 0m, 0).Value);
+
+    // No throw: the key carries `CompanyId`, so these are two different rows and not a collision.
+    await context.SaveChangesAsync();
+
+    var stored = await context.Set<PayElement>()
+      .Where(element => element.NormalizedCode == "BASIC")
+      .ToListAsync();
+
+    // The COUNT is exact rather than a floor. A floor of one passes when the second insert was silently
+    // discarded, which is the outcome a tenant-wide index would produce if it did not throw.
+    Assert.Equal(2, stored.Count);
+    Assert.Contains(stored, element => element.CompanyId == fixture.CompanyA);
+    Assert.Contains(stored, element => element.CompanyId == fixture.CompanyB);
+  }
+
   [Fact]
   [Trait("Decision", "OD-PAY-0003")]
   public async Task Compensation_history_round_trips_and_the_amount_keeps_four_decimals()

@@ -215,6 +215,38 @@ public sealed class EmploymentTypeAssumptionTests
     Assert.Equal(expected, ComponentsOf(typeof(AttendanceSummaryResult)));
   }
 
+  // ---- ⚠⚠⚠ AND THE SIBLING RECORD ON THE SAME CONTRACT, WHICH WAS NAME-BANNED AND NEVER PINNED.
+  //
+  // ⚠ CITES `AC-ATT-0024`'s THIRD CLAUSE — *"`InspectPeriodAsync` on an open period returns `PeriodOpen`
+  // as a value — it does not throw, and **it does not return data**."*
+  //
+  // **`AttendanceSummaryResult` has been pinned exactly since T-107. `AttendancePeriodInspection` had only
+  // a name ban** — `AttendanceArchitectureTests` asserts no property of it contains "Branch". *Two records
+  // on one contract, one pinned and one sampled, and the unpinned one is the one whose whole purpose is to
+  // answer WITHOUT returning data.*
+  //
+  // ⚠⚠ THE SOURCE STATES THE CLAUSE AND NOTHING ENFORCED IT: *"Returns NO employee data at any point — the
+  // whole reason inspection is a separate method rather than a flag on the summary. Payroll calls this at
+  // approval to decide whether to proceed, and the answer must not require it to have read anyone's
+  // hours."* **An `EmployeeId` or a `WorkedQuantity` added here would hand Payroll attendance data at a
+  // decision point that is meant to need none, and no test in the tree would have moved.**
+  //
+  // ⚠⚠⚠ THE OTHER TWO CLAUSES ARE NOT THIS TEST AND ARE NOT GATED. *"Returns `PeriodOpen` as a value"* and
+  // *"does not throw"* are behaviour of `AttendanceSummaryService`, which needs a database — Integration,
+  // green at a date. **This is the clause that is structural, and it is the only one this file can carry.**
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0024")]
+  public void The_period_inspection_describes_the_period_and_carries_no_employee_data()
+  {
+    string[] expected =
+    [
+      "Status", "AttendancePeriodId", "PeriodName",
+      "PeriodStartUtc", "PeriodEndUtc", "IsClosed"
+    ];
+
+    Assert.Equal(expected, ComponentsOf(typeof(AttendancePeriodInspection)));
+  }
+
   // ---- GUARD 4: THE TYPE EXISTS, AND IT STILL DOES NOT REACH THE CALCULATION (T-153).
   //
   // Guards 1–3 pin what the calculation can express. **This pins where the new type is allowed to be**,

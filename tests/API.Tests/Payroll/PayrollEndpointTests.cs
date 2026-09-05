@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Net;
+using SSAS.Attendance.Contracts.Summaries;
 using SSAS.GL.Contracts.Posting;
 using SSAS.HR.Contracts.Employment;
 using SSAS.Payroll.Application.Permissions;
@@ -252,6 +253,45 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
   // `PayElementDomainTests` -- **at the domain, where the string is constructed.** Comparing an API test
   // against a domain test made one endpoint look careless when in fact **no API test in this file, or in
   // `GlEndpointTests`, asserted a named subject at all.** The shape was a layer's, not a test's.
+  // ---- ⚠⚠⚠ AN OPEN ATTENDANCE PERIOD REFUSES APPROVAL, AS A MODELLED OUTCOME (AC-ATT-0025).
+  //
+  // *"Payroll calculation against an open attendance period is refused with a modelled outcome the caller
+  // must handle."* **The refusal exists** — `PayrollRunCommandHandlers` returns
+  // `PayrollErrors.AttendancePeriodOpen` when the summary answers `PeriodOpen`, and the mapper turns it
+  // into `payroll.attendance_period_open` — ***and the only test driving it was the Integration chain,
+  // green at a date.*** The sole gated mention of `PeriodOpen` anywhere in `tests/` was a COMMENT in this
+  // suite's own stub, explaining why the default is not `PeriodOpen`.
+  //
+  // ⚠⚠ "A MODELLED OUTCOME THE CALLER MUST HANDLE" IS THE CLAUSE, AND A 409 WITH ITS OWN CODE IS WHAT IT
+  // MEANS HERE. Not an exception, not a 500, and **not folded into a generic `request_invalid`**: the
+  // caller's remedy is to close the attendance period, which is a different act from every other refusal
+  // this endpoint can give. *A distinct code is what makes the outcome handleable rather than merely
+  // reported.*
+  //
+  // ⚠⚠⚠ AND THE STATUS IS ASSERTED ALONGSIDE THE CODE BECAUSE NEITHER IS SUFFICIENT. `A_ledger_refusal_at_
+  // posting_refuses_the_transition` and the closed-period test above BOTH answer 409, so the status alone
+  // separates nothing; and a code asserted without the status would pass on a 200 carrying a problem
+  // document. **The run staying `Calculated` is the third assertion: a refusal that transitioned anyway
+  // would satisfy both of the others.**
+  [Trait("Criterion", "AC-ATT-0025")]
+  public async Task Approval_against_an_open_attendance_period_is_refused_as_a_modelled_outcome()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedCalculatedRun();
+    host.Attendance.InspectionStatus = AttendanceSummaryStatus.PeriodOpen;
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/approval", host.TokenWith(AllPermissions)));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("payroll.attendance_period_open", await PayrollApiTestHost.ProblemCodeAsync(response));
+
+    // The transition did not happen. Without this the test passes on a handler that approves the run and
+    // reports a refusal afterwards, which is the worse of the two failures.
+    Assert.Equal(PayrollRunStatus.Calculated, run.Status);
+  }
+
+  [Fact]
   [Trait("Criterion", "AC-PAY-0022")]
   public async Task Approval_into_a_closed_period_is_refused_and_names_the_period()
   {

@@ -123,6 +123,80 @@ public sealed class AttendanceArchitectureTests
   // **The hole is ruled INTENDED.** The obligation attached to that ruling was: stated at the site, and
   // guard-asserted. This is the guard. It reads the compiled source of the query method and asserts no
   // branch predicate appears — the comment explains the decision, this survives someone who has not read it.
+  // ---- ⚠⚠⚠ A RECORD STAYS READABLE AFTER THE EMPLOYEE LEAVES, BECAUSE NO READER CAN LEARN THEY LEFT.
+  //
+  // `AC-ATT-0009` — *"A record already settled by termination remains readable after termination —
+  // `BR-HR-0004` bars new obligations, not the settlement of existing ones."* The write path enforces the
+  // first half of that reading and `AttendanceRecordEmploymentWindowTests` drives it. **This is the second
+  // half, and it is an ABSENCE: nothing on the read path may filter a record out because its employee was
+  // terminated.**
+  //
+  // ⚠ WHY A DEPENDENCY ASSERTION RATHER THAN A BEHAVIOURAL ONE. Recording, terminating and re-reading needs
+  // a database, which puts it in Integration — currently unrunnable here, and an unrun assertion is a claim
+  // rather than a check. **The structural statement is available at the gate and is stronger in one
+  // specific way: it forbids the filter from being WRITABLE, not merely absent today.**
+  //
+  // ⚠⚠ THE ENFORCEMENT SET WAS ENUMERATED RATHER THAN ASSUMED. The read path is three types, and none can
+  // reach an employment date:
+  //
+  //   `AttendanceReadService`               a context accessor and a scope resolver
+  //   `AttendanceScopeResolver`             company and branch ACCESS, plus current-actor services
+  //   `AttendanceSelfServiceScopeResolver`  a user-employee link and a PLACEMENT directory
+  //
+  // ⚠ AND ONE OF THE THREE IS ALREADY HELD BY THE COMPILER, WHICH IS SAID HERE SO THIS GUARD IS NOT READ
+  // AS THREE EQUALLY LOAD-BEARING CHECKS. **`SSAS.Attendance.Infrastructure` does not reference
+  // `SSAS.HR.Contracts` at all**, so `AttendanceReadService` COULD NOT take the roster even if somebody
+  // tried — that leg would fail to compile before it failed here. *The two Application-layer resolvers are
+  // the ones this test actually protects*, and the plant that reddens it was applied to one of them.
+  // Keeping the read service in the population costs nothing and states the boundary; it just is not where
+  // the risk lives.
+  //
+  // ⚠⚠⚠ AND THE SECOND ASSERTION IS THE ONE THAT SURVIVES A RENAME. `EmploymentRecord`, reached through
+  // `IEmployeeRoster`, is the ONLY contract type carrying employment dates — `EmployeePlacement` is two
+  // `Guid`s and nothing else. **So banning the roster is only sound while placement stays dateless**, and
+  // adding a `TerminationDateUtc` to it would hand the self-service read exactly the fact this criterion
+  // says it must not have, without touching a constructor. *That is asserted on the contract type itself,
+  // where the change would happen.*
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0009")]
+  public void No_attendance_read_path_can_learn_that_an_employee_was_terminated()
+  {
+    var readService = typeof(SSAS.Attendance.Application.Reads.AttendanceScopeResolver).Assembly
+      .GetType("SSAS.Attendance.Application.Reads.AttendanceSelfServiceScopeResolver");
+    Assert.NotNull(readService);
+
+    Type[] readPath =
+    [
+      Assembly.Load("SSAS.Attendance.Infrastructure")
+        .GetType("SSAS.Attendance.Infrastructure.Persistence.AttendanceReadService")!,
+      typeof(SSAS.Attendance.Application.Reads.AttendanceScopeResolver),
+      readService!
+    ];
+
+    // The population is named, so it cannot silently shrink — but assert it anyway, because a `null` from
+    // either lookup above would otherwise reach the loop as a hole rather than as a failure.
+    Assert.All(readPath, type => Assert.NotNull(type));
+
+    // ---- NONE OF THEM CAN ASK FOR AN EMPLOYMENT WINDOW.
+    foreach (var type in readPath)
+    {
+      var constructor = Assert.Single(type.GetConstructors());
+
+      Assert.DoesNotContain(
+        constructor.GetParameters(),
+        parameter => parameter.ParameterType == typeof(SSAS.HR.Contracts.Employment.IEmployeeRoster));
+    }
+
+    // ---- AND THE ONE HR CONTRACT THE READ PATH DOES USE CARRIES NO DATE.
+    //
+    // Asserted as "every property is a `Guid`" rather than "no property is a date": a ban names the shapes
+    // it thought of, and this criterion is broken by ANY employment fact arriving here, not only by a
+    // `DateTimeOffset`.
+    Assert.All(
+      typeof(SSAS.HR.Contracts.Employment.EmployeePlacement).GetProperties(),
+      property => Assert.Equal(typeof(Guid), property.PropertyType));
+  }
+
   [Fact]
   [Trait("Decision", "OD-ATT-0011")]
   public void The_payroll_summary_contract_applies_no_branch_predicate()

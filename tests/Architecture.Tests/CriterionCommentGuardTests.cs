@@ -197,6 +197,42 @@ namespace SSAS.Architecture.Tests;
 // say which, and name what covers the rest.** *A reader can act on that. A bare id tells them the criterion
 // is handled, which is the one thing it does not know.*
 //
+// ---- ⚠⚠⚠ THE MECHANISM, MEASURED IN FIVE PLACES: ***THE TRAIT IS A ONE-TO-ONE INSTRUMENT OVER A
+// MANY-TO-MANY RELATION, SO IT ROUNDS — UP AT CLASS SCOPE AND DOWN AT METHOD SCOPE.***
+//
+// A criterion has several clauses; a clause may be witnessed by several methods; a method may witness
+// clauses of several criteria. **The trait can say one thing: *this method, this criterion*.** Everything
+// else is rounded away, and the census — reading one trait per criterion — cannot see which direction.
+//
+//   ***UP.*** ***The class-level cluster*** — five traits, each claiming its criterion of **every** method in
+//         its file (six to fourteen), *including methods the author's own prose disclaims.* Now moved,
+//         except `AC-AUTH-0031`, which is left class-scoped **because no single method witnesses it** and
+//         narrowing it would round the other way.
+//
+//   ***DOWN.*** `AC-TEN-0093` — seven clauses, witnessed by **four methods in one file**, ***one tagged.***
+//         The three untagged siblings carry *"does not re-enable a Disabled principal"* and *"fail-closed
+//         when no eligible subject exists"*.
+//   ***DOWN.*** `AC-ATT-0040` — three clauses, cited at the one its method names; the other two elsewhere.
+//   ***DOWN.*** `AC-AUTH-0046` — its witness is named **by hand, in prose, from a different file**
+//         (`AuthenticationSessionDomainTests` names `Access_token_issuance_failure_rolls_back_…`).
+//         ***A cross-file citation a person maintains and no instrument here can read.***
+//   ***DOWN, AND THE CLEAREST OF THE FIVE.*** `AC-AUTH-0034` names **eight** race classes. **Three are
+//         covered** — selection, refresh, revocation — across four methods in two files, ***one tagged.***
+//         **Five are not covered at all**: session-limit, password-reset, membership, Tenant and
+//         `SecurityVersion` each have a `WITH (UPDLOCK, HOLDLOCK)` site in `src/` and no concurrent test.
+//
+// ⚠⚠⚠ **AND `AC-AUTH-0034` IS WHY THE TWO WORDS MUST STAY APART.** ***IT IS CITED SOUNDLY — the cited
+// method really does prove the selection race, and pins a DOMAIN error code, which is what carries
+// "without leaking SQL details" — AND IT IS NOT COVERED.*** **COVERED is a property of the criterion:
+// every clause has a fixture somewhere. CITED is a claim about a method: this method proves this rule.**
+// *A census of traits measures neither one cleanly, and calling both "sound" hides exactly this cell.*
+//
+// ⚠ **The down-rounding is NOT repairable by tagging the siblings.** A method witnessing one clause, tagged
+// with the criterion id, reads as a whole-criterion witness — **which is the up-rounding recreated at method
+// scope.** *Only a clause-level citation could say it, and the trait has no clause field.* **That is the
+// convention decision this file cannot make for itself, and these five instances are what it should be
+// decided on.**
+//
 // ---- ⚠⚠⚠ AND A POLARITY WARNING FOR WHOEVER MECHANISES ANY OF THIS, BECAUSE TWO INSTRUMENTS WOULD RUN
 // OVER THE SAME CORPUS UNDER OPPOSITE RULES AND EACH IS THE OTHER'S FAILURE MODE.
 //

@@ -267,6 +267,26 @@ public sealed class PlatformAuthenticationPersistenceTests
   // land green-at-a-date at best, and this file's own model — two contexts, `Task.WhenAll`, cardinality
   // assertions — already carries everything the tests would. ***Three unrunnable greens would grow the
   // never-executed bucket to prove races whose design is written down here.***
+  //
+  // ---- ⚠⚠⚠ AND THE MEASUREMENT THAT SHARPENS THE PREMISE ABOVE (2026-09-06).
+  //
+  // "The two sides must overlap INSIDE TRANSACTIONS" is the load-bearing arrangement, and only a
+  // RENDEZVOUS makes it deterministic. `Task.WhenAll` alone starts two tasks; it does not make them meet.
+  //
+  // Counted tree-wide, unlimited: **18 Integration files use `Task.WhenAll`, and `tests/` contains exactly
+  // ONE rendezvous primitive** — `new Barrier(2)` at line 550 of this file. No `SemaphoreSlim`, no
+  // `ManualResetEvent`, nowhere.
+  //
+  // ***SO "HAS A CONCURRENT TEST" AND "HAS A TEST THAT RELIABLY INTERLEAVES" ARE DIFFERENT POPULATIONS, AND
+  // ALL BUT ONE OF THIS TREE'S CONCURRENT TESTS ARE IN THE FIRST AND NOT THE SECOND.*** A timing-dependent
+  // race test does not fail when the race is unprotected — it passes whenever the two sides happen not to
+  // overlap, which is the arrangement failure this comment already warns about, present today rather than
+  // hypothetical in a test not yet written.
+  //
+  // ⚠ That is NOT a claim that the nine others are wrong. Several assert a TERMINAL invariant that holds
+  // however the two sides interleave, which needs no rendezvous. It is a claim about what their GREEN
+  // licenses: a terminal-invariant green says the end state is safe, never that the lock serialized
+  // anything. Only the barrier test above pins the interleaving point and can say the second.
   [Fact]
   [Trait("Scenario", "TS-AUTH-0088")]
   [Trait("Acceptance", "AC-AUTH-0034")]

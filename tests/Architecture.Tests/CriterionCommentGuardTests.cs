@@ -52,9 +52,9 @@ namespace SSAS.Architecture.Tests;
 // been found by reading this file, because one of them is this file.
 //
 // ==================================================================================================
-// ---- ⚠⚠⚠ AND BECAUSE APTNESS IS READ BY A PERSON: THREE ARRANGEMENTS THAT WORK, WITH TWO WORKED
-// EXAMPLES EACH. THE COUNTERPART TO A FAILURE CATALOGUE, WHICH ON ITS OWN TELLS AN AUTHOR WHAT NOT TO
-// DO AND NOTHING ABOUT WHAT TO DO.
+// ---- ⚠⚠⚠ AND BECAUSE APTNESS IS READ BY A PERSON: FOUR ARRANGEMENTS THAT WORK, WITH WORKED EXAMPLES.
+// THE COUNTERPART TO A FAILURE CATALOGUE, WHICH ON ITS OWN TELLS AN AUTHOR WHAT NOT TO DO AND NOTHING
+// ABOUT WHAT TO DO.
 // ==================================================================================================
 //
 // This tree has logged its citation failure modes at length — wrong subject, a description read as the
@@ -125,14 +125,48 @@ namespace SSAS.Architecture.Tests;
 //     refused; the save count says they WROTE NOTHING**, which is the part a returned `Result` cannot
 //     witness about itself.
 //
-// ---- ⚠⚠ WHAT THESE THREE DO NOT ADDRESS, SAID HERE BECAUSE A CATALOGUE THAT OVERSELLS ITSELF IS THE
+// ---- 4. PROVE A CLASS IS CLOSED BY PLANTING A **NON**-MEMBER — AND THE RULE THAT TELLS YOU WHEN.
+//
+// ***AN ENUMERATION IN A CRITERION IS N SEPARATE CASES. THAT HOLDS FOR A DENY-LIST AND INVERTS FOR AN
+// ALLOW-LIST.*** With a deny-list the implementation must name each banned thing, so every arm needs its
+// own fixture and a missing arm is a real hole. **With an allow-list, ONE input from outside the permitted
+// set exercises every arm at once — and planting one of the criterion's own named items tests LESS**,
+// because it cannot distinguish *"this field is refused"* from *"everything outside the set is refused"*.
+//
+//   `tests/API.Tests/Infrastructure/PlatformSupportAuthenticationEndpointTests.cs`
+//     `Login_rejects_unknown_input_fields_without_echoing_the_body` (`AC-TEN-0079`) — the criterion names
+//     seven caller-supplied fields that must not confer authority. **The fixture plants `clientId`, which is
+//     none of them.** `ReadLoginAsync` is an allow-list of exactly `loginEmail` and `password` (plus a
+//     duplicate-property check), so the seven are seven members of a class the allow-list already
+//     forecloses, and an eighth, arbitrary member proves the class is closed in a way any of the seven
+//     could not.
+//
+// ⚠ **THE TRIGGER: before writing N fixtures for an N-item enumeration, read the implementation and ask
+// whether it is an allow-list or a deny-list.** The criterion's grammar will not tell you — an enumeration
+// reads identically either way, and it invites the reader to expect enumeration in the test.
+//
+// ⚠⚠⚠ **RECORDED HERE BECAUSE A REVIEWER READ IT AS THE OPPOSITE.** This citation was assessed from
+// outside the file as *"the operand is not in the sample — the witness exercises none of the seven"*, which
+// is the argument exactly inverted, and the proposed repair would have swapped the strong probe for a weak
+// one. ***AN ARRANGEMENT THAT LOOKS LIKE UNDER-TESTING TO EVERY READER WHO HAS NOT SEEN THE IMPLEMENTATION
+// NEEDS ITS REASONING WRITTEN BESIDE IT*** — that file's does, at length, which is the only reason the
+// misreading was caught.
+//
+// ⚠⚠ **AND THE RESIDUAL IS REAL, SO RELYING ON A CLOSED CLASS MAKES THE CRITERION'S WORDING LOAD-BEARING.**
+// `AC-TEN-0079` says *reject **or ignore***. The route only ever rejects, and rejects far more than the
+// seven. **A maintainer could replace the two-name allow-list with a seven-name deny-list, satisfy every
+// word of the criterion, and reopen the class** — the test would follow the implementation down, because
+// its whole strength was the allow-list it never names. *When you take this arrangement, say in the comment
+// which property of the implementation you are leaning on.*
+//
+// ---- ⚠⚠ WHAT THESE FOUR DO NOT ADDRESS, SAID HERE BECAUSE A CATALOGUE THAT OVERSELLS ITSELF IS THE
 // PARTIAL ALARM THIS FILE OPENS BY WARNING ABOUT.
 //
 // **Every arrangement above defends against VACUITY — a green obtained for free. None of them defends
 // against COVERING ONE CLAUSE OF THE CRITERION AND BEING SILENT ON THE REST**, and across twenty
-// hand-read citations that was the *modal* outcome: markedly commoner than a wrong subject. `AC-POS-0047`
-// is impeccable by these three tests and still says nothing about grades declared outside `MutationCommands`;
-// `AC-TEN-0015`'s witness binds its population properly and cannot reach the word *raises* at all.
+// hand-read citations that was the *modal* outcome: markedly commoner than a wrong subject. `AC-TEN-0015`'s
+// witness binds its population properly and cannot reach the word *raises* at all; `AC-AUTH-0035` is carried
+// by a CLASS-level trait over six methods that between them touch three of its seven named destinations.
 //
 // ***A citation is recorded at CRITERION granularity by a single trait, while the gap is at CLAUSE
 // granularity, and nothing in this tree computes the per-clause number.*** So the honest use of this
@@ -140,6 +174,46 @@ namespace SSAS.Architecture.Tests;
 // your assertion means everything the criterion says. **For that, the only known instrument is to take the
 // criterion one clause at a time and name the fixture in your method that would fail if that clause were
 // false** — and if you cannot name one, the clause is uncited however green the test is.
+//
+// ---- ⚠⚠⚠ AND THE ONE THING THAT MAKES THIS TRACTABLE: **THE TREE IS ALREADY DOING IT. WRITE IT DOWN
+// WHERE THE NEXT READER WILL FIND IT, BECAUSE THE TRAIT CANNOT CARRY IT.**
+//
+// ⚠ **STATED WITH ITS DENOMINATOR, WHICH IS SMALL: FOUR clause gaps, from ONE hand-read sample of ten
+// gated citations. THREE of the four were already diagnosed in the comment beside the trait** — scoped to
+// the exact clause, naming the OTHER witness by path (`AC-ATT-0015` → the Integration schema tests for
+// *throws*; `AC-PAY-0024` → `PayrollChainSqlServerTests` for the second-run clause; `AC-TEN-0015` →
+// *"NOT THE FIRST CLAUSE … a package that defined all seven events and raised none would pass this test
+// completely"*). **Three of four is a direction, not a rate**, and the population that would give it one is
+// *how many of all cited methods carry adjacent reasoning at all* — a single structural bit, unmeasured.
+// ***BUT THE EXISTENCE CLAIM NEEDS NO DENOMINATOR: THE PER-CLAUSE INFORMATION IS IN THIS TREE TODAY, AND
+// THE CENSUS THROWS IT AWAY AND KEEPS THE ID.***
+//
+// ⚠⚠ **The exception is the tell.** The one gap with no reasoning written anywhere was `AC-AUTH-0035` — and
+// it is the CLASS-level trait, *which has no method to attach the reasoning to.* **The citation shape that
+// records the least about coverage is also the shape that leaves the author nowhere to explain it.** Prefer
+// a method-level trait even when every method in the file bears on the criterion.
+//
+// **So: when your witness reaches some clauses and not others — which is ordinary and often unavoidable —
+// say which, and name what covers the rest.** *A reader can act on that. A bare id tells them the criterion
+// is handled, which is the one thing it does not know.*
+//
+// ---- ⚠⚠⚠ AND A POLARITY WARNING FOR WHOEVER MECHANISES ANY OF THIS, BECAUSE TWO INSTRUMENTS WOULD RUN
+// OVER THE SAME CORPUS UNDER OPPOSITE RULES AND EACH IS THE OTHER'S FAILURE MODE.
+//
+//   ***THE CENSUS*** (`CriterionInventory.Cited`) **STRIPS comments and counts TRAITS.** Run it over raw
+//              source and it measures the DOCUMENTATION of this prose-dense tree instead of its coverage —
+//              a commented-out trait would count, and the first version of that matcher reported eight
+//              criteria as covered on the strength of prose alone.
+//   ***A HARVEST*** of the reasoning above would do the exact inverse: **READ ONLY comments, and count
+//              REASONING.** Run it with the census's stripper and it returns zero, which reads identically
+//              to *"nobody explains anything"*.
+//
+// **They are not variants of one scan; they are opposite polarities over one corpus, and each one run under
+// the other's rule produces a confident, plausible, wrong number.** ⚠ *Note also what a harvest could and
+// could not be: extracting per-clause reasoning from free prose has no mechanical operand. Asking whether a
+// citation has ANY adjacent recorded reasoning is one structural bit, and that bit is the denominator the
+// paragraph above is missing — as well as the census's first anti-vacuity control, since a citation with no
+// reasoning beside it is one nobody has audited.*
 public sealed class CriterionCommentGuardTests
 {
   // ---- THE GUARD.

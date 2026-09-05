@@ -596,6 +596,11 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     // a two-state model"* and *"an open product decision."* **THAT WAS WRONG, AND IT WAS WRONG WHEN
     // WRITTEN.**
     //
+    // ⚠⚠⚠ AND THE SHARPEST FORM IS A DIMENSION ERROR IN THE OLD NOTE, NOT A PRODUCT PROBLEM AT ALL:
+    // ***`AC-DOC-0005` SAYS "A SUBSEQUENT REAL IMPORT OF THE SAME **FILE** SUCCEEDS". THE SHORT-CIRCUIT
+    // KEYS ON THE **IMPORT KEY**.*** Same file, different key, no replay — the two sentences were never
+    // about the same thing, and reading one as constraining the other is what manufactured the conflict.
+    //
     // ⚠ THE IMPORT KEY IS THE CALLER'S, WHICH IS WHAT DISSOLVES THE CONTRADICTION. `RunHistoryReadModels`
     // says it plainly — *"`FileName` and `ImportKey` DO ship. Both are values the caller supplied"* — and
     // `EmployeeApiErrorMapper` classes `InvalidImportKey` as caller input. **A validate-only run and a

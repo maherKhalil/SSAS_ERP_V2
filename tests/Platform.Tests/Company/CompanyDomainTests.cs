@@ -344,11 +344,35 @@ public sealed class CompanyDomainTests
   [Trait("Scenario", "TS-CMP-0008")]
   public void Company_events_expose_no_display_text_or_sensitive_data()
   {
-    var eventTypes = new[]
-    {
-      typeof(CompanyCreated), typeof(CompanyActivated), typeof(CompanyDeactivated),
-      typeof(CompanyArchived), typeof(CompanyProfileUpdated)
-    };
+    // ---- ⚠⚠⚠ THE POPULATION IS DERIVED, NOT LISTED, AND THAT IS THE WHOLE OF THE REPAIR.
+    //
+    // **This walked a hand-written array of the five Company events.** Every one of them really was swept,
+    // so the guard was never wrong — ***it simply could not fail for the reason it exists once the event set
+    // grew.*** A sixth event is not in a literal array, and an absent type raises no alarm: it produces no
+    // row rather than a failing one.
+    //
+    // ***MEASURED, NOT ARGUED.*** Planting a sixth event `CompanyRenamed(… string CompanyName)` — carrying
+    // the exact display text this criterion bans — **left the old guard GREEN**. With the walk below it
+    // **reddens on that plant**, and with the plant removed it is green again.
+    //
+    // ⚠ Transcribed from `TenantLifecycleArchitectureTests.Tenant_events_contain_only_safe_lifecycle_values`,
+    // which has had the derived walk and the count since it was written — **the same shape of criterion,
+    // thirty lines of a sibling file away.** *This is not a new design; it is a solved one that had not
+    // travelled.*
+    var eventTypes = typeof(Company).Assembly.GetTypes()
+      .Where(type => typeof(DomainEvent).IsAssignableFrom(type))
+      .Where(type => type.Namespace == "SSAS.Platform.Domain.Events")
+      .Where(type => type.Name.StartsWith("Company", StringComparison.Ordinal))
+      .OrderBy(type => type.Name, StringComparer.Ordinal)
+      .ToArray();
+
+    // ⚠⚠ THE ANTI-VACUITY BIND, AND IT IS LOAD-BEARING IN BOTH DIRECTIONS. The walk is filtered three ways,
+    // so there are three ways for it to collapse to nothing — and **an empty walk satisfies every
+    // `DoesNotContain` below perfectly.** Naming the five members rather than counting them means a RENAME
+    // reddens here too, where a bare count would let one through.
+    Assert.Equal(
+      ["CompanyActivated", "CompanyArchived", "CompanyCreated", "CompanyDeactivated", "CompanyProfileUpdated"],
+      eventTypes.Select(type => type.Name));
 
     foreach (var eventType in eventTypes)
     {

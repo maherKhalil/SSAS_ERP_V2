@@ -124,9 +124,22 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
   // THE BLEED TEST (BR-PAY-0010, OD-PAY-0016)
   // ================================================================================================
 
-  // ⚠ CITED BY B18 pass 15, body-confirmed: the criterion verbatim, BOTH halves. A caller holding seven
-  // HR permissions and no payroll permission is refused 403 on compensation, compensation/current AND
-  // payslips -- the theory covers the two nouns the criterion names rather than one of them.
+  // ⚠⚠⚠ COMMENT CORRECTED 2026-09-05. THE CITATION STANDS; THE CLAIM "VERBATIM, BOTH HALVES" DID NOT.
+  //
+  // *"A caller with **every HR permission** and no payroll permission can read no compensation and no
+  // payslip."* **The theory covers BOTH NOUNS — compensation, compensation/current and payslips — and that
+  // half is verbatim.** ***THE QUANTIFIER IS NOT: THE TOKEN BELOW NAMES SEVEN HR PERMISSIONS AND THERE ARE
+  // TWENTY-THREE.*** *A caller holding one of the sixteen untested ones is outside what this establishes.*
+  //
+  // ⚠⚠ THE FIX IS ONE LINE AND THE PATTERN IS FORTY-FIVE LINES AWAY IN THIS FILE.
+  // `Approval_is_refused_to_a_caller_holding_every_other_payroll_permission` derives its complement as
+  // `AllPermissions.Where(p => p != ApproveRuns)` — so a permission added later is automatically included.
+  // ***THE SOUND DESIGN AND THE SAMPLED ONE ARE NEIGHBOURS, WHICH IS THE EVIDENCE THAT THIS WAS A LAPSE
+  // RATHER THAN A CONVENTION.*** **Deriving the HR set the same way would make the quantifier true rather
+  // than sampled, and it is left as a named improvement rather than done silently under an audit.**
+  //
+  // ⚠ *The old comment said "the criterion verbatim, BOTH halves" — accurate about the nouns and silent
+  // about the quantifier, which is the shape that survives review: true, and not about the doubtful part.*
   [Trait("Criterion", "AC-PAY-0027")]
   [Theory]
   [InlineData("/api/payroll/employees/44444444-4444-4444-4444-444444444444/compensation")]

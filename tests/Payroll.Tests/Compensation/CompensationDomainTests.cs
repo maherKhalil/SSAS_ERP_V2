@@ -53,9 +53,27 @@ public sealed class CompensationDomainTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0003")]
-  // ⚠ CITED BY B18, body-confirmed: the earlier record keeps its amount AND its effective date after a second is recorded -- "does not
-  // alter any prior record".
-  [Trait("Criterion", "AC-PAY-0001")]
+  // ---- ⚠⚠⚠ THE `AC-PAY-0001` CITATION WAS REMOVED HERE ON 2026-09-05. THE TEST STAYS; THE CLAIM DOES NOT.
+  //
+  // *"Creating a compensation record… stores it with its effective date **and does not alter any prior
+  // record**."* **The second clause is what this test was cited for and it is not what this test shows.**
+  //
+  // ***THE TWO AGGREGATES ARE INDEPENDENT. `EmployeeCompensation.Create` RETURNS A STANDALONE OBJECT AND
+  // THERE IS NO SHARED STORE, SO CONSTRUCTING `second` CANNOT REACH `first`.*** Two of the three assertions
+  // below are about an object nothing touched. **This test would pass identically if the product had an
+  // update path that mutated prior records, because it never exercises a write path at all.**
+  //
+  // ⚠⚠ ***THE PROPERTY HOLDS. THE CITATION DID NOT ESTABLISH IT.*** `EmployeeCompensation` exposes exactly
+  // ONE public mutator — `RecordGradeBandObservation`, which records an observation — so there is no update
+  // path to alter a prior record. *That is a different item from "the criterion is false", and the two get
+  // merged unless the difference is written down.*
+  //
+  // ⚠ The removed comment read *"the earlier record keeps its amount AND its effective date **after a second
+  // is recorded**"* — **"after a second is recorded" asserts a temporal and causal sequence the fixture never
+  // creates.** *Nothing is recorded into anything.* **The words describe a test somebody imagined writing.**
+  //
+  // **What clause 1 needs is a witness that a record is STORED with its effective date; what clause 2 needs
+  // is a write path to attempt and fail. Neither exists here. Owner's to schedule.**
   public void Recording_a_change_leaves_every_earlier_record_intact()
   {
     // The whole reason a past run can be reproduced. There is no update path to test, and that absence is

@@ -424,6 +424,20 @@ public sealed class EmployeeReadScopeTests
 
   [Fact]
   // ⚠ CITED BY B18, body-confirmed: the "documented paging defaults" clause -- asserts `PageNumber == 1`.
+  //
+  // ⚠⚠⚠ CLAUSE COVERAGE FOR `AC-EMP-0027`, RECORDED 2026-09-05. **THE CLAUSE LIST IS INCOMPLETE.**
+  //
+  // *"Search returns **bounded**, **deterministically ordered** **safe projections** with **documented
+  // paging defaults and maxima**, and **rejects out-of-range paging**."*
+  //
+  // **Three cited tests carry three clauses, each naming which one — this one the DEFAULTS,
+  // `The_maximum_page_size_is_accepted` the MAXIMA, `Out_of_range_paging_is_refused` the REJECTION.**
+  // ***CLAUSE-LEVEL ATTRIBUTION IS THE RIGHT METHOD AND IS WORTH KEEPING.***
+  //
+  // ⚠⚠ ***BUT TWO CLAUSES CARRY NO CITED WITNESS: "DETERMINISTICALLY ORDERED" AND "SAFE PROJECTIONS".***
+  // *The criterion is cited and counted as covered while two of its five clauses are unwitnessed by the
+  // cited set.* **The failure is an incomplete clause list, not a bad method** — and it is invisible to any
+  // count, because a partial citation and a complete one are the same trait.
   [Trait("Criterion", "AC-EMP-0027")]
   public async Task The_search_defaults_are_the_documented_ones()
   {

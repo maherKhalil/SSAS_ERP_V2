@@ -573,10 +573,26 @@ public sealed class PayrollArchitectureTests
   }
 
   [Fact]
-  // ⚠ CITED BY B18, body-confirmed: ⚠ SUPERSET. The criterion bans a foreign key to a PLATFORM-DATABASE table; this bans one to ANY
-  // other module's table, which is strictly wider. Cited as the superset rather than shadowed by a
-  // narrower Platform-only copy that would assert less.
-  [Trait("Criterion", "AC-PAY-0031")]
+  // ---- ⚠⚠⚠ THE `AC-PAY-0031` CITATION WAS REMOVED HERE ON 2026-09-05. THE TEST STAYS; THE SUPERSET
+  // ---- ARGUMENT THAT JUSTIFIED THE CITATION WAS FALSE.
+  //
+  // *"No foreign key crosses from a payroll table to a **Platform-database** table."*
+  //
+  // The removed comment claimed: *"⚠ SUPERSET. The criterion bans a foreign key to a PLATFORM-DATABASE
+  // table; this bans one to ANY other module's table, **which is strictly wider**."*
+  //
+  // ***THE PREDICATE BELOW IS `SSAS.HR.` OR `SSAS.GL.`. `SSAS.Platform.` IS NOT IN IT.*** **Banning HR and
+  // GL is not wider than banning Platform — it is a DIFFERENT SET that excludes the criterion's subject
+  // entirely.** *`{HR, GL} ⊇ {Platform}` is false; the sets are disjoint.*
+  //
+  // ⚠⚠ ***THE PROPERTY HOLDS, STRUCTURALLY, AND FOR A REASON THE TEST NEVER STATES:*** the model below is
+  // composed from `PayrollTenantModelContributor` in the TENANT context, so no Platform entity is in it and
+  // a foreign key to one is not expressible. **Adding `SSAS.Platform.` to the predicate would be VACUOUS —
+  // which is presumably why it is absent, and is exactly the argument that should have been written down.**
+  //
+  // ⚠ ***THIS ONE IS MORE DANGEROUS THAN A MISSING JUSTIFICATION, BECAUSE A READER WHO CHECKS THE REASONING
+  // FINDS REASONING.*** A precise, confident, well-formatted argument that does not hold survives review in
+  // a way that silence does not. **The test is good and stays; only the claim it was carrying is withdrawn.**
   public void No_payroll_foreign_key_points_at_another_modules_table()
   {
     // A database-level FK across a module boundary would couple the two migration streams and make the

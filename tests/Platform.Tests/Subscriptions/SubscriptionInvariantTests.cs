@@ -525,9 +525,27 @@ public sealed class SubscriptionInvariantTests
   // appeared, wrong subject* — and a developer resolves a red rather than ignoring it, ending more confident
   // than if nothing had fired. ***A `TenantErp` table of these names is a DIFFERENT SUBJECT, not a miss.***
   //
-  // ⚠ **WHAT WOULD ACTUALLY DEFEAT THIS TRIPWIRE, so the next reader knows what it does not cover:** a
-  // billing table created in the tenant database *in defiance of `ADR-017`*. **That is a residency
-  // violation before it is a billing one**, and it is the residency guards' subject rather than this one's.
+  // ⚠⚠⚠ **WHAT WOULD ACTUALLY DEFEAT THIS TRIPWIRE, AND *NOTHING* CATCHES IT — THIS PARAGRAPH FIRST SAID
+  // OTHERWISE AND THE CLAIM WAS FALSE.**
+  //
+  // A billing table created in the tenant database *in defiance of `ADR-017`*. **It is a residency violation
+  // before it is a billing one** — so the first draft of this note delegated it to "the residency guards"
+  // and left it there. ***THAT DELEGATION WAS WRITTEN WITHOUT BEING TESTED, AND IT IS WRONG.***
+  //
+  // *Measured:* `migrationBuilder.CreateTable(name: "Invoices", schema: "tenant", …)` was planted in a
+  // `TenantErp` migration and the ***full task gate stayed GREEN.*** **`TenantModelResidencyTests` — the
+  // nearest guard by name — walks `ITenantModelSource.Model` and asserts no PLATFORM-resident TYPE sits in
+  // the tenant model. *That is the opposite direction*: it catches platform types leaking INTO the tenant
+  // model, not a tenant table that ought to have been platform-resident.**
+  //
+  // ⚠ **BOUND ON THE MEASUREMENT, STATED BECAUSE THE TWO SHAPES DIFFER:** the plant added migration TEXT and
+  // no entity type, so model-walking guards were structurally unable to see it. **A realistic billing table
+  // would arrive WITH an entity — and I have not planted that shape**, so the claim that it too would pass
+  // is reasoning rather than measurement. *What is measured is that the migration-text shape passes.*
+  //
+  // ***SO THIS TRIPWIRE'S SCOPE IS DEFENSIBLE AND ITS FALLBACK DOES NOT EXIST. A BOUNDARY THAT DELEGATES IS
+  // ONLY AS GOOD AS THE GUARD IT DELEGATES TO, AND AN UNTESTED DELEGATION IS A FALSE REASSURANCE WRITTEN
+  // INTO A FILE — WORSE THAN THE GAP IT DESCRIBES, BECAUSE A READER STOPS LOOKING.***
   private static string[] PlatformTablesCreatedByMigrations()
   {
     var directory = Path.Combine(

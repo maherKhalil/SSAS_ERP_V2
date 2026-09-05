@@ -36,7 +36,7 @@ Attendance|Debug|103
 Attendance|Release|87
 Finance|Debug|51
 Finance|Release|51
-HR|Debug|330
+HR|Debug|331
 HR|Release|328
 Integration|Debug|862
 Integration|Release|862

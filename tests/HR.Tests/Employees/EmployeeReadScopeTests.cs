@@ -1,3 +1,4 @@
+using System.Reflection;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Pagination;
@@ -222,7 +223,18 @@ public sealed class EmployeeReadScopeTests
     Assert.Equal([BranchA, BranchB, BranchC], scope.Value.Branches.BranchIds);
   }
 
+  // ---- ⚠⚠ CITED FOR `AC-DOC-0012`'s SECOND CLAUSE: *"An empty authorized branch set answers `403`, not
+  // an unfiltered file."* `EmployeeErrors.BranchScopeDenied` maps to `new(403, "branch.scope_denied")` in
+  // `EmployeeApiErrorMapper` — checked in the EMPLOYEE mapper, not the department one, which defines a
+  // same-shaped 403 and would have been the convincing wrong answer.
+  //
+  // ⚠⚠⚠ THIS TEST CARRIES MORE WEIGHT THAN ITS COMPANY TWIN ABOVE, AND THE ASYMMETRY IS MEASURED:
+  // ***`AuthorizedCompanyScope.Create` THROWS ON AN EMPTY LIST; `AuthorizedBranchScope.Create` DOES NOT.***
+  // The branch type's comment says *"NEVER EMPTY, and never writeable"* — **never-writeable is enforced by
+  // the type, never-empty is enforced only by this refusal happening first.** *So the company half of the
+  // criterion is protected twice and the branch half is protected here alone.*
   [Fact]
+  [Trait("Criterion", "AC-DOC-0012")]
   public async Task An_empty_authorized_branch_set_refuses_the_read()
   {
     var resolver = Resolver(branches: []);
@@ -455,6 +467,66 @@ public sealed class EmployeeReadScopeTests
 
     Assert.True(result.IsSuccess);
     Assert.Equal([CompanyA, CompanyB], reads.LastScope!.Companies.CompanyIds);
+  }
+
+  // ================================================================================================
+  // THERE IS NO UNSCOPED EXPORT PATH (AC-DOC-0012).
+  // ================================================================================================
+  //
+  // *"No route, parameter or permission produces an export whose SQL omits the tenant, company or branch
+  // predicate. An empty authorized branch set answers `403`, not an unfiltered file."*
+  //
+  // ---- ⚠⚠⚠ CLAUSE 1 IS AN ABSENCE OVER ROUTES × PARAMETERS × PERMISSIONS, WHICH IS OPEN AND UNSEARCHABLE.
+  //
+  // **What is closed is the CONSTRUCTION path.** An export filters by the `EmployeeReadScope` it is given,
+  // so *"no route produces an unscoped export"* holds if **no caller can build an unscoped scope**. That is
+  // a statement about a type, and the assertions below check it rather than searching for counterexamples.
+  //
+  // ⚠⚠ A TYPE-SYSTEM GUARANTEE IS TRUE WHILE THE CONSTRUCTORS ARE THE ONLY WRITERS, so the ways it could
+  // stop being true are named — and three of the four are ASSERTED rather than left as prose:
+  //
+  //     a second public factory appearing   → **asserted**: exactly one factory per scope type
+  //     a public constructor appearing      → **asserted**: no public constructors
+  //     a setter appearing (ORM, mapper)    → **asserted**: every scope property is get-only
+  //     reflection writing a private field  → ***NOT asserted. Nothing here can prevent it.***
+  //
+  // ⚠⚠⚠ AND ONE RESIDUAL IS NOT THEORETICAL — IT IS MEASURED AND IT IS AN ASYMMETRY:
+  // ***`AuthorizedCompanyScope.Create` THROWS ON AN EMPTY LIST. `AuthorizedBranchScope.Create` DOES NOT.***
+  // Its comment says *"NEVER EMPTY, and never writeable"*, and never-writeable is enforced by the type while
+  // **never-empty is enforced only by the resolver refusing first** — which the test below pins. *So the
+  // branch half of this criterion rests on a caller check where the company half rests on the type.* **That
+  // is the honest boundary of the clause-1 argument and it is stated rather than glossed.**
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0012")]
+  public void No_scope_type_can_be_built_or_widened_from_outside_the_read_layer()
+  {
+    Type[] scopeTypes = [typeof(EmployeeReadScope), typeof(AuthorizedCompanyScope), typeof(AuthorizedBranchScope)];
+
+    foreach (var type in scopeTypes)
+    {
+      // NO PUBLIC CONSTRUCTOR. A caller outside this assembly cannot assemble one directly.
+      Assert.Empty(type.GetConstructors(BindingFlags.Public | BindingFlags.Instance));
+
+      // EXACTLY ONE FACTORY, and it is not public. A second one added later fails here rather than
+      // quietly becoming a second way to produce a scope.
+      var factories = type
+        .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+        .Where(method => method.Name == "Create")
+        .ToArray();
+
+      Assert.Single(factories);
+      Assert.False(factories[0].IsPublic, type.Name + ".Create must not be public");
+
+      // GET-ONLY. An ORM materialising through a setter, or a mapper widening a scope after the fact,
+      // would both need one.
+      Assert.All(
+        type.GetProperties(BindingFlags.Public | BindingFlags.Instance),
+        property => Assert.Null(property.SetMethod));
+    }
+
+    // MATCHER CONTROL: the reflection really read these types and they really have members, so the
+    // assertions above are not passing over an empty set.
+    Assert.NotEmpty(typeof(EmployeeReadScope).GetProperties(BindingFlags.Public | BindingFlags.Instance));
   }
 
   private static EmployeeScopeResolver Resolver(

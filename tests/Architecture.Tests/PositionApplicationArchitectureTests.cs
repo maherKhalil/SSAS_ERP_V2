@@ -127,6 +127,22 @@ public sealed class PositionApplicationArchitectureTests
   // assertion on the employee side. Both are outside 269's citation lane and are recorded here rather than
   // changed, because a sweep that names a defect class and steps over two instances of it in its own
   // neighbourhood is the finding, not the fix.
+  //
+  // ---- ⚠⚠ WHICH CLAUSES THIS CARRIES, AND WHICH IT DOES NOT.
+  //
+  // `AC-POS-0057` is carried WHOLE here — tenant- and company-owned, not branch-owned, three assertions
+  // for three clauses, and no enforcement half exists for it to be missing. *It is an interface claim and
+  // this is an interface test.*
+  //
+  // `AC-POS-0037` is THREE clauses and this file holds two: the marker, and the absent `RowVersion`.
+  // ***THE FIRST CLAUSE — "no update or delete path exists" — IS NOT ASSERTED HERE.*** It is the exact
+  // member set in `EmployeeReadScopeArchitectureTests.The_employee_repository_surface_is_the_approved_
+  // write_path_only`, which carried no citation until it was given one alongside this note.
+  //
+  // ⚠ AND THE RUNTIME REFUSAL IS A FOURTH THING AGAIN, newly gated. A marker without an enforcer is the
+  // appearance of immutability and none of it; the enforcer is `TenantDbContext.PreventAppendOnlyMutation`,
+  // driven behaviourally by `TenantAppendOnlyGuardTests` **since `69c2f0a` and by Integration alone before
+  // that.** *So this criterion reads tier 1 today and would have read tier 1 yesterday on weaker evidence.*
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
   [Trait("Criterion", "AC-POS-0037")]

@@ -470,7 +470,27 @@ public sealed class EmployeeReadScopeArchitectureTests
   //
   // So its surface is ENUMERATED. Adding a method here fails this test and forces the author to justify it,
   // which is exactly the conversation that should happen.
+  //
+  // ---- ⚠ CITES `AC-POS-0037`'s LOAD-BEARING CLAUSE — *"No update or delete path exists for
+  // `EmployeePositionAssignment`."*
+  //
+  // **The exact member set below IS that assertion.** `AppendPositionAssignmentAsync` stands with no update
+  // and no remove counterpart, and *an exact set is what notices one being added* — a ban list naming
+  // `Update`/`Delete` would miss `ReviseAsync` or `SupersedeAsync`.
+  //
+  // ⚠⚠ THE POPULATION, STATED BECAUSE THIS TEST ENUMERATES ONE PORT AND THE CLAUSE IS ABOUT ALL OF THEM.
+  // Three types name `EmployeePositionAssignment` in the HR application layer: **this repository, the only
+  // one with a method that TAKES or RETURNS it**; `IPositionRepository`, which names it solely in a comment
+  // about restricted foreign keys; and `IEmployeeReadService`, which reads. *So this surface is the whole
+  // write population today — and if a SECOND port ever gains such a method, nothing here would notice.*
+  //
+  // ⚠⚠⚠ AND THE CRITERION'S OTHER CLAUSES ARE ELSEWHERE, so this citation is not read as carrying them:
+  // the marker and the absent `RowVersion` are
+  // `PositionApplicationArchitectureTests.The_append_only_assignment_carries_no_row_version`, and the
+  // RUNTIME refusal is `TenantAppendOnlyGuardTests` — gated only since `69c2f0a`; before that it was
+  // Integration-only, green at a date.
   [Fact]
+  [Trait("Criterion", "AC-POS-0037")]
   public void The_employee_repository_surface_is_the_approved_write_path_only()
   {
     var methods = typeof(IEmployeeRepository).GetMethods()

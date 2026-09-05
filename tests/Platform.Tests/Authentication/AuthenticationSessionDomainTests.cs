@@ -12,14 +12,44 @@ namespace SSAS.Platform.Tests.Authentication;
 [Trait("Scenario", "TS-AUTH-0082")]
 [Trait("Scenario", "TS-AUTH-0084")]
 [Trait("Scenario", "TS-AUTH-0089")]
-[Trait("Acceptance", "AC-AUTH-0029")]
+// ---- ⚠⚠⚠ `AC-AUTH-0031` STAYS CLASS-SCOPED ON PURPOSE, AND THE REASON IS THE POINT.
+//
+// `AC-AUTH-0029` moved down to the two methods whose assertions carry it (see each). **`AC-AUTH-0031` did
+// not, because no method in this file witnesses it.** *"Verified reuse compromises **only** the owning
+// session, revokes **every** unconsumed descendant, remains detectable from retained ancestors, and permits
+// no grace window **or second concurrent success**"* — `Rotation_consumes_predecessor_...` proves the
+// detection and one revoked descendant on a **single-session, single-descendant fixture**, so the two
+// universals and the concurrency clause are witnessed by nothing here.
+//
+// **Narrowing it to that method would move a claim about five clauses onto a test that carries two**, which
+// is the `AC-AUTH-0047` shape — a real id on a method that says less than it promises. ***A CLASS-SCOPED
+// TRAIT OVER-CLAIMS ACROSS METHODS; A METHOD-SCOPED ONE OVER-CLAIMS ACROSS CLAUSES. WHERE BOTH WOULD LIE,
+// THE HONEST RECORD IS THE ONE THAT LIES WHERE A READER CAN SEE IT*** — the class trait at least sends the
+// reader to a file, and this paragraph is here so the reader arrives knowing what to distrust.
+//
+// ⚠ It is not repairable by tagging the siblings either: a method proving clause 4 alone, tagged with the
+// criterion id, reads as a whole-criterion witness. **The trait has no clause field, and that is the
+// convention decision this file cannot make for itself.**
 [Trait("Acceptance", "AC-AUTH-0031")]
 public sealed class AuthenticationSessionDomainTests
 {
   private static readonly DateTimeOffset Now = new(2026, 8, 1, 9, 0, 0, TimeSpan.Zero);
   private static readonly AuthenticationClientId Client = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
 
+  // `AC-AUTH-0029`'s FORMAT CLAUSE — *"A refresh token uses the canonical 76-character selector/secret
+  // format"*. `Assert.Equal(76, …Length)` and `Assert.Equal('.', reveal.Value[32])` pin both halves: a
+  // length alone would pass for any 76 characters, and the separator position is what makes it
+  // selector-plus-secret rather than one opaque string.
+  //
+  // ⚠ **Moved here from a class-level trait.** The trait previously sat on the type and so claimed all seven
+  // methods witnessed this criterion, including three about migrations and query filters.
+  //
+  // ⚠⚠ **NOT WITNESSED HERE: *"persists no raw secret"*.** This is generation, not persistence — and note
+  // the shape of the evidence that does exist: `CreateInitialRefreshToken` takes a `byte[32]`, so the
+  // aggregate never receives a raw secret to persist. **That is an argument from the signature and nothing
+  // in this file asserts it**, which is worth knowing before anyone reads the trait as covering it.
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0029")]
   public void Refresh_token_is_exactly_formatted_reveal_once_and_redacted()
   {
     var service = new AuthenticationTokenService();
@@ -127,6 +157,13 @@ public sealed class AuthenticationSessionDomainTests
   // a fifth added later, so the public/internal instance-method surface is asserted to be exactly this
   // list: **a new operation forces this test to be updated, which is the only way an enumeration of
   // behaviour stays complete.** Without it the test decays silently the first time the aggregate grows.
+  //
+  // `AC-AUTH-0029`'s BINDING CLAUSE — *"and is exactly bound to its session, family, and `ClientId`"*. The
+  // `bindings` tuple carries `ClientId` and `TokenFamilyId` and is asserted **unchanged after every
+  // state-changing operation the aggregate has**, with the mutator set pinned above so the enumeration
+  // cannot go stale and a control below proving the session did change. ⚠ **Moved here from a class-level
+  // trait**, which claimed this criterion of all seven methods in the file.
+  [Trait("Acceptance", "AC-AUTH-0029")]
   public void Session_bindings_survive_every_operation_and_the_status_vocabulary_is_exact()
   {
     // ---- THE COMPLEMENT CLAIM.

@@ -11,7 +11,12 @@ namespace SSAS.Architecture.Tests;
 [Trait("Scenario", "TS-AUTH-0071")]
 [Trait("Scenario", "TS-AUTH-0073")]
 [Trait("Scenario", "TS-AUTH-0090")]
-[Trait("Acceptance", "AC-AUTH-0035")]
+// ---- ⚠ `AC-AUTH-0035` MOVED DOWN TO THE ONE METHOD THAT BEARS ON IT.
+//
+// At class scope it claimed the criterion of all six methods here — five of which are about repository
+// shape, tenant ownership, query-filter bypass and two migrations, and none of which mentions a refresh
+// token. **Moving it strictly reduces the over-claim**, and what the single method does and does not reach
+// is stated at that method rather than left for a reader to work out from the class.
 public sealed class AuthenticationSessionArchitectureTests
 {
   // Admitted ONE AT A TIME BY DECISION, never by pattern: bypassing the tenant filter is the one change
@@ -57,7 +62,26 @@ public sealed class AuthenticationSessionArchitectureTests
     Assert.False(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(RefreshTokenRecord)));
   }
 
+  // `AC-AUTH-0035` — *"Raw refresh tokens and tenant-selection proofs are reveal-once sensitive results and
+  // never enter persistence, ordinary DTOs, command representations, logs, telemetry, exceptions, or
+  // events."* **Seven destinations, and this method reaches ONE of them.**
+  //
+  // *ORDINARY DTOs* is witnessed structurally: the three output types are asserted to carry
+  // `SensitiveRefreshToken`/`SensitiveTenantSelectionProof` rather than `string`, and then swept for any
+  // remaining `string` property whose name matches `Token|Proof|Secret|Hash|Raw`. **The type assertions are
+  // the claim; the sweep is what stops a fourth property being added beside them.**
+  //
+  // ⚠⚠⚠ **NOT WITNESSED HERE: persistence, command representations, logs, telemetry, exceptions, events.**
+  // *Named rather than left for a reader to discover, because a criterion id on a green test is read as the
+  // whole criterion proven.* **The reveal-once half is carried by
+  // `AuthenticationSessionDomainTests.Refresh_token_is_exactly_formatted_reveal_once_and_redacted`** — which
+  // holds the criterion's other clause and, under this convention, cannot say so.
+  //
+  // ⚠ And the LOGS clause is the one worth building: it is not structurally out of reach the way the others
+  // are — a source walk asserting no logger call takes a raw token is constructible here. **Recorded as
+  // buildable, not built.**
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0035")]
   public void Refresh_tokens_and_selection_proofs_cross_outputs_only_as_sensitive_wrappers()
   {
     Assert.Equal(typeof(SensitiveRefreshToken), typeof(SessionCreated).GetProperty("RefreshToken")?.PropertyType);

@@ -24,15 +24,28 @@ namespace SSAS.Platform.Tests.Authentication;
 [Trait("Scenario", "TS-AUTH-0083")]
 [Trait("Scenario", "TS-AUTH-0088")]
 [Trait("Scenario", "TS-AUTH-0089")]
-[Trait("Acceptance", "AC-AUTH-0024")]
-[Trait("Acceptance", "AC-AUTH-0032")]
+// ---- ⚠ `AC-AUTH-0024` AND `AC-AUTH-0032` MOVED DOWN TO THE METHODS THAT CARRY THEM.
+//
+// They were the only two criteria in this file cited at CLASS scope, while seven others (`AC-AUTH-0002`,
+// `0003`, `0007`, `0008`, `0010`, `0023`, `0028`) already sat on methods with their prose quoted beside
+// them. **A class-scoped trait claimed both criteria of all fourteen methods here** — including the client-id
+// syntax theory and three suspended-tenant cases that bear on neither.
 public sealed class AuthenticationSessionApplicationTests
 {
   private static readonly DateTimeOffset Now = new(2026, 8, 1, 10, 0, 0, TimeSpan.Zero);
   private static readonly AuthenticationClientId Client = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
   private static readonly string[] VerifiedIdentityPropertyNames = ["IdentityId", "SecurityVersion"];
 
+  // `AC-AUTH-0024`'s FIRST CLAUSE — *"Successful credential verification yields only a
+  // NON-USER-CONSTRUCTIBLE `VerifiedIdentity` capability"*. `Assert.Empty(publicConstructors)` is the clause
+  // itself; the exact property list keeps *narrow* honest, and being compared against a **non-empty** expected
+  // array it is anti-vacuous by construction — a reflection walk returning nothing fails it.
+  //
+  // The second clause, *"and session creation revalidates its `SecurityVersion`"*, is carried by
+  // `Stale_verified_identity_is_rejected_before_tenant_state_is_created`, tagged there. **Two clauses, two
+  // methods, both tagged** — which is what the class-scoped trait this replaces could not say.
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0024")]
   public void Verified_identity_is_a_narrow_internal_capability()
   {
     var publicConstructors = typeof(VerifiedIdentity).GetConstructors(BindingFlags.Public | BindingFlags.Instance);
@@ -193,7 +206,15 @@ public sealed class AuthenticationSessionApplicationTests
     Assert.NotNull(fixture.Selections.Values.Single().ConsumedUtc);
   }
 
+  // `AC-AUTH-0024`'s SECOND CLAUSE — *"and session creation revalidates its `SecurityVersion`"*. The command
+  // carries `SecurityVersion + 1`, so the capability is well-formed and merely STALE: the refusal can only
+  // come from revalidation against persisted state, not from a malformed input.
+  //
+  // ⚠ The two `Assert.Empty` calls are the *"before tenant state is created"* half and they are not
+  // decoration — a handler that revalidated **after** writing the selection would still return the failure
+  // and pass the first two assertions.
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0024")]
   public async Task Stale_verified_identity_is_rejected_before_tenant_state_is_created()
   {
     var fixture = new Fixture();
@@ -208,7 +229,20 @@ public sealed class AuthenticationSessionApplicationTests
     Assert.Empty(fixture.Selections.Values);
   }
 
+  // `AC-AUTH-0032` — *"Session creation never leaves more than ten active unexpired sessions for an Identity
+  // and revokes the oldest by `CreatedUtc` then `AuthenticationSessionId` using `SessionLimitExceeded`."*
+  // Three of its four elements have a fixture here: the cap is `Assert.Equal(10, …Count(active for this
+  // identity))` — **a cardinality bind, so a handler that revoked two would fail it as loudly as one that
+  // revoked none**; the oldest is id 100, seeded at `Now.AddMinutes(0)`; and the reason is asserted by value.
+  // The unrelated identity's session proves the sweep is scoped rather than global.
+  //
+  // ⚠⚠ **NOT WITNESSED: the tie-break.** *"by `CreatedUtc` THEN `AuthenticationSessionId`"* needs two
+  // sessions sharing an instant, and the fixture gives every session a distinct `AddMinutes(index)`. **The
+  // secondary key is exercised by nothing**, so a comparer that dropped it would stay green here.
+  //
+  // ⚠ Moved from a class-level trait, which claimed this criterion of all fourteen methods in the file.
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0032")]
   public async Task Eleventh_session_revokes_deterministic_oldest_and_leaves_other_identity_unchanged()
   {
     var fixture = new Fixture();

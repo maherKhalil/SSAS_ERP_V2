@@ -11,7 +11,10 @@ using SSAS.HR.Contracts.Employment;
 namespace SSAS.Attendance.Tests.Records;
 
 // ==================================================================================================
-// RECORDING ATTENDANCE AGAINST THE EMPLOYMENT WINDOW (AC-ATT-0006, AC-ATT-0007, AC-ATT-0008).
+// WHAT THE RECORDING HANDLER REFUSES (AC-ATT-0006, AC-ATT-0007, AC-ATT-0008, AC-ATT-0012).
+//
+// Named for the employment window because that is why it was written; `AC-ATT-0012`'s closed-period
+// refusal joined it later, one step earlier in the same method and on the same fixture.
 // ==================================================================================================
 //
 // ---- ⚠⚠⚠ WHY THIS FILE DID NOT EXIST, WHICH IS A MEASURED ASYMMETRY RATHER THAN AN IMPRESSION.
@@ -145,14 +148,56 @@ public sealed class AttendanceRecordEmploymentWindowTests
     Assert.NotEqual(AttendanceRecordErrors.BeforeEmployment.Code, result.Error.Code);
   }
 
+  // ---- ⚠⚠⚠ A CLOSED PERIOD REFUSES THE WRITE, ONE STEP BEFORE THE WINDOW (AC-ATT-0012).
+  //
+  // *"Closing a period refuses a subsequent write into it."* **This file's own `OpenPeriods` comment
+  // already said where that refusal lives** — *"a closed period is `AC-ATT-0012`'s subject and is refused
+  // one step earlier"* — which is a note recording a thing nothing then asserted. *Written by me, four
+  // hours ago, arguing against citing a criterion I had just made it easy to cover.*
+  //
+  // ⚠ IT SITS IN THIS FILE BECAUSE IT IS THE SAME HANDLER AND THE SAME FIXTURE. The header says this file
+  // is about the employment window; **this is the refusal immediately before it in the same method**, and
+  // the shared stubs are what make the ordering assertable at all. *A separate file would duplicate a
+  // hundred lines of doubles and lose the one thing that makes this test discriminating.*
+  //
+  // ⚠⚠ THE DATE IS INSIDE THE EMPLOYMENT WINDOW ON PURPOSE, AND IT IS THE WHOLE DISCRIMINATION.
+  // `HandleAsync` checks the period BEFORE the employment window, so a date outside employment would ALSO
+  // answer `PeriodClosed` — **and the test would pass while proving nothing about which guard fired.**
+  // *With a valid employee on a valid date, the closed period is the only thing left that can refuse.*
+  //
+  // ⚠⚠⚠ AND THE TWO WRITE ASSERTIONS ARE THE CLAUSE. *"Refuses a write"* is not *"answers a failure"*:
+  // a handler that recorded the row and then reported an error satisfies the `Result` and violates the
+  // criterion. **Nothing added, nothing saved.**
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0012")]
+  public async Task Recording_into_a_closed_period_is_refused_and_writes_nothing()
+  {
+    var records = new RecordingRepository();
+    var unitOfWork = new CountingUnitOfWork();
+
+    var period = AttendancePeriod.Create(
+      Company, "2026", new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31)).Value;
+    Assert.True(period.Close("the closer", DateTimeOffset.UtcNow).IsSuccess);
+
+    var result = await Record(
+      new DateOnly(2026, 4, 20), records, unitOfWork, closedPeriod: period);
+
+    Assert.True(result.IsFailure);
+    Assert.Equal(AttendancePeriodErrors.PeriodClosed.Code, result.Error.Code);
+
+    Assert.Empty(records.Added);
+    Assert.Equal(0, unitOfWork.Saves);
+  }
+
   private static Task<Result<Guid>> Record(
     DateOnly date,
     RecordingRepository records,
     CountingUnitOfWork unitOfWork,
-    Guid? employeeId = null)
+    Guid? employeeId = null,
+    AttendancePeriod? closedPeriod = null)
   {
     var handler = new RecordAttendanceCommandHandler(
-      records, new OpenPeriods(), new OverlapRoster(), new PermissiveScope(), unitOfWork);
+      records, new OpenPeriods(closedPeriod), new OverlapRoster(), new PermissiveScope(), unitOfWork);
 
     return handler.HandleAsync(new RecordAttendanceCommand(
       Company, employeeId ?? Employee, date,
@@ -182,10 +227,12 @@ public sealed class AttendanceRecordEmploymentWindowTests
 
   // One open period spanning the whole year, so no case below is decided by the period rather than by the
   // employment window. A closed period is `AC-ATT-0012`'s subject and is refused one step earlier.
-  private sealed class OpenPeriods : IAttendancePeriodRepository
+  private sealed class OpenPeriods(AttendancePeriod? closed = null) : IAttendancePeriodRepository
   {
-    private static readonly AttendancePeriod Period = AttendancePeriod.Create(
+    private static readonly AttendancePeriod Open = AttendancePeriod.Create(
       Company, "2026", new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31)).Value;
+
+    private AttendancePeriod Period => closed ?? Open;
 
     public Task<AttendancePeriod?> GetByIdAsync(
       Guid attendancePeriodId, CancellationToken cancellationToken = default) =>

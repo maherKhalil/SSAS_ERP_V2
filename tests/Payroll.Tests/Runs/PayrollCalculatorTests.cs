@@ -309,6 +309,11 @@ public sealed class PayrollCalculatorTests
   // actually fail is the third one: somebody RE-ADDING a method under the dead name**, which no compiler
   // objects to and which would mean the superseded guard had come back alongside its replacements.
   //
+  // ⚠⚠ AND COMPILE-TIME ENFORCEMENT IS STRONGER THAN A TEST WITHOUT BEING ABSOLUTE, WHICH IS THE SAME
+  // QUALIFICATION EVERY STRUCTURAL GUARD HERE CARRIES. **Somebody deleting a successor meets `CS0103` and
+  // can satisfy it by deleting the assertion line** — noticed, then repaired inside one edit, exactly as a
+  // new constructor parameter is. *Stronger than a test; not a fence.*
+  //
   // ⚠ A bare string for the successors would have made the presence checks runtime-capable and WEAKER:
   // deletion would then be caught at test time instead of build time. *The dead name is a literal because
   // it must be; the live ones are symbols because that buys the stronger enforcement.*

@@ -32,7 +32,7 @@ API|Debug|991
 API|Release|972
 Architecture|Debug|679
 Architecture|Release|628
-Attendance|Debug|100
+Attendance|Debug|101
 Attendance|Release|87
 Finance|Debug|51
 Finance|Release|51
@@ -40,7 +40,7 @@ HR|Debug|330
 HR|Release|328
 Integration|Debug|862
 Integration|Release|862
-Payroll|Debug|96
+Payroll|Debug|97
 Payroll|Release|93
 Platform|Debug|1137
 Platform|Release|1101

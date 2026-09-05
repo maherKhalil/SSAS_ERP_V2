@@ -186,6 +186,52 @@ public sealed class LeaveRequestTests
   // ================================================================================================
   // TS-ATT-0010. LEAVE CONSUMES WORKING DAYS, COMPUTED FROM THE CALENDAR AT SUBMISSION.
   // ================================================================================================
+
+  // ---- ⚠⚠⚠ WHAT A SUBMISSION RECORDS (AC-ATT-0041), AND FOUR OF ITS FIVE CLAUSES HAD NO ASSERTION.
+  //
+  // *"Submitting a request records the requester, the type, the range and the computed working-day
+  // consumption, and refuses an end date before the start date."* **Five clauses.** The consumption was
+  // covered — thoroughly, by the two tests below and by the holiday-after-approval freeze, and the
+  // REFUSAL was covered too, by `A_request_cannot_end_before_it_starts`. ***THE THREE STORED VALUES
+  // WERE NOT.***
+  //
+  // ⚠⚠⚠ I WROTE A DUPLICATE OF THAT REFUSAL TEST BEFORE FINDING IT, AND THE REASON IS A TOKEN
+  // TRANSPOSITION WORTH RECORDING. I searched `tests/` for `RangeInvalid` — the fragment in the error's
+  // CODE, `Attendance.LeaveRequestRangeInvalid` — and found only GL's. **The C# field is named
+  // `InvalidRequestRange`: the same two words, transposed.** *A search for the code string cannot find
+  // a test that references the field, and nothing about either name suggests the other.* The plant is
+  // what found it: reddening the range guard failed TWO tests, one of which I did not know existed.
+  //
+  // ⚠ THE THREE STORED VALUES WERE NEVER READ BACK. `EmployeeId`, `LeaveTypeId`, `StartDate` and `EndDate`
+  // are asserted nowhere in this suite — the only `Assert` on a request's own fields was
+  // `Assert.Null(request.ApproverEmployeeId)`, which is about a decision rather than a submission.
+  // **A `Submit` that transposed the employee and the type, or stored the start date twice, would have
+  // produced a request every existing test accepted** — because every one of them reads only
+  // `WorkingDaysConsumed`, which is passed IN rather than derived from the other four.
+  //
+  // ⚠⚠ AND THE VALUES ARE DELIBERATELY ALL DIFFERENT. `Company`, `Employee` and `Type` are distinct
+  // constants and the two dates differ, so a transposition has somewhere to show. *Four fields checked
+  // against four values that could be told apart is the assertion; four fields checked against one shared
+  // value would not be.*
+  [Fact]
+  [Trait("Requirement", "REQ-ATT-0012")]
+  [Trait("Criterion", "AC-ATT-0041")]
+  public void A_submission_records_the_requester_the_type_the_range_and_the_consumption()
+  {
+    var start = new DateOnly(2026, 9, 14);
+    var end = new DateOnly(2026, 9, 16);
+
+    var request = LeaveRequest.Submit(Company, Employee, Type, start, end, workingDaysConsumed: 3m);
+
+    Assert.True(request.IsSuccess, request.IsFailure ? request.Error.Message : string.Empty);
+
+    Assert.Equal(Employee, request.Value.EmployeeId);
+    Assert.Equal(Type, request.Value.LeaveTypeId);
+    Assert.Equal(start, request.Value.StartDate);
+    Assert.Equal(end, request.Value.EndDate);
+    Assert.Equal(3m, request.Value.WorkingDaysConsumed);
+  }
+
   [Fact]
   // ⚠ CITES `AC-ATT-0016`. The consumption is PINNED at 2, not bracketed — and "only the working days
   // inside it" quantifies over a COMPLEMENT, so the range deliberately contains two non-working days for
@@ -455,7 +501,19 @@ public sealed class LeaveRequestTests
     Assert.Equal(LeaveErrors.RequestContainsNoWorkingDay.Code, request.Error.Code);
   }
 
+  // ---- ⚠ CITES `AC-ATT-0041`'s FIFTH CLAUSE — *"...and refuses an end date before the start date."*
+  //
+  // **This already asserted the clause and carried no trait**, which is why a trait-derived count read
+  // `AC-ATT-0041` as uncited while four of its five clauses were genuinely uncovered and the fifth was
+  // covered here all along. *The other four are
+  // `A_submission_records_the_requester_the_type_the_range_and_the_consumption` and the two consumption
+  // tests above it.*
+  //
+  // ⚠⚠ THE DAY COUNT IS POSITIVE ON PURPOSE, and the reason is worth keeping: `Submit` checks the range
+  // BEFORE it checks that a request contains a working day, and a reversed range would ordinarily carry a
+  // count of zero. **Passing zero would leave two guards able to refuse and only the first observable.**
   [Fact]
+  [Trait("Criterion", "AC-ATT-0041")]
   public void A_request_cannot_end_before_it_starts()
   {
     var request = LeaveRequest.Submit(

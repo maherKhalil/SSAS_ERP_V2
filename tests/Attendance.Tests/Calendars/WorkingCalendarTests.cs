@@ -69,8 +69,13 @@ public sealed class WorkingCalendarTests
   // never a working day. This falls out of COUNTING WORKING DAYS rather than counting days and subtracting
   // non-working ones — which is why the loop is written that way round, and why this test would catch it
   // being rewritten the other way.
+  //
+  // ⚠ THE CITATION WAS IN THIS COMMENT AND NOT IN A TRAIT, so every count derived from traits read this
+  // criterion as uncovered. One clause, and the assertion pair IS it: 5 before, a Saturday holiday added,
+  // 5 after. A count that subtracted the weekend holiday would answer 4 and fail here.
   [Fact]
   [Trait("Requirement", "REQ-ATT-0003")]
+  [Trait("Criterion", "AC-ATT-0003")]
   public void A_holiday_falling_on_a_weekend_day_does_not_reduce_the_count_further()
   {
     var calendar = Calendar(DayOfWeek.Saturday, DayOfWeek.Sunday);
@@ -91,8 +96,18 @@ public sealed class WorkingCalendarTests
   //
   // Off-by-one at the range ends is the defect this class of code actually has, and it is invisible in
   // review: `<` versus `<=` reads identically and is wrong by one day per request, forever.
+  //
+  // ⚠ CITES `AC-ATT-0005` — *"`WorkingDaysBetween(d, d)` for a single working day returns 1, and for a
+  // single weekend day returns 0."* **Both clauses are asserted, one line each**, and the criterion's own
+  // reason is this file's: off-by-one at the range ends is what this class of code gets wrong. The two
+  // assertions below them — a range bounded by weekends at both ends, and an inverted range — go beyond the
+  // criterion and are not part of the claim.
+  //
+  // ⚠⚠ THE CITATION ALREADY EXISTED IN THE HEADING ABOVE AND NOWHERE A COUNT COULD SEE IT. A trait-derived
+  // count read this as uncovered while the test that covers it named the criterion in prose four lines up.
   [Fact]
   [Trait("Requirement", "REQ-ATT-0003")]
+  [Trait("Criterion", "AC-ATT-0005")]
   public void The_range_is_inclusive_at_both_ends()
   {
     var calendar = Calendar(DayOfWeek.Saturday, DayOfWeek.Sunday);

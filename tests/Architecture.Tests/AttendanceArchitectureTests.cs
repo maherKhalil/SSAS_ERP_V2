@@ -342,8 +342,16 @@ public sealed class AttendanceArchitectureTests
   // Private constructor, internal factory. Holding one is proof that Attendance's permission check and
   // Attendance's company AND branch resolution all ran against live state — a scope a caller could construct
   // would make that proof a shrug.
+  //
+  // ⚠ CITES `AC-ATT-0030` — *"The read scope cannot be constructed outside its factory — private
+  // constructor, internal factory, asserted by an architecture test."* **All three clauses, including the
+  // last, which names the instrument rather than the property.** The ban below passes over an empty set,
+  // which is the compliant state here rather than a vacuity: the walk is rooted in a NAMED TYPE, so it
+  // cannot silently return nothing — delete the type and this stops compiling. The factory assertions are
+  // positive and fail if it is removed or widened.
   [Fact]
   [Trait("Decision", "DEC-ATT-0008")]
+  [Trait("Criterion", "AC-ATT-0030")]
   public void The_attendance_read_scope_cannot_be_constructed_outside_its_factory()
   {
     var scope = typeof(SSAS.Attendance.Application.Reads.AttendanceReadScope);

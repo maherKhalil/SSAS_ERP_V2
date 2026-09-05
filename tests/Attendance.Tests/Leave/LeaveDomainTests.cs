@@ -263,8 +263,15 @@ public sealed class LeaveRequestTests
   // A permission check answers "may this person approve requests". It cannot answer "may this person approve
   // THIS request", because only the aggregate knows both parties. No endpoint is involved here, which is the
   // assertion.
+  //
+  // ⚠ CITES `AC-ATT-0020` — *"An approver who is the requester is refused **by the domain**, not by the
+  // endpoint."* **The second half is carried by WHERE this test sits, not by an assertion**: it calls
+  // `request.Approve` on the aggregate directly and constructs no endpoint, so the refusal it observes
+  // cannot have come from one. Rejection is asserted too — deciding NO exercises the same authority — and
+  // the status is asserted unchanged, which the failure value alone would not carry.
   [Fact]
   [Trait("Rule", "BR-ATT-0007")]
+  [Trait("Criterion", "AC-ATT-0020")]
   public void An_employee_cannot_decide_their_own_request()
   {
     var request = Request();

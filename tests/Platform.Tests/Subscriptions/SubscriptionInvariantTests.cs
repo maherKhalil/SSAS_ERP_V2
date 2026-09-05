@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Infrastructure.Persistence.Seeding;
 using SSAS.Platform.Domain;
 using SSAS.Platform.Domain.Enums;
@@ -17,16 +18,41 @@ namespace SSAS.Platform.Tests.Subscriptions;
 // ⚠⚠⚠ WHERE THE `SUB` CITATION PASS STOPPED, AND WHY IT IS A FINDING RATHER THAN A PLACE IT RAN OUT.
 // ==================================================================================================
 //
-// **`AC-SUB-0034` through `AC-SUB-0043` — ten consecutive criteria — describe a product that does not
-// exist yet.** Reading them one at a time would produce ten restatements of one fact, so the fact is
-// recorded once, here, and the pass stopped.
+// ⚠⚠⚠ ***CORRECTED. THIS NOTE SAID "TEN CONSECUTIVE CRITERIA" AND THE ARGUMENT BELOW IS TRUE OF FIVE.***
+//
+// It read: *"`AC-SUB-0034` through `AC-SUB-0043` — ten consecutive criteria — describe a product that does
+// not exist yet. Reading them one at a time would produce ten restatements of one fact, so the fact is
+// recorded once, here, and the pass stopped."* **The economy was the point and the range was wrong.**
+//
+// ***THREE OF THE TEN ARE NOT WHAT IT CLAIMS, AND ONE OF THEM WAS ALREADY WRONG THE DAY THIS WAS WRITTEN:***
+//
+//   `AC-SUB-0037`   ***CITED TODAY.*** A criterion this note says describes a non-existent product has a
+//                   witness. *The run was over-extended before anything changed in the tree.*
+//   `AC-SUB-0036`   ***UNBUILT FOR A DIFFERENT REASON.*** *"Assigning a plan to a tenant whose billing
+//                   currency has no price row is refused"* — **`SubscriptionPlanPrices` is one of the seven
+//                   tables**; the price row exists. What is absent is the ASSIGNMENT PATH: this module's
+//                   whole application layer is four files and holds no assign-plan or change-plan command.
+//                   *Still unbuilt; the table-set argument is not why.*
+//   `AC-SUB-0043`   ***BUILT.*** `TenantEntitlementSnapshot` carries `IsModuleEnabledAt` and `LimitAt`,
+//                   which is the criterion exactly. **Cited below.**
+//
+// ⚠⚠ SO THE ARGUMENT BELOW COVERS `0038`–`0042` AND NOTHING ELSE, AND THAT IS THE RANGE A READER SHOULD
+// TAKE FROM IT. **A collective predicate is a set and distributes over its subjects with holes** — and
+// this one had a property the misdescriptions we have catalogued do not: ***it was the recorded REASON
+// nine criteria were never examined, so it suppressed the reads that would have found its own holes.***
+//
+// ⚠ AND THE DECAY MODE MATTERS FOR THE REMEDY. A tripwire answers *the world changed and this became
+// false*. **It cannot answer *this was wider than its evidence when written***, which is what happened
+// here — only re-derivation finds that, and re-running the ARGUMENT is what found it rather than
+// re-reading the criteria.
 //
 //   *Reading and disclosure* (`0034`, `0035`) — a platform caller with `Platform.Subscriptions.View`
 //   reading across tenants, and a tenant caller refused from every commercial read route. **No such
 //   permission name exists on either plane** (`AC-SUB-0008` says so itself, over all 28 platform names),
 //   and there are no commercial read routes to be refused from.
 //
-//   *The commercial record* (`0036`–`0043`) — invoice immutability and number reuse, one line per
+//   *The commercial record* (`0038`–`0042`, corrected from `0036`–`0043`) — invoice immutability and
+//   number reuse, one line per
 //   subscription record in a billed period, seat usage stamped with the record in force, overage judged
 //   against the plan in force then, mid-term proration. **There is no invoice, invoice line, seat usage
 //   sample, payment attempt or proration anywhere in `src/`.**
@@ -45,7 +71,8 @@ namespace SSAS.Platform.Tests.Subscriptions;
 // property that made `AC-SUB-0019`'s silence persuasive — **a document that declares some of its gaps and
 // not others teaches a reader to trust the ones it does not mention.**
 //
-// The `SUB` pass therefore covers `AC-SUB-0002` through `AC-SUB-0032` and stops there deliberately.
+// The `SUB` pass therefore covers `AC-SUB-0002` through `AC-SUB-0032` and stops there deliberately —
+// **plus `AC-SUB-0043`, cited below, which this note wrongly placed outside it.**
 public sealed class SubscriptionInvariantTests
 {
   private static readonly DateTimeOffset Noon = new(2026, 8, 26, 12, 0, 0, TimeSpan.Zero);
@@ -53,6 +80,61 @@ public sealed class SubscriptionInvariantTests
   private static readonly Guid Plan = Guid.NewGuid();
 
   private static SubscriptionTerm Perpetual => SubscriptionTerm.Perpetual(Noon);
+
+  // ---- ⚠⚠⚠ ONE RESOLUTION ANSWERS BOTH QUESTIONS (AC-SUB-0043).
+  //
+  // *"The resolved cap for a limit key is available at the enforcement point in the same call that
+  // resolves module entitlement — one resolution, not two."*
+  //
+  // **The note at the top of this file placed this criterion among ten describing a product that does not
+  // exist. It does exist**, and it is the only one of that range that does — `TenantEntitlementSnapshot`
+  // carries `IsModuleEnabledAt` and `LimitAt`, and `ITenantEntitlementReader` hands back one snapshot from
+  // one call. *The record was wrong about the product, in our own hand.*
+  //
+  // ⚠⚠⚠ WHAT THIS ADDS IS THE CONJUNCTION, NOT EITHER HALF — AND A PLANT IS HOW I LEARNED THAT.
+  //
+  // Reddening `LimitAt` failed TWO tests: this one and
+  // `TenantEntitlementSnapshotTests.A_grant_above_the_plan_cap_raises_it`, **which I did not know existed.**
+  // *That file covers cap resolution and module entitlement thoroughly — grants raising a cap, an
+  // undefined cap answering null, an expired term resolving none — and carries **zero criterion traits**.*
+  //
+  // ***SO THE TWO HALVES WERE ALREADY PROVEN SEPARATELY. THE CRITERION IS ABOUT THEM NOT BEING SEPARATE.***
+  // *"...in the same call that resolves module entitlement — one resolution, not two"* is violated by a
+  // product where both answers are correct and arrive from two lookups. **Each half working is what those
+  // tests establish; that one object carries both, and that no second path exists, is what this does.**
+  //
+  // ⚠ The two numbers still differ deliberately — the plan grants **100** seats and a `LimitRaise` lifts
+  // it to **250** — so the conjunction is asserted over a RESOLVED cap rather than a passthrough. *That is
+  // borrowed rigour from the file above rather than new rigour here, and it is worth having on the object
+  // an enforcement point actually holds.*
+  //
+  // ⚠⚠ AND "ONE RESOLUTION, NOT TWO" IS THE STRUCTURAL HALF, ASSERTED ON THE READER. A second
+  // resolution path would be a second method — a `ReadLimitsAsync` beside `ReadAsync` — and the exact
+  // member set is what notices one being added. **The behavioural half shows both answers coming from one
+  // object; this shows there is nowhere else they could come from.**
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0043")]
+  public void One_snapshot_answers_module_entitlement_and_the_resolved_cap()
+  {
+    var snapshot = new TenantEntitlementSnapshot(
+      Tenant, Plan, Perpetual,
+      new HashSet<string>(StringComparer.Ordinal) { "HR" },
+      new Dictionary<string, long>(StringComparer.Ordinal) { ["Seats"] = 100 },
+      [new EntitlementGrantFact(
+        EntitlementGrantKind.LimitRaise, null, "Seats", 250, Noon.AddDays(-1), null)]);
+
+    // ---- BOTH ANSWERS, FROM THE ONE OBJECT AN ENFORCEMENT POINT HOLDS.
+    Assert.True(snapshot.IsModuleEnabledAt("HR", Noon));
+    Assert.Equal(250, snapshot.LimitAt("Seats", Noon));
+
+    // ---- AND THE CAP WAS RESOLVED RATHER THAN READ. The plan says 100; the grant raises it.
+    Assert.NotEqual(100, snapshot.LimitAt("Seats", Noon));
+
+    // ---- THERE IS NO SECOND RESOLUTION PATH.
+    Assert.Equal(
+      ["ReadAsync"],
+      typeof(ITenantEntitlementReader).GetMethods().Select(method => method.Name));
+  }
 
   private static Result<TenantSubscription> Append(
     DateTimeOffset effectiveFrom, DateTimeOffset? currentMaximum) =>

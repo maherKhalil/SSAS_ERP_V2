@@ -36,6 +36,32 @@ namespace SSAS.Platform.Tests.Authentication;
 // missed. **What the searches do establish is that no ARCHITECTURE guard scans source for logged secrets,
 // and that log capture is a one-off in this repository rather than an idiom.**
 //
+// ---- ⚠⚠⚠ TWO FACTS ADDED 2026-09-05, THE SECOND OF WHICH FORBIDS THE OBVIOUS TEST.
+//
+// **The one file that captures log output — `UniqueViolationLoggingSqlServerTests` — contains a working
+// `RecordingLoggerProvider`.** *So the CAPTURE HARNESS a secrets test would need already exists and would not
+// have to be written.* ⚠ **That does not weaken the cost argument below by one minute: the expensive part named
+// there is THE EXEMPTIONS — deciding what counts as a secret and which fields are legitimately logged — and a
+// working recorder does not touch that.** *Recorded because the harness's existence is genuinely useful to
+// whoever eventually does the exemptions, and because it is the kind of fact that gets re-discovered.*
+//
+// ***AND THE SECOND ONE, SCOPED EXACTLY AS IT WAS MEASURED:*** searched
+// `ILogger|LogInformation|LogWarning|LogError` across the three authentication folders —
+// `Platform.Application/Authentication`, `Platform.API/Authentication`, `Platform.Domain/Authentication` —
+// and found ***ZERO CALL SITES IN THOSE FOLDERS.***
+//
+// ⚠⚠ **THAT IS NOT "THE AUTHENTICATION PATH LOGS NOTHING", AND THE FIRST DRAFT OF THIS PARAGRAPH SAID SO.**
+// *A failed authentication also traverses middleware, exception handling and the framework's own request
+// logging; ASP.NET Core emits entries with no call site in those folders, and a global exception handler is
+// exactly the sink a secret would leak through.* ***FRAMEWORK AND MIDDLEWARE LOGGING ON THAT PATH HAS NOT
+// BEEN EXAMINED.*** **Folder scope is name scope.**
+//
+// ⚠ **What it does establish is narrower and still useful: a behavioural test that drives only the
+// application-layer authentication handlers and asserts no secret appears in captured output could pass over
+// an EMPTY log**, because those handlers emit nothing. *A `DoesNotContain` against a string that was never in
+// play is the canonical way a negative assertion goes quietly green* — **so such a test would have to capture
+// at the HOST level, where the framework's own entries actually arrive, or it proves nothing.**
+//
 // ⚠⚠ AND THE CRITERION IS THE HARDEST SHAPE TO COVER, WHICH IS PROBABLY WHY IT IS NOT: it is a UNIVERSAL
 // NEGATIVE OVER AN OPEN POPULATION — every log statement that exists or will exist. A behavioural test can
 // only ever check the call sites it drives, so the instrument that fits is a SOURCE SCAN (no logging call

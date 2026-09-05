@@ -67,9 +67,50 @@ namespace SSAS.Platform.Tests.Localization;
 // `LocalizationCatalogToolTests.Compatibility_fingerprint_ignores_wording_and_changes_with_policy` (untagged);
 // **the claim about RESOLUTION RESULTS changing is asserted nowhere.**
 //
-// `AC-LOC-0016` — *"Anonymous/authenticated precedence is exact, unsupported values fall through, switch needs
-// no logout, and formatting is independent."* **Four clauses; `precedence` appears in no localization test in
-// the tree, and the fourth clause is `AC-LOC-0060`'s subject above — unfalsifiable for the same reason.**
+// ---- ⚠⚠⚠ `AC-LOC-0016` — UPGRADED 2026-09-05 FROM A CORPUS CLAIM TO A SUBJECT ONE. THERE IS NO PRECEDENCE.
+//
+// *"Anonymous/authenticated precedence is exact, unsupported values fall through, switch needs no logout, and
+// formatting is independent."*
+//
+// **The first version of this note said *`precedence` appears in no localization test* — a WORD grep, and a
+// test witnessing language precedence need never use the word.** ***REPLACED BY A CLOSED POPULATION: every
+// consumer of `ILocalizationTextResolver` in `src/`.***
+//
+//   `LocalizationEndpointRouteBuilderExtensions:200`  `EffectiveGroupAsync`
+//   `LocalizationEndpointRouteBuilderExtensions:225`  `EffectiveBatchAsync`
+//   `GetTenantLocalizationResourceQueryHandler:15`
+//   (`LocalizationOpenApiOperationFilter` touches only the static batch-size constants — not a call site)
+//
+// ***AT EVERY ONE THE CULTURE IS `request.RequestedCulture` — IT ARRIVES ON THE CALLER'S REQUEST OBJECT.***
+// **Nothing derives it: no `Accept-Language` negotiation, no per-identity preference, no chooser of any kind
+// exists in `src/`.** *Precedence requires something to CHOOSE between candidate cultures. Nothing chooses —
+// the caller states it.*
+//
+// ⚠⚠⚠ **AND THE SECOND CANDIDATE WAS CHASED DOWN RATHER THAN ASSUMED AWAY, BECAUSE IT IS THE OBVIOUS
+// OBJECTION: `TenantLocalizationSettings.TenantDefaultCulture` EXISTS.** If the resolver fell back to it,
+// there WOULD be a precedence rule. ***IT DOES NOT. `TenantDefaultCulture` APPEARS IN THE DOMAIN PROPERTY,
+// ONE EF CONFIGURATION AND THE MIGRATIONS — AND NOWHERE ELSE IN `src/` OR `tests/`.*** **A persisted column
+// with its own SQL check constraint, written at settings creation, and read by nothing that resolves
+// anything.** *Third inert carrier in this feature, after `FormattingContext` and the audit projector.*
+//
+// **The ONE culture substitution that exists is `:293-294` — Arabic requested AND that resource's Arabic
+// default empty → English.** ***THAT IS CONTENT-DRIVEN, NOT IDENTITY-DRIVEN: it depends on the resource, not
+// on who is asking.*** A precedence rule between anonymous and authenticated callers is a different thing and
+// there is none.
+//
+// ---- ⚠⚠ CLAUSE 2 MAY BE CONTRADICTED BY THE PRODUCT, AND THAT IS THE OWNER'S, NOT OURS.
+//
+// The criterion says *"unsupported values FALL THROUGH"*. **`LocalizationCulture.Create` is a three-arm
+// switch: `en` → English, `ar` → Arabic, ***everything else → `Result.Failure(UnsupportedCulture)`***.**
+// *A refusal is not a fall-through.* **Whether the criterion means something weaker by the phrase, or the
+// product diverged from it, is author intent — the UNRECONCILED shape, and it is escalated rather than
+// decided here.**
+//
+// **So: clause 1 has no mechanism, clause 2 looks contradicted, clause 3 is trivial once culture is a
+// per-request parameter, and clause 4 is `AC-LOC-0060`'s subject above and unfalsifiable for the same
+// reason.** ⚠ *Recorded because the distinction is the whole difference between a claim that rots and one
+// that does not: a token search says "I did not find one", a closed call-site population plus a dead second
+// candidate says "the thing that would choose does not exist".*
 //
 // `AC-LOC-0013` (restore semantics) and `AC-LOC-0030` (version types) are each observed INSIDE tests carrying
 // a neighbouring criterion's trait — `LocalizationDomainTests.Restore_default_is_a_deterministic_no_op_when_

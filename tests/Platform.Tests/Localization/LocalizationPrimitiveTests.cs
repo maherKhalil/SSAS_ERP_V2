@@ -262,6 +262,17 @@ public sealed class LocalizationPrimitiveTests
   // PAIRS, behave IDENTICALLY IN DOMAIN/API/SQL."* **Someone chose a surrogate pair at the boundary on
   // purpose, and the criterion that asked for it is not the one cited above.**
   //
+  // ⚠⚠⚠ NARROWED 2026-09-05, AND THE GAP IS NOW ONE LAYER RATHER THAN THREE. **`LocalizationText.Multiline
+  // TextMaximumLength = 4000` is the constant, and BOTH column configurations derive their length from it** —
+  // `TenantLocalizationOverrideConfiguration:47` and `TenantLocalizationOverrideVersionConfiguration:56`, each
+  // `HasMaxLength(LocalizationText.MultilineTextMaximumLength)`. ***SO DOMAIN→SQL AGREEMENT IS STRUCTURAL,
+  // NOT ASSERTED: the two cannot drift, because there is one number.*** **The API is the layer with nothing
+  // tying it to that constant, and it is therefore the only place the three-layer claim can fail.**
+  //
+  // ⚠ And the absence claim behind this was re-established on the MECHANISM rather than the digits: the
+  // constant name appears four times, **all in `src/` and none in `tests/`**. *A grep for `4000` would have
+  // missed a test asserting through the constant, which is exactly the shape that hides a witness.*
+  //
   // ⚠ IT IS DELIBERATELY NOT CITED HERE, because it is a THREE-LAYER EQUIVALENCE CLAIM — *identically in
   // Domain/API/SQL* — and this file is one layer. A domain-only test showing the boundary behaves correctly
   // says nothing about whether the API and SQL agree with it, and agreement is the whole content of that

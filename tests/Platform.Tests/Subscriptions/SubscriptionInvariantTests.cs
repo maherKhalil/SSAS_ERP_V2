@@ -93,21 +93,69 @@ namespace SSAS.Platform.Tests.Subscriptions;
 // non-literal `Map*` call in the tree is a `MapGroup`.** *Enumerating the literal leaf routes is therefore
 // complete.* ***THERE IS NO SUBSCRIPTION ROUTE, NO ENTITLEMENT ROUTE AND NO ENABLED-MODULE ROUTE.***
 //
+// ==================================================================================================
+// ⚠⚠⚠ CORRECTED 2026-09-05. THESE THREE WERE CALLED MALFORMED AND VACUOUS. THEY ARE NEITHER — THE
+// PACKAGE DOCUMENTS ITS OWN UNBUILT SURFACE, ROUTE BY ROUTE, AND I HAD ONLY READ THE CRITERIA FILE.
+// ==================================================================================================
+//
+// **`FP-014/api-contracts.md` ENUMERATES THE SUBSCRIPTION SURFACE AND MARKS EVERY ROUTE `[NOT BUILT]` WITH A
+// PER-ROUTE REASON — twenty-four of them, and not one route in the contract lacks the marker:**
+//
+//   `GET /api/platform/plans`                          `[NOT BUILT - domain only]`
+//   `GET /api/platform/tenants/{tenantId}/subscriptions` `[NOT BUILT - domain + write-only repo]`
+//   ***`GET /api/platform/modules/enabled`                `[NOT BUILT - capability exists, wrong shape]`***
+//
+// ***SO THE ABSENCE IS DELIBERATE, SPECIFIED, AND DIAGNOSED. IT IS NOT A DEFECT IN THE CRITERIA.***
+//
 // `AC-SUB-0009` — *"the subscription read and administration surface still answers, and a gated ERP route
-// fails with a modelled `TenantDatabaseUnavailable`"*. **MALFORMED: two clauses, one live and one naming a
-// surface that does not exist.** The error is real — `TenantStorageErrors` declares it and
-// `TenantDatabaseTrafficGate` produces it — **so the second half is testable today and the first is not.**
-// *Splitting it is the owner's, not this file's.*
+// fails with a modelled `TenantDatabaseUnavailable`"*. **Its requirement is `REQ-SUB-0005`, traced to
+// `ADR-017` § Platform database boundary and amended by `DEC-L-024`.** *The error is real —
+// `TenantStorageErrors` declares it and `TenantDatabaseTrafficGate` produces it — and the surface half is
+// deferred with the rest of the contract.* ***DEFERRED, NOT MALFORMED.***
 //
 // `AC-SUB-0011` — *"…the answer is the same whether asked through the enablement gate or the enabled-module
-// endpoint."* **Clause one is buildable. Clause two names the endpoint that does not exist**, and a
-// criterion asserting two surfaces AGREE is not satisfied by one of them being right.
+// endpoint."* **The endpoint is `GET /api/platform/modules/enabled`, marked NOT BUILT with the reason
+// *capability exists, wrong shape*.** ***DEFERRED, NOT MALFORMED*** — and the contract's own diagnosis says
+// the capability is there and only its shape is wrong, which is a far more useful statement than "does not
+// exist".
 //
 // `AC-SUB-0023` — *"an authenticated tenant user holding no permissions receives their tenant's
-// enabled-module set, and the response is identical to the one an administrator receives."* ⚠ **VACUOUS:
-// there is no enabled-module response for the two to be identical in.** *Two callers receiving nothing
-// receive the same nothing* — the collective-predicate shape over an empty set, the same trap as
-// `AC-SUB-0019`.
+// enabled-module set, and the response is identical to the one an administrator receives."* **Same route,
+// same marker.** ***DEFERRED, NOT VACUOUS.*** *A criterion describing a documented-unbuilt surface is not
+// vacuous; it is unbuilt, and the package says so.*
+//
+// ---- ⚠⚠ WHY THE FIRST READING WENT WRONG, BECAUSE THE MECHANISM IS GENERAL AND IT IS NOT CARELESSNESS.
+//
+// **FP-014 declares its criteria as TABLE ROWS — 54 of them, one line each, by construction.** ***A ONE-LINE
+// CRITERION IS A PRÉCIS OF A REQUIREMENT, AND EVERY FEATURE IN THIS TREE HAS `requirements.md`,
+// `business-rules.md`, `data-model.md` AND MORE BEHIND ITS CRITERIA FILE — THERE IS NO FEATURE WHERE THE
+// CRITERIA FILE IS THE SOURCE.***
+//
+// ⚠⚠⚠ **AND THE POINTER RUNS ONE WAY: the requirement names the criterion, the criterion names no document.**
+// *An auditor starts at `acceptance-criteria.md`, because that is the file every instrument reads, and from
+// there has no path to the contract that would have answered the question.* **Both `api-contracts.md` and
+// `requirements.md` sat in the same folder the whole time.**
+//
+// ---- ⚠⚠⚠ AND THE RULE THIS LEAVES — WITH THE FILTER STATED CORRECTLY, BECAUSE THE OBVIOUS ONE IS WRONG.
+//
+// **The tempting rule is *"a verdict established against `src/` is safe, because wording cannot move a
+// product fact"*. ***THAT IS FALSE.*** The product fact is safe; ***WHAT YOU WENT LOOKING FOR CAME FROM THE
+// WORDING.*** A one-line criterion naming a surface, and a requirement naming it differently or more
+// broadly, sends you into `src/` hunting the wrong thing — and you find nothing, correctly, about a subject
+// that was never the criterion's.
+//
+// ***THE FILTER THAT HOLDS IS WHETHER THE VERDICT'S SUBJECT IS AN IDENTIFIER OR A DESCRIPTION:***
+//
+//   ***IDENTIFIER-SUBJECT — SAFE.*** A type, an error code, a `DbContext`, a property. **Identifiers are
+//     SELF-CORRECTING: a wrong one finds nothing and the search visibly fails.** `AC-LOC-0060`
+//     (`FormattingContext`), `AC-LOC-0033` (an error code), `AC-CMP-0018` (`Company` in `TenantDbContext`),
+//     `AC-SUB-0019` (a problem type) all clear on this ground — ***not because `src/` was the substrate.***
+//   ***DESCRIPTION-SUBJECT — EXPOSED.*** A rule, a condition, a scope, *"a surface that does not exist"*.
+//     **Nobody checks these, and a one-line summary is where they come from.**
+//
+// ⚠ **`AC-SUB-0009` IS THE PROOF: I established it against `src/` AND ITS SUBJECT WAS A DESCRIPTION, so the
+// `src/`-substrate rule would have cleared it and it was wrong.** *The three corrections above are all
+// description-subject verdicts; every identifier-subject verdict in this session has survived.*
 //
 // ---- ⚠⚠ THE SEAT CAP IS A KEY CONSTANT AND NOTHING ENFORCES IT.
 //

@@ -188,6 +188,34 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
   // *"a stale criterion misleads; a stale RATIONALE invites a DELETION."* **A reader who cannot see why this
   // exists will remove it — correctly, for the wrong reason — and the seven dispositions will go on reading
   // as measured fact.**
+  //
+  // ---- ⚠⚠⚠ AND THE SENTENCE ABOVE — *"the ROUTE LITERAL is the thing a new surface cannot avoid writing"* —
+  // IS FALSE. A NEW SURFACE CAN AVOID WRITING IT, AND THE PROJECT'S OWN IDIOM IS HOW.
+  //
+  // ***Planted 2026-09-06:*** a tenant-administration surface serving `GET` and `POST` on the banned path,
+  // composed as `MapGroup("/api/platform")` then `MapGet("/tenants", …)`. **The banned literal never appears
+  // whole and THIS TEST STAYED GREEN.** ⚠ *`MapGroup` is used 15 times in `src/`, and the real
+  // platform-support routes are declared exactly that way — `endpoints.MapGroup(RoutePrefix)` with the path
+  // in a constant. **The matcher control above only passes because that constant's declaration happens to
+  // spell its path as one literal.*** ***THE BAN IS DEFEATED BY HOUSE STYLE.***
+  //
+  // ---- ⚠⚠ WHAT COVERS THE CASE THIS CANNOT SEE, ***VERIFIED BY PLANT ON 2026-09-06 RATHER THAN ASSUMED.***
+  //
+  // ***`TenantTransportDeferralTests.The_deferred_tenant_registry_transport_is_not_mapped`*** walks the live
+  // `EndpointDataSource`, so it catches the WIRED surface however the path was composed. **The same plant,
+  // registered in `Program.cs`, reddened it** — along with `ApiContractRowGuardTests` and
+  // `EndpointPermissionCatalogJoinTests`. *That file carries its own matcher control
+  // (`The_enumeration_sees_the_platform_transports_that_do_exist`), so the delegation is not to a vacuous
+  // guard.*
+  //
+  // ***SO THE TWO INSTRUMENTS HAVE COMPLEMENTARY BLINDNESSES: this one reads SOURCE and misses a composed
+  // path; that one reads the ENDPOINT TABLE and misses source that is never registered. WHAT ESCAPES BOTH IS
+  // A COMPOSED ROUTE THAT IS NEVER WIRED — WHICH SERVES NO TRAFFIC.***
+  //
+  // ⚠ **The phrase *verified by plant* is doing real work here and is not decoration.** *A delegation written
+  // in this repository an hour earlier — "that is the residency guards' subject" — turned out to point at
+  // nobody, because it was reasoned rather than run.* ***A BOUNDARY THAT DELEGATES IS ONLY AS GOOD AS THE
+  // GUARD IT DELEGATES TO, AND THE ONLY WAY TO KNOW IS TO PLANT THE CASE AND WATCH THE OTHER GUARD FIRE.***
   [Fact]
   public void No_tenant_administration_route_surface_exists_yet()
   {

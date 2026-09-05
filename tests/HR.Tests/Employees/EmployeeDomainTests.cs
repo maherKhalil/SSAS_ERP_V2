@@ -34,9 +34,29 @@ namespace SSAS.HR.Tests.Employees;
 //     begins in `Active`         → `AC-EMP-0012` only as *"Create→Active is a permitted TRANSITION"*, which
 //                                  is a different sentence from *"creation begins in Active"*
 //
-// ⚠⚠ ***SO TWO CLAUSES ARE SPECIFIED NOWHERE AT CRITERION LEVEL, AND THE UNIVERSAL THAT LICENSES THE RULING
-// DOES NOT HOLD OVER THE POPULATION IT QUANTIFIES.*** **Owner item: either the two clauses get criteria of
-// their own, or the note's *every* becomes *most* and names the exceptions.**
+// ⚠⚠ ***SO TWO CLAUSES HAVE NO CRITERION OF THEIR OWN, AND THE UNIVERSAL THAT LICENSES THE RULING DOES NOT
+// HOLD OVER THE POPULATION IT QUANTIFIES.***
+//
+// ---- ⚠⚠⚠ BUT THEY ARE NOT UNSPECIFIED, AND A FIRST DRAFT OF THIS NOTE SAID THEY WERE.
+//
+// **Checked against FP-006's fuller documents rather than its criteria file alone, because a criteria file
+// is a précis and the rule usually lives elsewhere:**
+//
+//   *nonempty Guid `EmployeeId`*  ***`business-rules.md:44` (`BRULE-EMP-0006`)*** — *"`EmployeeId` is a
+//                                 server-generated, nonempty, immutable, never-reused `Guid`, assigned at
+//                                 creation and never accepted from a caller (`ADR-013`)."* And again as
+//                                 ***`DEC-EMP-0004`*** in `decisions-approved.md`.
+//   *trimmed name*                ***`data-model.md:44`*** — *"`FullName` | `NVARCHAR(200)`, required |
+//                                 Trimmed mutable display name with casing preserved."*
+//
+// ***BOTH ARE SPECIFIED, WITH IDENTIFIERS, IN THIS PACKAGE. WHAT THEY LACK IS A CRITERION.*** So the note's
+// defect is narrower than *"specified nowhere"*: **the ruling says a roll-up *"is verified by verifying
+// them"*, and for these two clauses there is no THEM to verify — the specification exists, the citable
+// criterion does not.**
+//
+// ⚠ **OWNER ITEM, CORRESPONDINGLY SMALLER: either the two clauses get criteria of their own, or the note's
+// *every* becomes *most* and names the exceptions.** *No behaviour is unspecified; a citation route is
+// missing.*
 //
 // ---- ⚠⚠⚠ AND THE SHAPE IS WORTH MORE THAN THE CELL: **A CORRECT DISPOSAL RESTING ON A WRONG UNIVERSAL.**
 //

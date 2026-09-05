@@ -98,19 +98,39 @@ namespace SSAS.Platform.Tests.Localization;
 // on who is asking.*** A precedence rule between anonymous and authenticated callers is a different thing and
 // there is none.
 //
-// ---- ⚠⚠ CLAUSE 2 MAY BE CONTRADICTED BY THE PRODUCT, AND THAT IS THE OWNER'S, NOT OURS.
+// ---- ⚠⚠⚠ AND THE DEAD COLUMN IS NOT AN OVERSIGHT. IT IS THE RESIDUE OF A DESIGN M1 DID NOT WIRE.
 //
-// The criterion says *"unsupported values FALL THROUGH"*. **`LocalizationCulture.Create` is a three-arm
-// switch: `en` → English, `ar` → Arabic, ***everything else → `Result.Failure(UnsupportedCulture)`***.**
-// *A refusal is not a fall-through.* **Whether the criterion means something weaker by the phrase, or the
-// product diverged from it, is author intent — the UNRECONCILED shape, and it is escalated rather than
-// decided here.**
+// **A first draft of this note said clause 2 — *"unsupported values fall through"* — was CONTRADICTED,
+// because `LocalizationCulture.Create` is a three-arm switch whose third arm is
+// `Result.Failure(UnsupportedCulture)`, and a refusal is not a fall-through.** ***THAT WAS WRONG, AND IT WAS
+// WRONG BECAUSE I QUOTED THE CRITERIA FILE.***
 //
-// **So: clause 1 has no mechanism, clause 2 looks contradicted, clause 3 is trivial once culture is a
-// per-request parameter, and clause 4 is `AC-LOC-0060`'s subject above and unfalsifiable for the same
-// reason.** ⚠ *Recorded because the distinction is the whole difference between a claim that rots and one
-// that does not: a token search says "I did not find one", a closed call-site population plus a dead second
-// candidate says "the thing that would choose does not exist".*
+// **`FP-004/acceptance-criteria.md` is one line per criterion; every line SUMMARISES something fuller.** The
+// rule itself is `requirements.md:114`:
+//
+//   *"Anonymous precedence is explicit browser/session choice, **supported Accept-Language**, `en`.
+//   Authenticated precedence is explicit current-session choice, persisted user preference when that future
+//   boundary exists, ***Tenant default***, `en`."*
+//
+// **and `requirements.md:50` gives fall-through its destination — *"unsupported values fall through APPROVED
+// PRECEDENCE"*.** ***SO THE CHAIN IS SPECIFIED, AND `TenantDefaultCulture` IS A STEP IN IT.***
+//
+// ***AND THE RECONCILIATION IS WRITTEN DOWN TOO — `localization-resolution-model.md:22`: "Until the
+// user-profile boundary exists, MILESTONE 1 ACCEPTS REQUESTED CULTURE EXPLICITLY."***
+//
+// **So clause 1 is DEFERRED BY MILESTONE with the decision recorded — not *"no mechanism was ever
+// intended"* — and clause 2 is NOT contradicted: refusing an unsupported culture is consistent with M1's
+// stated scope, because the chain it would fall through to is not built.** ⚠ **`TenantDefaultCulture` is a
+// persisted step of a half-built design, which is a far better description than *a dead column*.**
+//
+// ⚠⚠ **THE READING LESSON, KEPT BECAUSE IT APPLIES TO EVERY CRITERION IN THIS FEATURE: the one-liner is a
+// SUMMARY OF A REQUIREMENT IN ANOTHER FILE.** *Any verdict of MALFORMED, VACUOUS or CONTRADICTED reached on
+// the strength of this file's wording must be re-checked against `requirements.md` before it is published;
+// verdicts reached against `src/` are unaffected.*
+//
+// **NET: clause 1 deferred-by-milestone, clause 2 consistent with that deferral, clause 3 trivial once
+// culture is a per-request parameter, clause 4 `AC-LOC-0060`'s subject and unfalsifiable for the same
+// reason.** *Uncited, and now for a documented reason rather than an inferred one.*
 //
 // `AC-LOC-0013` (restore semantics) and `AC-LOC-0030` (version types) are each observed INSIDE tests carrying
 // a neighbouring criterion's trait — `LocalizationDomainTests.Restore_default_is_a_deterministic_no_op_when_

@@ -1179,10 +1179,41 @@ public sealed class PlatformAuthenticationPersistenceTests
       Task.CompletedTask;
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ THE `AC-AUTH-0047` CITATION WAS REMOVED HERE ON 2026-09-05. THE TEST STAYS; THE CLAIM DOES NOT.
+  // ==================================================================================================
+  //
+  // *"Logout derives the current session **only from validated claims**, verifies **all approved bindings**,
+  // revokes **only that session** with `UserLogout`, is **outwardly idempotent**, **clears both cookies**,
+  // **returns 204**, and provides **no logout-all behavior**."* — seven clauses, pasted whole.
+  //
+  // **This method's fixtures are: logout succeeds · refresh succeeds-or-fails · `Status == Revoked` ·
+  // `RevocationReason == UserLogout` · no active refresh token remains.** ***THAT IS HALF OF ONE CLAUSE.***
+  //
+  // ⚠⚠ **AND THE DECIDING FACT IS NOT THE RATIO — IT IS THAT THIS TEST'S SUBJECT IS A CONCURRENCY RACE.**
+  // *`RevocationReason == UserLogout` is asserted here because ANY logout sets it, not because the test is
+  // addressed to the criterion.* ***RIGHT NOUN, WRONG SUBJECT: adjacent scope, and an unqualified trait told
+  // every future reader that a seven-clause logout contract was proven.***
+  //
+  // ---- ⚠⚠⚠ AND IT IS NOT UNDER-WITNESSED BY ACCIDENT. THE CRITERION SPANS THREE LAYERS.
+  //
+  // **A single trait on a single-layer test is structurally incapable of witnessing it** — the same
+  // wrong-ARITY shape as `AC-LOC-0058`'s Domain/API/SQL equivalence claim. ***WHOEVER CLOSES THIS NEEDS
+  // THREE CITATIONS, NOT A BETTER ONE:***
+  //
+  //   ***PERSISTENCE***        *verifies all approved bindings* · *revokes ONLY that session*
+  //   ***HTTP***              *clears both cookies* · *returns 204* · *outwardly idempotent* ·
+  //                     *no logout-all behavior*
+  //   ***CLAIMS VALIDATION***  *derives the current session only from validated claims*
+  //
+  // ⚠ **NO PARTIAL MARKER WAS LEFT INSTEAD, DELIBERATELY: a comment saying "1 of 7" leaves the TRAIT in
+  // place, and the trait is what the census reads — so the cell would still count as covered while the prose
+  // said otherwise.** ***A PARTIAL MARKER THE INSTRUMENT CANNOT SEE IS THE FALSE GREEN THIS WHOLE EXERCISE
+  // EXISTS TO FIND.*** *The missing partial-trait key is an owner question; until it is ruled, removal is the
+  // only truthful state.*
   [Fact]
   [Trait("Scenario", "TS-AUTH-0112")]
   [Trait("Scenario", "TS-AUTH-0118")]
-  [Trait("Acceptance", "AC-AUTH-0047")]
   public async Task Logout_racing_refresh_serializes_and_leaves_no_usable_refresh_token()
   {
     await using var database = await SqlTestDatabase.CreateAsync();

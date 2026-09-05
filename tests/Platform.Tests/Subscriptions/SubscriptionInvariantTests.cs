@@ -268,6 +268,31 @@ public sealed class SubscriptionInvariantTests
     Assert.Contains("TenantSubscriptions", created);
     Assert.Contains("SubscriptionPlanPrices", created);
 
+    // ---- ⚠⚠⚠ THE BAN RUNS FIRST, AND THE ORDER IS THE WHOLE POINT (moved 2026-09-05).
+    //
+    // **It used to run AFTER the exact-set assertion below, which made it UNREACHABLE BY CONSTRUCTION: any
+    // table that would violate the ban also changes the set, so the stronger assertion always failed first
+    // and this one never executed.** ***SO THE GUARD DETECTED CORRECTLY AND REPORTED UNINFORMATIVELY,
+    // ALWAYS*** — every firing read `Assert.Equal() Failure: Collections differ`, which is a correct alarm
+    // with the wrong subject and tells a contributor nothing about the five dispositions they just moved.
+    //
+    // **Ordering fixes it at no cost: a table called `Invoices` now fails HERE with a message that names the
+    // problem, and a table called `Foo` still falls through to the exact set.** *Strictly better where the
+    // ban applies, identical everywhere else.*
+    //
+    // ⚠ ***RE-PLANTED AFTER THE MOVE:*** `CreateTable(name: "Invoices", …)` → this assertion reddens, not the
+    // exact set. **The interpretable red was not obtainable before the reorder.**
+    //
+    // ***THE GENERAL RULE: ORDER ASSERTIONS SO THE MOST INTERPRETABLE RUNS FIRST AND THE STRONGEST RUNS
+    // LAST.*** *A guard's detection lives in its strongest assertion; its usefulness lives in its clearest
+    // one, and only the first assertion to fail is ever read.*
+    Assert.DoesNotContain(created, name =>
+      name.Contains("Invoice", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Payment", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Usage", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Overage", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Proration", StringComparison.OrdinalIgnoreCase));
+
     Assert.Equal(
       [
         "AccountActionTokens", "AuthenticationAccounts", "AuthenticationSessions", "Companies",
@@ -283,14 +308,6 @@ public sealed class SubscriptionInvariantTests
         "UserEmployeeLink"
       ],
       created);
-
-    // ---- THE WEAK HALF, KEPT FOR ITS MESSAGE RATHER THAN ITS REACH.
-    Assert.DoesNotContain(created, name =>
-      name.Contains("Invoice", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("Payment", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("Usage", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("Overage", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("Proration", StringComparison.OrdinalIgnoreCase));
   }
 
   // ================================================================================================

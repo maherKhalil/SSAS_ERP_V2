@@ -504,6 +504,30 @@ public sealed class SubscriptionInvariantTests
 
   // Every table any platform migration CREATES. Designer and snapshot files are excluded: they restate the
   // model rather than declaring an operation, so counting them would double every table.
+  //
+  // ---- ⚠⚠⚠ THE POPULATION IS **ONE** OF THIS PROJECT'S **TWO** MIGRATION DIRECTORIES, AND THAT IS A
+  // DELIBERATE SCOPE WITH A RECORD BEHIND IT — NOT AN OVERSIGHT. STATED BECAUSE IT DID NOT SAY SO.
+  //
+  // `Persistence/Migrations` is scanned. ***`Persistence/TenantErp/Migrations` — which creates 35 tables —
+  // IS NOT, AND `EnumerateFiles` IS TOP-LEVEL ONLY, SO NOTHING BELOW EITHER IS EITHER.***
+  //
+  // **The grounds are residency.** `data-model.md` states it inherited rather than chosen: *"`ADR-017`
+  // § Platform database boundary (`:164`) places 'Subscription/plan metadata when introduced' in the
+  // Platform-database residency list"*, and § Lookup classification class **A — Platform global** (`:477`)
+  // classifies subscription plans and module definitions as *"Stored in the Platform database. **Tenants
+  // cannot create global rows**"* (`DEC-SUB-0003`, `REQ-SUB-0003`). `OD-SUB-0004` ruled the per-tenant
+  // **assignment** to the same database. ***SO A BILLING TABLE BELONGS IN THE PLATFORM DATABASE AND THIS
+  // SCAN LOOKS WHERE ONE WOULD BE.***
+  //
+  // ⚠⚠ **AND WIDENING IT WOULD BE THE MISDESCRIBED ALARM, WHICH IS WHY THE GAP IS LEFT OPEN ON PURPOSE.**
+  // A subscription tripwire scanning TENANT-database migrations would redden on **any** `Invoices` table any
+  // feature ever creates — a GL customer-invoicing table, an HR payment record. *Loud, correct that a table
+  // appeared, wrong subject* — and a developer resolves a red rather than ignoring it, ending more confident
+  // than if nothing had fired. ***A `TenantErp` table of these names is a DIFFERENT SUBJECT, not a miss.***
+  //
+  // ⚠ **WHAT WOULD ACTUALLY DEFEAT THIS TRIPWIRE, so the next reader knows what it does not cover:** a
+  // billing table created in the tenant database *in defiance of `ADR-017`*. **That is a residency
+  // violation before it is a billing one**, and it is the residency guards' subject rather than this one's.
   private static string[] PlatformTablesCreatedByMigrations()
   {
     var directory = Path.Combine(

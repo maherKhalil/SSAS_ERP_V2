@@ -211,14 +211,22 @@ public sealed class PlatformAccessTokenClaimsTests
   // ---- ⚠⚠⚠ THE LIMIT OF EVERY DEPENDENCY-LIST GUARD, INCLUDING THIS ONE.
   //
   // ***A DEPENDENCY GUARD WATCHES WHO YOU CAN REACH. IT IS BLIND TO WHAT ARRIVES THROUGH WHAT YOU
-  // ALREADY REACH.*** The dependency set stays constant while the payload grows, so a field added to a
-  // type this provider already receives could carry the configuration this list is asserted to deny,
-  // and the list would not move.
+  // ALREADY REACH.*** The dependency set stays constant while the payload grows, so a field added to a type this provider already receives could carry
+  // the configuration this list is asserted to deny, and the list would not move.
   //
-  // The remedy, where it matters enough to spend the assertion, is to pin the CONTRACT TYPE'S SHAPE
-  // POSITIVELY -- *"every property is a `Guid`"* rather than *"no property is a date"*, because a ban
-  // names only the shapes its author thought of. Worked example:
-  // `AttendanceArchitectureTests.No_attendance_read_path_can_learn_that_an_employee_was_terminated`.
+  // ⚠⚠ AND THE REMEDY THAT CLOSES THIS ELSEWHERE DOES NOT APPLY HERE, WHICH IS WORTH STATING RATHER
+  // THAN LEAVING AS A GAP SOMEBODY LATER "FIXES". `PayrollArchitectureTests` pins the EXACT MEMBER SET of
+  // every payload on its contract surface, and that works there because `SSAS.GL.Contracts` is a **frozen
+  // cross-module contract** — five small records that change by deliberate act.
+  //
+  // ***THE TYPES REACHED HERE ARE DOMAIN AGGREGATES, AND THEY CHANGE LEGITIMATELY AND OFTEN.*** An exact
+  // member set over one would redden on ordinary work most weeks, and **a tripwire that fires constantly
+  // is not a strict guard but a disabled one.** *An exact set is the right instrument across a contract
+  // boundary and the wrong one inside a module.*
+  //
+  // So the limit below is real and stays open, with its reason recorded. **Closing it needs an assertion
+  // about a specific forbidden CAPABILITY rather than about a member list, and no such instrument exists
+  // in this tree yet.**
   [Fact]
   [Trait("Criterion", "AC-TEN-0071")]
   public void Provider_consumes_no_bootstrap_or_options_configuration()

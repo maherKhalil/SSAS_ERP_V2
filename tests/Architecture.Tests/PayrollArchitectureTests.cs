@@ -182,16 +182,16 @@ public sealed class PayrollArchitectureTests
       name.Contains("CodeAllocator", StringComparison.OrdinalIgnoreCase));
   }
 
-  // ---- ⚠⚠⚠ THE LIMIT OF EVERY DEPENDENCY-LIST GUARD, INCLUDING THIS ONE.
+  // ---- ⚠⚠⚠ THE LIMIT OF THIS ASSERTION, AND WHERE IT IS COVERED.
   //
-  // ***A DEPENDENCY GUARD WATCHES WHO YOU CAN REACH. IT IS BLIND TO WHAT ARRIVES THROUGH WHAT YOU
-  // ALREADY REACH.*** The dependency set stays constant while the payload grows, so a new field on `JournalPostingRequest` could reopen a period through
-  // `PostAsync` -- an EXISTING member -- and this member-list assertion would not move.
+  // ***A MEMBER-LIST GUARD WATCHES WHO YOU CAN REACH. IT IS BLIND TO WHAT ARRIVES THROUGH WHAT YOU
+  // ALREADY REACH.*** This list catches a new `ReopenPeriodAsync`; it would not move for a
+  // `FiscalPeriodId` plus a `Reopen` flag added to `JournalPostingRequest`, which reopens a period through
+  // `PostAsync` — an existing member — instead.
   //
-  // The remedy, where it matters enough to spend the assertion, is to pin the CONTRACT TYPE'S SHAPE
-  // POSITIVELY -- *"every property is a `Guid`"* rather than *"no property is a date"*, because a ban
-  // names only the shapes its author thought of. Worked example:
-  // `AttendanceArchitectureTests.No_attendance_read_path_can_learn_that_an_employee_was_terminated`.
+  // **That half is closed by the payload member-set assertion in the test below**, and the two are a pair:
+  // this one pins the doors, that one pins what can be carried through them. *Neither is sufficient alone
+  // and the criterion needs both.*
   [Fact]
   [Trait("Criterion", "AC-PAY-0023")]
   public void The_only_ledger_capabilities_payroll_can_reach_are_posting_reversing_and_inspecting()
@@ -225,6 +225,55 @@ public sealed class PayrollArchitectureTests
         "PostingWindowStatus"
       ],
       exported.Select(type => type.Name).OrderBy(name => name, StringComparer.Ordinal));
+
+    // ---- ⚠⚠⚠ AND EVERY MEMBER OF EVERY PAYLOAD, WHICH IS THE HALF THE TYPE SET CANNOT SEE.
+    //
+    // ***A TYPE-SET AND A MEMBER-LIST GUARD BOTH WATCH WHO YOU CAN REACH. NEITHER SEES WHAT ARRIVES
+    // THROUGH WHAT YOU ALREADY REACH.*** The set above catches a new contract type and the assertion
+    // above that catches a new interface method — **and a `FiscalPeriodId` plus a `Reopen` flag added to
+    // `JournalPostingRequest` would reopen a period through `PostAsync`, an EXISTING member of an EXISTING
+    // type, without moving either.**
+    //
+    // ⚠ THIS IS A TRIPWIRE AND ITS PURPOSE IS WRITTEN ON IT, because it WILL redden on legitimate work.
+    // **A new field on a cross-module contract is exactly the change that should be reviewed rather than
+    // absorbed** — the reviewer's question is not *"is this field fine?"* but *"can Payroll now do
+    // something to the ledger that `AC-PAY-0023` says it cannot?"* Update the list once that is answered.
+    //
+    // ⚠⚠ SET RATHER THAN SHAPE, and the distinction is why this exists at all. *"Every property is a
+    // `Guid`"* works on a small homogeneous contract and says nothing about a five-member, four-type
+    // record — anything it could assert there would restate the type declaration, which is an assertion
+    // that cannot fail occupying the slot of one that could. **An exact member set works on any type
+    // however heterogeneous, and cannot fail to notice an addition.**
+    Assert.Equal(
+      [
+        "JournalPostingLine.AccountId",
+        "JournalPostingLine.Credit",
+        "JournalPostingLine.Debit",
+        "JournalPostingLine.Description",
+        "JournalPostingOutcome.Detail",
+        "JournalPostingOutcome.IsPosted",
+        "JournalPostingOutcome.JournalEntryId",
+        "JournalPostingOutcome.PeriodName",
+        "JournalPostingOutcome.Status",
+        "JournalPostingRequest.CompanyId",
+        "JournalPostingRequest.Description",
+        "JournalPostingRequest.EntryDateUtc",
+        "JournalPostingRequest.Lines",
+        "JournalPostingRequest.Reference",
+        "JournalReversalRequest.Description",
+        "JournalReversalRequest.JournalEntryId",
+        "JournalReversalRequest.ReversalDateUtc",
+        "PostingWindow.EndUtc",
+        "PostingWindow.FiscalPeriodId",
+        "PostingWindow.IsOpen",
+        "PostingWindow.PeriodName",
+        "PostingWindow.StartUtc",
+        "PostingWindow.Status"
+      ],
+      exported
+        .Where(type => !type.IsEnum && !type.IsInterface)
+        .SelectMany(type => type.GetProperties().Select(property => $"{type.Name}.{property.Name}"))
+        .OrderBy(name => name, StringComparer.Ordinal));
   }
 
   [Theory]

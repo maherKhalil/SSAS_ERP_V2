@@ -250,10 +250,35 @@ public sealed class SubscriptionInvariantTests
     // refused guard would have fired on response types that had nothing to do with entitlement.** *A guard
     // that fires often on its own subject is maintainable; one that fires often on somebody else's is not.*
     //
-    // ⚠⚠ AND HERE THE ENFORCEMENT SET REALLY IS ZERO. A plant adding
+    // ⚠⚠⚠ CORRECTION 2026-09-05: **"THE ENFORCEMENT SET IS ZERO" WAS WRONG, AND THE PLANT IS WHY.**
+    //
+    // This file previously claimed that a plant adding
     // `public const string ViewSubscriptions = "Platform.Subscriptions.View";` to `PlatformPermissionNames`
-    // left **all 2,812 gated tests in Platform, Architecture and API green**; this assertion was the only
-    // one that reddened. *Nothing else in the tree observes what that class declares.*
+    // left all 2,812 gated tests green with only this assertion reddening. *That measurement was real and
+    // the conclusion drawn from it was not.*
+    //
+    // ***THE PLANT ADDED THE CONSTANT AND NEVER `Define`d IT IN `PlatformPermissionCatalog`, SO IT PLANTED A
+    // DEAD NAME — WHICH IS NOT WHAT ANYONE ADDING A PERMISSION ACTUALLY DOES.*** Re-planted properly, in
+    // BOTH the names class and the catalog, **THREE tests redden and two of them predate this file:**
+    //
+    //     `PlatformInfrastructureRegistrationTests.No_subscription_permission_exists_on_either_plane`
+    //     `PermissionCatalogTests.Catalog_has_exactly_the_reviewed_permissions_split_by_scope`
+    //     this one
+    //
+    // ⚠⚠⚠ AND THE FIRST OF THOSE IS THE SAME GUARD, BUILT EARLIER AND BUILT BETTER. It pastes
+    // `AC-SUB-0008` in full, deliberately declines to cite it for the reason this file uses the `Tripwire`
+    // key, and **explicitly REJECTS pinning all 28 names** — *"a guard whose false positives outnumber its
+    // true ones is one somebody switches off"*. **That is the objection this file re-derived from scratch as
+    // a churn measurement three commits later.** *The design was considered and rejected before I built it.*
+    //
+    // ⚠⚠ SO THE HONEST STANDING OF THE EXACT-SET HALF IS: it uniquely catches a name added to the class
+    // and never registered — a dead constant — and is otherwise DUPLICATIVE of two better-targeted guards
+    // while costing ~26 firings a year. **Recorded here rather than quietly deleted, because the deletion is
+    // a judgement about a committed disposition and not mine alone to make.**
+    //
+    // ⚠ THE GENERAL LESSON, WHICH IS THE PART WORTH KEEPING: *an ADDITIVE plant must add the WHOLE change a
+    // real contributor would make.* A half-landed addition compiles, reddens something, and reports a
+    // smaller enforcement set than the truth — failing in the direction that makes your own work look novel.
     Assert.Equal(
       [
         "Platform.Companies.Lifecycle", "Platform.Companies.Manage", "Platform.Companies.View",

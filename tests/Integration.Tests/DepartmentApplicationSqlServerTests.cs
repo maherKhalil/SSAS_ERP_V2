@@ -621,6 +621,22 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // This drives the real handler with a member present, which is the over-fire control for that refusal.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ---- ⚠⚠⚠ `AC-DEP-0026`: THIS CITATION HAS NEVER BEEN EXECUTED BY ANY RUN (recorded 2026-09-05).
+  //
+  // **The method below post-dates `ce9b28f`, the commit at the last green Integration run
+  // (2026-09-01 10:17).** `Integration.Tests` does not run under `GATE_SCOPE=TASK`, and `GATE_SCOPE=PHASE`
+  // is owner-parked — ***so nothing available to a developer here can change that.*** **No run has observed
+  // these assertions: this is a CLAIM, not a check, and it must not be read as coverage.**
+  //
+  // ⚠ ***THE CITATION IS NOT WITHDRAWN AND SHOULD NOT BE. "NEVER EXECUTED" IS A FACT ABOUT OBSERVATION,
+  // NOT ABOUT DESIGN*** — the two are independent axes, and this pass judged only the first.
+  //
+  // ⚠⚠ **AND THIS FILE DID NOT SAY SO.** *Found by a tree-wide walk, not by reading:* **seven citations in
+  // the repository rest on witnesses no run has ever observed, and ***EXACTLY ONE OF THE SEVEN CARRIED AN
+  // AUTHOR'S WARNING*** — `PayrollSchemaSqlServerTests`, which says *"NOT RUN… must not be reported as
+  // coverage until a PHASE run has seen it."* **Six were silent.** *That is a census of a closed population,
+  // not a sample: **the prose convention does not exist**, and a trait key for UNRUN is the only mechanism
+  // that would have caught these.*
   [Trait("Criterion", "AC-DEP-0026")]
   public async Task Deactivation_succeeds_with_assigned_employees_who_keep_their_department()
   {
@@ -656,6 +672,22 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // offer it for reactivation. So this searches with NO status filter and asserts it comes back.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ---- ⚠⚠⚠ `AC-DEP-0030`: THIS CITATION HAS NEVER BEEN EXECUTED BY ANY RUN (recorded 2026-09-05).
+  //
+  // **The method below post-dates `ce9b28f`, the commit at the last green Integration run
+  // (2026-09-01 10:17).** `Integration.Tests` does not run under `GATE_SCOPE=TASK`, and `GATE_SCOPE=PHASE`
+  // is owner-parked — ***so nothing available to a developer here can change that.*** **No run has observed
+  // these assertions: this is a CLAIM, not a check, and it must not be read as coverage.**
+  //
+  // ⚠ ***THE CITATION IS NOT WITHDRAWN AND SHOULD NOT BE. "NEVER EXECUTED" IS A FACT ABOUT OBSERVATION,
+  // NOT ABOUT DESIGN*** — the two are independent axes, and this pass judged only the first.
+  //
+  // ⚠⚠ **AND THIS FILE DID NOT SAY SO.** *Found by a tree-wide walk, not by reading:* **seven citations in
+  // the repository rest on witnesses no run has ever observed, and ***EXACTLY ONE OF THE SEVEN CARRIED AN
+  // AUTHOR'S WARNING*** — `PayrollSchemaSqlServerTests`, which says *"NOT RUN… must not be reported as
+  // coverage until a PHASE run has seen it."* **Six were silent.** *That is a census of a closed population,
+  // not a sample: **the prose convention does not exist**, and a trait key for UNRUN is the only mechanism
+  // that would have caught these.*
   [Trait("Criterion", "AC-DEP-0030")]
   public async Task An_inactive_department_is_still_readable_and_still_listed_marked_inactive()
   {

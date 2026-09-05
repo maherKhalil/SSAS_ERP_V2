@@ -215,6 +215,22 @@ public sealed class EmployeePositionMigrationSqlServerTests
   // the version the corrected plant models, and it is the only version this test exists for.
   [Fact]
   [Trait("Decision", "OD-POS-001")]
+  // ---- ⚠⚠⚠ `AC-POS-0065`: THIS CITATION HAS NEVER BEEN EXECUTED BY ANY RUN (recorded 2026-09-05).
+  //
+  // **The method below post-dates `ce9b28f`, the commit at the last green Integration run
+  // (2026-09-01 10:17).** `Integration.Tests` does not run under `GATE_SCOPE=TASK`, and `GATE_SCOPE=PHASE`
+  // is owner-parked — ***so nothing available to a developer here can change that.*** **No run has observed
+  // these assertions: this is a CLAIM, not a check, and it must not be read as coverage.**
+  //
+  // ⚠ ***THE CITATION IS NOT WITHDRAWN AND SHOULD NOT BE. "NEVER EXECUTED" IS A FACT ABOUT OBSERVATION,
+  // NOT ABOUT DESIGN*** — the two are independent axes, and this pass judged only the first.
+  //
+  // ⚠⚠ **AND THIS FILE DID NOT SAY SO.** *Found by a tree-wide walk, not by reading:* **seven citations in
+  // the repository rest on witnesses no run has ever observed, and ***EXACTLY ONE OF THE SEVEN CARRIED AN
+  // AUTHOR'S WARNING*** — `PayrollSchemaSqlServerTests`, which says *"NOT RUN… must not be reported as
+  // coverage until a PHASE run has seen it."* **Six were silent.** *That is a census of a closed population,
+  // not a sample: **the prose convention does not exist**, and a trait key for UNRUN is the only mechanism
+  // that would have caught these.*
   [Trait("Criterion", "AC-POS-0065")]
   public async Task The_migration_authors_no_position_grade_or_assignment_row()
   {

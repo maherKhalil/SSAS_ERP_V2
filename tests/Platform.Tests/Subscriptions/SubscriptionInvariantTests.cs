@@ -169,6 +169,33 @@ public sealed class SubscriptionInvariantTests
   }
 
   // ================================================================================================
+  // ⚠⚠⚠ AND THE THIRD TRIPWIRE IS DELIBERATELY NOT HERE. AC-SUB-0036 GETS NO GUARD.
+  // ================================================================================================
+  //
+  // *An assign-plan-to-tenant command does not exist, exactly as the billing tables and the commercial
+  // permission names do not.* **It was sized alongside the two tripwires above and then ruled against, and
+  // the reason is recorded here so nobody builds it later on the "the pattern is identical" argument.**
+  //
+  // ---- ⚠⚠⚠ THE DISCRIMINATOR IS NOT COST. IT IS: **HOW LIKELY IS THE PERSON WHO INVALIDATES THE
+  // ---- DISPOSITION TO KNOW THAT THEY DID?**
+  //
+  //     a BILLING TABLE appears     → added by a migration nobody connects to these criteria  → LOW
+  //     a PERMISSION NAME appears   → added to a catalogue nothing else in the tree watches   → LOW
+  //     an ASSIGN-PLAN COMMAND appears → added by someone building plan assignment            → **HIGH**
+  //
+  // ***A TRIPWIRE PAYS WHERE THE INVALIDATING CHANGE IS INVISIBLE TO ITS OWN AUTHOR.*** Whoever writes an
+  // assign-plan command **is building the exact thing `AC-SUB-0036` is about** and will meet the criterion by
+  // every other route — the spec, the feature plan, the review. *A guard there is the lowest-leverage of the
+  // three and the likeliest to be self-announcing without us.*
+  //
+  // ⚠⚠ AND THE SHAPE WOULD HAVE BEEN WRONG TOO, WHICH IS THE SECOND REASON. A command-absence guard is the
+  // BAN half's shape, not the exact-set half's — an absence over an OPEN population, where `AssignPlan`,
+  // `SetTenantPlan` and `ChangeSubscription` are all the same thing under three names. **It would have had to
+  // be an exact set of the commands that DO exist to be worth anything, and that set changes weekly**: a
+  // tripwire that fires on unrelated work is deleted by the next person to see it red, and *deleting it also
+  // deletes the disposition it was carrying.*
+  //
+  // ================================================================================================
   // ⚠⚠⚠ THE SECOND TRIPWIRE: THE READING AND DISCLOSURE HALF (AC-SUB-0034, AC-SUB-0035).
   // ================================================================================================
   //

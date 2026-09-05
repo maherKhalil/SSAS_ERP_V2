@@ -124,6 +124,39 @@ public sealed class EntitlementPermissionCouplingTests
     Assert.DoesNotContain(DependencyNames(handler), name => name.Contains("Entitlement", StringComparison.Ordinal));
   }
 
+  // ---- ⚠⚠⚠ THE POPULATION BIND FOR THE THEORY ABOVE, AND IT EXISTS BECAUSE A PLANT ESCAPED IT.
+  //
+  // ***THE `InlineData` NAMES TWO HANDLERS. IT IS AN ENUMERATED POPULATION, SO A THIRD TENANT-PLANE HANDLER
+  // IS NOT CHECKED — AND ADDING ONE IS EXACTLY HOW THE COUPLING THIS FILE BANS WOULD ARRIVE.***
+  //
+  // *Measured:* a fourth `AuthorizationHandler<RoleRequirement>` taking an `ITenantModuleEntitlement`
+  // constructor parameter — **the precise violation the Theory forbids** — was added to
+  // `SSAS.Host.API.Authorization` and ***the whole gate stayed GREEN.*** The Theory cannot fail for a type
+  // nobody listed in it.
+  //
+  // **So this pins the handler SET rather than a count.** *Naming the members means a RENAME reddens too,
+  // where a bare count would let one through* — and the message tells the author what to do rather than
+  // only that something changed.
+  //
+  // ⚠ **LOW NOISE BY CONSTRUCTION: authorization handlers are added rarely, and when one is, somebody
+  // classifying it as tenant-plane or platform-plane is exactly the thought this red should force.**
+  // *`PlatformPermissionAuthorizationHandler` is deliberately absent from the Theory — it is platform-plane
+  // and out of its subject — but it belongs HERE, because this assertion is about the set, not the rule.*
+  [Fact]
+  public void The_authorization_handler_set_is_exactly_these_three()
+  {
+    var handlers = typeof(PermissionAuthorizationHandler).Assembly.GetTypes()
+      .Where(type => type is { IsClass: true, IsAbstract: false })
+      .Where(type => typeof(IAuthorizationHandler).IsAssignableFrom(type))
+      .Select(type => type.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Equal(
+      ["PermissionAuthorizationHandler", "PlatformPermissionAuthorizationHandler", "RoleAuthorizationHandler"],
+      handlers);
+  }
+
   // ---- `AC-SUB-0024`: THE GRANT PATH DOES NOT CONSULT ENTITLEMENT EITHER.
   [Fact]
   public void Granting_a_permission_to_a_role_takes_no_entitlement_dependency()

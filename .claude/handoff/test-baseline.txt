@@ -30,9 +30,9 @@
 # suite|configuration|total
 API|Debug|990
 API|Release|972
-Architecture|Debug|677
+Architecture|Debug|678
 Architecture|Release|628
-Attendance|Debug|96
+Attendance|Debug|97
 Attendance|Release|87
 Finance|Debug|51
 Finance|Release|51

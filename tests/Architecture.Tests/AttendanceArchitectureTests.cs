@@ -179,6 +179,79 @@ public sealed class AttendanceArchitectureTests
     Assert.DoesNotContain("AuthorizeCompanyAsync", workingDays, StringComparison.Ordinal);
   }
 
+  // ---- ⚠⚠⚠ THE APPEND-ONLY REFUSAL CONSULTS NOTHING, AND "NOTHING" IS THE CRITERION'S ACTUAL WORD.
+  //
+  // `AC-ATT-0015` — *"Attempting to modify or delete any `IAppendOnlyEntity` attendance row throws,
+  // **regardless of period status** — the refusal is unconditional and no code path may assume otherwise."*
+  //
+  // ⚠ THE EXISTING TESTS SAMPLE THE BEHAVIOUR; THIS ASSERTS THE PROPERTY, AND THE CRITERION ASKS FOR THE
+  // PROPERTY. `AttendanceSchemaSqlServerTests` proves a record cannot be modified and cannot be deleted —
+  // **both against a single seeded period, so neither varies the status the criterion names.** A scenario
+  // pair can only ever sample: *two statuses would still be two samples, and "unconditional" is a claim
+  // about every state that exists and every state added later.* **Only the absence of a condition in the
+  // code says it, so that is what is asserted here.** Those tests keep their own value and are Integration;
+  // this is gated, and neither subsumes the other.
+  //
+  // ⚠⚠ THE MECHANISM IS SHARED AND THE CRITERION IS ATTENDANCE'S, which is why this guard lives here while
+  // watching a Platform file. `AttendanceRecord` is the ONLY `IAppendOnlyEntity` in the module — a closed
+  // population of one, checked rather than assumed — so the criterion's *"any attendance row"* is exactly
+  // this one type, and the code that refuses it is `TenantDbContext.PreventAppendOnlyMutation`.
+  //
+  // ⚠⚠⚠ THE BAN LIST IS THE WEAK HALF AND IT IS PLACED SECOND DELIBERATELY. Naming `Period`, `Status`,
+  // `Closed` catches the conditions somebody would plausibly add and cannot catch one nobody thought of.
+  // **The load-bearing assertion is the first: the walk is over `Entries<IAppendOnlyEntity>()` with no
+  // narrowing, and both `Modified` and `Deleted` are refused.** A guard narrowed to one state or one type
+  // fails there regardless of what the new condition is called.
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0015")]
+  public void The_append_only_refusal_consults_nothing_but_the_entity_state()
+  {
+    var source = SolutionCode(
+      "Platform", "SSAS.Platform.Infrastructure", "Persistence", "TenantErp", "TenantDbContext.cs");
+
+    // MATCHER CONTROL: a source guard's failure mode is reading the wrong file and finding nothing.
+    Assert.Contains("PreventAppendOnlyMutation", source, StringComparison.Ordinal);
+
+    // Declared once, called once. An exact count is what notices the call being dropped from the save path
+    // — which would leave every assertion below true of a method nobody runs.
+    Assert.Equal(2, CountOccurrences(source, "PreventAppendOnlyMutation"));
+
+    var start = source.IndexOf("private void PreventAppendOnlyMutation()", StringComparison.Ordinal);
+    Assert.True(start >= 0, "PreventAppendOnlyMutation is no longer declared under that name.");
+
+    var body = source[start..];
+    body = body[..(body.IndexOf("\n  }", StringComparison.Ordinal) + 4)];
+
+    // ---- THE POPULATION IS EVERY APPEND-ONLY ENTITY, NARROWED BY NOTHING.
+    Assert.Contains("ChangeTracker.Entries<IAppendOnlyEntity>()", body, StringComparison.Ordinal);
+
+    // ---- AND BOTH MUTATIONS ARE REFUSED. A guard that dropped `Deleted` would still pass a modify test.
+    Assert.Contains("EntityState.Modified", body, StringComparison.Ordinal);
+    Assert.Contains("EntityState.Deleted", body, StringComparison.Ordinal);
+
+    // ---- IT CONSULTS NO STATE OF ITS OWN. Each of these would make the refusal conditional, and the
+    // criterion's whole point is that no code path may assume it is.
+    foreach (var condition in new[] { "Period", "Status", "Closed", "Permission", "Role", "Tenant" })
+    {
+      Assert.DoesNotContain(condition, body, StringComparison.Ordinal);
+    }
+  }
+
+  private static string SolutionCode(params string[] segments)
+  {
+    var path = Path.Combine(new[] { RepositoryRoot(), "src" }.Concat(segments).ToArray());
+
+    Assert.True(File.Exists(path), $"Source not found: {path}");
+
+    return string.Join(
+      Environment.NewLine,
+      File.ReadAllText(path).Split('\n').Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 ? line[..comment] : line;
+      }));
+  }
+
   private static int CountOccurrences(string source, string term)
   {
     var count = 0;

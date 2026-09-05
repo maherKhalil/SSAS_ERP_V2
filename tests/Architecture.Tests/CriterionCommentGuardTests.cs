@@ -52,7 +52,7 @@ namespace SSAS.Architecture.Tests;
 // been found by reading this file, because one of them is this file.
 //
 // ==================================================================================================
-// ---- ⚠⚠⚠ AND BECAUSE APTNESS IS READ BY A PERSON: FOUR ARRANGEMENTS THAT WORK, WITH WORKED EXAMPLES.
+// ---- ⚠⚠⚠ AND BECAUSE APTNESS IS READ BY A PERSON: SIX ARRANGEMENTS THAT WORK, WITH WORKED EXAMPLES.
 // THE COUNTERPART TO A FAILURE CATALOGUE, WHICH ON ITS OWN TELLS AN AUTHOR WHAT NOT TO DO AND NOTHING
 // ABOUT WHAT TO DO.
 // ==================================================================================================
@@ -61,7 +61,7 @@ namespace SSAS.Architecture.Tests;
 // thing it describes, a matcher that finds nothing and passes. **What it had never written down is the
 // positive form**, so an author reaching for a citation had a list of traps and no pattern.
 //
-// *All three answer one question, which is the question the paragraph above says nobody can mechanise:*
+// *All six answer one question, which is the question the paragraph above says nobody can mechanise:*
 // ***HOW DO I KNOW THIS GREEN WAS NOT FREE?*** They differ in what the surface under test gives you to
 // work with, so the choice between them is made by the API, not by taste.
 //
@@ -159,7 +159,58 @@ namespace SSAS.Architecture.Tests;
 // its whole strength was the allow-list it never names. *When you take this arrangement, say in the comment
 // which property of the implementation you are leaning on.*
 //
-// ---- ⚠⚠ WHAT THESE FOUR DO NOT ADDRESS, SAID HERE BECAUSE A CATALOGUE THAT OVERSELLS ITSELF IS THE
+// ---- 5. WITNESS A UNIVERSAL BY COUNTING THE THING THAT MUST BE LEFT ALONE.
+//
+// ***"ONLY", "EVERY", "NO OTHER" — a dozen such clauses were scored UNWITNESSED across four hand-read
+// samples, and they all failed the same way: the fixture contained one of the thing, so there was nothing
+// the operation could wrongly have touched.*** **The universal needs a NEIGHBOUR in the fixture, and an
+// assertion counting it.**
+//
+//   `tests/Integration.Tests/PlatformSupportAuthoritySqlServerTests.cs`
+//     `Disable_revokes_all_active_platform_sessions_of_the_principal_only` (`AC-TEN-0076`) — **three
+//     sessions revoked with the exact reason `PlatformPrincipalIneligible`, ZERO left active for that
+//     principal, and ONE still active for a DIFFERENT principal.** ***The word "only" has its own counted
+//     fixture, in the same assertion set as the claim it qualifies.***
+//
+// ⚠ Compare `AC-AUTH-0031`, left class-scoped elsewhere in this tree precisely because its
+// *"compromises only the owning session"* runs against a single-session fixture. **Same clause shape, and
+// the difference is one seeded neighbour.**
+//
+// ---- 6. GIVE THE FIXTURE THE THING THAT WOULD LET A WRONG IMPLEMENTATION PASS.
+//
+// The discriminating-test rule stated as a CONSTRUCTION instruction rather than as a check, which is the
+// more useful direction: **do not merely ask whether the test could pass for the wrong reason — build the
+// fixture so that it cannot.**
+//
+//   `tests/API.Tests/Infrastructure/PlatformSupportAuthorityAuthorizationTests.cs`
+//     `Every_authority_route_rejects_a_tenant_plane_token_carrying_the_administer_name` (`AC-TEN-0087`) —
+//     ***the tenant token CARRIES the `Administer` permission name.*** Its own comment says why: *"a tenant
+//     token without it would be refused for lacking the permission text, proving nothing about planes —
+//     this one is refused despite having the exact permission string, so the refusal can only be the
+//     plane."*
+//
+// ⚠⚠ **AND THE INVERSE, WHICH IS RARER AND HARDER TO DEFEND: SEED A STATE THE PRODUCT CANNOT PRODUCE.**
+// `PlatformSupportAuthoritySqlServerTests` (`AC-TEN-0053`) force-writes a tenant-scoped assignment straight
+// into SQL, **bypassing the write-side guard**, and defends it against a correct-sounding objection:
+// *"'no handler can produce this row, so the fixture is nonsense' is TRUE. The argument is wrong only
+// because the read side's filter exists precisely for states the write side forbids."* ***TESTING
+// DEFENCE-IN-DEPTH REQUIRES CONSTRUCTING THE STATE THE FIRST LAYER PREVENTS*** — and a reader who deletes
+// such a fixture will have a good argument for doing it.
+//
+// ---- ⚠⚠⚠ AND A PATTERN ACROSS ALL SIX THAT EVERY ADJACENCY-BASED INSTRUMENT UNDERCOUNTS:
+// ***THE CONTROL USUALLY LIVES IN A SIBLING METHOD.***
+//
+//   `AC-SUB-0048`  population floors (≥25 assemblies, ≥1000 types, ≥5000 members) **and** both-direction
+//                  predicate controls — *all in sibling tests, none in the cited method*
+//   `AC-EMP-0011`  `FlooredEntities`/`FlooredProperties` before the `Assert.Empty`, with the predicate
+//                  check in a *third* test in the file
+//   `AC-CMP-0007`  the Theory whose four `Archived` cases carry `AC-CMP-0008`'s terminality — *a sibling*
+//
+// **So a citation that looks bare or unguarded at its own method is routinely guarded one method away**,
+// and measuring adjacency alone reports the tree as less controlled than it is. *Read the file, not the
+// method, before concluding a guard has no control.*
+//
+// ---- ⚠⚠ WHAT THESE SIX DO NOT ADDRESS, SAID HERE BECAUSE A CATALOGUE THAT OVERSELLS ITSELF IS THE
 // PARTIAL ALARM THIS FILE OPENS BY WARNING ABOUT.
 //
 // **Every arrangement above defends against VACUITY — a green obtained for free. None of them defends

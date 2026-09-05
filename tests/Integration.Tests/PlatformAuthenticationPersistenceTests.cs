@@ -306,10 +306,41 @@ public sealed class PlatformAuthenticationPersistenceTests
   // take the `L1_*` shape rather than this file's — *gate the counterparty on the real lock, assert it is
   // parked, then release.*
   //
-  // ⚠ That is NOT a claim that the nine others are wrong. Several assert a TERMINAL invariant that holds
-  // however the two sides interleave, which needs no rendezvous. It is a claim about what their GREEN
-  // licenses: a terminal-invariant green says the end state is safe, never that the lock serialized
-  // anything. Only the barrier test above pins the interleaving point and can say the second.
+  // ⚠ That is NOT a claim that the eight timing tests are wrong, and "several are terminal" is not a list,
+  // so here is the list. THE TEST APPLIED IS THE VANISH QUESTION FOR A RACE: *if the two operations ran
+  // strictly sequentially, would this assertion still pass?* Yes = TERMINAL, sound without a rendezvous.
+  //
+  //   TERMINAL, 7 of 8
+  //     `Repeated_concurrent_refresh_rotates_once_…`      replaying a consumed token is reuse either way,
+  //                                                      so Compromised + 2 records holds sequentially
+  //     `Concurrent_selection_consumption_creates_…`      a consumed proof refuses on the second attempt
+  //     `Logout_racing_refresh_serializes_…`              ⚠ MISDESCRIBED — see below
+  //     `Concurrent_http_refresh_and_logout_…`            ⚠ MISDESCRIBED — see below
+  //     `Concurrent_disable_and_refresh_leave_no_usable…` says "Terminal invariant" in its own comment
+  //     `Concurrent_refresh_of_the_same_token_…`          `<= 1` holds in either order
+  //     `Concurrent_session_creation_respects_the_…`      `<= 1` holds in either order
+  //
+  //   ⚠⚠⚠ OVERLAP-DEPENDENT, 1 of 8
+  //     `L1_concurrent_create_and_disable_stress_never_deadlocks_on_seeded_volume` — its assertion is that
+  //     NEITHER side fails with a deadlock. ***Run strictly sequentially there is no contention, so no
+  //     deadlock is possible and it passes proving nothing.*** Its own comment calls it "supplementary
+  //     unsynchronised stress", so this is a known property of it rather than a discovery — and it is
+  //     platform-plane and outside this criterion.
+  //
+  // ---- ⚠⚠ AND THE THIRD STATE: A TERMINAL ASSERTION UNDER A SERIALIZATION NAME. SOUND, MISDESCRIBED.
+  //
+  // `Logout_racing_refresh_SERIALIZES_and_leaves_no_usable_refresh_token` and
+  // `Concurrent_http_refresh_and_logout_use_validated_transport_and_SQL_SERIALIZATION` both promise
+  // serialization in the NAME and assert only the end state. Neither can observe whether anything
+  // serialized. **Both also carry a clause that accepts either outcome** — `refreshResult.IsSuccess ||
+  // Error == "AuthenticationSession.RefreshFailed"`, and `Contains(status, [OK, Unauthorized])` — *which is
+  // satisfied by any non-crash and carries no information.* The terminal assertions are what do the work.
+  //
+  // ***SO THE GREEN IS SOUND AND THE NAME OVER-CLAIMS, WHICH IS THE FAILURE THIS TREE ALREADY KNOWS: a
+  // reader takes the name for the assertion, and nothing checks a name against what a test proves.***
+  //
+  // It is a claim about what a GREEN licenses: a terminal-invariant green says the end state is safe, never
+  // that the lock serialized anything. Only a rendezvous can say the second.
   [Fact]
   [Trait("Scenario", "TS-AUTH-0088")]
   [Trait("Acceptance", "AC-AUTH-0034")]

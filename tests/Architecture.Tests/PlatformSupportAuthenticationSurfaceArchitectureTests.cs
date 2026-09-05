@@ -160,7 +160,16 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
   //
   // ---- WHY IT EXISTS: SEVEN CRITERIA ARE RECORDED AS UNBUILT ON THE STRENGTH OF A MEASUREMENT.
   //
-  // `AC-TEN-0012`, `0021`, `0022`, `0023`, `0026`, `0027` and `0028` all describe AUTHORIZATION on
+  // ⚠ IDS SPELLED IN FULL 2026-09-05, AND THE REASON IS WORTH THE LINE. This sentence originally wrote the
+  // prefix ONCE — *`AC-TEN-0012`, `0021`, `0022`…* — the way anyone would. **A criterion-census sweep then
+  // reported five of these seven as criteria NOBODY HAD EVER WRITTEN ABOUT, while this paragraph had disposed
+  // of all seven over a closed population.** ***A HUMAN ABBREVIATION OF A LIST OF IDS IS NOT AN ENUMERATION,
+  // AND NEITHER A READER'S GREP NOR ANY INSTRUMENT CAN EXPAND ONE.*** *The disposition was the stronger of
+  // the two covering those criteria and it was invisible for the shallower reason; the tree was righter than
+  // the census said.*
+  //
+  // `AC-TEN-0012`, `AC-TEN-0021`, `AC-TEN-0022`, `AC-TEN-0023`, `AC-TEN-0026`, `AC-TEN-0027` and
+  // `AC-TEN-0028` all describe AUTHORIZATION on
   // `/api/platform/tenants` routes. **They are uncited because that surface does not exist** — measured over
   // a closed population: every `"/api/platform/…"` literal in `src/` resolves to `auth`, `companies`,
   // `localization`, `roles` or `support`, and none to `tenants`.

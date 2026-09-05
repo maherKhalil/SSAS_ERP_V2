@@ -83,9 +83,45 @@ namespace SSAS.Architecture.Tests;
 // "uncited" understates coverage is also one where "covered" would overstate it.** *Uncited · untagged ·
 // green-at-a-date · unrecorded: four words that all render to a reader as "not covered".*
 //
-// `AC-CMP-0011` and `AC-CMP-0012` — partially witnessed. `0012`'s SEPARABILITY clause is visible in the route
-// declarations themselves: seven company routes across THREE distinct permissions (`ViewCompanies` ×2,
-// `ManageCompanies` ×2, `CompanyLifecycle` ×3). **Its cross-tenant clause is not asserted there, so no trait.**
+// ---- ⚠⚠⚠ `AC-CMP-0011` AND `AC-CMP-0012` — CORRECTED 2026-09-05. BOTH HAVE WITNESSES. I SAID THEY DID NOT.
+//
+// **The first census recorded these as "not asserted / untagged". *THAT WAS A CLAIM ABOUT THE TEST CORPUS
+// MADE WITH AN INSTRUMENT THAT READS ONE TRAIT KEY*, and both criteria have real witnesses that key cannot
+// see.** *Found by partitioning the uncited pool into dispositions resting on facts about the PRODUCT
+// (independent of any tagging convention) and dispositions resting on facts about the CORPUS (made with the
+// blind instrument). These two were in the second bucket and both were wrong.*
+//
+// ***`AC-CMP-0011` — TWO OF THREE CLAUSES WITNESSED AGAINST REAL SQL SERVER, TAGGED `TS-CMP-0045`,
+// INVISIBLE TO EVERY CRITERION COUNT.*** In `TenantCompanyOrganizationSqlServerTests`:
+//
+//   *"cannot be changed afterward"*    `Company_tenant_id_cannot_change_after_creation` — mutates `TenantId`
+//                                      on a tracked entity, asserts the save THROWS, then **re-reads in a
+//                                      fresh context** and asserts the stored value is unchanged. *The
+//                                      re-read is what makes it a witness rather than a demonstration.*
+//   *"mismatched tenant … rejected"*   `Company_insert_with_mismatched_tenant_is_rejected_by_assign_tenant`
+//                                      — adds an aggregate carrying tenant B under tenant A's context,
+//                                      asserts the throw, then asserts zero rows **`IgnoreQueryFilters()`**.
+//
+// ⚠⚠ **THAT `IgnoreQueryFilters()` IS WORTH LIFTING OUT AS A NAMED PATTERN: A ZERO-ROW ASSERTION UNDER AN
+// ACTIVE TENANT QUERY FILTER IS A VACUITY THAT CERTIFIES ITSELF** — the filter would hide the row whether or
+// not the write was refused. *That author knew it.*
+//
+// ***AND IT IS STILL NOT CITED, DELIBERATELY.*** The third clause — *"`TenantId` is assigned from the trusted
+// current tenant at creation"* — is asserted by nothing: I listed all eleven tests in that file and none
+// asserts that an EMPTY `TenantId` is stamped from context. **The two witnessed clauses say the mechanism
+// cannot be SUBVERTED; the missing one says it WORKS.** *Citing on the wrong half is the one-of-five
+// partial-citation error running in the flattering direction.* ⚠ **The gap is small and buildable: create a
+// company with a default `TenantId` under a trusted context and assert it persists owned by that tenant.**
+//
+// ***`AC-CMP-0012` — WITNESSED BY AN UNTAGGED TEST, WHICH IS A LARGER BLIND SPOT THAN THE TAGGED ONE.***
+// `CompanyRouteInventoryTests.Every_route_requires_the_permission_the_inventory_names()` carries **no trait
+// at all** and asserts clause 1 directly; the separability clause is visible in the same inventory — seven
+// company routes across THREE distinct permissions (`ViewCompanies` ×2, `ManageCompanies` ×2,
+// `CompanyLifecycle` ×3). **The cross-tenant clause is not asserted there, so again no trait.**
+//
+// ⚠⚠⚠ **MEASURED, BECAUSE THE SCALE IS THE POINT: of 3,438 test methods in this tree, 691 carry a criterion
+// trait, 1,110 carry a trait indexed to some OTHER id space (`DEC-`, `ADR-`, `TS-`, `OD-`), and 1,637 carry
+// NO TRAIT AT ALL.** ***A CRITERION'S WITNESS CAN BE IN ANY OF THE THREE, AND THE CENSUS READS ONE.***
 //
 // `AC-CMP-0013` is disposed in `CompanyApiArchitectureTests`, where its body channel is witnessed.
 public sealed class CompanyArchitectureTests

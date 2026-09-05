@@ -22,9 +22,28 @@ namespace SSAS.Platform.Tests.IdentityAccess;
 // signatures rather than by driving them.
 //
 // Searched for that guard by mechanism across `Architecture.Tests`: `OccurredUtc|IDomainEvent|ActorId`
-// matches 26 files, none asserting an audit-stamp universal, and `PersistenceArchitectureTests` carries
-// no audit-field assertion at all — though `PersistenceDbContext.ApplyPersistenceRules` is where the
-// stamping actually happens. **The mechanism exists and has no guard over it.**
+// matches 26 files, none asserting an audit-stamp universal — though `PersistenceDbContext.
+// ApplyPersistenceRules` is where the stamping actually happens. **The mechanism exists and has no guard
+// over the universal.**
+//
+// ⚠⚠⚠ **CORRECTED 2026-09-05: THIS PARAGRAPH SAID `PersistenceArchitectureTests` "CARRIES NO AUDIT-FIELD
+// ASSERTION AT ALL". THAT IS FALSE.** It carries
+// `Every_type_declaring_the_audit_properties_opts_in_to_audit_stamping` — which enumerates
+// `CreatedUtc`/`CreatedBy`/`ModifiedUtc`/`ModifiedBy`, binds the declaring set with an anti-vacuity floor,
+// and fails any type declaring all four without implementing `IAuditableEntity`. *A well-built test, itself
+// deliberately uncited, whose own comment explains why.*
+//
+// ***THE CONCLUSION ABOVE SURVIVES AND ONLY THE SUPPORTING SENTENCE WAS WRONG — WHICH IS THE MORE DANGEROUS
+// OF THE TWO ERRORS.*** **That test asserts MEMBERSHIP OF THE STAMPING MECHANISM: types that look auditable
+// really are auditable. It does not assert that every security-sensitive change stamps anything**, which is
+// what `AC-IAM-0023`'s universal requires. *Two authors reached the same distinction independently — that
+// file's comment says it "asserts membership of the stamping mechanism… nothing whatever about
+// `BR-PLT-0004`" — and one of them stated a falsehood about the other's file while agreeing with it.*
+//
+// ⚠ **A false DETAIL beside a true CONCLUSION reads as diligence and stops the reader checking the
+// conclusion.** *Found by a partition asking which dispositions rest on claims about the TEST CORPUS rather
+// than about the PRODUCT — corpus claims are made with the instrument that has the blindness, and this one
+// was made with a `grep` that did not open the file it named.*
 //
 // Recorded rather than built, for the reason `AC-IAM-0024` was: the exemptions are the expensive part —
 // a reflection sweep demanding an actor parameter would redden every legitimate parameterless transition

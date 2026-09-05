@@ -244,6 +244,7 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
     NumberExists = false;
     NationalIdExists = false;
     Added.Clear();
+    AppendedAssignments.Clear();
   }
 
   public static Employee NewEmployee(EmployeeStatus status)
@@ -313,8 +314,19 @@ public sealed class StubEmployeeRepository : IEmployeeRepository
     return Task.CompletedTask;
   }
 
+  // ---- APPENDED ASSIGNMENTS, RECORDED FOR THE SAME REASON `Added` IS.
+  //
+  // This returned `Task.CompletedTask` and kept nothing, so *"no branch-assignment rows exist for the
+  // file's employees"* — `AC-DOC-0005`'s second clause — was not observable at this layer at all. **A
+  // validate run that wrote assignments would have looked identical to one that wrote none.**
+  public List<EmployeeBranchAssignment> AppendedAssignments { get; } = [];
+
   public Task AppendBranchAssignmentAsync(
-    EmployeeBranchAssignment assignment, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    EmployeeBranchAssignment assignment, CancellationToken cancellationToken = default)
+  {
+    AppendedAssignments.Add(assignment);
+    return Task.CompletedTask;
+  }
 
   public Task AppendDepartmentAssignmentAsync(
     SSAS.HR.Domain.Departments.EmployeeDepartmentAssignment assignment,

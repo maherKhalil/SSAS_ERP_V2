@@ -754,9 +754,34 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.Equal("T22", recorded.NormalizedImportKey);
   }
 
-  // ---- AND THE VALIDATE ROUTE WRITES A `Validated` RUN AND NO EMPLOYEES.
+  // ---- ⚠⚠⚠ THE VALIDATE ROUTE WRITES A `Validated` RUN AND NOTHING ELSE (AC-DOC-0005).
+  //
+  // ***THIS TEST'S NAME PROMISED "AND NO EMPLOYEES" AND ITS BODY DID NOT ASSERT IT.*** The header line
+  // above it read *"writes a `Validated` run and no employees"*; the assertions were the status, the wire
+  // outcome, and the run record. **A validate route that created every employee in the file passed it.**
+  //
+  // ⚠ A NEAR-MISS TEST WITH THE RIGHT NAME is the hardest blindness to see, because the name is what a
+  // reader checks coverage against. *Nothing was wrong with what it asserted; the gap was between the
+  // title and the body, and only reading the body finds that.*
+  //
+  // ---- THE CRITERION HAS FOUR CLAUSES AND THEY ARE INDEPENDENT.
+  //
+  // *"After `FR-DOC-0101` against a wholly valid file, the employee count is unchanged, no
+  // branch-assignment rows exist for the file's employees, and a subsequent real import of the same file
+  // succeeds. A run record with outcome `Validated` exists."*
+  //
+  //   count unchanged            asserted here — the clause the name promised
+  //   no branch-assignment rows  asserted here — and it needed a stub change to be observable AT ALL
+  //   a later real import        `A_validated_file_still_imports_under_a_different_key` below
+  //   a `Validated` run record   asserted here, and was the only clause this test carried
+  //
+  // ⚠⚠ THE SECOND CLAUSE IS NOT IMPLIED BY THE FIRST, WHICH IS WHY IT IS ASSERTED SEPARATELY.
+  // `IEmployeeRepository` exposes `AppendBranchAssignmentAsync` independently of `AddAsync`, so a run
+  // could append assignment rows without creating employees. **Until this commit the stub discarded those
+  // calls, so a validate run that wrote assignments looked identical to one that wrote none.**
   [Fact]
   [Trait("Decision", "FR-DOC-0101")]
+  [Trait("Criterion", "AC-DOC-0005")]
   public async Task T21_The_validate_route_records_a_validated_run()
   {
     using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
@@ -769,5 +794,53 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
 
     Assert.Equal("Validated", document.RootElement.GetProperty("outcome").GetString());
     Assert.Equal(EmployeeImportOutcome.Validated, host.ImportRuns.Runs.Single().Outcome);
+
+    // ---- AND IT WROTE NOTHING. The two clauses the name promised and the body omitted.
+    Assert.Empty(host.Repository.Added);
+    Assert.Empty(host.Repository.AppendedAssignments);
+  }
+
+  // ---- ⚠⚠⚠ AND A REAL IMPORT OF THE SAME FILE AFTERWARDS SUCCEEDS (AC-DOC-0005, THIRD CLAUSE).
+  //
+  // ***THE CRITERION SAYS "THE SAME FILE". THE REPLAY SHORT-CIRCUIT KEYS ON THE IMPORT KEY.*** Those are
+  // different nouns, and a note in this file once read them as one and recorded a contradiction that did
+  // not exist — corrected at `d69f2f1`. **This test is the positive form of that correction: same bytes,
+  // second key, and the import proceeds.**
+  //
+  // ⚠ THE SECOND KEY IS THE FIXTURE DOING THE DISCRIMINATION. Re-submitting under `t21`'s key would
+  // replay the validated run and create nothing — correct behaviour, and the foot-gun an operator meets
+  // when they reuse one key per batch. *A test that did that would assert the opposite of this clause and
+  // look like it was asserting this one.*
+  //
+  // ⚠⚠ AND IT IS A DECISION, NOT A STORED EFFECT, WHICH IS WHY IT IS GATED. Whether the handler replays
+  // or proceeds is settled before any row is written; only the rows are the database's business, and the
+  // stub repository stands in for them exactly as it does for every other import test here.
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0005")]
+  public async Task A_validated_file_still_imports_under_a_different_key()
+  {
+    using var validated = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import/validate?importKey=doc0005-validate",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, validated.StatusCode);
+
+    // THE PREMISE. If validation had written employees the assertion below could not tell the import's
+    // work from the validation's.
+    Assert.Empty(host.Repository.Added);
+
+    using var imported = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=doc0005-import",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, imported.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(imported));
+
+    // ***"SUCCEEDS" IS NOT "ANSWERS 200".*** A replay answers 200 too, carrying the ORIGINAL run's
+    // outcome. The import must have done work: a new run, `Applied`, and the employee actually created.
+    Assert.Equal("Applied", document.RootElement.GetProperty("outcome").GetString());
+    Assert.Single(host.Repository.Added);
+    Assert.Equal(2, host.ImportRuns.Runs.Count);
   }
 }

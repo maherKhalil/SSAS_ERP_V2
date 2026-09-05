@@ -50,7 +50,8 @@ namespace SSAS.API.Tests.Infrastructure;
 // ***THE CRITERION'S OWN TEXT SETTLES WHAT "TENANT-PLANE" MEANS: it contrasts the tenant plane against
 // "all 28 platform names", so the tenant plane is WHAT THE MODULES CONTRIBUTE.*** This reads the
 // contributors, never the scope, and the plant results below are what establish that it does.
-public sealed class TenantPlaneCommercialPermissionTests
+[Collection(HostIntegrationTestGroup.Name)]
+public sealed class TenantPlaneCommercialPermissionTests(HostWebApplicationFactory factory)
 {
   // Vocabulary a subscription-administration permission would have to use to be grantable by mistake —
   // which is the criterion's own rationale: *there is nothing to grant by mistake*. A name nobody would
@@ -88,7 +89,6 @@ public sealed class TenantPlaneCommercialPermissionTests
   [Trait("Criterion", "AC-SUB-0008")]
   public void No_module_contributes_a_permission_name_for_subscription_administration()
   {
-    using var factory = new HostWebApplicationFactory();
     var contributors = factory.Services.GetServices<IPermissionCatalogContributor>().ToArray();
 
     // ---- THE STRONG HALF: THE EXACT CONTRIBUTOR SET.

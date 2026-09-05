@@ -255,6 +255,168 @@ public sealed class AttendanceArchitectureTests
     }
   }
 
+  // ---- ⚠⚠⚠ THE ATTENDANCE MIGRATION DROPS ONLY ITS OWN TABLES (AC-ATT-0037).
+  //
+  // *"The migration is produced by `tools/SSAS.Tenant.MigrationTool` and contains **no `DROP` statement**
+  // for any other module's table."*
+  //
+  // A tenant migration's `Down` drops what its `Up` created. **The hazard is a `Down` that reaches past its
+  // own feature** — EF writes what the model diff tells it to, and a model composed wrongly at design time
+  // produces a migration that tears down another module's tables on a rollback. *That is not a hypothetical
+  // shape: this context is COMPOSED from every module, which is exactly why the tool exists.*
+  //
+  // ---- ⚠⚠ TWO VACUITY ROUTES, AND FIXING THE FIRST DOES NOT FIX THE SECOND.
+  //
+  // **(1) THE ARTEFACT MIGHT NOT BE READ.** A scan that opens nothing satisfies *"contains no DROP"*
+  // perfectly. A file-exists floor is not enough — it proves a file was opened, not that it was the right
+  // one — so the migration is located BY ITS CONTENT and a known-positive is asserted from inside it.
+  //
+  // **(2) THE FORBIDDEN SET MIGHT BE EMPTY.** *"Every dropped table is an attendance table"* is true of a
+  // migration that drops nothing at all, and a `Down` that dropped nothing would be a different defect
+  // wearing this test's green. **A floor alone would answer that and still miss a `Down` that drops SOME of
+  // what it created.**
+  //
+  // ***SO THE TWO SETS ARE BOUND TO EACH OTHER RATHER THAN EACH FLOORED SEPARATELY: WHAT `Up` CREATES AND
+  // WHAT `Down` DROPS MUST BE THE SAME SET.*** A drop that reaches another module fails it, a drop that is
+  // missing fails it, and neither can pass by the set being empty — because the created set is non-empty
+  // and the two must agree. *Cross-population bind, where a floor was the obvious answer.*
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0037")]
+  public void The_attendance_migration_drops_only_the_tables_it_created()
+  {
+    var migrations = Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure",
+      "Persistence", "TenantErp", "Migrations");
+
+    // Located by CONTENT, not by file name: a rename would otherwise silently empty this population, and
+    // the `.Designer` and snapshot files must not be mistaken for the migration itself.
+    var file = Directory.EnumerateFiles(migrations, "*.cs")
+      .Where(path => !path.EndsWith(".Designer.cs", StringComparison.Ordinal))
+      .Single(path => File.ReadAllText(path).Contains(
+        "name: \"AttendanceRecords\"", StringComparison.Ordinal));
+
+    var source = File.ReadAllText(file);
+
+    // KNOWN-POSITIVE FROM INSIDE THE ARTEFACT. Proves the right file was read and that the matcher below
+    // parses what this file actually contains, rather than passing over an unreadable one.
+    Assert.Contains("migrationBuilder.CreateTable(", source, StringComparison.Ordinal);
+
+    var created = TableNamesAfter(source, "migrationBuilder.CreateTable(");
+    var dropped = TableNamesAfter(source, "migrationBuilder.DropTable(");
+
+    // The population is real, and it is the CREATED set that establishes it — so the bind below cannot be
+    // satisfied by two empty sets agreeing with each other.
+    Assert.NotEmpty(created);
+
+    // ---- THE CLAUSE. Nothing dropped that was not created here, and nothing created left undropped.
+    Assert.Equal(created, dropped);
+
+    // ---- AND EVERY ONE OF THEM IS THIS MODULE'S. The bind alone would pass a migration that created and
+    // dropped somebody else's table symmetrically, which is the exact act the criterion forbids.
+    Assert.All(dropped, name =>
+      Assert.StartsWith("Attendance", name, StringComparison.Ordinal));
+  }
+
+  // ---- ⚠⚠⚠ THE TOOL IS THE PRODUCER, AND THE CHECKABLE FORM IS ITS CONTRIBUTOR LIST.
+  //
+  // ***MY FIRST ATTEMPT AT THIS CLAUSE ASSERTED THAT THE TOOL HOLDS THE ONLY DESIGN-TIME FACTORY. IT DOES
+  // NOT, AND THE TEST IS WHAT TOLD ME.*** `TenantDbContextDesignTimeFactory` also exists, in
+  // `SSAS.Platform.Infrastructure`, and it is CORRECT: `ADR-018` publishes
+  // `dotnet ef ... --context TenantDbContext` as operational procedure and that factory serves it.
+  // *Two factories, both legitimate, and which one `dotnet ef` uses is a property of the command somebody
+  // types — not of the repository.*
+  //
+  // ⚠⚠ SO CLAUSE 1 AND CLAUSE 2 ARE ONE MECHANISM, WHICH THE TOOL'S OWN HEADER MEASURES. Scaffolding
+  // through Platform's factory does not produce an empty migration — **it produces an `Up` of 32
+  // `DropTable` covering the whole of HR, Finance/GL, Payroll and Attendance**, because those tables exist
+  // in the database and in no model. *"Produced by the tool" IS "no DROP for another module's table"; the
+  // criterion names a cause and an effect and they are the same fact.*
+  //
+  // ⚠⚠⚠ AND THE PART THAT CAN ROT IS THE CONTRIBUTOR LIST. The factory's own comment states the stakes:
+  // *"A module that is not named here does not appear in a migration."* **A module shipping a contributor
+  // and forgetting to register it gets its tables DROPPED by the next scaffold** — the destructive outcome,
+  // reached by omission rather than by using the wrong tool.
+  //
+  // ***SO THE TWO POPULATIONS ARE BOUND: EVERY `ITenantModelContributor` IN THE SOLUTION MUST BE NAMED IN
+  // THE FACTORY.*** Reflection finds the implementations, the factory's source names the registered ones,
+  // and neither list can drift without this failing. *A floor on either would pass a module that shipped a
+  // contributor nobody registered, which is the whole hazard.*
+  // Every module that contributes tenant entities. Named rather than reflected, following the factory's own
+  // ruling that module discovery is explicit — a module missing from BOTH this list and the factory would
+  // otherwise agree with itself and pass.
+  private static readonly string[] ModuleInfrastructureAssemblies =
+  [
+    "SSAS.HR.Infrastructure", "SSAS.GL.Infrastructure",
+    "SSAS.Payroll.Infrastructure", "SSAS.Attendance.Infrastructure"
+  ];
+
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0037")]
+  public void Every_tenant_model_contributor_is_registered_with_the_migration_tool()
+  {
+    var implemented = ModuleInfrastructureAssemblies
+      .SelectMany(name => Assembly.Load(name).GetTypes())
+      .Where(type => type.IsClass && !type.IsAbstract)
+      .Where(type => type.GetInterfaces().Any(contract => contract.Name == "ITenantModelContributor"))
+      .Select(type => type.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // The walk found contributors. Without this the comparison below is two empty lists agreeing.
+    Assert.NotEmpty(implemented);
+
+    // ---- ⚠⚠⚠ COMMENTS STRIPPED, AND A PLANT IS WHY.
+    //
+    // A first version read the file raw. **Commenting a contributor out — the realistic way somebody
+    // disables one — left `new AttendanceTenantModelContributor()` in the text and this test passed the
+    // plant.** *The registration was gone from the array and present to the matcher.*
+    //
+    // This file already carried a comment-stripping reader, three hundred lines up, written for exactly
+    // this hazard. **I did not use it.**
+    var factory = StripComments(File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "tools", "SSAS.Tenant.MigrationTool", "ComposedTenantDbContextFactory.cs")));
+
+    // KNOWN-POSITIVE FROM INSIDE THE ARTEFACT, so a moved or renamed file fails here rather than passing
+    // with an empty registration set.
+    Assert.Contains("ITenantModelContributor[] Contributors", factory, StringComparison.Ordinal);
+
+    var registered = implemented
+      .Where(name => factory.Contains($"new {name}()", StringComparison.Ordinal))
+      .ToArray();
+
+    Assert.Equal(implemented, registered);
+  }
+
+  // Reads the `name:` argument that follows each occurrence of a migration-builder call.
+  private static string[] TableNamesAfter(string source, string call)
+  {
+    var names = new List<string>();
+
+    for (var i = source.IndexOf(call, StringComparison.Ordinal); i >= 0;
+      i = source.IndexOf(call, i + call.Length, StringComparison.Ordinal))
+    {
+      var marker = source.IndexOf("name: \"", i, StringComparison.Ordinal);
+      if (marker < 0)
+      {
+        continue;
+      }
+
+      var start = marker + "name: \"".Length;
+      names.Add(source[start..source.IndexOf('"', start)]);
+    }
+
+    return [.. names.Distinct().OrderBy(name => name, StringComparer.Ordinal)];
+  }
+
+  private static string StripComments(string source) =>
+    string.Join(
+      Environment.NewLine,
+      source.Split('\n').Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 ? line[..comment] : line;
+      }));
+
   private static string SolutionCode(params string[] segments)
   {
     var path = Path.Combine(new[] { RepositoryRoot(), "src" }.Concat(segments).ToArray());

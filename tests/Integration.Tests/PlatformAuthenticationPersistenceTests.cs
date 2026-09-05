@@ -219,6 +219,54 @@ public sealed class PlatformAuthenticationPersistenceTests
     }
   }
 
+  // ---- ⚠⚠⚠ `AC-AUTH-0034` NAMES EIGHT RACES. THIS METHOD COVERS ONE. THE OTHER SEVEN ARE ENUMERATED HERE
+  // BECAUSE A CRITERION ID ON A GREEN TEST IS READ AS THE WHOLE CRITERION PROVEN.
+  //
+  // *"Approved locked operations serialize concurrent **selection, refresh, revocation, session-limit,
+  // password-reset, membership, Tenant, and `SecurityVersion`** races without leaking SQL details."*
+  //
+  // **This one is SELECTION**, and it is a real race: two contexts, two handlers, `Task.WhenAll`, then
+  // `Single(successes)` paired with `Single(failures)` on a **domain** error code — ***which is what carries
+  // "without leaking SQL details", since a `SqlException` surfacing here would fail the code assertion.***
+  //
+  // ---- COVERED ELSEWHERE, UNTAGGED (the criterion is TENANT-plane; platform-plane siblings do not count).
+  //
+  //   *refresh*     `Repeated_concurrent_refresh_rotates_once_and_verified_loser_compromises_only_owning_session`
+  //   *revocation*  `Logout_racing_refresh_serializes_and_leaves_no_usable_refresh_token`,
+  //                 `Concurrent_http_refresh_and_logout_use_validated_transport_and_sql_serialization`
+  //
+  // ⚠ **`PlatformAuthenticationSessionFlowSqlServerTests` has concurrent refresh and session-limit tests that
+  // do NOT count here** — they are platform-plane. *In this tree "Platform" is the assembly in one file name
+  // and the security plane in another; the tell is the TABLE name, never the file name.*
+  //
+  // ---- ⚠⚠⚠ FIVE RACES WITH A LOCK IN `src/` AND NO CONCURRENT TEST. THE POPULATION IS THE LOCK, NOT A NAME
+  // SEARCH: `WITH (UPDLOCK, HOLDLOCK)` across `src/Platform/` is thirteen tables, closed and enumerable.
+  //
+  //   *session-limit*    `AuthenticationSessions` — `AuthenticationSessionCreator` **against itself**: two
+  //                      simultaneous logins for one identity. ⚠ One call site twice, not two sites.
+  //   *password-reset*   `AuthenticationAccounts` — `CompletePasswordResetCommandHandler` ×
+  //                      `RefreshAuthenticationSessionCommandHandler`
+  //   *`SecurityVersion`*  same table, and the security-relevant pair —
+  //                      `CompletePasswordResetCommandHandler` (bumps it) × `SelectTenantCommandHandler`
+  //                      or `BeginTenantAccessCommandHandler` (revalidate it)
+  //   *membership*       `TenantUsers` — `SelectTenantCommandHandler` / `BeginTenantAccessCommandHandler` ×
+  //                      `CompleteInvitationCommandHandler` / `AssignRoleToTenantUserCommandHandler`
+  //   *Tenant*           `Tenants` — `GetTenantAuthenticationEligibilityQueryHandler` ×
+  //                      `ArchiveTenantCommandHandler` / `ActivateTenantCommandHandler`
+  //
+  // ⚠⚠ **NO WRITER TAKES `UPDLOCK` ON `TenantUsers` OR `Tenants`, AND THAT IS NOT A DEFECT — IT IS THE
+  // IDIOM.** *The read holds a **U** lock to end of transaction; an ordinary `UPDATE` needs **X**, and X
+  // conflicts with U, so the writer blocks **without opting in**.* **A conclusion that the lock has "no
+  // counterparty" would be the stronger-sounding wrong answer here.**
+  //
+  // ⚠ **AND THE PREMISE ANY SUCH TEST MUST ESTABLISH RATHER THAN ASSUME: the two sides must overlap INSIDE
+  // TRANSACTIONS**, because `HOLDLOCK` holds only to end of transaction. *A badly arranged test whose read
+  // commits before the write starts passes for arrangement reasons and reads as coverage forever.*
+  //
+  // **Design recorded, tests not written on purpose:** the five above are Integration-only, so they would
+  // land green-at-a-date at best, and this file's own model — two contexts, `Task.WhenAll`, cardinality
+  // assertions — already carries everything the tests would. ***Three unrunnable greens would grow the
+  // never-executed bucket to prove races whose design is written down here.***
   [Fact]
   [Trait("Scenario", "TS-AUTH-0088")]
   [Trait("Acceptance", "AC-AUTH-0034")]

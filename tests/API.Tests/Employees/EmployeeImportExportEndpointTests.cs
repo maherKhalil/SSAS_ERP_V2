@@ -590,16 +590,29 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
 
     // ⚠⚠⚠ THE `Refused` OUTCOME IN THE FIXTURE IS LOAD-BEARING AND THIS TEST MUST NOT BE WIDENED.
     //
-    // `AC-DOC-0005` requires the OPPOSITE for a different outcome: *"a subsequent real import of the same
-    // file succeeds"* after a validate-only run. **The production short-circuit filters on nothing but the
-    // key's PRESENCE, so it cannot satisfy both criteria** — `Refused` must block, `Validated` must not, and
-    // `Applied` must return the original. *That is a three-state requirement met by a two-state model, and
-    // it is an open product decision.*
+    // ***CORRECTION, AND IT IS TO A CLAIM THIS COMMENT MADE ITSELF.*** An earlier version of this note said
+    // the short-circuit *"cannot satisfy both criteria"* — `AC-DOC-0005`'s *"a subsequent real import of the
+    // same file succeeds"* against `AC-DOC-0008`'s replay — and called it *"a three-state requirement met by
+    // a two-state model"* and *"an open product decision."* **THAT WAS WRONG, AND IT WAS WRONG WHEN
+    // WRITTEN.**
     //
-    // ***SO THIS TEST DELIBERATELY SEEDS `Refused` AND ASSERTS ONLY ABOUT `Refused`. A three-way fix passes
-    // it unchanged.*** **Rewriting it to assert that ANY existing key short-circuits would put a green test
-    // in the gate that BLOCKS the correct implementation of `AC-DOC-0005`** — a citation building a gate
-    // against the fix its neighbour requires.
+    // ⚠ THE IMPORT KEY IS THE CALLER'S, WHICH IS WHAT DISSOLVES THE CONTRADICTION. `RunHistoryReadModels`
+    // says it plainly — *"`FileName` and `ImportKey` DO ship. Both are values the caller supplied"* — and
+    // `EmployeeApiErrorMapper` classes `InvalidImportKey` as caller input. **A validate-only run and a
+    // subsequent real import carry whatever keys the caller chooses, so both criteria are satisfiable and
+    // the product needs no three-state model under one key.** *The caller separates them.*
+    //
+    // ⚠⚠ WHAT SURVIVES IS A FOOT-GUN, NOT AN UNSATISFIABLE REQUIREMENT: **an operator who reuses ONE key
+    // across a validate run and a real import gets the validated run replayed and imports nothing** — the
+    // replay behaving exactly as `AC-DOC-0008` requires, on a key the operator did not mean to reuse.
+    // *A usability hazard worth recording; not a defect, and not a blocked criterion.*
+    //
+    // ***AND THE INSTRUCTION STILL STANDS, ON A DIFFERENT REASON.*** This test seeds `Refused` and asserts
+    // only about `Refused` because that is its subject. **Widening it to *"ANY existing key short-circuits"*
+    // would restate `AC-DOC-0008`, which `T18_Replaying_an_import_key_returns_the_original_run_over_http`
+    // already owns** — two tests asserting one criterion, with this one's `Refused` fixture no longer doing
+    // any work. *The old reason — that widening would block a fix — is retracted with the claim it rested
+    // on.*
   }
 
   // ⚠ CITES `AC-DOC-0008` — *"Submitting a file under an `importKey` already recorded for the company

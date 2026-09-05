@@ -69,6 +69,11 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
       HttpMethod.Post, $"/api/payroll/runs/{run.Id}/reversals", host.TokenWith(AllPermissions),
       """{"reversalDateUtc":"2026-02-10T00:00:00Z","description":"Correction"}"""));
 
+    // ⚠⚠⚠ SOLE ASSERTION, AND AN UNCONSTRAINED NEGATIVE (2026-09-06). The claim is that the reversal body
+    // BINDS. A 500, a 404 or a 403 all satisfy this — including the failure the JsonPropertyName loop above
+    // exists to catch. Every other `NotEqual(status)` in this suite sits beside an `Assert.Equal` naming the
+    // right answer; this one has no companion. **The idiom is sound — naming the specific wrong answer
+    // beside the right one — and this site uses only half of it.**
     Assert.NotEqual(HttpStatusCode.BadRequest, response.StatusCode);
   }
 

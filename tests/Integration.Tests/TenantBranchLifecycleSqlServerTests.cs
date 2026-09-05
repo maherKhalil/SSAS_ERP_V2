@@ -895,6 +895,20 @@ public sealed class TenantBranchLifecycleSqlServerTests
       Task.Run(() => fixture.BranchSessions().SelectActiveBranchAsync(sessionId, jeddah.BranchId)));
 
     var stored = await fixture.StoredBranchAsync(sessionId);
+
+    // ⚠⚠⚠ THIS DISJUNCTION IS THE SOLE ASSERTION IN THE TEST, AND IT RULES OUT ALMOST NOTHING (2026-09-06).
+    //
+    // "Either branch may win" is honest — the race has no preferred outcome. But with no companion clause
+    // this passes for null-free garbage: it excludes an unset row and a third branch, and is silent on
+    // whether ONE selection won, whether both wrote, and whether anything serialized.
+    //
+    // The same shape done properly is `EmployeeBoundarySqlServerTests` ~2024: an identical
+    // `final == A || final == B` sitting under `Equal(1, successes)`, `Equal(1, failures)`,
+    // `Equal(2, history.Count)` and ***`Equal(finalDepartment, history[1].Destination)`*** — the last of
+    // which ties the log to whichever side actually won. **The disjunction is fine; it needs neighbours.**
+    //
+    // Not strengthened here: adding a cardinality assertion is a change to what this test claims, and this
+    // file is Integration-only, so a new clause lands green-at-a-date at best. Recorded for whoever revisits.
     Assert.True(stored == riyadh.BranchId || stored == jeddah.BranchId);
   }
 

@@ -123,6 +123,105 @@ public sealed class AttendanceArchitectureTests
   // **The hole is ruled INTENDED.** The obligation attached to that ruling was: stated at the site, and
   // guard-asserted. This is the guard. It reads the compiled source of the query method and asserts no
   // branch predicate appears — the comment explains the decision, this survives someone who has not read it.
+  // ---- ⚠⚠⚠ THE PAYROLL-FACING SUMMARY REFUSES BY THROWING, AND NOTHING ASSERTED THAT.
+  //
+  // ***DELIBERATELY UNCITED.*** `AC-ATT-0028` describes this mechanism — *"throws
+  // `UnauthorizedAccessException` — it does not return an empty list"* — but names a READ SCOPE as its
+  // subject, and the read scope does no such thing: `AttendanceScopeResolver` returns `Result.Failure`
+  // with `CompanyScopeDenied`. **One criterion, two surfaces.** Whether it is stale, misaddressed, or
+  // malformed and in need of splitting is author intent, and it is with the owner. *A test that enforces
+  // a misreading is worse than no test, because the gate then defends the misreading.*
+  //
+  // **The GAP is real under every reading, which is why this exists anyway.** `AttendanceSummaryService`
+  // throws twice, is constructed by exactly ONE test file in the tree — an Integration chain — and neither
+  // throw is asserted anywhere. A label can be added later; an unwritten test cannot.
+  //
+  // ⚠ AND THE CONSEQUENCE IS IN THE SOURCE'S OWN WORDS, which is why it is worth a guard rather than a
+  // note: *"An empty summary would claim 'this employee worked no hours', a statement about the DATA:
+  // payroll would calculate cleanly, pay nothing for the period, and nobody would learn that an
+  // authorization check had failed."* **A silent wrong payroll, from a refusal that returned data-shaped
+  // emptiness instead of refusing.**
+  //
+  // ⚠⚠ THE COUNTS ARE EXACT RATHER THAN FLOORS, and that is the assertion doing the work. A floor of one
+  // survives somebody converting the second throw into a `Result` — which is exactly the drift this guards,
+  // because a `Result` on this path is what the read scope legitimately returns one module over.
+  //
+  // ⚠⚠⚠ AND THE THIRD PUBLIC METHOD IS EXEMPT, SO ITS GROUNDS ARE ASSERTED RATHER THAN ASSUMED.
+  // `GetWorkingDaysAsync` does not authorize. That is defensible — it answers a calendar question and
+  // returns no employee data — but *"it looked fine"* is not a guard. **The exemption is pinned by its
+  // reason: that method touches no entity set at all.** If it ever queries one, this fails and the
+  // exemption has to be re-argued rather than inherited.
+  [Fact]
+  public void The_payroll_facing_summary_refuses_an_unauthorized_company_by_throwing()
+  {
+    var source = AttendanceCode("SSAS.Attendance.Infrastructure", "Summaries", "AttendanceSummaryService.cs");
+
+    // MATCHER CONTROL. A source guard's failure mode is reading the wrong file and finding nothing, which
+    // is indistinguishable from compliance for every assertion below.
+    Assert.Contains("AttendanceSummaryService", source, StringComparison.Ordinal);
+
+    // TWO throws: the unresolved actor, and the company the caller has no grant for.
+    Assert.Equal(2, CountOccurrences(source, "throw new UnauthorizedAccessException"));
+
+    // FAIL CLOSED. A FAILED permission lookup refuses; it does not fall through to "all companies".
+    Assert.Contains("permitted.IsFailure ||", source, StringComparison.Ordinal);
+
+    // One declaration and two call sites — the two methods that return data. An exact count is what
+    // notices a call site being dropped from one of them.
+    Assert.Equal(3, CountOccurrences(source, "AuthorizeCompanyAsync"));
+
+    // ---- AND THE EXEMPTION'S GROUNDS.
+    var workingDays = source[source.IndexOf(
+      "public async Task<int> GetWorkingDaysAsync", StringComparison.Ordinal)..];
+    workingDays = workingDays[..workingDays.IndexOf("public async Task<AttendancePeriodInspection>", StringComparison.Ordinal)];
+
+    Assert.DoesNotContain("Set<", workingDays, StringComparison.Ordinal);
+    Assert.DoesNotContain("AuthorizeCompanyAsync", workingDays, StringComparison.Ordinal);
+  }
+
+  private static int CountOccurrences(string source, string term)
+  {
+    var count = 0;
+    for (var i = source.IndexOf(term, StringComparison.Ordinal); i >= 0;
+      i = source.IndexOf(term, i + term.Length, StringComparison.Ordinal))
+    {
+      count++;
+    }
+
+    return count;
+  }
+
+  // Comments are stripped before matching. This tree's comments QUOTE the very phrases asserted above —
+  // the source's own note explains why the refusal throws — and a raw matcher would credit the prose.
+  private static string AttendanceCode(params string[] segments)
+  {
+    var path = Path.Combine(
+      new[] { RepositoryRoot(), "src", "Modules", "Attendance" }.Concat(segments).ToArray());
+
+    Assert.True(File.Exists(path), $"Source not found: {path}");
+
+    return string.Join(
+      Environment.NewLine,
+      File.ReadAllText(path).Split('\n').Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 ? line[..comment] : line;
+      }));
+  }
+
+  private static string RepositoryRoot()
+  {
+    for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+    {
+      if (File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln")))
+      {
+        return directory.FullName;
+      }
+    }
+
+    throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
+  }
+
   // ---- ⚠⚠⚠ A RECORD STAYS READABLE AFTER THE EMPLOYEE LEAVES, BECAUSE NO READER CAN LEARN THEY LEFT.
   //
   // `AC-ATT-0009` — *"A record already settled by termination remains readable after termination —

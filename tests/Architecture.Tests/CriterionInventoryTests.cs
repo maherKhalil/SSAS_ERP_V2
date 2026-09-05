@@ -31,32 +31,78 @@ public sealed class CriterionInventoryTests
   // ⚠ AND THE UNSPECIFIED FOLDERS ARE COUNTED RATHER THAN SILENTLY SKIPPED: an absent file produces no row,
   // not a zero row, and a filter that quietly drops its exceptions is how a whole feature sits outside a
   // table with nothing broken. **The assertion below names how many were excluded and why.**
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ CORRECTED 2026-09-05. THE PARAGRAPH ABOVE WAS RIGHT ABOUT THE HAZARD AND THE CODE BELOW IT
+  // COMMITTED THE HAZARD, FOR TWO WEEKS, IN THE INSTRUMENT WRITTEN TO PREVENT IT.
+  // ==================================================================================================
+  //
+  // **The first version excluded every folder without an `acceptance-criteria.md` and justified it by
+  // describing ONE of the two members of that exclusion.** *`FP-016` really does hold a README and nothing
+  // else.* ***`FP-010-hr-employee-documents` HOLDS THREE FILES AND DECLARES FOUR CRITERIA*** — `AC-DOC-0017`
+  // through `AC-DOC-0020`, as a first-shape table in `carried-analysis.md`, which the matcher already reads.
+  //
+  // ***MEASURED: THE GATED WALK RETURNS 602 AND THE UNGATED WALK RETURNS 606, AND THE DIFFERENCE IS EXACTLY
+  // THOSE FOUR IDS.*** They are not placeholders — content-type verified against the bytes, metadata
+  // visibility not granting content, document reads inheriting employee scope, one-way withdrawal. **Four
+  // substantive criteria outside every coverage number this project has published.**
+  //
+  // ⚠⚠ THE MECHANISM, BECAUSE IT IS THE REUSABLE PART: **AN EXCLUSION RULE WAS DERIVED FROM ONE MEMBER OF A
+  // TWO-MEMBER SET AND ITS JUSTIFICATION CHECKED AGAINST THAT MEMBER ONLY.** *`HasCriteriaFile` names a FILE;
+  // declaring is a MECHANISM* — and a name-shaped filter over a mechanism is the same defect this file's own
+  // header warns about for declaration shapes, one layer up.
+  //
+  // ---- ⚠ WHY THIS RECORDS FP-010 RATHER THAN COUNTING IT, WHICH IS NOT THE COWARD'S OPTION.
+  //
+  // **Folding four ids into the total would silently move a published number**, and whether `FP-010`'s
+  // criteria are in force is an owner question — the folder carries a `decisions-open.md`, so it is PARKED
+  // rather than unstarted, which is the one state the old justification did not cover. ***SO THE EXCEPTION IS
+  // NAMED IN THE ASSERTION, WHERE IT REDDENS IF A SECOND FOLDER JOINS IT AND ALSO IF FP-010 IS FIXED*** — the
+  // `KnownUnresolvable` shape from `CommentCitationGuardTests`, and its rule applies here too: **a recorded
+  // exception that outlives its reason turns a record into a place where anything can hide.**
   [Fact]
-  public void Every_feature_folder_with_a_criteria_file_declares_at_least_one_criterion()
+  public void Every_folder_that_declares_criteria_is_visible_to_the_count_or_named_here()
   {
     var folders = CriterionInventory.FeatureFolders();
 
-    // ANTI-VACUITY: a walk that found no folders would satisfy the loop below by iterating nothing.
+    // ANTI-VACUITY: a walk that found no folders would satisfy every set operation below by iterating
+    // nothing, and would report perfect health while measuring an empty estate.
     Assert.NotEmpty(folders);
 
-    var specified = folders.Where(CriterionInventory.HasCriteriaFile).ToArray();
-    var unspecified = folders.Except(specified, StringComparer.Ordinal).ToArray();
+    var withFile = folders.Where(CriterionInventory.HasCriteriaFile).ToArray();
+    var declaring = folders.Where(folder => CriterionInventory.DeclaredIn(folder).Count > 0).ToArray();
 
     // The excluded set is BOUND, not merely excluded. If this ever covers most of the tree, the exclusion
     // has stopped being an exception and the instrument is measuring a fraction of the estate.
     Assert.True(
-      unspecified.Length < specified.Length,
-      $"{unspecified.Length} of {folders.Count} feature folders carry no acceptance-criteria.md " +
-      $"({string.Join(", ", unspecified)}) — the exclusion is no longer an exception.");
+      folders.Count - withFile.Length < withFile.Length,
+      $"{folders.Count - withFile.Length} of {folders.Count} feature folders carry no " +
+      "acceptance-criteria.md — the exclusion is no longer an exception.");
 
-    var silent = specified.Where(folder => CriterionInventory.DeclaredIn(folder).Count == 0).ToArray();
+    var silent = withFile.Where(folder => CriterionInventory.DeclaredIn(folder).Count == 0).ToArray();
 
     Assert.True(
       silent.Length == 0,
       $"{silent.Length} feature folder(s) have an acceptance-criteria.md that declares nothing: " +
       $"{string.Join(", ", silent)}. A declaration shape has changed and the matcher has gone blind — " +
       "which is indistinguishable from 'declares nothing' in every count derived from it.");
+
+    // ---- THE ROW THE FIRST VERSION HAD NO PLACE FOR: DECLARES, BUT NOT WHERE THE COUNT LOOKS.
+    var invisible = declaring.Except(withFile, StringComparer.Ordinal).ToArray();
+
+    Assert.True(
+      invisible.SequenceEqual(KnownDeclaringWithoutTheFile, StringComparer.Ordinal),
+      $"folders declaring criteria outside an acceptance-criteria.md changed. Expected " +
+      $"[{string.Join(", ", KnownDeclaringWithoutTheFile)}], found [{string.Join(", ", invisible)}]. " +
+      "Every id declared in such a folder is invisible to the per-feature counts, so either the folder " +
+      "gains an acceptance-criteria.md and its criteria join the total, or it is recorded here with a " +
+      "reason — and an entry that no longer applies must be removed in the same commit that fixes it.");
   }
+
+  // FP-010 declares AC-DOC-0017..0020 in `carried-analysis.md` and has no `acceptance-criteria.md`. It also
+  // carries a `decisions-open.md`: the feature is PARKED, not unstarted, and whether those four criteria are
+  // in force is the owner's call rather than this instrument's.
+  private static readonly string[] KnownDeclaringWithoutTheFile = ["FP-010-hr-employee-documents"];
 
   // ---- ALL FOUR CITED KEYS ARE LIVE, AND THE TRIPWIRE KEY IS SEPARATE.
   //

@@ -57,6 +57,11 @@ internal static class CriterionInventory
   private static readonly Regex TripwireTrait =
     new(@"Trait\s*\(\s*""Tripwire""\s*,\s*""(" + IdPattern + @")""");
 
+  // Bare ids, for resolution and for the comment scan. ⚠ NOT a declaration shape and never a citation:
+  // it matches an id ANYWHERE, which is exactly wrong for counting and exactly right for asking
+  // "does this id exist" and "has anyone written about it".
+  private static readonly Regex AnyId = new(IdPattern);
+
   public static IReadOnlyCollection<string> FeatureFolders() =>
     [.. Directory.EnumerateDirectories(Path.Combine(RepositoryRoot(), "docs", "17-features"))
       .Select(Path.GetFileName)
@@ -94,6 +99,36 @@ internal static class CriterionInventory
 
   public static IReadOnlyCollection<string> Tripwired() => Scan(TripwireTrait);
 
+  // ---- EVERY CRITERION DECLARED ANYWHERE, AS ONE SET.
+  //
+  // `DeclaredIn` answers per feature because coverage is reported per feature. Resolution is a different
+  // question — *does this id exist at all* — and asking it per folder would report a criterion cited from
+  // another module's test as unresolvable. **The union is the right population for that and the wrong one
+  // for counting, so both exist and neither is a substitute.**
+  public static IReadOnlyCollection<string> DeclaredEverywhere() =>
+    [.. FeatureFolders().SelectMany(DeclaredIn).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal)];
+
+  // ---- ⚠⚠⚠ THE THIRD STATE OF A CRITERION ID IN THIS TREE, AND IT HAD NO NAME UNTIL NOW.
+  //
+  // A criterion can be CITED (a trait claims a witness), TRIPWIRED (a guard claims the subject does not
+  // exist), or neither. **"Neither" has been read as one thing and it is two.** *A criterion nobody has ever
+  // written a word about is a completely different object from one with three paragraphs of reasoned refusal
+  // written beside the test that would have cited it* — and both currently render as the same empty cell.
+  //
+  // ***THIS COLLECTS THE SECOND KIND.*** A comment naming a criterion is the trace that reading it leaves.
+  // **The reasoning in that comment is not machine-readable and never will be; the fact that somebody wrote
+  // it is.** Measured at `c945332`: **472 distinct ids named in comments, and 36 of them carried by no trait
+  // at all** — thirty-six criteria that were read, considered, and left untagged.
+  //
+  // ⚠ IT IS EVIDENCE OF ATTENTION AND NOT OF COVERAGE, AND THE DIFFERENCE IS THE WHOLE POINT. A discussed
+  // criterion may be discussed in order to REFUSE it. **Nothing here should ever be added to a cited count.**
+  public static IReadOnlyCollection<string> DiscussedInComments() =>
+    [.. AllSources()
+      .SelectMany(file => AnyId.Matches(CommentsOnly(File.ReadAllText(file))))
+      .Select(match => match.Value)
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(id => id, StringComparer.Ordinal)];
+
   private static SortedSet<string> Scan(Regex pattern)
   {
     var found = new SortedSet<string>(StringComparer.Ordinal);
@@ -109,8 +144,18 @@ internal static class CriterionInventory
     return found;
   }
 
-  public static IEnumerable<string> TestSources() =>
-    Directory.EnumerateFiles(Path.Combine(RepositoryRoot(), "tests"), "*.cs", SearchOption.AllDirectories)
+  public static IEnumerable<string> TestSources() => SourcesUnder("tests");
+
+  // ---- ⚠ `src/` AND `tests/`, WHICH IS A WIDER POPULATION THAN CITATION COUNTING USES, DELIBERATELY.
+  //
+  // A trait can only live in `tests/`, so `Cited()` scanning less is right. **A criterion is DISCUSSED
+  // wherever somebody wrote about it**, and production code carries as much of this project's reasoning as
+  // the tests do — `DepartmentManagerCommandHandlers` argues about `BRULE-DEP-0012` in a comment and no test
+  // file mentions it. *Narrowing this to `tests/` would measure where we look, not where the tree knows.*
+  public static IEnumerable<string> AllSources() => SourcesUnder("src").Concat(SourcesUnder("tests"));
+
+  private static IEnumerable<string> SourcesUnder(string area) =>
+    Directory.EnumerateFiles(Path.Combine(RepositoryRoot(), area), "*.cs", SearchOption.AllDirectories)
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
 
@@ -123,6 +168,47 @@ internal static class CriterionInventory
       {
         var comment = line.IndexOf("//", StringComparison.Ordinal);
         return comment >= 0 ? line[..comment] : line;
+      }));
+
+  // ---- THE EXACT COMPLEMENT OF `StripComments`, AND WRITTEN BESIDE IT FOR THAT REASON.
+  //
+  // ⚠⚠ **THE TWO MUST AGREE ON WHAT A COMMENT IS, OR A LINE COULD BE NEITHER CODE NOR COMMENT AND FALL OUT
+  // OF BOTH POPULATIONS WITHOUT ANY SEAM BREAKING.** *Sharing the `//` rule by writing it twice is how that
+  // happens*, so the rule is written once and both callers take the same answer from it.
+  //
+  // ⚠ AND IT KEEPS THE TEXT AFTER `//`, NOT THE WHOLE LINE: `var x = 1; // AC-LOC-0005 explains this` is a
+  // code line carrying a comment, and the id in it is discussion.
+  //
+  // ---- ⚠⚠⚠ A LINE WITH A QUOTE BEFORE THE `//` IS DISCARDED, AND THE FIRST RUN OF THE GUARD IS WHY.
+  //
+  // **`CriterionInventoryTests.A_commented_trait_is_not_a_citation` builds its fixture as a string literal
+  // that CONTAINS `//` and two deliberately non-existent ids.** *Neither this method nor `StripComments`
+  // understands literals*, so the naive version read that code line as a comment and reported both ids as
+  // "discussed" — attention nobody had paid, to criteria that do not exist.
+  // ***THE GUARD'S FIRST RUN CAUGHT IT, WHICH IS THE ONLY REASON IT IS NOT STILL TRUE.***
+  //
+  // ⚠ **And the ids are described here rather than quoted, because quoting them would put them in a comment
+  // and the guard would catch this paragraph too — as it did, on the first attempt at writing it.** *The
+  // rule the guard enforces is "do not write an id that does not exist into a comment", and prose explaining
+  // the rule is not exempt from it.*
+  //
+  // ⚠⚠ **THE FIX IS DELIBERATELY CONSERVATIVE AND THE DIRECTION OF ITS ERROR IS THE WHOLE JUSTIFICATION.**
+  // Skipping any line whose `//` is preceded by a quote also drops genuine trailing comments on lines that
+  // contain a string — **so this UNDER-COLLECTS and can never INVENT.** *A discussed set missing an entry
+  // understates attention; one containing an entry nobody wrote claims a person looked at a criterion when
+  // nobody did, and that is the reading this population exists to support.* **The floor guard is what keeps
+  // the under-collection honest.**
+  //
+  // ⚠ `StripComments` has the SAME blindness and there the error runs the safe way — it strips a little too
+  // much, so a citation can be missed and never invented. **Left alone on purpose: changing it would move a
+  // published citation count as a side effect of fixing a different method.**
+  public static string CommentsOnly(string source) =>
+    string.Join(
+      "\n",
+      source.Split('\n').Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 && !line[..comment].Contains('"') ? line[(comment + 2)..] : string.Empty;
       }));
 
   public static string RepositoryRoot()

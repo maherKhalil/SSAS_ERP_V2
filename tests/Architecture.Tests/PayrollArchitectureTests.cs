@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy.Permissions;
 using SSAS.GL.Contracts.Posting;
+using SSAS.Payroll.Domain.Elements;
 using SSAS.Payroll.Application.Permissions;
 using SSAS.Payroll.Application.Reads;
 using SSAS.Payroll.Infrastructure.Persistence;
@@ -118,6 +119,69 @@ public sealed class PayrollArchitectureTests
   // raised and satisfied inside one change and nothing survives to be noticed later.** That is the same
   // "noticed, then routinely silenced" pattern as a constructor parameter, and it is why this earns a guard
   // rather than a note.
+  // ---- ⚠⚠⚠ A PAY ELEMENT'S CODE COMES FROM THE CALLER, AND FROM NOWHERE ELSE (AC-PAY-0006).
+  //
+  // *"A pay element is created with a caller-supplied code; no code is generated."* Two clauses, and **the
+  // CONSTRUCTION-PATH clause leads, because it is the one that does not depend on anybody's choice of
+  // words.** A generator named `Mint`, `Next` or `Allocate` defeats a search for the word "generate"; it
+  // does not defeat *"every public way to build a `PayElement` takes the code as an argument."*
+  //
+  // ⚠ THE TREE ALREADY STATES THIS DOCTRINE FOR THE SIBLING CRITERION, and the wording is theirs rather
+  // than mine. `PayElementDomainTests.An_element_code_cannot_be_changed_after_creation` closes `AC-PAY-0007`
+  // and says of it: *"There is no method to change it, and the wire shape has no field for it — the absence
+  // IS the rule."* **That criterion governs the code after creation; this one governs where it came from.**
+  //
+  // ⚠⚠ THE NAME BAN IS THE WEAKER HALF AND IS PLACED SECOND DELIBERATELY. It is a search over spellings,
+  // so it can only ever catch a generator that announces itself. It earns its place because HR's
+  // `No_employee_number_generator_exists` is the established instrument for exactly this shape — and it is
+  // the control the vacuity sweep uses, so its floor-and-matcher form is known good — but the assertion
+  // that actually carries this criterion is the one above it.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0006")]
+  public void A_pay_element_code_is_supplied_by_its_caller_and_generated_by_nothing()
+  {
+    // ---- CLAUSE 1, THE CONSTRUCTION PATH. No public constructor at all: one private ctor for the factory
+    // and one for EF materialization. So `Create` is the only door into this type.
+    Assert.Empty(typeof(PayElement).GetConstructors());
+
+    var factories = typeof(PayElement)
+      .GetMethods(BindingFlags.Public | BindingFlags.Static)
+      .Where(method => method.ReturnType == typeof(Result<PayElement>))
+      .ToArray();
+
+    // THE FLOOR, because `Assert.All` over an empty set is the same green as compliance — and this walk
+    // is keyed on a return type, which a refactor could silently change.
+    Assert.NotEmpty(factories);
+
+    // ***AND EVERY ONE OF THEM DEMANDS A CODE.*** Stated as a universal over the construction paths rather
+    // than as a fact about one method, so a SECOND factory that generated its own code would fail here.
+    Assert.All(factories, factory =>
+      Assert.Contains(
+        factory.GetParameters(),
+        parameter => parameter.Name == "code" && !parameter.IsOptional));
+
+    // ---- AND AN ABSENT CODE IS REFUSED RATHER THAN FILLED IN, which is what makes "supplied" mean
+    // supplied. Without this the parameter could be accepted as null and quietly replaced downstream.
+    Assert.True(PayElementCode.Create(null).IsFailure);
+    Assert.True(PayElementCode.Create("   ").IsFailure);
+
+    // ---- CLAUSE 2, THE NAME BAN. HR's shape, including its floor and its matcher control: an empty type
+    // set satisfies a ban identically to compliance, and a comparison that can never match is
+    // indistinguishable from one that is satisfied.
+    var types = typeof(PayElement).Assembly.GetTypes()
+      .Concat(Assembly.Load("SSAS.Payroll.Infrastructure").GetTypes())
+      .Select(type => type.Name)
+      .ToArray();
+
+    Assert.NotEmpty(types);
+    Assert.Contains(types, name => name.Contains("PayElement", StringComparison.OrdinalIgnoreCase));
+
+    Assert.DoesNotContain(types, name =>
+      name.Contains("CodeGenerator", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("CodeSequence", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("CodeAllocator", StringComparison.OrdinalIgnoreCase));
+  }
+
   [Fact]
   [Trait("Criterion", "AC-PAY-0023")]
   public void The_only_ledger_capabilities_payroll_can_reach_are_posting_reversing_and_inspecting()

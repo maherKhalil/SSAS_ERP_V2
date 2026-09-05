@@ -369,6 +369,94 @@ public sealed class TenantCompanyOrganizationSqlServerTests
     }
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ THE THIRD CLAUSE OF `AC-CMP-0011`, AND IT CARRIES NO CRITERION TRAIT ON PURPOSE.
+  // ==================================================================================================
+  //
+  // *"**`TenantId` is assigned from the trusted current tenant at creation** and cannot be changed
+  // afterward; an attempt to persist a company with a mismatched tenant context is rejected."*
+  //
+  // **The two tests above witness clauses two and three exactly. ***THEY SAY THE MECHANISM CANNOT BE
+  // SUBVERTED. NOTHING SAID IT WORKS.*** This does.
+  //
+  // ---- ⚠⚠ WHY IT IS HERE AND NOT AT A GATED LAYER, WHICH WAS THE FIRST QUESTION ASKED.
+  //
+  // `AssignTenant` lives in `PersistenceDbContext` (BuildingBlocks), is private, and runs from
+  // `ApplyPersistenceRules()` **inside `SaveChanges`, before the base call** — so the stamp itself is pure
+  // ChangeTracker work with no round-trip. *That makes a gated witness look possible.* **IT IS NOT AVAILABLE
+  // HONESTLY: there is no in-memory or SQLite provider anywhere in `tests/` — zero `UseInMemoryDatabase`,
+  // zero `UseSqlite` — and the `Architecture.Tests` contexts use `Server=model-only` strings and never save.**
+  //
+  // ***THE ONE GATED TRICK THAT WOULD WORK WAS REJECTED DELIBERATELY:*** add the entity, let `SaveChanges`
+  // throw when the provider cannot connect, and assert the stamp landed before the throw. **That witness
+  // would depend on EF running the rules before opening a connection — an ordering no contract promises.**
+  // *A witness for a conclusion whose premise is unguarded is a witness with a silent dependency, which is
+  // the exact shape this pair named an hour ago; committing one on purpose to gain a green would be worse
+  // than the gap it closes.*
+  //
+  // ---- ⚠⚠⚠ SO THIS TEST HAS NEVER RUN, CANNOT RUN TODAY, AND IS NOT PLANTED. ALL THREE, STATED.
+  //
+  // The Integration suite is owner-parked; last green 2026-09-01 at
+  // `ce9b28f1a603b9b7eb3674f76f7ae74721af61c9`. **This method did not exist at that commit, so it is
+  // NEVER-EXECUTED — not green-at-a-date — and it must not appear in any coverage figure.** *The distinction
+  // is checkable rather than asserted: `git show ce9b28f:<this file>` does not contain this method name.* ***IT CARRIES NO
+  // `Criterion` TRAIT FOR EXACTLY THAT REASON: a citation added now would mark `AC-CMP-0011` covered by a
+  // test nothing has ever executed, which is the defect this package spent a session measuring.***
+  //
+  // **AND IT IS UNPLANTED. I could not three-state it, because state 1 requires running the suite.** *Its
+  // detection is argued below rather than demonstrated, and an argued guard is a hypothesis.* **Whoever runs
+  // Integration next should plant it — set `entity.TenantId = tenantId` in `AssignTenant` to a constant, or
+  // delete the assignment — and confirm this reddens before adding the trait.**
+  //
+  // ---- THE TWO CONTROLS, BECAUSE THE ASSERTION IS TRIVIALLY SATISFIABLE WITHOUT THEM.
+  //
+  // **`Assert.Equal(Guid.Empty, company.TenantId)` BEFORE the save is the anti-vacuity control.** *Without
+  // it, a fixture that constructed the company already owned by `tenantA` would satisfy every later
+  // assertion while the stamping code did nothing.* **The arrangement is the claim.**
+  //
+  // **`IgnoreQueryFilters()` on the read-back consumes the signal that distinguishes the failures.** Under
+  // the tenant filter an unstamped row simply vanishes and `SingleAsync` throws *"sequence contains no
+  // elements"* — true, useless, and indistinguishable from the row never persisting. *Without the filter the
+  // assertion names the value it found, so "stayed `Guid.Empty`" and "was written to another tenant" are
+  // different failures.*
+  //
+  // ⚠ **`Company.Create` does NOT validate `tenantId`** — it accepts `Guid.Empty` and stores it — which is
+  // why the persistence layer is the enforcement point and why this fixture can express the case at all.
+  [Fact]
+  [Trait("Decision", "DEC-CMP-0001")]
+  public async Task A_company_saved_without_a_tenant_is_stamped_with_the_trusted_one()
+  {
+    await using var database = await CompanySqlDatabase.CreateAsync();
+    var tenantA = await SeedTenantAsync(database, "TENANTA");
+
+    Guid companyId;
+    await using (var context = database.CreateTenantContext(tenantA))
+    {
+      var company = CreateCompany(Guid.Empty, "STAMPED", "Stamped Company");
+
+      // ANTI-VACUITY: the aggregate really does start unowned, so the assertions below can only be
+      // satisfied by something assigning the tenant during the save.
+      Assert.Equal(Guid.Empty, company.TenantId);
+
+      context.Companies.Add(company);
+      Assert.True((await SaveAsync(context)).IsSuccess);
+
+      companyId = company.CompanyId;
+      Assert.Equal(tenantA, company.TenantId);
+    }
+
+    // And it is the PERSISTED value, not only the tracked one: a stamp applied in memory and lost on the
+    // way to SQL Server would pass the assertion above and fail this.
+    await using (var verify = database.CreateTenantContext(tenantA))
+    {
+      Assert.Equal(tenantA, await verify.Companies
+        .IgnoreQueryFilters()
+        .Where(item => item.Id == companyId)
+        .Select(item => item.TenantId)
+        .SingleAsync());
+    }
+  }
+
   [Theory]
   [InlineData("ACME")]
   [InlineData("acme")]

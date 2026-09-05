@@ -165,4 +165,56 @@ public sealed class CriterionInventoryTests
     Assert.DoesNotContain("AC-XXX-9999", stripped, StringComparison.Ordinal);
     Assert.Contains("AC-YYY-8888", stripped, StringComparison.Ordinal);
   }
+
+  // ---- THE SITE SCAN AGREES WITH THE CENSUS ON THE POPULATION, WHICH IS THE ONLY THING IT MAY DISAGREE
+  // WITH IT ABOUT.
+  //
+  // `CitationSites()` and `Cited()` share ONE definition of a citation and differ only in what they report,
+  // so this is **two implementations of one definition rather than two instruments** — it tests the walk,
+  // not the population. *That is still the check worth having:* the site scan reads raw lines to count
+  // comments and must strip them to MATCH, and getting that backwards is the exact failure it was written
+  // to measure. **A site scan that admitted commented-out traits would report ids the census never counted**
+  // — and it did, on the first run, by exactly one.
+  //
+  // ⚠ No count is asserted. The set EQUALITY moves only when the tree's citations move, which is the same
+  // condition under which `Cited()` moves, so this cannot redden on its own for ordinary work.
+  [Fact]
+  public void Every_citation_site_belongs_to_the_cited_population_and_none_is_missing()
+  {
+    var sites = CriterionInventory.CitationSites();
+    var cited = CriterionInventory.Cited();
+
+    // ANTI-VACUITY BEFORE THE COMPARISON: two empty sets are equal, and an equality is the assertion most
+    // easily satisfied by a walk that found nothing at all.
+    Assert.NotEmpty(sites);
+    Assert.NotEmpty(cited);
+
+    Assert.Equal(
+      cited.OrderBy(id => id, StringComparer.Ordinal),
+      sites.Select(site => site.Id).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal));
+  }
+
+  // ---- BOTH SCOPES ARE STILL REACHABLE, AND BOTH DIRECTIONS OF THE ADJACENCY WALK STILL FIND SOMETHING.
+  //
+  // Three separate ways this degrades silently, each turning a real finding into a flat zero: the type
+  // check stops matching and every citation reads as method-scoped; the upward walk breaks and the tree
+  // looks undocumented; the downward walk breaks and **the convention that puts reasoning BETWEEN the trait
+  // and the signature disappears** — which is the direction whose absence produced four false verdicts
+  // before this method existed.
+  //
+  // ⚠ A floor rather than a count, and low: the claim is *the walk still works*, not *the tree is still
+  // this documented*.
+  [Fact]
+  public void The_adjacency_walk_still_sees_both_scopes_and_both_directions()
+  {
+    var sites = CriterionInventory.CitationSites();
+
+    Assert.Contains(sites, site => site.IsTypeScoped);
+    Assert.Contains(sites, site => !site.IsTypeScoped);
+    Assert.True(
+      sites.Count(site => site.AdjacentCommentLines > 0) > 100,
+      $"only {sites.Count(site => site.AdjacentCommentLines > 0)} of {sites.Count} citation sites have any " +
+      "adjacent comment; 707 of 814 did at c4973ed. The adjacency walk has probably stopped walking rather " +
+      "than the tree stopped explaining itself.");
+  }
 }

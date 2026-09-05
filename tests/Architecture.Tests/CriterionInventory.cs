@@ -174,6 +174,109 @@ internal static class CriterionInventory
       .Distinct(StringComparer.Ordinal)
       .OrderBy(id => id, StringComparer.Ordinal)];
 
+  // ---- ⚠⚠⚠ ONE STRUCTURAL BIT PER CITATION: IS THERE RECORDED REASONING BESIDE IT?
+  //
+  // `Cited()` answers *how many criteria are claimed*. It cannot answer *how many of those claims anybody
+  // examined*, and until this existed the census had **no anti-vacuity control of its own**: a trait typed
+  // in thirty seconds and a trait with four paragraphs of clause-by-clause analysis beside it were one
+  // number. ***A citation with nothing written beside it is one nobody has audited, and that is where a
+  // reader should go first.***
+  //
+  // Extracting the *content* of that reasoning is an NLP task over free prose and has no mechanical operand.
+  // **Asking whether any exists is one bit, and this counts it.**
+  //
+  // ---- ⚠⚠⚠ IT SCANS BOTH DIRECTIONS, AND THAT IS NOT THOROUGHNESS BUT A REPAIR.
+  //
+  // This tree puts the reasoning **above the attribute block** (`AC-ATT-0015`: thirty-nine comment lines,
+  // then `[Fact]`, then the trait) *and* **between the trait and the method signature** (`AC-TEN-0079`:
+  // the trait, then twenty-five lines, then the signature). **A one-directional scan reports whichever
+  // convention it does not face as BARE.**
+  //
+  // ***THAT IS NOT A HYPOTHETICAL. A `grep -A3` on the trait, run downward, produced four false "this clause
+  // is witnessed by nothing" verdicts in one sitting — every one of them refuted by prose sitting ABOVE the
+  // method, and three of them naming the real witness by path.*** A qualifier above a declaration is
+  // invisible to a forward reader, and this method exists partly to stop that being repeated at scale.
+  //
+  // ---- ⚠⚠ WHAT THE NUMBER IS: **ADJACENCY, NOT PRESENCE.** THE DIFFERENCE IS LOAD-BEARING.
+  //
+  // A file may be thick with reasoning that is nowhere near its citations. `PlatformAuthenticationPersistence
+  // Tests` holds **78 comment lines and scores 0 on all eight of its citations** — its traits sit under a
+  // `[Fact]` beneath a `const` declaration. **That file is not unexamined; its reasoning is simply not where
+  // a reader of the citation would find it**, which is a real and different finding.
+  //
+  // ***SO A ZERO HERE MEANS "NOTHING BESIDE THIS TRAIT", NEVER "NOBODY LOOKED".*** Calling the zero bucket
+  // unaudited is the fallback-branch error — a label describing the matcher rather than the subject — and
+  // the separation costs one whole-file question per member.
+  //
+  // ---- ⚠⚠⚠ POLARITY. THIS METHOD READS COMMENTS; `Cited()` STRIPS THEM. THEY RUN OVER ONE CORPUS UNDER
+  // OPPOSITE RULES, AND EACH IS THE OTHER'S FAILURE MODE.
+  //
+  // Run the census over raw source and it measures this prose-dense tree's DOCUMENTATION — the first version
+  // of that matcher reported criteria as covered on the strength of prose alone. Run this over stripped
+  // source and it returns zero everywhere, which reads exactly like *"nobody explains anything"*.
+  //
+  // **The trait MATCH here therefore uses `StripComments` exactly as `Cited()` does, so a commented-out trait
+  // is not a site — while the COUNTING reads the raw lines.** *Measured: without that, the site scan finds
+  // 518 distinct ids against the census's 517, and the single extra is one `[Trait(...)]` quoted inside a
+  // comment in `SubscriptionInvariantTests`. The two instruments reconcile to the unit, and the whole of the
+  // discrepancy was the polarity trap.*
+  //
+  // ⚠ **NO COUNT IS ASSERTED ANYWHERE**, for the reason this file gives at the top: a number pinning a
+  // growing surface reddens on the next ordinary commit. The companion test checks the scan still finds
+  // sites and still distinguishes the two scopes.
+  public readonly record struct CitationSite(string File, string Id, int AdjacentCommentLines, bool IsTypeScoped);
+
+  public static IReadOnlyList<CitationSite> CitationSites()
+  {
+    var sites = new List<CitationSite>();
+
+    foreach (var file in TestSources())
+    {
+      var lines = System.IO.File.ReadAllText(file).Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+      var isComment = lines.Select(line => line.TrimStart().StartsWith("//", StringComparison.Ordinal)).ToArray();
+      var isAttribute = lines.Select(line => line.TrimStart().StartsWith('[')).ToArray();
+      var isBlank = lines.Select(string.IsNullOrWhiteSpace).ToArray();
+
+      for (var i = 0; i < lines.Length; i++)
+      {
+        var match = CitedTrait.Match(StripComments(lines[i]));
+        if (!match.Success)
+        {
+          continue;
+        }
+
+        // Upward through the attribute block. A blank line is tolerated only before the first comment is
+        // seen; once the run has started, a blank ends it — otherwise the previous method's trailing prose
+        // would be credited to this citation.
+        var adjacent = 0;
+        for (var j = i - 1; j >= 0; j--)
+        {
+          if (isComment[j]) { adjacent++; continue; }
+          if (isAttribute[j] || (isBlank[j] && adjacent == 0)) { continue; }
+          break;
+        }
+
+        // Downward to whatever is being tagged. The terminating line is the subject: a type-scoped trait
+        // covers every method in the file at once and has no method to attach reasoning to, which is why
+        // the scope is reported rather than inferred from the count.
+        var typeScoped = false;
+        for (var j = i + 1; j < lines.Length; j++)
+        {
+          if (isComment[j]) { adjacent++; continue; }
+          if (isAttribute[j] || isBlank[j]) { continue; }
+          typeScoped = TypeDeclaration.IsMatch(lines[j]);
+          break;
+        }
+
+        sites.Add(new CitationSite(file, match.Groups[1].Value, adjacent, typeScoped));
+      }
+    }
+
+    return sites;
+  }
+
+  private static readonly Regex TypeDeclaration = new(@"\b(class|record|struct|interface)\b");
+
   private static SortedSet<string> Scan(Regex pattern)
   {
     var found = new SortedSet<string>(StringComparer.Ordinal);

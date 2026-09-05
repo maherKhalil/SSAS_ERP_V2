@@ -629,7 +629,13 @@ public sealed class EmployeeReadScopeArchitectureTests
   // 17. AND ONLY ONE TYPE MAY INJECT THE UNAUTHORIZED DOOR (FP-015, T-088).
   // ================================================================================================
   //
-  // `EmployeeCompanyDirectoryService` is the one employee read that applies NO company authorization. Its
+  // ⚠ NAME CORRECTED 2026-09-06. This paragraph and the one at the fourth-file ruling below both said
+  // `EmployeeCompanyDirectoryService`, WHICH IS NOT A TYPE IN THIS PRODUCT — `grep -rin "CompanyDirectory"
+  // src/` returns nothing. The subject is `EmployeePlacementDirectoryService`, and the `[Fact]` immediately
+  // under this comment carried the true name the whole time. Everything the two paragraphs SAY is correct;
+  // only the name was wrong, and it reached a published report before anyone opened the file.
+  //
+  // `EmployeePlacementDirectoryService` is the one employee read that applies NO company authorization. Its
   // safety rests on two things, and only the first is structural:
   //
   //   1. tenant isolation, enforced by the tenant database's global filter;
@@ -704,7 +710,10 @@ public sealed class EmployeeReadScopeArchitectureTests
 
     // ---- AND A FOURTH FILE, RULED 2026-08-28 (FP-015, T-088). ITS LOCK IS DIFFERENT AND THAT IS THE RULING.
   //
-  // `EmployeeCompanyDirectoryService` serves FP-015's self-service read: given an employee, which company.
+  // `EmployeePlacementDirectoryService` serves FP-015's self-service read: given an employee, which company.
+  // (Name corrected 2026-09-06; see the note at item 17. Verified: three `Set<Employee>()` reads at lines 68,
+  // 95 and 128 of that file, each keyed on `employee.Id == employeeId` alone, no company predicate — so the
+  // description below is accurate about the type it now names.)
   // **It applies NO company authorization, unlike the three above** — and that is not a lost check, it is
   // the ruling. The caller it exists for is an ordinary employee reading their own record, and an employee
   // is not necessarily granted authority to administer the company they work for. Requiring one would

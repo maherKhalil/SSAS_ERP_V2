@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy.Permissions;
+using SSAS.GL.Contracts.Posting;
 using SSAS.Payroll.Application.Permissions;
 using SSAS.Payroll.Application.Reads;
 using SSAS.Payroll.Infrastructure.Persistence;
@@ -84,6 +85,72 @@ public sealed class PayrollArchitectureTests
       .ToArray();
 
     Assert.Empty(forbidden);
+  }
+
+  // ---- ⚠⚠⚠ PAYROLL CANNOT REOPEN A FISCAL PERIOD, BECAUSE IT CANNOT REACH ANYTHING THAT COULD (AC-PAY-0023).
+  //
+  // *"Closing a fiscal period is not reversed by any payroll operation."* **That is true today by the shape
+  // of the door rather than by any check inside Payroll**, and the two tests below pin the door.
+  //
+  // `SSAS.GL.Contracts` is the ONLY GL assembly Payroll may reference — `Payroll_assemblies_reach_other_
+  // modules_only_through_contracts` above enforces that, and deliberately does NOT constrain what lives
+  // inside the sanctioned door. *This is the surface within it.* `IJournalPoster` posts, reverses and
+  // inspects; none of the three closes or reopens a period, and `PeriodClosed` is an OUTCOME Payroll
+  // RECEIVES, never an action it can take.
+  //
+  // ⚠⚠ WHY THIS IS ASSERTED BY REFLECTION AND NOT BY SCANNING `using` LINES. A source scan finds only what
+  // an import declares, and **a fully-qualified `SSAS.GL.Contracts.Posting.IJournalPoster` needs no import
+  // at all** — so the scan's green would be silent about exactly the reference that avoided it. The
+  // exported-type set cannot be avoided that way: a type Payroll could name is a type this assertion sees.
+  //
+  // ⚠⚠⚠ AND BOTH ARE EXACT-SET EQUALITIES RATHER THAN BAN LISTS, WHICH IS THIS FILE'S OWN LESSON APPLIED.
+  // The Attendance note thirty lines above records a list-shaped guard that silently excluded a module
+  // added after it was written, *"and its green is indistinguishable from a green that covers the new
+  // member."* **A ban list cannot fail on an ADDITION, and an addition is the entire hazard here** — the
+  // change this criterion fears is somebody adding a period-administration capability, not removing one.
+  // An equality against a literal list also cannot pass over an empty derived set, so it is self-
+  // controlling by shape and needs no separate anti-vacuity floor.
+  //
+  // ⚠ WHAT WOULD BREAK THESE, AND WHY THAT IS THE POINT. *"Payroll should be able to reopen the period to
+  // fix a run"* is a reasonable thing for a competent person to want, and adding a member to
+  // `IJournalPoster` is exactly how they would do it. The compiler DOES object to that — every implementer
+  // gains an obligation — **but whoever adds the member implements it in the same edit, so the objection is
+  // raised and satisfied inside one change and nothing survives to be noticed later.** That is the same
+  // "noticed, then routinely silenced" pattern as a constructor parameter, and it is why this earns a guard
+  // rather than a note.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0023")]
+  public void The_only_ledger_capabilities_payroll_can_reach_are_posting_reversing_and_inspecting()
+  {
+    Assert.Equal(
+      ["InspectPostingWindowAsync", "PostAsync", "ReverseAsync"],
+      typeof(IJournalPoster).GetMethods()
+        .Select(method => method.Name)
+        .OrderBy(name => name, StringComparer.Ordinal));
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0023")]
+  public void The_ledger_contract_assembly_exposes_no_calendar_administration_at_all()
+  {
+    var exported = typeof(IJournalPoster).Assembly.GetExportedTypes();
+
+    // Every exported type sits in the posting namespace. A `SSAS.GL.Contracts.Calendar` added beside it
+    // would be reachable by Payroll the moment it existed, without touching a single Payroll file.
+    Assert.All(exported, type => Assert.Equal("SSAS.GL.Contracts.Posting", type.Namespace));
+
+    Assert.Equal(
+      [
+        "IJournalPoster",
+        "JournalPostingLine",
+        "JournalPostingOutcome",
+        "JournalPostingRequest",
+        "JournalPostingStatus",
+        "JournalReversalRequest",
+        "PostingWindow",
+        "PostingWindowStatus"
+      ],
+      exported.Select(type => type.Name).OrderBy(name => name, StringComparer.Ordinal));
   }
 
   [Theory]

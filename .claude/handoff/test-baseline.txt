@@ -30,7 +30,7 @@
 # suite|configuration|total
 API|Debug|987
 API|Release|972
-Architecture|Debug|672
+Architecture|Debug|674
 Architecture|Release|628
 Attendance|Debug|92
 Attendance|Release|87
@@ -40,7 +40,7 @@ HR|Debug|330
 HR|Release|328
 Integration|Debug|862
 Integration|Release|862
-Payroll|Debug|95
+Payroll|Debug|96
 Payroll|Release|93
 Platform|Debug|1131
 Platform|Release|1101

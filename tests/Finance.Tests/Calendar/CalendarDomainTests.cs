@@ -141,6 +141,21 @@ public sealed class CalendarDomainTests
   }
 
   [Fact]
+  // ---- ⚠⚠⚠ `AC-GL-0002`'s PRINCIPAL CLAUSE IS WITNESSED BY NEITHER OF ITS TWO CITATIONS (2026-09-05).
+  //
+  // *"**The persisted journal records both** the accounting date supplied by the caller **and the fiscal
+  // period resolved from it**. The caller does not supply the period."*
+  //
+  //     ✓ *the caller does not supply it*   `GlEndpointTests.A_request_naming_a_fiscal_period_is_refused…`
+  //     ✓ *resolved from the date*          ***this test*** — `ResolveOpenPeriodFor` returns the right period
+  //     ✗ ***"THE PERSISTED JOURNAL RECORDS BOTH"*** — **witnessed by neither.**
+  //
+  // ***THE MISSING CLAUSE IS THE CRITERION'S MAIN VERB.*** *This test resolves a period from a `FiscalYear`
+  // aggregate in memory and never persists anything; the endpoint test asserts a refusal.* **Nothing reads
+  // back a stored journal and checks that it carries the accounting date AND the resolved period together.**
+  //
+  // ⚠ *Both citations are honest about what they assert and neither claims the whole — but the trait cannot
+  // say "one clause of three", so the count reads this criterion as covered.*
   [Trait("Decision", "AC-GL-0002")]
   public void The_period_covering_a_date_is_resolved_from_the_date_alone()
   {

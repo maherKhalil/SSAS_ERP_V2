@@ -106,6 +106,22 @@ public sealed class GlSchemaSqlServerTests
   }
 
   [Fact]
+  // ---- ⚠⚠⚠ `AC-GL-0020` IS NOT CITED HERE AND THE NON-CITATION IS CORRECT (recorded 2026-09-05).
+  //
+  // *"No foreign key exists between any GL table and any table in the Platform database."* → `DEC-GL-0006`,
+  // which is the trait this test already carries. **The criterion is TRUE, and this test deliberately
+  // asserts something WEAKER, for the reason stated below it: cross-database foreign keys are not
+  // expressible in SQL Server, so the criterion holds by the engine rather than by anyone's design.**
+  //
+  // ⚠⚠ ***AND THE CONTRASTING CASE IS WORTH MORE THAN THIS ENTRY: `AC-PAY-0031` IS THE SAME CRITERION,
+  // WORD FOR WORD, ONE MODULE OVER — AND IT WAS CITED.*** Its test banned foreign keys to `SSAS.HR.` and
+  // `SSAS.GL.` under the claim *"bans one to ANY other module's table, which is strictly wider"*.
+  // **`SSAS.Platform.` was not in that predicate: a DIFFERENT set that excludes the criterion's subject,
+  // not a wider one.** *That citation was withdrawn at `a0495c6`.*
+  //
+  // ***TWO AUTHORS, ONE CRITERION SHAPE, OPPOSITE DECISIONS — AND THE ONE WHO DECLINED WAS RIGHT.*** **The
+  // withdrawal over there is a correction toward the standard already set here, not a judgement imposed on
+  // that file.** *Whoever revisits either should read them together.*
   [Trait("Decision", "DEC-GL-0006")]
   public async Task No_gl_table_has_a_foreign_key_leaving_the_tenant_database()
   {
@@ -375,6 +391,22 @@ public sealed class GlSchemaSqlServerTests
   // ================================================================================================
 
   [Fact]
+  // ---- ⚠⚠⚠ WHAT THIS CITATION COVERS OF `AC-GL-0003`, AND WHAT IT DOES NOT (recorded 2026-09-05).
+  //
+  // *"**Every** monetary amount is persisted as **`decimal(19,4)`** and round-trips without loss of
+  // precision."* **Three claims. This test carries one of them.**
+  //
+  //   ✓ round-trips without loss — `1234.5678m` written and read back equal, at one column.
+  //   ✗ ***"PERSISTED AS `decimal(19,4)`" IS A TYPE CLAIM AND THIS IS A VALUE OBSERVATION.***
+  //     **A `decimal(19,6)` column round-trips `1234.5678` exactly as well**, and a `decimal(19,2)` would
+  //     fail — so this bounds the scale from BELOW and says nothing about the scale from above, nor about
+  //     the precision 19 at all. *Nothing here reads `sys.columns`.*
+  //   ✗ ***"EVERY MONETARY AMOUNT" IS SAMPLED AT ONE COLUMN.*** `JournalLine.Debit` is asserted;
+  //     `JournalLine.Credit` is not, nor any other monetary column in the module.
+  //
+  // ⚠⚠ **Compare `Arabic_text_round_trips_unchanged` below: the same shape, but its round-trip IS strong
+  // evidence for its type, because Arabic mangles under `varchar`.** ***THIS ONE HAS NO SUCH IMPLICATION —
+  // precision and scale leave no trace in a value that fits both.*** *Of the two, this is the weaker.*
   [Trait("Decision", "AC-GL-0003")]
   public async Task Amounts_round_trip_at_four_decimal_places()
   {
@@ -390,6 +422,18 @@ public sealed class GlSchemaSqlServerTests
   }
 
   [Fact]
+  // ---- ⚠⚠ WHAT THIS CITATION COVERS OF `AC-GL-0019` (recorded 2026-09-05).
+  //
+  // *"**Every** persisted GL string column **is `nvarchar`** and round-trips Arabic text unchanged."*
+  //
+  // ***THE TYPE CLAIM IS WELL EVIDENCED FOR THIS COLUMN AND ONLY THIS COLUMN.*** **Arabic does not survive a
+  // `varchar` column under a non-Arabic collation, so a successful round-trip is strong evidence that
+  // `Account.Name` really is `nvarchar`** — *which is more than a value observation usually buys, and is why
+  // this is a stronger citation than `AC-GL-0003` above.*
+  //
+  // ⚠ ***THE DEFECT IS THE QUANTIFIER, NOT THE ASSERTION: "EVERY persisted GL string column" IS SAMPLED AT
+  // ONE.*** **`Account.Name` is asserted; every other GL string column is not.** *A column added later as
+  // `varchar` would satisfy this test by not being looked at.*
   [Trait("Decision", "AC-GL-0019")]
   public async Task Arabic_text_round_trips_unchanged()
   {

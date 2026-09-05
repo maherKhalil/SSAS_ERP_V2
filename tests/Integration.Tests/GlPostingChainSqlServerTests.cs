@@ -73,6 +73,23 @@ public sealed class GlPostingChainSqlServerTests
   // Asserted on the DATABASE rather than on the handler's result, because the result reports what the
   // handler believes and the rows report what SQL Server kept.
   [Fact]
+  // ---- ⚠⚠⚠ `AC-GL-0001` IS WITNESSED TWICE AND CITED NOWHERE. DELIBERATELY LEFT UNCITED FOR NOW.
+  //
+  // *"…the journal is persisted with all its lines and is assigned a journal number unique within its
+  // fiscal year."* **Both clauses have a witness and neither carries the criterion:**
+  //
+  //     persisted WITH ALL ITS LINES   ***this test*** — `JournalEntry` = 1 AND `JournalLine` = 2
+  //     journal number unique in year  `Journal_numbers_are_unique_within_company_and_fiscal_year`
+  //                                    in `GlSchemaSqlServerTests`, carrying `Decision/BR-GL-0005`
+  //
+  // ***THE WORK IS DONE AND ONLY THE LABEL IS ABSENT — a disposition class distinct from a missing witness.***
+  // **The comment below reasons from `AC-GL-0001`'s exact wording to find a hole in this test's own
+  // assertions.** *Somebody read the criterion, strengthened the test because of it, and did not cite it.*
+  //
+  // ⚠⚠ ***WHY IT IS STILL NOT CITED: BOTH WITNESSES ARE INTEGRATION, SO A CITATION WOULD BUY A
+  // GREEN-AT-A-DATE CRITERION — AND THE LINE ASSERTION BELOW POSTDATES `ce9b28f`, SO IT HAS NEVER RUN.***
+  // **Citing it today would record as covered a clause nothing has executed.** *Cite it when a `PHASE` run
+  // exists; until then this note is the honest state.*
   [Trait("Decision", "ADR-012")]
   public async Task Posting_a_persisted_draft_writes_the_journal_and_removes_the_draft_and_its_lines()
   {
@@ -187,6 +204,22 @@ public sealed class GlPostingChainSqlServerTests
   // **Two failures, two shapes, and neither test could stand in for the other.** That is why this test
   // asserts at both read paths and not at whichever one was convenient.
   [Fact]
+  // ---- ⚠⚠⚠ THIS CITATION HAS NEVER BEEN EXECUTED BY ANYTHING (recorded 2026-09-05).
+  //
+  // **The method below was added after `ce9b28f`, the commit at the last green Integration run
+  // (2026-09-01).** `Integration.Tests` does not run under `GATE_SCOPE=TASK`, and `GATE_SCOPE=PHASE` is
+  // owner-parked. ***SO NO RUN HAS EVER OBSERVED THESE ASSERTIONS. THIS IS A CLAIM, NOT A CHECK, AND IT
+  // MUST NOT BE READ AS COVERAGE UNTIL A `PHASE` RUN HAS SEEN IT.***
+  //
+  // ⚠ **The design is not in question** — the comment above records two distinct failure shapes found by
+  // planting, and says neither test could stand in for the other. *The work is real; only its execution is
+  // absent.*
+  //
+  // ⚠⚠ ***AND THE REASON THIS NOTE EXISTS AT ALL: `GlSchemaSqlServerTests` ALREADY CARRIES THE EQUIVALENT
+  // WARNING FOR A WEAKER CONDITION*** — *"⚠⚠⚠ TIER 2 — THIS WITNESS IS UNGATED… a reader must not take this
+  // citation as gated coverage"* — **on a test that DID run at the baseline.** *The stronger condition, in
+  // this file, in the same feature, had no warning at all.* ***THE PRACTICE VARIES BY FILE WITHIN ONE
+  // FEATURE, WHICH IS WHY "AUTHORS WILL WRITE THE WARNING" CANNOT BE THE REMEDY.***
   [Trait("Criterion", "AC-GL-0009")]
   public async Task A_deactivated_account_refuses_new_postings_and_leaves_its_history_readable()
   {

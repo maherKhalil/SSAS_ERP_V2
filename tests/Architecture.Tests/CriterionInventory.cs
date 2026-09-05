@@ -221,6 +221,44 @@ internal static class CriterionInventory
   // comment in `SubscriptionInvariantTests`. The two instruments reconcile to the unit, and the whole of the
   // discrepancy was the polarity trap.*
   //
+  // ---- ⚠⚠⚠ WHAT THIS BIT WAS BUILT TO DETECT, AND WHAT EIGHT HAND-READS ACTUALLY ESTABLISHED.
+  //
+  // It was built on the reasoning that **a citation with nothing written beside it is one nobody audited**.
+  // Eight of the always-bare ids were then read against the clause standard — *for each clause, name the
+  // fixture that would fail if it were false.* ***ALL EIGHT CITATIONS WERE SOUND.***
+  //
+  // ⚠⚠ **THAT IS NOT A NEGATIVE RESULT AND MUST NOT BE WRITTEN AS ONE. THE ARITHMETIC, SO A LATER READER CAN
+  // CHECK IT RATHER THAN TAKE IT:** the observed base rate of unsound citations in a random sample of twenty
+  // hand-reads was **1 in 20**, so eight reads expect **0.4**, and ***P(zero unsound in eight | THE SELECTION
+  // IS PURE NOISE) = 0.95⁸ ≈ 0.66.*** **Two-thirds of the time this exact result comes out of a random
+  // selection of eight cells: it is the single most likely observation under the null and it separates
+  // nothing, in either direction.**
+  //
+  // *The list was never large enough to expect a hit, and a count that cannot distinguish the hypotheses
+  // decides nothing however honestly it was collected.* **So the claim "this bit does not detect unsound
+  // citations" is unearned — and note its direction: it is the SELF-CRITICAL reading, which is the one
+  // neither author nor reviewer thinks to check.** ***The absence of the thing is not evidence that the
+  // thing is absent, and a sample too small fails exactly as a search window too small does.***
+  //
+  // ***SO THE HONEST STATEMENT IS: AS A DEFECT DETECTOR, UNDEMONSTRATED — NOT DISPROVED.***
+  //
+  // ---- AND AS A FINDING GENERATOR IT PAID, FOR A PURPOSE OTHER THAN THE ONE IT WAS BUILT FOR.
+  //
+  // Four results in eight cells, none of them an unsound citation and none reachable by the trait census:
+  //
+  //   `AC-TEN-0017`  **malformed rather than uncovered** — six of its ten requirements are gated on an
+  //                  operator reconciliation that has not run, so no citation could exist and the bare bit
+  //                  cannot tell *"nobody cited this"* from *"there is nothing to cite"*.
+  //   `AC-AUTH-0032` a tie-break exercised by no fixture: every seeded session has a distinct instant, so a
+  //                  comparer dropping the secondary key stays green.
+  //   `AC-AUTH-0029` *"persists no raw secret"* rests on a parameter type and is asserted nowhere.
+  //   `AC-CMP-0015`  a guard walking a **hand-written array of five event types** where its twin criterion's
+  //                  guard walks the assembly and pins the count — sound today, blind to the sixth event.
+  //
+  // ⚠ **Two false-positive classes are known**: a criterion whose disposition is recorded somewhere this
+  // scan cannot see, and a criterion with **no subject to cite**. *A zero from this bit is a prompt to read,
+  // never a verdict.*
+  //
   // ⚠ **NO COUNT IS ASSERTED ANYWHERE**, for the reason this file gives at the top: a number pinning a
   // growing surface reddens on the next ordinary commit. The companion test checks the scan still finds
   // sites and still distinguishes the two scopes.

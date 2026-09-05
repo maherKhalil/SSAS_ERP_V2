@@ -351,11 +351,23 @@ public sealed class SubscriptionInvariantTests
   // same detection is the one that already exists.* **That is the test the deleted exact-set half failed,
   // and applying it to my own next idea is the point of having it.** The fourth noun, `grants`, is added to
   // the ban below rather than given a second test.
+  // ⚠⚠⚠ RENAMED 2026-09-05. THIS METHOD WAS `..._and_two_dispositions_depend_on_that` AND CARRIED THREE
+  // TRIPWIRE TRAITS. **`AC-SUB-0007` joined `0034` and `0035` later — the paragraph above says so in its own
+  // words, *"AND `AC-SUB-0007` JOINS THEM"* — and the name kept the number it was born with.**
+  //
+  // ***THAT IS THE EXACT DEFECT `AC-POS-0068` WAS REPAIRED FOR, IN OUR OWN TRIPWIRE, WITHIN THE SAME SESSION
+  // THAT WROTE THE RULE ABOUT IT:*** *a readable artefact holding a count of something that grew, where
+  // nothing fails when it expires.* **The traits are the runnable inventory and they were correct; the name
+  // was a memory of them.**
+  //
+  // **So the count is REMOVED rather than corrected — changing *two* to *three* would buy until the fourth
+  // disposition and re-arm the same trap.** *`AC-ATT-0032`'s rule is the one that applies: an exact inventory
+  // keeps answering, and the trait list IS the inventory. The name should not restate it.*
   [Fact]
   [Trait("Tripwire", "AC-SUB-0007")]
   [Trait("Tripwire", "AC-SUB-0034")]
   [Trait("Tripwire", "AC-SUB-0035")]
-  public void No_commercial_read_surface_exists_yet_and_two_dispositions_depend_on_that()
+  public void No_commercial_read_surface_exists_yet_and_the_dispositions_above_depend_on_that()
   {
     // ================================================================================================
     // ⚠⚠⚠ THE PERMISSION-PLANE HALF WAS HERE AND WAS **DELETED BY RULING** ON 2026-09-05. DO NOT REBUILD IT.

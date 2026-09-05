@@ -1,4 +1,7 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Application.Permissions;
 using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Infrastructure.Persistence.Seeding;
 using SSAS.Platform.Domain;
@@ -163,6 +166,123 @@ public sealed class SubscriptionInvariantTests
       name.Contains("Usage", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("Overage", StringComparison.OrdinalIgnoreCase) ||
       name.Contains("Proration", StringComparison.OrdinalIgnoreCase));
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE SECOND TRIPWIRE: THE READING AND DISCLOSURE HALF (AC-SUB-0034, AC-SUB-0035).
+  // ================================================================================================
+  //
+  // Those two are recorded above as unbuilt on a different evidence from the billing five: **no
+  // `Platform.Subscriptions.View` permission exists on either plane, and there are no commercial read
+  // routes to be refused from.** *A schema guard says nothing about either* — they would become live the
+  // day a permission name and a route appear, with every table already in place.
+  //
+  // ⚠ SO THE DISPOSITION HAS TWO INDEPENDENT PARTS AND THIS ASSERTS BOTH. A permission without a route
+  // is unreachable and a route without a permission would not compile against `RequirePermission`; **either
+  // one arriving alone is still the signal, because either one alone means somebody has started.**
+  //
+  // ---- ⚠⚠ THE REVIEWER-QUESTION, WHICH IS DIFFERENT FROM THE BILLING TRIPWIRE'S.
+  //
+  // When this reddens the question is ***"can a caller now READ commercial records, and if so does
+  // `AC-SUB-0034`'s cross-tenant clause or `AC-SUB-0035`'s refusal clause now have a subject?"*** *Not "is
+  // this permission fine."* **Update the list once that is answered; if the answer is yes, those two return
+  // to the queue and the note above them is wrong.**
+  //
+  // ⚠⚠⚠ AND THE TRAIT KEY IS `Tripwire`, NOT `Criterion`, FOR THE REASON THE BILLING ONE RECORDS:
+  // **a guard asserting a criterion's subject does not exist is the opposite of a witness for it**, and
+  // the counting matcher reads `Criterion`, `Acceptance`, `Decision` and `AcceptanceCriteria` alike.
+  // *Tagging this pair `Criterion` would mark two more unbuilt criteria as covered.*
+  [Fact]
+  [Trait("Tripwire", "AC-SUB-0034")]
+  [Trait("Tripwire", "AC-SUB-0035")]
+  public void No_commercial_read_surface_exists_yet_and_two_dispositions_depend_on_that()
+  {
+    // ---- THE PERMISSION PLANE, AS AN EXACT SET.
+    //
+    // A ban on the word "Subscription" would miss `Platform.Billing.View` or `Platform.Plans.View`. The
+    // exact set cannot be evaded by naming, and it is the assertion that carries this half.
+    //
+    // ⚠⚠ AND HERE THE ENFORCEMENT SET REALLY IS ZERO. A plant adding
+    // `public const string ViewSubscriptions = "Platform.Subscriptions.View";` to `PlatformPermissionNames`
+    // left **all 2,812 gated tests in Platform, Architecture and API green**; this assertion was the only
+    // one that reddened. *Nothing else in the tree observes what that class declares.*
+    Assert.Equal(
+      [
+        "Platform.Companies.Lifecycle", "Platform.Companies.Manage", "Platform.Companies.View",
+        "Platform.EmployeeLinks.Link", "Platform.EmployeeLinks.Unlink", "Platform.Localization.Manage",
+        "Platform.Localization.View", "Platform.Localization.ViewHistory", "Platform.Permissions.View",
+        "Platform.RolePermissions.Assign", "Platform.RolePermissions.Remove", "Platform.Roles.Create",
+        "Platform.Roles.RequestRetirement", "Platform.Roles.Retire", "Platform.Roles.Update",
+        "Platform.Roles.View", "Platform.Support.Administer", "Platform.Tenant.Administer",
+        "Platform.Tenants.Lifecycle", "Platform.Tenants.Manage", "Platform.Tenants.View",
+        "Platform.UserRoles.Assign", "Platform.UserRoles.Remove", "Platform.Users.Create",
+        "Platform.Users.Deactivate", "Platform.Users.Reactivate", "Platform.Users.Update",
+        "Platform.Users.View"
+      ],
+      typeof(PlatformPermissionNames)
+        .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
+        .Where(field => field.IsLiteral && field.FieldType == typeof(string))
+        .Select(field => (string)field.GetRawConstantValue()!)
+        .OrderBy(name => name, StringComparer.Ordinal));
+
+    // ---- AND THE ROUTE SURFACE, AS A BAN. THE WEAK HALF, PLACED SECOND AND LABELLED.
+    //
+    // Route paths are literals in the API assembly's source, so this is a name search and reaches only the
+    // nouns it lists. **A commercial route named `/api/platform/commerce` walks straight past it.**
+    //
+    // ---- ⚠⚠⚠ AND ITS ENFORCEMENT SET IS NOT ZERO, WHICH THE FIRST DRAFT OF THIS COMMENT DENIED.
+    //
+    // The draft said a commercial route would otherwise "pass unnoticed". *Four plants say otherwise, and the
+    // answer depends entirely on whether the route is REGISTERED:*
+    //
+    //   • **A LIVE, REGISTERED route is already caught — by two guards that are general over any route:**
+    //     `ApiContractRowGuardTests.Every_live_route_is_addressed_by_some_test_that_is_not_an_inventory` and
+    //     `EndpointPermissionCatalogJoinTests.Every_endpoint_is_classified_and_no_policy_escapes_the_join`,
+    //     plus that group's own inventory where one exists. *For this case the ban below is REDUNDANT for
+    //     DETECTION and contributes only the MESSAGE* — those two say "an unaddressed route" and "an
+    //     unclassified endpoint", neither of which tells a reader that `AC-SUB-0034` and `AC-SUB-0035` have
+    //     just acquired a subject.
+    //
+    //   • **A route written but NOT YET WIRED UP is caught by NOTHING ELSE.** A plant putting
+    //     `MapGet("/api/platform/subscriptions", ...)` in an unregistered file left all 2,812 gated tests in
+    //     Platform, Architecture and API green; only this assertion reddened. Those two general guards walk
+    //     the LIVE route table, so a surface under construction is invisible to them by construction — and
+    //     *under construction is exactly the state this tripwire exists to report.*
+    //
+    // ⚠ THE FIRST PLANT MEASURED ITS OWN PLACEMENT, NOT THE TREE. Putting the route inside the
+    // authentication group reddened four guards, because that group carries an exact-set inventory; it is the
+    // most-watched location in the API and nothing commercial would ever be built there. **The number a plant
+    // returns is a property of where it was put.**
+    var routes = PlatformApiRouteLiterals();
+
+    // MATCHER CONTROL: a route that exists today, so a walk that read nothing fails here rather than
+    // satisfying the ban by finding no routes at all.
+    Assert.Contains(routes, route => route.Contains("login", StringComparison.OrdinalIgnoreCase));
+
+    Assert.DoesNotContain(routes, route =>
+      route.Contains("subscription", StringComparison.OrdinalIgnoreCase) ||
+      route.Contains("invoice", StringComparison.OrdinalIgnoreCase) ||
+      route.Contains("entitlement", StringComparison.OrdinalIgnoreCase) ||
+      route.Contains("plan", StringComparison.OrdinalIgnoreCase));
+  }
+
+  private static string[] PlatformApiRouteLiterals()
+  {
+    var directory = Path.Combine(RepositoryRoot(), "src", "Platform", "SSAS.Platform.API");
+    var pattern = new Regex(@"Map(?:Get|Post|Put|Delete|Patch)\(\s*""([^""]+)""");
+    var routes = new SortedSet<string>(StringComparer.Ordinal);
+
+    foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
+    {
+      foreach (Match match in pattern.Matches(File.ReadAllText(file)))
+      {
+        routes.Add(match.Groups[1].Value);
+      }
+    }
+
+    return [.. routes];
   }
 
   // Every table any platform migration CREATES. Designer and snapshot files are excluded: they restate the

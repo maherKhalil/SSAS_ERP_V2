@@ -246,6 +246,19 @@ public sealed class SubscriptionInvariantTests
   [Trait("Tripwire", "AC-SUB-0040")]
   [Trait("Tripwire", "AC-SUB-0041")]
   [Trait("Tripwire", "AC-SUB-0042")]
+  // ---- ⚠⚠⚠ PLANT-BACKED 2026-09-05. UNTIL THAT DATE THIS GUARD'S DETECTION WAS ARGUED, NOT DEMONSTRATED.
+  //
+  // **PLANT:** a minimal compiling `migrationBuilder.CreateTable(name: "Invoices", …)` added to
+  // `20260826031515_AddSubscriptionCommercialPlane.cs` — *the minimum a contributor starting billing writes,
+  // and it reaches this guard's actual input, which is the migration SOURCE and not the database.*
+  // **RED:** this test, by name, `Assert.Equal() Failure: Collections differ`. **REVERT → GREEN.**
+  //
+  // ⚠⚠ **AND THE NOUN CHECK RECORDS A REAL LIMIT: THE RED CAME FROM THE EXACT-SET ASSERTION, NOT FROM THE
+  // `Invoice|Payment|Usage|Overage|Proration` BAN BELOW.** *The exact set fires first, so the ban never
+  // executed.* ***A PLANT CANNOT REACH AN ASSERTION THAT AN EARLIER ASSERTION IN THE SAME METHOD HAS ALREADY
+  // FAILED ON*** — so the ban is still unproven, and it is the half that would carry the MESSAGE naming the
+  // five dispositions. **Proving it needs a plant that satisfies the exact set and violates the ban, which
+  // is not constructible here: any new table changes the set.** *Recorded as a bound rather than chased.*
   public void No_billing_table_exists_yet_and_five_dispositions_depend_on_that()
   {
     var created = PlatformTablesCreatedByMigrations();

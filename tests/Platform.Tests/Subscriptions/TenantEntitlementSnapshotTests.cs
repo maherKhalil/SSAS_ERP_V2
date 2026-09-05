@@ -202,6 +202,15 @@ public sealed class TenantEntitlementSnapshotTests
   // again: redundant for detection, load-bearing for telling a reader what they have just acquired.*
   [Fact]
   [Trait("Tripwire", "AC-SUB-0022")]
+  // ---- ⚠⚠⚠ PLANT-BACKED 2026-09-05. **PLANT:** `string? PlantedBillingReference = null` added to the
+  // `TenantEntitlementSnapshot` record. **RED:** this test, `Assert.Equal() Failure: Collections differ`.
+  // **REVERT → GREEN**, confirmed alongside the two subscription tripwires: `Passed: 3, Failed: 0`.
+  //
+  // ⚠⚠ **AND THIS IS THE STRONGEST OF THE NINE TRIPWIRES BECAUSE ITS SUBJECT EXISTS.** *The other eight
+  // assert an ABSENCE and cannot fail while the absence holds — which is forever, until the one day it
+  // matters — so their detection can only ever be shown by a plant.* ***THIS ONE IS A BIND OVER A LIVE TYPE:
+  // it can fail for its stated reason on any ordinary day, and the plant only confirms what its shape
+  // already promised.***
   public void The_snapshot_carries_exactly_these_members_and_three_of_them_are_forbidden_in_a_response()
   {
     Assert.Equal(

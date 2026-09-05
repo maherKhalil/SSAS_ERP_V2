@@ -81,6 +81,124 @@ public sealed class SubscriptionInvariantTests
 
   private static SubscriptionTerm Perpetual => SubscriptionTerm.Perpetual(Noon);
 
+  // ================================================================================================
+  // ⚠⚠⚠ THE TRIPWIRE UNDER THE DISPOSITION ABOVE (AC-SUB-0038 to AC-SUB-0042).
+  // ================================================================================================
+  //
+  // **Five criteria are recorded above as unbuilt on one piece of evidence: *there is no invoice, invoice
+  // line, seat usage sample, payment attempt or proration anywhere in `src/`.* That evidence is a fact
+  // about the schema, and it will stop being true.**
+  //
+  // ***UNBUILT-BY-ENUMERATION DECAYS IN SILENCE. UNBUILT-BY-ENFORCEMENT ANNOUNCES ITSELF.*** The day a
+  // billing table ships, five dispositions become false and nothing would otherwise say so — the note
+  // above would still read as current, and a reader would still take it as the reason not to look.
+  //
+  // ---- ⚠ THIS FIRES ON LEGITIMATE WORK, AND THE QUESTION IT ASKS IS THE POINT.
+  //
+  // **A new platform table is ordinary. When this goes red the question is NOT *"is this table fine?"* —
+  // it is *"do `AC-SUB-0038` through `AC-SUB-0042` now have a subject, and is the disposition above still
+  // true?"*** *Answer that, update the list, and if the answer is yes, the five criteria return to the
+  // queue.* **The list is data, not a rule; the sentence above it is the rule.**
+  //
+  // ---- ⚠⚠ TWO ASSERTIONS AT DIFFERENT GRAIN, AND THE SECOND IS THE WEAK ONE.
+  //
+  // The **exact set** catches ANY new table, including one nobody would call billing-shaped. *It is the
+  // one that cannot be evaded by naming.* The **name ban** below it catches the shapes the disposition
+  // actually names, and exists so that a table called `Invoices` fails with a message about these five
+  // criteria rather than as an anonymous inventory diff. ***A ban names only the shapes its author thought
+  // of — `Charges`, `Statements` or `BillingRuns` would pass it — which is why it is second and why the
+  // exact set is the assertion that carries the tripwire.***
+  //
+  // ⚠⚠⚠ AND A TRIPWIRE CANNOT ANSWER THE OTHER DECAY MODE. This guards *the world changed*. It does
+  // nothing about *the claim was wider than its evidence when written* — which is what the correction at
+  // the top of this file was: `0037` cited, `0036` unbuilt for another reason, `0043` built, none of which
+  // a schema guard would ever have caught. **Re-derivation is the only remedy for that one, and this
+  // tripwire must not be read as making it unnecessary.**
+  //
+  // ⚠⚠⚠ AND THE TRAITS BELOW ARE DELIBERATELY *NOT* `Criterion`, WHICH I LEARNED BY GETTING IT WRONG.
+  //
+  // I first tagged this `[Trait("Criterion", "AC-SUB-0038")]` and so on for all five. ***THE FEATURE COUNT
+  // IMMEDIATELY REPORTED THEM AS CITED — 29 to 34 — AND FIVE UNBUILT CRITERIA READ AS COVERED.***
+  //
+  // **A tripwire asserting that a criterion's subject DOES NOT EXIST is the exact opposite of a witness for
+  // it.** *The trait key is what a counting instrument reads, and `Criterion`, `Decision`, `Acceptance` and
+  // `AcceptanceCriteria` are all read the same way* — so a guard about a disposition has to sit outside
+  // that vocabulary or it silently converts a refusal into a citation. **`Tripwire` is read by nothing and
+  // says what this is.**
+  [Fact]
+  [Trait("Tripwire", "AC-SUB-0038")]
+  [Trait("Tripwire", "AC-SUB-0039")]
+  [Trait("Tripwire", "AC-SUB-0040")]
+  [Trait("Tripwire", "AC-SUB-0041")]
+  [Trait("Tripwire", "AC-SUB-0042")]
+  public void No_billing_table_exists_yet_and_five_dispositions_depend_on_that()
+  {
+    var created = PlatformTablesCreatedByMigrations();
+
+    // KNOWN-POSITIVE FROM INSIDE THE ARTEFACT: the commercial plane's own tables are present, so a walk
+    // that read nothing — a moved folder, a renamed migration — fails here rather than passing empty.
+    Assert.Contains("TenantSubscriptions", created);
+    Assert.Contains("SubscriptionPlanPrices", created);
+
+    Assert.Equal(
+      [
+        "AccountActionTokens", "AuthenticationAccounts", "AuthenticationSessions", "Companies",
+        "Identities", "LocalizationCatalogStates", "ModuleDefinitions", "PlatformAuthenticationSessions",
+        "PlatformPermissionAssignments", "PlatformRefreshTokenRecords", "PlatformSupportPrincipals",
+        "RefreshTokenRecords", "RolePermissionAssignments", "Roles", "SubscriptionPlanLimits",
+        "SubscriptionPlanModules", "SubscriptionPlanPrices", "SubscriptionPlans",
+        "TenantCutoverOperations", "TenantDatabaseAssignments", "TenantDatabaseBackupPolicies",
+        "TenantDatabaseBackupRuns", "TenantDatabaseRestoreVerificationRuns", "TenantDatabases",
+        "TenantEntitlementGrants", "TenantLocalizationOverrideVersions", "TenantLocalizationOverrides",
+        "TenantLocalizationSettings", "TenantSelectionTransactions", "TenantSubscriptions",
+        "TenantUserRoleAssignments", "TenantUsers", "Tenants", "UserBranchAccess", "UserCompanyAccess",
+        "UserEmployeeLink"
+      ],
+      created);
+
+    // ---- THE WEAK HALF, KEPT FOR ITS MESSAGE RATHER THAN ITS REACH.
+    Assert.DoesNotContain(created, name =>
+      name.Contains("Invoice", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Payment", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Usage", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Overage", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Proration", StringComparison.OrdinalIgnoreCase));
+  }
+
+  // Every table any platform migration CREATES. Designer and snapshot files are excluded: they restate the
+  // model rather than declaring an operation, so counting them would double every table.
+  private static string[] PlatformTablesCreatedByMigrations()
+  {
+    var directory = Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure",
+      "Persistence", "Migrations");
+
+    var names = new SortedSet<string>(StringComparer.Ordinal);
+
+    foreach (var file in Directory.EnumerateFiles(directory, "*.cs")
+      .Where(path => !path.EndsWith(".Designer.cs", StringComparison.Ordinal))
+      .Where(path => !path.Contains("Snapshot", StringComparison.Ordinal)))
+    {
+      var source = File.ReadAllText(file);
+
+      for (var i = source.IndexOf("migrationBuilder.CreateTable(", StringComparison.Ordinal); i >= 0;
+        i = source.IndexOf("migrationBuilder.CreateTable(", i + 1, StringComparison.Ordinal))
+      {
+        var marker = source.IndexOf("name: \"", i, StringComparison.Ordinal);
+        if (marker < 0)
+        {
+          continue;
+        }
+
+        var start = marker + "name: \"".Length;
+        names.Add(source[start..source.IndexOf('"', start)]);
+      }
+    }
+
+    return [.. names];
+  }
+
+
   // ---- ⚠⚠⚠ ONE RESOLUTION ANSWERS BOTH QUESTIONS (AC-SUB-0043).
   //
   // *"The resolved cap for a limit key is available at the enforcement point in the same call that

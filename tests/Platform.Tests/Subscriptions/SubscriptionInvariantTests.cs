@@ -76,6 +76,70 @@ namespace SSAS.Platform.Tests.Subscriptions;
 //
 // The `SUB` pass therefore covers `AC-SUB-0002` through `AC-SUB-0032` and stops there deliberately —
 // **plus `AC-SUB-0043`, cited below, which this note wrongly placed outside it.**
+// ==================================================================================================
+// FP-014's REMAINING UNCITED CRITERIA. VERIFIED AGAINST THE PRODUCT AT HEAD, 2026-09-05. NONE IS CITED.
+// ==================================================================================================
+//
+// ***WHY THIS IS HERE.*** These verdicts were reached hours after FP-014 closed and were recorded in a
+// handoff ledger and in messages between two sessions. **A tree-wide sweep then reported every one of them
+// as a criterion nobody had ever written about — and it was right about the tree.** *`AC-SUB-0015` from the
+// same ruling had been written into a test file and survived; its siblings had not.* `AC-SUB-0014` is
+// recorded on `TenantEntitlementCacheTests`, beside the four calls that are its whole call graph.
+//
+// ---- ⚠⚠⚠ THE SUBSCRIPTION HTTP SURFACE DOES NOT EXIST, AND FOUR CRITERIA DEPEND ON IT.
+//
+// **Established over a closed population rather than by a name search: `src/` contains ZERO
+// `ControllerBase`/`ApiController` types, so Minimal API is the only registration mechanism, and every
+// non-literal `Map*` call in the tree is a `MapGroup`.** *Enumerating the literal leaf routes is therefore
+// complete.* ***THERE IS NO SUBSCRIPTION ROUTE, NO ENTITLEMENT ROUTE AND NO ENABLED-MODULE ROUTE.***
+//
+// `AC-SUB-0009` — *"the subscription read and administration surface still answers, and a gated ERP route
+// fails with a modelled `TenantDatabaseUnavailable`"*. **MALFORMED: two clauses, one live and one naming a
+// surface that does not exist.** The error is real — `TenantStorageErrors` declares it and
+// `TenantDatabaseTrafficGate` produces it — **so the second half is testable today and the first is not.**
+// *Splitting it is the owner's, not this file's.*
+//
+// `AC-SUB-0011` — *"…the answer is the same whether asked through the enablement gate or the enabled-module
+// endpoint."* **Clause one is buildable. Clause two names the endpoint that does not exist**, and a
+// criterion asserting two surfaces AGREE is not satisfied by one of them being right.
+//
+// `AC-SUB-0023` — *"an authenticated tenant user holding no permissions receives their tenant's
+// enabled-module set, and the response is identical to the one an administrator receives."* ⚠ **VACUOUS:
+// there is no enabled-module response for the two to be identical in.** *Two callers receiving nothing
+// receive the same nothing* — the collective-predicate shape over an empty set, the same trap as
+// `AC-SUB-0019`.
+//
+// ---- ⚠⚠ THE SEAT CAP IS A KEY CONSTANT AND NOTHING ENFORCES IT.
+//
+// **`Seat` appears in exactly two files under `src/`: `PlanLimit.cs` and `SubscriptionPlan.cs`, four
+// occurrences, and every one is either the constant `PlanLimit.Seats = "Seats"` or a comment explaining why
+// limits are KEYED rather than a `SeatCap` column.** ***THERE IS NO COUNTING OF `TenantUser` ROWS AGAINST A
+// CAP ANYWHERE, SO THERE IS NO ENFORCEMENT POINT TO TEST.***
+//
+// `AC-SUB-0049` (*creation past the cap is refused at that moment, and the error names cap, count and plan*)
+// — **unbuilt product.** `AC-SUB-0051` (*a plan change putting a tenant over its new cap bills the excess*)
+// — **blocked on a billing surface that does not exist.**
+//
+// ⚠⚠ **`AC-SUB-0050` IS THE INTERESTING ONE AND IT IS A TRIPWIRE CANDIDATE RATHER THAN A CITATION.**
+// *"**Login is never refused for a seat cap.** … no seat check runs on the authentication path at all."*
+// ***THAT IS A NEGATIVE EXISTENTIAL OVER A NAMED PATH, WHICH IS FALSIFIABLE AND GUARDABLE EVEN THOUGH THE
+// FEATURE IS UNBUILT*** — and it is exactly the criterion a future seat-cap implementation is most likely to
+// violate by accident. **Recorded as a candidate, not built here: the alarm belongs with whoever builds the
+// cap, and a guard written now would assert the absence of a mechanism nobody has started.**
+//
+// ---- `AC-SUB-0010` — THE ACTOR CLAUSE, AND THE ONLY WRITE PATH IS THE CASE IT EXCLUDES.
+//
+// *"Every subscription, grant and invoice write records **who** and **when**, and the actor is the
+// authenticated platform principal **rather than a service account**."*
+//
+// **Verified: `src/` contains NO subscription command handler. The write paths are `TrialSubscriptionIssuer`
+// and two migrations (`AddSubscriptionCommercialPlane`, `AddTrialSubscriptionSeed`).** ***SO THE ONLY WAY A
+// SUBSCRIPTION IS EVER WRITTEN IS THE UNATTENDED PATH THE CRITERION EXCLUDES, AND THERE IS NO AUTHENTICATED
+// PLATFORM PRINCIPAL IN THE PICTURE TO RECORD.***
+//
+// ⚠ **BOUND, STATED BECAUSE IT WAS NOT CHECKED: whether `TrialSubscriptionIssuer` stamps an actor at all was
+// not examined.** *It would not change the disposition — the criterion's contrast is with a service account
+// and the service account is all there is — but it is the next thing to read if anyone revisits this.*
 public sealed class SubscriptionInvariantTests
 {
   private static readonly DateTimeOffset Noon = new(2026, 8, 26, 12, 0, 0, TimeSpan.Zero);

@@ -15,6 +15,18 @@ namespace SSAS.Architecture.Tests;
 // Three of these exist because a RULING required them rather than because a rule was general:
 // the entity-by-entity branch classification (`DEC-ATT-0014`), the branch-BLIND summary contract
 // (`OD-ATT-0011`), and module isolation in both directions (`ADR-012`, `DEC-ATT-0002`).
+// ---- `AC-ATT-0034` IS UNCITED AND THE NON-CITATION IS CORRECT (recorded 2026-09-05).
+//
+// *"No Attendance table declares a foreign key to a Platform DB table."* ***THE CRITERION IS TRUE AND IT IS
+// TRUE BY THE ENGINE RATHER THAN BY ANYONE'S DESIGN: a cross-DATABASE foreign key is not expressible in SQL
+// Server, and Platform and the tenant ERP are separate databases.*** A test would assert a consequence of a
+// constraint nobody could violate.
+//
+// ⚠ **`AC-GL-0020` IS THE SAME SENTENCE ONE MODULE OVER AND CARRIES THE SAME DISPOSAL**, recorded in
+// `GlSchemaSqlServerTests` on the same day — *and `AC-PAY-0031` is the same sentence a THIRD time and WAS
+// cited, on a superset argument that turned out to be false and has since been withdrawn.* **Three
+// identically-shaped criteria, three different outcomes, and only reading each against the product told them
+// apart.**
 public sealed class AttendanceArchitectureTests
 {
   // Derived by reflection over the domain assembly, not typed. FP-012 stated its entity count wrong FOUR

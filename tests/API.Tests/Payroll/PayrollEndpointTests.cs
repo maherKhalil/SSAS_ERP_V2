@@ -394,6 +394,65 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
     Assert.True(posted.Lines.Sum(line => line.Debit) > 0m);
   }
 
+  // ---- ⚠⚠⚠ WHICH DATE PAYROLL HANDS THE LEDGER, AND HOW MANY TIMES IT ASKS (AC-PAY-0019).
+  //
+  // *"Posting an approved run creates exactly one journal in GL for the company, in the fiscal period
+  // containing the pay date."* **That clause splits across the module boundary and only one half was
+  // covered.**
+  //
+  //   GL resolves a period from a date   `FiscalYear.ResolveOpenPeriodFor` — CLOSED, gated, in
+  //                                      `CalendarDomainTests`: resolution from the date alone among many
+  //                                      periods, the half-open boundary, and a date outside the year.
+  //   Payroll hands over the PAY DATE    ***THIS TEST.***
+  //
+  // ⚠⚠ AND THE DISCRIMINATING FIXTURE VALUE WAS ALREADY HERE, UNCONSUMED. `SeedCalculatedRun` builds a
+  // period running 1–31 January with a pay date of **5 FEBRUARY** — the ordinary "pay on the 5th for last
+  // month" arrangement, which `PayrollPeriod` allows because it refuses only `payDateUtc < start`. So the
+  // period start, the period end and the pay date are three DIFFERENT dates, and they fall in two
+  // different months.
+  //
+  // ***THAT IS THE WHOLE POINT: IF PAYROLL HANDED OVER THE PERIOD END INSTEAD OF THE PAY DATE, THE JOURNAL
+  // WOULD LAND IN JANUARY RATHER THAN FEBRUARY AND EVERY OTHER TEST IN THE TREE WOULD STAY GREEN.*** The
+  // Integration chain cannot see it either — its fixture seeds ONE fiscal period spanning the whole of
+  // 2026, and says so, so every candidate date resolves to the same period there.
+  //
+  // ⚠ THE COUNT IS ASSERTED TWICE, AND THE SECOND ONE IS WHAT MAKES IT MEAN ANYTHING. A bare `Equal(1, …)`
+  // after a single request is nearly free. Asserting it is STILL 1 after a second posting attempt is what
+  // distinguishes *"refused before it reached the ledger"* from *"posted a second journal and then said
+  // no"* — and the second is the failure the criterion's "exactly one" exists to forbid.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0019")]
+  public async Task Posting_hands_the_ledger_the_pay_date_and_asks_exactly_once()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedApprovedRun();
+    host.Ledger.PostOutcome = JournalPostingOutcome.Success(Guid.NewGuid());
+
+    // THE PREMISE. Without it the count assertion below cannot tell "asked once" from "never reset".
+    Assert.Equal(0, host.Ledger.PostCount);
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/posting", host.TokenWith(AllPermissions)));
+
+    Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    Assert.Equal(1, host.Ledger.PostCount);
+
+    var posted = host.Ledger.LastPosted!;
+
+    // ---- THE PAY DATE, NOT THE PERIOD END. February, from a January period.
+    Assert.Equal(new DateTimeOffset(2026, 2, 5, 0, 0, 0, TimeSpan.Zero), posted.EntryDateUtc);
+
+    // ---- AND *"FOR THE COMPANY"*, which is the other half GL resolves the calendar against.
+    Assert.Equal(PayrollApiTestHost.CompanyA, posted.CompanyId);
+
+    // ---- A SECOND ATTEMPT NEVER REACHES THE LEDGER.
+    var again = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/posting", host.TokenWith(AllPermissions)));
+
+    Assert.NotEqual(HttpStatusCode.NoContent, again.StatusCode);
+    Assert.Equal(1, host.Ledger.PostCount);
+  }
+
   // ⚠ THE SIBLING OF THE TEST BELOW, AND IT WAS A 500 UNTIL T-198.
   //
   // `MarkReversed()` returns two errors and the handler propagates both. `RunNotReversible` had a mapper

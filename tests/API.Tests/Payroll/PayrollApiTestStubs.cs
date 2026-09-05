@@ -243,8 +243,17 @@ public sealed class StubJournalPoster : IJournalPoster
 
   public JournalPostingRequest? LastPosted { get; private set; }
 
+  // ---- HOW MANY TIMES THE LEDGER WAS ASKED TO POST, WHICH `LastPosted` CANNOT ANSWER.
+  //
+  // `AC-PAY-0019` says posting an approved run creates **exactly one** journal. A capture of the LAST
+  // request is silent about how many there were, and the Integration fixture's check is weaker still —
+  // it fetches the journal by PRIMARY KEY, so it returns exactly one BY CONSTRUCTION and would do so just
+  // as happily if posting had written two.
+  public int PostCount { get; private set; }
+
   public void Reset()
   {
+    PostCount = 0;
     Window = new(PostingWindowStatus.Open, "January 2026", Guid.NewGuid(),
       new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
       new DateTimeOffset(2026, 1, 31, 0, 0, 0, TimeSpan.Zero));
@@ -257,6 +266,7 @@ public sealed class StubJournalPoster : IJournalPoster
     JournalPostingRequest request, CancellationToken cancellationToken = default)
   {
     LastPosted = request;
+    PostCount++;
     return Task.FromResult(PostOutcome);
   }
 

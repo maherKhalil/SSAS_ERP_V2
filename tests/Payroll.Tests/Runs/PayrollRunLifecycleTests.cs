@@ -253,6 +253,97 @@ public sealed class PayrollRunLifecycleTests
     Assert.Null(run.ReversedUtc);
   }
 
+  // ---- ⚠⚠⚠ A POSTED RUN REFUSES RE-APPROVAL, AND THE LINE SET IS THE HALF THAT MATTERS (AC-PAY-0017).
+  //
+  // `AC-PAY-0017` bans three verbs on a posted run: recalculated, edited, re-approved. The first is covered
+  // by `A_posted_run_refuses_recalculation_and_says_how_to_correct_it`; the second by there being no edit
+  // path at all. ***THE THIRD HAD NO DRIVER, AND THAT WAS MEASURED RATHER THAN GUESSED.***
+  //
+  // `Approve` guards on `Status != Calculated`. The gated suites drove that guard with **Draft**
+  // (`A_draft_run_cannot_be_approved_without_being_calculated`) and drove recalculation with **Approved** —
+  // never approval with **Posted**. Widening the guard to `Status != Calculated && Status != Posted` left
+  // ALL SEVEN GATED SUITES GREEN, against a freshly rebuilt assembly. So the Draft case does not stand in
+  // for this one: the defect is expressible with every existing test still passing.
+  //
+  // ⚠⚠ AND THE REFUSAL IS NOT THE INTERESTING HALF. `Approve`'s body runs `lines.Clear()` and rebuilds the
+  // approved set from the drafts, so what this guard prevents is **a posted payroll's line records silently
+  // rewritten** — not a wrong status code. *A test asserting only `RunNotApprovable` would pass on an
+  // implementation that refuses AND clears the lines.*
+  //
+  // ⚠⚠⚠ THE LINE **IDS** CARRY THE ASSERTION; THE AMOUNTS CANNOT. Re-approval rebuilds from the SAME frozen
+  // drafts — recalculation is already refused here — so every amount comes back identical and an amount
+  // comparison would pass on the defect. The rebuilt lines take fresh `Guid.NewGuid()` identities, and that
+  // is the only observable that moves.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0017")]
+  public void A_posted_run_refuses_re_approval_and_keeps_the_line_set_it_posted()
+  {
+    var run = Posted(out _);
+    var postedLineIds = run.Lines.Select(line => line.Id).ToArray();
+
+    // THE PREMISE, so the comparison below is over a real line set rather than two empty sequences.
+    Assert.NotEmpty(postedLineIds);
+
+    var again = run.Approve("approver");
+
+    Assert.True(again.IsFailure);
+    Assert.Equal(PayrollErrors.RunNotApprovable(PayrollRunStatus.Posted).Code, again.Error.Code);
+
+    // ***THE HALF THE RESULT VALUE CANNOT CARRY.***
+    Assert.Equal(postedLineIds, run.Lines.Select(line => line.Id));
+    Assert.Equal(PayrollRunStatus.Posted, run.Status);
+  }
+
+  // ---- ⚠⚠⚠ WHO PERFORMED EACH TRANSITION, AND WHEN (AC-PAY-0018).
+  //
+  // Six fields — `CalculatedBy`/`CalculatedUtc`, `ApprovedBy`/`ApprovedUtc`, `PostedBy`/`PostedUtc` — are
+  // declared with private setters, given max-length column configuration, and carried through
+  // `PayrollReadModels` and `PayrollTransportContracts` to the wire. ***AND NOTHING ASSERTED ANY OF THE
+  // SIX.***
+  //
+  // ⚠ THE POPULATION IS CLOSED BY THE LANGUAGE, WHICH IS WHY THAT IS AN ENUMERATION AND NOT A TOKEN SEARCH.
+  // The names are IDENTICAL in the domain type, the read model, the transport contract and the EF
+  // configuration — nothing renames them at any boundary — so an assertion on these values anywhere in the
+  // tree must spell one of the six. Case-insensitive, all six, whole test tree: one hit, and it was a
+  // comment.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0018")]
+  public void Each_transition_records_who_performed_it_and_when_and_the_earlier_stamps_survive()
+  {
+    var run = PayrollTestData.Run(Guid.NewGuid());
+
+    // THE PREMISE. Unset beforehand, so each assertion below is about the transition WRITING the field
+    // rather than about a value that happened to be there all along.
+    Assert.Null(run.CalculatedBy);
+    Assert.Null(run.ApprovedBy);
+    Assert.Null(run.PostedBy);
+
+    Assert.True(run.SetCalculation([DraftLine(run.Id, 1000m)], "the-calculator").IsSuccess);
+    Assert.Equal("the-calculator", run.CalculatedBy);
+    Assert.NotNull(run.CalculatedUtc);
+    var calculatedUtc = run.CalculatedUtc;
+
+    Assert.True(run.Approve("the-approver").IsSuccess);
+    Assert.Equal("the-approver", run.ApprovedBy);
+    Assert.NotNull(run.ApprovedUtc);
+    var approvedUtc = run.ApprovedUtc;
+
+    Assert.True(run.MarkPosted(Guid.NewGuid(), "the-poster").IsSuccess);
+    Assert.Equal("the-poster", run.PostedBy);
+    Assert.NotNull(run.PostedUtc);
+
+    // ---- AND *"NONE OF IT IS SUBSEQUENTLY ALTERED"*, WHICH IS THE CLAUSE THE LAST TRANSITION TESTS.
+    //
+    // ⚠ THREE DISTINCT ACTOR NAMES ARE LOAD-BEARING. Reusing one string would make a later transition
+    // overwriting an earlier field INVISIBLE — every assertion would still find exactly what it expected.
+    // The same reasoning puts the timestamps in locals: `DateTimeOffset.UtcNow` moves between transitions,
+    // so a restamped field is only detectable against the value captured at the time.
+    Assert.Equal("the-calculator", run.CalculatedBy);
+    Assert.Equal("the-approver", run.ApprovedBy);
+    Assert.Equal(calculatedUtc, run.CalculatedUtc);
+    Assert.Equal(approvedUtc, run.ApprovedUtc);
+  }
+
   private static PayrollRun Posted(out Guid journalEntryId)
   {
     journalEntryId = Guid.NewGuid();

@@ -273,15 +273,38 @@ public sealed class PlatformAuthenticationPersistenceTests
   // "The two sides must overlap INSIDE TRANSACTIONS" is the load-bearing arrangement, and only a
   // RENDEZVOUS makes it deterministic. `Task.WhenAll` alone starts two tasks; it does not make them meet.
   //
-  // Counted tree-wide, unlimited: **18 Integration files use `Task.WhenAll`, and `tests/` contains exactly
-  // ONE rendezvous primitive** — `new Barrier(2)` at line 550 of this file. No `SemaphoreSlim`, no
-  // `ManualResetEvent`, nowhere.
+  // ⚠⚠⚠ CORRECTED SAME DAY. The first version of this paragraph said `tests/` holds **exactly ONE**
+  // rendezvous primitive. **THAT WAS FALSE, AND IT WAS FALSE IN THE DIRECTION THAT FLATTERED THE FINDING.**
+  // It was derived by grepping .NET primitives — `Barrier`, `SemaphoreSlim`, `ManualResetEvent` — and a
+  // rendezvous does not have to be a .NET object. **`PlatformAuthenticationSessionFlowSqlServerTests` holds
+  // a SQL one**, `LockGate.HoldAsync` (defined at its line 1133), which parks one side on a real
+  // `UPDLOCK, HOLDLOCK` row lock. *Enumerate the MECHANISM, not the names — my own rule, missed on my own
+  // measurement, one commit after writing it down.*
   //
-  // ***SO "HAS A CONCURRENT TEST" AND "HAS A TEST THAT RELIABLY INTERLEAVES" ARE DIFFERENT POPULATIONS, AND
-  // ALL BUT ONE OF THIS TREE'S CONCURRENT TESTS ARE IN THE FIRST AND NOT THE SECOND.*** A timing-dependent
-  // race test does not fail when the race is unprotected — it passes whenever the two sides happen not to
+  // ---- THE CORRECTED FOUR-WAY SPLIT.
+  //
+  //   *`Barrier(2)`*   1 test — `Concurrent_account_creation_allows_only_one_identity_and_authentication
+  //                  _account`, in this file. A .NET rendezvous at a chosen point mid-transaction.
+  //   *SQL `LockGate`* 3 tests — `L1_create_first_commits_the_session_and_the_disable_then_revokes_it`,
+  //                  `L1_disable_first_makes_the_concurrent_creation_fail_closed`,
+  //                  `L1_holds_when_read_committed_snapshot_isolation_is_disabled`. ***Stronger than the
+  //                  barrier: each also ASSERTS THE PARK*** — `Assert.False(task.IsCompleted)` after a
+  //                  delay — so the test fails if the interleaving it claims did not happen.
+  //   *STAGED*       1 test — `Rowversion_detects_a_concurrent_conflicting_update`. Two contexts, two
+  //                  reads, then saves IN ORDER. No race at all; deterministic by sequencing, and for
+  //                  optimistic-concurrency detection that is the right shape.
+  //   *TIMING*       the rest, including all of `AC-AUTH-0034`'s three covered races.
+  //
+  // ***SO "HAS A CONCURRENT TEST" AND "HAS A TEST THAT RELIABLY INTERLEAVES" ARE STILL DIFFERENT
+  // POPULATIONS — the conclusion survived the correction, the magnitude did not.*** A timing-dependent race
+  // test does not fail when the race is unprotected: it passes whenever the two sides happen not to
   // overlap, which is the arrangement failure this comment already warns about, present today rather than
   // hypothetical in a test not yet written.
+  //
+  // ⚠ **AND THE PARK ASSERTION IS THE TRANSFERABLE IDEA.** A barrier makes an interleaving happen; only
+  // `Assert.False(task.IsCompleted)` PROVES it happened. Any of the five races above, if written, should
+  // take the `L1_*` shape rather than this file's — *gate the counterparty on the real lock, assert it is
+  // parked, then release.*
   //
   // ⚠ That is NOT a claim that the nine others are wrong. Several assert a TERMINAL invariant that holds
   // however the two sides interleave, which needs no rendezvous. It is a claim about what their GREEN

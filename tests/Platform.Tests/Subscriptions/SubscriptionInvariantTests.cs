@@ -229,6 +229,27 @@ public sealed class SubscriptionInvariantTests
     // A ban on the word "Subscription" would miss `Platform.Billing.View` or `Platform.Plans.View`. The
     // exact set cannot be evaded by naming, and it is the assertion that carries this half.
     //
+    // ---- ⚠⚠⚠ THIS WILL GO RED ROUGHLY EVERY TWO WEEKS, AND ALMOST ALWAYS INNOCENTLY. READ THIS FIRST.
+    //
+    // **Measured 2026-09-05 over the preceding 90 days: SIX commits touched `PlatformPermissionNames`, and
+    // ALL SIX CHANGED THE NAME SET — 15 names to 28, additive every time, nothing ever removed.** *So the
+    // expected firing rate is about twenty-six a year, and on the evidence roughly five in six will be an
+    // ordinary new permission that has nothing to do with subscriptions.*
+    //
+    // ***THAT IS NOT A DEFECT IN THE GUARD, IT IS ITS PRICE, AND IT IS WRITTEN DOWN HERE BECAUSE A GUARD
+    // GETS DELETED WHEN ITS RED IS CONFUSING — NOT WHEN ITS RED IS FREQUENT.*** **If you are reading this
+    // because the test is red: you added a permission name. THE QUESTION IS ONLY** *"is the name I just
+    // added a commercial read or administration permission?"* **If NO — add it to the list below and move
+    // on, that is the whole remedy and it costs one line. If YES — `AC-SUB-0034` and `AC-SUB-0035` have
+    // just acquired a subject, and the disposition recorded above them is now wrong.**
+    //
+    // ⚠⚠ I REFUSED A CONSUMPTION GUARD FOR `AC-SUB-0022` ON A MEASURED 100%/60-DAY CHANGE RATE AND THEN
+    // SHIPPED THIS ONE WITHOUT MEASURING IT. **Measured afterwards, honestly: this set moves too. The
+    // difference that keeps it — and it is a real difference, not a rescue — is that *every change to THIS
+    // set is a change to the guard's own subject*, so a red is always about the right question. **The
+    // refused guard would have fired on response types that had nothing to do with entitlement.** *A guard
+    // that fires often on its own subject is maintainable; one that fires often on somebody else's is not.*
+    //
     // ⚠⚠ AND HERE THE ENFORCEMENT SET REALLY IS ZERO. A plant adding
     // `public const string ViewSubscriptions = "Platform.Subscriptions.View";` to `PlatformPermissionNames`
     // left **all 2,812 gated tests in Platform, Architecture and API green**; this assertion was the only

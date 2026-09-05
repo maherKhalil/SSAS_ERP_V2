@@ -410,6 +410,35 @@ internal static class CriterionInventory
   // wherever somebody wrote about it**, and production code carries as much of this project's reasoning as
   // the tests do — `DepartmentManagerCommandHandlers` argues about `BRULE-DEP-0012` in a comment and no test
   // file mentions it. *Narrowing this to `tests/` would measure where we look, not where the tree knows.*
+  //
+  // ---- ⚠⚠⚠ AND `tools/` IS EXCLUDED. ***THIS BOUNDARY IS ASSERTED HERE AND IS BACKED BY NO DECISION
+  // RECORD WE COULD FIND*** — SAID PLAINLY BECAUSE THE ALTERNATIVE IS AN UNGROUNDED SCOPE THAT READS AS A
+  // GROUNDED ONE.
+  //
+  // The repository has three `.cs` roots — **`src` 1133 files, `tests` 401, `tools` 9** — and this scans
+  // two. ***MEASURED, NOT REASONED: an id in the criterion shape that exists in no feature — described
+  // rather than quoted, for the reason below — was written into a `tools/` comment and the full gate stayed
+  // GREEN.*** **So a criterion id there is invisible both to
+  // `CriterionCommentGuardTests.Every_criterion_named_in_a_comment_is_one_that_exists` and to
+  // `DiscussedInComments()`.** *The exposure is currently empty — those nine files contain zero criterion
+  // ids — so the gap is real and inert.*
+  //
+  // ⚠⚠ **WIDENING WAS CONSIDERED AND REFUSED, FOR A REASON THAT OUTLIVES THE DECISION: `AllSources()` FEEDS
+  // TWO POPULATIONS THAT SHOULD NOT TRAVEL TOGETHER.** Adding `tools/` would police criterion ids there —
+  // arguably right — *and in the same stroke admit tooling prose into `DiscussedInComments()`, a count that
+  // is already self-affecting and already fragile.* ***THE COST IS CERTAIN AND THE BENEFIT IS HYPOTHETICAL.***
+  //
+  // ***IF SOMEONE LATER WANTS THE GUARD TO REACH `tools/`, THE CHANGE IS NOT TO WIDEN THIS METHOD — IT IS TO
+  // SPLIT THE SOURCE SET SO THE EXISTENCE GUARD AND THE DISCUSSION COUNT STOP SHARING ONE DEFINITION.***
+  // *An exemption must assert its grounds; where there are none, asserting that there are none is the
+  // honest discharge rather than a reason to stay quiet.*
+  //
+  // ⚠ **AND THE PLANTED ID IS DESCRIBED ABOVE RATHER THAN QUOTED, BECAUSE THIS FILE IS INSIDE THE SCANNED
+  // POPULATION.** *Writing it out would put a non-existent criterion id into a `src`-or-`tests` comment and
+  // redden `Every_criterion_named_in_a_comment_is_one_that_exists` — the guard doing exactly its job, on a
+  // paragraph that exists to report a hole in it.* **`CommentsOnly`'s own header records this trap catching
+  // the first draft of that guard; it very nearly caught this one, and the rule holds: *prose explaining the
+  // rule is not exempt from it.***
   public static IEnumerable<string> AllSources() => SourcesUnder("src").Concat(SourcesUnder("tests"));
 
   private static IEnumerable<string> SourcesUnder(string area) =>

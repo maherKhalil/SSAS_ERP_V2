@@ -648,6 +648,28 @@ public sealed class EmployeeReadScopeArchitectureTests
   //
   // So the caller set is an exact inventory, the same shape as the door list. **A second injection site
   // requires a person, exactly as a fourth door did.**
+  //
+  // ---- ⚠⚠⚠ PART 2 IS ENFORCED, BUT NOT HERE AND NOT AS WRITTEN (plant-verified 2026-09-06).
+  //
+  // Adding `Guid? forEmployeeId` to `IPayrollSelfServiceScopeResolver.ResolveForOwnEmployeeAsync` — flowed
+  // into the lookup so it DISPLACES `userEmployees.ResolveEmployeeIdAsync` — and binding it from the query
+  // string reddens `PayrollSelfServiceTests.The_self_route_contract_names_no_employee_on_any_surface`.
+  // **The identical resolver change with NO route exposing it leaves the gate GREEN.**
+  //
+  // ***So the enforced property is "no employee identifier appears on the self route's CONTRACT", not "the
+  // identifier is never caller-supplied". The two coincide only because there is exactly one caller of that
+  // resolver and it is a route.*** A second caller that is not a route — another handler, a job, another
+  // module's application layer — may pass a caller-supplied identifier, and the plant says nothing reddens.
+  //
+  // ⚠ AND THIS TEST DOES NOT COVER THAT EITHER: it pins who injects `IEmployeePlacementDirectory`. A new
+  // CALLER of the resolver injects no directory, so it is outside this population. The two guards read as
+  // adjacent and their populations do not touch.
+  //
+  // The honest form of the lock's second part, replacing the prose claim:
+  //   verified by plant, 2026-09-06 — `PayrollSelfServiceTests.The_self_route_contract_names_no_employee
+  //   _on_any_surface`; enforcement set size 1; a non-route caller is outside its population.
+  // **Today the operand is absent from the contract, which is stronger than the prose claims. Nothing
+  // preserves that.**
   [Fact]
   [Trait("Decision", "DEC-PAY-0017")]
   public void Only_the_self_service_scope_resolvers_inject_the_placement_directory()

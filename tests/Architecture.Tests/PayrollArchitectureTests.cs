@@ -354,11 +354,32 @@ public sealed class PayrollArchitectureTests
   // THE UNFORGEABLE READ SCOPE — AND HERE IT GUARDS PERSONAL DATA
   // ================================================================================================
 
+  // ⚠⚠⚠ THIS ASSERTS THE SCOPE IS A PARAMETER. IT DOES NOT ASSERT THE QUERY USES IT (measured 2026-09-06).
+  //
+  // The comment below says an omitted scope predicate "is not something a caller can express". That is true
+  // of the SIGNATURE and false of the BODY: a method can accept `PayrollReadScope scope`, satisfy this
+  // guard forever, and never reference it in the `Where`.
+  //
+  // *Measured, subtractive, site determined:* deleting `.Where(record => record.CompanyId == companyId)`
+  // from `PayrollRepositories.GetHistoryForCompanyAsync` left the whole gate GREEN. The same plant in
+  // `AttendanceRepositories.GetCoveringAsync` was also GREEN. **No test in the tree fails when a Payroll or
+  // Attendance company predicate is deleted** — and these two modules carry the most hand-written company
+  // predicates in the product.
+  //
+  // ⚠ THE GUARD IS NOT VACUOUS AND IS NOT WRONG. Its population is every method on the interface, and it
+  // proves what it claims to prove: the CALLER holds authority. Nothing proves the QUERY applies it.
+  // `A_read_scope_cannot_be_constructed_from_outside_its_assembly` and `An_empty_company_set_cannot_produce
+  // _a_scope` are about the same half.
+  //
+  // Recorded rather than remedied: asserting the body composes a predicate is a source-walk guard of the
+  // kind `GlReadScopeArchitectureTests` and `PositionReadScopeArchitectureTests` already carry, and adding
+  // one here is a scope decision rather than a test edit.
   [Fact]
   public void Every_read_service_method_requires_a_scope()
   {
     // A read that omitted its scope predicate is not something a reviewer has to catch, because it is not
     // something a caller can express. There is no overload without one, and no default.
+    // ⚠ See the correction above: this is true of the signature and does not extend to the query body.
     var withoutScope = typeof(IPayrollReadService)
       .GetMethods()
       .Where(method => !method.GetParameters().Any(p => p.ParameterType == typeof(PayrollReadScope)))

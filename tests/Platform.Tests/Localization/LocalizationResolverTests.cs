@@ -58,9 +58,23 @@ namespace SSAS.Platform.Tests.Localization;
 //
 // ---- THE CONJUNCTIVE CELLS: PARTLY WITNESSED, AND CITING ONE WOULD CLAIM ALL.
 //
+// ---- ⚠⚠ CHECKED AGAINST THE REQUIREMENTS 2026-09-05, AND THESE THREE HOLD — WHICH IS ITSELF THE FINDING.
+//
+// **Five verdicts elsewhere dissolved when their fuller documents were opened. ***THESE DID NOT, AND THE
+// REASON SEPARATES TWO KINDS OF VERDICT WE HAD BEEN TREATING ALIKE:***
+//
+//   ***A VERDICT ABOUT THE CRITERION*** — malformed · vacuous · decayed · not-a-criterion · specified-nowhere
+//     **is a reading of the WORDING, so a précis can make it wrong. All five that dissolved were these.**
+//   ***A VERDICT ABOUT COVERAGE*** — *partially witnessed*, *asserted by nothing*
+//     **is grounded in `tests/`. The criteria wording sets only the CLAUSE COUNT, so a précis can move the
+//     denominator and never the finding.**
+//
 // `AC-LOC-0003` — *"An eligible Tenant can maintain compatible `en` and `ar` overrides independently without
 // changing defaults."* Override resolution is asserted throughout this file; **the INDEPENDENCE clause and
-// the defaults-unchanged clause are not.**
+// the defaults-unchanged clause are not.** ⚠ **And the précis is LOSSY: `requirements.md:20` (`FR-LOC-0105`)
+// adds a third dimension — *"without changing system defaults **or another Tenant's text**"* — which IS
+// witnessed, by `AC-LOC-0004`'s cited tenant-isolation tests.** *So the criterion is better covered than its
+// own sentence suggests, through a sibling; the denominator moved and the verdict did not.*
 //
 // `AC-LOC-0006` — *"A wording-only default release changes unoverridden/restored results and preserves
 // compatible overrides."* The wording-only half is witnessed at the TOOL layer by

@@ -134,6 +134,28 @@ internal static class CriterionInventory
   // TREND LINE WITHOUT NAMING WHO WAS WRITING DURING THE INTERVAL.*** **A delta on it is a fact about
   // somebody's attention, not about the tree — and the first person to diff two runs will read their own
   // notes as the subject improving.**
+  //
+  // ---- ⚠⚠⚠ TWO BLINDNESSES, FOUND BY WORKING THE RESIDUE RATHER THAN BY READING THIS METHOD.
+  //
+  // ***BOTH MAKE THE COMPLEMENT — "declared, uncited, and in no comment" — OVERSTATE ITS SUBJECT. A BUCKET
+  // NAMED FOR WHAT THE MATCHER MISSED IS A LABEL ABOUT THE MATCHER, NOT ABOUT THE CRITERION.***
+  //
+  // **1. A DISPOSITION IN `docs/` IS INVISIBLE.** This scans `src/` and `tests/`. `AC-POS-0054` carries
+  // *"WITHDRAWN 2026-09-02"* and `AC-DEP-0016` carries *"SUPERSEDED, NOT MET (annotated 2026-08-22)"* — both
+  // fully reasoned, **in their own declarations**. ⚠ *Widening the scan to `docs/` would not fix this and
+  // would break the method: a criteria file names every criterion it declares, so every id would become
+  // "discussed" and this population would collapse into the declared set.* **The signal would have to be an
+  // ANNOTATION, which has no reliable form. Stated as a bound rather than chased.**
+  //
+  // **2. ⚠⚠ A DISPOSITION NAMING A RANGE MATCHES ONLY ITS FIRST MEMBER.**
+  // `TenantLifecycleApplicationTests` disposes of *"the `AC-TEN-0021..0030` block, deferred with the
+  // endpoints"* — **ten criteria considered, one id matched.** *`AC-TEN-0022`, `0023`, `0026`, `0027` and
+  // `0028` then read as though nobody had ever looked at them, when one sentence looked at all ten.*
+  //
+  // ***THAT IS THE FIFTH MATCHER FAILURE MODE THIS PROJECT HAS LOGGED — after CASE, WORD-BOUNDARY, WINDOW and
+  // READING DIRECTION — AND IT IS NOTATION: A HUMAN RANGE IS NOT AN ENUMERATION.*** **The remedy is a writing
+  // convention rather than a regex: a disposition covering several criteria should NAME them, because a range
+  // is the one form neither a reader's grep nor any instrument can expand.**
   public static IReadOnlyCollection<string> DiscussedInComments() =>
     [.. AllSources()
       .SelectMany(file => AnyId.Matches(CommentsOnly(File.ReadAllText(file))))

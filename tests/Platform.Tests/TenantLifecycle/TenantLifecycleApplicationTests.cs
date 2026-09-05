@@ -102,6 +102,22 @@ public sealed class TenantLifecycleApplicationTests
   // block, deferred with the endpoints. **Adding a discriminating fixture here would assert a boundary this
   // layer does not enforce and is not the place to.**
   //
+  // ---- ⚠⚠⚠ THE BLOCK, NAMED RATHER THAN RANGED (2026-09-05). **A RANGE IS THE ONE FORM NO GREP EXPANDS.**
+  //
+  // `AC-TEN-0021` · `AC-TEN-0022` · `AC-TEN-0023` · `AC-TEN-0024` · `AC-TEN-0025` · `AC-TEN-0026` ·
+  // `AC-TEN-0027` · `AC-TEN-0028` · `AC-TEN-0029` · `AC-TEN-0030`
+  //
+  // **The sentence above considered all ten and a matcher over it finds one.** *A tree-wide sweep then
+  // reported `0022`, `0023`, `0026`, `0027` and `0028` as criteria nobody had ever written about — when one
+  // sentence had disposed of every one of them.* ⚠ **Written out because the reasoning was already correct
+  // and only its NOTATION was unreadable; nothing here is a new judgement, and no trait follows.**
+  //
+  // ⚠⚠ `AC-TEN-0028` was additionally read on its own — *"a platform principal with
+  // `Platform.Tenants.Lifecycle` is authorized to activate a `Provisioning` target… target status does not
+  // gate caller authorization."* **Its transition half is reachable at this layer; its AUTHORIZATION half is
+  // the block's, and the block is deferred. *One clause examined, the other not attempted*, so it stays
+  // uncited on the same ground as its nine siblings rather than on a separate one.**
+  //
   // ⚠⚠⚠ AND THAT MAKES IT A SCHEDULED FAILURE RATHER THAN A GAP. **A PROPERTY HELD BY THE ABSENCE OF A
   // SURFACE FAILS SILENTLY ON THE DAY THE SURFACE IS BUILT** — and here the day is named and already on the
   // plan. Nothing about building those routes forces anyone to notice that the guard was never written.

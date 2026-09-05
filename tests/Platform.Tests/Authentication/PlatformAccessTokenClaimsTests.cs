@@ -208,6 +208,17 @@ public sealed class PlatformAccessTokenClaimsTests
   // ⚠ The compiler notices such an addition (the tests below construct this provider directly) — **but only
   // until the call sites are repaired, which is ordinary work that looks like nothing.** *This is what still
   // objects afterwards.*
+  // ---- ⚠⚠⚠ THE LIMIT OF EVERY DEPENDENCY-LIST GUARD, INCLUDING THIS ONE.
+  //
+  // ***A DEPENDENCY GUARD WATCHES WHO YOU CAN REACH. IT IS BLIND TO WHAT ARRIVES THROUGH WHAT YOU
+  // ALREADY REACH.*** The dependency set stays constant while the payload grows, so a field added to a
+  // type this provider already receives could carry the configuration this list is asserted to deny,
+  // and the list would not move.
+  //
+  // The remedy, where it matters enough to spend the assertion, is to pin the CONTRACT TYPE'S SHAPE
+  // POSITIVELY -- *"every property is a `Guid`"* rather than *"no property is a date"*, because a ban
+  // names only the shapes its author thought of. Worked example:
+  // `AttendanceArchitectureTests.No_attendance_read_path_can_learn_that_an_employee_was_terminated`.
   [Fact]
   [Trait("Criterion", "AC-TEN-0071")]
   public void Provider_consumes_no_bootstrap_or_options_configuration()

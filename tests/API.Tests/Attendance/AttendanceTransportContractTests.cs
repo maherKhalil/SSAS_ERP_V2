@@ -44,6 +44,53 @@ public sealed class AttendanceTransportContractTests
     Assert.NotEmpty(RequestRecords());
   }
 
+  // ---- ⚠⚠⚠ THE THIRD VERB. `AC-ATT-0010` HAS THREE AND ONLY TWO WERE WATCHED.
+  //
+  // *"No attendance write **accepts, stores or returns** a monetary amount or a currency code."*
+  //
+  //   accepts   `No_request_accepts_money_a_rate_or_a_currency` below — gated
+  //   stores    `AttendanceSchemaSqlServerTests`, "NO MONEY COLUMN EXISTS" — Integration, green at a date
+  //   returns   ***NOTHING, UNTIL THIS.***
+  //
+  // ⚠ THE ASYMMETRY IS THE WHOLE FINDING AND IT IS A ONE-WORD GAP. The request side was guarded from the
+  // day this file was written; **the response side was never asked the same question**, and the module
+  // returns these `*View` records directly — there are no separate response types, so this IS the wire
+  // shape a caller sees. *A money field could be added to a view today and no test in the tree would move.*
+  //
+  // ⚠⚠ THE INSTRUMENT IS THE SIBLING'S, DELIBERATELY. Same population shape, same matcher, same
+  // anti-vacuity control calling the same walk. **Writing a different matcher for the response side would
+  // let the two halves of one criterion disagree about what "money" means**, which is exactly the failure
+  // mode where a criterion reads as covered because each half assumed the other was stricter.
+  private static Type[] ViewRecords() =>
+    typeof(SSAS.Attendance.Application.Reads.AttendanceRecordView).Assembly
+      .GetTypes()
+      .Where(type => type.IsClass && type.IsSealed && type.Name.EndsWith("View", StringComparison.Ordinal))
+      .OrderBy(type => type.Name, StringComparer.Ordinal)
+      .ToArray();
+
+  [Fact]
+  public void There_are_view_records_to_check_so_this_guard_is_not_vacuous()
+  {
+    // The same control as the request side, calling the same walk it certifies. A reflection guard's
+    // failure mode is finding nothing and passing, and a control that reimplemented the walk would
+    // certify itself rather than the assertion.
+    Assert.NotEmpty(ViewRecords());
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0010")]
+  public void No_view_returns_money_a_rate_or_a_currency()
+  {
+    foreach (var record in ViewRecords())
+    {
+      Assert.DoesNotContain(record.GetProperties(), property =>
+        property.Name.Contains("Amount", StringComparison.OrdinalIgnoreCase) ||
+        property.Name.Contains("Rate", StringComparison.OrdinalIgnoreCase) ||
+        property.Name.Contains("Currency", StringComparison.OrdinalIgnoreCase) ||
+        property.Name.Contains("Multiplier", StringComparison.OrdinalIgnoreCase));
+    }
+  }
+
   [Fact]
   [Trait("Criterion", "AC-ATT-0038")]
   public void Every_request_property_carries_an_explicit_json_property_name()

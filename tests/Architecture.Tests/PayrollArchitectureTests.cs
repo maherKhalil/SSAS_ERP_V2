@@ -182,6 +182,16 @@ public sealed class PayrollArchitectureTests
       name.Contains("CodeAllocator", StringComparison.OrdinalIgnoreCase));
   }
 
+  // ---- ⚠⚠⚠ THE LIMIT OF EVERY DEPENDENCY-LIST GUARD, INCLUDING THIS ONE.
+  //
+  // ***A DEPENDENCY GUARD WATCHES WHO YOU CAN REACH. IT IS BLIND TO WHAT ARRIVES THROUGH WHAT YOU
+  // ALREADY REACH.*** The dependency set stays constant while the payload grows, so a new field on `JournalPostingRequest` could reopen a period through
+  // `PostAsync` -- an EXISTING member -- and this member-list assertion would not move.
+  //
+  // The remedy, where it matters enough to spend the assertion, is to pin the CONTRACT TYPE'S SHAPE
+  // POSITIVELY -- *"every property is a `Guid`"* rather than *"no property is a date"*, because a ban
+  // names only the shapes its author thought of. Worked example:
+  // `AttendanceArchitectureTests.No_attendance_read_path_can_learn_that_an_employee_was_terminated`.
   [Fact]
   [Trait("Criterion", "AC-PAY-0023")]
   public void The_only_ledger_capabilities_payroll_can_reach_are_posting_reversing_and_inspecting()

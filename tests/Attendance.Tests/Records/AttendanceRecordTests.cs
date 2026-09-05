@@ -178,8 +178,30 @@ public sealed class AttendanceRecordTests
   // The runtime refusal lives in `PreventAppendOnlyMutation` and is proved against real SQL in
   // `TS-ATT-0029`. What is asserted here is the two consequences the analysis package called out, because
   // both are absences and absences do not fail on their own.
+  //
+  // ---- ⚠⚠ AND THIS CARRIES `AC-ATT-0009`'s SECOND LEG, WHICH IS WHY A GENERAL TEST CAN DISCHARGE A
+  // ---- SPECIFIC CLAUSE HERE WITHOUT BEING A BORROWED WITNESS.
+  //
+  // *"A record already settled by termination remains readable after termination."* Two legs: nothing may
+  // FILTER it out on read — `AttendanceArchitectureTests.No_attendance_read_path_can_learn_that_an_employee
+  // _was_terminated` — and nothing may DELETE it, which is this.
+  //
+  // **The distinction from borrowing another test's assertion is that the enforcement is a UNIVERSAL over a
+  // type this record IS, rather than a coincidence of shared properties.** `PreventAppendOnlyMutation` was
+  // read to check: `ChangeTracker.Entries<IAppendOnlyEntity>()` filtered on `Modified or Deleted`, no type
+  // test, no status consulted, no exemption, called unconditionally at the top of `SaveChangesAsync`.
+  // ***IT CANNOT SEE EMPLOYMENT AT ALL, SO A TERMINATED EMPLOYEE'S RECORD IS REFUSED DELETION BY EXACTLY
+  // THE SAME CODE AS EVERY OTHER RECORD.*** That is shared code, not a shared property — a proof rather
+  // than a sample.
+  //
+  // ⚠⚠⚠ THE TIER SPLIT, STATED BECAUSE THE CRITERION'S STAMP WOULD OTHERWISE HIDE IT. What is gated is the
+  // MARKER — that `AttendanceRecord` is an `IAppendOnlyEntity`. **The runtime refusal is proved against real
+  // SQL in `TS-ATT-0029`, which is Integration and therefore green at a date rather than at every merge.**
+  // So `AC-ATT-0009` reads tier 1 on the strength of its read-path leg; *this leg is tier 1 for the marker
+  // and tier 2 for the enforcement*, and a reader should not take the criterion's tier as covering both.
   [Fact]
   [Trait("Decision", "DEC-ATT-0009")]
+  [Trait("Criterion", "AC-ATT-0009")]
   public void The_record_is_append_only_and_therefore_carries_no_row_version()
   {
     Assert.True(typeof(SSAS.BuildingBlocks.Domain.IAppendOnlyEntity)

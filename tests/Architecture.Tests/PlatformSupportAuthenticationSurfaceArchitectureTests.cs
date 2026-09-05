@@ -77,6 +77,16 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
   // name, which is every dependency that has not been invented yet.*
   [Fact]
   [Trait("Criterion", "AC-TEN-0082")]
+  // ---- ⚠⚠⚠ THE LIMIT OF EVERY DEPENDENCY-LIST GUARD, INCLUDING THIS ONE.
+  //
+  // ***A DEPENDENCY GUARD WATCHES WHO YOU CAN REACH. IT IS BLIND TO WHAT ARRIVES THROUGH WHAT YOU
+  // ALREADY REACH.*** The dependency set stays constant while the payload grows, so a field added to a type this handler already receives could carry
+  // the account reach this list is asserted to deny, without changing the list.
+  //
+  // The remedy, where it matters enough to spend the assertion, is to pin the CONTRACT TYPE'S SHAPE
+  // POSITIVELY -- *"every property is a `Guid`"* rather than *"no property is a date"*, because a ban
+  // names only the shapes its author thought of. Worked example:
+  // `AttendanceArchitectureTests.No_attendance_read_path_can_learn_that_an_employee_was_terminated`.
   public void The_platform_logout_handler_can_reach_no_account_and_no_token_service()
   {
     var constructor = Assert.Single(

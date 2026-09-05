@@ -188,10 +188,21 @@ public sealed class ModuleEnablementArchitectureTests
   [Fact]
   public void Exactly_one_entitlement_implementation_exists()
   {
+    // ⚠⚠⚠ THE HOST ASSEMBLY IS IN THIS LIST BECAUSE IT WAS MISSING AND THAT WAS THE ONE THAT MATTERED.
+    //
+    // The set is ENUMERATED, so an implementation in an assembly nobody listed is invisible — and the
+    // omitted assembly was `SSAS.Host.API`, ***which is where `AddScoped<ITenantModuleEntitlement, …>` is
+    // actually written***. A second implementation placed beside its own registration — the single most
+    // likely place to put one — passed this guard.
+    //
+    // *Measured, not argued:* planting `: ITenantModuleEntitlement` in `SSAS.Platform.API` reddened this
+    // test and named both types; planting the identical class in `SSAS.Host.API` left it **GREEN**. The
+    // guard was never vacuous — ***its population simply did not contain the place the failure would occur.***
     var assemblies = ModuleApiAssemblies
       .Append(typeof(ITenantModuleEntitlement).Assembly)
       .Append(typeof(SSAS.Platform.API.ServiceCollectionExtensions).Assembly)
       .Append(typeof(SSAS.Platform.Infrastructure.Persistence.PlatformDbContext).Assembly)
+      .Append(typeof(SSAS.Host.API.Authentication.AccessTokenIssuer).Assembly)
       .Distinct();
 
     var implementations = assemblies

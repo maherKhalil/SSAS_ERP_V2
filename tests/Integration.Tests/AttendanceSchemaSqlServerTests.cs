@@ -28,8 +28,28 @@ namespace SSAS.Integration.Tests;
 // catches a hand-written migration.
 public sealed class AttendanceSchemaSqlServerTests
 {
+  // ---- ⚠ CITES `AC-ATT-0033` — *"Every persisted application string column is `nvarchar`, verified
+  // **against the created database**, not against the model."*
+  //
+  // **The last clause is why this test is here rather than in an architecture suite**, and it is asserted
+  // by construction: the query reads `sys.columns`, so a model that CLAIMS `nvarchar` while the migration
+  // wrote `varchar` fails here and passes anywhere that inspects EF's opinion.
+  //
+  // ⚠⚠ THE POPULATION IS A NAME PREFIX, AND IT IS COMPLETE TODAY — CHECKED, NOT ASSUMED. All seven
+  // attendance tables are prefixed: `AttendanceCalendarHolidays`, `AttendanceLeaveBalances`,
+  // `AttendanceLeaveRequests`, `AttendanceLeaveTypes`, `AttendancePeriods`, `AttendanceRecords`,
+  // `AttendanceWorkingCalendars`. *The leave and calendar tables are inside `LIKE 'Attendance%'` because
+  // of the convention, not because the filter names them.* **So a future attendance table that broke the
+  // prefix would fall silently out of this population**, which is the list-shaped hazard in prefix form and
+  // the honest bound of the citation.
+  //
+  // ⚠⚠⚠ AND IT IS TIER 2. `Integration.Tests` is outside `GATE_SCOPE=TASK`; this ran green on
+  // 2026-09-01 and has not run since. **Verified to PREDATE that baseline before the citation was written**
+  // — a test added after it would never have executed at all, and stamping that tier 2 would put a claim
+  // where a check appears to be.
   [Fact]
   [Trait("Decision", "DEC-ATT-0005")]
+  [Trait("Criterion", "AC-ATT-0033")]
   public async Task Every_attendance_string_column_is_nvarchar()
   {
     await using var fixture = await AttendanceFixture.CreateAsync();

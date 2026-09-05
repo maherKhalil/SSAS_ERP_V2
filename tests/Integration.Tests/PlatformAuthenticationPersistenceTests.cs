@@ -307,25 +307,46 @@ public sealed class PlatformAuthenticationPersistenceTests
   // parked, then release.*
   //
   // ⚠ That is NOT a claim that the eight timing tests are wrong, and "several are terminal" is not a list,
-  // so here is the list. THE TEST APPLIED IS THE VANISH QUESTION FOR A RACE: *if the two operations ran
-  // strictly sequentially, would this assertion still pass?* Yes = TERMINAL, sound without a rendezvous.
+  // so here is the list.
   //
-  //   TERMINAL, 7 of 8
-  //     `Repeated_concurrent_refresh_rotates_once_…`      replaying a consumed token is reuse either way,
-  //                                                      so Compromised + 2 records holds sequentially
-  //     `Concurrent_selection_consumption_creates_…`      a consumed proof refuses on the second attempt
-  //     `Logout_racing_refresh_serializes_…`              ⚠ MISDESCRIBED — see below
-  //     `Concurrent_http_refresh_and_logout_…`            ⚠ MISDESCRIBED — see below
-  //     `Concurrent_disable_and_refresh_leave_no_usable…` says "Terminal invariant" in its own comment
-  //     `Concurrent_refresh_of_the_same_token_…`          `<= 1` holds in either order
-  //     `Concurrent_session_creation_respects_the_…`      `<= 1` holds in either order
+  // ---- ⚠⚠⚠ CORRECTED SAME DAY, AND THE FIRST VERSION SAID SEVEN TERMINAL. IT USED THE WRONG QUESTION.
   //
-  //   ⚠⚠⚠ OVERLAP-DEPENDENT, 1 of 8
-  //     `L1_concurrent_create_and_disable_stress_never_deadlocks_on_seeded_volume` — its assertion is that
-  //     NEITHER side fails with a deadlock. ***Run strictly sequentially there is no contention, so no
-  //     deadlock is possible and it passes proving nothing.*** Its own comment calls it "supplementary
-  //     unsynchronised stress", so this is a known property of it rather than a discovery — and it is
-  //     platform-plane and outside this criterion.
+  //   WRONG: *would this assertion still PASS if the two ran sequentially?*  -> tests SOUNDNESS
+  //   RIGHT: *could this assertion FAIL if the two ran sequentially?*        -> tests DISCRIMINATION
+  //
+  // **A test that passes sequentially AND cannot fail sequentially is not "sound and terminal" — it is the
+  // vacuous case, because its green could never have been a red without a race.** That is what "passes for
+  // arrangement reasons and reads as coverage forever" means, and only the second question detects it.
+  //
+  //   TERMINAL, 3 of 8 — a sequential failure mode exists, so a green is informative either way
+  //     `Logout_racing_refresh_serializes_…`              a refresh succeeding AFTER revocation leaves an
+  //                                                      active token — fails with no race at all
+  //     `Concurrent_http_refresh_and_logout_…`            same shape, through HTTP
+  //     `Concurrent_disable_and_refresh_leave_no_usable…` a disable that failed to revoke sessions fails
+  //
+  //   ⚠⚠⚠ OVERLAP-DEPENDENT, 5 of 8 — CANNOT fail unless both sides were genuinely in flight
+  //     `Repeated_concurrent_refresh_rotates_once_…`      SINGLE-USE CREDENTIAL: sequentially the second
+  //     `Concurrent_selection_consumption_creates_…`      attempt refuses because the token/proof is
+  //                                                      already consumed — nothing to do with the lock.
+  //                                                      `Assert.Single(successes)` is guaranteed by the
+  //                                                      credential, and can only fail if two sides read
+  //                                                      it unconsumed at once.
+  //     `Concurrent_refresh_of_the_same_token_…`          `<= 1` can only break if two succeed
+  //     `Concurrent_session_creation_respects_the_…`      `<= 1` can only break if two are created
+  //     `L1_concurrent_create_and_disable_stress_…`       no contention, no deadlock, nothing proved
+  //
+  // ⚠⚠ **THE SETUP GIVES THE FIRST ONE AWAY AND THE WRONG QUESTION WALKED PAST IT:**
+  // `for (var iteration = 0; iteration < 3; iteration++)`. ***A repetition loop is a contention amplifier —
+  // it only makes sense if the author believed the outcome was timing-dependent, and the method name's
+  // first word is "Repeated".*** The overlap-dependence was encoded in the arrangement all along.
+  //
+  // ⚠ `L1_concurrent_create_and_disable_stress_…` is the benign member: its own comment calls it
+  // "supplementary unsynchronised stress", it seeds eight authorities to make contention likely, and it
+  // sits beside three `LockGate` tests that DO pin the interleaving. **A vacuity that declares itself is a
+  // known gap; one that does not is a false green.**
+  //
+  // ***SO TWO OF `AC-AUTH-0034`'S THREE COVERED RACES — SELECTION AND REFRESH — ARE OVERLAP-DEPENDENT, AND
+  // NOTHING GUARANTEES THE OVERLAP. ONLY REVOCATION IS TERMINAL.***
   //
   // ---- ⚠⚠ AND THE THIRD STATE: A TERMINAL ASSERTION UNDER A SERIALIZATION NAME. SOUND, MISDESCRIBED.
   //

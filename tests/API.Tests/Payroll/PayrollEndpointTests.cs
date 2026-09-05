@@ -459,6 +459,65 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
   // arm and `RunAlreadyReversed` did not, so the two halves of one aggregate method answered 409 and 500.
   // Found by enumerating codes produced in Domain or Infrastructure that no mapper handles — the error is
   // never named in the handler, so the guard that walks a handler's own source cannot see it.
+  // ---- ⚠⚠⚠ THE CORRECTION REVERSES *THE ORIGINAL'S* JOURNAL, AND THE ORIGINAL SURVIVES IT (AC-PAY-0024).
+  //
+  // *"Correcting a posted run produces a reversing journal and a second run; the original run and journal
+  // are unchanged."* The second-run clause is `PayrollChainSqlServerTests.A_reversed_period_accepts_another_
+  // run_and_a_live_one_still_does_not`. ***THE FIRST CLAUSE WAS WITNESSED BY NOTHING, AND THE TEST NAMES
+  // AROUND IT READ AS THOUGH IT WERE.***
+  //
+  // Every reversal test on this surface is NEGATIVE — already-reversed and not-posted, both 409. The two
+  // Integration sites drive the real handler and the real ledger, so a reversing journal genuinely IS
+  // created there — **and both DISCARD the `Result<Guid>` that names it.** Nothing asserted which journal
+  // was reversed.
+  //
+  // ⚠⚠ AND THE REASON NOTHING COULD: `StubJournalPoster` captured `PostAsync`'s request and not
+  // `ReverseAsync`'s. **The instrument existed for one direction of a symmetric pair and not its inverse**,
+  // so this claim was not merely untested — it was unassertable on the gated surface. The capture was two
+  // lines; the absence had been there since the stub was written.
+  //
+  // ⚠⚠⚠ `JournalEntryId` IS THE ASSERTION. Reversal date and description are echoed from the request body
+  // and a defect in them is visible to a caller. **Which journal gets reversed is chosen by the handler
+  // from server state, is invisible in the response, and reversing the WRONG journal corrects a payroll by
+  // unwinding somebody else's posting.** That is the value no observable would have carried.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0024")]
+  public async Task A_correction_reverses_the_journal_the_original_run_posted_and_leaves_it_intact()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedPostedRun();
+    var original = run.JournalEntryId;
+
+    // THE PREMISE. If the seed ever stopped recording a journal the assertions below would compare two
+    // nulls and pass, under a name promising the opposite.
+    Assert.NotNull(original);
+    Assert.Equal(0, host.Ledger.ReverseCount);
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/reversals", host.TokenWith(AllPermissions),
+      """{"reversalDateUtc":"2026-02-10T00:00:00Z","description":"Correction"}"""));
+
+    // 201, not 204: a reversal CREATES a journal, and the surface says so. Posting answers 204 because it
+    // records an identity the caller already caused; this is a new ledger entry.
+    Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    Assert.Equal(1, host.Ledger.ReverseCount);
+
+    var reversal = host.Ledger.LastReversed!;
+
+    // ***THE ORIGINAL'S JOURNAL, NOT A NEW IDENTITY AND NOT ANOTHER RUN'S.***
+    Assert.Equal(original, reversal.JournalEntryId);
+
+    // The date and description are the caller's, carried through unaltered.
+    Assert.Equal(new DateTimeOffset(2026, 2, 10, 0, 0, 0, TimeSpan.Zero), reversal.ReversalDateUtc);
+    Assert.Equal("Correction", reversal.Description);
+
+    // ---- AND THE ORIGINAL RUN IS UNCHANGED. It stays POSTED and keeps naming the same journal: a
+    // reversal is a NEW journal, never an edit of the original, which is what keeps the ledger append-only.
+    Assert.Equal(PayrollRunStatus.Posted, run.Status);
+    Assert.Equal(original, run.JournalEntryId);
+    Assert.True(run.IsReversed);
+  }
+
   [Fact]
   public async Task A_run_that_is_already_reversed_cannot_be_reversed_again()
   {

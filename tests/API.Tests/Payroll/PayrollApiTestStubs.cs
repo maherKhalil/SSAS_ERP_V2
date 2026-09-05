@@ -251,9 +251,21 @@ public sealed class StubJournalPoster : IJournalPoster
   // as happily if posting had written two.
   public int PostCount { get; private set; }
 
+  // ---- ⚠⚠⚠ THE SAME TWO CAPTURES FOR THE OTHER DIRECTION, WHICH DID NOT EXIST.
+  //
+  // `PostAsync` recorded its request from the day this stub was written; `ReverseAsync` recorded nothing.
+  // ***SO NO GATED TEST COULD WITNESS WHAT PAYROLL ASKED THE LEDGER TO REVERSE*** — and reversal is the
+  // correction path for a POSTED payroll, where `AC-PAY-0024` requires the reversing journal to be the
+  // original's. **The capability existed for one direction of a symmetric pair and not for its inverse.**
+  public JournalReversalRequest? LastReversed { get; private set; }
+
+  public int ReverseCount { get; private set; }
+
   public void Reset()
   {
     PostCount = 0;
+    ReverseCount = 0;
+    LastReversed = null;
     Window = new(PostingWindowStatus.Open, "January 2026", Guid.NewGuid(),
       new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
       new DateTimeOffset(2026, 1, 31, 0, 0, 0, TimeSpan.Zero));
@@ -271,8 +283,12 @@ public sealed class StubJournalPoster : IJournalPoster
   }
 
   public Task<JournalPostingOutcome> ReverseAsync(
-    JournalReversalRequest request, CancellationToken cancellationToken = default) =>
-    Task.FromResult(ReverseOutcome);
+    JournalReversalRequest request, CancellationToken cancellationToken = default)
+  {
+    LastReversed = request;
+    ReverseCount++;
+    return Task.FromResult(ReverseOutcome);
+  }
 
   public Task<PostingWindow> InspectPostingWindowAsync(
     Guid companyId, DateTimeOffset entryDateUtc, CancellationToken cancellationToken = default) =>

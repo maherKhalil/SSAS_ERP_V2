@@ -26,7 +26,39 @@ public sealed class AuthenticationApplicationTests
   [Trait("BusinessRule", "BRULE-AUTH-0013")]
   [Trait("Decision", "DEC-AUTH-0025")]
   [Trait("Requirement", "FR-AUTH-0101")]
-  [Trait("Acceptance", "AC-AUTH-0015")]
+  // ---- ⚠⚠⚠ THE `AC-AUTH-0015` CITATION WAS REMOVED HERE ON 2026-09-05. THE TEST STAYS; THE CLAIM DOES NOT.
+  //
+  // *"Invitation tokens are **single-use** and **membership-bound**."*
+  //
+  // ***THE CRITERION IS TRUE AND THE PRODUCT ENFORCES BOTH HALVES. THIS TEST WITNESSES NEITHER.***
+  //
+  // **What it asserts is `Assert.NotNull(scope.ActionTokens.Values.Single().ConsumedUtc)` — that the token
+  // was STAMPED consumed.** ***A CONSUMPTION STAMP IS NOT A REFUSAL.*** *If `CompleteInvitationCommandHandler`
+  // stopped checking consumption entirely, a replay would succeed and every assertion here would still
+  // pass.* **No second use is ever attempted, and no cross-membership use is ever attempted** — the two
+  // things the criterion actually claims.
+  //
+  // ---- WHERE THE PROPERTY ACTUALLY LIVES, SO NOBODY RE-DERIVES IT.
+  //
+  //     IsActive(now)  ==  ***ConsumedUtc is null*** && RevokedUtc is null && ExpiresUtc > now
+  //
+  // **SINGLE-USE:** the handler's first gate calls `actionToken.ValidateForUse(Invitation, now)`, which
+  // calls `IsActive`, which requires `ConsumedUtc is null`. A replay is refused before anything else runs.
+  // **MEMBERSHIP-BOUND:** the token carries `TenantUserId`; the handler resolves *that* membership through
+  // `GetByTrustedInvitationBindingAsync(tenantId, tenantUserId)` and additionally requires
+  // `account.IdentityId == actionToken.IdentityId`, `tenantUser.IdentityId == actionToken.IdentityId` and
+  // `tenantUser.Status == Pending`. *A token cannot complete a different membership, a different identity,
+  // or an already-active one.*
+  //
+  // ⚠⚠⚠ AND THE WARNING FOR WHOEVER WRITES THE REAL WITNESS: ***SINGLE-USE IS ENFORCED AT TWO SITES.***
+  // `ValidateForUse` checks `IsActive`, and `Consume()` checks `IsActive` again before stamping.
+  // ***A PLANT THAT DISABLES ONLY ONE OF THEM WILL STAY GREEN*** — redundant enforcement makes each site
+  // look dead. **Break both, or the green means nothing.**
+  //
+  // ⚠ The witness this criterion needs is a DISCRIMINATING test in the shape `AC-TEN-0007` uses: complete
+  // the invitation, then attempt the SAME token again on the SAME fixture and require the outcome to
+  // change. *Asserting the refusal is not enough on its own — the refusal must be shown to DEPEND on the
+  // token having been used.*
   [Trait("Scenario", "TS-AUTH-0001")]
   public async Task New_account_invitation_creates_pending_global_account_and_membership_then_completes_setup()
   {

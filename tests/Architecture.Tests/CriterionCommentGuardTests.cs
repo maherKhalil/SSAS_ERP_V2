@@ -50,6 +50,96 @@ namespace SSAS.Architecture.Tests;
 // written. **Recorded on `CommentsOnly`, where the fix lives.** ⚠ *A first run that fails for two unrelated
 // reasons is the cheapest evidence a guard ever gets that it is not vacuous* — and neither cause would have
 // been found by reading this file, because one of them is this file.
+//
+// ==================================================================================================
+// ---- ⚠⚠⚠ AND BECAUSE APTNESS IS READ BY A PERSON: THREE ARRANGEMENTS THAT WORK, WITH TWO WORKED
+// EXAMPLES EACH. THE COUNTERPART TO A FAILURE CATALOGUE, WHICH ON ITS OWN TELLS AN AUTHOR WHAT NOT TO
+// DO AND NOTHING ABOUT WHAT TO DO.
+// ==================================================================================================
+//
+// This tree has logged its citation failure modes at length — wrong subject, a description read as the
+// thing it describes, a matcher that finds nothing and passes. **What it had never written down is the
+// positive form**, so an author reaching for a citation had a list of traps and no pattern.
+//
+// *All three answer one question, which is the question the paragraph above says nobody can mechanise:*
+// ***HOW DO I KNOW THIS GREEN WAS NOT FREE?*** They differ in what the surface under test gives you to
+// work with, so the choice between them is made by the API, not by taste.
+//
+// ⚠ **Pointed at by PATH AND METHOD NAME, deliberately without line numbers** — a line number rots on the
+// next edit made above it, and a rotted pointer in a catalogue of good practice is its own failure mode.
+//
+// ---- 1. PAIRED INCLUSION AND EXCLUSION AGAINST **ONE** RESULT SET.
+//
+// Assert that the thing that should be there IS and the thing that should not be ISN'T, **against the same
+// returned collection**. The pair is what makes it discriminating: a query returning everything fails the
+// exclusion, a query returning nothing fails the inclusion, and **a query that was never executed fails
+// both**. One assertion alone survives all three.
+//
+//   `tests/Integration.Tests/EmployeeBoundarySqlServerTests.cs`
+//     `A_search_without_a_status_filter_excludes_terminated_employees` (`AC-EMP-0016`) — seeds one active
+//     and one terminated employee, then `Assert.Contains` / `Assert.DoesNotContain` over **the same
+//     `page.Value.Items`**. The terminated one had to be created successfully first, so the exclusion
+//     cannot be satisfied by the row's absence.
+//
+//   `tests/API.Tests/Positions/PositionEndpointTests.cs`
+//     `A_stale_rowversion_is_refused_at_the_handler_pre_check_on_every_family` (`AC-POS-0047`) — the same
+//     shape scaled to a whole request set, and **the strongest citation two hand-read samples produced**.
+//     It walks `UpdateRequests(seeded, StaleRowVersion)` collecting anything that did not answer 409, then
+//     walks the identical set with `CurrentRowVersion` collecting anything that DID — into one `offenders`
+//     list closed by `Assert.Empty(offenders)`. ***Its second message names the confound out loud:*** *"the
+//     CURRENT version also conflicted — the refusal is not about staleness"*. That is the discriminating-
+//     test rule implemented by an author who had never read it.
+//
+// ---- 2. THE FIRST SUCCESS AS A CAUSAL CONTROL.
+//
+// When the assertion is that something is REFUSED, **perform the same operation successfully first**. The
+// refusal then has a cause, because the only thing that changed between the two calls is the one variable.
+// Without it, a refusal is equally consistent with a fixture that could never have succeeded at all — and
+// that failure is invisible, because a test asserting a refusal is green either way.
+//
+//   `tests/Integration.Tests/EmployeeBoundarySqlServerTests.cs`
+//     `Revoking_company_access_mid_session_refuses_the_next_employee_write` (`AC-EMP-0026`) — creates
+//     `EMP-R5` and asserts success, revokes the assignment, creates `EMP-R6` and asserts failure. The first
+//     create is not scenery; it is the proof that the graph could write before the revoke.
+//
+//   `tests/Platform.Tests/Subscriptions/TrialSubscriptionIssuanceTests.cs`
+//     `Another_tenant_is_still_issued_one` (`AC-SUB-0054`) — the control as **its own test**, which is worth
+//     noting as a variant: two sibling methods assert the issuer leaves an already-subscribed tenant alone,
+//     and this one asserts `Assert.Equal(2, subscriptions.Added.Count)` for two fresh tenants. ***Without it
+//     an issuer that had silently stopped issuing anything at all would turn both siblings green.***
+//
+// ---- 3. EXCLUSION ENCODED IN CARDINALITY, FOR WHEN THE API GIVES YOU NOWHERE TO NAME THE EXCLUDED THING.
+//
+// Sometimes the call takes no parameter that could name what must be left out. **Then the count is the
+// exclusion**: seed the confound, and assert the exact number rather than non-emptiness.
+//
+//   `tests/Integration.Tests/PayrollSchemaSqlServerTests.cs`
+//     `A_scope_authorized_for_one_company_reads_none_of_the_others_rows` (`AC-PAY-0005`) — seeds **the same
+//     employee guid in both companies**, then `Assert.Single(await reads.GetCompensationHistoryAsync(
+//     scope.Value, employee))`. That read takes a scope and an employee and no company, so there is no
+//     argument with which to say *"and not company B"*; `Single` says it, and `NotEmpty` would not have.
+//
+//   `tests/Platform.Tests/IdentityAccess/IdentityAccessApplicationTests.cs`
+//     `Permission_command_rejects_unknown_names_and_stale_versions` (`AC-IAM-0013`) — three attempts, one
+//     valid, and `Assert.Equal(1, unitOfWork.SaveCount)`. **The error codes say the two bad attempts were
+//     refused; the save count says they WROTE NOTHING**, which is the part a returned `Result` cannot
+//     witness about itself.
+//
+// ---- ⚠⚠ WHAT THESE THREE DO NOT ADDRESS, SAID HERE BECAUSE A CATALOGUE THAT OVERSELLS ITSELF IS THE
+// PARTIAL ALARM THIS FILE OPENS BY WARNING ABOUT.
+//
+// **Every arrangement above defends against VACUITY — a green obtained for free. None of them defends
+// against COVERING ONE CLAUSE OF THE CRITERION AND BEING SILENT ON THE REST**, and across twenty
+// hand-read citations that was the *modal* outcome: markedly commoner than a wrong subject. `AC-POS-0047`
+// is impeccable by these three tests and still says nothing about grades declared outside `MutationCommands`;
+// `AC-TEN-0015`'s witness binds its population properly and cannot reach the word *raises* at all.
+//
+// ***A citation is recorded at CRITERION granularity by a single trait, while the gap is at CLAUSE
+// granularity, and nothing in this tree computes the per-clause number.*** So the honest use of this
+// catalogue is: it tells you how to make an assertion mean something, and it leaves entirely open whether
+// your assertion means everything the criterion says. **For that, the only known instrument is to take the
+// criterion one clause at a time and name the fixture in your method that would fail if that clause were
+// false** — and if you cannot name one, the clause is uncited however green the test is.
 public sealed class CriterionCommentGuardTests
 {
   // ---- THE GUARD.

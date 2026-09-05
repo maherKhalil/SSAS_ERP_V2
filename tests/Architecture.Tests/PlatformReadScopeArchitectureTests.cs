@@ -118,6 +118,35 @@ public sealed class PlatformReadScopeArchitectureTests
   // either end finds the other; the criterion keeps its honest status; nothing asserts a witness that does
   // not exist. `COVERED ≠ CITED` has a mirror, and this is it — **the link is worth writing down precisely
   // when the coverage claim would be false.**
+  // ==================================================================================================
+  // ⚠⚠⚠ `TopDirectoryOnly` — MEASURED IN FOUR STATES, 2026-09-06. COVERED-BY, WITH ONE HATCH.
+  // ==================================================================================================
+  //
+  // The walk below is `TopDirectoryOnly`, so a read one directory down is outside THIS guard's population.
+  // Planted rather than reasoned about, because "no subdirectory exists today" is a judgement about
+  // likelihood and the question is REACH:
+  //
+  //   1. `Queries/Reports/` + `IgnoreQueryFilters`, no tenant predicate, no marker
+  //        -> GATE RED, but NOT here: `AuthenticationSessionArchitectureTests
+  //           .Query_filter_bypass_is_confined_to_explicit_membership_eligibility_paths`
+  //   2. the same file with its NAME ADDED to that test's `ApprovedQueryFilterBypassFiles`
+  //        -> ***GATE GREEN. Nothing then checks it supplies a tenant predicate.***
+  //   3. CONTROL: identical file, identical approval, moved UP one directory
+  //        -> GATE RED, HERE. So the directory is the sole cause; no confound remains.
+  //
+  // ***THE TWO GUARDS ASK DIFFERENT QUESTIONS. The neighbour asks WHO may bypass; this one asks WHAT they
+  // did having bypassed. Above the line the two compose. Below it only the neighbour survives, and it is
+  // the weaker of the two.***
+  //
+  // ⚠ THE HATCH IS NOT SIGNPOSTED THE WAY THIS GUARD'S IS. The failure message below names both admissible
+  // grounds and says "Do not add the marker to silence this: it is read by a human." The neighbour fails as
+  // a bare two-array diff — verbatim from the TRX, `Expected:` the approved list, `Actual:` the same list
+  // plus the new file, with an arrow at the position. **The displayed remedy is "make Expected match
+  // Actual", and Expected IS the hatch; nothing in that output states a condition on taking it.** Its
+  // discipline ("admitted ONE AT A TIME BY DECISION") lives in a source comment nobody fixing a red opens.
+  //
+  // No remedy asserted: widening this walk to `AllDirectories` is a scope decision, and the hatch belongs
+  // to the other file's author.
   [Fact]
   public void Every_platform_read_service_that_ignores_query_filters_supplies_its_own_scope()
   {

@@ -296,8 +296,19 @@ public sealed class AttendanceArchitectureTests
       property => Assert.Equal(typeof(Guid), property.PropertyType));
   }
 
+  //
+  // ⚠ CITES `AC-ATT-0031` CLAUSE 2 — *"and the Payroll summary contract applies no branch predicate at all
+  // — company-complete by design, guard-asserted."* **The criterion names the instrument, and the
+  // instrument was sitting here carrying only its ruling.** Clause 1 — *"a caller sees only their
+  // authorized, active branches on record reads, resolved live"* — is
+  // `AttendanceScopeResolverTests.The_branch_authority_is_consulted_on_every_resolution`.
+  //
+  // ⚠⚠ THE TWO CLAUSES ARE OPPOSITE OBLIGATIONS AND THAT IS WHY THE CRITERION IS ONE ROW. Record reads
+  // must NARROW to the caller's branches; the summary must NOT narrow at all. *A single reader tidying
+  // toward consistency would break exactly one of them*, which is the split the ruling exists to record.
   [Fact]
   [Trait("Decision", "OD-ATT-0011")]
+  [Trait("Criterion", "AC-ATT-0031")]
   public void The_payroll_summary_contract_applies_no_branch_predicate()
   {
     var service = typeof(IAttendanceSummary).Assembly

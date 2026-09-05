@@ -114,14 +114,53 @@ public sealed class AttendanceScopeResolverTests
     Assert.Equal(3, access.Calls);
   }
 
+  // ---- ⚠⚠⚠ AND THE BRANCH AUTHORITY TOO, WHICH WAS THE HALF NOBODY ASKED.
+  //
+  // ⚠ CITES `AC-ATT-0031` CLAUSE 1 — *"A caller sees only their authorized, active branches on record
+  // reads, **resolved live from `ITenantBranchAccessResolver`**."* Clause 2 is asserted by
+  // `AttendanceArchitectureTests.The_payroll_summary_contract_applies_no_branch_predicate`.
+  //
+  // **The company half of this property was proven and the branch half was not** — a sibling asymmetry
+  // inside one file, where `RecordingCompanyAccess` counted calls and `StubBranchAccess` did not. *The
+  // company test cannot stand in for it: `ResolveCompanyOnlyAsync` never touches the branch authority at
+  // all, so its three calls say nothing about whether branches were re-asked.*
+  //
+  // ⚠⚠ "RESOLVED LIVE" IS THE WHOLE CLAUSE, AND CACHING IS NOT A PERFORMANCE DETAIL HERE. The contract
+  // says so itself: *"Deliberately NOT answered from a list captured at login: access can be revoked and a
+  // branch can be deactivated inside a session's lifetime."* **A resolver that asked once and reused the
+  // answer would serve a revoked branch's records for the rest of the request, and every assertion in this
+  // file about WHICH branches are returned would still pass.**
+  //
+  // ⚠ THE "ACTIVE" HALF OF THE CLAUSE IS THE CONTRACT'S, NOT ATTENDANCE'S, and that is stated so nobody
+  // looks here for it. `GetPermittedBranchesAsync` is documented as *"every branch this user may currently
+  // enter, active only"* — Attendance receives an already-filtered list and has no way to filter one
+  // itself. **Asking LIVE is the entire obligation this module carries**, which is why it is the entire
+  // assertion.
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0031")]
+  public async Task The_branch_authority_is_consulted_on_every_resolution()
+  {
+    var access = new StubBranchAccess([BranchA]);
+    var resolver = Resolver(
+      permissions: [AttendancePermissionNames.ViewRecords], branchAccess: access);
+
+    // THE PREMISE. A resolution that FAILED would also leave the count at whatever the failure reached,
+    // so the successes are asserted before the count is read.
+    Assert.True((await resolver.ResolveAsync(AttendancePermissionNames.ViewRecords)).IsSuccess);
+    Assert.True((await resolver.ResolveAsync(AttendancePermissionNames.ViewRecords)).IsSuccess);
+
+    Assert.Equal(2, access.Calls);
+  }
+
   private static AttendanceScopeResolver Resolver(
     IReadOnlyCollection<string>? permissions = null,
     IReadOnlyList<Guid>? companies = null,
     IReadOnlyList<Guid>? branches = null,
-    ITenantCompanyAccessResolver? companyAccess = null) =>
+    ITenantCompanyAccessResolver? companyAccess = null,
+    StubBranchAccess? branchAccess = null) =>
     new(
       companyAccess ?? new RecordingCompanyAccess(companies ?? [CompanyA]),
-      new StubBranchAccess(branches ?? [BranchA]),
+      branchAccess ?? new StubBranchAccess(branches ?? [BranchA]),
       new StubCurrentTenant(),
       new StubCurrentTenantUser(),
       new StubCurrentUser(permissions ?? [AttendancePermissionNames.ViewRecords]));
@@ -152,10 +191,16 @@ public sealed class AttendanceScopeResolverTests
 
   private sealed class StubBranchAccess(IReadOnlyList<Guid> permitted) : ITenantBranchAccessResolver
   {
+    public int Calls { get; private set; }
+
     public Task<Result<IReadOnlyList<BranchAccessSummary>>> GetPermittedBranchesAsync(
-      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
-      Task.FromResult(Result.Success<IReadOnlyList<BranchAccessSummary>>(
+      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default)
+    {
+      Calls++;
+
+      return Task.FromResult(Result.Success<IReadOnlyList<BranchAccessSummary>>(
         permitted.Select(id => new BranchAccessSummary(id, "BR", "Branch", true)).ToArray()));
+    }
 
     public Task<Result> AuthorizeBranchAsync(
       Guid tenantId, long tenantUserId, Guid branchId, CancellationToken cancellationToken = default) =>

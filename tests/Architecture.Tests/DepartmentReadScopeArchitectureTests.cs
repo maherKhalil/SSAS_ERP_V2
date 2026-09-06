@@ -39,6 +39,42 @@ public sealed class DepartmentReadScopeArchitectureTests
 {
   private const string ReadService = "DepartmentReadService.cs";
 
+  // ==================================================================================================
+  // ⚠⚠⚠ THIS GUARD NAMES ITS OWN HAZARD IN PROSE AND CANNOT SEE TWELVE INSTANCES OF IT (2026-09-06).
+  // ==================================================================================================
+  //
+  // The comment below the `Single(...)` says: "ONE ENTRY POINT. A second `Set<Department>()` is how a read
+  // comes to be written without the predicate." **That is the right hazard.** The assertion under it counts
+  // occurrences INSIDE ONE FILE — the one `ReadService` names — so it means "one entry point in the file I
+  // chose to open", while the sentence states the property over the module.
+  //
+  // *Enumerated across `src/Modules/HR`, unlimited:* **THIRTEEN `Set<Department>()` sites in FIVE files.**
+  //
+  //     DepartmentReadService.cs 1 · DepartmentRepository.cs 6 · EmployeeReadService.cs 3
+  //     EmployeeRepository.cs 2 · EmployeeApproverDirectoryService.cs 1
+  //
+  // ***NONE IS A VIOLATION TODAY. ALL TWELVE OUTSIDE THE READ SERVICE ARE INVISIBLE TO THE ASSERTION THAT
+  // EXISTS TO NOTICE THEM.***
+  //
+  // ---- ⚠⚠⚠ AND THE ESCAPE IS TWO INDEPENDENT BLINDNESSES STACKED, NOT ONE.
+  //
+  // *Measured by plant:* deleting `department.CompanyId == companyId &&` from `EmployeeRepository.cs:125`
+  // — a `Set<Department>()` read inside the very directory this file walks — left the WHOLE GATE GREEN.
+  //
+  //   1. POPULATION. `DepartmentReadPaths()` admits a file only if it holds the literal substring
+  //      `"Set<Department>()"`. That repository writes `context.Set<Domain.Departments.Department>()`,
+  //      FULLY QUALIFIED, which does not contain it. ***The file never enters the population at all — it
+  //      is not discarded at the assertion, it was never a candidate.***
+  //   2. ASSERTION. Files that DO enter are then reduced by
+  //      `readPaths.Single(path => path.Key.EndsWith(ReadService, ...))`, discarding every other member.
+  //
+  // ⚠ The qualified-generic blindness is worth naming on its own: a token search encodes an assumption
+  // about how the type was SPELLED, and the assumption never appears in the result. CASE · WINDOW ·
+  // DIRECTION · OPERAND ORDER · QUALIFICATION.
+  //
+  // **No remedy asserted.** Widening the population is a decision about what "one entry point" should mean,
+  // and the comment and the code currently disagree about that. Recorded so the next reader starts from the
+  // measurement rather than from a sentence that is true of one file.
   [Fact]
   [Trait("Decision", "ADR-026")]
   [Trait("Criterion", "AC-DEP-0044")]

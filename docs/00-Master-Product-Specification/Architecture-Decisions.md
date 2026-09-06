@@ -3,7 +3,9 @@
 > ## ⚠⚠⚠ **THIS IS NOT THE ARCHITECTURE DECISION REGISTRY. IT IS A THREE-ENTRY STUB IN A DIFFERENT ID SPACE.** *(pointer added 2026-09-06; nothing below was changed)*
 >
 > ***THE MAINTAINED REGISTRY IS [`docs/14-Engineering/ADR/`](../14-Engineering/ADR/) — 29 documents,
-> `ADR-001` … `ADR-030`, THREE DIGITS.*** **This file uses `ADR-0001`–`ADR-0003`, FOUR digits.**
+> `ADR-001`–`ADR-027`, `ADR-029`, `ADR-030` — **29 DOCUMENTS, THREE DIGITS** *(⚠ `ADR-028` is deliberately
+> RESERVED and unwritten; `ADR/README.md:38`. Corrected 2026-09-07 — this said `ADR-001 … ADR-030`, which
+> implies thirty and hides the gap).*** **This file uses `ADR-0001`–`ADR-0003`, FOUR digits.**
 > ⚠ ***The two spaces cannot collide, which is exactly why nobody has noticed: a search for `ADR-001` never
 > returns `ADR-0001`.*** **This file has not been touched since the initial commit of 2026-07-29 and is cited
 > by nothing.**

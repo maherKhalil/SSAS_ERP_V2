@@ -3248,8 +3248,13 @@ depends on.
 
 # Related Documents
 
-- All accepted ADRs (`ADR-001` … `ADR-030`) ⚠ *corrected 2026-09-06 — this read "(001-012)"; the directory
-  holds thirty, twenty-seven of them `Accepted`, two `Proposed` (`ADR-019`, `ADR-021`)*
+- All accepted ADRs ⚠ *corrected 2026-09-06 — this read "(001-012)". **Re-derived 2026-09-07: 29 ADR
+  documents, numbered `ADR-001`–`ADR-027`, `ADR-029`, `ADR-030`. 27 are `Accepted`; `ADR-019` and
+  `ADR-021` are `Proposed`.** ⚠ **`ADR-028` is deliberately RESERVED and unwritten — `ADR/README.md:38`:
+  "Reserved — Binary Content Storage, Custody and Movement · Not written; V5's to author (`OD-DOC-009`)" —
+  and twelve files reference it correctly on that basis. The first correction wrote the range as
+  `ADR-001 … ADR-030`, which implies thirty documents and hides the reserved gap: **a range is not an
+  enumeration.***
 - Solution Architecture Document
 - Development Standards
 - Coding Standards

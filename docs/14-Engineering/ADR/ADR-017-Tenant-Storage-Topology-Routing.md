@@ -4,7 +4,7 @@ title: Tenant Storage Topology and Routing
 category: Architecture Decision Record
 version: 1.8
 status: Accepted
-date: 2026-08-25
+date: 2026-09-06
 owner: Solution Architecture Team
 tags:
   - architecture

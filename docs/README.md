@@ -188,7 +188,9 @@ If implementation conflicts with documentation, the documentation takes preceden
 All code shall comply with:
 
 - **Development Standards** — `docs/08-Development/Development-Standards.md`
-- ~~Coding Standards~~ ⚠⚠⚠ **NO SUCH DOCUMENT EXISTS. See the note below.**
+- **Coding Standards** — ⚠ *an umbrella term, not a file: Development Standards · Solution Structure ·
+  Clean Architecture · Naming Standards · Dependency Rules. The membership list is at*
+  `13-Implementation/Sprint-00-Foundation.md:451`. *See the note below.*
 - **Architecture Principles** — `docs/14-Engineering/Architecture-Principles.md`
 - **ADRs** — `docs/14-Engineering/ADR/`
 
@@ -205,10 +207,35 @@ All code shall comply with:
 > ***`08-Development/Development-Standards.md` exists, is 10.8 KB and is cited by 21 files. "Coding
 > Standards" is cited by thirteen and is not there.***
 >
-> ***THE LIKELIEST READING IS THAT THEY ARE THE SAME DOCUMENT UNDER TWO NAMES — BUT THAT IS A GUESS, AND
-> THE ALTERNATIVE IS THAT A SEPARATE STANDARD WAS INTENDED AND NEVER WRITTEN.*** **Which it is decides
-> whether thirteen references need repointing or one document needs authoring, and that is the owner's call.
-> The other three bullets are given explicit paths so this list is at least resolvable.**
+> ### ⚠⚠⚠ **RESOLVED 2026-09-06 — AND MY FIRST READING WAS WRONG IN THE DIRECTION THAT WOULD HAVE CAUSED DAMAGE**
+>
+> **I wrote here that *"the likeliest reading is that they are the same document under two names"* and left
+> the owner a choice between repointing thirteen references and authoring a missing standard.**
+> ***BOTH OPTIONS WERE WRONG. "CODING STANDARDS" IS AN UMBRELLA TERM NAMING FIVE ARTEFACTS, AND EVERY ONE
+> OF THEM EXISTS.***
+>
+> **`13-Implementation/Sprint-00-Foundation.md:451-463` says so outright:**
+> > `# Coding Standards` / `Must follow` / **Development Standards** · Solution Structure · Clean
+> > Architecture · Naming Standards · Dependency Rules
+>
+> ***THE FIRST ENTRY UNDER "CODING STANDARDS" IS "DEVELOPMENT STANDARDS". THEY ARE NOT SYNONYMS — ONE
+> CONTAINS THE OTHER.*** **And the members are locatable: `Development-Standards.md`;
+> `03-Architecture/Solution-Structure.md`; `Architecture-Principles.md`'s `# Naming Conventions` (`:198`),
+> `# Dependency Rules` (`:210`) and `# General Rules` (`:180`); and `11-AI/Codex-System-Prompt.md:192-207`,
+> which is itself a `# Coding Standards` section with real content.**
+>
+> ⚠⚠ ***SO DO NOT REPOINT THESE REFERENCES AT `Development-Standards.md`. THAT WOULD NARROW AN UMBRELLA TERM
+> TO ONE OF ITS FIVE MEMBERS***, and a reader following the new link would get development standards and
+> lose solution structure, naming and dependency rules. **The bullet is restored below, unpointed, because
+> pointing it anywhere single is the error.**
+>
+> **What is actually missing is one page saying *"Coding Standards means these five"* — ⚠ *and even that
+> exists, at `Sprint-00-Foundation.md:451`, in an uncited file inside a layer `START-HERE.md` does not
+> list.* The task is to point at it, not to write it.**
+>
+> *(Of the thirteen references, eleven are bare obligations carrying no subject — including all five ADRs,
+> each a lone bullet in a Related Documents list. The two informative ones are not references at all: they
+> are headings.)*
 
 ---
 

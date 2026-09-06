@@ -158,6 +158,10 @@ public static class DepartmentApiErrorMapper
       "Department.ManagerEmployeeNotFound" => ManagerInvalid,
       "Department.ManagerInDifferentCompany" => ManagerInvalid,
       "Department.ManagerTerminated" => ManagerInvalid,
+      // `OD-DEP-003` reading (i). Collapsed with its siblings for the SAME reason stated above and not a new
+      // one: "this employee belongs to that department" is a fact about the employee, and a distinct code
+      // would hand a department caller a membership oracle over people they may hold no permission to read.
+      "Department.ManagerInOwnDepartment" => ManagerInvalid,
       "Department.InvalidManagerAssignment" => ManagerInvalid,
       "Department.ManagerNotAssigned" => ManagerInvalid,
 

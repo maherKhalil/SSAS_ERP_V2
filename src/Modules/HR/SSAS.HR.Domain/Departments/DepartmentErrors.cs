@@ -103,6 +103,13 @@ public static class DepartmentErrors
   public static readonly Error ManagerTerminated =
     new("Department.ManagerTerminated", "A terminated employee cannot manage a department.");
 
+  // `OD-DEP-003` reading (i), closed by the owner 2026-08-20 adopting reading (iii) — "(i) now, (ii) when a
+  // reporting line is introduced". Named for the employee's relation to the department, like the two above,
+  // rather than after `BRULE-DEP-0012`: that identifier is documentation's and whether it is adopted is not
+  // this code's to assume.
+  public static readonly Error ManagerInOwnDepartment =
+    new("Department.ManagerInOwnDepartment", "An employee cannot manage the department they belong to.");
+
   public static readonly Error ManagerNotAssigned =
     new("Department.ManagerNotAssigned", "The department has no manager to clear.");
 

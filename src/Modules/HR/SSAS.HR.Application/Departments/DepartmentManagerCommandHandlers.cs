@@ -60,18 +60,37 @@ public sealed class AssignDepartmentManagerCommandHandler(
     // WHAT MAKES AN EMPLOYEE ELIGIBLE — AND WHAT DELIBERATELY DOES NOT.
     // ================================================================================================
     //
-    // Same tenant, same company, not terminated. That is the whole list.
+    // Same tenant, same company, not terminated, and NOT A MEMBER OF THIS DEPARTMENT. That is the whole
+    // list. *(The fourth was added 2026-09-06; see the superseded block below for why it was not there.)*
     //
     // BRANCH IS NOT CONSULTED. A department spans the branches of its company, so requiring the manager to
     // work at any particular branch would name one of several arbitrarily.
     //
-    // DEPARTMENT MEMBERSHIP IS NOT CONSULTED EITHER, in either direction: the employee may belong to this
-    // department, to another department in the same company, or — until Phase 3 — to none, and all three are
-    // eligible. `Employee.DepartmentId == Department.Id` is explicitly NOT a rule.
+    // ---- ⚠⚠⚠ DEPARTMENT MEMBERSHIP *IS* CONSULTED, AS OF THE OWNER'S RULING. SUPERSEDED 2026-09-06.
     //
-    // AND THIS IS NOT A REPORTING LINE. Heading a department is not the same relationship as managing a
-    // person; `BR-HR-0007` presumes an employee-to-manager link that no authority defines, and it remains
-    // deferred rather than being quietly satisfied by this.
+    // THIS BLOCK PREVIOUSLY READ: *"DEPARTMENT MEMBERSHIP IS NOT CONSULTED EITHER, in either direction…
+    // `Employee.DepartmentId == Department.Id` is explicitly NOT a rule"*, and argued the position below —
+    // that heading a department is not a reporting line, that `BR-HR-0007` presumes an employee-to-manager
+    // link no authority defines, and that it should stay deferred rather than be quietly satisfied here.
+    //
+    // ***THAT ARGUMENT IS READING (ii)-ONLY, AND IT WAS PUT TO THE OWNER AND NOT CHOSEN.*** `README.md`
+    // named it in advance — *"If the owner's intent is (ii) only, say so… a legitimate answer but must be
+    // recorded rather than assumed"* — and on 2026-08-20 the owner CLOSED `OD-DEP-003` adopting reading
+    // (iii) (`decisions-approved.md:27`), which is *"(i) now, (ii) when a reporting line is introduced"*.
+    // **Reading (i) is *"an employee may not be the manager of the department they themselves belong to"*,
+    // marked enforceable in FP-007 — Yes, fully.**
+    //
+    // ⚠ THE ARGUMENT IS KEPT RATHER THAN DELETED BECAUSE IT WAS NOT WRONG WHEN WRITTEN. This comment and the
+    // code it described were one commit, `245f64b` 2026-08-20 16:18; the ruling reached the repository at
+    // `4a84e7d` 2026-08-21 05:03, and the file was never reopened. *It went stale, it did not dissent.*
+    //
+    // ⚠⚠ (ii) REMAINS DEFERRED AND THAT HALF OF THE OLD ARGUMENT STILL HOLDS: heading a department is still
+    // not a reporting line, and no authority defines one. The ruling transfers (ii) to whichever package
+    // introduces it. Only (i) is enforced here.
+    //
+    // ⚠⚠⚠ AND ONLY THE ASSIGN ROUTE IS CLOSED. Reading (i) is a STATE INVARIANT with two routes into it, and
+    // MOVING an employee into the department they manage is the other one — unenforced, deferred by the
+    // owner pending a question about existing data. See the note in `DepartmentEndpointTests`.
     var employee = await employees.GetByIdAsync(command.EmployeeId, cancellationToken);
     if (employee is null || employee.TenantId != tenantId)
     {
@@ -86,6 +105,17 @@ public sealed class AssignDepartmentManagerCommandHandler(
     if (employee.Status == EmployeeStatus.Terminated)
     {
       return Result.Failure(DepartmentErrors.ManagerTerminated);
+    }
+
+    // `OD-DEP-003` reading (i). Checked HERE rather than in `DepartmentManager.Assign` because the factory is
+    // never handed the employee's own `DepartmentId` — its parameters are department, tenant, company,
+    // employee, actor and timestamp — so it could not express this invariant without a signature change.
+    // ⚠ THE BYPASS THAT BUYS: anything constructing `DepartmentManager` without coming through this handler
+    // is unaffected by this line. Today nothing does, and the repository surface is asserted closed, but a
+    // future second write path would need its own check or this rule moves into the domain.
+    if (employee.DepartmentId == department.Id)
+    {
+      return Result.Failure(DepartmentErrors.ManagerInOwnDepartment);
     }
 
     var existing = await departments.GetManagerAsync(department.Id, cancellationToken);

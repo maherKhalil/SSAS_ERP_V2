@@ -94,14 +94,29 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
   > the substance was never conditional. **The MISLABEL is the whole reason this criterion read as stale to
   > two independent readers.**
   >
-  > ⚠⚠ **AND THE PRODUCT DOES THE OPPOSITE, DELIBERATELY AND IN WRITING.**
-  > `DepartmentManagerCommandHandlers.cs:68-70` states *"department membership is not consulted either, in
-  > either direction… `Employee.DepartmentId == Department.Id` is explicitly NOT a rule"*, and gives
-  > eligibility as same tenant, same company, not terminated — *"that is the whole list."* **That is the exact
-  > negation of `BRULE-DEP-0012`.** This is **not a test gap**; no test should be written for it until the
-  > conflict is resolved. **ESCALATED TO THE OWNER**, because closing it changes product behaviour and
-  > `README.md:219-222` records the cost the owner accepted when adopting (iii): *a department head cannot be
-  > a member of the department they head, which many organizations would find backwards.*
+  > ### ⚠⚠⚠ **RESOLVED 2026-09-06 — THE ESCALATION IS CLOSED AND THE ASSIGN HALF IS ENFORCED**
+  >
+  > **This block read, until now:** *"**AND THE PRODUCT DOES THE OPPOSITE, DELIBERATELY AND IN WRITING.**
+  > `DepartmentManagerCommandHandlers.cs:68-70` states "department membership is not consulted either, in
+  > either direction… `Employee.DepartmentId == Department.Id` is explicitly NOT a rule"… **That is the exact
+  > negation of `BRULE-DEP-0012`.** This is **not a test gap**; **no test should be written for it** until the
+  > conflict is resolved. **ESCALATED TO THE OWNER**…"*
+  >
+  > ***ALL OF THAT IS NOW FALSE, AND THE MOST DANGEROUS CLAUSE IS THE INSTRUCTION NOT TO WRITE A TEST.***
+  > **The owner ruled, the guard shipped in `984a806`, and `DepartmentManagerCommandHandlers.cs:69` now
+  > opens:** *"⚠⚠⚠ DEPARTMENT MEMBERSHIP **IS** CONSULTED, AS OF THE OWNER'S RULING. SUPERSEDED 2026-09-06."*
+  > **The superseded argument is preserved in the handler at `:71-79`, which records that it was reading
+  > (ii)-only, that `README.md` named that option in advance, and that the owner did not choose it.**
+  >
+  > ⚠⚠ **BUT THE CRITERION IS NOT FULLY MET, AND THIS IS THE HALF TO KEEP:** **`BRULE-DEP-0012` refuses
+  > *assigning* a manager who already belongs to the department. *THE MOVE DIRECTION IS NOT ENFORCED* —
+  > `ChangeEmployeeDepartmentCommandHandler` performs no manager lookup, so an employee can still be moved
+  > into the department they manage.** `TS-DEP-0039` scopes both directions, so a reader checking this
+  > criterion must not read "resolved" as "complete".
+  >
+  > **The cost the owner accepted when adopting (iii) still stands and is still worth reading**
+  > (`README.md:219-222`): *a department head cannot be a member of the department they head, which many
+  > organizations would find backwards.*
   >
   > ⚠ **WHY IT SURVIVED: THE CODE EXPLAINS ITSELF CONFIDENTLY.** A missing check reads as an omission and
   > invites a second look. A paragraph asserting *that is the whole list* reads as a considered decision and

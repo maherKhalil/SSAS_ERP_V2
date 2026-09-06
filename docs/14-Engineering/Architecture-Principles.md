@@ -3276,6 +3276,24 @@ depends on.
 > a section of their own, is an editorial decision for this document's owner and is deliberately not taken
 > here.** *(The two consecutive `---` rules that used to sit here are one of them; the boundary was never
 > marked.)*
+>
+> ### ⚠⚠ **MEASURED 2026-09-06 — THE COST IS NOT "NOBODY CAN CITE THEM". IT IS THAT THEIR CONTENT GETS REDISCOVERED.**
+>
+> ***THE NUMBERED PRINCIPLES ARE CITED BY IDENTIFIER, AND HEAVILY:*** `Principle 29` ×13 · `Principle 11` ×13
+> · `Principle 16` ×9 · `20` ×6 · `18` ×5 · `17`, `14`, `13` ×4 — **across three ADRs and three feature
+> packages, including `FP-007/traceability-matrix.md:71`, where *Principle 11* appears in the Decision
+> column of a traceability row.** *An unnumbered section could never appear there.*
+>
+> ***THE UNNUMBERED TWENTY ARE REFERENCED BY NOTHING — AND THEIR CONTENT HAS BEEN INDEPENDENTLY RE-DERIVED
+> AT LEAST TWICE:***
+> - `.claude/handoff/BOARD.md` — *"the only instrument that reaches this code, which is **an argument from
+>   NECESSITY, not from accuracy**"*
+> - `.claude/handoff/OWNER-DECISIONS.md` — *"**which is an argument from necessity and cannot be** [wrong]"*
+>
+> **The unnumbered principle here is titled *"An argument from necessity cannot be wrong, which is why it
+> proves nothing."*** ***IT WAS WORKED OUT AGAIN FROM SCRATCH AND WRITTEN INTO A HANDOFF LEDGER INSTEAD OF
+> BEING CITED.*** *Same for "A population predicate must not contain the property under test", reasoned about
+> in `StrictRequestBindingArchitectureTests` without reference to this document.*
 
 ---
 

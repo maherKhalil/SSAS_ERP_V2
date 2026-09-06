@@ -187,10 +187,28 @@ If implementation conflicts with documentation, the documentation takes preceden
 
 All code shall comply with:
 
-- Development Standards
-- Coding Standards
-- Architecture Principles
-- ADRs
+- **Development Standards** — `docs/08-Development/Development-Standards.md`
+- ~~Coding Standards~~ ⚠⚠⚠ **NO SUCH DOCUMENT EXISTS. See the note below.**
+- **Architecture Principles** — `docs/14-Engineering/Architecture-Principles.md`
+- **ADRs** — `docs/14-Engineering/ADR/`
+
+> ### ⚠⚠⚠ **"CODING STANDARDS" IS REQUIRED BY THIRTEEN FILES AND HAS NEVER EXISTED** *(recorded 2026-09-06)*
+>
+> **`find docs -iname "*coding*"` returns nothing.** *Thirteen files nonetheless require conformance to it:*
+> this file (twice, including the heading above) · `START-HERE.md:191` · `Assumptions.md` (`ASM-0401`) ·
+> `Requirement-Catalog/Constraints.md` · `Requirement-Catalog/Non-Functional-Requirements.md` ·
+> `11-AI/Codex-System-Prompt.md` · `13-Implementation/Sprint-00-Foundation.md` ·
+> `14-Engineering/Architecture-Principles.md` · **and five Accepted ADRs — `ADR-004`, `ADR-007`, `ADR-008`,
+> `ADR-010`, `ADR-011`.**
+>
+> ⚠⚠ **The list above names it *beside* `Development Standards` as though they were two documents.**
+> ***`08-Development/Development-Standards.md` exists, is 10.8 KB and is cited by 21 files. "Coding
+> Standards" is cited by thirteen and is not there.***
+>
+> ***THE LIKELIEST READING IS THAT THEY ARE THE SAME DOCUMENT UNDER TWO NAMES — BUT THAT IS A GUESS, AND
+> THE ALTERNATIVE IS THAT A SEPARATE STANDARD WAS INTENDED AND NEVER WRITTEN.*** **Which it is decides
+> whether thirteen references need repointing or one document needs authoring, and that is the owner's call.
+> The other three bullets are given explicit paths so this list is at least resolvable.**
 
 ---
 

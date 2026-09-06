@@ -57,10 +57,26 @@ original's debits and credits. The original is unchanged. → `REQ-GL-0004`
 
 ## Chart of accounts
 
-**`AC-GL-0007`** — A caller holding `GL.Accounts.Manage` creates an account with a code unique within its
-owning scope; a duplicate code is refused with a named error. → `REQ-GL-0005`
-> The owning scope is tenant or company per `OD-GL-0003`, and that choice also decides whether this write runs
-> `AuthorizeCurrentCompanyAsync`.
+**`AC-GL-0007`** — A caller holding `GL.Accounts.Create` creates an account with a code unique within the
+**tenant**; a duplicate code is refused with a named error. → `REQ-GL-0005`
+
+> ### ⚠⚠ **CORRECTED 2026-09-06 — TWO DEFECTS, BOTH RECORDED IN A TEST BEFORE TONIGHT**
+>
+> **This criterion read:** *"A caller holding **`GL.Accounts.Manage`** creates an account with a code unique
+> within **its owning scope**… > The owning scope is tenant or company per `OD-GL-0003`, and **that choice
+> also decides** whether this write runs `AuthorizeCurrentCompanyAsync`."*
+>
+> 1. ***`GL.Accounts.Manage` HAS NEVER EXISTED.*** `GlPermissionNames.cs:46-49` defines exactly four:
+>    `GL.Accounts.View`, `.Create`, `.Update`, `.Deactivate`. **The criterion describes a creation, so
+>    `Create` is the permission it means.**
+> 2. ***`OD-GL-0003` WAS RULED, NOT LEFT OPEN.*** `decisions-approved.md:187-189` — *"**RULED: option 1 — the
+>    chart of accounts is TENANT-level.**"* **So the scope is not a pending choice and nothing downstream of
+>    it is conditional.**
+>
+> ⚠ **Neither defect was found tonight. `tests/API.Tests/Gl/GlEndpointTests.cs:417-421` names both, marks
+> them *"the owner's, not fixed here"*, and records that *`T-136` fixed the identical permission-name defect
+> in `api-contracts.md` and did not carry it to this file*.** ***The finding sat correctly written down in a
+> test for as long as the defect sat in the criterion.***
 
 **`AC-GL-0008`** — An account's name may be updated. Concurrent updates are detected by `RowVersion` and the
 loser is refused rather than silently overwriting. → `REQ-GL-0006`, `DEC-GL-0007`

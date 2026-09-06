@@ -33,7 +33,7 @@ version: 0.1
 | 25 | Document-type taxonomy | **RATIFIED** `DEC-DOC-0012` |
 | 26 | Retention and deletion vs no-physical-delete | **OWNER-DECISION-REQUIRED** `OD-DOC-008` |
 | 27 | Document permissions | **RATIFIED** `DEC-DOC-0013` |
-| 28 | Roadmap ownership vs V5 Document Management | **OWNER-DECISION-REQUIRED** `OD-DOC-009` |
+| 28 | Roadmap ownership vs V5 Document Management | ⚠ **RULED 2026-08-23 — V5 owns it** (`OD-DOC-009`). *Corrected 2026-09-06: this row said `OWNER-DECISION-REQUIRED`, contradicting `:12`, `:14`, `:97` and `:127` of this same file.* |
 | 29 | Malware scanning | **OWNER-DECISION-REQUIRED — deferred into `ADR-028`** |
 
 ## Ratified decisions carried into FP-010

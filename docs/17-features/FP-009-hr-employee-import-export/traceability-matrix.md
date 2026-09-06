@@ -92,7 +92,8 @@ version: 1.0
 | `OD-DOC-004` | **By code, never creates, under the importer's authority** | `BRULE-DOC-0601`; `AC-DOC-0022`; `TS-DOC-0026`; the column contract |
 | `OD-DOC-005` | **Separate permissions** | The authorization model; `FR-DOC-0101`, `FR-DOC-0102`, `FR-DOC-0201` |
 | `OD-DOC-006` | **`nationalId` never exported** | `BRULE-DOC-0609`; `AC-DOC-0023`; `TS-DOC-0027`; the export column list |
-| `OD-DOC-007`, `OD-DOC-008`, `OD-DOC-009` | **OPEN-DEFERRED** | FP-010's starting inventory; `ADR-028` |
+| `OD-DOC-007`, `OD-DOC-008` | **OPEN — transferred, not resolved** | FP-010's starting inventory for V5; `ADR-028` |
+| `OD-DOC-009` | ⚠ **RULED 2026-08-23 — V5 Document Management owns this capability** | *Corrected 2026-09-06: this id sat inside the `OPEN-DEFERRED` row above, whose label was right for its two siblings and wrong for it. `FP-010/decisions-open.md:127` records the ruling.* |
 
 ## What transferred to FP-010
 

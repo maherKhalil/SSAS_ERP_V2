@@ -182,7 +182,12 @@ becomes advisory.
 This decision generalizes: Position will face the identical problem with `BR-HR-0006`, and should follow
 whatever is chosen here.
 
-**Implementation status: not implemented.** Depends on `OD-DEP-001`.
+**Implementation status: implemented.** ⚠ **CORRECTED 2026-09-06 — this read *"not implemented. Depends on
+`OD-DEP-001`."*** `OD-DEP-001` closed on 2026-08-20 adopting **Option A**: the migration creates one
+`UNASSIGNED` department per company holding legacy Employees and assigns them to it, failing loudly and
+transactionally if such a department already exists. **Shipped in
+`20260820140653_AddEmployeeDepartment`, proven by `EmployeeDepartmentMigrationSqlServerTests`**
+(`decisions-approved.md:87-101`).
 
 ## Decision 10 — A rule with no field to constrain is recorded as unenforceable, not quietly satisfied
 
@@ -193,11 +198,23 @@ contains no requirement for a reporting line.
 A Department manager is a different relationship. Treating it as if it satisfied `BR-HR-0007` would mark a
 binding rule as covered when it is not — precisely the failure the traceability discipline exists to catch.
 
-The rule is therefore recorded as **partially enforceable at best**, with the interpretation left to the owner
-and the remainder transferred explicitly to a package that may never arrive. **Where a rule cannot be
-enforced, the honest record is that it is open.**
+> ⚠⚠ **CORRECTED 2026-09-06.** This section read: *"The rule is therefore recorded as **partially enforceable
+> at best**, with the interpretation left to the owner and the remainder transferred explicitly to a package
+> that may never arrive. **Where a rule cannot be enforced, the honest record is that it is open.**"* and
+> *"**Implementation status: not implemented.** Depends on `OD-DEP-003`."*
+>
+> ***THE INTERPRETATION WAS GIVEN ON 2026-08-20.*** `OD-DEP-003` closed adopting reading (iii) — *"(i) now,
+> (ii) when a reporting line is introduced"* — **and this ADR's own revision entry (v1.1, 2026-08-25) already
+> records that closure and uses it as the grounds for moving the ADR to Accepted.** *The body was never
+> updated to match its own revision log, so the document contradicted itself for twelve days.*
 
-**Implementation status: not implemented.** Depends on `OD-DEP-003`.
+The rule is **partially enforced**, and the interpretation is settled rather than open: reading (iii) puts the
+departmental reading in force now and transfers the personal reporting line to whichever package introduces
+one — a package no requirement currently asks for, so it may never arrive.
+
+**Implementation status: partially implemented.** `BRULE-DEP-0012` refuses **assigning** a manager who already
+belongs to the department. ⚠ **The move direction is not enforced** — `ChangeEmployeeDepartmentCommandHandler`
+performs no manager lookup, so an employee can still be moved into the department they manage.
 
 ---
 

@@ -35,10 +35,28 @@ date: 2026-08-23
 > now**, so the build proceeds from here rather than from guesswork." One author wrote the correct form and
 > this file did not.*
 
-> Traceability in this product is REQ-anchored: `Requirement-Catalog/Traceability-Matrix.md` maps
-> `Requirement → BR → Feature → Screen → API → Table → Permission → Test`. **GL's catalog entry now exists —
-> `Requirement-Catalog/GL.md`, 14 `REQ-GL-` entries — and the identifiers below are ratified rather than
-> proposed** (`OD-GL-0001`, 2026-08-23).
+> Traceability in this product is REQ-anchored: `Requirement-Catalog/Traceability-Matrix.md` **defines** the
+> chain `Requirement → BR → Feature → Screen → API → Table → Permission → Test`. **GL's catalog entry now
+> exists — `Requirement-Catalog/GL.md`, 14 `REQ-GL-` entries — and the identifiers below are ratified rather
+> than proposed** (`OD-GL-0001`, 2026-08-23).
+>
+> > ### ⚠⚠ **SECOND CORRECTION, 2026-09-06 — THIS SENTENCE SAID THE MASTER MATRIX *"maps"* THAT CHAIN. IT DOES NOT, AND IT NEVER HAS.**
+> >
+> > **`Requirement-Catalog/Traceability-Matrix.md` is a *methodology* document: a purpose statement, the chain
+> > diagram, eight rules `RTM-0001`–`RTM-0008`, a lifecycle diagram, an impact-analysis checklist, and
+> > ownership.** ***IT CONTAINS FOUR `REQ-` IDENTIFIERS IN TOTAL — `REQ-HR-0001`, `REQ-HR-0002`,
+> > `REQ-GL-0001` — AND EVERY ONE SITS UNDER A HEADING THAT READS "Example".*** It has been untouched since
+> > the initial `00 documents` commit of 2026-07-29.
+> >
+> > ⚠ **So the original banner conflated two complaints and the first correction only answered one.** *"GL has
+> > no requirement catalog entry"* was **false** — `GL.md` exists. *"There is no populated master matrix to
+> > anchor to"* was **true, is still true, and is true for every module, not just GL.** ***The first pass
+> > removed the false half and left the true complaint standing in a false form.***
+> >
+> > **Whether that is a defect at all is an open question and not this file's to answer:** every feature
+> > package carries its own detailed `traceability-matrix.md`. **If those are the traceability, the master
+> > document is doing its job as a methodology and the repair is one sentence saying so — not two hundred
+> > rows.** *Raised for the owner; nothing here depends on the answer.*
 >
 > It is published incomplete rather than withheld, because the shape of what is missing is itself the
 > deliverable. FP-009 ratified the standard that applies: **an inventory with a footnote saying it is

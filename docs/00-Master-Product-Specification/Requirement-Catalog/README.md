@@ -20,6 +20,7 @@ The catalog is organized by business domain rather than by implementation layer.
 | REQ-HR | Human Resources |
 | REQ-GL | General Ledger |
 | REQ-PAY | Payroll |
+| REQ-ATT | Attendance | ⚠ *added 2026-09-06 — `ATT.md` has existed since 2026-08-28 and the prefix was never registered here* |
 | REQ-RPT | Reporting |
 | REQ-SEC | Security |
 | REQ-INT | Integration |

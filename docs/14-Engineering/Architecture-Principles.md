@@ -3267,7 +3267,10 @@ depends on.
 >
 > **The six bullets above are the whole of `Related Documents`. *From here to the Revision History there are
 > TWENTY further sections — **16 at `##` and 4 at `###`**, *(count corrected 2026-09-07 — this said "twenty
-> `##` sections"; the total of twenty is right, the heading level was not)* — 412 non-blank lines, ~35 KB,
+> `##` sections"; the total of twenty is right, the heading level was not)* — **411 non-blank lines when
+> measured on 2026-09-06 before these notes were added, 458 as at 2026-09-07** *(corrected 2026-09-07: this
+> said 412, off by one, and carried no date — the same defect as the file size above and in the same note)*,
+> ~35 KB,
 > and every one is a principle*:** *"An argument
 > from necessity cannot be wrong, which is why it proves nothing"* · *"Every check we run is positive-only"* ·
 > *"A harness defect can wear the costume of the finding"* · *"An exemption must assert its own grounds"* ·

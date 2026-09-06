@@ -16,7 +16,7 @@ version: 1.0
 | `REQ-HR-0100` | Department CRUD | `FR-DEP-0101`, `FR-DEP-0102`, `FR-DEP-0103`, `FR-DEP-0104` |
 | `REQ-HR-0101` | Department Hierarchy | `FR-DEP-0105`, `FR-DEP-0106` |
 | `REQ-HR-0102` | Department Manager | `FR-DEP-0107` |
-| `REQ-HR-0006` | Employee History | **Not extended.** Department history remains deferred (`DEC-DEP-0016`, `OD-DEP-004`) |
+| `REQ-HR-0006` | Employee History | ⚠⚠ **CORRECTED 2026-09-06 — THIS SAID *Not extended. Department history remains deferred*.** `OD-DEP-004` **reversed that deferral** on 2026-08-20, and Phase 1 shipped `EmployeeDepartmentAssignment` as append-only department-change history from the first Department onward (`DEC-DEP-0016`, amendment at `decisions-approved.md:147-160`) |
 | `REQ-HR-0200` | Position Management | **Out of scope** (`DEC-DEP-0020`) |
 
 ## Functional requirements

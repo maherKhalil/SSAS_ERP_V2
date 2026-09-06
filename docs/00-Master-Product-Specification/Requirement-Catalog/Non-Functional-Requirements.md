@@ -206,7 +206,18 @@ ADR-0001
 
 Coding Standards
 
-All source code shall comply with the project's Coding Standards document.
+All source code shall comply with the project's Coding Standards.
+
+> ⚠⚠ **CORRECTED 2026-09-06 — this said *"the project's Coding Standards **document**"*, and there is no such
+> file.** ***"Coding Standards" is an UMBRELLA TERM naming five artefacts, all of which exist:***
+> **Development Standards** (`08-Development/Development-Standards.md`) · **Solution Structure**
+> (`03-Architecture/Solution-Structure.md`) · **Clean Architecture** · **Naming Standards** and **Dependency
+> Rules** (`14-Engineering/Architecture-Principles.md` — `# Naming Conventions` `:198`, `# Dependency Rules`
+> `:210`). **The membership list is at `13-Implementation/Sprint-00-Foundation.md:451`.**
+>
+> ***THIS MATTERS MORE HERE THAN IN PROSE: `NFR-0601` IS A NUMBERED, CATALOGUED, APPROVED REQUIREMENT WHOSE
+> ENTIRE CONTENT WAS "COMPLY WITH A DOCUMENT THAT HAS NO FILE" — WHICH MAKES IT UNAUDITABLE RATHER THAN
+> MERELY INCONVENIENT.*** *Naming the members is what turns it back into something a reviewer can check.*
 
 ---
 

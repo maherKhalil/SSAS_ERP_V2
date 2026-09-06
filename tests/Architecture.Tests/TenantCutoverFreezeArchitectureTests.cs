@@ -113,6 +113,28 @@ public sealed class TenantCutoverFreezeArchitectureTests
     // from a perfectly healthy type list -- a green ban over an unexercised predicate.
     Assert.NotEmpty(DeferredComponents);
 
+    // ⚠⚠⚠ THE ASSERTION BELOW CANNOT FAIL, FOR ANY VALUE OF `DeferredComponents` (measured 2026-09-06).
+    //
+    // It builds its subject FROM `DeferredComponents[0]` and then searches that subject for a member of
+    // `DeferredComponents`. The first element is always a substring of a string it was just interpolated
+    // into, so `Contains` is satisfied by construction:
+    //
+    //     ["Cleanup"] -> subject "TenantCutoverCleanupService", term "Cleanup" -> true
+    //     ["Banana"]  -> subject "TenantCutoverBananaService",  term "Banana"  -> true
+    //
+    // ***THE REAL TYPE NAME IS NEVER CONSULTED.*** The drift the comment above describes -- terms falling
+    // out of the `TenantCutover*Service` naming convention -- is exactly the drift this cannot detect,
+    // because nothing here reads a name the product actually declares. A term could stop matching every
+    // real type and this line would still pass.
+    //
+    // ⚠ `Assert.NotEmpty` above is real and does its job. This line is the half that reads as rigour and
+    // is not: **a vacuity check that is itself vacuous, inside a matcher control** -- the one construct
+    // whose whole purpose is preventing vacuity. It is the mirror shape: an instrument whose search space
+    // contains the thing being checked.
+    //
+    // NOT REPAIRED. The fix is to compare against a name the model or the source actually declares, and
+    // choosing that subject decides what this guard means -- which its comment and its code currently
+    // disagree about. Recorded so the next reader does not take the line for the check it resembles.
     Assert.Contains(DeferredComponents, term =>
       $"TenantCutover{DeferredComponents[0]}Service".Contains(term, StringComparison.OrdinalIgnoreCase));
 

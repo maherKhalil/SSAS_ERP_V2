@@ -74,8 +74,10 @@ treatment of Employees that already exist is `OD-DEP-001` and is not settled by 
 ### FR-DEP-0110 — Change an Employee's Department **(OD)**
 
 An Employee's Department changes only through an explicit `ChangeDepartment` operation holding
-`HR.Employees.Update` — never as a field on the ordinary profile update (`DEC-DEP-0015`). Whether the change
-is recorded as history is `OD-DEP-004`.
+`HR.Employees.Update` — never as a field on the ordinary profile update (`DEC-DEP-0015`). ⚠ **The change
+**is** recorded as history** — *corrected 2026-09-06; this said "whether the change is recorded as history is
+`OD-DEP-004`", which closed on 2026-08-20 reversing the deferral.* `Employee.ChangeDepartment` appends an
+`EmployeeDepartmentAssignment` row atomically with the column change.
 
 ### FR-DEP-0111 — Filter Employee search by Department
 

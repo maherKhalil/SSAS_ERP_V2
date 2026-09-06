@@ -50,7 +50,7 @@ prose.**
 |---|---|---|
 | `BR-HR-0006` — every employee has one active position | The package introducing Position | Binding, deferred, no placeholder introduced (`DEC-DEP-0020`) |
 | `BR-HR-0007` personal reporting line | The package introducing an employee reporting line — **which no current requirement asks for** | Must decide whether such a line exists at all before it can be enforced (`DEC-DEP-0014`) |
-| Employee department history | The package introducing employee history | The gap between FP-007 and that package is unrecoverable (`DEC-DEP-0016`) |
+| ~~Employee department history~~ ⚠⚠⚠ **NOT TRANSFERRED — CORRECTED 2026-09-06** | ~~The package introducing employee history~~ **FP-007 itself, Phase 1** | **This row said the gap between FP-007 and that package *"is unrecoverable"*.** ***NO GAP OPENED.*** `OD-DEP-004` reversed the deferral on 2026-08-20 and `EmployeeDepartmentAssignment` shipped as append-only history from the first Department onward (`DEC-DEP-0016`, amendment at `decisions-approved.md:147-160`). ⚠ **This row cited `DEC-DEP-0016` and no `OD-DEP` id, so it survived every decision-id sweep run on 2026-09-01 and 2026-09-06** |
 | Direct `Department → Employee` manager FK with a two-pass cutover copy | An ADR-level change to Platform's cutover engine | Only if that engine gains cycle-aware copying; conditions in `ADR-026` (`DEC-DEP-0022`) |
 
 ## Non-functional requirement coverage

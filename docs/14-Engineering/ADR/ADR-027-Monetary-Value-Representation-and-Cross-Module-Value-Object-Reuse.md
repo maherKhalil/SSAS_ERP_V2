@@ -114,7 +114,12 @@ that surprise, and it carries no advantage over `decimal(19,4)` on modern SQL Se
 excluded because binary floating point cannot represent most decimal fractions exactly, and money that does
 not add up is not money.
 
-**Implementation status: not implemented.** Activated by the `OD-POS-004` ruling of 2026-08-21; first applied by FP-008.
+**Implementation status: implemented, and now a shared convention.** ⚠ *Corrected 2026-09-06 — this read "not
+implemented".* `SalaryGradeConfiguration.cs:115/:120` use `.HasColumnType("decimal(19,4)")` and `:23` names
+this ADR. **It reaches past FP-008:** `TenantPersistenceConventions.cs:57` records *"`decimal(19,4)`. Adopted
+by `DEC-GL-0001` and `DEC-PAY-0004`; **promoted here** so a fourth module cannot"* diverge; GL cites it at
+`JournalDraft.cs:49`; **Attendance cites it twice to say its `decimal(9,2)` is deliberately NOT the money
+type**, which is the decision working as a boundary rather than merely as a default.
 
 ## Decision 2 — Where a single owning currency is unambiguous, an amount carries no currency column
 
@@ -131,7 +136,10 @@ manifest).
 a currency is unreadable, so read models echo the owning Company's code; a request that supplies one is
 rejected as an unknown property.
 
-**Implementation status: not implemented.** Activated by the `OD-POS-004` ruling of 2026-08-21; first applied by FP-008.
+**Implementation status: implemented — both halves.** ⚠ *Corrected 2026-09-06 — this read "not implemented".*
+**No currency column:** `SalaryGradeConfiguration.cs:23`. **Projected on read, never accepted on write:**
+`SalaryGrade.cs:104` — *"immutable `BaseCurrencyCode` — **echoed, never stored** (`DEC-POS-0015`, `ADR-027`
+decision 2)"*, served by `ITenantCompanyCurrencyLookup`.
 
 ## Decision 3 — The condition under which decision 2 no longer holds
 
@@ -170,10 +178,33 @@ finds it needs a Platform type raises the promotion as its own decision, with it
 performing it in passing.
 
 Specifically for currency: `BaseCurrencyCode` stays in `SSAS.Platform.Domain` until a module genuinely needs
-it, and is then promoted to `SSAS.BuildingBlocks.Domain` in a change of its own. FP-008 does not need it under
-decision 2.
+it, and is then promoted to `SSAS.BuildingBlocks.Domain` in a change of its own. ~~FP-008 does not need it
+under decision 2.~~
 
-**Implementation status: not implemented.** Decision 4 stands independently of `OD-POS-004`.
+> ### ⚠⚠⚠ **CORRECTED 2026-09-06 — *"FP-008 does not need it under decision 2"* IS FALSIFIED, AND A FIFTH OPTION SHIPPED**
+>
+> ***FP-008 DID NEED IT*** — the read representation has to name the currency — **and it closed the gap with a
+> mechanism this decision's four-row table does not contain.**
+>
+> **`SSAS.BuildingBlocks.Tenancy/Companies/ITenantCompanyCurrencyLookup.cs:20-30`, verbatim:**
+> > *"**IT CARRIES AN OPAQUE STRING, AND THAT IS THE POINT** (ruled 2026-08-21). The value object does NOT
+> > move. Validation, the ISO-4217 list, the `char(3)` column, the check constraint and the immutability rule
+> > all stay Platform-side; what crosses is three characters a caller may render. **The alternative considered
+> > and refused was promoting `BaseCurrencyCode` into `SSAS.BuildingBlocks.Domain`**… **That revisit condition
+> > is unaffected by this interface**: this seam reads a company's single base currency and would be useless
+> > for a multi-currency ladder, so it cannot quietly become the answer to the question the ADR reserved."*
+>
+> ***THAT IS OPTION (e): A NARROW MODULE-FACING SEAM CARRYING AN OPAQUE VALUE, WITH THE TYPE STAYING PUT.***
+> **The table above offers (a) duplicate — prohibited, (b) reach across — prohibited, (c) promote — sanctioned,
+> (d) avoid — preferred. *The product took none of the four*, argued in writing why (c) was refused, and
+> recorded why its choice does not foreclose (c) later.** ⚠ **The decision was engaged with more carefully
+> than the table anticipated, and the ADR did not know.**
+
+**Implementation status: OBSERVED — this is a prohibition, not a deliverable.** ⚠ *Corrected 2026-09-06 — this
+read "not implemented", which reads as a gap.* **All three clauses hold: not duplicated; not reached across —
+`SalaryGrade.cs:25`, *"cannot reference `SSAS.Platform.Domain.ValueObjects.BaseCurrencyCode` at all under
+`ADR-012` — the compiler enforces it"*; not promoted — `BaseCurrencyCode` remains at
+`SSAS.Platform.Domain/ValueObjects/BaseCurrencyCode.cs`.** Decision 4 stands independently of `OD-POS-004`.
 
 ## Decision 5 — No `Money` type is introduced yet
 
@@ -187,7 +218,13 @@ that decision 4 says must be taken deliberately, in order to solve a problem the
 
 Decision 3's conditions are the trigger for `Money` as well as for the currency column: they arrive together.
 
-**Implementation status: not implemented.** Activated by the `OD-POS-004` ruling of 2026-08-21; first applied by FP-008.
+**Implementation status: OBSERVED — this is a decision NOT to build something.** ⚠ *Corrected 2026-09-06 —
+this read "not implemented", which reads to any reader as a TODO when it is a rule in force and being kept.*
+***A PROHIBITION CANNOT BE "NOT IMPLEMENTED"; IT CAN ONLY BE OBSERVED OR VIOLATED.*** **No `Money` type exists
+— bounded by mechanism rather than by one spelling: amounts are bare `decimal` properties on the owning
+aggregate (`SalaryGradeConfiguration.cs:115/:120`), there is no amount-plus-currency pair anywhere in `src/`,
+and the currency crosses module boundaries as an opaque string.** *That is exactly what this decision
+specifies.* Activated by the `OD-POS-004` ruling of 2026-08-21; first applied by FP-008.
 
 ---
 

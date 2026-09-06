@@ -242,7 +242,8 @@ Own namespaces (`DEC-DEP-0026`), reusing existing codes where the condition is g
 
 | Condition | Status | Code |
 |---|---|---|
-| Malformed file, bad header, unknown column, cap exceeded, unparsable row | `400` | `request.invalid` |
+| **IMPORT** — malformed file, bad header, unknown column, byte or row cap exceeded, unparsable row *(amended 2026-09-06, owner ruling — was `400 request.invalid`)* | `200` | *(in the report)* — the run is `Refused` and the per-row report names the cause |
+| **EXPORT** — the row **ceiling** exceeded | `400` | `request.invalid` — an export has no run and no report to carry the reason, so a refusal here cannot take the import's shape (`ExportEmployeesQueryHandler.cs:160-162`; *"over the ceiling is a refusal, never a truncation"*) |
 | Unsupported file format | `400` | `employee_import.format_unsupported` |
 | A row naming a status an import cannot create *(added 2026-08-22, `R9`)* | *(in the report)* | `employee_import.status_not_creatable` |
 | Import key already used | `200` | — the original run's result (`DEC-DOC-0004`) |

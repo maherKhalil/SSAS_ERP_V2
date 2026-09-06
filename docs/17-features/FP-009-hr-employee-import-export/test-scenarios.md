@@ -20,8 +20,8 @@ version: 1.0
 
 | | Layer | Scenario | Criteria |
 |---|---|---|---|
-| `TS-DOC-0001` | H | Submit a file missing `positionCode` → `400`, the response names the column, and no row was parsed | AC-DOC-0001 |
-| `TS-DOC-0002` | H | Submit a file with an extra `companyId` column → `400` by the unknown-column rule, **not** an accepted import that ignored it | AC-DOC-0001, AC-DOC-0002 |
+| `TS-DOC-0001` | H | Submit a file missing `positionCode` → `200` with `outcome: Refused`, the report names the column, and no row was parsed *(amended 2026-09-06, owner ruling — was `400`)* | AC-DOC-0001 |
+| `TS-DOC-0002` | H | Submit a file with an extra `companyId` column → `200` with `outcome: Refused` by the unknown-column rule, **not** an accepted import that ignored it *(amended 2026-09-06, owner ruling — was `400`)* | AC-DOC-0001, AC-DOC-0002 |
 | `TS-DOC-0003` | H | Reorder the columns and upper-case the header → imports identically | AC-DOC-0001 |
 | `TS-DOC-0004` | A | A file with errors in rows 14 and 902 → both appear in the report; `rejectedCount` is 2 | AC-DOC-0003 |
 | `TS-DOC-0005` | A | An error in the first data row reports `rowNumber: 2` | AC-DOC-0004 |

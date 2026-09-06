@@ -16,8 +16,17 @@ version: 1.0
 ## Import
 
 **`AC-DOC-0001` — Header contract.** A file missing a required column is refused before any row is read, and
-so is a file carrying an unrecognized column. Both answer `400 request.invalid`, and the response names the
-offending column. Column order does not matter and header casing does not matter.
+so is a file carrying an unrecognized column. Both answer `200 OK` carrying a **refused run**, whose per-row
+report names the offending column. Column order does not matter and header casing does not matter.
+
+> **AMENDED 2026-09-06 — owner ruling.** This criterion read *"Both answer `400 request.invalid`, and the
+> response names the offending column"* from `1c5b8d5` (2026-08-22) until now. The shipped endpoint answers
+> `200` with a refused run, and its comment states the reasoning: *"A REFUSED RUN IS A `200`, NOT A `400`…
+> The per-row report IS the response (`DEC-DOC-0003`) — the operator's working document… A problem document
+> would discard the very thing they need"* (`EmployeeEndpointRouteBuilderExtensions.cs:741-745`). **The owner
+> ruled that the code records the decision and the specification did not absorb it.** `DEC-DOC-0003`, which
+> both sides cited, names no status code at all. `api-contracts.md`, `authorization-model.md` and
+> `test-scenarios.md` were corrected in the same pass.
 
 > **`status` AMENDED 2026-08-22 by `OD-DOC-010`.** It is now a RECOGNIZED optional column rather than an
 > unknown one. The criterion's substance is untouched: an import still creates only `Active` employees and no

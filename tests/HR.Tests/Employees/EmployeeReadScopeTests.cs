@@ -373,6 +373,128 @@ public sealed class EmployeeReadScopeTests
     Assert.Equal(EmployeeErrors.NotFound, result.Error);
   }
 
+  // ================================================================================================
+  // AN EMPLOYEE THAT EXISTS AND IS OUT OF SCOPE, WHICH IS THE CASE THE SIBLING ABOVE CANNOT CONSTRUCT
+  // ================================================================================================
+  //
+  // ---- WHY THIS EXISTS ALONGSIDE `An_employee_outside_the_scope_is_reported_as_not_found`.
+  //
+  // That test passes `new GetEmployeeQuery(Guid.NewGuid())` to `RecordingReadService`, whose
+  // `GetEmployeeAsync` returns `null` unconditionally. ***A RANDOM IDENTIFIER IS NOT AN OUT-OF-SCOPE
+  // IDENTIFIER***, and no fixture in it distinguishes the two: a read service with the company predicate
+  // deleted passes it unchanged. It asserts that an employee NOBODY can see is `NotFound`, which is true
+  // and is not the clause its name states.
+  //
+  // This one constructs the case the name promises: an employee that EXISTS, in a company the caller
+  // cannot reach, and asserts the answer is byte-identical to the answer for one that does not exist at
+  // all. Absence and inaccessibility must be the same word, or the read is an existence oracle.
+  //
+  // ---- THE FOURTH ARM IS THE WHOLE TEST, AND WITHOUT IT THIS IS THE SIBLING AGAIN.
+  //
+  // A double that returned `null` for everything would satisfy arms 1 to 3 perfectly. ***ARM 4 ASKS FOR
+  // THE SAME EMPLOYEE UNDER A SCOPE THAT ADMITS THEIR COMPANY AND REQUIRES A SUCCESS*** — the same record,
+  // a different caller, a different outcome. That is what makes arm 1's failure attributable to the SCOPE
+  // rather than to the fixture having nothing to give. It is the widening control that
+  // `DepartmentApplicationSqlServerTests.A_department_member_count_includes_only_employees_inside_the_
+  // callers_scope` uses for the same reason, and the discipline the Attendance third-code control names:
+  // the discriminating answer must come from the code under test, never from the double.
+  //
+  // ---- WHAT THIS DOES NOT PROVE, STATED SO NOBODY READS IT WIDER.
+  //
+  // `ScopedReads` below applies the company predicate BECAUSE THIS TEST WRITES IT. That mirrors
+  // `EmployeeReadService.Scoped` — `.Where(employee => scope.Companies.CompanyIds.Contains(…))`, applied
+  // before the identifier — but it does not verify it. ***WHETHER THE SHIPPED SQL COMPOSES THAT PREDICATE
+  // IS `Integration.Tests`' QUESTION*** and is answered there by `R1_R3` (the generated command text) and
+  // `R9` (a sibling company in the same branch, with a raw-table count separating exclusion from absence).
+  // What is proven HERE is the handler's half: given a scope that excludes the row, the caller is told
+  // nothing that distinguishes it from absence.
+  [Fact]
+  public async Task An_employee_that_exists_outside_the_scope_is_answered_exactly_as_a_nonexistent_one()
+  {
+    var employeeId = Guid.NewGuid();
+    var reads = new ScopedReads(employeeId, CompanyB, BranchA);
+
+    // ⚠ THE CALLER IS AUTHORIZED FOR BOTH COMPANIES AND HAS SELECTED CompanyA, WHICH IS THE WHOLE POINT
+    // OF THE SETUP. Using a company the caller cannot reach AT ALL would make this pass under a resolver
+    // that widened `CurrentCompany` to every authorized company — the exact regression `ADR-025` decision
+    // 10 forbids for an identifier lookup. Authorized-but-not-selected is the state that discriminates.
+    static EmployeeScopeResolver Caller() => Resolver(selectedCompany: CompanyA, companies: [CompanyA, CompanyB]);
+
+    // 1. The employee EXISTS, in CompanyB, and the caller has CompanyA established.
+    var outOfScope = await new GetEmployeeQueryHandler(Caller(), reads)
+      .HandleAsync(new GetEmployeeQuery(employeeId));
+
+    // 2. The same caller asks for an identifier that exists nowhere.
+    var nonexistent = await new GetEmployeeQueryHandler(Caller(), reads)
+      .HandleAsync(new GetEmployeeQuery(Guid.NewGuid()));
+
+    Assert.True(outOfScope.IsFailure);
+    Assert.True(nonexistent.IsFailure);
+
+    // 3. INDISTINGUISHABLE. Not "both are NotFound" — the SAME error, so no future divergence can open a
+    //    channel here without reddening this line.
+    Assert.Equal(nonexistent.Error, outOfScope.Error);
+    Assert.Equal(EmployeeErrors.NotFound, outOfScope.Error);
+
+    // 4. THE CONTROL. Same employee, same double, a caller whose company admits them: SUCCESS.
+    //    If this ever fails, arms 1 to 3 are vacuous and this test is proving nothing.
+    var inScope = await new GetEmployeeQueryHandler(
+        Resolver(selectedCompany: CompanyB, companies: [CompanyB]), reads)
+      .HandleAsync(new GetEmployeeQuery(employeeId));
+
+    Assert.True(inScope.IsSuccess, inScope.IsFailure ? inScope.Error.Code : null);
+    Assert.Equal(employeeId, inScope.Value.EmployeeId);
+    Assert.Equal(CompanyB, inScope.Value.CompanyId);
+  }
+
+  // A read service FAITHFUL ON THE COMPANY AXIS — it holds one employee and applies the caller's company
+  // scope to it, which is the one behaviour `RecordingReadService` cannot express. Deliberately mirrors the
+  // shipped composition order in `EmployeeReadService`: the SCOPE is applied first and the identifier last.
+  private sealed class ScopedReads(Guid employeeId, Guid companyId, Guid branchId) : IEmployeeReadService
+  {
+    public Task<EmployeeDetail?> GetEmployeeAsync(
+      EmployeeReadScope scope, Guid requestedId, CancellationToken cancellationToken = default)
+    {
+      if (!scope.Companies.CompanyIds.Contains(companyId) || requestedId != employeeId)
+      {
+        return Task.FromResult<EmployeeDetail?>(null);
+      }
+
+      return Task.FromResult<EmployeeDetail?>(new EmployeeDetail(
+        employeeId, companyId, branchId,
+        new EmployeeDepartmentSummary(Guid.NewGuid(), "FIN", "Finance"),
+        "EMP-00147", "Layla Haddad", null,
+        new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), null,
+        EmployeeStatus.Active, EmployeeStatusChangeReason.Created,
+        new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), [0, 0, 0, 0, 0, 0, 7, 209]));
+    }
+
+    public Task<PagedResult<EmployeeSummary>> SearchEmployeesAsync(
+      EmployeeReadScope scope, EmployeeSearchCriteria criteria, CancellationToken cancellationToken = default) =>
+      Task.FromResult(new PagedResult<EmployeeSummary>([], criteria.PageNumber, criteria.PageSize, 0));
+
+    public Task<IReadOnlyList<EmployeeBranchHistoryEntry>?> GetEmployeeBranchHistoryAsync(
+      EmployeeReadScope scope, Guid id, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<EmployeeBranchHistoryEntry>?>(null);
+
+    public Task<IReadOnlyList<EmployeePositionHistoryEntry>?> GetEmployeePositionHistoryAsync(
+      EmployeeReadScope scope, Guid id, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<EmployeePositionHistoryEntry>?>(null);
+
+    public Task<int> CountEmployeesByPositionAsync(
+      EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(0);
+
+    public Task<int> CountEmployeesByDepartmentAsync(
+      EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(0);
+
+    public Task<IReadOnlyList<EmployeeExportRow>> ExportEmployeesAsync(
+      EmployeeReadScope scope, EmployeeSearchCriteria criteria, int ceiling,
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<EmployeeExportRow>>([]);
+  }
+
   // Cross-company reach exists to make a SEARCH meaningful. An identifier lookup has no such need, so
   // Milestone 1 does not offer it there.
   [Theory]

@@ -2,9 +2,9 @@
 id: ADR-027
 title: Monetary Value Representation and Cross-Module Value-Object Reuse
 category: Architecture Decision Record
-version: 1.1
+version: 1.2
 status: Accepted
-date: 2026-08-25
+date: 2026-09-06
 owner: Solution Architecture Team
 tags:
   - money
@@ -292,3 +292,4 @@ recorded decision, is the outcome this ADR exists to prevent.
 |---|---|---|---|
 | 1.0 | 2026-08-21 | Solution Architecture Team | Proposes the product's monetary representation — `decimal(19,4)`, no currency column while a Company's immutable base currency is unambiguous, and named conditions for revisiting — together with the promotion rule for cross-module value objects. Five decisions. Drafted conditional on `OD-POS-004`; **activated** the same day when that decision chose a money-bearing Salary Grade, so the conditional-withdrawal clause is moot. |
 | 1.1 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. Acceptance was recorded rather than inferred: `OD-POS-004` closed on 2026-08-21 and FP-008's register states that `DEC-POS-0015` and `DEC-POS-0016` activate "and `ADR-027` with them", so this record was accepted in substance that day and only the front-matter lagged. Four modules have since inherited `decimal(19,4)`. |
+| 1.2 | 2026-09-06 | Architect window (`ssas-erp-v2-20`) | **No decision changed; two status lines were false and two were asking the wrong question.** `decision 1` and `decision 2` are **built** — `decimal(19,4)` is now a shared convention promoted into `TenantPersistenceConventions`, adopted by GL and Payroll, with Attendance citing it to say its `decimal(9,2)` is deliberately *not* the money type; and the currency is echoed on read and never stored. ⚠ `decision 4` and `decision 5` are **decisions not to build something**, and *"not implemented"* reads as a gap where the correct axis is **observed or violated** — both are observed, and both are relabelled rather than revalued. ***The substantive change is under `decision 4`: its clause "FP-008 does not need it under decision 2" is FALSIFIED.*** FP-008 did need the currency for its read representation and closed the gap by a route the four-row option table does not contain — **a narrow module-facing seam carrying an opaque three-character string, with `BaseCurrencyCode` staying in `SSAS.Platform.Domain`** — refusing promotion explicitly and recording why that seam cannot later become the answer to the question this ADR reserved. **A fifth option was taken deliberately and this record did not know.** |

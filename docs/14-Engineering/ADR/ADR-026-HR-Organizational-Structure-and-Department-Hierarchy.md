@@ -2,9 +2,9 @@
 id: ADR-026
 title: HR Organizational Structure and Department Hierarchy
 category: Architecture Decision Record
-version: 1.1
+version: 1.2
 status: Accepted
-date: 2026-08-25
+date: 2026-09-06
 owner: Solution Architecture Team
 tags:
   - hr
@@ -319,3 +319,4 @@ performs no manager lookup, so an employee can still be moved into the departmen
 |---|---|---|---|
 | 1.0 | 2026-08-20 | Solution Architecture Team | Proposes the HR organizational-structure model: Department ownership, hierarchy representation and invariant, the manager association shape and its cutover cause, and the process for retroactive and unenforceable business rules. Ten decisions, three of them dependent on owner input. |
 | 1.1 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. This ADR stated its own acceptance precondition — that `decision 4`, `decision 9` and `decision 10` awaited `OD-DEP-001`, `OD-DEP-003` and `OD-DEP-005` — and that precondition is satisfied: all five FP-007 owner decisions closed on 2026-08-20 as `DEC-DEP-0009`, `DEC-DEP-0014` and `DEC-DEP-0019`. Accepted against its own test rather than by inference from use (`DEC-L-020`). |
+| 1.2 | 2026-09-06 | Architect window (`ssas-erp-v2-20`) | **No decision changed. Ten `Implementation status` annotations were false and are corrected.** This ADR said *"not implemented"* about a package that shipped in four phases: **every one of Decisions 1–8 is built**, `decision 9`'s migration shipped on 2026-08-20, and `decision 10` is **partially** implemented — `BRULE-DEP-0012` refuses *assigning* a manager who belongs to the department, while the **move** direction is still unenforced. Each status now carries the artefact that settles it. ⚠ **The decisions were always right; the status annotations were never revisited after the package shipped**, and `1.1` above passed over them while correcting the header. Two wording changes, neither substantive: `decision 7` gains a note that `DepartmentManagerConfiguration` keys on the CLR property `Id` mapped to the `DepartmentId` **column** — stopping at the key declaration yields the false finding that the described primary key does not exist; and `decision 8`'s prohibition no longer names `DepartmentReadScope` as its example, because **a conforming class of exactly that name now exists** (tenant- and company-scoped, no department dimension), so the illustration had become a trap for anyone grepping it. |

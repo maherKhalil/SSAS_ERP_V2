@@ -38,6 +38,7 @@ public sealed class TransferEmployeeCommandHandler(
   IBranchTransferScope transferScope,
   ITenantUnitOfWork unitOfWork,
   ICurrentTenant currentTenant,
+  ICurrentCompany currentCompany,
   ICurrentTenantUser currentTenantUser,
   ICurrentUser currentUser,
   IDateTimeProvider clock)
@@ -48,6 +49,7 @@ public sealed class TransferEmployeeCommandHandler(
     ArgumentNullException.ThrowIfNull(command);
 
     if (currentTenant.TenantId is not { } tenantId ||
+      currentCompany.CompanyId is not { } companyId ||
       currentTenantUser.TenantUserId is not { } tenantUserId ||
       string.IsNullOrWhiteSpace(currentUser.UserId))
     {
@@ -57,7 +59,7 @@ public sealed class TransferEmployeeCommandHandler(
     // ---- 1. LOAD. Scoped by the repository to the trusted tenant and the caller's authorized company and
     // branch, so an employee outside that scope is simply not found — never a distinguishable refusal.
     var employee = await employees.GetByIdAsync(command.EmployeeId, cancellationToken);
-    if (employee is null)
+    if (employee is null || employee.CompanyId != companyId)
     {
       return Result.Failure(EmployeeErrors.NotFound);
     }

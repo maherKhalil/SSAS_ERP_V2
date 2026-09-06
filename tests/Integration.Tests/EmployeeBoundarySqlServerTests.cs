@@ -5294,6 +5294,7 @@ public sealed class EmployeeBoundarySqlServerTests
 
     public UpdateEmployeeProfileCommandHandler Update() => new(
       new EmployeeRepository(accessor), unitOfWork,
+      new TestCurrentCompany(Company),
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
 
     // ---- T-091's DEACTIVATOR IS A NO-OP HERE, AND THAT IS STATED RATHER THAN CONVENIENT.
@@ -5304,6 +5305,7 @@ public sealed class EmployeeBoundarySqlServerTests
     // sides both exist: `EmployeeTerminationAccountClosureTests` in the API suite.
     public TerminateEmployeeCommandHandler Terminate() => new(
       new EmployeeRepository(accessor), unitOfWork, new NoOpTenantUserDeactivator(),
+      new TestCurrentCompany(Company),
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
 
     private sealed class NoOpTenantUserDeactivator : SSAS.BuildingBlocks.Tenancy.ITenantUserDeactivator
@@ -5318,6 +5320,7 @@ public sealed class EmployeeBoundarySqlServerTests
     // could be one no transition allows.
     public DeactivateEmployeeCommandHandler Deactivate() => new(
       new EmployeeRepository(accessor), unitOfWork,
+      new TestCurrentCompany(Company),
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
 
     // The scoped context is owned by this graph, exactly as a request scope owns it in production.
@@ -5344,6 +5347,7 @@ public sealed class EmployeeBoundarySqlServerTests
     public TransferEmployeeCommandHandler Transfer() => new(
       new EmployeeRepository(accessor), BranchAccess, transferScope, unitOfWork,
       new EmployeeFixture.TestTenant(fixture.Tenant),
+      new TestCurrentCompany(Company),
       new TestCurrentTenantUser(tenantUserId),
       new EmployeeFixture.TestUser(),
       new EmployeeFixture.TestClock());

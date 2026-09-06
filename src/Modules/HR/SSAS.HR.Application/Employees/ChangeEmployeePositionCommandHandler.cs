@@ -75,7 +75,7 @@ public sealed class ChangeEmployeePositionCommandHandler(
     // ---- 2. LOAD. Scoped by the repository to the trusted tenant and the caller's authorized company and
     // branch, so an employee outside that scope is simply not found — never a distinguishable refusal.
     var employee = await employees.GetByIdAsync(command.EmployeeId, cancellationToken);
-    if (employee is null)
+    if (employee is null || employee.CompanyId != companyId)
     {
       return Result.Failure(EmployeeErrors.NotFound);
     }

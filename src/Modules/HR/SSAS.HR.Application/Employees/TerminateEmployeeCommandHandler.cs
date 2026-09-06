@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy;
@@ -76,6 +77,7 @@ public sealed class TerminateEmployeeCommandHandler(
   IEmployeeRepository employees,
   ITenantUnitOfWork unitOfWork,
   ITenantUserDeactivator tenantUsers,
+  ICurrentCompany currentCompany,
   ICurrentUser currentUser,
   IDateTimeProvider clock)
 {
@@ -84,13 +86,14 @@ public sealed class TerminateEmployeeCommandHandler(
   {
     ArgumentNullException.ThrowIfNull(command);
 
-    if (string.IsNullOrWhiteSpace(currentUser.UserId))
+    if (currentCompany.CompanyId is not { } companyId ||
+      string.IsNullOrWhiteSpace(currentUser.UserId))
     {
       return Result.Failure(EmployeeErrors.InvalidActor);
     }
 
     var employee = await employees.GetByIdAsync(command.EmployeeId, cancellationToken);
-    if (employee is null)
+    if (employee is null || employee.CompanyId != companyId)
     {
       return Result.Failure(EmployeeErrors.NotFound);
     }

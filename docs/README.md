@@ -79,23 +79,45 @@ The **docs** directory contains the complete architecture and implementation gui
 
 Documentation is organized into numbered sections.
 
+> ### ⚠⚠⚠ **CORRECTED 2026-09-06 — THE LIST BELOW WAS THE INTENDED STRUCTURE, NOT THE ONE ON DISK.**
+> **It declared fifteen sections; `docs/` holds eleven directories; they matched on four. *Four numbers
+> collide with a different name, seven declared sections do not exist, and three real directories were not
+> listed — including the largest one in the repository.*** The list is now what the tree actually contains,
+> with the original preserved beneath it.
+
 ```
-00 Master Product Specification
-01 Business
-02 Requirements
-03 Architecture
-04 Design
-05 Modules
-06 API
-07 Database
-08 Security
-09 Testing
-10 DevOps
-11 AI
-12 Sprints
-13 Standards
-14 Engineering
+00-Master-Product-Specification
+02-Functional
+03-Architecture
+08-Development
+11-AI
+12-Feature-Packages
+13-Implementation
+14-Engineering
+15-Tasks
+16-Governance
+17-features                 <- every feature package, decision register and acceptance criteria
 ```
+
+> **THE ORIGINAL LIST, PRESERVED:** *`00 Master Product Specification · 01 Business · 02 Requirements ·
+> 03 Architecture · 04 Design · 05 Modules · 06 API · 07 Database · 08 Security · 09 Testing · 10 DevOps ·
+> 11 AI · 12 Sprints · 13 Standards · 14 Engineering`*
+>
+> ⚠⚠ ***THE FOUR NUMBER-COLLISIONS WERE THE DANGEROUS PART, BECAUSE THE NUMBER AGREEING MAKES THE WRONG
+> DIRECTORY LOOK RIGHT:***
+>
+> | declared | actually on disk |
+> |---|---|
+> | `02 Requirements` | **`02-Functional`** |
+> | `08 Security` | **`08-Development`** |
+> | `12 Sprints` | **`12-Feature-Packages`** |
+> | `13 Standards` | **`13-Implementation`** |
+>
+> **Declared and absent:** `01 Business` · `04 Design` · `05 Modules` · `06 API` · `07 Database` ·
+> `09 Testing` · `10 DevOps`.
+> ***Present and unlisted:*** `15-Tasks` · `16-Governance` · **`17-features`** — ⚠ *and this same file names
+> `docs/17-features/` by path further down, so it omitted the corpus's largest directory from its own map and
+> then told the reader to go there.*
 
 ---
 
@@ -107,7 +129,11 @@ Before contributing:
 2. Read docs/README.md
 3. Read Architecture Principles
 4. Read all ADRs
-5. Read the current Sprint documentation
+5. ⚠ **Read the approved Feature Packages under `docs/17-features/` and the Git history.** *Corrected
+   2026-09-06: this step read "Read the current Sprint documentation", which the Current Development Phase
+   section of this same file contradicts — "current implementation state is tracked through approved Feature
+   Packages and the Git history, **not through a fixed 'current sprint' marker**". `13-Implementation` and
+   `15-Tasks` stop at Sprint-00 and Task-002; the project is at FP-015.*
 
 ---
 

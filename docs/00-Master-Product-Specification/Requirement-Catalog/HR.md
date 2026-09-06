@@ -88,14 +88,30 @@ Salary Grade
 
 Future Modules
 
-Attendance
+> ⚠⚠ **CORRECTED 2026-09-06, PER NAME.** This list read *"Attendance, Payroll, Recruitment, Performance,
+> Training, Self Service"*. **Two of the six had shipped, and one is neither shipped nor future.**
+> *This file is 801 bytes and has not been touched since 2026-07-29 — before FP-006, FP-007 and FP-008
+> shipped — so the list is not the only thing in it that predates the HR estate; it is the part that was
+> checkable.*
 
-Payroll
+***No longer future — both delivered:***
 
-Recruitment
+- **Attendance** — `src/Modules/Attendance`, package `FP-013`, catalog `ATT.md` (updated 2026-08-28).
+- **Payroll** — `src/Modules/Payroll`, package `FP-012`, catalog `PAY.md`; its eighteen `OD-PAY` owner
+  decisions were all ruled on 2026-08-24.
 
-Performance
+***Still future — no module, no package, no catalog entry:***
 
-Training
+- Recruitment
+- Performance
+- Training
 
-Self Service
+***⚠ Self Service — neither, and the distinction matters:***
+
+- **The MODULE is future.** There is no `src/Modules/SelfService`. `FP-015-self-service` exists as an
+  analysis package at `status: DRAFT`, `version: 0.1`, with an open decision register.
+- ⚠ **The CAPABILITY is partly built, inside another module.**
+  `src/Modules/Attendance/SSAS.Attendance.Application/Reads/AttendanceSelfServiceScopeResolver.cs` exists,
+  and FP-015's own `AC-SS-0001` is written against `attendance.record.view.self`.
+- ***So a reader who removes this entry will go looking for a module that does not exist, and a reader who
+  leaves it unqualified will not go looking for the resolver that does.***

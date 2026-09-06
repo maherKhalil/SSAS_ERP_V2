@@ -3266,7 +3266,9 @@ depends on.
 > ### ⚠⚠⚠ **STRUCTURAL NOTE ADDED 2026-09-06 — EVERYTHING BELOW THIS LINE IS PRINCIPLES, NOT RELATED DOCUMENTS**
 >
 > **The six bullets above are the whole of `Related Documents`. *From here to the Revision History there are
-> TWENTY further `##` sections — 412 non-blank lines, ~35 KB — and every one is a principle*:** *"An argument
+> TWENTY further sections — **16 at `##` and 4 at `###`**, *(count corrected 2026-09-07 — this said "twenty
+> `##` sections"; the total of twenty is right, the heading level was not)* — 412 non-blank lines, ~35 KB,
+> and every one is a principle*:** *"An argument
 > from necessity cannot be wrong, which is why it proves nothing"* · *"Every check we run is positive-only"* ·
 > *"A harness defect can wear the costume of the finding"* · *"An exemption must assert its own grounds"* ·
 > *"A population predicate must not contain the property under test"*, and fifteen more.

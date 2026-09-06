@@ -16,12 +16,29 @@ date: 2026-08-23
 > What follows is the finding as it stood, preserved because the gap it describes is the reason this package
 > exists in the form it does.
 >
-> **This matrix could not be completed, and the reason was the package's top-line finding.**
+> ⚠⚠⚠ **CORRECTED 2026-09-06 — THIS BANNER WAS FALSE IN THREE CLAUSES, AND IT IS THE FIRST THING A READER
+> OF THIS FILE SEES.** It read: *"**This matrix could not be completed, and the reason was the package's
+> top-line finding.** … GL has **no requirement catalog entry to anchor to**. Every `REQ-GL-` identifier
+> below is a *proposal* from requirements.md, and **until `OD-GL-0001` is answered** every row here is
+> provisional."*
 >
+> - ***`Requirement-Catalog/GL.md` EXISTS and carries 14 `REQ-GL-` entries.*** There is an anchor.
+> - ***The identifiers are NOT proposals.*** `OD-GL-0001` **RULED option 2** (`decisions-approved.md:134-135`):
+>   *"FP-011's drafted `REQ-GL` lines are **ratified** into `Requirement-Catalog/GL.md`, in `HR.md`'s flat
+>   shape"* — precedent over template, recorded as a decision rather than left as drift.
+> - ***`OD-GL-0001` was answered.*** All nine `OD-GL` decisions closed **2026-08-23** (this package's own
+>   register header).
+>
+> ⚠ **Severity note, because it is not a cell:** a wrong cell misleads a reader who goes looking; **a wrong
+> status banner tells every reader of the file, in its first paragraph, that a ratified document is
+> provisional.** *Same package, same decisions, got it right at `README.md:118-120` — "**Both are answered
+> now**, so the build proceeds from here rather than from guesswork." One author wrote the correct form and
+> this file did not.*
+
 > Traceability in this product is REQ-anchored: `Requirement-Catalog/Traceability-Matrix.md` maps
-> `Requirement → BR → Feature → Screen → API → Table → Permission → Test`. GL has **no requirement catalog
-> entry to anchor to**. Every `REQ-GL-` identifier below is a *proposal* from [requirements.md](requirements.md),
-> and until `OD-GL-0001` is answered every row here is provisional.
+> `Requirement → BR → Feature → Screen → API → Table → Permission → Test`. **GL's catalog entry now exists —
+> `Requirement-Catalog/GL.md`, 14 `REQ-GL-` entries — and the identifiers below are ratified rather than
+> proposed** (`OD-GL-0001`, 2026-08-23).
 >
 > It is published incomplete rather than withheld, because the shape of what is missing is itself the
 > deliverable. FP-009 ratified the standard that applies: **an inventory with a footnote saying it is

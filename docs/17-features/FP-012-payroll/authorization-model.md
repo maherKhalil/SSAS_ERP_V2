@@ -40,7 +40,12 @@ Grammar `<Plane>.<Resource>.<Action>`, per the constant-file + catalog-contribut
 | `Payroll.Runs.Post` | Post an approved run to GL | Separate from approval, mirroring `GL.Drafts.Manage` / `GL.Journals.Post` |
 | `Payroll.Payslips.View` | Read run lines for an individual | The other personal read surface (`OD-PAY-0015`) |
 
-Nine, pending `OD-PAY-0016`.
+Nine. ⚠ *Corrected 2026-09-06 — this said "Nine, **pending `OD-PAY-0016`**".* **`OD-PAY-0016` was RULED on
+2026-08-24** (`decisions-approved.md:404`): *"option 1 — its own pay-data permission, granted separately from
+every HR permission."* **The ruling confirms the table above rather than changing it** — `Payroll.Compensation.View`
+is that permission, and the count stays nine. ⚠⚠ **The ruling also carries a constraint this section did not:
+*self-service is DEFERRED* — option 3 depends on an identity → employee mapping this package flagged as
+unverified, and it must not be built on.**
 
 **`Runs.Approve` and `Runs.Post` are separate.** They could plausibly be one. They are kept apart because
 posting is the act that touches *another module's* ledger under `GL`'s own sensitivity regime, and because

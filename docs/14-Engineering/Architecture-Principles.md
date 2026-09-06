@@ -3248,7 +3248,8 @@ depends on.
 
 # Related Documents
 
-- All accepted ADRs (001-012)
+- All accepted ADRs (`ADR-001` … `ADR-030`) ⚠ *corrected 2026-09-06 — this read "(001-012)"; the directory
+  holds thirty, twenty-seven of them `Accepted`, two `Proposed` (`ADR-019`, `ADR-021`)*
 - Solution Architecture Document
 - Development Standards
 - Coding Standards
@@ -3256,6 +3257,25 @@ depends on.
 - Sprint Documentation
 
 ---
+
+> ### ⚠⚠⚠ **STRUCTURAL NOTE ADDED 2026-09-06 — EVERYTHING BELOW THIS LINE IS PRINCIPLES, NOT RELATED DOCUMENTS**
+>
+> **The six bullets above are the whole of `Related Documents`. *From here to the Revision History there are
+> TWENTY further `##` sections — 412 non-blank lines, ~35 KB — and every one is a principle*:** *"An argument
+> from necessity cannot be wrong, which is why it proves nothing"* · *"Every check we run is positive-only"* ·
+> *"A harness defect can wear the costume of the finding"* · *"An exemption must assert its own grounds"* ·
+> *"A population predicate must not contain the property under test"*, and fifteen more.
+>
+> ⚠⚠ ***UNLIKE PRINCIPLES 1–29 THEY CARRY NO NUMBER, SO NOTHING CAN CITE THEM.*** **A reader who wants to
+> invoke *"every check we run is positive-only"* in a review has no identifier to name, and a reader
+> skim-reading for principles stops at `# Related Documents` because the heading says the principles are
+> over.**
+>
+> ***THE CONTENT IS NOT WRONG AND IS NOT DUPLICATED ELSEWHERE — IT IS FILED WHERE NOBODY WILL LOOK FOR IT AND
+> NUMBERED SO NOBODY CAN REFER TO IT.*** **Whether these become `P30`–`P49` under the principles heading, or
+> a section of their own, is an editorial decision for this document's owner and is deliberately not taken
+> here.** *(The two consecutive `---` rules that used to sit here are one of them; the boundary was never
+> marked.)*
 
 ---
 

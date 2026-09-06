@@ -276,7 +276,32 @@ Resolver caches **must not** continue serving stale routing after cutover. Both 
 
 An earlier draft permitted either mechanism. That is unsafe: broadcast invalidation alone is best-effort, and a node that is starting, partitioned, or restarting can miss the signal and serve stale routing indefinitely — writing tenant data to the pre-cutover database. Version validation alone is safe but pushes a lookup onto every resolve. Correctness rests on the version; the broadcast makes convergence fast.
 
-*Implementation decision pending: cache technology, TTL, and the invalidation transport.*
+> ### ⚠⚠⚠ **DECIDED AND SHIPPED — CORRECTED 2026-09-06.** *This line read: "Implementation decision pending: cache technology, TTL, and the invalidation transport."*
+>
+> **All three were settled in `TenantRoutingMemoryCache.cs`:**
+> - ***Cache technology:*** a plain `ConcurrentDictionary`, process-local, singleton, holding only a
+>   `ServerKey` and a database name — *"never a connection string or credential"* (`:14`).
+> - ***TTL:*** **none.** *"UNBOUNDED BY DESIGN IN V1"* (`:16`) — one entry per tenant with an active
+>   assignment, bounded by the size of the estate, observable through `Count`.
+> - ***Invalidation transport:*** **none.** `Invalidate` is a local `TryRemove` (`:36-40`), and the type
+>   comment states the limit rather than implying a reach it lacks: *"THIS PROCESS ONLY… other instances
+>   converge through version validation, not through this call."*
+>
+> ⚠⚠ **AND THIS IS NOT MERELY A PENDING LINE GOING STALE — READ IT AGAINST `:272` AND `:277` ABOVE.**
+> **Those paragraphs say *"Both mechanisms are required"* and reject an earlier draft that permitted either,
+> on the grounds that a node *"starting, partitioned, or restarting"* can miss a broadcast.**
+> ***THE SHIPPED SYSTEM HAS NO BROADCAST TRANSPORT AT ALL.*** It keeps the correctness mechanism — the
+> version checked on every read — and declines the propagation one, arguing at `:8-11`: *"expiry races,
+> coherence between nodes, missed invalidations — **stop being a correctness concern once the version is
+> checked on every read**… Adding a distributed cache here would introduce an external dependency to solve a
+> problem the version check has already solved."*
+>
+> ***SO THE PRODUCT DECLINED A MECHANISM THIS ADR CALLS REQUIRED, DELIBERATELY, WITH ITS REASONING IN
+> WRITING.*** **The safety argument at `:277` is about correctness under partition, and the code's answer is
+> that correctness no longer rests on propagation. *That may well be right — but it is the ADR's own stated
+> requirement being set aside, and the ADR does not record it.*** ⚠ **Flagged for the owner rather than
+> resolved here: what remains unstated either way is how fast a node converges when it never gets a signal,
+> which is a performance question the version check does not answer.**
 
 ## Failure and rollback
 

@@ -165,6 +165,34 @@ public sealed class TenantCutoverOrchestrationArchitectureTests
 
   // ---- NO SOURCE CLEANUP, ANYWHERE. Retention is a separate operational capability that does not exist,
   // and a cutover that could delete the source is a cutover that can lose data to tidy up after itself.
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ THIS BAN IS AN ENUMERATED VOCABULARY, AND THE ESCAPE IS MEASURED RATHER THAN ARGUED (2026-09-06).
+  // ==================================================================================================
+  //
+  // Two plants, same file, same declaration, same line — the only difference is the word:
+  //
+  //     a schema-level drop, spelled with the one DDL noun this list does not name  ->  ***GATE GREEN***
+  //     a listed token in the identical position                                    ->  ***GATE RED***, here
+  //
+  // ***THE RED IS THE CONTROL FOR THE GREEN.*** A dead guard, or one reading a file the plant never landed
+  // in, could not have produced it — so the green is a vocabulary escape and not a reach failure. This ban
+  // names two members of one DDL family and does not know the third.
+  //
+  // **NOT A DEFECT IN THIS GUARD SPECIFICALLY — it is the deny-list idiom.** An enumeration of forbidden
+  // terms is N cases, and the N+1st is free to whoever picks a synonym the author did not think of. The
+  // remedy is not a longer list; it is a *derived* population where one exists, and this subject has none.
+  //
+  // ---- ⚠⚠ AND A FALSE RED IS WAITING IN THIS TEST, WHICH THE PLANT FOUND BY ALMOST CAUSING IT.
+  //
+  // `SourceOf` returns RAW source. This file offers `WithoutComments`-style access for "guards whose subject
+  // is what the code DOES" and this guard does not use it. **So a COMMENT in the orchestrator that merely
+  // mentions a banned token reddens this test.** The plant's own explanatory comment named two of them and
+  // would have failed the guard for describing the rule it was testing.
+  //
+  // Left as it is: reading raw source is defensible for a destructive-SQL ban, since a token inside a
+  // string literal is exactly what must be caught and comment-stripping can cut a literal containing `//`.
+  // Recorded so the next red here is read before it is fixed.
   [Fact]
   [Trait("Decision", "ADR-020")]
   public void The_orchestrator_deletes_nothing()

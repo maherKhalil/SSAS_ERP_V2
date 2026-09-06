@@ -2,7 +2,7 @@
 id: ADR-017
 title: Tenant Storage Topology and Routing
 category: Architecture Decision Record
-version: 1.7
+version: 1.8
 status: Accepted
 date: 2026-08-25
 owner: Solution Architecture Team
@@ -284,7 +284,27 @@ This closes an otherwise open path in which operator error or a malicious admini
 4. **A monotonic `RoutingVersion`**, incremented on every assignment change. This is the correctness basis for resolver caching (`ADR-020`), not a diagnostic.
 5. **Lifecycle with history, not destructive overwrite.** Superseded assignments are retained so that routing history is reconstructable and auditable.
 
-Conceptual states: `Active`, `Superseded`, `CutoverInProgress`. *Implementation decision pending: exact state names and whether history lives in the same table or an adjacent one.*
+> ### ⚠⚠ **SETTLED — CORRECTED 2026-09-06.** *This line read: "Conceptual states: `Active`, `Superseded`, `CutoverInProgress`. **Implementation decision pending:** exact state names and whether history lives in the same table or an adjacent one."*
+>
+> **Both sub-questions are answered in the shipped schema, and the answer to the first is that there are no
+> state names at all.**
+>
+> ***THERE IS NO STATUS ENUM.*** `TenantDatabaseAssignment.cs:71,75` — `public DateTimeOffset? EndedUtc` and
+> `public bool IsActive => EndedUtc is null`. **The three conceptual states became a two-state model derived
+> from one nullable timestamp**, and the choice is deliberate: `TenantDatabaseAssignmentConfiguration.cs:38-40`
+> records that filtering on `EndedUtc` *"mirrors the existing `[RemovedUtc] IS NULL` active-row indexes and
+> **avoids depending on an enum's stored string form inside an index filter**."*
+> ⚠ ***`CutoverInProgress` never materialised. That is not a renaming — it is a state the product does not
+> have***, and anything reasoning about an in-progress cutover from this ADR should know that.
+>
+> ***HISTORY LIVES IN THE SAME TABLE.*** `ToTable("TenantDatabaseAssignments")`; superseded assignments
+> remain as rows with `EndedUtc` set. **No adjacent history table exists.**
+>
+> ⚠ **The five binding invariants above were right and are honoured — invariant 2 is implemented verbatim at
+> `:41-44`: `HasIndex(TenantId).IsUnique().HasFilter("[EndedUtc] IS NULL")`.** *Only the pending sentence and
+> the three state names were wrong.*
+
+Conceptual states are **active** and **ended**, distinguished by `EndedUtc` rather than by a status column, and history is retained in the assignment table itself.
 
 Effective-date scheduling is **not** required for V1. State plus history is sufficient, and simpler.
 
@@ -817,3 +837,4 @@ Customer-managed tenant ERP database support does not change this. It alters not
 | 1.5 | 2026-08-14 | Solution Architecture Team | Added per-physical-database backup and recovery policy with the shared-restore consequence and the `TS-Backup` sequencing constraint; added database-provider extensibility with SQL Server as the only V1 runtime provider and `DatabaseProvider` as a dimension independent of `HostingMode`/`StorageMode`; added the implementation sequence table; clarified the tenant migration-stream and context-factory guidelines |
 | 1.6 | 2026-08-14 | Solution Architecture Team | Pointed backup and recovery mechanism decisions to the new `ADR-022`; this ADR retains the topology rationale only. No decision changed |
 | 1.7 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. It was written as the storage-topology gate to resolve before substantial tenant-owned ERP persistence was implemented; that persistence has since shipped across HR, GL, Payroll and Attendance on this topology, so the gate was passed rather than left open. Acceptance is inferred from that use rather than recorded in a closed decision, and is named as an inference (`DEC-L-020`). |
+| 1.8 | 2026-09-06 | Architect window (`ssas-erp-v2-20`) | **No decision changed; one deferred sub-decision is recorded as settled.** The assignment-lifecycle line said *"Implementation decision pending: exact state names and whether history lives in the same table or an adjacent one."* **Both are answered: there is no status enum — `IsActive => EndedUtc is null` — and history stays in `TenantDatabaseAssignments` itself.** The absence of an enum is deliberate, so an index filter need not depend on a stored string form. ⚠ ***`CutoverInProgress` never materialised: it is a state the product does not have, not a state that was renamed.*** **The five binding invariants were right and are honoured, invariant 2 verbatim as `HasIndex(TenantId).IsUnique().HasFilter("[EndedUtc] IS NULL")`.** Two sibling deferrals in this ADR were checked and remain **correct and genuinely open**: the physical-database naming convention and `ServerKey` (`:255`), and the actor-display approach (`:471`) — neither of its two named options has shipped, and `CreatedBy`/`ModifiedBy` remain plain scalar identifiers as this record states. |

@@ -3857,7 +3857,12 @@ before neither was.**
 > declares `version: 1.0` and carries **no `date:` field at all**, unlike every ADR.**
 >
 > ⚠ **Why this one matters more than the other twelve `YYYY-MM-DD` placeholders in this repository:**
-> ***THIS IS THE LARGEST DOCUMENT IN THE CORPUS — 236 KB, 3,803 lines — AND `START-HERE.md` MAKES IT ITEM 4
+> ***THIS IS THE LARGEST DOCUMENT IN THE CORPUS — 236,343 bytes / 3,803 lines when measured on 2026-09-06,
+> before the notes on this page were added; 241,623 / 3,871 as at 2026-09-07*** ⚠ *(corrected 2026-09-07: the
+> original sentence said "236 KB, 3,803 lines" with no measurement date, and the commit that introduced it
+> took the file to 238,074 bytes — **the number was false in the commit that stated it**. A size written
+> inside the thing it measures is stale on arrival unless it carries the date and the boundary.)* —
+> **AND `START-HERE.md` MAKES IT ITEM 4
 > OF THE MANDATORY READING ORDER, AHEAD OF THE ADRs.*** **Every new reader and every AI agent is instructed
 > to read it fourth, and its own record says nothing has happened to it.**
 >

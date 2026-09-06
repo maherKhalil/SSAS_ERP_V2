@@ -138,7 +138,8 @@ rejected as an unknown property.
 
 **Implementation status: implemented — both halves.** ⚠ *Corrected 2026-09-06 — this read "not implemented".*
 **No currency column:** `SalaryGradeConfiguration.cs:23`. **Projected on read, never accepted on write:**
-`SalaryGrade.cs:104` — *"immutable `BaseCurrencyCode` — **echoed, never stored** (`DEC-POS-0015`, `ADR-027`
+`PositionReadModels.cs:104` *(corrected 2026-09-07 — this cited `SalaryGrade.cs:104`, which is a timestamp;
+right line, wrong file)* — *"immutable `BaseCurrencyCode` — **echoed, never stored** (`DEC-POS-0015`, `ADR-027`
 decision 2)"*, served by `ITenantCompanyCurrencyLookup`.
 
 ## Decision 3 — The condition under which decision 2 no longer holds
@@ -220,11 +221,30 @@ Decision 3's conditions are the trigger for `Money` as well as for the currency 
 
 **Implementation status: OBSERVED — this is a decision NOT to build something.** ⚠ *Corrected 2026-09-06 —
 this read "not implemented", which reads to any reader as a TODO when it is a rule in force and being kept.*
-***A PROHIBITION CANNOT BE "NOT IMPLEMENTED"; IT CAN ONLY BE OBSERVED OR VIOLATED.*** **No `Money` type exists
-— bounded by mechanism rather than by one spelling: amounts are bare `decimal` properties on the owning
-aggregate (`SalaryGradeConfiguration.cs:115/:120`), there is no amount-plus-currency pair anywhere in `src/`,
-and the currency crosses module boundaries as an opaque string.** *That is exactly what this decision
-specifies.* Activated by the `OD-POS-004` ruling of 2026-08-21; first applied by FP-008.
+***A PROHIBITION CANNOT BE "NOT IMPLEMENTED"; IT CAN ONLY BE OBSERVED OR VIOLATED.*** **No shared `Money`
+value object exists. Under a Company — this decision's actual scope — amounts are bare `decimal` properties
+on the owning aggregate (`SalaryGradeConfiguration.cs:115/:120`), and the currency crosses module boundaries
+as an opaque string.** *That is what this decision specifies, and it holds.* Activated by the `OD-POS-004`
+ruling of 2026-08-21; first applied by FP-008.
+
+> ### ⚠⚠⚠ **CORRECTED 2026-09-07 — MY OWN WIDENING MADE THIS FALSE, AND THE COUNTEREXAMPLE CITES THIS ADR**
+>
+> **This paragraph said, in my words: *"bounded by mechanism rather than by one spelling: … **there is no
+> amount-plus-currency pair anywhere in `src/`**."*** ***THAT UNIVERSAL IS FALSE.***
+> **`SSAS.Platform.Domain/Subscriptions/PlanPrice.cs` pairs them in one class — `:27 public string
+> CurrencyCode` and `:31 public decimal Amount`, assigned in the same constructor — and its own header at
+> `:8` cites this ADR. `:7` explains why: *"Multi-currency was ruled, so price is a COLLECTION rather than a
+> scalar on the plan."***
+>
+> ⚠⚠ ***THE DECISION SURVIVES; THE EVIDENCE DID NOT.*** **`PlanPrice` is a subscription plan price on the
+> commercial plane, not an amount beneath a Company, so it sits outside decision 2's stated scope and does
+> not violate anything. *But the sentence I wrote was a universal over `src/`, and a universal is false the
+> moment one counterexample exists, in scope or not.***
+>
+> ***AND THE MECHANISM IS THE PART TO REMEMBER: I REPLACED "no type called `Money`" — a narrow, checkable
+> claim — WITH A UNIVERSAL, AND CALLED THE WIDENING "bounded by mechanism rather than by one spelling".***
+> **The hedge that was supposed to make it rigorous is exactly what made it wrong.** *A name search that
+> admits its narrowness is honest; a universal that cannot be checked is not more rigorous than it.*
 
 ---
 

@@ -237,7 +237,8 @@ genesis/recovery principal (the loser's duplicate is an idempotent race outcome)
 > constraints**, on exactly one genesis/recovery principal…; **no distributed lock is required**."***
 >
 > ***BOTH OF THOSE CLAUSES ARE NOW FALSE, AND THE SECOND IS FALSE IN THE LOAD-BEARING DIRECTION.***
-> `PlatformSupportBootstrapService.cs:33-36`: *"Convergence is provided by the recovery serialization
+> `PlatformSupportBootstrapService.cs:30-36` *(range corrected 2026-09-07 — the quoted sentence begins at
+> `:30`, not `:33`)*: *"Convergence is provided by the recovery serialization
 > (`IPlatformSupportRecoverySerializer`)… **IdentityId uniqueness remains as defense-in-depth** for a
 > same-identity race… **it is no longer the primary multi-subject convergence mechanism.**"*
 > **And `PlatformSupportRecoverySerializer` *is* **an exclusive lock on the platform-support principal

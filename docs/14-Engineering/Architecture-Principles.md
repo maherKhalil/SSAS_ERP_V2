@@ -3801,3 +3801,26 @@ before neither was.**
 | Version | Date | Author | Description |
 |----------|------|--------|-------------|
 | 1.0 | YYYY-MM-DD | Solution Architecture Team | Initial version |
+| — | 2026-09-06 | Architect window (`ssas-erp-v2-20`) | ⚠⚠⚠ **THIS TABLE HAS NEVER BEEN MAINTAINED, AND THE ROW ABOVE IS THE ONLY ONE THAT EXISTED.** See the note below. |
+
+> ### ⚠⚠⚠ **THE VERSION RECORD ON THIS DOCUMENT IS NOT MERELY BEHIND — IT WAS NEVER STARTED**
+>
+>     git rev-list --count HEAD -- docs/14-Engineering/Architecture-Principles.md   ***112***
+>     first commit 2026-07-30 · last 2026-09-01 · 28 commits on 2026-09-01 alone
+>
+> ***112 COMMITS. THE TABLE SAYS `1.0`, `YYYY-MM-DD`, "INITIAL VERSION".*** **The frontmatter likewise still
+> declares `version: 1.0` and carries **no `date:` field at all**, unlike every ADR.**
+>
+> ⚠ **Why this one matters more than the other twelve `YYYY-MM-DD` placeholders in this repository:**
+> ***THIS IS THE LARGEST DOCUMENT IN THE CORPUS — 236 KB, 3,803 lines — AND `START-HERE.md` MAKES IT ITEM 4
+> OF THE MANDATORY READING ORDER, AHEAD OF THE ADRs.*** **Every new reader and every AI agent is instructed
+> to read it fourth, and its own record says nothing has happened to it.**
+>
+> **`GOV-001:106` (`docs/16-Governance/Documentation-Baseline.md`, *Approved*, 2026-07-30): *"Major
+> documentation changes shall be versioned."*** ⚠ ***112 COMMITS IS THE CLEAREST MEASURED VIOLATION OF THAT
+> RULE IN THE REPOSITORY.***
+>
+> ***I HAVE NOT READ THE BODY AND AM NOT CALLING ITS CONTENT STALE.*** **The principles may all be current;
+> the five most recent commit subjects are substantive and specific. *It is the version record that is
+> unmaintained, and that is measurable without reading a word of the body.*** **Reconstructing real version
+> rows from 112 commits is an editorial act for whoever owns this document, not something to infer here.**

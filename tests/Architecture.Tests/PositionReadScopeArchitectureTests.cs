@@ -144,6 +144,31 @@ public sealed class PositionReadScopeArchitectureTests
   public void Every_position_family_read_composes_an_explicit_tenant_and_company_predicate(
     string fileName, string source)
   {
+    // ⚠⚠⚠ THE FLOOR BELOW IS ENTAILED BY MEMBERSHIP AND THEREFORE CANNOT FAIL (measured 2026-09-06).
+    //
+    // `PositionFamilyPaths()` admits a file only when
+    //     EntitySets.Any(entitySet => source.Contains(entitySet, StringComparison.Ordinal))
+    // and `ReadServiceSources()` draws every Theory row from that dictionary. **So every `source` reaching
+    // this method already contains at least one member of `EntitySets`** — which makes
+    // `EntitySets.Sum(CountOccurrences(source, …)) > 0` true by construction for every row.
+    //
+    // ***THE WALK PREDICATE AND THE FLOOR PREDICATE ARE THE SAME EXPRESSION.*** `Any(Contains)` entails
+    // `Sum(CountOccurrences) > 0`, so no value of `source`, and no drift in `EntitySets`, can redden it.
+    //
+    // The failure the message names — "the derivation has stopped matching" — does not arrive here as a
+    // red. It arrives as an EMPTY population, so the Theory receives no rows at all, and whatever protection
+    // exists comes from that rather than from this line. ⚠ NOT VERIFIED: xUnit's behaviour on an empty
+    // `TheoryData` was not run and is not claimed. The claim is only that this assertion cannot fail.
+    //
+    // ---- ⚠⚠ A DIFFERENT DEFECT FROM THE SELF-CERTIFYING MATCHER IN `TenantCutoverFreezeArchitectureTests`.
+    //
+    // That one builds its SUBJECT from the collection it then searches. This one tests THE MEMBERSHIP
+    // CONDITION instead of the property. ***Both need one list doing two jobs — here `EntitySets` bounds
+    // the WALK and is the thing SOUGHT within it — and neither escape produces this alone.***
+    //
+    // NOT REPAIRED. A floor that binds would have to be computed from something the population predicate
+    // does not use — a count of files, a named witness per entity set — and choosing it decides what this
+    // guard's anti-vacuity claim means. Recorded so the next reader does not count it as one.
     var reaches = EntitySets.Sum(entitySet => CountOccurrences(source, entitySet));
 
     Assert.True(

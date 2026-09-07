@@ -188,6 +188,17 @@ public sealed class ConfigurationInvarianceTests
     Assert.Matches(ConfigurationConditioned,
       "  <PropertyGroup Condition=\"'$(Configuration)'=='Debug'\">");
 
+    // ⚠⚠ THE SINGLE-QUOTED FORM (T-114). ***ZERO INSTANCES EXIST IN THIS REPOSITORY TODAY***, measured —
+    // every `Condition=` here is double-quoted. **So this fixture is the ONLY thing that will ever exercise
+    // that branch**, and without it the widening would be an untested claim about a predicate.
+    Assert.Matches(ConfigurationConditioned,
+      "  <Compile Remove='Diagnostics.cs' Condition=' \"$(Configuration)\" == \"Release\" ' />");
+
+    // ⚠ AND A MISMATCHED PAIR MUST NOT MATCH. XML does not permit it, so a guard that fired on it would be
+    // reporting malformed markup as a configuration divergence — a red about the wrong subject.
+    Assert.DoesNotMatch(ConfigurationConditioned,
+      "  <Compile Remove=\"X.cs\" Condition=\"'$(Configuratio' />");
+
     // ⚠⚠ THE DISCRIMINATING CONTROL, AND IT IS THE ONE THAT MATTERS HERE. `$(Configuration)` appears
     // legitimately in a PATH — `bin\$(Configuration)\net8.0` — which selects where a built file is found
     // and changes nothing about what compiles. A predicate matching bare `$(Configuration)` would flag it,
@@ -230,7 +241,23 @@ public sealed class ConfigurationInvarianceTests
 
   // ⚠ ANCHORED ON `Condition=`, NOT ON `$(Configuration)`. See the discriminating control above: the only
   // real occurrence in this repository is inside a path VALUE and is legitimate.
-  private const string ConfigurationConditioned = @"Condition\s*=\s*""[^""]*\$\(\s*Configuration\s*\)";
+  // ⚠⚠⚠ BOTH XML QUOTE CHARACTERS (T-114). This required `"` and therefore missed
+  // `Condition='…$(Configuration)…'`, which MSBuild accepts and which means the identical thing.
+  //
+  // ***THIS IS NOT A SPELLING WIDENING AND THE DISTINCTION IS THE WHOLE ARGUMENT.*** `Delete` versus
+  // `SoftDelete` is a VOCABULARY — someone chose a name and the next person will choose a third, so the set
+  // is open and no enumeration completes it. **`'` versus `"` is a CLOSED TWO-MEMBER SET FIXED BY THE XML
+  // STANDARD**, where both delimiters are equally legal and carry the same meaning. A closed enumeration is
+  // completable; a vocabulary is not.
+  //
+  // ⚠ EACH BRANCH PINS ITS OWN DELIMITER, so a MISMATCHED pair — `Condition="…'` — cannot match. A single
+  // character class accepting either quote independently would be a wider predicate than XML permits, and
+  // firing on malformed markup nobody wrote is how a guard loses its credibility.
+  // ⚠ The exclusion is per-branch rather than `[^"']`, because a double-quoted attribute legitimately
+  // CONTAINS single quotes — `Condition=" '$(Configuration)' == 'Release' "` is the ordinary form, and a
+  // class excluding both would have failed on every real condition in MSBuild.
+  private const string ConfigurationConditioned =
+    @"Condition\s*=\s*(?:""[^""]*\$\(\s*Configuration\s*\)|'[^']*\$\(\s*Configuration\s*\))";
 
   // Every file kind that can carry an MSBuild instruction. `.sln` is included because solution
   // configurations map projects to Debug/Release and could exclude one from a configuration entirely.

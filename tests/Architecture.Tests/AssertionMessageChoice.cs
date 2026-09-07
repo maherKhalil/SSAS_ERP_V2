@@ -39,6 +39,21 @@
 // story with `CS1501`. The only remedy is rewriting the site as
 // `Assert.True(!offenders.Any(), $"...")`, at a measured cost of about **+8 net lines per site**.
 //
+// ---- ⚠⚠⚠ THE RULE IS GENERAL. THE MEASUREMENTS ARE ONE SUITE'S. (T-115)
+//
+// Everything below was DERIVED in `tests/Architecture.Tests` and every figure here counts that suite only.
+// ***THE RULE ITSELF CONTAINS NOTHING ABOUT WHICH PROJECT AN ASSERTION LIVES IN*** — it is about how many
+// candidates a reader must examine by eye, and a `DoesNotContain` over every route literal in
+// `SSAS.Platform.API` is tier 1 by that reasoning wherever it is written.
+//
+// ⚠ THIS FILE PREVIOUSLY STATED A CORPUS WHERE IT SHOULD HAVE STATED A SCOPE, which is the same defect as
+// a denominator with no scope attached: `156` is one suite's count and reads like the repository's.
+//
+// MEASURED PER SUITE, 2026-09-07 — `Platform.Tests`: 88 files, **4 walk a corpus**, 3 carry a floor, and
+// exactly TWO tier-1 silent sites existed (both on the platform route walk, both now converted). *The
+// shape is largely ABSENT there — 84 of 88 files are behavioural — so a low count is a fact about the
+// suite's nature, not evidence that it was audited harder.*
+//
 // ---- ⚠⚠⚠ AND THE PART THAT MATTERS: THE RAW COUNT IS NOT THE SIZE OF THE PROBLEM.
 //
 // The cost of a silent message is HOW MANY CANDIDATES A READER MUST EXAMINE BY EYE to find the offender.

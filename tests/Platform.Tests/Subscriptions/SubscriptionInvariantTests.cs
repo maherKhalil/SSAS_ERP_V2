@@ -464,23 +464,46 @@ public sealed class SubscriptionInvariantTests
     // returns is a property of where it was put.**
     var routes = PlatformApiRouteLiterals();
 
+    // ⚠⚠ GROUNDED MESSAGES, NOT THE LAMBDA OVERLOADS (T-115). Both assertions below read the ENTIRE
+    // `SSAS.Platform.API` tree, and both used to fail with xUnit's defaults — *"Filter not matched in
+    // collection"* and *"Filter matched in collection"* — **which name neither the route nor the term.**
+    // A reader could not tell which of five banned words had appeared, over a population of every route
+    // literal in the platform API.
+    //
+    // The rule is in `tests/Architecture.Tests/AssertionMessageChoice.cs`. ⚠ It was DERIVED there and its
+    // corpus line says so, but **the rule itself is about how many candidates a reader must examine by
+    // eye — which has nothing to do with which project the assertion lives in.**
+
     // MATCHER CONTROL: a route that exists today, so a walk that read nothing fails here rather than
     // satisfying the ban by finding no routes at all.
-    Assert.Contains(routes, route => route.Contains("login", StringComparison.OrdinalIgnoreCase));
+    Assert.True(
+      routes.Any(route => route.Contains("login", StringComparison.OrdinalIgnoreCase)),
+      $"route literal count: {routes.Length}, and none contains `login`. The walk over " +
+      "`src/Platform/SSAS.Platform.API` has stopped finding routes — a renamed directory, a changed " +
+      "`Map…(\"literal\")` shape, or a pattern that no longer matches — so the ban below would be " +
+      "satisfied by an empty set rather than by the absence of commercial routes.");
 
-    Assert.DoesNotContain(routes, route =>
-      route.Contains("subscription", StringComparison.OrdinalIgnoreCase) ||
-      route.Contains("invoice", StringComparison.OrdinalIgnoreCase) ||
-      route.Contains("entitlement", StringComparison.OrdinalIgnoreCase) ||
-      route.Contains("plan", StringComparison.OrdinalIgnoreCase) ||
-      // ⚠ PLURAL, AND THE `s` IS LOAD-BEARING. `AC-SUB-0007` names a "grant write route", but a real
-      // route `/{principalId}/grant` already exists and is a PERMISSION grant, not a commercial one —
-      // banning the singular would redden on existing, unrelated work the day it was written. Measured
-      // against the clean tree: "grants" matches ZERO current routes, "grant" matches that one.
-      // *A collection reads `/grants`; the existing verb reads `/grant`.* **Residual gap stated rather
-      // than hidden: a commercial route named `/grant` singular still evades this, and so does
-      // `/commerce`.**
-      route.Contains("grants", StringComparison.OrdinalIgnoreCase));
+    // ⚠ PLURAL, AND THE `s` IS LOAD-BEARING. `AC-SUB-0007` names a "grant write route", but a real
+    // route `/{principalId}/grant` already exists and is a PERMISSION grant, not a commercial one —
+    // banning the singular would redden on existing, unrelated work the day it was written. Measured
+    // against the clean tree: "grants" matches ZERO current routes, "grant" matches that one.
+    // *A collection reads `/grants`; the existing verb reads `/grant`.* **Residual gap stated rather
+    // than hidden: a commercial route named `/grant` singular still evades this, and so does
+    // `/commerce`.**
+    string[] commercial = ["subscription", "invoice", "entitlement", "plan", "grants"];
+
+    var offenders = routes
+      .SelectMany(route => commercial
+        .Where(term => route.Contains(term, StringComparison.OrdinalIgnoreCase))
+        .Select(term => $"{route} (matched `{term}`)"))
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(offenders.Length == 0,
+      $"a commercial route surface has appeared in the platform API: {string.Join("; ", offenders)}.\n" +
+      "  ⚠ THIS IS NOT NECESSARILY WRONG — it may be the commercial plane landing. But five dispositions " +
+      "record that no such surface exists yet, and they stop being true the moment one does. Take it to " +
+      "those dispositions before making this test agree with the tree.");
   }
 
   private static string[] PlatformApiRouteLiterals()

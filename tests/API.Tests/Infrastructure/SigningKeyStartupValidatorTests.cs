@@ -40,8 +40,30 @@ public sealed class SigningKeyStartupValidatorTests
   // ⚠ THE ASSERTION IS ABOUT THE BOOT, NOT ABOUT THE TYPE. A test that merely proves the class exists, or
   // that a throwing provider throws, would pass with the validator deleted. **What must hold is that the
   // failure arrives AT STARTUP** — so the host is started explicitly and the throw is caught there.
+  // ==================================================================================================
+  // ⚠⚠⚠ NOT `async Task` — AND THE REASON IS AN INCIDENT WORTH THE PARAGRAPH (T-180).
+  // ==================================================================================================
+  //
+  // The assertion is SYNCHRONOUS: `CreateClient` throws on the calling thread. This method was written
+  // `async Task` when the file was added (`f6dc6b4`), so it emitted **CS1998 — *"This async method lacks
+  // 'await' operators"*** — and `DEC-L-008` condition one is ZERO BUILD WARNINGS, which the gate enforces:
+  //
+  //     !!! WARNINGS (Debug): 1 -- DEC-L-008 condition 1 is zero. This gate is RED.
+  //
+  // ***IT STOOD FOR TWENTY-FIVE COMMITS BEHIND TWENTY-ODD HONEST GREENS.*** `dotnet test` reported
+  // `API 1019/1019 Passed!` every single time, and it was TRUE — **`dotnet test` does not fail on warnings,
+  // and only the gate reads `build-Debug.log`.** *A per-suite green is not the gate, and this is what that
+  // costs when nobody runs the gate for twenty-five commits.*
+  //
+  // ⚠⚠ AND IT WAS SEEN AND NOT ACTED ON. The CS1998 line scrolled past in the FIRST `dotnet test` run of
+  // the night, in the build output above the results, and was read as noise.
+  //
+  // ***THE HABIT THAT WOULD HAVE CAUGHT IT IS ONE WORD WIDER THAN THE ONE ALREADY IN USE:
+  // GREP `dotnet test` OUTPUT FOR `warning`, NOT ONLY `dotnet build` OUTPUT.*** **`dotnet test` builds
+  // first and prints the compiler's warnings, then prints a green summary that says nothing about them —
+  // so the one command whose output gets read carries the evidence and buries it.**
   [Fact]
-  public async Task Host_startup_fails_when_the_signing_key_cannot_be_obtained()
+  public void Host_startup_fails_when_the_signing_key_cannot_be_obtained()
   {
     using var factory = new UnobtainableKeyFactory();
 

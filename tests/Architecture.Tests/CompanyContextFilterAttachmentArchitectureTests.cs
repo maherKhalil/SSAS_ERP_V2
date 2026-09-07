@@ -35,7 +35,8 @@ namespace SSAS.Architecture.Tests;
 // attachments could be deleted with the whole suite green, and that is what needed fixing.*
 //
 // ⚠⚠ **AND ONE OF THE SEVEN IS WHY THE POPULATION IS DERIVED RATHER THAN TYPED:
-// `DepartmentEndpointRouteBuilderExtensions` declares TWO groups — `:63` and, at `:150`, an
+// `DepartmentEndpointRouteBuilderExtensions` declares TWO groups — `MapGroup(RoutePrefix)` at `:63` and,
+// at `:150`, `MapGroup(EmployeeRoutePrefix)`, an
 // `EmployeeRoutePrefix` group inside the DEPARTMENTS file.** ***A hand-built list would have had six entries
 // and looked complete.*** *That member lives where nobody would look for it, and only counting `MapGroup`
 // finds it.*

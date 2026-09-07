@@ -41,7 +41,10 @@ namespace SSAS.API.Tests.Infrastructure;
 [Collection(HostIntegrationTestGroup.Name)]
 public sealed class HttpsRedirectionExclusionTests
 {
-  // A real route, not a fabricated one: `/api/platform/auth/login` exists (`AuthenticationEndpointRouteBuilderExtensions:21`).
+  // A real route, not a fabricated one: `/api/platform/auth/login` exists —
+  // `AuthenticationEndpointRouteBuilderExtensions.MapPlatformAuthenticationEndpoints` maps it with
+  // `group.MapPost("/login", LoginAsync)` at `:21`. ⚠ The SYMBOL is named beside the line deliberately: a
+  // line number is unfalsifiable by any cheap sweep, and a name is one grep away (T-176).
   // ⚠ A NON-EXISTENT path under the prefix would answer 404 whether or not the exclusion worked, and a 404
   // is indistinguishable from "not redirected" at a glance — so the witness has to be a path that would
   // otherwise produce something else.

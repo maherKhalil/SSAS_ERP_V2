@@ -283,8 +283,34 @@ public sealed class AuthenticationMilestoneArchitectureTests
 
   [Fact]
   [Trait("Criterion", "AC-AUTH-0040")]
-  public void No_symmetric_signing_path_remains_active_anywhere_under_src()
+  public void No_file_under_src_names_a_symmetric_signing_algorithm()
   {
+    // ---- ⚠⚠ WHAT THIS IS, SAID PLAINLY, BECAUSE THE OLD NAME SAID SOMETHING STRONGER.
+    //
+    // It was `No_symmetric_signing_path_remains_active_anywhere_under_src`. **This is a VOCABULARY over
+    // file text, not the mechanism.** The mechanism is *a token is signed with a key the verifier also
+    // holds*, and no string search can decide that. Specifically invisible to it:
+    //
+    //   * an algorithm chosen at RUNTIME — read from configuration into a variable, or selected by a
+    //     switch, so that no literal algorithm name appears anywhere;
+    //   * a key CONSTRUCTED rather than named — a `SecurityKey` subclass, or a symmetric key produced by a
+    //     factory whose type name says nothing about symmetry;
+    //   * a library DEFAULT, where the algorithm is never written down at all.
+    //
+    // ⚠ AND ONE HOLE FOUND BY MEASUREMENT RATHER THAN REASONING (T-090): THE MATCH IS CASE-SENSITIVE.
+    // `HmacSha256` is caught; `HMACSHA256` — the .NET type name — is not. That is deliberate and not an
+    // oversight: `src/Host/SSAS.Host.API/Authentication/AuthenticationTransportServices.cs:86` legitimately
+    // constructs `new HMACSHA256(hmacKey)` to hash rate-limiter partition keys so raw IPs are not held in
+    // memory. **That is a keyed hash, not a token signature.** Matching case-insensitively would redden on
+    // correct code, and a guard that fires on correct code gets deleted rather than fixed. The consequence
+    // is stated rather than closed: a hand-rolled JWT signed by constructing `HMACSHA256` directly would
+    // pass this test.
+    //
+    // ⚠⚠ SEARCHED BEFORE WIDENING (T-090). Across every file `git ls-files src` reports — so `bin`/`obj`
+    // could not contaminate it — the ONLY hit for `HS256|HS384|HS512|SymmetricSecurityKey|HmacSha`, case
+    // INSENSITIVE, is that rate-limiter hash. `appsettings.json` carries `ActiveSigningCertificatePath`
+    // and no algorithm setting, no key and no secret. **The old guard's green was a true green**; this
+    // closes a hole in what it could see, not a breach in what it was watching.
     // `AC-AUTH-0040`'s LAST CLAUSE: *"no symmetric path remains active."* Every other clause of that
     // criterion is a claim about how one token is judged, and `JwtInfrastructureTests` witnesses each by
     // presenting a token. **THIS CLAUSE IS NOT ABOUT A TOKEN AT ALL — it is about what the tree contains**,
@@ -300,14 +326,46 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // assemblies where a JWT type has no business existing. **The symmetric path would live where the
     // asymmetric one does, in `SSAS.Host.API`, which that walk never visits.** A guard naming the right
     // type over the wrong scope reads, at a glance, exactly like this one.
+    // ---- ⚠⚠⚠ EVERY FILE UNDER `src`, NOT EVERY `.cs` FILE UNDER `src` (T-090).
+    //
+    // The name of this test says *anywhere under src*. The walk read `*.cs` and skipped `Migrations`, so
+    // **`src/Host/SSAS.Host.API/appsettings.json` was outside it** — and a JWT algorithm is exactly the
+    // kind of thing that lives in configuration. `"Jwt": { "Algorithm": "HS256" }` would have been a
+    // symmetric signing path, under `src`, invisible to a guard whose name promised to look there.
+    //
+    // ⚠ THE `Migrations` EXCLUSION IS GONE BECAUSE NOTHING JUSTIFIED IT. It was carried, not argued: no
+    // comment here or at the sibling walk gave a reason, and generated migration files are as capable of
+    // containing a literal as any other. An exclusion nobody can explain is indistinguishable from an
+    // oversight, so it is removed rather than documented.
+    //
+    // The population is now genuinely every tracked file kind under `src` — 33 `.csproj`, 6 `.json`, 1
+    // `.md`, 7 `.gitkeep` and the `.cs` tree — because the cost of scanning them is nothing and the cost
+    // of a name that promises more than it inspects is what this whole exercise has been about.
     var sourceFiles = Directory
-      .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
-      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src"), "*", SearchOption.AllDirectories)
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .ToArray();
     Assert.True(sourceFiles.Length >= 400,
-      $"only {sourceFiles.Length} source files were scanned; the walk has collapsed and the ban below " +
+      $"only {sourceFiles.Length} files were scanned; the walk has collapsed and the ban below " +
       "would pass over an empty set.");
+
+    // ⚠ A POSITIVE CONTROL ON THE WIDENING ITSELF, because "now it reads config too" is a claim about the
+    // walk that the floor above cannot make: a `*.cs`-only walk clears 400 comfortably.
+    //
+    // ⚠⚠⚠ REACH PROBE, BOTH COLOURS MEASURED (T-090). `"Algorithm": "HS256"` was planted in the `Jwt`
+    // section of `src/Host/SSAS.Host.API/appsettings.json` — a real symmetric signing setting, in the file
+    // it would really live in.
+    //
+    //   OLD `*.cs` WALK  -> GREEN. The plant sat in `src`, in configuration, and the guard whose name said
+    //                       *anywhere under src* did not see it.
+    //   WIDENED WALK     -> RED.
+    //
+    // ⚠ AND THIS CONTROL EARNED ITS PLACE IN THE SAME RUN: with the walk reverted to `*.cs` it failed
+    // FIRST, before the ban was reached — so the narrowing is caught by name rather than by the ban
+    // silently passing. The ban's own old colour had to be measured with this control disabled, because
+    // ordered checks hide all but the first.
+    Assert.Contains(sourceFiles, path => path.EndsWith("appsettings.json", StringComparison.Ordinal));
 
     const string symmetricSigning = @"(?:SymmetricSecurityKey|HmacSha(?:256|384|512)|""HS(?:256|384|512)"")";
     // The matcher control. Each alternative is asserted against the form it would really appear in.

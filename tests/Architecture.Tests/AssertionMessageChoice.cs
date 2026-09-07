@@ -13,9 +13,28 @@
 //
 //     Assert.DoesNotContain() Failure: Filter matched in collection
 //
-// **It names no member.** A reader cannot tell which element matched. Measured across
-// `tests/Architecture.Tests` in T-082: **166 call sites in 38 files** (2026-09-07; 160 after T-088's
-// rewrites landed). ⚠ AND IT CANNOT BE FIXED IN PLACE — there is no overload taking a message; the third
+// **It names no member.** A reader cannot tell which element matched.
+//
+// ---- THE NUMBER, AND ENOUGH PROVENANCE TO RE-DERIVE IT RATHER THAN TRUST IT.
+//
+// **166 call sites in 38 files**, measured 2026-09-07 (156 after the T-088/T-089 rewrites). CORPUS:
+// `tests/Architecture.Tests/*.cs`, line comments blanked — that suite has no block comments, checked
+// rather than assumed. INSTRUMENT: locate `Assert.DoesNotContain(`, walk to the matching close paren,
+// classify as the lambda overload if the argument text contains `=>`.
+//
+// ⚠⚠⚠ A SECOND INSTRUMENT DISAGREED AT **173**, AND THE DISAGREEMENT IS WHY 166 IS TRUSTWORTHY. Diffing
+// the MEMBERS rather than comparing the counts named all seven extras, in three files. Every one is a
+// STRING-OVERLOAD site misfiled as a lambda site, because a paren walk that does not skip string literals
+// runs past the real close and swallows a `=>` belonging to a later call:
+//
+//     Assert.DoesNotContain("AddAsync(", source, StringComparison.Ordinal);
+//                                    ^ unbalanced paren INSIDE a literal
+//
+// So a re-derivation must skip string literals. ⚠ Anyone re-counting with a naive scan will get 173 and
+// conclude this file is stale; it is not, and the seven are listed above by mechanism so the difference
+// is recognisable on sight.
+//
+// ⚠ AND IT CANNOT BE FIXED IN PLACE — there is no overload taking a message; the third
 // parameter is an `IEqualityComparer`, which is compile error `CS1503`. `Assert.NotEmpty` is the same
 // story with `CS1501`. The only remedy is rewriting the site as
 // `Assert.True(!offenders.Any(), $"...")`, at a measured cost of about **+8 net lines per site**.

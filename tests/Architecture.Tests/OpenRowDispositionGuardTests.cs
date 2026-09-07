@@ -118,10 +118,23 @@ public sealed class OpenRowDispositionGuardTests
     // precedes it and ordered checks hide all but the first — but the counts settle what it would have
     // done: ***FP-016 HELD ONE `.md` FILE. The walk went 173 -> 172.***
     //
-    // So a file floor of 150 was not merely too loose for this event; **a file count cannot discriminate
-    // package loss AT ALL.** Package sizes are wildly uneven — one file against a mean of ten — so no
-    // file-count threshold separates "a package left" from "someone deleted a paragraph". The arithmetic
-    // that motivated this split assumed an average package; the smallest real one is a twentieth of that.
+    // So a file floor of 150 was not merely too loose for this event.
+    //
+    // ⚠⚠⚠ THE FULL DISTRIBUTION, MEASURED 2026-09-07 — and it settles the question for every package
+    // rather than for the one that happened to be planted:
+    //
+    //     1 file   FP-016          3 files  FP-010          11 files  FP-001, FP-015
+    //     12 files FP-002 … FP-009, FP-011                  13 files  FP-012, FP-013, FP-014
+    //
+    // ***THE LARGEST PACKAGE HOLDS THIRTEEN. 173 − 13 = 160, AND THE FLOOR WAS 150.*** So the file floor
+    // could not have detected ANY single package leaving — not the smallest, not the typical, not the
+    // largest. **All sixteen were invisible to it.** A file count cannot discriminate package loss at any
+    // threshold that does not also fire on ordinary editing.
+    //
+    // ⚠ THIS COMMENT SAID "ONE FILE TO TWENTY" AND THERE IS NO PACKAGE WITH TWENTY. A range stated from
+    // two endpoints, one measured and one estimated, reads as measured at both ends. The distribution
+    // above is a `uniq -c` over the directory listing — the command that would have settled this before
+    // either floor was chosen, and that nobody ran until after the plant.
     var packages = FeaturePackageDirectories();
 
     Assert.True(
@@ -132,8 +145,9 @@ public sealed class OpenRowDispositionGuardTests
       "  ⚠ A RENAME IN PLACE WOULD NOT HAVE FIRED THIS — the count is unchanged by one — so if you are " +
       "here after renaming something, this is telling you about a different change than the one you made.\n" +
       "  If a package was deliberately retired, lower this number and say which one. Do not lower it to " +
-      "make the red go away: the file floor below cannot cover for this one, because package sizes range " +
-      "from one file to twenty and no file count separates a lost package from an edited paragraph.");
+      "make the red go away: the file floor below cannot cover for this one. The largest package holds " +
+      "THIRTEEN files of 173, so no single package leaving moves the file count below any floor that does " +
+      "not also fire on ordinary editing.");
 
     // ⚠ THE FILE FLOOR STAYS, AND ITS EVENT IS NOW THE ONE IT CAN ACTUALLY DISCRIMINATE. 150 against 173
     // catches a package that is still present but has stopped contributing files, and any larger loss.

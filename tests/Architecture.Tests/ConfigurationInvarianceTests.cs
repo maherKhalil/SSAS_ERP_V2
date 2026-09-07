@@ -75,6 +75,33 @@ public sealed class ConfigurationInvarianceTests
       $"only {sources.Length} source files were walked; the enumeration has degraded and this guard is " +
       "asserting nothing rather than passing");
 
+    // ⚠⚠⚠ THE FLOOR ABOVE CANNOT SEE THIS WALK LOSE HALF ITS SUBJECT (T-098).
+    //
+    // The walk covers TWO areas, `src` and `tests`, and the floor is one number over their union. Drop
+    // `tests` from the areas array and `src` alone still clears 500 comfortably — **a floor is a claim
+    // about MAGNITUDE and the failure here is SHAPE.** That is not hypothetical: T-090 narrowed a walk's
+    // pattern from `*` to `*.cs` and the population control failed FIRST, before the ban, while a floor of
+    // 400 against 1181 would have sat green through it.
+    //
+    // So each area is asserted by a NAMED MEMBER that only that area can supply. A narrowing is then
+    // caught by name — "the tests tree left the walk" — rather than by a ban silently passing.
+    // ⚠ GROUNDED, NOT `Assert.Contains(collection, predicate)`. The first version of these two lines used
+    // it and failed with *"Assert.Contains() Failure: Filter not matched in collection"* — a tier-1 silent
+    // site over a 1,537-file walk, which is exactly what `AssertionMessageChoice.cs` rules against, written
+    // in the same session as that ruling. The plant is what surfaced it: the message was only ever seen
+    // because the assertion was deliberately made to fail.
+    Assert.True(
+      sources.Any(path => path.EndsWith("PersistenceDbContext.cs", StringComparison.Ordinal)),
+      $"the walk returned {sources.Length} files but none from `src` — `PersistenceDbContext.cs` is " +
+      "missing, so the production tree has left this population while the floor above stayed green.");
+
+    Assert.True(
+      sources.Any(path => path.EndsWith("ModelWalk.cs", StringComparison.Ordinal)),
+      $"the walk returned {sources.Length} files but none from `tests` — `ModelWalk.cs` is missing, so " +
+      "the TEST tree has left this population. ⚠ The floor above cannot see this: `src` alone is over " +
+      "1,100 files and clears 500 on its own, which is why this assertion exists rather than a tighter " +
+      "number. Restore the area to the walk; do not lower the floor.");
+
     var offenders = new List<string>();
 
     foreach (var path in sources)

@@ -227,7 +227,7 @@ public sealed class TenantStorageRegistryArchitectureTests
     // description that degraded to entity names or to a single row cannot pass.
     Assert.True(
       first.Any(row => row.StartsWith("Company.TenantId:", StringComparison.Ordinal)),
-      $"the tenant description has {first.Length} rows but none describes Company.TenantId, which every " +
+      $"tenant description row count: {first.Length}, and none describes Company.TenantId, which every " +
       "tenant-owned entity in this model carries. `Describe` has stopped reading properties or columns, " +
       "and the invariance above is comparing two degraded descriptions rather than two models.");
   }

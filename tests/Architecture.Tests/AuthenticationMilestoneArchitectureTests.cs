@@ -343,7 +343,7 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // of a name that promises more than it inspects is what this whole exercise has been about.
     var sourceFiles = FilesUnderSrc();
     Assert.True(sourceFiles.Length >= 400,
-      $"only {sourceFiles.Length} files were scanned; the walk has collapsed and the ban below " +
+      $"scanned file count: {sourceFiles.Length}; the walk has collapsed and the ban below " +
       "would pass over an empty set.");
 
     // ⚠ A POSITIVE CONTROL ON THE WIDENING ITSELF, because "now it reads config too" is a claim about the
@@ -372,7 +372,7 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // unspecified collection was unmet, in a test whose subject is symmetric signing.
     Assert.True(
       sourceFiles.Any(path => path.EndsWith("appsettings.json", StringComparison.Ordinal)),
-      $"the walk returned {sourceFiles.Length} files under src but no `appsettings.json`. The population " +
+      $"file count under src: {sourceFiles.Length}, and no `appsettings.json` among them. The population " +
       "has narrowed — most likely the search pattern reverted from `*` to `*.cs` — so this guard is no " +
       "longer reading configuration, which is where a JWT algorithm actually lives. The floor above " +
       "cannot see this: the `.cs` tree alone clears 400 comfortably.");
@@ -575,7 +575,8 @@ public sealed class AuthenticationMilestoneArchitectureTests
 
       var matches = files.Where(path => path.EndsWith(file, StringComparison.Ordinal)).ToArray();
       Assert.True(matches.Length == 1,
-        $"the exemption for {file} matches {matches.Length} files under src, not one. It neutralises " +
+        $"the exemption for {file} resolved to a match count of {matches.Length} under src; exactly one is "
+        + "required. It neutralises " +
         "text in every one of them, so a symmetric construct in any file sharing that name is " +
         "pre-approved by an entry written about a different file.");
 

@@ -139,7 +139,7 @@ public sealed class OpenRowDispositionGuardTests
 
     Assert.True(
       packages.Length >= 16,
-      $"docs/17-features/ holds {packages.Length} package directories; SIXTEEN were measured 2026-09-07. " +
+      $"package-directory count under docs/17-features/: {packages.Length}; SIXTEEN measured 2026-09-07. " +
       "A package directory has been REMOVED or MOVED OUT of docs/17-features/, and every disposition " +
       "check in this file is now reading a corpus that silently excludes it.\n" +
       "  ⚠ A RENAME IN PLACE WOULD NOT HAVE FIRED THIS — the count is unchanged by one — so if you are " +
@@ -153,8 +153,8 @@ public sealed class OpenRowDispositionGuardTests
     // catches a package that is still present but has stopped contributing files, and any larger loss.
     Assert.True(
       files.Length >= 150,
-      $"The walk found {files.Length} files under docs/17-features/; 173 were measured at T-099 across " +
-      $"{packages.Length} packages. The package count above is intact, so a package is present and " +
+      $"file count under docs/17-features/: {files.Length}; 173 measured at T-099, across a package count of " +
+      $"{packages.Length}. The package assertion above is intact, so a package is present and " +
       "contributing nothing — emptied, renamed away from `*.md`, or excluded by a changed pattern.");
   }
 

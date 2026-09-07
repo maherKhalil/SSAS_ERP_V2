@@ -383,7 +383,7 @@ public sealed class PayrollArchitectureTests
     // FIFTEEN measured 2026-09-07 — Attendance, GL and HR at five projects each. The floor sits below that
     // with room for a project to be retired, and far above the SIX the typed list reached.
     Assert.True(derived.Length >= 12,
-      $"only {derived.Length} non-Payroll module projects were derived from src/Modules; fifteen were " +
+      $"derived non-Payroll module project count: {derived.Length}, from src/Modules; fifteen were " +
       "measured at T-083. The layout walk has stopped matching, and the theory above is now inspecting a " +
       "subset of the modules while still reporting success for each one it does inspect.");
 

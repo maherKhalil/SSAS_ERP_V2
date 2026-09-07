@@ -562,7 +562,7 @@ public sealed class EmployeeArchitectureTests
     // FAILING TO LOAD OR BEING DROPPED FROM THE ARRAY — the smallest of the three contributes well over a
     // hundred types. It was 80, which is under a sixth of the real value and names no event at all.
     Assert.True(types.Length >= 400,
-      $"only {types.Length} types were found across the three HR assemblies; 548 were measured at T-099, " +
+      $"type count across the three HR assemblies: {types.Length}; 548 measured at T-099, " +
       "so an assembly has failed to load or been dropped from the array above.");
 
     // ==================================================================================================
@@ -627,6 +627,23 @@ public sealed class EmployeeArchitectureTests
     // disappeared**, so the message said "the METHOD layer has collapsed" while the floor could only
     // notice the layer being annihilated. I wrote that floor in T-088, in the hour I was auditing other
     // guards for exactly this, which is the whole of what `documentation-is-diagnosis-not-prevention` says.
+    // ⚠⚠⚠ THE POPULATION'S SHAPE CHANGED, AND A COUNT FLOOR CANNOT SEE THAT (T-106).
+    //
+    // T-104 added `NonPublic`, so this population now contains a tier it did not contain when the floor was
+    // derived. ***THE NEW COLLAPSE IS SOMEBODY REMOVING `NonPublic` AGAIN*** — a one-word edit that returns
+    // the guard to public-only and takes 2,859 back to 2,482. **A floor of 1800 does not fire on that**,
+    // and neither would any floor sized for the layer-collapse this test was built for: the two events
+    // differ by 526 and 1,000-plus respectively.
+    //
+    // So the shape is asserted by shape, not by magnitude — the same lesson as the `tests` area in
+    // `ConfigurationInvarianceTests`: **a floor is a claim about SIZE and this failure is about KIND.**
+    Assert.True(
+      methods.Any(method => !method.IsPublic),
+      $"declared method count: {methods.Length}, and not one is non-public. `NonPublic` has been removed " +
+      "from the binding flags above, so this guard has silently returned to inspecting only what HR " +
+      "EXPOSES — and a private delete method deletes just as thoroughly. The count floor below cannot see " +
+      "this: dropping the non-public tier takes 2,859 to 2,333 — MEASURED, by planting exactly that edit — and 2,333 clears 1800 comfortably.");
+
     // ⚠ THE FLOOR DID NOT MOVE AND THE ACTUAL DID (T-104). 2482 public at T-099; 2859 after `NonPublic`
     // plus the compiler-generated filter. **1800 still discriminates the same collapse** — a refactor
     // moving declarations onto a base class, out from under `DeclaredOnly` — and the population grew by

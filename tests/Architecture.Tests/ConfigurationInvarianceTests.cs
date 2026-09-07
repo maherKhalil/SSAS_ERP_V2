@@ -92,12 +92,12 @@ public sealed class ConfigurationInvarianceTests
     // because the assertion was deliberately made to fail.
     Assert.True(
       sources.Any(path => path.EndsWith("PersistenceDbContext.cs", StringComparison.Ordinal)),
-      $"the walk returned {sources.Length} files but none from `src` — `PersistenceDbContext.cs` is " +
+      $"walked file count: {sources.Length}, and none from `src` — `PersistenceDbContext.cs` is " +
       "missing, so the production tree has left this population while the floor above stayed green.");
 
     Assert.True(
       sources.Any(path => path.EndsWith("ModelWalk.cs", StringComparison.Ordinal)),
-      $"the walk returned {sources.Length} files but none from `tests` — `ModelWalk.cs` is missing, so " +
+      $"walked file count: {sources.Length}, and none from `tests` — `ModelWalk.cs` is missing, so " +
       "the TEST tree has left this population. ⚠ The floor above cannot see this: `src` alone is over " +
       "1,100 files and clears 500 on its own, which is why this assertion exists rather than a tighter " +
       "number. Restore the area to the walk; do not lower the floor.");
@@ -159,7 +159,7 @@ public sealed class ConfigurationInvarianceTests
     var buildFiles = BuildFiles();
 
     Assert.True(buildFiles.Length >= 30,
-      $"only {buildFiles.Length} build files were walked; the enumeration has degraded and this guard is " +
+      $"build-file count: {buildFiles.Length}; the enumeration has degraded and this guard is " +
       "asserting nothing rather than passing. There are 33 project files alone.");
 
     // ⚠ THE POSITIVE CONTROL ON THE POPULATION, not just its size: the two repository-wide files are the
@@ -171,13 +171,13 @@ public sealed class ConfigurationInvarianceTests
     // than routine would have.**
     Assert.True(
       buildFiles.Any(path => path.EndsWith("Directory.Build.props", StringComparison.Ordinal)),
-      $"the walk returned {buildFiles.Length} build files but no `Directory.Build.props`. That is the one " +
+      $"build-file count: {buildFiles.Length}, and no `Directory.Build.props` among them. That is the one " +
       "file that can set a property for EVERY project at once, so a walk that misses it is blind to the " +
       "broadest possible per-configuration divergence while still looking healthy.");
 
     Assert.True(
       buildFiles.Any(path => path.EndsWith("Directory.Packages.props", StringComparison.Ordinal)),
-      $"the walk returned {buildFiles.Length} build files but no `Directory.Packages.props`. Central " +
+      $"build-file count: {buildFiles.Length}, and no `Directory.Packages.props` among them. Central " +
       "package management lives there, so a walk that misses it cannot see a package version conditioned " +
       "on the configuration.");
 

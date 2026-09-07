@@ -21,6 +21,11 @@ public sealed class EmployeeArchitectureTests
   private static readonly Assembly HrInfrastructureAssembly =
     typeof(SSAS.HR.Infrastructure.Persistence.HrTenantModelContributor).Assembly;
 
+  // ⚠ APPLICATION WAS MISSING FROM THE DELETE-SURFACE WALK UNTIL T-088, and it is the assembly where a
+  // delete would most naturally be written: `IEmployeeRepository` itself lives here, and so would a
+  // `DeleteEmployeeCommandHandler`. The walk read Domain and Infrastructure only.
+  private static readonly Assembly HrApplicationAssembly = typeof(IEmployeeRepository).Assembly;
+
   // ---- EMPLOYEE CARRIES ALL THREE OWNERSHIP DIMENSIONS, and is the first production entity to do so.
   [Fact]
   public void Employee_is_tenant_company_and_branch_owned()
@@ -449,25 +454,148 @@ public sealed class EmployeeArchitectureTests
     }
   }
 
-  // ---- NO PHYSICAL DELETE SURFACE ANYWHERE IN HR.
-  [Fact]
-  public void No_employee_delete_operation_is_exposed()
-  {
-    Assert.DoesNotContain(
-      typeof(IEmployeeRepository).GetMethods().Select(method => method.Name),
-      name => name.Contains("Delete", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains("Remove", StringComparison.OrdinalIgnoreCase));
+  // ==================================================================================================
+  // ⚠⚠⚠ THIS WAS ONE TEST CALLED `No_employee_delete_operation_is_exposed` AND IT CHECKED SPELLINGS (T-088)
+  // ==================================================================================================
+  //
+  // The name claimed a MECHANISM — no operation deletes an employee. The predicate was a VOCABULARY:
+  // `Contains("Delete")` over `IEmployeeRepository` alone, and an anchored `^Delete(Employee)?(Async)?$`
+  // over Domain and Infrastructure. **`SoftDeleteEmployeeAsync` and `DeleteEmployeeRecordAsync` were
+  // invisible to both** — not on that one interface, and not matching four literal spellings. The
+  // assembly walk also omitted `SSAS.HR.Application` entirely, which is where a delete handler would live.
+  //
+  // ⚠ ADDING `SoftDelete` TO THE REGEX WOULD HAVE BEEN THE SAME DEFECT ONE COMMIT LATER. A wider
+  // vocabulary is still a vocabulary. So the claim is split in two, and each half is named for what it
+  // actually inspects: one reads the MECHANISM and is name-independent, the other reads NAMES and says so.
+  //
+  // ⚠⚠ THE PRODUCT WAS SEARCHED BEFORE EITHER PREDICATE WAS TOUCHED (T-088), because a widened guard that
+  // reddens on real code is a finding and not a test edit. `Set<Employee>()` is used for `AddAsync` and
+  // `AsNoTracking` reads only; the sole EF removal anywhere in HR targets `DepartmentManager`; and
+  // `SoftDelete`, `IsDeleted`, `DeletedUtc`, `DeletedBy` and `MarkDeleted` appear NOWHERE under `src`.
+  // The old guard's green was a true green — this closes a hole, it does not close a breach.
+  //
+  // ⚠⚠⚠ REACH PROBE, BOTH COLOURS MEASURED RATHER THAN ARGUED. `SoftDeleteEmployeeAsync` was planted in
+  // `EmployeeRepository`, containing `context.Set<Employee>().Remove(employee)` — one needle for each half.
+  //
+  //   OLD PREDICATE, run verbatim against the plant  -> GREEN. Blind to both.
+  //   The two tests below                            -> RED. Both.
+  //
+  // The old body was re-run as a temporary fixture rather than reasoned about, because *the old guard would
+  // have missed this* is exactly the kind of claim that is easy to assert and easy to get wrong. It missed
+  // the NAME because `^Delete(Employee)?(Async)?$` is anchored, and it missed the CALL because a method body
+  // is invisible to a reflection walk over method names. The exact-list failure names the offender:
+  // `Actual: ["DepartmentManager (DepartmentRepository.cs)", "Employee (EmployeeRepository.cs)"]`.
 
-    var deleteSurface = HrDomainAssembly.GetTypes().Concat(HrInfrastructureAssembly.GetTypes())
-      .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
-      .Where(method => method.DeclaringType?.Assembly == HrDomainAssembly ||
-        method.DeclaringType?.Assembly == HrInfrastructureAssembly)
-      .Select(method => method.Name)
-      .Where(name => Regex.IsMatch(name, @"^Delete(Employee)?(Async)?$", RegexOptions.CultureInvariant))
+  // ---- THE MECHANISM. WHAT HR ACTUALLY REMOVES FROM THE DATABASE, WHATEVER THE METHOD IS CALLED.
+  //
+  // An EXACT LIST rather than a ban, because the expected value is non-empty and therefore cannot be
+  // satisfied by a collapsed walk: a scan that matched nothing fails this, where a `DoesNotContain` would
+  // have passed. The one legitimate removal is named, so the test states the house's real position —
+  // *HR deletes exactly one kind of row* — instead of a prohibition with an invisible exception.
+  [Fact]
+  public void The_only_entity_hr_removes_from_the_database_is_the_department_manager()
+  {
+    var files = HrSourceFiles();
+
+    Assert.True(files.Length >= 40,
+      $"only {files.Length} HR source files were walked; the enumeration has degraded and the removal " +
+      "scan below would report an empty set for a reason that has nothing to do with the product.");
+
+    var removals = new List<string>();
+    var hardDeletes = new List<string>();
+
+    foreach (var file in files)
+    {
+      var text = WithoutComments(File.ReadAllText(file));
+      var name = Path.GetFileName(file);
+
+      foreach (Match match in Regex.Matches(text, @"Set<(\w+)>\(\)\s*\.\s*Remove(?:Range)?\s*\("))
+      {
+        removals.Add($"{match.Groups[1].Value} ({name})");
+      }
+
+      // `ExecuteDelete` and a manual `Deleted` state bypass the entity API entirely, so they would not
+      // appear as a `Set<T>().Remove` at all. Neither exists in HR today; if one arrives it is reported
+      // separately, because it is a different mechanism and not a different spelling.
+      foreach (var bypass in new[] { "ExecuteDelete", "EntityState.Deleted" })
+      {
+        if (text.Contains(bypass, StringComparison.Ordinal))
+        {
+          hardDeletes.Add($"{bypass} in {name}");
+        }
+      }
+    }
+
+    Assert.True(hardDeletes.Count == 0,
+      $"HR bypasses the entity API to delete rows: {string.Join("; ", hardDeletes)}. These are invisible " +
+      "to the removal list below because they never call Remove, and an employee deleted this way would " +
+      "leave no trace in the model. Route the deletion through the entity API or do not delete.");
+
+    Assert.Equal(
+      ["DepartmentManager (DepartmentRepository.cs)"],
+      removals.OrderBy(value => value, StringComparer.Ordinal).ToArray());
+  }
+
+  // ---- THE SURFACE. A NAME CHECK, AND THE NAME OF THIS TEST SAYS SO.
+  //
+  // ⚠ THIS CANNOT BE COMPLETE AND MUST NOT BE READ AS IF IT WERE. A method that removes an employee while
+  // being called `RetireAsync` or `Finalise` passes here, and only the mechanism test above would see it.
+  // What this adds is the case the mechanism test cannot reach: a delete EXPOSED on a contract but not yet
+  // implemented, which is latent capability rather than behaviour — the same declared-versus-emitted split
+  // recorded in `DeclaredDependencies`.
+  [Fact]
+  public void No_hr_type_exposes_a_method_named_for_deleting_an_employee()
+  {
+    var types = new[] { HrDomainAssembly, HrApplicationAssembly, HrInfrastructureAssembly }
+      .SelectMany(assembly => assembly.GetTypes())
       .ToArray();
 
-    Assert.Empty(deleteSurface);
+    // TWO LAYERS, TWO FLOORS (T-263): a healthy type list whose method walk collapses is a different
+    // failure and must say which one happened.
+    Assert.True(types.Length >= 80,
+      $"only {types.Length} types were found across the three HR assemblies; the walk has collapsed.");
+
+    var methods = types
+      .SelectMany(type => type.GetMethods(
+        BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+      .ToArray();
+
+    Assert.True(methods.Length >= 200,
+      $"{types.Length} HR types yielded only {methods.Length} declared methods; the METHOD layer has " +
+      "collapsed rather than the type layer, and the vocabulary below reads nothing.");
+
+    // The vocabulary is deliberately broad and deliberately UNANCHORED — the old `^Delete(Employee)?…$`
+    // could not see `SoftDeleteEmployeeAsync`. `Remove` is absent on purpose: it is the ordinary name for
+    // taking an item out of a collection and matched dozens of legitimate methods.
+    var named = methods
+      .Where(method => Regex.IsMatch(
+        method.Name, @"(Delete|Purge|Erase|Expunge|Destroy)", RegexOptions.CultureInvariant))
+      .Where(method => method.DeclaringType?.Name.Contains("Department", StringComparison.Ordinal) != true)
+      .Select(method => $"{method.DeclaringType?.Name}.{method.Name}")
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(named.Length == 0,
+      $"an HR type exposes a method named for deletion: {string.Join(", ", named)}. Employees are " +
+      "terminated, never deleted — see `TerminateEmployeeCommand`. If this method deletes something that " +
+      "is not an employee, the exclusion belongs here by name and with its reason.");
   }
+
+  // HR source, excluding build output. `git ls-files` cannot see `bin`/`obj` by construction, but this
+  // walk can, so the exclusion is explicit.
+  private static string[] HrSourceFiles() =>
+    [.. Directory
+      .EnumerateFiles(
+        Path.Combine(RepositoryRootDirectory(), "src", "Modules", "HR"), "*.cs", SearchOption.AllDirectories)
+      .Where(path =>
+        !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+        !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .OrderBy(path => path, StringComparer.Ordinal)];
+
+  // Line comments only; this repository writes its prose as `//` and the block form does not appear in
+  // `src`. Stripped because a comment naming `ExecuteDelete` would otherwise read as a call to it.
+  private static string WithoutComments(string text) =>
+    string.Join('\n', text.Split('\n').Select(line => line.TrimStart().StartsWith("//", StringComparison.Ordinal) ? string.Empty : line));
 
   // ================================================================================================
   // LAYERING

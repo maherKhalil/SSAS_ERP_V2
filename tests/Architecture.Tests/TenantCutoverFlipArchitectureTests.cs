@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using SSAS.Platform.Application.Abstractions.Persistence;
 using SSAS.Platform.Application.TenantStorage;
 using SSAS.Platform.Domain.TenantStorage;
@@ -68,12 +69,80 @@ public sealed class TenantCutoverFlipArchitectureTests
     Assert.DoesNotContain(typeof(ITenantRoutingCache), Dependencies(FlipService));
   }
 
+  // ---- ⚠⚠⚠ THE STATUS MACHINE, WHICH IS THE MECHANISM A FLIPBACK WOULD HAVE TO USE (T-088).
+  //
+  // The test below this one checks NAMES — six reversal verbs and three more — and a flipback called
+  // `SoftUnflip` or `Reopen2` passes it. **This one is name-independent**: whatever a new transition is
+  // called, it has to assign `Status`, and every assignment in the aggregate is listed here with the member
+  // that performs it. An added transition appears as a new pair and reddens regardless of its spelling.
+  //
+  // ⚠ AN EXACT LIST RATHER THAN A BAN, so the expected value is non-empty and a collapsed scan FAILS
+  // instead of passing. It also states the machine positively — these six transitions and no others — which
+  // is a thing a reader can check against ADR-020, where "no flipback exists" is only a thing they can hope.
+  //
+  // ⚠⚠ THE BOUND: this reads the aggregate's SOURCE, so a status written from outside the aggregate — a
+  // repository setting the property directly, a migration updating the column — is invisible here. That is
+  // a real hole and it is stated rather than closed; the property is `private set` today, which is what
+  // makes the aggregate the only writer, and this test does not assert that.
+  //
+  // ⚠⚠ REACH PROBE, BOTH COLOURS FROM ONE PLANT (T-088). `SoftUnwind(actor, occurredUtc)` was planted on the
+  // aggregate, setting `Status = Frozen` — a flipback whose name contains NONE of the nine verbs the test
+  // below matches.
+  //
+  //   The name-based test -> GREEN. It cannot see a reversal that is not spelled like one.
+  //   This test           -> RED, naming it: `"SoftUnwind -> Frozen"` appended to the transition list.
+  //
+  // Same plant, same run, opposite colours. That is the difference between checking the mechanism and
+  // checking the vocabulary, and it is why both tests exist rather than one wider regex.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void The_cutover_aggregate_assigns_status_on_exactly_these_six_transitions()
+  {
+    var source = File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Domain", "TenantStorage",
+      "TenantCutoverOperation.cs"));
+
+    var member = new Regex(
+      @"^\s*(?:public|private|internal|protected)[\w\s<>,\[\]\?\.]*?\s(\w+)\s*\(", RegexOptions.Multiline);
+    var assignment = new Regex(@"Status\s*=\s*TenantCutoverOperationStatus\.(\w+)\s*;");
+
+    var members = member.Matches(source).Cast<Match>().ToArray();
+    Assert.True(members.Length >= 8,
+      $"only {members.Length} member declarations were parsed out of the aggregate; the declaration " +
+      "pattern has stopped matching and every assignment below would be attributed to the wrong member.");
+
+    var transitions = assignment.Matches(source).Cast<Match>()
+      .Select(match =>
+      {
+        var owner = members.LastOrDefault(candidate => candidate.Index < match.Index);
+        return $"{owner?.Groups[1].Value ?? "<none>"} -> {match.Groups[1].Value}";
+      })
+      .ToArray();
+
+    Assert.Equal(
+      [
+        "TenantCutoverOperation -> Preparing",
+        "Freeze -> Frozen",
+        "ReleaseFreeze -> Abandoned",
+        "RecordRoutingFlip -> RoutingFlipped",
+        "Complete -> Completed",
+        "FailFreeze -> Abandoned"
+      ],
+      transitions);
+  }
+
   // ---- NO FLIPBACK EXISTS, at any layer. ADR-020 forbids a simple reversal once the target may have been
   // written to, and an API offering one would be reached for during exactly the incident where it is least
   // safe.
+  //
+  // ⚠ THIS IS A VOCABULARY AND THE NAME NOW SAYS SO (T-088). It was `No_automatic_flipback_path_exists`,
+  // which claims a mechanism; the predicate is nine literal verbs over two types. `SoftUnflip` passes it.
+  // The mechanism is asserted by `The_cutover_aggregate_assigns_status_on_exactly_these_six_transitions`
+  // above, and this remains because a reversal named for what it is should be caught at the CONTRACT — an
+  // interface method that is declared and not yet implemented assigns no status and is invisible there.
   [Fact]
   [Trait("Decision", "ADR-020")]
-  public void No_automatic_flipback_path_exists()
+  public void No_cutover_method_is_named_for_a_reversal()
   {
     foreach (var name in typeof(ITenantCutoverRoutingFlipService).GetMethods().Select(method => method.Name))
     {

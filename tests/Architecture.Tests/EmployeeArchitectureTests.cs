@@ -561,6 +561,23 @@ public sealed class EmployeeArchitectureTests
     // ⚠ 400, DERIVED (T-099). Actual 548, measured 2026-09-07. Discriminates ONE OF THE THREE ASSEMBLIES
     // FAILING TO LOAD OR BEING DROPPED FROM THE ARRAY — the smallest of the three contributes well over a
     // hundred types. It was 80, which is under a sixth of the real value and names no event at all.
+    // ⚠⚠⚠ EACH ASSEMBLY ASSERTED SEPARATELY, BECAUSE THE FLOOR CANNOT SEE ONE LEAVE THE ARRAY (T-107).
+    //
+    // MEASURED 2026-09-07: Domain 76 · Application 264 · Infrastructure 208. **Deleting one line from the
+    // array above takes 548 to 472, and a floor of 400 stays GREEN.** The tier most likely to go is the
+    // smallest — and the smallest is `SSAS.HR.Domain`, which is where `Employee` itself lives. A guard
+    // about employee deletion would then cover every assembly except the employee's own.
+    //
+    // This is the `size versus kind` shape: a whole tier leaves and the count stays above the floor.
+    foreach (var assembly in new[] { HrDomainAssembly, HrApplicationAssembly, HrInfrastructureAssembly })
+    {
+      Assert.True(
+        types.Any(type => type.Assembly == assembly),
+        $"type count across the HR assemblies: {types.Length}, and not one from " +
+        $"`{assembly.GetName().Name}`. It has been dropped from the array above — a one-line edit the " +
+        "count floor below cannot see, because the two remaining assemblies clear it on their own.");
+    }
+
     Assert.True(types.Length >= 400,
       $"type count across the three HR assemblies: {types.Length}; 548 measured at T-099, " +
       "so an assembly has failed to load or been dropped from the array above.");

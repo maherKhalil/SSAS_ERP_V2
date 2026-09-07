@@ -61,6 +61,33 @@
 // ⚠ SO: IF A LATER AUDIT REPORTS "166 GUARDS FAIL WITH A MESSAGE THAT NAMES NOTHING", THAT NUMBER IS
 // TRUE AND IT IS NOT A DEFECT COUNT. The defect count was nine and it is zero. Re-tier before re-fixing.
 //
+// ==================================================================================================
+// ⚠⚠ A SECOND TRUE NUMBER THAT IS NOT A DEFECT COUNT: COUNT-THEN-PLURAL AGREEMENT (T-105)
+// ==================================================================================================
+//
+// `$"only {n} files were walked"` renders *"only 1 files were walked"*. Real, and found the way it had to
+// be found: a plant drove a parse to ONE rather than to zero, and ***THE ZERO CASE READS CORRECTLY WHILE
+// THE ONE CASE DOES NOT.*** Reading cannot catch this class — the message had been read twice, including
+// while the file around it was being rewritten.
+//
+// **Measured 2026-09-07: ~75 sites in `tests/Architecture.Tests` interpolate a count immediately before a
+// bare plural noun.** THIRTEEN WERE REPHRASED and the rest were LEFT DELIBERATELY.
+//
+// ---- THE GROUNDS, BECAUSE AN EXEMPTION WITHOUT THEM READS AS AN OVERSIGHT.
+//
+// The thirteen were rewritten because they were being rewritten anyway — tonight's floors, walks and
+// controls. ⚠ **The remainder are not worth a sweep, and the comparison is the argument: an agreement slip
+// costs a reader ALMOST NOTHING.** *"1 properties" still names the offender, still names the collapse,
+// still says what to do.* Set that beside the defect this file exists for — a message naming NOTHING,
+// where a reader must open the file and re-run to learn which member matched. **They are not the same size
+// of problem, and a uniform sweep would treat them as one.**
+//
+// ⚠⚠ SO: A LATER AUDIT REPORTING "~75 MESSAGES DISAGREE IN NUMBER" HAS FOUND A TRUE NUMBER THAT IS NOT A
+// DEFECT COUNT. Same shape as the 156 below, same instruction: **re-tier before re-fixing.**
+//
+// THE FORM, if you are writing a new one: put the noun BEFORE the number as a label — `file count: {n}`,
+// `type count across the three assemblies: {n}`. It cannot disagree at any value.
+//
 // ---- ⚠ WHAT NOT TO CONVERT, AND ONE CORRECTION WORTH KEEPING.
 //
 // **`Assert.Empty(offenders)` PRINTS THE COLLECTION and therefore already names every offender.** It looks

@@ -224,6 +224,24 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // directories that exist — which reads exactly like "no violations".
     //
     // So the floor sits on the POST-FILTER count, which is the only quantity that can collapse quietly.
+    // ⚠⚠⚠ EACH ROOT ASSERTED SEPARATELY (T-107), AND THE COMMENT BELOW ADDRESSES A DIFFERENT FAILURE.
+    //
+    // It argues that a root cannot vanish silently because `EnumerateFiles` THROWS on a missing directory.
+    // True, and it answers a RENAME. **It does not answer someone deleting the `.Concat(...)` line**, which
+    // involves no missing directory at all and is what a person does when a walk gets slow or when one
+    // half looks redundant.
+    //
+    // MEASURED 2026-09-07: Domain 157 · Application 288, floor 50. ***EITHER ROOT CAN LEAVE AND THE FLOOR
+    // STAYS GREEN*** — this ban claims to cover two assemblies and would then cover one, silently.
+    foreach (var project in new[] { "SSAS.Platform.Domain", "SSAS.Platform.Application" })
+    {
+      Assert.True(
+        platformFiles.Any(path => path.Contains(project, StringComparison.Ordinal)),
+        $"scanned file count: {platformFiles.Length}, and not one from `{project}`. That root has left " +
+        "the walk — most likely a deleted `.Concat(...)` — and this ban now covers one assembly while its " +
+        "name claims two. The floor below cannot see it: either root clears 50 on its own.");
+    }
+
     Assert.True(platformFiles.Length >= 50,
       $"only {platformFiles.Length} Platform Domain/Application files were scanned; the filters have " +
       "stopped matching and 'no deferred types' below would mean nothing.");
@@ -451,6 +469,25 @@ public sealed class AuthenticationMilestoneArchitectureTests
 
     // `EnumerateFiles` throws on a missing directory, so a renamed project is an exception rather than a
     // silent empty walk. The floor guards the FILTER, which is the part that can collapse quietly.
+    // ⚠⚠⚠ EACH DIRECTORY ASSERTED SEPARATELY (T-107), AND THE ASYMMETRY IS THE WHOLE POINT.
+    //
+    // MEASURED 2026-09-07: `Application/Authentication` 64 files · `API/Authentication` **5**, floor 40.
+    //
+    //   drop the Application directory (64) -> 5   FLOOR CATCHES IT
+    //   drop the API directory (5)          -> 64  ***FLOOR STAYS GREEN***
+    //
+    // **The tier that leaves invisibly is the small one, and the small one is the TRANSPORT surface** — the
+    // half where an entitlement leak would actually be exposed to a caller. A five-file directory is also
+    // the one somebody folds into another project without thinking about this test.
+    foreach (var project in new[] { "SSAS.Platform.Application", "SSAS.Platform.API" })
+    {
+      Assert.True(
+        authenticationFiles.Any(path => path.Contains(project, StringComparison.Ordinal)),
+        $"scanned file count: {authenticationFiles.Length}, and not one from `{project}`. That directory " +
+        "has left the array above. ⚠ If it was the API half, the floor below could not have told you: it " +
+        "holds five files of sixty-nine and the remainder clears 40 on its own.");
+    }
+
     Assert.True(authenticationFiles.Length >= 40,
       $"only {authenticationFiles.Length} authentication files were scanned; the walk has stopped matching " +
       "and 'authentication cannot see entitlement' would mean nothing.");

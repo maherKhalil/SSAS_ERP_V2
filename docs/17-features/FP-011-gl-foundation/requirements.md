@@ -35,9 +35,14 @@ date: 2026-08-23
 > any existing rule"*.**
 >
 > ⚠⚠⚠ ***THIS PARAGRAPH ORIGINALLY IDENTIFIED THE FOURTEEN ROWS BY LINE NUMBER, AND THE COMMIT THAT WROTE IT
-> FALSIFIED IT.*** **The twenty-eight lines inserted above them moved every row: the cited `:87` is now a
-> blank quoted line and the cited `:255` is a Business Rule row. *The citations were wrong the moment they
-> were committed — nothing had to be edited afterwards.*** **And the paragraph was arguing, in that same
+> FALSIFIED IT.*** **Twenty-eight lines were inserted above those rows by the very commit that cited them,
+> moving every one. *The citations were wrong the moment they were committed — nothing had to be edited
+> afterwards.***
+>
+> ⚠⚠⚠ **AND THIS PARAGRAPH ORIGINALLY PROVED THE POINT BY NAMING WHAT TWO OF THE STALE NUMBERS POINTED AT
+> INSTEAD — WHICH WAS ITSELF A POSITIONAL CLAIM, AND IT ROTTED TWICE WITHIN THE HOUR AS LATER COMMITS MOVED
+> THE FILE AGAIN.** ***A SENTENCE EXPLAINING THAT LINE NUMBERS ROT CANNOT ITSELF CITE LINE NUMBERS. The
+> demonstration has to be described, never located.*** **And the paragraph was arguing, in that same
 > breath, that ***naming the ids makes this note mechanically checkable*** — while identifying its own
 > subjects by the least durable handle in the file.** ***CITE THE ID AND THE QUOTED TEXT. A LINE NUMBER
 > SURVIVES NOTHING, INCLUDING THE EDIT THAT WRITES IT.*** *(Corrected 2026-09-07.)*
@@ -67,8 +72,9 @@ date: 2026-08-23
 > | **`OD-GL-0009`** | **No inbound postings**; manual entry only | **stale** |
 >
 > ⚠⚠ **The sharpest instances, because they read as live reasoning rather than as stale labels:**
-> **`:111`** — *"`OD-GL-0007` — under option 2 this stops being structurally enforceable"* — **reasons from
-> an option that LOST; the ruling is option 3, two aggregates.** **`:87` and `:255`** — *"a multi-currency
+> **The `OD-GL-0007` row** — *"`OD-GL-0007` — under option 2 this stops being structurally enforceable"* —
+> **reasons from an option that LOST; the ruling is option 3, two aggregates.** **The two `OD-GL-0002` rows**
+> — *"a multi-currency
 > ledger has a trial balance per currency"* — **`OD-GL-0002` ruled SINGLE CURRENCY V1.**
 >
 > ⚠ **The three id-less rows are left exactly as they are. They cite no decision, so there is nothing to
@@ -109,7 +115,8 @@ date: 2026-08-23
 > no second copy for a reader to check it against.**
 >
 > ⚠ **`GL.md`'s flat, blank-line-separated shape is NOT a defect and must not be "improved" into a table.
-> `README.md:34` records the ruling verbatim — *"ratified into `GL.md`, `HR.md`'s flat shape — **precedent
+> [`README.md`](README.md)'s `OD-GL-0001` row records the ruling verbatim — *"ratified into `GL.md`,
+> `HR.md`'s flat shape — **precedent
 > over template**"*. The flatness IS the decision.**
 >
 > ## THE CATALOG GAP, AS IT WAS

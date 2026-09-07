@@ -285,17 +285,59 @@ public sealed class AuthenticationCsrfTests
   // fixture could never have reached.
   [Trait("Criterion", "AC-AUTH-0043")]
   // Shared with `AC-AUTH-0042`'s key-ring clause above: **one startup validation refuses TWO different
-  // missing deployment inputs**, and each criterion owns one of them. Cited on both rather than split,
-  // because the assertion is a single `Assert.Throws` and cannot distinguish which requirement fired.
-  // ⚠ That is a real limit of this fixture, not a note about its style: strengthen it by asserting the
-  // message, as `Production_key_provider_rejects_an_rsa_key_below_the_approved_size` does.
-  public void Production_transport_without_shared_rate_limit_and_data_protection_configuration_fails_startup()
+  // missing deployment inputs**, and each criterion owns one of them.
+  //
+  // ---- ⚠⚠⚠ STRENGTHENED (T-153), BECAUSE THIS FILE ASKED FOR IT.
+  //
+  // The comment here read: *"the assertion is a single `Assert.Throws` and cannot distinguish which
+  // requirement fired. ⚠ That is a real limit of this fixture, not a note about its style: strengthen it by
+  // asserting the message, as `Production_key_provider_rejects_an_rsa_key_below_the_approved_size` does."*
+  //
+  // ***`Validate` THROWS `InvalidOperationException` FROM FIVE SITES*** — duplicate origins, an unrecognised
+  // `ProxyMode`, TrustedProxy without proxies or networks, the rate-limit clause, and the Data-Protection
+  // clause. **So the TYPE alone is satisfied by any of the five, and a citation on two criteria was resting
+  // on an assertion that could not tell either of them from a typo in the origin list.**
+  //
+  // ⚠⚠ **TWO ARRANGEMENTS, NOT ONE MESSAGE.** Asserting a single message would have pinned one criterion and
+  // left the other cited-but-unasserted, which is worse than the ambiguity it replaced: **each clause now has
+  // an arrangement that is legal in every other respect, so only its own clause can have fired.** *The second
+  // supplies a conforming rate-limit secret precisely so the FIRST clause cannot be what refuses it.*
+  public void Production_transport_without_shared_rate_limit_configuration_fails_startup()
   {
     var services = new ServiceCollection();
 
-    Assert.Throws<InvalidOperationException>(() => services.AddHostAuthenticationTransport(
+    var failure = Assert.Throws<InvalidOperationException>(() => services.AddHostAuthenticationTransport(
       Configuration("Direct"), new TestHostEnvironment { EnvironmentName = Environments.Production }));
+
+    Assert.Equal(
+      "Production requires a rate-limit HMAC secret and declared upstream distributed enforcement.",
+      failure.Message);
   }
+
+  [Fact]
+  [Trait("Criterion", "AC-AUTH-0042")]
+  // `AC-AUTH-0042`'s key-ring clause, with the rate-limit clause SATISFIED so it cannot be the refuser.
+  // ⚠ The key-ring check tests the filesystem — `Directory.Exists` and `File.Exists` — so paths that do not
+  // exist are what this arrangement supplies, and no file is created: the refusal is the subject.
+  public void Production_transport_without_data_protection_material_fails_startup()
+  {
+    var services = new ServiceCollection();
+    var configuration = ProductionConfigurationWithRateLimitSatisfied();
+
+    var failure = Assert.Throws<InvalidOperationException>(() => services.AddHostAuthenticationTransport(
+      configuration, new TestHostEnvironment { EnvironmentName = Environments.Production }));
+
+    Assert.Equal("Production Data Protection key-ring and certificate material are required.", failure.Message);
+  }
+
+  private static IConfiguration ProductionConfigurationWithRateLimitSatisfied() =>
+    new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    {
+      ["AuthenticationTransport:AllowedOrigins:0"] = "https://app.example.test",
+      ["AuthenticationTransport:ProxyMode"] = "Direct",
+      ["AuthenticationTransport:RateLimitHmacSecret"] = new string('k', 32),
+      ["AuthenticationTransport:UpstreamDistributedRateLimitingEnforced"] = "true"
+    }).Build();
 
   [Theory]
   [InlineData("Direct", null, "127.0.0.1|http")]

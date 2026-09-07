@@ -19,7 +19,7 @@ EVEN WHERE THE ORIGINAL WAS MEASURED.** Provenance, so a reader can tell which k
 
 | figure | kind |
 |---|---|
-| **15 call sites across 5 files** | ⚠ **MEASURED TWICE, by two instruments with disjoint blind spots** — `git grep -c` (counts matching LINES, blind to two-per-line) and `grep -o` with comments stripped (blind to nothing here). *They agreed; neither author could see their own blind spot at the time, so the agreement was luckier than it looked.* |
+| **15 call sites across 5 files** | ⚠⚠ **MEASURED TWICE, AND THE SECOND MEASUREMENT PROVES LESS THAN IT LOOKS.** `git grep -c` counts matching LINES and is blind to two calls on one line; `grep -o` with comments stripped is not. They agreed — ***but no line in the corpus carries two calls, so the differing predicate COULD NOT HAVE DIFFERED HERE.*** **The blind spot had no occupant; the second instrument was never exercised.** *This is not luck, it is vacuity — `N-for-N means nothing if the falsifying shape was absent from the sample`, and it applies to a corroborating measurement exactly as it applies to a test.* |
 | **26 entity names** | **MEASURED** — literals counted in the file |
 | **1 · 3 · 11 · 11 · 12×9 · 13×3 = 173, over 16 packages** | **MEASURED** — `uniq -c` over the tracked listing; sums to the walk's own reported total |
 | **56 of 147** | ⚠⚠⚠ **NOT RE-DERIVABLE** — see the note at the number |

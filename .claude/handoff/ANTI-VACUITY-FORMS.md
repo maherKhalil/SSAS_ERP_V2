@@ -181,6 +181,34 @@ best-designed exemption in the suite had the un-run validator.* **A control fixt
 predicate with a constructed bad entry settles it; a plant into the real list does not, because it proves it
 once and ships nothing.**
 
+## ⚠⚠⚠ A message is part of the guard, and "it fired once" is a property of the STRING
+
+**Every form above eventually produces a failure message, and the message is the only part a stranger ever
+reads. Three things measured 2026-09-07 across the messages written that night:**
+
+⚠⚠⚠ ***"RENDERED" EXPIRES THE MOMENT THE TEXT IS REWRITTEN.*** Several messages watched firing that night
+were **not the messages left in the files** — the HR floors rendered with their old thresholds, the docs
+floor rendered before its rewrite, a population control rendered an hour before being replaced. **We had
+been reasoning *"that one fired earlier"* as if the property attached to the ASSERTION. It attaches to the
+STRING, and every rewrite resets it.** *So a session of rewrites ends with less verified message text than
+it started with, while feeling like the opposite.*
+
+⚠⚠ ***RENDERED IS NOT REVIEWED.*** One control's output was quoted in a report **as evidence the control
+worked — which it was** — and nobody noticed the text named nothing. **A message read while checking
+whether a control fired is being consumed as one bit.** *`control-must-consume-the-instrument` says an exit
+code has one bit and you must consume the error TEXT; here the text WAS consumed, as an exit code.* **Read
+it with the question *"would a stranger know what to do"*, or it has not been read.**
+
+⚠ ***THE NEWEST IDEA GETS THE LEAST REVIEW.*** Of the messages added that night, exactly three were silent
+forms — and **all three were the population controls invented that same session and praised in the reports
+that introduced them.** *Novelty suppressed review harder than routine would have.*
+
+**The checks, applied by reading, cost minutes:** does it print the OBSERVED value or the threshold · is it
+one of the forms that accepts no message (`Assert.Contains` / `DoesNotContain(collection, predicate)` /
+bare `True` / `NotEmpty`) · does it name the collapse or restate the condition. ⚠ **Reading is weaker than
+seeing it render and does not close that gap — it establishes only that nobody shipped a defect visible on
+the page.**
+
 ## How to choose
 
 | the assertion… | reach for |

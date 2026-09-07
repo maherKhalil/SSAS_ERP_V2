@@ -1,0 +1,183 @@
+# Four ways a guard proves it is not asserting nothing — and the separate question of whether its name is true
+
+**Derived 2026-09-07 from reading 20 of the 98 files in `tests/Architecture.Tests`. Every form below has a
+named exemplar in this repository that was read, not recalled. Nothing here is a proposal; all four were
+already in use before this was written.**
+
+---
+
+## ⚠⚠⚠ READ THIS FIRST, OR THE TABLE BELOW WILL MISLEAD YOU
+
+**A guard can fail in two independent ways and they are not the same question:**
+
+| | the question | what fails |
+|---|---|---|
+| **VACUITY** | does the assertion run over anything? | `Assert.Empty(x)` where `x` is empty for the wrong reason |
+| **NAME HONESTY** | does the predicate check what the name promises? | a correct assertion over a narrower thing than the name claims |
+
+***THE FIRST DISGUISES THE SECOND.*** Measured here: `EmployeeReadScopeArchitectureTests.No_global_query_filter_scopes_company_or_branch`
+carries **form 4, the strongest control found** — and still walks only the tenant context, so every
+`PlatformDbContext` filter is invisible to it. **A well-controlled guard reads as trustworthy, so nobody
+re-reads its name.**
+
+**Fixing one does not fix the other. `BranchTransfer` needed both**: widening fixed the population, renaming
+fixed the claim, and *widening without renaming makes the over-claim more dangerous, because the test now
+looks thorough.*
+
+---
+
+## The four forms
+
+### 1 — SOURCE FLOOR ⚠ THE WEAKEST, AND THE ONLY ONE A NAIVE SCAN RECOGNISES
+
+`Assert.NotEmpty(collection)` / `Count >= n` on the collection before the assertion.
+
+**Exemplar:** `ModelWalk.FlooredEntities` / `FlooredProperties`, used at 11 call sites across 3 files. The
+population and its floor are taken together and it **cannot be called without the floor being asserted**.
+
+⚠⚠ **ITS LIMIT IS STATED IN ITS OWN HEADER AND IT IS THE REASON THE OTHER THREE FORMS EXIST:**
+
+> *"These floors prove the MODEL was read. They cannot prove a PREDICATE still matches, because each ban
+> filters the same walk differently — `IsUnicode() == false` and `GetPrecision() != 19` share a root and
+> share nothing else. **A shared floor cannot discharge a per-predicate control, and there is no shared
+> helper here that pretends otherwise.**"*
+
+***SO: A SOURCE FLOOR SAYS NOTHING ONCE THE ASSERTION FILTERS.*** Measured — of 147 absence assertions
+"floored elsewhere in the file", **56 filter a population the floor asserted.**
+
+⚠ **ONE FLOOR PER LAYER, NEVER OVER A UNION** (T-263): a guard floored `fields.Concat(properties)` as one
+number, and breaking the field walk left the property walk clearing the floor by itself while a field-held
+offender went undetected.
+
+⚠ **NAME THE CALL SITE `Floored…`.** These were `Entities` and `Properties`, and the call site read as data
+access, so nothing there said an assertion had happened. *A comment is a note that must be SOUGHT; a name is
+a note that is READ.*
+
+### 2 — DISCRIMINATING COMPANION
+
+An assertion beside the ban, pinning a fact the ban's own machinery depends on.
+
+**Exemplar:** `AuthenticationMilestoneArchitectureTests` — `Assert.Equal(typeof(SensitiveActionToken), typeof(GeneratedActionToken).GetProperty("SensitiveToken")?.PropertyType)`
+directly after a reflection-driven `Assert.Empty`. If the reflection goes blind — a type renamed, a property
+gone — the companion reddens even though the ban still passes.
+
+⚠⚠ **THE COMPANION MUST SHARE THE FIRST DERIVATION'S CONSTRUCTION.** In `TenantStorageRegistryArchitectureTests`
+the companion was routed through the *existing* platform-model helper rather than a second construction,
+because ***a companion built from its own copy can drift into agreeing for the wrong reason.*** This is
+`control-must-share-the-instrument` applied to a companion rather than to a control.
+
+⚠ **IT ALSO APPLIES TO A POPULATION, NOT ONLY A PREDICATE** — and this is the newest member:
+`AuthenticationMilestoneArchitectureTests` asserts the file walk still reaches `appsettings.json`. When the
+walk was narrowed back to `*.cs` to measure a counterfactual, **that control failed FIRST, before the ban was
+reached.** *A narrowing is caught by name instead of by the ban silently passing.*
+
+### 3 — EXACT-LIST EQUALITY AGAINST A NON-EMPTY EXPECTED VALUE
+
+`Assert.Equal([...35 names...], derived)`.
+
+**Exemplars:** `CutoverManifestArchitectureTests` (35 entity names); `AuthenticationSessionArchitectureTests`
+(four approved bypass paths); `EmployeeArchitectureTests.The_only_entity_hr_removes_from_the_database_is_the_department_manager`
+(a list of one).
+
+***ANTI-VACUOUS BY CONSTRUCTION, AND STRONGER THAN A FLOOR: IT PINS MEMBERSHIP WHERE A FLOOR PINS
+CARDINALITY.*** A walk that finds nothing produces an empty array and the comparison fails. It reddens in
+**both** directions — a new member grows the set, **and a member that stops qualifying shrinks it**, which is
+the reverse bind an allow-list otherwise lacks.
+
+⚠ `AuthenticationSessionArchitectureTests`' own record says so in those words: *"An audit listed it as a text
+scan with neither a floor nor a plant. It turned out to need only the plant."*
+
+### 4 — COUNT PAST THE FILTER ⚠⚠ THE ONLY FORM THAT ANSWERS THE FILTERING PROBLEM
+
+`var examined = 0;` incremented **inside the loop, after the `continue`**, then asserted.
+
+**Exemplar:** `TenantBackupSchedulerArchitectureTests.Phase_c_adds_no_restore_retention_or_deletion_capability`.
+Its comment rejects a collection floor explicitly:
+
+> *"`SchedulerTypes()` is a hard-coded pair of `typeof()`s and cannot go empty, **so a floor there would prove
+> nothing** — but `DeclaredOnly` means a refactor that moved these methods onto a base class would leave the
+> inner loop with nothing to inspect, and every assertion above would hold trivially."*
+
+***THIS IS THE REMEDY FOR THE 56.*** A floor before the filter proves the source was non-empty; only a
+counter after the filter proves anything survived it. **It also survives a refactor that changes the
+collection's shape entirely, which a floor on the collection does not.**
+
+---
+
+## ⚠⚠ NOT A FORM — A VACUITY SHAPE THAT LOOKS LIKE A CONTROL
+
+**An invariance comparison between two derivations of the same thing.**
+
+`Assert.Equal(Describe(tenantA), Describe(tenantB))` — ***IF BOTH COME BACK EMPTY, BOTH DESCRIPTIONS ARE
+EMPTY AND EQUAL, AND THE TEST PASSES.*** Found in `TenantStorageRegistryArchitectureTests`; the plant that
+demonstrated it **was the defect itself** — making `Describe` a constant function left the equality green.
+
+⚠ **IT IS DANGEROUS BECAUSE IT WEARS THE COSTUME OF A TWO-SIDED ASSERTION**: two operands, both derived,
+neither hard-coded — the shape that is self-discriminating everywhere else. **It is the one member of that
+shape that is not.** *Invariance between two copies of the same breakage is satisfied by the breakage.*
+
+**Repair: keep the invariance, add form 2 (a companion proving the function CAN produce a difference) and a
+faithfulness assertion naming a member the output must contain.**
+
+---
+
+## ⚠⚠ An exemption is a guard too — and its scope decides which way it fails
+
+An allow-list is not one of the four forms; it is a hole cut in one, and it needs its own anti-vacuity
+control. **`an-exemption-must-assert-its-grounds`, with two measurements from this tree:**
+
+**SCOPE IT TO THE SMALLEST THING THAT IS ACTUALLY APPROVED.** `AuthenticationMilestoneArchitectureTests`
+exempts a **snippet**, not a file. *Exempting the file would pre-approve every symmetric construct anyone
+adds to it later.* ⚠⚠⚠ **AND THE SCOPING DECIDES THE FAILURE DIRECTION: because the entry must still match
+real code to neutralise it, a rotted entry stops neutralising and THE BAN REDDENS. This allow-list fails
+LOUD — the opposite of the usual allow-list hazard, and it falls straight out of scoping by snippet rather
+than by file.**
+
+**ASSERT THE ENTRY IS STILL TRUE.** An exemption whose text matches nothing neutralises nothing and is *an
+approval with no subject, which reads exactly like a real one.*
+
+⚠ **AND AN EMPTY ALLOW-LIST EXERCISES NOTHING.** `RouteConstraintArchitectureTests`'s validation test iterated
+an empty `Allowed` and **had never once run in its existence** — in a file whose exemption grounds are
+enforced by the tuple type, which is the strongest form here. *Quality suppresses verification: the
+best-designed exemption in the suite had the un-run validator.* **A control fixture calling the extracted
+predicate with a constructed bad entry settles it; a plant into the real list does not, because it proves it
+once and ships nothing.**
+
+## How to choose
+
+| the assertion… | reach for |
+|---|---|
+| enumerates a population and bans a property, no filter | **1**, floored per layer |
+| filters the population before asserting | **4** — a source floor is worthless here |
+| depends on reflection, a type name, or a config key | **2**, sharing the first derivation |
+| can state its expected result exactly | **3** — strongest available; prefer it |
+| compares two derivations for equality | ⚠ **not a control at all** — add 2 |
+
+---
+
+## ⚠⚠⚠ Three things this document cannot tell you
+
+1. ***THE FORM COUNT IS 4 AFTER 20 FILES, AND NOTHING IN THE INSTRUMENT CAN BOUND HOW MANY REMAIN.*** Three
+   forms were found in the first five files, chosen because they *looked* unprotected; the remaining fifteen
+   produced none. **The discriminator: forms 1, 2 and 4 all reappeared in that unenriched remainder, so the
+   sample kept its power to recognise a control and found no new kind.** That is the strongest available
+   evidence for closure and it is not proof.
+2. ***A CENSUS FOR THESE PRODUCES CANDIDATES, NEVER A COUNT.*** Widening the absence predicate moves the
+   population up; widening the control predicate moves the at-risk set down. Both were moved once and the
+   answer moved both ways. **On every file opened, the best control was one a five-form scanner could not
+   see** — 4 for 4, on an enriched sample, which is the right basis for that negative and the wrong one for a
+   rate.
+3. ***A PLANT IS FOR REACH; AN ASSERTION SHOULD CARRY ITS OWN DISCRIMINATION.*** Plant when the thing
+   unproven is the instrument's **own reach** — a copy of the walk run beside the guard is not the guard. Do
+   not plant when the discrimination could ship inside the assertion instead, because then you have paid for
+   evidence a file could have held permanently.
+
+---
+
+## Related rulings in the tree
+
+- `tests/Architecture.Tests/ModelWalk.cs` — form 1, and the header that refuses a universal helper
+- `tests/Architecture.Tests/AssertionMessageChoice.cs` — what a red must tell its reader, and why 156
+  remaining silent sites are **not** a defect count
+- `tests/Architecture.Tests/RouteConstraintArchitectureTests.cs` — an exemption whose grounds are enforced by
+  the type, plus an inverted guard that fires when its own diagnosis expires

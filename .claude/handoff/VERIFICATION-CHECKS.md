@@ -19,7 +19,7 @@ that of every guard in `tests/Architecture.Tests` for a night and never once of 
 | suite total | `.claude/handoff/test-baseline.txt` | `Architecture\|Debug\|724`, from the 15:30 green gate | yes — ⚠⚠ **and it read `691` for six hours while nobody looked** |
 | TRX freshness | `ls -la --time-style=+%H:%M:%S TestResults/gate/*.trx` | every timestamp AFTER the run began | ⚠ **the directory ACCUMULATES** — `Integration-Debug.trx` sat at `10:17` beside a `15:30` run |
 | revert of a MODIFYING plant | `git diff --numstat` | pure additions, `N 0`; a live plant shows a deletion | yes — ⚠ *on a tree with ordinary work in progress this shows real edits and says nothing; it is a check for the moment after a revert, not a general one* |
-| revert of an ADDING plant | `git status --porcelain` | the one baseline line and nothing else | yes — ⚠ **the diff-shape check above cannot see an addition; these two do not cover each other** |
+| revert of an ADDING plant | `git status --porcelain` | the one baseline line and nothing else | ⚠⚠⚠ **ONLY FOR A TRACKED PATH** — see below; the diff-shape check above cannot see an addition either, and these two do not cover each other |
 | when a row was last written | `git log -G "^<row prefix>" -- <file>` | the commits that CHANGED that row | yes |
 
 ⚠⚠⚠ **TWO OF THESE WERE WRONG WHEN FIRST WRITTEN, AND BOTH FAILED IN THE DIRECTION THAT LOOKS LIKE A PASS.**
@@ -35,6 +35,39 @@ repository's record — `Architecture|Release` last changed at `e7f29dd` on **20
 2026-08-31 — and the conclusion it supported (that the Release rows are stale) survives unharmed.**
 ***A FIGURE MEASURED CORRECTLY BY AN INSTRUMENT ANSWERING A DIFFERENT QUESTION — inside the very method
 proposed for detecting that.***
+
+---
+
+## ⚠⚠⚠ A FOURTH FAULT, AND IT DISABLES SEVEN OF THE NINE ROWS AT ONCE (2026-09-07)
+
+**Three faults were listed above as three faults. They were not independent.** ***SEVEN OF THE NINE CHECKS
+READ THE GIT INDEX*** — `status`, `diff`, `log`, `ls-files`. **That is not nine instruments; it is one anchor
+wearing seven faces**, and it is blind to exactly one thing: ***a file git was told to ignore.***
+
+**Measured today.** `FiscalPeriodStateWriterFenceTests` and `JournalPostingOrderTests` both walk
+`src/Modules/Finance/SSAS.GL.Application` with `SearchOption.AllDirectories` and no `bin`/`obj` exclusion:
+
+| instrument | population |
+|---|---|
+| `git ls-files … *.cs` | **14** |
+| `find … -name "*.cs"` | ***20*** |
+| the six extra | `obj/Debug/net8.0` and `obj/Release/net8.0` — `AssemblyInfo`, `GlobalUsings.g`, `.NETCoreApp,Version=v8.0.AssemblyAttributes` |
+
+⚠⚠⚠ **SO THE PLANT THAT PROVES THE FIX HAS TO BE WRITTEN INTO `obj/`, AND `git status --porcelain` REPORTS A
+CLEAN TREE WITH THAT PLANT STILL SITTING ON DISK.** The row above promised *"the one baseline line and
+nothing else"* as a pass condition; **for a gitignored path that same output is also what a plant left behind
+looks like.** *The exact defect this file was written to name — a pass indistinguishable from a not-run —
+present in this file's own table, in the row asserting it was absent.*
+
+⚠⚠ **AND THE REPAIR IS NOT A TENTH ROW.** Adding another `git` check adds nothing, because the blindness
+belongs to **the anchor, not the instrument**. ***MATCH THE CHECK'S SOURCE TO THE GUARD'S SOURCE:*** when the
+thing under test enumerates the FILESYSTEM, revert-check with `find` and a full path. When it enumerates the
+INDEX, `git status` is correct and complete.
+
+⚠ **A SECOND CONSEQUENCE, WITH NO REMEDY IN THIS FILE AT ALL:** a walk that sees build output has a
+population that depends on **which configurations have ever been built on the machine** — 20 here, 17 on a
+box that never built Release, 14 on a clean CI clone. ***A guard whose population is a function of build
+history is not deterministic across machines, and it is green on every one of them.***
 
 ---
 

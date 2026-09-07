@@ -69,6 +69,24 @@ are missing" and stops — leaves the owner with the same blank page and none of
 rather than merged because **a feature package does not get to write the product's requirement catalog by
 filing a pull request.**
 
+> ### ⚠⚠⚠ **THE PARAGRAPH ABOVE IS THE DRAFTING-TIME POSITION AND IS NO LONGER TRUE** *(corrected 2026-09-07)*
+>
+> **It says the `REQ-GL-` lines are `PROPOSED` and *"every one marked `OWNER-DECISION-REQUIRED`"*, in the
+> present tense. ***`OD-GL-0001` RULED, AND THE LINES WERE RATIFIED INTO `Requirement-Catalog/GL.md`. THE
+> MARKERS ARE DISCHARGED.*** Each of `REQ-GL-0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`, `0008`,
+> `0009`, `0010`, `0011`, `0012`, `0013` and `0014` is in the catalog — verified 2026-09-07.**
+>
+> ⚠⚠ ***THIS FILE ALREADY SAID SO, FORTY LINES ABOVE, IN THE SAME PRESENT TENSE:*** *"`REQ-GL-0001`–`0014`
+> ratified into `Requirement-Catalog/GL.md`"*, and again in the ruling table. **So the README asserted
+> ratification and marking simultaneously, unquoted, with no correction block — *a document contradicting
+> itself with no cross-file knowledge required.*** **The original is preserved because the reasoning it
+> carries — why the lines were drafted rather than omitted, and marked rather than merged — remains the
+> correct account of how they came to exist. ONLY THE TENSE HAS ROTTED.**
+>
+> ⚠ **The two summary rows above use ranges — *"`OD-GL-0001` … `OD-GL-0009`"* and *"`REQ-GL-0001`–`0014`"*.
+> ***A RANGE NAMES ITS ENDPOINTS AND IMPLIES ITS INTERIOR.*** They are safe only because both sets are
+> enumerated elsewhere: the nine rulings in the table below them, the fourteen requirements here.**
+
 ## What GL inherits
 
 GL is the first module built after the platform's foundations settled, so it inherits more than any package

@@ -196,7 +196,18 @@ All code shall comply with:
 
 > ### ⚠⚠⚠ **"CODING STANDARDS" IS REQUIRED BY THIRTEEN FILES AND HAS NEVER EXISTED** *(recorded 2026-09-06)*
 >
-> **`find docs -iname "*coding*"` returns nothing.** *Thirteen files nonetheless require conformance to it:*
+> **`find docs -iname "*coding*"` returns nothing.** *Thirteen files mention it.* ⚠⚠ **CORRECTED 2026-09-07
+> — this said thirteen files *require conformance*. *Mention is not requirement*, and reading all thirteen
+> splits them three ways:**
+> - ***THREE IMPOSE A REQUIREMENT*** — `Assumptions.md:162` (*"shall conform"*), `Constraints.md:250`
+>   (*"shall comply"*), `Non-Functional-Requirements.md:209` (*"all source code shall comply"*). **These are
+>   the numbered, auditable ones and they are the reason this matters at all.**
+> - ***THREE ARE `# Coding Standards` HEADINGS THAT **ARE** THE CONTENT*** — `Codex-System-Prompt.md:192`,
+>   `Sprint-00-Foundation.md:451`, and this file at `:186`.
+> - ***SEVEN ARE BARE `- Coding Standards` BULLETS IN RELATED-DOCUMENTS LISTS*** — the five ADRs,
+>   `START-HERE.md:191`, and `Architecture-Principles.md:3260`. **They carry no obligation and no subject.**
+>
+> *The full list of thirteen mentions:*
 > this file (twice, including the heading above) · `START-HERE.md:191` · `Assumptions.md` (`ASM-0401`) ·
 > `Requirement-Catalog/Constraints.md` · `Requirement-Catalog/Non-Functional-Requirements.md` ·
 > `11-AI/Codex-System-Prompt.md` · `13-Implementation/Sprint-00-Foundation.md` ·

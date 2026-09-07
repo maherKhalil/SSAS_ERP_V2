@@ -7,8 +7,19 @@
 > RESERVED and unwritten; `ADR/README.md:38`. Corrected 2026-09-07 — this said `ADR-001 … ADR-030`, which
 > implies thirty and hides the gap).*** **This file uses `ADR-0001`–`ADR-0003`, FOUR digits.**
 > ⚠ ***The two spaces cannot collide, which is exactly why nobody has noticed: a search for `ADR-001` never
-> returns `ADR-0001`.*** **This file has not been touched since the initial commit of 2026-07-29 and is cited
-> by nothing.**
+> returns `ADR-0001`.*** **This file has not been touched since the initial commit of 2026-07-29.**
+>
+> ⚠⚠⚠ **CORRECTED 2026-09-07 — THIS SAID THE FILE IS "CITED BY NOTHING", WHICH IS TRUE OF *THE FILE* AND
+> BADLY UNDER-SCOPED ABOUT *THE ID SPACE*.** ***`ADR-0001`–`ADR-0003` ARE CITED FROM SEVEN OTHER
+> DOCUMENTS:*** `Assumptions.md:66` · `Constraints.md:64` · `Non-Functional-Requirements.md:201` ·
+> `Requirement-Numbering.md:135`, `:137`, `:139` · `03-Architecture/Solution-Architecture.md:35` ·
+> **and `START-HERE.md:94`.**
+>
+> ***SO THE FRONT DOOR AND THE SOLUTION ARCHITECTURE BOTH POINT INTO THE SPACE "NOBODY SEARCHES".*** **That
+> makes the four-digit scheme a live cross-reference target rather than a dead stub — and it makes the
+> collision hazard worse, not better, because a reader arriving from `START-HERE.md` has been sent here on
+> purpose.** *The original framing was right about the registry and wrong about its reach; the rung it
+> missed was the id space rather than the file.*
 >
 > **Where each entry now lives — checked, not assumed:**
 >

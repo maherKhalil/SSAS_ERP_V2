@@ -3250,7 +3250,13 @@ depends on.
 
 - All accepted ADRs ⚠ *corrected 2026-09-06 — this read "(001-012)". **Re-derived 2026-09-07: 29 ADR
   documents, numbered `ADR-001`–`ADR-027`, `ADR-029`, `ADR-030`. 27 are `Accepted`; `ADR-019` and
-  `ADR-021` are `Proposed`.** ⚠ **`ADR-028` is deliberately RESERVED and unwritten — `ADR/README.md:38`:
+  `ADR-021` are `Proposed`.**
+  > ⚠⚠⚠ ***THE POPULATION IS "NUMBERED ADRs, EXCLUDING `ADR-Template.md`", AND SAYING SO PROTECTS THREE
+  > COUNTS AT ONCE.*** **The directory holds 30 files. A re-deriver who greps it raw gets *30 documents*,
+  > *3 Proposed* and *12 carrying `YYYY-MM-DD`* — and concludes all three figures here are wrong. **In every
+  > case the extra member is the template**, whose `status: Proposed` and `date: YYYY-MM-DD` are its job
+  > rather than a defect. *This is not a judgement call: it is the only defensible population, and until now
+  > it was unwritten in three places — one clause, not three fixes.*** ⚠ **`ADR-028` is deliberately RESERVED and unwritten — `ADR/README.md:38`:
   "Reserved — Binary Content Storage, Custody and Movement · Not written; V5's to author (`OD-DOC-009`)" —
   and twelve files reference it correctly on that basis. The first correction wrote the range as
   `ADR-001 … ADR-030`, which implies thirty documents and hides the reserved gap: **a range is not an
@@ -3853,7 +3859,15 @@ before neither was.**
 
 > ### ⚠⚠⚠ **THE VERSION RECORD ON THIS DOCUMENT IS NOT MERELY BEHIND — IT WAS NEVER STARTED**
 >
->     git rev-list --count HEAD -- docs/14-Engineering/Architecture-Principles.md   ***112***
+>     git rev-list --count HEAD -- docs/14-Engineering/Architecture-Principles.md
+>       ***112*** before the commit that wrote this note · ***113*** including it · ***119*** as at 2026-09-07
+>
+> ⚠⚠⚠ **CORRECTED 2026-09-07 — *THE SENTENCE BELOW COUNTS COMMITS TO THE FILE IT LIVES IN, SO WRITING IT
+> DOWN MADE IT FALSE.*** **112 was true of the tree the instant before the commit that recorded it, and of
+> no moment afterwards.** ***A COUNT OF EDITS, STORED IN THE THING IT COUNTS EDITS TO, IS FALSIFIED BY ITS
+> OWN STORAGE — the stronger sibling of "a percentage stored in prose bets nobody edits the denominator".***
+> **The figures now carry their boundary; the argument is unaffected, because it never rested on the exact
+> number.**
 >     first commit 2026-07-30 · last 2026-09-01 · 28 commits on 2026-09-01 alone
 >
 > ***112 COMMITS. THE TABLE SAYS `1.0`, `YYYY-MM-DD`, "INITIAL VERSION".*** **The frontmatter likewise still

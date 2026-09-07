@@ -50,6 +50,25 @@ date: 2026-08-23
 > inherits nothing; that is why fourteen rows sat under a clearance for a fortnight without being covered
 > by it.***
 >
+> ### ⚠⚠⚠ **AND THE STRONGER ARTEFACT: `GL.md` NOW EXISTS, SO THESE LINES ARE NOT MERELY RULED — THEY ARE RATIFIED**
+>
+> **[`docs/00-Master-Product-Specification/Requirement-Catalog/GL.md`](../../00-Master-Product-Specification/Requirement-Catalog/GL.md)
+> — 1,026 bytes, 96 lines, verified 2026-09-07 — carries ALL FOURTEEN `REQ-GL-` ids, `REQ-GL-0001` at `:15`,
+> grouped Journal Entry · Chart of Accounts · Fiscal Calendar · Read and Reporting, with an explicit
+> `Out of V1 Scope` block.** ***THE CATALOG GAP PRESERVED ABOVE UNDER "AS IT WAS" IS CLOSED. `OD-GL-0001`
+> WAS RULED AND EXECUTED.***
+>
+> ⚠⚠ **BUT READ WHAT WAS RATIFIED, BECAUSE THE SHAPE IS THE POINT: `GL.md` HOLDS IDENTIFIERS AND ONE-LINE
+> TITLES AND NOTHING ELSE — no acceptance criteria, no fields, no rules.** ***THE RATIFICATION MOVED THE
+> IDENTIFIERS INTO THE CATALOG. IT DID NOT MOVE THE DETAIL, WHICH STILL LIVES ONLY IN THIS FILE.***
+> **So this document remains the sole authority on what each `REQ-GL-` line actually requires — and that
+> makes a stale `Open` cell here MORE dangerous than it would be in a redundant document, not less: there is
+> no second copy for a reader to check it against.**
+>
+> ⚠ **`GL.md`'s flat, blank-line-separated shape is NOT a defect and must not be "improved" into a table.
+> `README.md:34` records the ruling verbatim — *"ratified into `GL.md`, `HR.md`'s flat shape — **precedent
+> over template**"*. The flatness IS the decision.**
+>
 > ## THE CATALOG GAP, AS IT WAS
 >
 > **`docs/00-Master-Product-Specification/Requirement-Catalog/` has no `GL.md`.** The domain is declared

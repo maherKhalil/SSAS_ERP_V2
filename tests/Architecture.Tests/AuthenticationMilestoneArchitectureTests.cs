@@ -215,6 +215,16 @@ public sealed class AuthenticationMilestoneArchitectureTests
       .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform", "SSAS.Platform.Domain"), "*.cs", SearchOption.AllDirectories)
       .Concat(Directory.EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform", "SSAS.Platform.Application"), "*.cs", SearchOption.AllDirectories))
       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      // ⚠⚠⚠ `bin`/`obj` EXCLUDED IN T-109. THIS WALK READ BUILD OUTPUT UNTIL NOW — six generated `.cs`
+      // files under `obj`, found because a tier size measured with `find` came back 157 while the walk
+      // reported 163 and the six-file gap had to be explained.
+      //
+      // The arithmetic was the smaller half. ***THE BAN BELOW READ THOSE FILES TOO.*** A generated
+      // `AssemblyInfo`, or anything a source generator emits, is code nobody wrote — and a guard that
+      // fires on it produces a red whose only honest remedy is deleting the guard. *Excluding build output
+      // protects this guard's credibility, not merely its counts.*
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
       .ToArray();
     // ⚠ THE ROOT CANNOT VANISH SILENTLY, BUT THE FILTER CAN — AND ONLY THE SECOND NEEDS GUARDING.
     //
@@ -231,8 +241,14 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // involves no missing directory at all and is what a person does when a walk gets slow or when one
     // half looks redundant.
     //
-    // MEASURED 2026-09-07: Domain 157 · Application 288, floor 50. ***EITHER ROOT CAN LEAVE AND THE FLOOR
-    // STAYS GREEN*** — this ban claims to cover two assemblies and would then cover one, silently.
+    // MEASURED 2026-09-07, AFTER the `bin`/`obj` exclusion below: Domain 157 · Application 288, total 445.
+    // ***EITHER ROOT CAN LEAVE AND A COUNT FLOOR STAYS GREEN*** — this ban claims to cover two assemblies
+    // and would then cover one, silently. Hence a shape assertion per root rather than a bigger number.
+    //
+    // ⚠⚠ THE FIGURES WERE 163/294 AN HOUR AGO AND THE DIFFERENCE IS ITS OWN LESSON. My `find` excluded
+    // `obj`; the walk did not, so the two disagreed by six and the disagreement is what exposed the walk
+    // reading build output at all. **A tier size measured by a different predicate than the walk uses is
+    // not that walk's tier size** — and here the mismatch was the only thing that surfaced the defect.
     foreach (var project in new[] { "SSAS.Platform.Domain", "SSAS.Platform.Application" })
     {
       Assert.True(
@@ -242,9 +258,19 @@ public sealed class AuthenticationMilestoneArchitectureTests
         "name claims two. The floor below cannot see it: either root clears 50 on its own.");
     }
 
-    Assert.True(platformFiles.Length >= 50,
-      $"only {platformFiles.Length} Platform Domain/Application files were scanned; the filters have " +
-      "stopped matching and 'no deferred types' below would mean nothing.");
+    // ⚠ RE-DERIVED IN T-109 AGAINST THE POST-EXCLUSION POPULATION, 445 (was 50 against a walk that
+    // included build output). **The number is not kept merely because it still passes** — a floor that
+    // survives a population change untouched is the round-number fault wearing a different hat.
+    //
+    // 300, and the collapse it now discriminates is the one the shape assertions above CANNOT see: both
+    // roots still represented, but a filter eating most of what they hold — widening the `Migrations`
+    // exclusion to a segment that appears everywhere, or a search pattern that matches a subset. The tier
+    // failure is covered by name above; this covers the partial one, and 300 fires on losing a third.
+    Assert.True(platformFiles.Length >= 300,
+      $"scanned Platform Domain/Application file count: {platformFiles.Length}; 445 measured at T-109. " +
+      "Both roots are still represented — the assertions above would have said otherwise — so a FILTER " +
+      "has eaten most of the walk rather than a root leaving it, and 'no deferred types' below is now " +
+      "asserted over a fraction of the population its name claims.");
 
     // ⚠⚠ `SymmetricSecurityKey` IS BANNED IN TWO PLACES IN THIS FILE AND THE OTHER ONE IS NOT A DUPLICATE.
     // This ban is about LAYERING: no token-framework type may appear in Platform Domain or Application,

@@ -596,7 +596,9 @@ public sealed class EmployeeArchitectureTests
     //
     //     methods, PUBLIC only        2482
     //     methods, WITH NonPublic     3516      (adds 1034)
-    //     of the added: COMPILER-GENERATED 842 · hand-written 192
+    //     of the added: COMPILER-GENERATED 842 · hand-written 192   <- both from the probe; 192 is 1034-842,
+    //                                                                a JOIN, and it is the figure that later
+    //                                                                produced the false 2,674 below
     //     deletion-vocabulary hits    0 public  ->  12 with NonPublic  ->  ***ALL TWELVE GENERATED***
     //
     // The twelve are `<>z__ReadOnlyArray`1.ICollection<T>.Remove`, `…IList.RemoveAt` and their siblings —
@@ -650,7 +652,8 @@ public sealed class EmployeeArchitectureTests
     // derived. ***THE NEW COLLAPSE IS SOMEBODY REMOVING `NonPublic` AGAIN*** — a one-word edit that returns
     // the guard to public-only and takes 2,859 back to 2,482. **A floor of 1800 does not fire on that**,
     // and neither would any floor sized for the layer-collapse this test was built for: the two events
-    // differ by 526 and 1,000-plus respectively.
+    // differ by roughly five hundred and by over a thousand respectively — 2,859 and 2,333 are the two
+    // MEASURED endpoints; the difference between them is a join and is not restated as a figure.
     //
     // So the shape is asserted by shape, not by magnitude — the same lesson as the `tests` area in
     // `ConfigurationInvarianceTests`: **a floor is a claim about SIZE and this failure is about KIND.**
@@ -659,7 +662,7 @@ public sealed class EmployeeArchitectureTests
       $"declared method count: {methods.Length}, and not one is non-public. `NonPublic` has been removed " +
       "from the binding flags above, so this guard has silently returned to inspecting only what HR " +
       "EXPOSES — and a private delete method deletes just as thoroughly. The count floor below cannot see " +
-      "this: dropping the non-public tier takes 2,859 to 2,333 — MEASURED, by planting exactly that edit — and 2,333 clears 1800 comfortably.");
+      "this: dropping the non-public tier takes the count from 2,859 to 2,333 — both MEASURED, by planting exactly that edit — and 2,333 clears 1800 comfortably.");
 
     // ⚠ THE FLOOR DID NOT MOVE AND THE ACTUAL DID (T-104). 2482 public at T-099; 2859 after `NonPublic`
     // plus the compiler-generated filter. **1800 still discriminates the same collapse** — a refactor

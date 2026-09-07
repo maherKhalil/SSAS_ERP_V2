@@ -565,11 +565,21 @@ public sealed class EmployeeArchitectureTests
       "collapsed rather than the type layer, and the vocabulary below reads nothing.");
 
     // The vocabulary is deliberately broad and deliberately UNANCHORED — the old `^Delete(Employee)?…$`
-    // could not see `SoftDeleteEmployeeAsync`. `Remove` is absent on purpose: it is the ordinary name for
-    // taking an item out of a collection and matched dozens of legitimate methods.
+    // could not see `SoftDeleteEmployeeAsync`.
+    //
+    // ⚠⚠⚠ `Remove` WAS EXCLUDED HERE ON A FALSE PREMISE AND IS NOW INCLUDED (T-089). The comment said it
+    // *"matched dozens of legitimate methods"*. **MEASURED: across all three HR assemblies, 2,482 declared
+    // public methods, and ZERO contain `Remove`.** The belief came from `RemoveManagerAsync`, which is
+    // `private static` in `SSAS.HR.API` — a different assembly AND a visibility this walk does not read.
+    //
+    // So the exclusion cost real coverage for nothing: `RemoveEmployeeAsync` passed this guard. The one
+    // genuine remove in HR is `DepartmentRepository.ClearManagerAsync`, which is not named for removal at
+    // all and never matched. ⚠ The `Department` exclusion below stays, because a future
+    // `RemoveManagerAsync` on the repository would be legitimate — an association, not an employee — and a
+    // vocabulary guard that fires on legitimate code gets deleted rather than fixed.
     var named = methods
       .Where(method => Regex.IsMatch(
-        method.Name, @"(Delete|Purge|Erase|Expunge|Destroy)", RegexOptions.CultureInvariant))
+        method.Name, @"(Delete|Purge|Erase|Expunge|Destroy|Remove)", RegexOptions.CultureInvariant))
       .Where(method => method.DeclaringType?.Name.Contains("Department", StringComparison.Ordinal) != true)
       .Select(method => $"{method.DeclaringType?.Name}.{method.Name}")
       .OrderBy(value => value, StringComparer.Ordinal)

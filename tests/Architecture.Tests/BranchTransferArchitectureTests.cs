@@ -1,6 +1,7 @@
 using SSAS.BuildingBlocks.Tenancy.Branches;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Infrastructure.Persistence;
@@ -341,14 +342,32 @@ public sealed class BranchTransferArchitectureTests
     using var platform = new PlatformDbContext(
       options, new ModelUser(), new ModelTenant(), new ModelClock());
 
-    Assert.DoesNotContain(
-      ModelWalk.FlooredEntities(platform.Model.GetEntityTypes(), "PlatformModel", 28),
-      entity => entity.ClrType.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase));
+    AssertNoTransferEntity(
+      ModelWalk.FlooredEntities(platform.Model.GetEntityTypes(), "PlatformModel", 28), "PlatformModel");
 
-    Assert.DoesNotContain(
+    AssertNoTransferEntity(
       ModelWalk.FlooredEntities(
         CutoverTenantModel.Source.Model.GetEntityTypes(), "ComposedTenantModel", 30),
-      entity => entity.ClrType.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase));
+      "ComposedTenantModel");
+  }
+
+  // ⚠ THE MODEL IS NAMED BECAUSE THIS RUNS TWICE (T-089). As two `DoesNotContain(collection, predicate)`
+  // calls, a failure said "Filter matched in collection" over a 36-entity walk and did not say WHICH entity
+  // matched or WHICH of the two models it came from — and the two models are the whole point of the test.
+  private static void AssertNoTransferEntity(IEnumerable<IEntityType> entities, string model)
+  {
+    var offenders = entities
+      .Where(entity => entity.ClrType.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase))
+      .Select(entity => entity.ClrType.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(offenders.Length == 0,
+      $"the {model} contains an entity named for a transfer: {string.Join(", ", offenders)}. The transfer " +
+      "channel is authorization, not storage. If this is genuinely new transfer persistence, note that " +
+      "this guard matches the NAIVE spelling only — the house convention for such a record is " +
+      "`…Assignment`, as `EmployeeBranchAssignment` shows — so the guard that caught you is narrower than " +
+      "the rule you have crossed.");
   }
 
   private static string ReadSource(params string[] segments)

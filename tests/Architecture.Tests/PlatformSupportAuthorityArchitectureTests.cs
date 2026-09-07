@@ -138,8 +138,23 @@ public sealed class PlatformSupportAuthorityArchitectureTests
     // endpoint route builder maps the internal platform session creator or refresh handler. Checked in the
     // PLATFORM API assembly, which is where such a transport would have to live.
     var platformApiAssembly = typeof(ProblemResults).Assembly;
-    Assert.DoesNotContain(platformApiAssembly.GetTypes(), type => type.Name.Contains("PlatformAuthorityEndpoint", StringComparison.Ordinal));
-    Assert.DoesNotContain(platformApiAssembly.GetTypes(), type => type.Name.Contains("PlatformSessionEndpoint", StringComparison.Ordinal));
+
+    // ⚠ ONE WALK, BOTH TERMS, AND THE OFFENDER NAMED (T-089). These were two `DoesNotContain(collection,
+    // predicate)` calls over the same assembly, each reporting only "Filter matched in collection" — over
+    // several hundred types, with no way to tell WHICH transport had appeared or which of the two terms
+    // matched.
+    var transports = platformApiAssembly.GetTypes()
+      .Where(type => type.Name.Contains("PlatformAuthorityEndpoint", StringComparison.Ordinal) ||
+        type.Name.Contains("PlatformSessionEndpoint", StringComparison.Ordinal))
+      .Select(type => type.FullName ?? type.Name)
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(transports.Length == 0,
+      $"a platform authentication or admin HTTP transport has appeared: {string.Join(", ", transports)}. " +
+      "Phase 4B/4D are deferred, so this is either that work landing — in which case this test and the " +
+      "deferral it records both need updating — or a transport reaching the Platform API assembly by a " +
+      "route nobody intended.");
   }
 
   [Fact]

@@ -1,8 +1,18 @@
 # Four ways a guard proves it is not asserting nothing — and the separate question of whether its name is true
 
-**Derived 2026-09-07 from reading 20 of the 98 files in `tests/Architecture.Tests`. Every form below has a
-named exemplar in this repository that was read, not recalled. Nothing here is a proposal; all four were
-already in use before this was written.**
+**Derived 2026-09-07 from reading 20 of the 99 `.cs` files in `tests/Architecture.Tests`. Nothing here is a
+proposal; all four forms were already in use before this was written.**
+
+⚠⚠⚠ **THE EXEMPLARS AND THE FIGURES HAVE DIFFERENT PROVENANCE AND THIS DOCUMENT WILL NOT LEND ONE THE
+CREDIBILITY OF THE OTHER.**
+
+- ***EVERY EXEMPLAR AND EVERY QUOTED HEADER BELOW WAS OPENED AND CHECKED*** — audited independently
+  2026-09-07 against commit `b83ad39`, including verifying that each named test actually uses the form
+  attributed to it rather than merely carrying the right name. **All survived; the two long quotes are
+  verbatim, not paraphrase.**
+- ⚠ ***THE FIGURES WERE FIRST WRITTEN FROM RECOLLECTION, AND THREE OF THEM WERE WRONG.*** The corrections
+  are below, at the numbers. **What was read held; what was recalled did not** — which is the argument for
+  the rule rather than an aside about this document.
 
 ---
 
@@ -32,8 +42,16 @@ looks thorough.*
 
 `Assert.NotEmpty(collection)` / `Count >= n` on the collection before the assertion.
 
-**Exemplar:** `ModelWalk.FlooredEntities` / `FlooredProperties`, used at 11 call sites across 3 files. The
+**Exemplar:** `ModelWalk.FlooredEntities` / `FlooredProperties`, used at **15 call sites across 5 files**
+(BranchTransfer 2 · ConstructorKeyedEntityModel 1 · Payroll 6 · TenantBackupScheduler 2 ·
+UnicodeStringPersistence 4 — counted 2026-09-07 over `git ls-files tests/Architecture.Tests/*.cs`, excluding
+the two definitions in `ModelWalk.cs` and one comment mention in `CriterionCommentGuardTests:205`). The
 population and its floor are taken together and it **cannot be called without the floor being asserted**.
+
+⚠⚠ ***THIS FIGURE WAS PUBLISHED WRONG TWICE, IN OPPOSITE DIRECTIONS, BEFORE ANYONE RAN THE COUNT*** — "8
+across 2", corrected to "11 across 3", both from unchecked greps whose corpus included build output. **The
+correction was as wrong as the original, and a confident correction is harder to doubt than a first claim.**
+*One `git grep -c` settled it; nobody spent it for three revisions.*
 
 ⚠⚠ **ITS LIMIT IS STATED IN ITS OWN HEADER AND IT IS THE REASON THE OTHER THREE FORMS EXIST:**
 
@@ -42,8 +60,16 @@ population and its floor are taken together and it **cannot be called without th
 > share nothing else. **A shared floor cannot discharge a per-predicate control, and there is no shared
 > helper here that pretends otherwise.**"*
 
-***SO: A SOURCE FLOOR SAYS NOTHING ONCE THE ASSERTION FILTERS.*** Measured — of 147 absence assertions
-"floored elsewhere in the file", **56 filter a population the floor asserted.**
+***SO: A SOURCE FLOOR SAYS NOTHING ONCE THE ASSERTION FILTERS.*** Measured 2026-09-07 — of 147 absence
+assertions "floored elsewhere in the file", **56 filter a population the floor asserted.**
+
+⚠⚠⚠ **THAT PAIR IS NOT RE-DERIVABLE AND THE DOCUMENT SAYS SO RATHER THAN LETTING IT LOOK CHECKABLE.** The
+census script that produced it used a **three-bucket** partition that no longer exists; re-run today the same
+corpus gives four buckets — 132 in-method / 143 shared-source / 61 no-shared-source / 22 unfloored — and
+"floored elsewhere" is **204**, not 147. ***THE BUCKET DEFINITIONS CHANGED BETWEEN THE RUNS, SO 204 DOES NOT
+REFUTE 147; IT ANSWERS A DIFFERENT QUESTION.*** **The 56/147 may well have been right when taken and no
+instrument that still exists can confirm or refute it.** *Treat the direction as established and the
+magnitude as unverified — and if you re-derive 204, that is not evidence this document is stale.*
 
 ⚠ **ONE FLOOR PER LAYER, NEVER OVER A UNION** (T-263): a guard floored `fields.Concat(properties)` as one
 number, and breaking the field walk left the property walk clearing the floor by itself while a field-held
@@ -73,11 +99,23 @@ reached.** *A narrowing is caught by name instead of by the ban silently passing
 
 ### 3 — EXACT-LIST EQUALITY AGAINST A NON-EMPTY EXPECTED VALUE
 
-`Assert.Equal([...35 names...], derived)`.
+`Assert.Equal([...names...], derived)`.
 
-**Exemplars:** `CutoverManifestArchitectureTests` (35 entity names); `AuthenticationSessionArchitectureTests`
-(four approved bypass paths); `EmployeeArchitectureTests.The_only_entity_hr_removes_from_the_database_is_the_department_manager`
+**Exemplars:** `CutoverManifestArchitectureTests` (**26** entity names, counted 2026-09-07);
+`AuthenticationSessionArchitectureTests` (four approved bypass paths);
+`EmployeeArchitectureTests.The_only_entity_hr_removes_from_the_database_is_the_department_manager`
 (a list of one).
+
+⚠⚠⚠ **THIS DOCUMENT FIRST SAID 35, AND IT DID NOT INVENT THE NUMBER — IT TRANSCRIBED IT FAITHFULLY FROM THE
+TEST'S OWN COMMENT, WHICH WAS WRONG.** That comment read *"the runtime model contains all THIRTY-FIVE"* while
+sitting **directly beneath a paragraph recording that this very comment once said "all TWENTY" above a list
+of thirty-five and was stale by fifteen (269).**
+
+***THE COMMENT DOCUMENTING THE STALE-COUNT DEFECT HAD ACQUIRED THE STALE-COUNT DEFECT*** — and a citation
+then carried it into a second document, where it read as independently measured. **Naming a failure mode
+confers no immunity on the paragraph that names it.** Corrected at source 2026-09-07; the test itself now
+says: *"the list is the assertion and the list is the only thing that has ever been right — if you need the
+number, count the literals."*
 
 ***ANTI-VACUOUS BY CONSTRUCTION, AND STRONGER THAN A FLOOR: IT PINS MEMBERSHIP WHERE A FLOOR PINS
 CARDINALITY.*** A walk that finds nothing produces an empty array and the comparison fails. It reddens in

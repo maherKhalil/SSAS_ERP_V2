@@ -20,7 +20,42 @@
       "Bash(gh pr merge:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr list:*)",
-      "Bash(gh pr checks:*)"
+      "Bash(gh pr checks:*)",
+      "Bash(GATE_SCOPE=TASK ./scripts/gate.sh)",
+      "Bash(cd /c/Users/User/Documents/SSAS_ERP_V2/SSAS_ERP_V2 *)",
+      "Read(//c/Users/User/Documents/SSAS_ERP_V2/SSAS_ERP_V2/**)",
+      "Edit(//c/Users/User/Documents/SSAS_ERP_V2/SSAS_ERP_V2/**)",
+      "Write(//c/Users/User/Documents/SSAS_ERP_V2/SSAS_ERP_V2/**)",
+      "Bash(grep -n 'counts.txt\\\\|GATE_BASELINE_FILE\\\\|gate_condition4\\\\|baseline: updated\\\\|cp .*baseline\\\\|> *\"$GATE_BASELINE_FILE\"' scripts/gate.sh)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(git check-ignore *)",
+      "Bash",
+      "PowerShell",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Skill",
+      "Task",
+      "WebFetch",
+      "WebSearch",
+      "Bash(python -c \"import json;d=json.load\\(open\\('.claude/settings.json'\\)\\);print\\('OK -',len\\(d['permissions']['allow']\\),'allow rules, defaultMode =',d['permissions'].get\\('defaultMode'\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(bash -n scripts/gate.sh)",
+      "Bash(git config *)",
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(echo:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
@@ -28,6 +63,7 @@
       "Bash(git push origin main:*)",
       "Bash(git reset --hard:*)",
       "Bash(gh pr merge --admin:*)"
-    ]
+    ],
+    "defaultMode": "bypassPermissions"
   }
 }

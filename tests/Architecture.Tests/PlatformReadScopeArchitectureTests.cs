@@ -147,6 +147,32 @@ public sealed class PlatformReadScopeArchitectureTests
   //
   // No remedy asserted: widening this walk to `AllDirectories` is a scope decision, and the hatch belongs
   // to the other file's author.
+  //
+  // ---- ⚠⚠⚠ 5. THE AXIS THE FOUR STATES ABOVE NEVER EXERCISED (T-096, 2026-09-07).
+  //
+  // ***THE MEASURED BOUND IS "ONE LEVEL DOWN". THE REAL BOUND IS "NOT IN THIS ONE DIRECTORY".***
+  //
+  // Every plant above was a file in `Queries/Reports/` — a SUBDIRECTORY — so all four states test the
+  // `TopDirectoryOnly` flag and nothing else. **A table of four measured states reads as a characterised
+  // bound, and this one is not characterised**: a Platform read service in a SIBLING directory, outside
+  // `Queries/` altogether, was never planted and is outside this population for a different reason.
+  //
+  // Two exist today:
+  //
+  //     src/Platform/SSAS.Platform.Infrastructure/Localization/TenantLocalizationAdministrationReadService.cs
+  //     src/Platform/SSAS.Platform.Infrastructure/Localization/TenantLocalizationOverrideReadService.cs
+  //
+  // ⚠ AS OF 2026-09-07 NEITHER CALLS `IgnoreQueryFilters` — measured, zero occurrences in each — so the
+  // rule is VACUOUSLY TRUE of them rather than satisfied by them. **The day either one does, nothing here
+  // checks it**, and nothing announces that day. The file paths are only the evidence; the finding is that
+  // the axis was never measured.
+  //
+  // ⚠⚠ AND THE BOUND ON THAT CHECK ITSELF. `IgnoreQueryFilters` is this rule's antecedent EXACTLY, so
+  // searching the token really does decide the antecedent — but **the MECHANISM of escaping a tenant
+  // filter is wider than that one name.** `FromSqlRaw`, raw ADO, or a second context reach the database by
+  // routes this rule does not describe at all; against those the rule stays true and stops being the
+  // relevant question. *Twenty-four files in this repository reach the database by other means; this is
+  // the same boundary, seen from the other side.*
   [Fact]
   public void Every_platform_read_service_that_ignores_query_filters_supplies_its_own_scope()
   {

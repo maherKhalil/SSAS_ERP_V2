@@ -246,7 +246,20 @@ public sealed class TenantBackupSchedulerArchitectureTests
     // list whose `GetProperties()` comes back empty is a different failure, and the `NextDue` ban below
     // would pass over it while the entity ban above still worked — so a single floor would report the
     // surviving layer and hide the collapsed one.
-    var entities = ModelWalk.FlooredEntities(PlatformModel().GetEntityTypes(), "PlatformModel", 28);
+    // ⚠⚠ FLOORS OWNED BY THIS GUARD (T-099). Both were bare literals — 28 and 350 — and the 28 was copied
+    // into `BranchTransferArchitectureTests` for consistency, which made one number the floor for two
+    // different walks. They are now separate constants that happen to be equal, which is a different
+    // artefact: either population can change without silently re-flooring the other.
+    //
+    // 32 entities, derived: actual 36, measured 2026-09-07. Discriminates the platform configuration scan
+    // stopping part-way. 380 properties, derived: actual 438 — and this layer floors SEPARATELY because a
+    // healthy entity list whose property walk collapsed is a different failure (T-263), which is exactly
+    // the event a column ban like the one below would otherwise pass straight through.
+    const int platformEntityFloor = 32;
+    const int platformPropertyFloor = 380;
+
+    var entities = ModelWalk.FlooredEntities(
+      PlatformModel().GetEntityTypes(), "PlatformModel", platformEntityFloor);
 
     foreach (var entity in entities)
     {
@@ -261,7 +274,7 @@ public sealed class TenantBackupSchedulerArchitectureTests
 
     // NextDueUtc is the specific denormalisation Phase C rejected: a second source of truth for due-ness
     // that can drift out of step with the timestamps it duplicates.
-    foreach (var (_, property) in ModelWalk.FlooredProperties(entities, "PlatformModel", 350))
+    foreach (var (_, property) in ModelWalk.FlooredProperties(entities, "PlatformModel", platformPropertyFloor))
     {
       Assert.DoesNotContain("NextDue", property.Name, StringComparison.OrdinalIgnoreCase);
     }

@@ -116,8 +116,20 @@ public sealed class CutoverManifestArchitectureTests
     // the number from the prose got it wrong, which is the same stale-count class as a task brief shipped
     // tonight with a four-short figure. The count is now stated as what the list actually holds.
     //
-    // The runtime model contains all THIRTY-FIVE — two from Platform, two from FP-006, three from FP-007
-    // Phase 1, four from FP-008 Phase 1, and the two run records from FP-009 Phase 1...
+    // ⚠⚠⚠ AND IT WENT STALE AGAIN. THIS SAID *THIRTY-FIVE* ABOVE A LIST OF TWENTY-SIX (T-095).
+    //
+    // The paragraph above announces that the count "is now stated as what the list actually holds", and by
+    // the time anyone checked, it did not. **The comment documenting the stale-count defect acquired the
+    // stale-count defect.** Naming a failure mode confers no immunity on the paragraph that names it.
+    //
+    // ⚠ AND IT PROPAGATED: this number was transcribed into `.claude/handoff/ANTI-VACUITY-FORMS.md` as
+    // "35 entity names", where it read as measured. A false figure in a comment is not inert — it is the
+    // source a later document cites.
+    //
+    // TWENTY-SIX, derived 2026-09-07 by counting the string literals in the assertion below and confirmed
+    // by the test passing, which makes `derived.Length` equal to the expected list's. ⚠ Do not re-state
+    // this from the prose; the list is the assertion and the list is the only thing that has ever been
+    // right. If you need the number, count the literals.
     var derived = composed.GetEntityTypes()
       .Where(entity => !entity.IsOwned())
       .Where(entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))

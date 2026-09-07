@@ -25,6 +25,19 @@ public sealed class BranchTransferArchitectureTests
   private static readonly string TenantDbContextSource = ReadSource(
     "Persistence", "TenantErp", "TenantDbContext.cs");
 
+  // ⚠⚠⚠ THIS GUARD'S OWN FLOOR, NOT A SHARED LITERAL (T-099). It was the bare number 28, copied out of
+  // `TenantBackupSchedulerArchitectureTests` in T-266 "for consistency" — **and consistency is not a
+  // derivation.** One literal serving two walks means the next person tightening it for one guard
+  // silently retightens the other, over a population they were not looking at.
+  //
+  // 32, derived: actual 36, measured 2026-09-07. The collapse it discriminates is THE PLATFORM
+  // CONFIGURATION SCAN STOPPING PART-WAY — `ApplyConfigurationsFromAssembly` with a namespace filter that
+  // no longer matches after a move, which drops a group of entities rather than all of them.
+  //
+  // ⚠ It may equal the scheduler's floor today. **Two floors that happen to be equal are a different
+  // artefact from one floor used twice**, and only the first survives one of the two populations changing.
+  private const int PlatformEntityFloor = 32;
+
   // ---- THE TRANSFER CONTRACTS ARE MODULE-FACING; THE WRITE AUTHORIZER IS NOT (FP-006C3-pre, ADR-012).
   //
   // A business module OPENS the channel, so IBranchTransferScope, its declaration and its errors live in
@@ -343,7 +356,7 @@ public sealed class BranchTransferArchitectureTests
       options, new ModelUser(), new ModelTenant(), new ModelClock());
 
     AssertNoTransferEntity(
-      ModelWalk.FlooredEntities(platform.Model.GetEntityTypes(), "PlatformModel", 28), "PlatformModel");
+      ModelWalk.FlooredEntities(platform.Model.GetEntityTypes(), "PlatformModel", PlatformEntityFloor), "PlatformModel");
 
     AssertNoTransferEntity(
       ModelWalk.FlooredEntities(

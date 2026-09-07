@@ -497,9 +497,15 @@ public sealed class EmployeeArchitectureTests
   {
     var files = HrSourceFiles();
 
-    Assert.True(files.Length >= 40,
-      $"only {files.Length} HR source files were walked; the enumeration has degraded and the removal " +
-      "scan below would report an empty set for a reason that has nothing to do with the product.");
+    // ⚠ 110, DERIVED FROM A NAMED COLLAPSE (T-099). Actual 134, measured 2026-09-07. The event this
+    // discriminates is A PROJECT OR FOLDER DROPPING OUT OF THE HR TREE — the smallest HR project is well
+    // over twenty files, so losing one lands below 110 while ordinary growth never approaches it.
+    // ⚠⚠ IT WAS 40, AND 40 WAS CHOSEN BECAUSE IT PASSED. Ninety-four files could have left this walk in
+    // silence, and the exact list below depends on the walk being whole rather than merely non-empty.
+    Assert.True(files.Length >= 110,
+      $"only {files.Length} HR source files were walked; 134 were measured at T-099, so a project or " +
+      "folder has left the tree. The removal list below would report an empty set for a reason that has " +
+      "nothing to do with the product.");
 
     var removals = new List<string>();
     var hardDeletes = new List<string>();
@@ -552,17 +558,31 @@ public sealed class EmployeeArchitectureTests
 
     // TWO LAYERS, TWO FLOORS (T-263): a healthy type list whose method walk collapses is a different
     // failure and must say which one happened.
-    Assert.True(types.Length >= 80,
-      $"only {types.Length} types were found across the three HR assemblies; the walk has collapsed.");
+    // ⚠ 400, DERIVED (T-099). Actual 548, measured 2026-09-07. Discriminates ONE OF THE THREE ASSEMBLIES
+    // FAILING TO LOAD OR BEING DROPPED FROM THE ARRAY — the smallest of the three contributes well over a
+    // hundred types. It was 80, which is under a sixth of the real value and names no event at all.
+    Assert.True(types.Length >= 400,
+      $"only {types.Length} types were found across the three HR assemblies; 548 were measured at T-099, " +
+      "so an assembly has failed to load or been dropped from the array above.");
 
     var methods = types
       .SelectMany(type => type.GetMethods(
         BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
       .ToArray();
 
-    Assert.True(methods.Length >= 200,
-      $"{types.Length} HR types yielded only {methods.Length} declared methods; the METHOD layer has " +
-      "collapsed rather than the type layer, and the vocabulary below reads nothing.");
+    // ⚠⚠⚠ 1800, DERIVED (T-099). Actual 2482, measured 2026-09-07. Discriminates the collapse this
+    // message has always CLAIMED to catch: a base-class, partial-class or interface-extraction refactor
+    // moving a whole layer of declarations out from under `DeclaredOnly`.
+    //
+    // ⚠ IT WAS 200 — AGAINST 2482. **It would not have fired until 92% of HR's declared methods had
+    // disappeared**, so the message said "the METHOD layer has collapsed" while the floor could only
+    // notice the layer being annihilated. I wrote that floor in T-088, in the hour I was auditing other
+    // guards for exactly this, which is the whole of what `documentation-is-diagnosis-not-prevention` says.
+    Assert.True(methods.Length >= 1800,
+      $"{types.Length} HR types yielded only {methods.Length} declared methods; 2482 were measured at " +
+      "T-099. The METHOD layer has collapsed rather than the type layer — most likely a refactor moving " +
+      "declarations onto a base class, where `DeclaredOnly` stops seeing them — and the vocabulary below " +
+      "now reads almost nothing.");
 
     // The vocabulary is deliberately broad and deliberately UNANCHORED — the old `^Delete(Employee)?…$`
     // could not see `SoftDeleteEmployeeAsync`.

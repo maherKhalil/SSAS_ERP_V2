@@ -75,10 +75,19 @@ public sealed class OpenRowDispositionGuardTests
   {
     var files = FeaturePackageFiles();
 
+    // ⚠ 150, DERIVED (T-099). Actual 173, measured 2026-09-07. The collapse this discriminates is ONE
+    // FEATURE-PACKAGE FOLDER GOING MISSING — a renamed subdirectory, a moved package — which is the
+    // failure that actually happens here. A vanished corpus was never the risk; a quietly smaller one is.
+    //
+    // ⚠⚠ IT WAS 100, AND THAT FLOOR PERMITTED SEVENTY-THREE PACKAGES TO LEAVE THE WALK IN SILENCE. Its
+    // own message said the floor existed "to make an empty walk RED rather than green" — which is exactly
+    // what it did and exactly why it was too weak: EMPTY was never the failure mode worth catching.
+    // ***A floor sized to the collapse you can imagine is not sized to the collapse that occurs.***
     Assert.True(
-      files.Length >= 100,
-      $"The walk found {files.Length} files under docs/17-features/. A guard that reads nothing passes " +
-      "everything, so this floor exists to make an empty walk RED rather than green.");
+      files.Length >= 150,
+      $"The walk found {files.Length} files under docs/17-features/; 173 were measured at T-099. A folder " +
+      "has left the walk — renamed, moved, or excluded by a changed pattern — and every disposition check " +
+      "in this file is now silently reading a smaller corpus than it reports on.");
   }
 
   // ---- THE BOUNDARY ASSERTION. This replaces an allow-list that would have been vacuous.

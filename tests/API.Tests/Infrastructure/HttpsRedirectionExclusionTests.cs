@@ -38,6 +38,7 @@ namespace SSAS.API.Tests.Infrastructure;
 // **This proves the redirect and the exemption under a configured HTTPS port. It says nothing about what a
 // real deployment does** — that depends on the load balancer, on `ConfigureTrustedForwarding`, and on the
 // port the host is actually given. *Two of those are outside this process.*
+[Collection(HostIntegrationTestGroup.Name)]
 public sealed class HttpsRedirectionExclusionTests
 {
   // A real route, not a fabricated one: `/api/platform/auth/login` exists (`AuthenticationEndpointRouteBuilderExtensions:21`).

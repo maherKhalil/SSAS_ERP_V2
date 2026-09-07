@@ -1,4 +1,37 @@
 // ==================================================================================================
+// ⚠⚠⚠ THE RULE. APPLY IT WHEN YOU WRITE THE ASSERTION; EVERYTHING BELOW IS ONLY THE EVIDENCE FOR IT.
+// ==================================================================================================
+//
+//   ***IF THE COLLECTION IS ANYTHING BUT A LITERAL OR A SINGLE TYPE'S MEMBERS, USE `Assert.Empty` OR
+//   `Assert.True` WITH THE OFFENDER INTERPOLATED — NEVER `Contains` / `DoesNotContain` WITH A PREDICATE.***
+//
+//   ***IF YOU CANNOT SEE THE WHOLE COLLECTION IN THE TEN LINES ABOVE THE CALL, IT IS TIER 1.***
+//
+// That second line is the operative half. It needs no census, no tiering script and no list of sites: it is
+// answerable by looking up from the line you are typing.
+//
+// ---- ⚠⚠⚠ WHY A HABIT AND NOT A SWEEP — AND THIS IS MEASURED, NOT ARGUED.
+//
+// Three censuses were built for this, on 2026-09-07. Each finished, reported that tier 1 was retired, and
+// was wrong:
+//
+//     instrument 1  `DoesNotContain` at the call site        ->  9 sites,  "zero remain"
+//     instrument 2  + `Contains` (equally silent, proven)    -> 14 MORE,   "zero remain"
+//     instrument 3  + walks bound to a local first           -> 10 MORE,   "zero remain"
+//                                                    TOTAL:  ***33, AND ALL THREE ERRORS UNDER-REPORTED.***
+//
+// ***THAT IS NOT THREE MISTAKES. IT IS ONE PROPERTY: A CENSUS BUILT FROM THE SHAPES YOU HAVE ALREADY SEEN
+// CANNOT COUNT THE SHAPE YOU HAVE NOT.*** ⚠ So the inference is NOT "write a fourth instrument". **The
+// number was never the deliverable.** A fourth would find a fourth batch and produce a fourth figure
+// indistinguishable from the first three — and the marginal remaining site is now in the tail, while the
+// rule above prevents new ones at zero cost.
+//
+// ⚠⚠ AND THE ONE BLIND SPOT THAT IS KNOWN AND UNFIXED: an assertion over a local bound to a walk is
+// invisible to any call-site matcher, because the walk is not at the call site. Resolving it needs the
+// method body, which is a different tool. **`sharedApiTypes` was caught only because its NAME happened to
+// contain a substring the matcher looked for.** *Stated so nobody reads the cleanup as complete.*
+//
+// ==================================================================================================
 // WHEN A SILENT ASSERTION MESSAGE IS WORTH CONVERTING, AND WHEN IT IS NOT (T-082, T-087, T-089)
 // ==================================================================================================
 //

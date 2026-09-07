@@ -165,8 +165,21 @@ public sealed class ConfigurationInvarianceTests
     // ⚠ THE POSITIVE CONTROL ON THE POPULATION, not just its size: the two repository-wide files are the
     // ones that would set a constant for EVERY project at once, and a walk that found 30 `.csproj` while
     // silently missing these would look entirely healthy.
-    Assert.Contains(buildFiles, path => path.EndsWith("Directory.Build.props", StringComparison.Ordinal));
-    Assert.Contains(buildFiles, path => path.EndsWith("Directory.Packages.props", StringComparison.Ordinal));
+    // ⚠ GROUNDED (T-102). These were `Assert.Contains(buildFiles, path => …)` — silent over a 154-file
+    // walk. All three population controls written tonight used that form, in the same session as the
+    // ruling against it: **they were the newest idea in the room, and novelty suppressed review harder
+    // than routine would have.**
+    Assert.True(
+      buildFiles.Any(path => path.EndsWith("Directory.Build.props", StringComparison.Ordinal)),
+      $"the walk returned {buildFiles.Length} build files but no `Directory.Build.props`. That is the one " +
+      "file that can set a property for EVERY project at once, so a walk that misses it is blind to the " +
+      "broadest possible per-configuration divergence while still looking healthy.");
+
+    Assert.True(
+      buildFiles.Any(path => path.EndsWith("Directory.Packages.props", StringComparison.Ordinal)),
+      $"the walk returned {buildFiles.Length} build files but no `Directory.Packages.props`. Central " +
+      "package management lives there, so a walk that misses it cannot see a package version conditioned " +
+      "on the configuration.");
 
     // The matcher controls, each against the form it would really appear in.
     Assert.Matches(CustomSymbol, "    <DefineConstants>$(DefineConstants);TRACE_SQL</DefineConstants>");
@@ -221,6 +234,17 @@ public sealed class ConfigurationInvarianceTests
 
   // Every file kind that can carry an MSBuild instruction. `.sln` is included because solution
   // configurations map projects to Debug/Release and could exclude one from a configuration entirely.
+  //
+  // ⚠⚠ ONE OF THESE FOUR IS UNEXERCISED AND CANNOT BE EXERCISED TODAY (T-101). `git ls-files '*.targets'`
+  // returns ZERO — this repository contains no `.targets` file at all. So a quarter of the declared
+  // population has never been walked by anything, and the T-094 plant could not have reached it: it went
+  // into `Directory.Build.props`, which is a `*.props` match.
+  //
+  // ***A PATTERN LIST IS A CLAIM ABOUT COVERAGE, AND THIS ONE IS THREE-QUARTERS TESTED.*** The entry stays
+  // because a `.targets` file added tomorrow would carry exactly the same risk as a `.props` file does —
+  // it is excluded by ABSENCE, not by kind, so the first one added must be checked against this guard
+  // rather than assumed covered. **Do not add a `.targets` file to make this testable**; that manufactures
+  // a subject to satisfy an instrument, which is the wrong direction.
   private static readonly string[] BuildFilePatterns = ["*.csproj", "*.props", "*.targets", "*.sln"];
 
   private static string[] BuildFiles()

@@ -361,7 +361,21 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // FIRST, before the ban was reached — so the narrowing is caught by name rather than by the ban
     // silently passing. The ban's own old colour had to be measured with this control disabled, because
     // ordered checks hide all but the first.
-    Assert.Contains(sourceFiles, path => path.EndsWith("appsettings.json", StringComparison.Ordinal));
+    // ⚠⚠⚠ GROUNDED, AND THE HISTORY IS THE REASON (T-102). This was
+    // `Assert.Contains(sourceFiles, path => path.EndsWith("appsettings.json", …))` — a SILENT form over a
+    // 1,181-file walk. ***IT RENDERED DURING T-090'S PROBE AND I READ THE OUTPUT:***
+    //
+    //     Assert.Contains() Failure: Filter not matched in collection
+    //
+    // I reported that as proof the control worked — which it was — **and did not notice the message names
+    // nothing.** A reader arriving at that red learns only that some unspecified expectation over some
+    // unspecified collection was unmet, in a test whose subject is symmetric signing.
+    Assert.True(
+      sourceFiles.Any(path => path.EndsWith("appsettings.json", StringComparison.Ordinal)),
+      $"the walk returned {sourceFiles.Length} files under src but no `appsettings.json`. The population " +
+      "has narrowed — most likely the search pattern reverted from `*` to `*.cs` — so this guard is no " +
+      "longer reading configuration, which is where a JWT algorithm actually lives. The floor above " +
+      "cannot see this: the `.cs` tree alone clears 400 comfortably.");
 
     // The matcher control. Each alternative is asserted against the form it would really appear in.
     Assert.Matches(SymmetricSigning, "var key = new SymmetricSecurityKey(secret);");

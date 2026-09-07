@@ -303,6 +303,29 @@ and it also prints the population, which is the only way to know the matcher did
 ⚠⚠ ***THE GENERAL SHAPE: WHENEVER TWO ASSERTIONS IN ONE METHOD GUARD DIFFERENT FAILURES, ONE PLANT CANNOT
 COVER BOTH — and the one that runs FIRST is the one that never gets its own.***
 
+***MEASURED 2026-09-07 — THIS IS NOT A HANDFUL OF SITES, IT IS THE HOUSE ORDERING:*** **235 floor-shaped
+assertions across 161 methods. 3 stand alone and are self-proving. 43 sit after another assertion.**
+⚠⚠⚠ ***115 SIT FIRST, WITH ASSERTIONS BEHIND THEM — STRUCTURALLY UNPROVABLE BY ANY PLANT AIMED AT WHAT THEY
+PROTECT.*** **Exactly three floors in the whole suite have evidence of their own, and two of those were
+accidents of another purpose.**
+
+***SO THE ANSWER IS A CONVENTION, NOT 115 PLANTS — AND THE CONVENTION IS ALREADY IN THE CORPUS:***
+
+> ⚠⚠⚠ **A FLOOR BELONGS IN ITS OWN TEST, NOT AS THE FIRST ASSERTION OF THE TEST IT PROTECTS.**
+> *`OpenRowDispositionGuardTests` does this: `Every_feature_package_was_actually_read` is a separate `[Fact]`
+> beside the guard it floors. **A floor in its own method is reached by its own plant and shadowed by
+> nothing.***
+
+**And the reason the ordering is not a free choice: *the floor's plant is a DIFFERENT ARRANGEMENT from the
+assertion's.*** *The assertion's plant ADDS AN OFFENDER; the floor's must COLLAPSE THE POPULATION.* **Putting
+both in one method guarantees the one that gets written is not the floor's.** ⚠ *`ModelWalk`'s header already
+carries the sibling rule — "each layer gets its own floor, so that the layer that collapses is the layer that
+is named" — and this extends it from layers to methods.*
+
+⚠ **THE THIRD KIND OF EVIDENCE, BETTER THAN A PLANT WHERE IT EXISTS: A COLLAPSE OBSERVED IN THE WILD.**
+*`BranchTransfer`'s floor of 30 is sized because "a contributor-free model yields TWO, which is a regression
+that really happened."* **A number chosen against a real past failure needs no plant to justify it.**
+
 ## ⚠⚠ A "STICKY PIN" IS NOT A DETECTOR — IT GUARDS AGAINST THE TEST'S OWN MAINTAINER
 
 **A guard asserted an exact member set, then asserted four of those same members individually. The four are

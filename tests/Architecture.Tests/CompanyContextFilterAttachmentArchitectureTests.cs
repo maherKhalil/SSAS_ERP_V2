@@ -8,7 +8,7 @@ namespace SSAS.Architecture.Tests;
 //
 // ---- ⚠⚠⚠ WHY A SOURCE ASSERTION, WHEN A BEHAVIOURAL ONE EXISTS.
 //
-// `CompanyContextFilterTests` drives the establisher to failure through a real pipeline and asserts the
+// `GlCompanyContextFilterAttachmentTests` drives the establisher to failure through a real pipeline and asserts the
 // refusal. **That is the stronger claim where it reaches — and it only reaches where the filter is the ONLY
 // thing enforcing.** For HR's positions family it is not: removing that group's attachment left the whole
 // API suite green, because the handlers ALSO read `ICurrentCompany`, whose `CompanyId` is null exactly when
@@ -18,7 +18,7 @@ namespace SSAS.Architecture.Tests;
 // So the attachment is asserted where it is written, at the source. **The two instruments make two different
 // claims and neither replaces the other:**
 //
-//     CompanyContextFilterTests (GL row)   the filter RUNS and refuses          — one group, behavioural
+//     GlCompanyContextFilterAttachmentTests   the filter RUNS and refuses          — one group, behavioural
 //     this file                            the attachment is PRESENT            — every group, structural
 //
 // ---- ⚠⚠ THE POPULATION IS DERIVED FROM `MapGroup`, NOT LISTED.
@@ -56,7 +56,7 @@ namespace SSAS.Architecture.Tests;
 //
 // ***A SOURCE ASSERTION PROVES THE LINE IS PRESENT. IT DOES NOT PROVE THE FILTER RUNS***, that it runs
 // before anything that matters, or that it is not undone later in the chain. *The GL row in
-// `CompanyContextFilterTests` is the instrument for that, and it covers one group of seven.*
+// `GlCompanyContextFilterAttachmentTests` is the instrument for that, and it covers one group of seven.*
 public sealed class CompanyContextFilterAttachmentArchitectureTests
 {
   // The chain, not a line window. `PositionEndpointRouteBuilderExtensions` puts its attachment TEN lines

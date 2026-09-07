@@ -58,7 +58,7 @@ namespace SSAS.Architecture.Tests;
 //
 // ⚠ AN EXCLUSION BY REASON IS FINE; AN EXCLUSION BY THE PROPERTY UNDER TEST IS NOT -- AND THIS EXCLUSION
 // ASSERTS ITS OWN REASON. If somebody removes `.IsRowVersion()` from the period, the justification
-// collapses and `The_period_state_writer_is_serialised_by_a_concurrency_token_instead` goes red. An
+// collapses and `The_period_state_writer_is_serialised_by_a_token_and_the_exclusive_fence` goes red. An
 // exemption whose grounds nothing checks is an exemption that outlives them.
 //
 // ⚠ NOTE WHICH SIDE OF THE RACE IT IS ON: this handler is THE WRITER THAT CLOSES A PERIOD. It is the
@@ -69,7 +69,7 @@ public sealed class JournalPostingOrderTests
   private const string ApplicationRoot = "src/Modules/Finance/SSAS.GL.Application";
 
   // The one member excluded by reason rather than by predicate. See the header, and see
-  // The_period_state_writer_is_serialised_by_a_concurrency_token_instead, which asserts the reason.
+  // The_period_state_writer_is_serialised_by_a_token_and_the_exclusive_fence, which asserts the reason.
   private const string PeriodStateWriter = "SetFiscalPeriodStateCommandHandler";
 
   // The three that exist today. Named as a FLOOR, never as the population: a derivation that silently

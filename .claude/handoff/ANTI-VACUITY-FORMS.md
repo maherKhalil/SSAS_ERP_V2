@@ -1,7 +1,28 @@
 # Four ways a guard proves it is not asserting nothing — and the separate question of whether its name is true
 
-**Derived 2026-09-07 from reading 20 of the 99 `.cs` files in `tests/Architecture.Tests`. Nothing here is a
-proposal; all four forms were already in use before this was written.**
+**Derived 2026-09-07 from reading 20 of the 66 corpus-walking `.cs` files in `tests/Architecture.Tests`.
+Nothing here is a proposal; all four forms were already in use before this was written.**
+
+⚠⚠ **THE DENOMINATOR WAS FIRST WRITTEN AS `20 of 99` AND THAT UNDERSTATED THE COVERAGE BY HALF.** Only 66 of
+those 99 files walk a corpus at all; the other 33 **could not exhibit any of these forms under any
+circumstances.** ***A DENOMINATOR THAT INCLUDES MEMBERS INCAPABLE OF THE PROPERTY IS NOT CONSERVATIVE — IT IS
+WRONG, AND IT IS WRONG IN THE DIRECTION THAT LOOKS HUMBLE.*** *Measured: 30% of the population where the
+shape can exist, not 20% of a set the question does not apply to.*
+
+⚠⚠⚠ **AND THE SCOPE IS NOT THE REPOSITORY. `tests/Architecture.Tests` IS 724 TESTS OF 3,454.** Every sweep
+behind this file covered that one suite. **Corpus-walking files per suite, measured 2026-09-07:**
+
+    Architecture   66 of  99   ***67%***          HR            1 of 14    7.1%
+    API             9 of 103     8.7%             Attendance    0 of 12    ***0%***
+    Platform        4 of  88     4.5%             Payroll       0 of  8    ***0%***
+                                                  Finance       0 of  5    ***0%***
+
+***ARCHITECTURE IS AN ORDER OF MAGNITUDE ABOVE THE NEXT SUITE, AND THREE SUITES HAVE NO CORPUS WALK AND NO
+FLOOR AT ALL — the anti-vacuity question does not arise in them.*** ⚠ **But the FORMS are not an artefact of
+one suite's style: `Platform.Tests/CompanyDomainTests` uses form 3 and says so in its own words — *"the same
+shape of criterion, thirty lines of a sibling file away. This is not a new design; it is a solved one that
+had not travelled."*** *Every corpus walk in Platform was already controlled, by forms 2 and 3, before this
+file existed.*
 
 ⚠⚠⚠ **THE EXEMPLARS AND THE FIGURES HAVE DIFFERENT PROVENANCE AND THIS DOCUMENT WILL NOT LEND ONE THE
 CREDIBILITY OF THE OTHER.**

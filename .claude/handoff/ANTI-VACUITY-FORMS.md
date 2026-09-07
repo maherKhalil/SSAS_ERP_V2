@@ -14,6 +14,29 @@ CREDIBILITY OF THE OTHER.**
   are below, at the numbers. **What was read held; what was recalled did not** — which is the argument for
   the rule rather than an aside about this document.
 
+⚠⚠⚠ **EVERY FIGURE IN THIS FILE ARRIVED BY BEING RETYPED FROM SOMEWHERE ELSE, WHICH MAKES IT A *JOIN*
+EVEN WHERE THE ORIGINAL WAS MEASURED.** Provenance, so a reader can tell which kind of number each is:
+
+| figure | kind |
+|---|---|
+| **15 call sites across 5 files** | ⚠ **MEASURED TWICE, by two instruments with disjoint blind spots** — `git grep -c` (counts matching LINES, blind to two-per-line) and `grep -o` with comments stripped (blind to nothing here). *They agreed; neither author could see their own blind spot at the time, so the agreement was luckier than it looked.* |
+| **26 entity names** | **MEASURED** — literals counted in the file |
+| **1 · 3 · 11 · 11 · 12×9 · 13×3 = 173, over 16 packages** | **MEASURED** — `uniq -c` over the tracked listing; sums to the walk's own reported total |
+| **56 of 147** | ⚠⚠⚠ **NOT RE-DERIVABLE** — see the note at the number |
+| **20 of 99 files read** | ⚠ **JOINED** — a running tally kept across a session, never recounted against a list of what was actually opened |
+| **4 forms after 4 files, then 4 after 20** | ⚠ **JOINED** — a tally, not a measurement, and the claim it supports is about the *absence* of a fifth form |
+| **4 for 4** *(best control invisible to the scanner)* | ⚠ **JOINED, AND AN ENRICHED SAMPLE** — four files chosen *because they looked unprotected*. Sound as a negative, worthless as a rate. |
+
+***THE FOURTH JOIN SHAPE, FOUND 2026-09-07 AND THE SUBTLEST: A FIGURE MEASURED WITH A DIFFERENT PREDICATE
+THAN THE INSTRUMENT IT DESCRIBES IS A JOIN, WITH NO ARITHMETIC INVOLVED AT ALL.*** Two file counts were
+taken by an outside command excluding `obj` while the walk they described excluded only `Migrations` — a
+six-file disagreement. ⚠ **And it is the one that paid: that disagreement is the only reason anyone
+discovered the walk was reading its own build output.** *A joined figure was the detector.*
+
+⚠⚠ **Measured 3-for-3 that night: every false number was a join across two predicates; every directly
+measured number was right.** *Three is a small sample, and the rule it licenses is **label it or
+re-measure it**, not "joins are wrong."*
+
 ---
 
 ## ⚠⚠⚠ READ THIS FIRST, OR THE TABLE BELOW WILL MISLEAD YOU

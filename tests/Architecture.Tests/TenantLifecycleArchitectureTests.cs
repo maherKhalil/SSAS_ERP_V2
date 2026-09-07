@@ -589,8 +589,36 @@ public sealed class TenantLifecycleArchitectureTests
     Assert.Contains("TR_Tenants_PreventDelete", source, StringComparison.Ordinal);
   }
 
+  // ---- ⚠⚠⚠ BUILD OUTPUT, EXCLUDED IN T-192 — AND UNTIL T-192 IT WAS NOT (measured).
+  //
+  // `src/Platform` contains every Platform project, and each project's `obj/` and `bin/` are BENEATH it,
+  // so `AllDirectories` walked straight into them. ***MEASURED 2026-09-07: 786 files, of which 756 are
+  // real sources — 30 GENERATED FILES in the population.***
+  //
+  // ---- ⚠⚠⚠ THE TRIGGER, NAMED, BECAUSE IT IS A SIDE EFFECT FOR WHOEVER PULLS IT.
+  //
+  // The consumer above bans `SSAS.Platform.Application.Tenants` inside `SSAS.Platform.API` files, and
+  // **generated files under that project satisfy the path predicate** — `obj/Debug/net8.0/` sits under
+  // `…{sep}SSAS.Platform.API{sep}…`. Today `SSAS.Platform.API.GlobalUsings.g.cs` holds only the seven
+  // `System` namespaces, so the ban was latent rather than firing.
+  //
+  // ***ADD `<Using Include="SSAS.Platform.Application.Tenants" />` TO THE API `.csproj` — the kind of edit
+  // someone makes while TIDYING USINGS — AND MSBUILD WRITES THAT EXACT STRING INTO `GlobalUsings.g.cs`,
+  // REDDENING A TENANT-BOUNDARY GUARD FOR A REASON THAT HAS NOTHING TO DO WITH THE RULE.*** *Nobody making
+  // that edit would connect it to this test, which is the only condition under which naming a trigger pays.*
+  //
+  // ⚠⚠ DEMONSTRATED RATHER THAN ARGUED (T-192). A generated-looking file carrying that token, planted under
+  // `SSAS.Platform.API/obj/Debug/net8.0/`, reddened the guard at :568. **The message was
+  // `Assert.Empty() Failure: Collection was not empty` with the collection TRUNCATED mid-path** — so the
+  // false red did not even name its offender. *That is the cost this filter buys off.*
+  //
+  // ⚠ The floor at :566 is `Assert.NotEmpty(files)` and CANNOT see any of this: 786 and 756 both pass it.
+  //
+  // The clause is COPIED from `DepartmentReadScopeArchitectureTests` rather than retyped.
   private static IEnumerable<string> PlatformSourceFiles() => Directory
-    .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform"), "*.cs", SearchOption.AllDirectories);
+    .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src", "Platform"), "*.cs", SearchOption.AllDirectories)
+    .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+      !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
 
   private static string FindRepositoryRoot()
   {

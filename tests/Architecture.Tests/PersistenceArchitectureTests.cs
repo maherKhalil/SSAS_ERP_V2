@@ -550,8 +550,32 @@ public sealed class PersistenceArchitectureTests
     return false;
   }
 
+  // ---- ⚠⚠⚠ BUILD OUTPUT, EXCLUDED IN T-192 — AND UNTIL T-192 IT WAS NOT (measured).
+  //
+  // This walks the REPOSITORY ROOT with `AllDirectories` and filters to `src` AFTERWARDS, so every
+  // `src/**/obj/**/*.cs` matched the predicate and entered the population. ***MEASURED 2026-09-07: 1,333
+  // files reached the predicate, 1,133 of which are real sources — 200 GENERATED FILES.***
+  //
+  // ⚠⚠ THE DIRECTION MATTERS AND IS NOT "A MISSED VIOLATION". All three consumers are `Assert.Empty`
+  // BANS, so build output in the population can only produce a FALSE RED — a failure naming a path
+  // nobody wrote. **Demonstrated, not argued (T-192):** a generated-looking file planted under
+  // `SSAS.Platform.API/obj/Debug/net8.0/` declaring `IRepository<T>` reddened
+  // `Production_does_not_define_a_generic_repository`, and *the message was
+  // `Assert.Empty() Failure: Collection was not empty` with the path TRUNCATED before it became
+  // legible.* **A maintainer would have had no way to tell the offender was generated code.**
+  //
+  // ⚠ Note the pre-existing `src` test already used this interpolated form — for `src`, not for
+  // `bin`/`obj`, which is why a search for the house exclusion clause did not find this file.
+  //
+  // ⚠ REMAINS TRUE AND IS NOT FIXED HERE: the walk still traverses the whole repository — `.git`,
+  // `TestResults` and every test project — to keep the `src` filter as the single place scope is
+  // decided. That is a cost, not a correctness problem, and narrowing the root is a separate change.
+  //
+  // The clause is COPIED from `DepartmentReadScopeArchitectureTests` rather than retyped.
   private static IReadOnlyCollection<string> ProductionSourceFiles() => [.. Directory
     .EnumerateFiles(FindRepositoryRoot(), "*.cs", SearchOption.AllDirectories)
+    .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+      !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
     .Where(path => path.Contains($"{Path.DirectorySeparatorChar}src{Path.DirectorySeparatorChar}", StringComparison.Ordinal))];
 
   private static bool IsQueryable(Type type) =>

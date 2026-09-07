@@ -263,3 +263,30 @@
 //
 // ⚠ **The control that worked was the detector itself with ONE CONSTRAINT LOOSENED — not a hunt for a known
 // case.** *That tests the matcher rather than the corpus, and it is cheaper than either.*
+//
+// ---- ⚠⚠⚠ AND THE FAMILY THOSE NOTES BELONG TO: **AN INSTRUMENT'S FAILURE MODE IS A SHORTER ANSWER** (T-183).
+//
+// Three sweeps failed in one session and ***NOT ONE OF THEM RAISED AN ERROR — each returned a plausible
+// result that was shorter than the truth:***
+//
+//   `grep -P` aborted on this locale       → **ZERO** for five known-dead symbols: a perfect CONFIRMATION
+//   the shell ate nested double quotes     → **ZERO** for a symbol that was present: a perfect REFUTATION
+//   a probe died mid-print on `⚠`          → **ONE** hit then nothing: a PARTIAL result reading as complete
+//
+// ***THE THIRD IS THE ONE TO REMEMBER: THE CRASH WAS CAUSED BY THE WARNING SIGN THIS REPOSITORY USES FOR
+// EMPHASIS. Printing our own house style through the console's default code page killed the instrument***
+// — `UnicodeEncodeError: 'charmap' codec can't encode character '⚠'` — **after it had printed part of
+// its answer.** *Force `PYTHONIOENCODING=utf-8` on any probe that echoes text from this tree.*
+//
+// ⚠⚠ **THE GENERAL FORM OUTLIVES THE ENCODING: *A ZERO IS SUSPECT AND SO IS A SMALL NUMBER — ASK WHETHER
+// THE INSTRUMENT FINISHED.*** A positive control answers the first question and not the second; the second
+// needs the run's own exit status or a marker printed after the last row.
+//
+// ---- ⚠ AND A NOTE ON THIS FILE'S OWN SHAPE.
+//
+// **The four notes above — the census that counted one form, the matcher that required a generic argument,
+// the control that loosens one constraint, and this — are METHOD notes, not assertion-writing rules.** They
+// are the third subject in a file whose banner declares two. *T-160 recorded that a fourth entry would be
+// the trigger to give them their own home; this is the fourth.* **They are kept here anyway, together,
+// because scattering the fourth into an unrelated file is worse than a file with a third subject — and the
+// split is a decision for whoever owns the convention, not a side effect of adding a note.**

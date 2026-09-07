@@ -124,12 +124,49 @@ public sealed class TenantModelResidencyTests(HostWebApplicationFactory factory)
   // built with no configuration at all. Two Platform.Domain types ARE in this model deliberately, so
   // asserting their PRESENCE proves the model is populated and that `FindEntityType` distinguishes the two
   // cases on the very same assembly the absences are drawn from.
+  //
+  // ---- ⚠⚠⚠ AND `Branch` AND `Company` ALONE WERE THE WRONG WITNESSES (T-133). MEASURED, NOT SUSPECTED.
+  //
+  // **Both arrive from `TenantDbContext`'s own `ApplyConfigurationsFromAssembly` scan. NOTHING in the tenant
+  // model reaches them through a contributor** — so this control passed with **every module contributor
+  // unregistered**, reporting a model that had lost four modules as populated.
+  //
+  // It is not hypothetical. `services.AddSingleton<ITenantModelContributor, GlTenantModelContributor>()` was
+  // deleted from `SSAS.GL.Infrastructure` and the suites run: ***API 1004/1004, Architecture 725/725,
+  // Platform 1145/1145 — 2,874 tests, not one red, THIS CONTROL AMONG THEM.***
+  //
+  // ⚠⚠ ***A COMPANION MUST BE DRAWN FROM THE MECHANISM THE BAN DEPENDS ON, NOT MERELY FROM THE SAME
+  // OBJECT.*** The banned types and `Branch` are all "in the tenant model" — same object, two different
+  // routes in — and from outside the model those routes are indistinguishable. **This guard's population is
+  // at risk from the CONTRIBUTORS; its witnesses were drawn from the half that is not at risk.**
+  //
+  // ---- ⚠ WHAT THIS CONTROL DOES AND DOES NOT CLOSE.
+  //
+  // Four witnesses, one per contributing module, each reachable ONLY through its module's contributor. **A
+  // FIFTH module added and never registered is invisible here, by design** — a control is a witness, not a
+  // census, and making it one would put a frozen list of modules in a file whose subject is residency.
+  // ***THAT COMPLETENESS IS `HostComposedTenantModelTests`' JOB***, which compares the host-composed entity
+  // set against the verified one with no list at all. *The delegation is planted rather than asserted: the
+  // same GL deletion reddens that guard, naming all seven GL entities.*
+  //
+  // ⚠ It does not restate `TenantModelEntityCountArchitectureTests`' module theory either. That one checks a
+  // model the TEST composes; this checks the one the HOST resolves, and the GL deletion separates them.
   [Fact]
-  public void The_resolved_model_is_the_populated_one_and_two_platform_types_are_in_it_deliberately()
+  public void The_resolved_model_is_the_populated_one_and_every_contributing_module_reached_it()
   {
     var model = factory.Services.GetRequiredService<ITenantModelSource>().Model;
 
+    // The configuration-scan half: two Platform.Domain types that travel deliberately.
     Assert.NotNull(model.FindEntityType(typeof(Branch)));
     Assert.NotNull(model.FindEntityType(typeof(Company)));
+
+    // ---- THE CONTRIBUTOR HALF, WHICH IS THE HALF THE ABSENCES ABOVE ACTUALLY DEPEND ON.
+    //
+    // Each of these enters the model through exactly one module contributor and through nothing else, so an
+    // unregistered contributor removes its witness rather than leaving the model merely smaller.
+    Assert.NotNull(model.FindEntityType(typeof(SSAS.HR.Domain.Employees.Employee)));
+    Assert.NotNull(model.FindEntityType(typeof(SSAS.GL.Domain.Accounts.Account)));
+    Assert.NotNull(model.FindEntityType(typeof(SSAS.Payroll.Domain.Runs.PayrollRun)));
+    Assert.NotNull(model.FindEntityType(typeof(SSAS.Attendance.Domain.Records.AttendanceRecord)));
   }
 }

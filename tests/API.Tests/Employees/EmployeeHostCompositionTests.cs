@@ -266,6 +266,18 @@ public sealed class EmployeeHostCompositionTests
   // Runtime persistence, the migration tool and the cutover must all compose the same tenant model. They
   // reach it by different routes — DI for the first and third, an explicit list for the tool, which has no
   // container — so this asserts the routes agree rather than assuming they do.
+  //
+  // ---- ⚠⚠⚠ AND IT ASSERTS THAT AGREEMENT FOR **THIS FILE'S HR-ONLY CONTAINER**, NOT FOR THE HOST (T-132).
+  //
+  // The header above states the claim; **this test cannot deliver it, because `ProductionServices()`
+  // registers one module.** The exact-list-of-one below is right for what it builds and is silent about the
+  // product — *its list was frozen at a number that was never the Host's, so a module registered in
+  // `Program.cs` and absent here would never have shown up as a difference.*
+  //
+  // ***`HostComposedTenantModelTests` DELIVERS THE HEADER'S CLAIM*** by comparing the entity set the real
+  // Host composes against the set the model guards verify, in both directions and with no list. ⚠ **The
+  // delegation is planted, not asserted: deleting GL's contributor registration reddens that guard naming
+  // all seven GL entities, and leaves this test green.**
   [Fact]
   public void H10_The_registered_contributor_set_is_the_one_the_cutover_and_runtime_share()
   {
@@ -401,9 +413,23 @@ public sealed class EmployeeHostCompositionTests
         permission.Name, PlatformPermissionNames.AdministerTenant));
   }
 
-  // The Host's own composition, minus the HTTP pipeline. Connection strings point at a server that is never
-  // contacted: building and validating a graph resolves no DbContext, and these tests deliberately never
-  // execute a query.
+  // ---- ⚠⚠⚠ THIS IS NOT THE HOST'S COMPOSITION. IT IS **HR ONLY** (corrected T-132).
+  //
+  // This caption read *"The Host's own composition, minus the HTTP pipeline"* until 2026-09-07, and it named
+  // the wrong difference. **It registers `AddHrModule()` and `AddHrInfrastructure()` and no other module,
+  // while `Program.cs:59-84` registers HR, GL, Payroll AND Attendance.** *The HTTP pipeline is not the only
+  // thing missing; three of the four modules are.*
+  //
+  // ⚠⚠ **That mattered because a caption is what stops the next reader asking which composition this is** —
+  // and H10 below asserts an exact contributor list of ONE, which is CORRECT for what this builds and says
+  // nothing whatever about the Host. *A false comment held that door shut.*
+  //
+  // ⚠ HR-ONLY IS DELIBERATE AND STAYS. Widening it would change what every test in this file exercises.
+  // **The four-way agreement H10's header claims is asserted by `HostComposedTenantModelTests`, which
+  // compares the model the real Host composes against the model the guards verify — not by this.**
+  //
+  // Connection strings point at a server that is never contacted: building and validating a graph resolves
+  // no DbContext, and these tests deliberately never execute a query.
   private static ServiceProvider BuildProductionProvider() =>
     ProductionServices().BuildServiceProvider(new ServiceProviderOptions
     {

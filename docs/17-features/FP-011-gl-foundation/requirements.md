@@ -31,9 +31,29 @@ date: 2026-08-23
 > **Enumerated from the file rather than from reading — `:87 :99 :111 :123 :139 :151 :163 :175 :191 :203
 > :215 :231 :243 :255`. ELEVEN carry a decision id; THREE (`:99`, `:151`, `:163`) carry none.**
 > ***ALL ELEVEN NAME A DECISION THIS PACKAGE HAS ALREADY RULED AND RECORDED IN ITS OWN
-> [`README.md`](README.md) UNDER `## The nine rulings` (`:34`–`:43`) — a live, unquoted table covering
-> `OD-GL-0001` through `OD-GL-0009`.*** **So `README.md` is authoritative over every `| **Open** |` cell
-> below, and where the two disagree the README wins.**
+> [`README.md`](README.md) UNDER `## The nine rulings` (`:34`–`:43`), a live unquoted table.*** **So
+> `README.md` is authoritative over every cell in the tables below, and where the two disagree the README
+> wins.**
+>
+> ⚠⚠⚠ **THE NINE ARE ENUMERATED HERE RATHER THAN GIVEN AS A RANGE, DELIBERATELY. *A RANGE READS AS AN
+> ENUMERATION AND IS NOT ONE* — it cannot be checked by anything, and this note first said
+> *"`OD-GL-0001` through `OD-GL-0009`"*, which named two ids and implied nine.** ***A DISPOSITION THAT DOES
+> NOT NAME THE IDS IT DISPOSES OF IS THE EXACT DEFECT THIS PACKAGE ALREADY HAS ONCE: not one of the sixteen
+> `OWNER-DECISION-REQUIRED` markers names a decision, which is why the clearance above them was unverifiable
+> for a fortnight.*** **Naming them makes this note mechanically checkable — a reader or a guard can confirm
+> each ruling exists without interpreting prose.**
+>
+> | decision | ruled | so the cells below citing it are |
+> |---|---|---|
+> | **`OD-GL-0001`** | Requirement catalog — lines ratified into `GL.md`, `HR.md`'s flat shape | **stale** |
+> | **`OD-GL-0002`** | **Single currency V1**; `ADR-027` unchanged | **stale** |
+> | **`OD-GL-0003`** | **Tenant-level** chart of accounts | **stale** |
+> | **`OD-GL-0004`** | **Company-level** fiscal calendar | **stale** |
+> | **`OD-GL-0005`** | **No branch dimension in V1** | **stale** |
+> | **`OD-GL-0006`** | **Reversal journal carrying `ReversesJournalId`** | **stale** |
+> | **`OD-GL-0007`** | **Two aggregates** — `JournalDraft` / `JournalEntry` | **stale** |
+> | **`OD-GL-0008`** | **Year-end close out of V1**; period close only | **stale** |
+> | **`OD-GL-0009`** | **No inbound postings**; manual entry only | **stale** |
 >
 > ⚠⚠ **The sharpest instances, because they read as live reasoning rather than as stale labels:**
 > **`:111`** — *"`OD-GL-0007` — under option 2 this stops being structurally enforceable"* — **reasons from

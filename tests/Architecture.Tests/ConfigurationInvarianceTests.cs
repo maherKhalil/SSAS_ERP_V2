@@ -31,9 +31,40 @@ namespace SSAS.Architecture.Tests;
 // with no grounds, one level up.
 public sealed class ConfigurationInvarianceTests
 {
+  // ==================================================================================================
+  // ⚠⚠⚠ THIS WAS ONE TEST WITH A SEMANTIC NAME OVER A TWO-TOKEN PREDICATE (T-094)
+  // ==================================================================================================
+  //
+  // It was `No_source_file_compiles_differently_per_configuration` — a claim about the OUTCOME of a build.
+  // The predicate was `#if [!]DEBUG|RELEASE` plus a line-anchored `[Conditional(`, over `*.cs` only.
+  //
+  // ⚠ THE MECHANISM IS MSBUILD, NOT C#. A custom constant defined only in the Release property group and
+  // guarded by `#if TRACE_SQL`, or a `<Compile Remove Condition="'$(Configuration)'=='Release'">`, changes
+  // what compiles without a single matching token in any `.cs` file. **The population was missing the
+  // layer where the divergence is actually configured.**
+  //
+  // ---- ⚠⚠ AND THE TWO HALVES COMPOSE, WHICH IS WHY THIS IS NOT A WIDER VOCABULARY.
+  //
+  // `DEBUG` and `TRACE` are defined by the SDK for you, so a `.cs` guard must name them explicitly —
+  // there is no build file to catch. ***EVERY OTHER SYMBOL REQUIRES `DefineConstants`***, which is a build
+  // file concern and is caught below by MECHANISM rather than by spelling. So:
+  //
+  //   the C# test    catches the symbols that need no declaration  (DEBUG, RELEASE)
+  //   the build test catches the declaration of every other symbol (DefineConstants), and the
+  //                  configuration-conditioned item groups that need no symbol at all
+  //
+  // **Together they cover the mechanism; neither alone does, and widening either one's vocabulary would
+  // not have closed the gap** — `#if TRACE_SQL` is harmless precisely because the build test forbids
+  // anything that could define `TRACE_SQL`.
+  //
+  // ⚠ SEARCHED BEFORE WIDENING (T-094). Across every tracked `.csproj`, `.props`, `.targets` and `.sln`,
+  // there is NO `DefineConstants` and NO `Condition` referencing `$(Configuration)` anywhere. The only
+  // occurrence of `$(Configuration)` in the repository is a PATH — `SSAS.Integration.Tests.csproj:56`,
+  // `Value="…\bin\$(Configuration)\net8.0\…"` — which selects where a helper binary is looked up and
+  // changes nothing about what compiles. It is used as a discriminating control below.
   [Fact]
   [Trait("Decision", "DEC-L-008")]
-  public void No_source_file_compiles_differently_per_configuration()
+  public void No_source_file_carries_a_debug_or_release_preprocessor_branch()
   {
     var sources = ProductionAndTestSources().ToArray();
 
@@ -72,6 +103,111 @@ public sealed class ConfigurationInvarianceTests
       $"{string.Join(", ", offenders.Distinct().OrderBy(name => name, StringComparer.Ordinal))}. " +
       "A suite's Debug and Release totals may now legitimately differ, so any guard asserting they are " +
       "equal has just become wrong and must be changed rather than the baseline.");
+  }
+
+  // ---- THE MSBUILD LAYER, WHERE A PER-CONFIGURATION DIVERGENCE IS ACTUALLY CONFIGURED (T-094).
+  //
+  // ⚠ ITS OWN FLOOR, NOT A SHARE OF THE SOURCE FLOOR (T-263). The `.cs` walk and the build-file walk fail
+  // on different days — a `*.cs` pattern that stops matching and a `*.csproj` pattern that stops matching
+  // are different accidents — and 500 source files would carry a collapsed build walk straight past a
+  // combined floor.
+  //
+  // ⚠⚠⚠ REACH PROBE, BOTH COLOURS MEASURED (T-094). A real per-configuration divergence was planted in
+  // `Directory.Build.props` — the repository-wide file, so it would have applied to every project at once:
+  //
+  //     <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+  //       <DefineConstants>$(DefineConstants);TRACE_SQL</DefineConstants>
+  //     </PropertyGroup>
+  //
+  //   THE SOURCE TEST -> GREEN. It walks `*.cs`; a build file is not one.
+  //   THIS TEST       -> RED, and BOTH arms fired independently: *"defines a compilation symbol"* and
+  //                     *"has an item or property conditioned on $(Configuration)"*.
+  //
+  // The run was **1 passed, 1 failed**. That is the whole argument for this test existing: the divergence
+  // was live, repository-wide, and the guard named for catching exactly this reported success.
+  [Fact]
+  [Trait("Decision", "DEC-L-008")]
+  public void No_build_file_makes_compilation_depend_on_the_configuration()
+  {
+    var buildFiles = BuildFiles();
+
+    Assert.True(buildFiles.Length >= 30,
+      $"only {buildFiles.Length} build files were walked; the enumeration has degraded and this guard is " +
+      "asserting nothing rather than passing. There are 33 project files alone.");
+
+    // ⚠ THE POSITIVE CONTROL ON THE POPULATION, not just its size: the two repository-wide files are the
+    // ones that would set a constant for EVERY project at once, and a walk that found 30 `.csproj` while
+    // silently missing these would look entirely healthy.
+    Assert.Contains(buildFiles, path => path.EndsWith("Directory.Build.props", StringComparison.Ordinal));
+    Assert.Contains(buildFiles, path => path.EndsWith("Directory.Packages.props", StringComparison.Ordinal));
+
+    // The matcher controls, each against the form it would really appear in.
+    Assert.Matches(CustomSymbol, "    <DefineConstants>$(DefineConstants);TRACE_SQL</DefineConstants>");
+    Assert.Matches(ConfigurationConditioned,
+      "  <Compile Remove=\"Diagnostics.cs\" Condition=\" '$(Configuration)' == 'Release' \" />");
+    Assert.Matches(ConfigurationConditioned,
+      "  <PropertyGroup Condition=\"'$(Configuration)'=='Debug'\">");
+
+    // ⚠⚠ THE DISCRIMINATING CONTROL, AND IT IS THE ONE THAT MATTERS HERE. `$(Configuration)` appears
+    // legitimately in a PATH — `bin\$(Configuration)\net8.0` — which selects where a built file is found
+    // and changes nothing about what compiles. A predicate matching bare `$(Configuration)` would flag it,
+    // and a guard that fires on correct code gets deleted rather than fixed. So the match is on
+    // `Condition=` specifically, and this asserts the real line stays unflagged.
+    Assert.DoesNotMatch(ConfigurationConditioned,
+      "    <AssemblyMetadata Include=\"Host\" Value=\"$(MSBuildThisFileDirectory)..\\bin\\$(Configuration)\\net8.0\\h.exe\" />");
+
+    var offenders = new List<string>();
+
+    foreach (var path in buildFiles)
+    {
+      var text = File.ReadAllText(path);
+
+      if (Regex.IsMatch(text, CustomSymbol))
+      {
+        offenders.Add($"{Path.GetFileName(path)}: defines a compilation symbol");
+      }
+
+      if (Regex.IsMatch(text, ConfigurationConditioned))
+      {
+        offenders.Add($"{Path.GetFileName(path)}: has an item or property conditioned on $(Configuration)");
+      }
+    }
+
+    Assert.True(offenders.Count == 0,
+      $"the build makes compilation depend on the configuration: {string.Join("; ", offenders)}.\n" +
+      "  Debug and Release no longer produce the same assemblies, so any guard asserting their test " +
+      "totals are equal has just become wrong and must be CHANGED rather than its baseline re-recorded. " +
+      "`DEC-L-008` is the decision this belongs to.\n" +
+      "  ⚠ And note what this closes that the C# guard cannot: a symbol declared here is what makes an " +
+      "`#if SOMETHING` branch live in the first place. With no DefineConstants anywhere, every " +
+      "preprocessor branch other than DEBUG/RELEASE is dead code by construction.");
+  }
+
+  // `DefineConstants` in any form. Its mere PRESENCE is the finding — a constant defined unconditionally
+  // is still a constant some future property group can redefine per configuration, and the repository has
+  // none today.
+  private const string CustomSymbol = @"<\s*DefineConstants\s*>";
+
+  // ⚠ ANCHORED ON `Condition=`, NOT ON `$(Configuration)`. See the discriminating control above: the only
+  // real occurrence in this repository is inside a path VALUE and is legitimate.
+  private const string ConfigurationConditioned = @"Condition\s*=\s*""[^""]*\$\(\s*Configuration\s*\)";
+
+  // Every file kind that can carry an MSBuild instruction. `.sln` is included because solution
+  // configurations map projects to Debug/Release and could exclude one from a configuration entirely.
+  private static readonly string[] BuildFilePatterns = ["*.csproj", "*.props", "*.targets", "*.sln"];
+
+  private static string[] BuildFiles()
+  {
+    var root = FindRepositoryRoot();
+
+    return
+    [.. BuildFilePatterns
+      .SelectMany(pattern => Directory.EnumerateFiles(root, pattern, SearchOption.AllDirectories))
+      .Where(path =>
+        !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+        !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(path => path, StringComparer.Ordinal)];
   }
 
   private static IEnumerable<string> ProductionAndTestSources()

@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
@@ -275,13 +276,66 @@ public sealed class EmployeeReadScopeArchitectureTests
   // ⚠ CITED BY B18, body-confirmed: asserts no global query filter mentions `CompanyId` or `BranchId` -- the criterion verbatim, and
   // the criterion itself says "the two architecture guards assert" this.
   [Trait("Criterion", "AC-EMP-0030")]
-  public void No_global_query_filter_scopes_company_or_branch()
+  // ---- ⚠⚠⚠ BOTH PLANES, AND UNTIL T-093 THIS WALKED ONE (252 GAVE IT A CONTROL, NOT A POPULATION).
+  //
+  // The name said *no global query filter*, unqualified. The walk was the composed TENANT context, so
+  // **every filter on `PlatformDbContext` was outside it** — and the Platform plane is where a company
+  // dimension would most plausibly be introduced, because that is the plane that knows about companies.
+  //
+  // ⚠⚠ THIS TEST IS THE EXEMPLAR OF A PATTERN WORTH STATING PLAINLY: **anti-vacuity and name-honesty are
+  // independent, and the first disguises the second.** It already carried the strongest anti-vacuity
+  // control in this suite — a counter incremented PAST the `continue`, so a model producing no filters
+  // could not pass — and that control is genuinely good. It says nothing whatever about whether the walk
+  // covers what the name claims. **A well-controlled guard reads as a trustworthy one, so nobody re-reads
+  // its population.** It took naming the pattern to see it here.
+  //
+  // ⚠ SEARCHED BEFORE WIDENING (T-093): `HasQueryFilter` appears EXACTLY ONCE in all of `src` —
+  // `PersistenceDbContext.cs:109`, the tenant filter. No company or branch filter exists on either plane,
+  // so this widens onto clean ground rather than onto a live violation.
+  //
+  // ---- ⚠⚠⚠ AND WHAT THAT *ONE* IS, BECAUSE "NO COMPANY FILTER" MUST READ AS CHOSEN, NOT AS MISSING.
+  //
+  // **The single global query filter in the entire product is TENANT.** Company scoping is per-read-site
+  // BY CONSTRUCTION (ADR-025 decision 10), and branch never had a global filter at all. So this guard is
+  // asserting a state somebody decided — *reads are scoped where they are written, not by the model* —
+  // rather than merely failing to find a counterexample.
+  //
+  // ⚠ THAT DISTINCTION IS THE WHOLE VALUE OF THE COMMENT. A reader who takes "no company filter" as an
+  // absence nobody chose will helpfully add one, and a global company filter would silently narrow every
+  // existing query — including the reads whose correctness depends on seeing ACROSS companies.
+  //
+  // ⚠⚠ INDEPENDENTLY CORROBORATED, WHICH IS WHY IT IS STATED THIS STRONGLY. Counting filters here reaches
+  // the same conclusion as a separate reading of the WRITE path: company isolation has a floor on writes
+  // (`TenantDbContext:415-457`, fails closed) and nothing on reads. Two instruments, two routes, neither
+  // looking for the other's answer.
+  //
+  // ⚠⚠⚠ REACH PROBE, BOTH COLOURS MEASURED. A company-scoped filter was planted on `TenantDatabase` in
+  // `PlatformDbContext.OnModelCreating` — a Platform entity, on the Platform plane, which is exactly where
+  // the old walk could not look:
+  //
+  //   OLD tenant-only walk -> GREEN, with a live company filter on the Platform model.
+  //   BOTH-PLANE walk      -> RED: *"a global query filter in the PlatformModel scopes a company or branch
+  //                           dimension: TenantDatabase.CompanyId"*.
+  //
+  // The Platform floor of 1 is not decorative either: it passes today, which means that plane really does
+  // carry filters and a collapse there would be caught rather than read as compliance.
+  public void No_global_query_filter_on_either_plane_scopes_company_or_branch()
   {
-    using var context = ComposedTenantContext();
+    using var tenant = ComposedTenantContext();
+    using var platform = ModelOnlyPlatformContext();
 
+    // ONE FLOOR PER MODEL (T-265). A floor over the union cannot see one plane's filters collapse while
+    // the other's clear the bar alone — and the two are built by different code on different days.
+    AssertNoCompanyOrBranchFilter(tenant.Model, "ComposedTenantModel", 1);
+    AssertNoCompanyOrBranchFilter(platform.Model, "PlatformModel", 1);
+  }
+
+  private static void AssertNoCompanyOrBranchFilter(IModel model, string name, int floor)
+  {
     var examined = 0;
+    var offenders = new List<string>();
 
-    foreach (var entity in context.Model.GetEntityTypes())
+    foreach (var entity in model.GetEntityTypes())
     {
       var filter = entity.GetQueryFilter()?.ToString();
       if (filter is null)
@@ -294,8 +348,13 @@ public sealed class EmployeeReadScopeArchitectureTests
       // ⚠ COMPILE-CHECKED (252). These were bare strings, and a renamed property would have emptied the
       // search rather than failed it: the filter text would stop containing the old name and this would
       // have gone on passing while asserting nothing about the new one.
-      Assert.DoesNotContain(nameof(Employee.CompanyId), filter, StringComparison.Ordinal);
-      Assert.DoesNotContain(nameof(Employee.BranchId), filter, StringComparison.Ordinal);
+      foreach (var dimension in new[] { nameof(Employee.CompanyId), nameof(Employee.BranchId) })
+      {
+        if (filter.Contains(dimension, StringComparison.Ordinal))
+        {
+          offenders.Add($"{entity.ClrType.Name}.{dimension}");
+        }
+      }
     }
 
     // ⚠⚠ ANTI-VACUITY, AND THIS TEST HAD NONE (252). Every assertion above lives inside `if (filter is
@@ -304,10 +363,23 @@ public sealed class EmployeeReadScopeArchitectureTests
     // would report success having examined nothing. THAT IS THE FAILURE IT EXISTS TO CATCH, INVERTED:
     // "no filter scopes company or branch" is trivially true when there are no filters.
     Assert.True(
-      examined >= 1,
-      "no entity in the composed model carries a query filter at all, so this examined nothing and passed " +
+      examined >= floor,
+      $"no entity in the {name} carries a query filter at all, so this examined nothing and passed " +
       "vacuously — the guarantee is that no filter scopes company or branch, which is worthless if the " +
       "model has stopped producing filters");
+
+    // ⚠ THE MODEL IS NAMED BECAUSE THIS RUNS TWICE, and the two planes are the point of the widening.
+    Assert.True(offenders.Count == 0,
+      $"a global query filter in the {name} scopes a company or branch dimension: " +
+      $"{string.Join(", ", offenders)}.\n" +
+      "  ⚠ THIS IS NOT NECESSARILY WRONG. IT IS UNDECIDED. Company is deliberately not filtered globally " +
+      "(ADR-025 decision 10) and branch never was: both are per-read-site by construction, and the single " +
+      "global filter in the product is TENANT. Adding a second one is an ARCHITECTURAL CHANGE that has to " +
+      "be argued, not a bug to be fixed quietly in either direction.\n" +
+      "  What makes it consequential: a global filter silently scopes every EXISTING query, including the " +
+      "reads whose correctness depends on seeing across companies — and nothing at those read sites would " +
+      "change or fail to say so. If the filter is intended, take it to ADR-025 decision 10 and record the " +
+      "reversal there before making this test agree with it. If it is not, scope the read, not the model.");
   }
 
   // ---- 9. AND THE TENANT FILTER IS STILL THERE.
@@ -1070,6 +1142,18 @@ public sealed class EmployeeReadScopeArchitectureTests
 
   // The REAL model: Platform's tenant entities plus HR's contribution, exactly as the Host composes it. A
   // filter test run against a contributor-free context would prove nothing about Employee.
+  // The PLATFORM plane, model construction only — no connection is ever opened. Added in T-093 so the
+  // filter guard covers both planes rather than the one its author happened to be working in.
+  private static SSAS.Platform.Infrastructure.Persistence.PlatformDbContext ModelOnlyPlatformContext()
+  {
+    var options = new DbContextOptionsBuilder<SSAS.Platform.Infrastructure.Persistence.PlatformDbContext>()
+      .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
+      .Options;
+
+    return new SSAS.Platform.Infrastructure.Persistence.PlatformDbContext(
+      options, new ModelUser(), new ModelTenant(), new ModelClock());
+  }
+
   private static TenantDbContext ComposedTenantContext()
   {
     var options = new DbContextOptionsBuilder<TenantDbContext>()

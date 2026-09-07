@@ -286,6 +286,38 @@ the message — to reach them.*** **Two claims, two plants.**
 "which is forever, until the one day it matters". A BIND OVER A LIVE TYPE can fail for its stated reason on
 any ordinary day.*** *The first kind's plant record is its only evidence; the second kind has other days.*
 
+## ⚠⚠⚠ A FLOOR PLACED FIRST IS NEVER PROVEN BY THE PLANTS THAT PROVE THE ASSERTION BEHIND IT
+
+***THE HOUSE ORDERING IS "FLOOR THE POPULATION, THEN ASSERT THE PROPERTY". THAT ORDERING MAKES THE FLOOR
+EXECUTED-AND-PASSED BY EVERY PLANT OF THE THING IT FLOORS — AND EXECUTED-AND-PASSED PROVES NOTHING.***
+
+*Measured: a guard whose route ban was proven by four separate plants has an anti-vacuity floor sitting above
+it that **not one of those four plants exercised**, because each of them reddened the ban and the floor ran
+clean on the way past.*
+
+⚠ **So the floor and the ban need DIFFERENT plants, and only the ban's is ever written:** *the ban's plant
+adds the forbidden thing; **the floor's plant must make the POPULATION COLLAPSE** — point the walk at a wrong
+root, break the pattern, empty the source.* **Raising a floor temporarily until it fails is the cheap form,
+and it also prints the population, which is the only way to know the matcher did not over-match.**
+
+⚠⚠ ***THE GENERAL SHAPE: WHENEVER TWO ASSERTIONS IN ONE METHOD GUARD DIFFERENT FAILURES, ONE PLANT CANNOT
+COVER BOTH — and the one that runs FIRST is the one that never gets its own.***
+
+## ⚠⚠ A "STICKY PIN" IS NOT A DETECTOR — IT GUARDS AGAINST THE TEST'S OWN MAINTAINER
+
+**A guard asserted an exact member set, then asserted four of those same members individually. The four are
+LOGICALLY IMPLIED — if the set assertion passes they cannot fail — so *no change to the product can redden
+them*, and a sweep for unfalsifiable assertions flags them.**
+
+***THEY ARE STILL CORRECT, AND THE FILE SAYS WHY: "a comment saying 'Term is forbidden' rots the day someone
+renames it; this fails."*** ⚠ **The exact-set list is DESIGNED TO BE EDITED when members legitimately change;
+the individual pins are designed NOT to be — so a rename dutifully applied to the first is caught by the
+second.** *The subject is the maintainer of the test, not the product.*
+
+**Do not "fix" these and do not count them as vacuous.** ***ASK WHAT A CHANGE WOULD HAVE TO LOOK LIKE TO
+BREAK THE ASSERTION: if the answer is "an edit to this test file", it is a sticky pin and it is doing its
+job.***
+
 ## How to choose
 
 | the assertion… | reach for |

@@ -210,3 +210,43 @@
 // exactly the part every element shares. `HostedServiceRegistrationTests` therefore asserts with
 // `Assert.True` and interpolates BOTH set differences by hand — full names, uncut — rather than reordering
 // strings to survive a renderer.
+//
+// ==================================================================================================
+// ⚠⚠⚠ BEFORE ASSERTING AN OUTCOME, ASK WHAT ELSE PRODUCES THAT OUTCOME (T-158).
+// ==================================================================================================
+//
+// ***IF MORE THAN ONE CAUSE REACHES THE OUTCOME YOU ARE ASSERTING — AND ESPECIALLY IF THOSE CAUSES BELONG TO
+// DIFFERENT CRITERIA — THE TYPE IS NOT THE ASSERTION. THE MESSAGE IS.***
+//
+// **The measured instance:** `AuthenticationTransportServices.Validate` throws `InvalidOperationException`
+// from FIVE sites — duplicate origins, an unrecognised `ProxyMode`, TrustedProxy without proxies or
+// networks, the rate-limit clause, and the Data-Protection clause. `Production_transport_without_shared_…`
+// asserted the TYPE and was cited on **two** authentication criteria. ⚠ **Planted by making a different
+// clause fire, it produced `Actual: "ProxyMode must be Direct or TrustedProxy."` against an expected
+// rate-limit message — so *a typo in the origin list satisfied a test citing two criteria*.** It is now two
+// tests, one arrangement per clause, each asserting its own message.
+//
+// ---- ⚠⚠ WHAT THIS RULE DOES **NOT** SAY.
+//
+// **MULTI-CITATION IS NOT A DEFECT.** A test may cite five criteria and be impeccable: 73 of the 586
+// criterion-carrying tests cite more than one, and **the two with the worst citations-per-assertion ratio
+// are among the best-documented files in the suite** — `CutoverManifestArchitectureTests` states *"this
+// criterion is discharged one clause by a fixture, one clause by nobody"*, and `EmployeeArchitectureTests`
+// states *"⚠ PARTIAL for `0002`"*. ***A SWEEP RANKED BY RATIO PUTS THE MOST HONEST FILES AT THE TOP OF THE
+// SUSPECT LIST.*** *Do not split a multi-cited test because it is multi-cited; split one whose assertion
+// cannot tell its criteria apart.*
+//
+// ⚠ Equally: one assertion covering several criteria is fine when the outcome has ONE cause.
+// `Expired_jwt_is_rejected_by_the_registered_authentication_handler` cites two criteria on a single
+// behaviour — an expired token being refused — which genuinely satisfies a clause of each.
+//
+// ---- ⚠⚠⚠ METHOD NOTE, BECAUSE THE DETECTOR FOR THIS SHAPE LIES BY DEFAULT.
+//
+// A matcher for "type-only refusal" **must match `Assert.ThrowsAsync` and `Assert.ThrowsAnyAsync`, not only
+// `Assert.Throws<T>`.** *A pattern requiring the generic argument reported **ZERO** multi-cited tests of this
+// shape — a clean answer on a question whose one known instance had been fixed by hand minutes earlier.*
+// **The same detector with the citation count relaxed to one returned FOURTEEN, including a two-criterion
+// row the zero had just denied existed. The true answer was 2.**
+//
+// ⚠ **The control that worked was the detector itself with ONE CONSTRAINT LOOSENED — not a hunt for a known
+// case.** *That tests the matcher rather than the corpus, and it is cheaper than either.*

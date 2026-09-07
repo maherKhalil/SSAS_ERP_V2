@@ -287,7 +287,17 @@ the page.**
 ## Related rulings in the tree
 
 - `tests/Architecture.Tests/ModelWalk.cs` — form 1, and the header that refuses a universal helper
-- `tests/Architecture.Tests/AssertionMessageChoice.cs` — what a red must tell its reader, and why 156
-  remaining silent sites are **not** a defect count
+- `tests/Architecture.Tests/AssertionMessageChoice.cs` — what a red must tell its reader, and why the
+  remaining silent sites are **not** a defect count. ⚠⚠⚠ **THIS DOCUMENT PREVIOUSLY CITED `156` AND
+  "tier 1 is zero". BOTH WERE WRONG, CORRECTED 2026-09-07 TO *251 SITES AND AT LEAST 14 TIER-1*.** The
+  census counted `Assert.DoesNotContain(collection, predicate)` only — ***and `Assert.Contains(collection,
+  predicate)` IS EQUALLY SILENT, a fact recorded verbatim in that same file three paragraphs above the
+  census that ignored it.*** ⚠ **14 is a FLOOR:** both instruments classify by the **call-site expression**,
+  so a walk bound to a local first is invisible to them — one was caught only because its variable name
+  happened to contain a matched substring. ***BOTH BLIND SPOTS UNDER-REPORT, SO EVERY "TIER 1 IS ZERO"
+  PRODUCED BY THAT INSTRUMENT LEANED THE SAME WAY.***
+  **It was found by giving a zero a positive control** — running the census against a file known to contain
+  tier-1 sites, which returned **13 in one file against a reported 9 for the whole suite.** *The control did
+  not validate the zero; it falsified the instrument.*
 - `tests/Architecture.Tests/RouteConstraintArchitectureTests.cs` — an exemption whose grounds are enforced by
   the type, plus an inverted guard that fires when its own diagnosis expires

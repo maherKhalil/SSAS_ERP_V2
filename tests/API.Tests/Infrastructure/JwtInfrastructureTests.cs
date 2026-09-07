@@ -776,15 +776,26 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
       File.WriteAllBytes(activePublicPath, active.Export(X509ContentType.Cert));
       File.WriteAllBytes(retainedPath, retained.Export(X509ContentType.Cert));
 
+      // ⚠⚠⚠ THE MESSAGE, NOT THE TYPE (T-127). **`SigningKeyProvider` throws `InvalidOperationException`
+      // from TEN sites** — a missing file, a certificate with no private key, an undersized key, an expired
+      // one, a duplicate kid, a short overlap — **so `Assert.Throws<InvalidOperationException>` alone passes
+      // for any of them.** A mistyped path in either arrangement below yields *"The configured JWT
+      // certificate does not exist."* and both assertions stay green while neither refusal is reached.
+      //
+      // This is the discrimination the size test three sites down already makes, in its own words: *"both
+      // throw `InvalidOperationException` and the type alone cannot say which floor fired."* **It was applied
+      // to the two size floors and not to these two.**
       var duplicate = ProductionOptions(activePath, password,
         [new VerificationCertificateOptions { Path = activePublicPath, RetireAfterUtc = DateTimeOffset.UtcNow.AddMinutes(16) }]);
-      Assert.Throws<InvalidOperationException>(() =>
+      var duplicateFailure = Assert.Throws<InvalidOperationException>(() =>
         new SigningKeyProvider(Options.Create(duplicate), new TestHostEnvironment("Production")));
+      Assert.Contains("Duplicate JWT verification kid", duplicateFailure.Message, StringComparison.Ordinal);
 
       var insufficientOverlap = ProductionOptions(activePath, password,
         [new VerificationCertificateOptions { Path = retainedPath, RetireAfterUtc = DateTimeOffset.UtcNow.AddMinutes(15) }]);
-      Assert.Throws<InvalidOperationException>(() =>
+      var overlapFailure = Assert.Throws<InvalidOperationException>(() =>
         new SigningKeyProvider(Options.Create(insufficientOverlap), new TestHostEnvironment("Production")));
+      Assert.Contains("retires before the required overlap window", overlapFailure.Message, StringComparison.Ordinal);
     }
     finally
     {
@@ -941,11 +952,36 @@ public sealed class JwtInfrastructureTests(HostWebApplicationFactory factory)
       VerificationCertificates = verificationCertificates
     };
 
-  private static X509Certificate2 CreateCertificate(string name, int keySizeBits = 2048)
+  // ---- ⚠⚠⚠ THE VALIDITY WINDOW IS A PARAMETER FOR THE REASON `keySizeBits` IS (T-127).
+  //
+  // This helper read `AddMinutes(-1)` to `AddDays(1)` as two CONSTANTS, and `ValidateActive` checks the
+  // window against a threshold of `AccessTokenLifetime + ClockSkewSeconds` — **15m30s against one day. So
+  // both of its expiry clauses were satisfied by every certificate this file could build and contradicted
+  // by none: delete `SigningKeyProvider`'s `is not currently valid` and `expires before the access-token
+  // safety window` checks and the suite stayed green.**
+  //
+  // ⚠ THAT IS THE DEFECT THE COMMENT AT `Production_key_provider_rejects_an_rsa_key_below_the_approved_size`
+  // ALREADY NAMES — *"a fixture builder with a CONSTANT where the criterion has a THRESHOLD quietly removes
+  // the threshold from the test space."* **It was written about `keySizeBits` and not applied to the two
+  // arguments beside it.** The mechanism was diagnosed in this file and fixed at one site.
+  //
+  // ⚠⚠ AND PARAMETERISING IT IS NOT THE WHOLE FIX. **A parameter no caller varies restores the CAPACITY to
+  // contradict the threshold without exercising it** — the certificates below all keep today's window, so
+  // every existing test means exactly what it meant. *What closes the two clauses is a caller that passes an
+  // expired window and a caller that passes one inside 15m30s, and those assert product behaviour that
+  // nothing currently asserts.* Recorded here rather than left to be rediscovered.
+  private static X509Certificate2 CreateCertificate(
+    string name,
+    int keySizeBits = 2048,
+    TimeSpan? validFrom = null,
+    TimeSpan? validUntil = null)
   {
+    var now = DateTimeOffset.UtcNow;
     using var rsa = RSA.Create(keySizeBits);
     var request = new CertificateRequest($"CN=SSAS JWT {name}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-    return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+    return request.CreateSelfSigned(
+      now.Add(validFrom ?? TimeSpan.FromMinutes(-1)),
+      now.Add(validUntil ?? TimeSpan.FromDays(1)));
   }
 
   private static string Kid(X509Certificate2 certificate) =>

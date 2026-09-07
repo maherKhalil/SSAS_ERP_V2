@@ -180,3 +180,33 @@
 // only after character fifty render as visually identical rows, and a reader assumes a duplicate and
 // fixes one thing. ⚠ This applies ONLY to assertions that render a collection; an `Assert.True` message
 // is a plain string and prints whole, so a converted site escapes the cut entirely.
+//
+// ---- ⚠⚠⚠ "IDENTITY FIRST" IS NOT "AS WRITTEN FIRST", AND THE DIFFERENCE IS TOTAL FOR TYPE NAMES (T-138).
+//
+// **The rule above says put the identity first. For a FULLY-QUALIFIED TYPE NAME the identity is at the END,
+// and every element shares the prefix — so obeying the rule literally produces the worst possible message
+// for one of the most common collections we assert on.** Measured on `IHostedService`, third independent
+// observation of the fifty-character cut:
+//
+//     Actual: ["Microsoft.AspNetCore.DataProtection.Internal.DataP"···,
+//              "Microsoft.AspNetCore.Hosting.GenericWebHostService",
+//              "Microsoft.Extensions.Diagnostics.HealthChecks.Heal"···,
+//              "SSAS.Host.API.Authentication.SigningKeyStartupVali"···,
+//              "SSAS.Platform.Infrastructure.Localization.Localiza"···, ···]
+//
+// ***FIVE ROWS, AND THE ONLY ONE THAT SURVIVES INTACT IS THE ONE WHOSE NAME HAPPENS TO FIT.*** The two
+// `SSAS.Platform.Infrastructure.*` entries are cut before their short names begin — **so a reader learns
+// which NAMESPACE is involved, which they already knew, and nothing about WHICH SERVICE.** *A whole-list
+// elision (`···` as the final element) then hides the rest entirely.*
+//
+// ⚠⚠ **A REFINEMENT, NOT A REVERSAL: front-load the DISTINGUISHING part, which for a type name is the SHORT
+// name. Put the namespace AFTER it if it matters at all.** The general form of the original rule is *"the
+// first fifty characters must be the part that differs BETWEEN ELEMENTS"* — for a file path that is usually
+// the leading segments, for a type name it is never the leading segments, and the two cases look identical
+// until the message is rendered.
+//
+// ⚠ **AND THE CHEAPEST FIX IS OFTEN NOT TO REORDER BUT TO LEAVE THE COLLECTION RENDERER.** `Assert.Equal`
+// on two sets of type names is where the truncation is TOTAL, because the surviving fifty characters are
+// exactly the part every element shares. `HostedServiceRegistrationTests` therefore asserts with
+// `Assert.True` and interpolates BOTH set differences by hand — full names, uncut — rather than reordering
+// strings to survive a renderer.

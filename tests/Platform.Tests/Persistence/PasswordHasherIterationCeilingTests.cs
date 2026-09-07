@@ -77,6 +77,23 @@ public sealed class PasswordHasherIterationCeilingTests
   // not arithmetic-checking-arithmetic: it drives the same method the tripwire drives, so a `>=` written the
   // wrong way round, or a message that omits the numbers, fails HERE — and those are the two ways the
   // tripwire could be silently wrong on the day it matters.**
+  //
+  // ---- ⚠⚠⚠ TWO PLANTS, BECAUSE ONE PLANT REACHED ONLY THE FIRST ASSERTION (T-168).
+  //
+  // ***A PLANT CANNOT REACH AN ASSERTION THAT AN EARLIER ONE IN THE SAME METHOD HAS ALREADY FAILED ON.*** The
+  // first plant below proves the PREDICATE and stops at line one; the message checks — the whole reason this
+  // control exists — were unreached until the second was run. **Each plant names the assertion it reached, so
+  // a later reader does not have to infer it:**
+  //
+  //   PLANT A — predicate inverted, `>=` to `<=` in `Weakening`.
+  //     RED at `Assert.NotNull(complaint)`: `Weakening` returned null for a genuine weakening.
+  //     ⚠ The three `Contains` and the two converse `Null` rows below it were NOT executed.
+  //
+  //   PLANT B — `{frameworkDefault}` removed from the interpolated message; predicate left correct.
+  //     RED at `Assert.Contains("210000", …)`: `Assert.Contains() Failure: Sub-string not found`.
+  //     **This is the plant that proves the message carries the numbers**, which PLANT A could not reach.
+  //
+  // *Both reverted; the retirement instruction is covered by the same `Contains` family as the numbers.*
   [Fact]
   public void A_framework_default_above_the_configured_value_is_reported_as_a_weakening()
   {

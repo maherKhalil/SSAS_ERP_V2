@@ -345,6 +345,36 @@ THE ACTUAL PASS NEEDS A PLANT AND WILL NEVER GET ONE.***
 very session that discovered why the first position is weak, by the author who discovered it.** *Knowing the
 rule did not prevent writing the ordered form.*
 
+⚠⚠⚠ **CORRECTED IMMEDIATELY AFTER WRITING THE ABOVE — THE CONVENTION'S POPULATION IS 39, NOT 82, AND IT IS A
+DESCRIPTION RATHER THAN A CORRECTION.**
+
+***43 OF THE 82 ARE `Assert.NotEmpty` — A FLOOR OF ONE, WITH NO NUMBER TO JUSTIFY.*** **Its collapse is
+definitionally *"the walk found nothing"*: the assertion IS the collapse statement, so "name the collapse"
+cannot apply to more than half the population.** *That was the fourth category, and it is not "derived" —
+there are ZERO derived floors in this suite.*
+
+**Of the 39 NUMBERED floors: 19 NAME their collapse, at most 20 are bare** — ⚠ **and "bare" is an upper bound
+that is demonstrably inflated.** *A spot-check found `ConstructorKeyedEntityModelTests` floored at 10 with its
+justification written out — "thirty-four tenant-owned entities alone appear in the cutover manifest, so
+anything near zero means the model was not composed" — **in words the matcher does not list, in a different
+method from the floor.***
+
+***SO NAMING THE COLLAPSE IS ALREADY SUBSTANTIALLY HOUSE PRACTICE. THIS SECTION CONSOLIDATES WHAT ROUGHLY
+HALF THE NUMBERED FLOORS ALREADY DO AND WHAT `ModelWalk`'s HEADER ALREADY DEMANDS — it is not a new rule.***
+
+### ⚠⚠ PREFER THE SYMBOL TO `file:line` — NOT BECAUSE LINES ROT FASTER, BUT BECAUSE NOTHING CAN TELL YOU WHEN THEY HAVE
+
+**Measured: 100 `file:line` citations plus 132 bare `:line` in test comments. ZERO dead files, ZERO
+out-of-range lines.** ⚠ ***AND ONLY SIX WERE MECHANICALLY VERIFIABLE AT ALL*** — 58 carry no quoted
+identifier to anchor against, 31 more resolve to an ambiguous basename. **The five a heuristic flagged as
+suspect were hand-checked and are ACCURATE: an accurate citation frequently points at a line INSIDE the named
+construct, where the construct's name does not appear.**
+
+***THE CONTRAST IS THE FINDING:*** **one grep resolved 123 SYMBOL citations and found the two stale ones.**
+**100 LINE citations yielded six checkable and every reported failure was the instrument's own.**
+⚠⚠⚠ ***A `file:line` CITATION IS UNFALSIFIABLE BY ANY CHEAP SWEEP — the same property that made the fixture
+builders and the pinned ceiling untestable. Cite the symbol; add the line only as a convenience beside it.***
+
 ## ⚠⚠ A "STICKY PIN" IS NOT A DETECTOR — IT GUARDS AGAINST THE TEST'S OWN MAINTAINER
 
 **A guard asserted an exact member set, then asserted four of those same members individually. The four are

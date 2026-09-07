@@ -28,19 +28,19 @@
 #     it exists to raise. A fix for a misreading, introducing a misreading inside itself.)
 #
 # suite|configuration|total
-API|Debug|997
+API|Debug|1002
 API|Release|972
-Architecture|Debug|689
+Architecture|Debug|691
 Architecture|Release|628
 Attendance|Debug|103
 Attendance|Release|87
 Finance|Debug|51
 Finance|Release|51
-HR|Debug|331
+HR|Debug|332
 HR|Release|328
 Integration|Debug|862
 Integration|Release|862
 Payroll|Debug|97
 Payroll|Release|93
-Platform|Debug|1141
+Platform|Debug|1142
 Platform|Release|1101

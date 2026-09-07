@@ -276,16 +276,39 @@ public sealed class PayrollArchitectureTests
         .OrderBy(name => name, StringComparer.Ordinal));
   }
 
+  // ---- THE POPULATION IS DERIVED, AND UNTIL T-083 IT WAS SIX TYPED `InlineData` ROWS.
+  //
+  // ⚠⚠⚠ THE TYPED LIST NAMED GL AND HR AT THREE LAYERS EACH AND MISSED NINE OF THE FIFTEEN NON-PAYROLL
+  // MODULE ASSEMBLIES: every `SSAS.Attendance.*` project, plus `SSAS.GL.API`, `SSAS.HR.API`,
+  // `SSAS.GL.Contracts` and `SSAS.HR.Contracts`. **Attendance is not hypothetical** — it is a registered
+  // contributor in `CutoverTenantModel.Contributors`, and a Payroll reference from it is exactly the thing
+  // this guard's name forbids, passing silently.
+  //
+  // ⚠ ADDING THE MISSING NAMES WOULD NOT HAVE BEEN THE FIX. It leaves the NEXT module to be forgotten by
+  // the same mechanism that forgot this one, and a hand-written list is a guard that stops covering the
+  // product as it grows without ever failing — `DeployedProductAssemblies` says so in its own header, which
+  // is where the derivation now comes from.
+  //
+  // ⚠⚠⚠ REACH PROBE, BOTH COLOURS MEASURED — this is why the change is trustworthy rather than merely
+  // larger. Pointing the ban's needle at `SSAS.Attendance` instead of `SSAS.Payroll`, changing nothing else:
+  //
+  //   DERIVED population  -> RED on three cases, `SSAS.Attendance.API`, `.Application` and `.Infrastructure`
+  //   TYPED six-row list  -> GREEN, all six passing, over the identical assertions
+  //
+  // **The old guard could not have reddened for an Attendance violation under any circumstances.** It was
+  // aimed at a change it was structurally incapable of seeing, and its green said the same thing on a clean
+  // tree as it would have said on a breached one.
   [Theory]
   [Trait("Decision", "ADR-012")]
-  [InlineData("SSAS.GL.Domain")]
-  [InlineData("SSAS.GL.Application")]
-  [InlineData("SSAS.GL.Infrastructure")]
-  [InlineData("SSAS.HR.Domain")]
-  [InlineData("SSAS.HR.Application")]
-  [InlineData("SSAS.HR.Infrastructure")]
-  // ⚠ CITED BY B18, body-confirmed: ⚠ SUPERSET. The criterion names Payroll and GL specifically; this asserts NO module references
-  // Payroll at all.
+  [MemberData(nameof(OtherModuleAssemblies))]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ SUPERSET. The criterion names Payroll and GL specifically; this
+  // asserts that no OTHER MODULE ASSEMBLY references Payroll — every project under `src/Modules` that is
+  // not `SSAS.Payroll.*`, derived rather than listed.
+  //
+  // ⚠⚠ THAT SENTENCE USED TO READ *"this asserts NO module references Payroll at all"*, AND IT WAS FALSE
+  // (T-083): the walk was six typed rows. **The over-claim was in the COMMENT, not only in the test name**,
+  // so a reader doing the right thing — distrusting the name and reading the prose — was told the superset
+  // a second time with a warning glyph on it. A rename would not have touched it.
   [Trait("Criterion", "AC-PAY-0025")]
   // ⚠ CITED BY B18 pass 15: ⚠ PARTLY PINNED, clause 1 only, and by SUPERSET.
   //
@@ -325,6 +348,54 @@ public sealed class PayrollArchitectureTests
     Assert.DoesNotContain(
       DeclaredDependencies.Of(assemblyName),
       name => name.StartsWith("SSAS.Payroll", StringComparison.Ordinal));
+  }
+
+  // Every module project that is not Payroll's own, read from the repository layout. `MemberData` is
+  // evaluated at DISCOVERY, so a derivation that silently returned two would run two cases and report
+  // success — which is why the floor below exists and why it calls THIS method rather than repeating it.
+  public static TheoryData<string> OtherModuleAssemblies()
+  {
+    var data = new TheoryData<string>();
+
+    foreach (var name in NonPayrollModuleProjectNames())
+    {
+      data.Add(name);
+    }
+
+    return data;
+  }
+
+  private static string[] NonPayrollModuleProjectNames() =>
+    DeployedProductAssemblies.ModuleProjectNames()
+      .Where(name => !name.StartsWith("SSAS.Payroll.", StringComparison.Ordinal))
+      .ToArray();
+
+  // ---- THE FLOOR ON THE DERIVATION, BECAUSE A THEORY OVER AN EMPTY SET IS NOT A FAILING THEORY.
+  //
+  // ⚠ A COUNT ALONE WOULD NOT HAVE CAUGHT THE DEFECT THIS REPLACES. Six is a perfectly healthy-looking
+  // number, so the floor is paired with MEMBERSHIP of the two shapes the typed list actually dropped: a
+  // whole module, and a layer present in some modules and not others.
+  [Fact]
+  public void The_other_module_walk_covers_every_non_payroll_module_assembly()
+  {
+    var derived = NonPayrollModuleProjectNames();
+
+    // FIFTEEN measured 2026-09-07 — Attendance, GL and HR at five projects each. The floor sits below that
+    // with room for a project to be retired, and far above the SIX the typed list reached.
+    Assert.True(derived.Length >= 12,
+      $"only {derived.Length} non-Payroll module projects were derived from src/Modules; fifteen were " +
+      "measured at T-083. The layout walk has stopped matching, and the theory above is now inspecting a " +
+      "subset of the modules while still reporting success for each one it does inspect.");
+
+    // THE MEMBERS THE TYPED LIST FORGOT, named so this cannot regress to a healthy-looking count.
+    Assert.Contains("SSAS.Attendance.Application", derived);
+    Assert.Contains("SSAS.HR.Contracts", derived);
+    Assert.Contains("SSAS.GL.API", derived);
+
+    // THE EXCLUSION AS ITS OWN NEGATIVE: a filter that removed everything, or nothing, would otherwise be
+    // invisible here — the assertions above pass either way.
+    Assert.DoesNotContain(derived, name => name.StartsWith("SSAS.Payroll.", StringComparison.Ordinal));
+    Assert.Contains("SSAS.Payroll.Application", DeployedProductAssemblies.ModuleProjectNames());
   }
 
   [Fact]

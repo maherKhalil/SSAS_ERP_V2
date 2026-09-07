@@ -57,14 +57,26 @@ public static class DeployedProductAssemblies
   // This is derived from the repository layout rather than written down, which is what stops it being
   // "the defect wearing a hat": a new module appears here the moment its project directory exists, with
   // nobody deciding it is a module.
-  public static string[] ModuleProjectNames(string suffix)
+  public static string[] ModuleProjectNames(string suffix) =>
+    ModuleProjectNames()
+      .Where(name => name.EndsWith(suffix, StringComparison.Ordinal))
+      .ToArray();
+
+  // EVERY module project, unfiltered (T-083). Added because a guard needed the whole module surface rather
+  // than one layer of it, and the alternative was a second enumeration of `src/Modules` — which is the
+  // hand-maintained-list defect this file's own header is about, one level up. The suffix overload now
+  // filters THIS, so the two cannot disagree about what a module is.
+  //
+  // ⚠ THE LAYER SET IS NOT UNIFORM ACROSS MODULES, which is exactly why this must be derived: `SSAS.Payroll`
+  // has no `Contracts` project while Attendance, GL and HR each do. Any list written by hand encodes a
+  // symmetry the repository does not have.
+  public static string[] ModuleProjectNames()
   {
     var modules = Path.Combine(RepositoryRoot(), "src", "Modules");
 
     return Directory.EnumerateDirectories(modules)
       .SelectMany(Directory.EnumerateDirectories)
       .Select(path => new DirectoryInfo(path).Name)
-      .Where(name => name.EndsWith(suffix, StringComparison.Ordinal))
       .Distinct(StringComparer.Ordinal)
       .OrderBy(name => name, StringComparer.Ordinal)
       .ToArray();

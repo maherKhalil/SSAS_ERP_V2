@@ -30,6 +30,14 @@ namespace SSAS.Architecture.Tests;
 //
 // Measured 2026-09-07: **15 `MapGroup` sites in `src/` — 7 under `src/Modules/`, 8 under `SSAS.Platform.API`.**
 //
+// ---- ⚠⚠ PLANT, WITH THE ASSERTION IT REACHED (T-181 — our own one-commit-old convention, applied here).
+//
+// **PLANT:** the HR-Positions attachment removed from `PositionEndpointRouteBuilderExtensions`.
+// **RED at the SECOND assertion — `unattached.Length == 0`** — naming that file. **REVERT → GREEN.**
+// ⚠ ***UNREACHED: nothing after it. But THE FLOOR ABOVE IT EXECUTED AND PASSED, WHICH IS NOT PROVEN*** —
+// closing it needs the other arrangement entirely, *collapsing the population rather than adding an
+// offender*, and this is one of the 82 first-position floors this suite decided not to migrate.
+//
 // ***7 MODULE GROUPS, 7 ATTACHMENTS: THERE IS NO HOLE TODAY. THIS GUARD PREVENTS AN EIGHTH; IT DOES NOT FIX
 // A SEVENTH.*** *The gap this closes was in the ASSERTIONS, not in the product — four of the seven
 // attachments could be deleted with the whole suite green, and that is what needed fixing.*
@@ -84,7 +92,10 @@ public sealed class CompanyContextFilterAttachmentArchitectureTests
     // one needs no edit here at all.**
     Assert.True(
       groups.Count >= 7,
-      $"the module route-group scan found {groups.Count} groups and there were 7 on 2026-09-07. This is a " +
+      // ⚠ NOT `found {n} groups` — that renders *"found 1 groups"*, the count-then-plural defect this suite
+      // rephrased thirteen instances of. The count is stated as a population so no plural has to agree.
+      $"the module route-group scan found a population of {groups.Count} and there were 7 on 2026-09-07. " +
+      "This is a " +
       "regex over source text: a renamed method, a reformatted chain or a moved directory makes it match " +
       "nothing, and an assertion over an empty population passes. A number BELOW the floor means the " +
       $"instrument broke, not that route groups were deleted.{Environment.NewLine}" +

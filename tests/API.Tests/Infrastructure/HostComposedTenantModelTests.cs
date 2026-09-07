@@ -27,6 +27,14 @@ namespace SSAS.API.Tests.Infrastructure;
 //
 // `services.AddSingleton<ITenantModelContributor, GlTenantModelContributor>()` was deleted from
 // `SSAS.GL.Infrastructure` — **the running product then composes a tenant model with no GL entities at
+// ---- ⚠⚠ AND WHEN THIS GUARD EXISTED, THE SAME PLANT REDDENED IT — WITH THE ASSERTION NAMED (T-181).
+//
+// **PLANT:** that same registration deleted. ***RED at the FINAL assertion — the symmetric-difference
+// `Assert.True` — reporting `verified by the guards, never composed by the host: Account, FiscalPeriod,
+// FiscalYear, JournalDraft, JournalDraftLine, JournalEntry, JournalLine`.*** **REVERT → GREEN.**
+// ⚠ **The two `NotEmpty` floors above it executed and PASSED — reached, not proven.** *Their arrangement is
+// a collapsed population, not a mismatched one, and it was not built.*
+//
 // all** — and the suites were run: **API 1004/1004, Architecture 725/725, Platform 1145/1145. 2,874 tests,
 // not one red.** *A whole module's entities gone from the model the Host actually builds, and nothing saw it.*
 //

@@ -108,8 +108,13 @@ public sealed class TenantCutoverFlipArchitectureTests
 
     var members = member.Matches(source).Cast<Match>().ToArray();
     Assert.True(members.Length >= 8,
-      $"only {members.Length} member declarations were parsed out of the aggregate; the declaration " +
-      "pattern has stopped matching and every assignment below would be attributed to the wrong member.");
+      // ⚠ PHRASED SO NUMBER AGREEMENT CANNOT ARISE (T-103). This read "only {n} member declarations were
+      // parsed" and a plant that reduced the parse to ONE — rather than to zero — rendered *"only 1 member
+      // declarations were parsed"*. The zero case reads correctly and the one case does not, which is why
+      // the adversarial subject for a message is the value that most nearly looks right.
+      $"the declaration pattern matched {members.Length} of the aggregate's members; at least eight were " +
+      "expected. It has stopped matching, and every status assignment below would be attributed to " +
+      "whichever member the parse last recognised rather than to the one that performs it.");
 
     var transitions = assignment.Matches(source).Cast<Match>()
       .Select(match =>
@@ -195,7 +200,16 @@ public sealed class TenantCutoverFlipArchitectureTests
       { IsFamily: true } => "protected",
       { IsAssembly: true } => "internal",
       { IsFamilyOrAssembly: true } => "protected internal",
-      _ => "non-private"
+
+      // ⚠ UNREACHABLE TODAY, AND IT PRINTS A FACT RATHER THAN A LABEL (T-103). The four arms above cover
+      // every non-private accessibility C# can express, and this is only called once `IsPrivate` is false.
+      // **The day this arm is reached is the day those four stopped covering the space** — which is exactly
+      // when a reader needs the raw value, not `"non-private"`, which would tell them only that MY SWITCH
+      // did not recognise it. A fallback branch describing the matcher carries no information about the
+      // subject.
+      // ⚠ DO NOT DELETE AS DEAD CODE and DO NOT THROW: a tripwire that throws on an unexpected
+      // accessibility fails for the wrong reason, and this one exists to report, not to refuse.
+      _ => $"unrecognised, raw access flags {method.Attributes & MethodAttributes.MemberAccessMask}"
     };
 
   // ---- NO FLIPBACK EXISTS, at any layer. ADR-020 forbids a simple reversal once the target may have been

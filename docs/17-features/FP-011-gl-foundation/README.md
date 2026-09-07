@@ -91,7 +91,15 @@ not a rule GL must invent a mechanism for. The mechanism exists, is enforced str
 boundary by `TenantDbContext.PreventAppendOnlyMutation`, and already carries the same reasoning in its own
 comment: *"a correction is another transfer, never a rewrite."* For GL that sentence reads **a correction is
 another journal, never a rewrite** — which is the definition of a reversal. See `DEC-GL-0002`, and
-`OD-GL-0007` for the part that is genuinely undecided: whether a *draft* journal is the same aggregate.
+`OD-GL-0007`, ⚠ ***RULED: two aggregates*** — `JournalDraft` mutable, `JournalEntry` append-only, posting is
+the promotion. *(Corrected 2026-09-07.)*
+
+> ⚠⚠ **THIS SENTENCE SAID `OD-GL-0007` WAS *"for the part that is genuinely undecided: whether a draft
+> journal is the same aggregate."* IT WAS FALSIFIED BY THIS FILE'S OWN TABLE FIFTY-FOUR LINES ABOVE
+> (`:40`), which rules exactly that question — two aggregates.** ***No cross-file knowledge was needed: the
+> document answered the question in a table and called it undecided in a paragraph.*** *The original is
+> preserved here because the reasoning around it — the `IAppendOnlyEntity` argument — is sound and was never
+> in doubt; only the closing clause was stale.*
 
 ## Package contents
 

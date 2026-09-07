@@ -22,6 +22,34 @@ date: 2026-08-23
 > The `OWNER-DECISION-REQUIRED` markers below are left in place as the record of what each line was
 > conditional on when it was drafted, and which decision resolved it. They are no longer open.
 >
+> ### ⚠⚠⚠ **AND THE SENTENCE ABOVE DISPOSES OF ONE MARKER CLASS OF TWO** *(added 2026-09-07; nothing below was changed)*
+>
+> **It names `OWNER-DECISION-REQUIRED` and nothing else. This file also carries FOURTEEN live
+> `| **Open** |` table rows — a second class, unquoted and unpreserved, which the sentence above never
+> mentioned and therefore never cleared.** ⚠ ***THEY ARE CLEARED HERE, AND THEY WERE STALE, NOT OPEN.***
+>
+> **Enumerated from the file rather than from reading — `:87 :99 :111 :123 :139 :151 :163 :175 :191 :203
+> :215 :231 :243 :255`. ELEVEN carry a decision id; THREE (`:99`, `:151`, `:163`) carry none.**
+> ***ALL ELEVEN NAME A DECISION THIS PACKAGE HAS ALREADY RULED AND RECORDED IN ITS OWN
+> [`README.md`](README.md) UNDER `## The nine rulings` (`:34`–`:43`) — a live, unquoted table covering
+> `OD-GL-0001` through `OD-GL-0009`.*** **So `README.md` is authoritative over every `| **Open** |` cell
+> below, and where the two disagree the README wins.**
+>
+> ⚠⚠ **The sharpest instances, because they read as live reasoning rather than as stale labels:**
+> **`:111`** — *"`OD-GL-0007` — under option 2 this stops being structurally enforceable"* — **reasons from
+> an option that LOST; the ruling is option 3, two aggregates.** **`:87` and `:255`** — *"a multi-currency
+> ledger has a trial balance per currency"* — **`OD-GL-0002` ruled SINGLE CURRENCY V1.**
+>
+> ⚠ **The three id-less rows are left exactly as they are. They cite no decision, so there is nothing to
+> look up, and calling them open or closed would be supplying a referent the document does not.**
+>
+> ⚠⚠⚠ ***AND THE PROMISE IN THE SENTENCE ABOVE IS NOT KEPT BY THE MARKERS THEMSELVES: it says the markers
+> record "which decision resolved it", and not one of the sixteen `OWNER-DECISION-REQUIRED` markers names a
+> decision — every one is a bare suffix on a `REQ-GL-` heading.*** **The resolutions live in `README.md`,
+> which is where this note now sends the reader. *A disposition is scoped to the marker class it names and
+> inherits nothing; that is why fourteen rows sat under a clearance for a fortnight without being covered
+> by it.***
+>
 > ## THE CATALOG GAP, AS IT WAS
 >
 > **`docs/00-Master-Product-Specification/Requirement-Catalog/` has no `GL.md`.** The domain is declared

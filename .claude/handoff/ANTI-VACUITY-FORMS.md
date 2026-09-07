@@ -326,6 +326,25 @@ is named" — and this extends it from layers to methods.*
 *`BranchTransfer`'s floor of 30 is sized because "a contributor-free model yields TWO, which is a regression
 that really happened."* **A number chosen against a real past failure needs no plant to justify it.**
 
+### ⚠⚠⚠ NOTHING MIGRATES — 82 OF THE 115 SIT ABOVE AN ABSENCE, AND THE ARITHMETIC DOES NOT CLOSE
+
+***MEASURED: of the 115 first-position floors, 82 sit above an ABSENCE-shaped assertion*** — **the case where
+a plant record is the only evidence that will ever exist, so an unproven floor there means the population has
+never been shown non-empty by anything.** *Migrating 82 floors into their own tests would need 82 new plants
+to be worth the move.* ***SO THE CONVENTION IS THE ONLY INSTRUMENT, AND IT MUST BE WRITEABLE IN ONE
+SENTENCE:***
+
+> ⚠⚠⚠ **WHEN YOU WRITE A FLOOR, NAME THE COLLAPSE IT IS SIZED AGAINST.**
+
+**Not *"prove your floor"* — nobody will do that 82 times.** `ModelWalk`'s header already demands this form:
+*"you cannot derive a floor from the actual value, only from a failure you can name."* ***A NAMED COLLAPSE
+COSTS ONE SENTENCE AT WRITE TIME AND IS BETTER EVIDENCE THAN A PLANT; A ROUND NUMBER CHOSEN AFTER WATCHING
+THE ACTUAL PASS NEEDS A PLANT AND WILL NEVER GET ONE.***
+
+⚠⚠ **AND THE REASON IT MUST BE A HABIT RATHER THAN A THING PEOPLE KNOW: one of the 82 was written during the
+very session that discovered why the first position is weak, by the author who discovered it.** *Knowing the
+rule did not prevent writing the ordered form.*
+
 ## ⚠⚠ A "STICKY PIN" IS NOT A DETECTOR — IT GUARDS AGAINST THE TEST'S OWN MAINTAINER
 
 **A guard asserted an exact member set, then asserted four of those same members individually. The four are

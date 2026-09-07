@@ -597,8 +597,15 @@ public sealed class LocalizationArchitectureTests
   {
     Assert.Equal("SSAS.Platform.Application", typeof(ILocalizationManagementAuditReadiness).Assembly.GetName().Name);
     Assert.Equal("SSAS.Platform.Infrastructure", typeof(LocalizationManagementAuditReadiness).Assembly.GetName().Name);
-    Assert.DoesNotContain(typeof(TenantLocalizationOverride).Assembly.GetTypes(), type =>
-      type.Name.Contains("AuditReadiness", StringComparison.Ordinal));
+    var inDomain = typeof(TenantLocalizationOverride).Assembly.GetTypes()
+      .Where(type => type.Name.Contains("AuditReadiness", StringComparison.Ordinal))
+      .Select(type => type.FullName ?? type.Name)
+      .ToArray();
+
+    Assert.True(inDomain.Length == 0,
+      $"audit readiness has appeared in the Domain assembly: {string.Join(", ", inDomain)}. It is " +
+      "application-owned and infrastructure-implemented, so a Domain type of that name means the boundary " +
+      "the two assertions above pin has been crossed from the other side.");
   }
 
   // ⚠ CITES THE WIRING OF `AC-LOC-0064` — *"An otherwise authorized Production localization mutation

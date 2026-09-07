@@ -36,7 +36,18 @@ public sealed class PlatformSupportAuthorityArchitectureTests
 
     foreach (var assembly in new[] { typeof(PlatformSupportPrincipal).Assembly, typeof(PlatformSupportPermissionFilter).Assembly })
     {
-      Assert.DoesNotContain(assembly.GetTypes(), type => forbidden.Contains(type.Name, StringComparer.Ordinal));
+      // ⚠ THE ASSEMBLY NAME IS IN THE MESSAGE BECAUSE THIS LOOP RUNS TWICE. The previous
+      // `Assert.DoesNotContain(collection, predicate)` reported only "Filter matched in collection" — which
+      // named neither the offending type NOR which of the two assemblies produced it (T-087).
+      var constructs = assembly.GetTypes()
+        .Where(type => forbidden.Contains(type.Name, StringComparer.Ordinal))
+        .Select(type => type.Name)
+        .ToArray();
+
+      Assert.True(constructs.Length == 0,
+        $"{assembly.GetName().Name} declares a platform role construct: {string.Join(", ", constructs)}. " +
+        "Platform support is permission-based by decision, and a role type reintroduces exactly the " +
+        "grouping that design removed. Grant the permissions directly rather than naming a role.");
     }
   }
 

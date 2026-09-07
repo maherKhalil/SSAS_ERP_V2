@@ -191,9 +191,15 @@ public sealed class TenantRoutingArchitectureTests
     using var context = ModelOnlyPlatformContext();
 
     Assert.Null(context.Model.FindEntityType(typeof(TenantRoutingCacheEntry)));
-    Assert.DoesNotContain(
-      context.Model.GetEntityTypes(),
-      entity => entity.ClrType.Name.Contains("RoutingCache", StringComparison.Ordinal));
+    var persisted = context.Model.GetEntityTypes()
+      .Where(entity => entity.ClrType.Name.Contains("RoutingCache", StringComparison.Ordinal))
+      .Select(entity => entity.ClrType.Name)
+      .ToArray();
+
+    Assert.True(persisted.Length == 0,
+      $"version-aware routing has acquired persistence: {string.Join(", ", persisted)}. The design turns " +
+      "on a version column that already exists on TenantDatabaseAssignment, and a cache entity would make " +
+      "the routing table an authority rather than an optimisation (ADR-020).");
 
     // The version this design turns on is a column that already exists on the assignment.
     var assignment = context.Model.FindEntityType(typeof(TenantDatabaseAssignment));

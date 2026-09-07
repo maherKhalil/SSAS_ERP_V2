@@ -65,7 +65,15 @@ public sealed class CompanyApiArchitectureTests
     Assert.Equal("SSAS.Platform.API", apiAssembly.GetName().Name);
 
     // No company-owned-entity abstraction is introduced by the transport layer.
-    Assert.DoesNotContain(apiAssembly.GetTypes(), type => type.Name.Contains("ICompanyOwnedEntity", StringComparison.Ordinal));
+    var abstractions = apiAssembly.GetTypes()
+      .Where(type => type.Name.Contains("ICompanyOwnedEntity", StringComparison.Ordinal))
+      .Select(type => type.FullName ?? type.Name)
+      .ToArray();
+
+    Assert.True(abstractions.Length == 0,
+      $"the transport layer declares a company-owned-entity abstraction: {string.Join(", ", abstractions)}. " +
+      "Company ownership is a persistence concern; a transport contract for it would let an API caller " +
+      "depend on the ownership model. Move the type out of SSAS.Platform.API.");
   }
 
   private static string ReadCompanyApiSource(string fileName) => File.ReadAllText(Path.Combine(

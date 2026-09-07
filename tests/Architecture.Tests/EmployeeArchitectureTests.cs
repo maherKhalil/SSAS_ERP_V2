@@ -229,9 +229,17 @@ public sealed class EmployeeArchitectureTests
     // AND NO EMPLOYEE REPORTING LINE. `BR-HR-0007` presumes an employee-to-manager relationship that no
     // authority defines; a department has a manager, an employee does not. `DepartmentManager` is the
     // department's, which is why it is excluded by name rather than by the loose pattern above.
-    Assert.DoesNotContain(HrDomainAssembly.GetTypes(), type =>
-      type.Name.Contains("Manager", StringComparison.OrdinalIgnoreCase) &&
-      type.Name != nameof(SSAS.HR.Domain.Departments.DepartmentManager));
+    var reportingLines = HrDomainAssembly.GetTypes()
+      .Where(type => type.Name.Contains("Manager", StringComparison.OrdinalIgnoreCase) &&
+        type.Name != nameof(SSAS.HR.Domain.Departments.DepartmentManager))
+      .Select(type => type.Name)
+      .ToArray();
+
+    Assert.True(reportingLines.Length == 0,
+      $"HR domain types name a manager relationship: {string.Join(", ", reportingLines)}. A DEPARTMENT has " +
+      "a manager; an employee does not, and `BR-HR-0007` presumes an employee-to-manager link that no " +
+      "authority defines. If the type above belongs to the department, exclude it by name here as " +
+      "`DepartmentManager` already is; if it is an employee reporting line, it needs a decision before a test.");
   }
 
   // Automatic per-company numbering is deferred (DEC-EMP-0011): the number is a required INPUT, so a future

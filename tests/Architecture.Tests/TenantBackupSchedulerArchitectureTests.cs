@@ -236,9 +236,19 @@ public sealed class TenantBackupSchedulerArchitectureTests
     // contain a word. A future phase may legitimately need an entity called something-Lease; what it may not
     // do is give the BACKUP SCHEDULER persisted state, because due-ness is derived from policy plus the
     // successful-backup timestamps Phase B already maintains.
-    var model = PlatformModel();
+    // ---- ⚠ TWO FLOORS, ONE PER LAYER (T-079, adopting `ModelWalk`; the layering rule is T-263).
+    //
+    // Both loops below are `foreach` over a runtime enumeration, and **an empty enumeration satisfies every
+    // assertion inside it silently.** The model is built from contributor registrations, so a failed
+    // configuration or a namespace filter that stopped matching after a move produces exactly that.
+    //
+    // ***THE PROPERTY LAYER GETS ITS OWN FLOOR RATHER THAN INHERITING THE ENTITY ONE.*** A healthy entity
+    // list whose `GetProperties()` comes back empty is a different failure, and the `NextDue` ban below
+    // would pass over it while the entity ban above still worked — so a single floor would report the
+    // surviving layer and hide the collapsed one.
+    var entities = ModelWalk.FlooredEntities(PlatformModel().GetEntityTypes(), "PlatformModel", 28);
 
-    foreach (var entity in model.GetEntityTypes())
+    foreach (var entity in entities)
     {
       var name = entity.ClrType.Name;
 
@@ -247,13 +257,13 @@ public sealed class TenantBackupSchedulerArchitectureTests
         name.Contains("SchedulerLease", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("BackupLease", StringComparison.OrdinalIgnoreCase),
         $"{name} would give the backup scheduler persisted state");
+    }
 
-      // NextDueUtc is the specific denormalisation Phase C rejected: a second source of truth for due-ness
-      // that can drift out of step with the timestamps it duplicates.
-      foreach (var property in entity.GetProperties())
-      {
-        Assert.DoesNotContain("NextDue", property.Name, StringComparison.OrdinalIgnoreCase);
-      }
+    // NextDueUtc is the specific denormalisation Phase C rejected: a second source of truth for due-ness
+    // that can drift out of step with the timestamps it duplicates.
+    foreach (var (_, property) in ModelWalk.FlooredProperties(entities, "PlatformModel", 350))
+    {
+      Assert.DoesNotContain("NextDue", property.Name, StringComparison.OrdinalIgnoreCase);
     }
   }
 

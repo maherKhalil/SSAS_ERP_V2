@@ -5,6 +5,7 @@ using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
+using SSAS.TestSupport.CutoverModel;
 
 namespace SSAS.Architecture.Tests;
 
@@ -301,10 +302,37 @@ public sealed class BranchTransferArchitectureTests
       StringComparison.Ordinal);
   }
 
-  // ---- THIS SLICE INTRODUCED NO PERSISTENCE. The channel is authorization, not storage: no new entity, no
-  // new table, and no new foreign key of any kind.
+  // ---- NO ENTITY NAMED `Transfer` EXISTS IN EITHER MODEL. The channel is authorization, not storage.
+  //
+  // ⚠⚠⚠ READ THE NAME AND THE ASSERTION TOGETHER: THIS CHECKS A SPELLING, NOT A MECHANISM. It was called
+  // `The_transfer_channel_introduced_no_persistence`, which claims the absence of transfer persistence.
+  // The predicate is `ClrType.Name.Contains("Transfer")` — a substring over type names — and **this
+  // repository's convention for exactly this record is `…Assignment`**, as `EmployeeBranchAssignment`
+  // already demonstrates. So the honest statement of what this guard covers is: *a transfer record named
+  // the naive way is caught; one named the house way is not.* The name now says that, because a reader who
+  // saw the old name would have concluded the stronger thing.
+  //
+  // ⚠ THE TRIGGER THIS EXISTS TO CATCH is somebody adding transfer persistence. Whoever does that will be
+  // working in a MODULE — and until T-266 this test built `TenantDbContext` directly, with no contributors,
+  // so the tenant walk saw TWO entity types and could not see module models at all. ***The guard was aimed
+  // at a change it was structurally incapable of detecting.*** It now reads the composed model, the same
+  // one the cutover manifest derives from, so a module's entities are in the population.
+  //
+  // FLOORED PER MODEL RATHER THAN OVER THE UNION (T-265): the platform walk and the composed tenant walk
+  // fail on different days, and a floor over both together cannot see one of them collapse. There is no
+  // PROPERTY floor because the predicate never descends to properties — a floor there would bind nothing.
+  //
+  // ⚠ REACH PROBE RUN, AND IT IS THE EVIDENCE THAT THE WIDENING DID SOMETHING (T-266). Swapping the tenant
+  // clause's needle from `Transfer` to `Assignment` — a term satisfied only by a MODULE entity — turned this
+  // RED. Under the old two-entity walk the same swap would have stayed GREEN. That is the difference
+  // between a guard that inspects the module models and one that only appears to.
+  //
+  // The tenant floor is set to DISCRIMINATE THE FAILURE THAT ACTUALLY HAPPENED HERE, not to track a count:
+  // a contributor-free source yields TWO entity types (asserted directly by `C6_14` in the cutover manifest
+  // tests), the composed one yields thirty-six, and 30 separates them with room for a module to be removed
+  // without a false red. If this floor ever fires, the composition regressed — not the ban.
   [Fact]
-  public void The_transfer_channel_introduced_no_persistence()
+  public void No_entity_named_transfer_exists_in_either_model()
   {
     var options = new DbContextOptionsBuilder<PlatformDbContext>()
       .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
@@ -314,18 +342,12 @@ public sealed class BranchTransferArchitectureTests
       options, new ModelUser(), new ModelTenant(), new ModelClock());
 
     Assert.DoesNotContain(
-      platform.Model.GetEntityTypes(),
+      ModelWalk.FlooredEntities(platform.Model.GetEntityTypes(), "PlatformModel", 28),
       entity => entity.ClrType.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase));
 
-    var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
-      .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
-      .Options;
-
-    using var tenant = new TenantDbContext(
-      tenantOptions, new ModelUser(), new ModelTenant(), new ModelClock());
-
     Assert.DoesNotContain(
-      tenant.Model.GetEntityTypes(),
+      ModelWalk.FlooredEntities(
+        CutoverTenantModel.Source.Model.GetEntityTypes(), "ComposedTenantModel", 30),
       entity => entity.ClrType.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase));
   }
 

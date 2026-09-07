@@ -1,6 +1,8 @@
 // ==================================================================================================
-// ⚠⚠⚠ THE RULE. APPLY IT WHEN YOU WRITE THE ASSERTION; EVERYTHING BELOW IS ONLY THE EVIDENCE FOR IT.
+// ⚠⚠⚠ THE TWO RULES. APPLY THEM WHEN YOU WRITE THE ASSERTION; EVERYTHING BELOW IS ONLY THE EVIDENCE.
 // ==================================================================================================
+//
+// ---- 1. WILL THE READER LEARN THE OFFENDER?
 //
 //   ***IF THE COLLECTION IS ANYTHING BUT A LITERAL OR A SINGLE TYPE'S MEMBERS, USE `Assert.Empty` OR
 //   `Assert.True` WITH THE OFFENDER INTERPOLATED — NEVER `Contains` / `DoesNotContain` WITH A PREDICATE.***
@@ -9,6 +11,18 @@
 //
 // That second line is the operative half. It needs no census, no tiering script and no list of sites: it is
 // answerable by looking up from the line you are typing.
+//
+// ---- 2. CAN THE ASSERTION TELL ITS CAUSES APART?
+//
+//   ***BEFORE ASSERTING AN OUTCOME, ASK WHAT ELSE IN THE PRODUCT PRODUCES THAT OUTCOME. IF MORE THAN ONE
+//   CAUSE REACHES IT — ESPECIALLY IF THE CAUSES BELONG TO DIFFERENT CRITERIA — THE TYPE IS NOT THE
+//   ASSERTION. THE MESSAGE IS.***
+//
+// ⚠ **THE TWO RULES ARE ONE INSTRUCTION, NOT TWO FILES.** Rule 2's remedy is *"assert the message"*, and
+// that message is then governed by every line of rule 1 — the tier rule, the fifty-character truncation,
+// identity-first. **An author who followed rule 2 out of a separate file would write a message cut at fifty
+// characters, which is the exact defect rule 1 exists to prevent.** *They are kept together because the fix
+// for one is executed under the other; the evidence for each is below, in the order it was measured.*
 //
 // ---- ⚠⚠⚠ WHY A HABIT AND NOT A SWEEP — AND THIS IS MEASURED, NOT ARGUED.
 //
@@ -212,11 +226,10 @@
 // strings to survive a renderer.
 //
 // ==================================================================================================
-// ⚠⚠⚠ BEFORE ASSERTING AN OUTCOME, ASK WHAT ELSE PRODUCES THAT OUTCOME (T-158).
+// THE EVIDENCE FOR RULE 2 — WHAT ELSE PRODUCES THAT OUTCOME (T-158).
 // ==================================================================================================
 //
-// ***IF MORE THAN ONE CAUSE REACHES THE OUTCOME YOU ARE ASSERTING — AND ESPECIALLY IF THOSE CAUSES BELONG TO
-// DIFFERENT CRITERIA — THE TYPE IS NOT THE ASSERTION. THE MESSAGE IS.***
+// *The rule itself is at the top of this file. What follows is why it exists and what it does not say.*
 //
 // **The measured instance:** `AuthenticationTransportServices.Validate` throws `InvalidOperationException`
 // from FIVE sites — duplicate origins, an unrecognised `ProxyMode`, TrustedProxy without proxies or

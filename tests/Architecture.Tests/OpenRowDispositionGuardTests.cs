@@ -75,19 +75,73 @@ public sealed class OpenRowDispositionGuardTests
   {
     var files = FeaturePackageFiles();
 
-    // ⚠ 150, DERIVED (T-099). Actual 173, measured 2026-09-07. The collapse this discriminates is ONE
-    // FEATURE-PACKAGE FOLDER GOING MISSING — a renamed subdirectory, a moved package — which is the
-    // failure that actually happens here. A vanished corpus was never the risk; a quietly smaller one is.
+    // ==================================================================================================
+    // ⚠⚠⚠ TWO LAYERS, TWO COLLAPSES — AND THE FILE FLOOR ALONE CANNOT SEE THE ONE ITS COMMENT CLAIMED
+    // ==================================================================================================
     //
-    // ⚠⚠ IT WAS 100, AND THAT FLOOR PERMITTED SEVENTY-THREE PACKAGES TO LEAVE THE WALK IN SILENCE. Its
-    // own message said the floor existed "to make an empty walk RED rather than green" — which is exactly
-    // what it did and exactly why it was too weak: EMPTY was never the failure mode worth catching.
-    // ***A floor sized to the collapse you can imagine is not sized to the collapse that occurs.***
+    // THE HISTORY IS THE ARGUMENT. This floor was 100 against an actual of 173, permitting seventy-three
+    // files to leave in silence. T-099 tightened it to 150 and named the event "one feature-package folder
+    // going missing." ***THE ARITHMETIC WAS NEVER RUN, AND IT DOES NOT HOLD:***
+    //
+    //     16 packages, 173 files, 2026-09-07  ->  ~10.8 files per package
+    //     one average package disappears      ->  173 - 11 = 162   A FLOOR OF 150 IS GREEN
+    //     150 fires at                        ->  149             which is TWO packages, nearly three
+    //
+    // **So the tightened floor discriminated "two packages gone" while its comment claimed "one folder".**
+    // The number moved, the event was named, and nobody checked that the number discriminates the event —
+    // which is the very defect the tightening was meant to cure, one rung up.
+    //
+    // ⚠⚠ AND A TIGHTER FILE FLOOR IS THE WRONG INSTRUMENT, NOT AN INSUFFICIENT ONE. To catch the SMALLEST
+    // package leaving you would need a floor within a file or two of the actual, which then false-reds on
+    // any legitimate deletion. **A count of files cannot discriminate a folder; only a count of folders
+    // can.** So the layers are separated (T-263) and each floors its own:
+    //
+    //     PACKAGE layer   catches a directory REMOVED or MOVED OUT of docs/17-features/
+    //     FILE layer      catches a package that is present and walked but contributing nothing
+    //
+    // ⚠⚠⚠ AND THE PACKAGE LAYER CANNOT SEE A RENAME. STATED BECAUSE THIS COMMENT ONCE CLAIMED IT COULD.
+    //
+    // The walk is `EnumerateDirectories` with NO pattern, and that is deliberate — a naming convention
+    // would be a vocabulary, and a vocabulary drifts. **But a folder renamed IN PLACE is still a folder,
+    // so the count is unchanged and this assertion is silent.** The earlier wording here said the layer
+    // caught a package "renamed, moved, or stopped matching this walk": ***it detects one of those three,
+    // and "stopped matching" is meaningless for a walk that matches everything.***
+    //
+    // ⚠ NOTHING IN THIS FILE CATCHES A RENAME IN PLACE. The disposition tests read whatever directories
+    // exist, so a renamed package is still walked and still scored — its CONTENT is checked and its
+    // IDENTITY is not. That is a real hole and it is left open rather than closed with a convention.
+    //
+    // ---- ⚠⚠ THE PLANT, AND IT PROVED SOMETHING STRONGER THAN THE ARITHMETIC PREDICTED (T-100).
+    //
+    // `FP-016-platform-support-surface` was moved out of the tree, 2026-09-07. Result: **package assertion
+    // RED at 15, exactly one test failing of 724.** The file layer never executed — the package assertion
+    // precedes it and ordered checks hide all but the first — but the counts settle what it would have
+    // done: ***FP-016 HELD ONE `.md` FILE. The walk went 173 -> 172.***
+    //
+    // So a file floor of 150 was not merely too loose for this event; **a file count cannot discriminate
+    // package loss AT ALL.** Package sizes are wildly uneven — one file against a mean of ten — so no
+    // file-count threshold separates "a package left" from "someone deleted a paragraph". The arithmetic
+    // that motivated this split assumed an average package; the smallest real one is a twentieth of that.
+    var packages = FeaturePackageDirectories();
+
+    Assert.True(
+      packages.Length >= 16,
+      $"docs/17-features/ holds {packages.Length} package directories; SIXTEEN were measured 2026-09-07. " +
+      "A package directory has been REMOVED or MOVED OUT of docs/17-features/, and every disposition " +
+      "check in this file is now reading a corpus that silently excludes it.\n" +
+      "  ⚠ A RENAME IN PLACE WOULD NOT HAVE FIRED THIS — the count is unchanged by one — so if you are " +
+      "here after renaming something, this is telling you about a different change than the one you made.\n" +
+      "  If a package was deliberately retired, lower this number and say which one. Do not lower it to " +
+      "make the red go away: the file floor below cannot cover for this one, because package sizes range " +
+      "from one file to twenty and no file count separates a lost package from an edited paragraph.");
+
+    // ⚠ THE FILE FLOOR STAYS, AND ITS EVENT IS NOW THE ONE IT CAN ACTUALLY DISCRIMINATE. 150 against 173
+    // catches a package that is still present but has stopped contributing files, and any larger loss.
     Assert.True(
       files.Length >= 150,
-      $"The walk found {files.Length} files under docs/17-features/; 173 were measured at T-099. A folder " +
-      "has left the walk — renamed, moved, or excluded by a changed pattern — and every disposition check " +
-      "in this file is now silently reading a smaller corpus than it reports on.");
+      $"The walk found {files.Length} files under docs/17-features/; 173 were measured at T-099 across " +
+      $"{packages.Length} packages. The package count above is intact, so a package is present and " +
+      "contributing nothing — emptied, renamed away from `*.md`, or excluded by a changed pattern.");
   }
 
   // ---- THE BOUNDARY ASSERTION. This replaces an allow-list that would have been vacuous.
@@ -244,6 +298,15 @@ public sealed class OpenRowDispositionGuardTests
 
   private static string Describe(IReadOnlyList<string> findings) =>
     string.Join(Environment.NewLine, findings);
+
+  // The PACKAGE layer. Directories only, one level down — a feature package is a folder under
+  // `docs/17-features/`, which is a fact about the layout rather than a judgement about naming, so this
+  // needs no pattern and cannot drift with a naming convention.
+  private static string[] FeaturePackageDirectories() =>
+    [.. Directory
+      .EnumerateDirectories(Path.Combine(RepositoryRoot(), "docs", "17-features"))
+      .Select(path => new DirectoryInfo(path).Name)
+      .OrderBy(name => name, StringComparer.Ordinal)];
 
   private static (string Path, string Text)[] FeaturePackageFiles()
   {

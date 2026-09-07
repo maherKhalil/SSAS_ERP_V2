@@ -26,10 +26,15 @@ public sealed class AuthenticationSessionArchitectureTests
   // paths did: it resolves tenant-administrator authority for AUTHENTICATION, which asks before any
   // ambient tenant context exists. Left filtered it would answer "not an administrator" for everyone.
   // It states the tenant explicitly in every clause instead, so nothing is widened.
+  // ⚠ REPOSITORY-RELATIVE PATHS, NOT BARE NAMES (T-080). The walk covers all of `src/`, so a bare name
+  // would pre-approve any module file that happened to share it. Ordinal comparison and `/` separators, so
+  // the guard means the same thing on every machine.
   private static readonly string[] ApprovedQueryFilterBypassFiles =
   [
-    "AccessTokenClaimsProvider.cs", "IdentityTenantMembershipReadService.cs",
-    "TenantAdministratorAuthority.cs", "TenantUserRepository.cs"
+    "src/Platform/SSAS.Platform.Infrastructure/Persistence/Queries/AccessTokenClaimsProvider.cs",
+    "src/Platform/SSAS.Platform.Infrastructure/Persistence/Queries/IdentityTenantMembershipReadService.cs",
+    "src/Platform/SSAS.Platform.Infrastructure/Persistence/Queries/TenantAdministratorAuthority.cs",
+    "src/Platform/SSAS.Platform.Infrastructure/Persistence/Repositories/TenantUserRepository.cs"
   ];
 
   [Fact]
@@ -106,22 +111,115 @@ public sealed class AuthenticationSessionArchitectureTests
   // list, so a walk that finds nothing produces an empty array and the comparison fails.
   // **An exact-list assertion is anti-vacuous by construction** in a way `Assert.Empty` never is.
   //
-  // Planted both ways rather than argued: pointing the root at `src/PlatformX` throws
-  // `DirectoryNotFoundException`, and changing the pattern to `*.csx` — a directory that exists, matching
-  // nothing — reddens the comparison. **The root cannot vanish silently; the filter can; and this
-  // assertion catches the filter anyway.**
+  // ⚠ THE PLANT RECORD BELOW WAS UPDATED WITH T-080, BECAUSE ALL THREE OF ITS CLAIMS WENT STALE IN ONE EDIT.
+  // It read: *"pointing the root at `src/PlatformX` throws `DirectoryNotFoundException`, and changing the
+  // pattern to `*.csx` — a directory that exists, matching nothing — reddens the comparison. The root cannot
+  // vanish silently; the filter can."* **The root is no longer `src/Platform`, the matcher no longer reads
+  // whole file text, and the comparison is no longer on bare names** — so a record citing those three is a
+  // record of a test that no longer exists. *An anchor citing a conclusion is the first thing to rot.*
+  // The reasoning it preserved is unchanged and is restated above: an exact-list comparison against a
+  // non-empty expected value cannot pass over an empty walk.
+  //
+  // ==================================================================================================
+  // ---- ⚠⚠⚠ T-080: THE NAME CLAIMED A CONFINEMENT AND THE POPULATION WAS ONE TREE OF FIVE.
+  // ==================================================================================================
+  //
+  // This test is called `..._is_confined_...` and **names no tree**. Its grounds — *bypassing the tenant
+  // filter is the one change that can silently widen a query across tenants* — carry no clause restricting
+  // them to Platform. ***THE WALK NEVERTHELESS READ `src/Platform` ONLY, SO A BYPASS IN `src/Modules` WAS
+  // INVISIBLE TO IT PERMANENTLY.*** Zero real bypasses existed there when this was widened — measured, with
+  // comments excluded — **so this closed a hole rather than exposing a breach.** ⚠ Three module files
+  // nonetheless DISCUSS `IgnoreQueryFilters` in comments, one warning that it *"silently removes it, turning
+  // a scoped read into a tenant-wide one"*: module authors know the mechanism and the guard could not see
+  // their files.
+  //
+  // ⚠⚠ **THE SAME DEFECT WAS FOUND THE SAME NIGHT IN AN UNRELATED FILE** — `No_employee_delete_operation_is_exposed`
+  // matches four literal spellings of "delete" across two assemblies, so `SoftDeleteEmployeeAsync` is
+  // invisible to a test whose name says no delete operation is exposed. ***A NAME CLAIMS A MECHANISM; A
+  // PREDICATE MATCHES A VOCABULARY OR A SUBTREE; AND THE NAME IS WHAT EVERY LATER READER TRUSTS.***
+  //
+  // ---- ⚠⚠⚠ AND WIDENING THE WALK ALONE WOULD HAVE MOVED THE HOLE RATHER THAN CLOSING IT.
+  //
+  // The comparison was on `Path.GetFileName`. Over one tree that is unambiguous; over `src/` it is not.
+  // ***A MODULE FILE NAMED `TenantUserRepository.cs` WOULD HAVE BEEN PRE-APPROVED BY NAME COLLISION*** — the
+  // derived set and the expected set would agree, and a bypass nobody approved would ship green. **That is a
+  // false-clear-by-collision replacing a false-clear-by-omission.** ⚠ Not hypothetical in this tree:
+  // **seven basenames already duplicate across `src/`, led by `ServiceCollectionExtensions.cs` at NINE
+  // copies, and three of the seven pairs are Application/Infrastructure twins** — exactly the shape a
+  // repository or a claims provider forms. *None of the four approved names collides today, so this was a
+  // hazard the widening would have CREATED.* **Hence repository-relative paths, not names.**
+  //
+  // ---- AND THE WALK EXCLUDES BUILD OUTPUT, WHICH IS NOT PEDANTRY.
+  //
+  // `EnumerateFiles` reads the filesystem, so widening the root also admits every module's `obj/`. **A
+  // sibling instrument on this branch reported a wrong count on exactly this fault** — a grep over `tests/`
+  // that matched compiled `.dll` and `.pdb` content. *A filesystem walk has no `.gitignore`; a `git`-based
+  // one cannot make this mistake at all.*
   [Fact]
   public void Query_filter_bypass_is_confined_to_explicit_membership_eligibility_paths()
   {
     var repositoryRoot = FindRepositoryRoot();
     var bypasses = Directory
-      .EnumerateFiles(Path.Combine(repositoryRoot, "src", "Platform"), "*.cs", SearchOption.AllDirectories)
-      .Where(path => File.ReadAllText(path).Contains("IgnoreQueryFilters", StringComparison.Ordinal))
-      .Select(Path.GetFileName)
-      .OrderBy(name => name, StringComparer.Ordinal)
+      .EnumerateFiles(Path.Combine(repositoryRoot, "src"), "*.cs", SearchOption.AllDirectories)
+      .Where(path => !IsBuildOutput(repositoryRoot, path))
+      .Where(path => MentionsOutsideComments(File.ReadAllLines(path), "IgnoreQueryFilters"))
+      .Select(path => RepositoryRelative(repositoryRoot, path))
+      .OrderBy(path => path, StringComparer.Ordinal)
       .ToArray();
 
     Assert.Equal(ApprovedQueryFilterBypassFiles, bypasses);
+  }
+
+  // ---- THE THREE HELPERS, SEPARATED SO THE FIXTURES BELOW EXERCISE THE SAME CODE THE GUARD RUNS.
+
+  private static bool IsBuildOutput(string repositoryRoot, string path)
+  {
+    var relative = RepositoryRelative(repositoryRoot, path);
+
+    return relative.Contains("/obj/", StringComparison.Ordinal) ||
+      relative.Contains("/bin/", StringComparison.Ordinal);
+  }
+
+  // A COMMENT IS NOT A CALL. Without this, a file that merely WARNS about `IgnoreQueryFilters` — and three
+  // module files do — enters the derived set and reddens an exact-set comparison for no reason.
+  private static bool MentionsOutsideComments(IEnumerable<string> lines, string token) =>
+    lines.Any(line =>
+      line.Contains(token, StringComparison.Ordinal) &&
+      !line.TrimStart().StartsWith("//", StringComparison.Ordinal));
+
+  private static string RepositoryRelative(string repositoryRoot, string path) =>
+    Path.GetRelativePath(repositoryRoot, path).Replace('\\', '/');
+
+  // ---- ⚠ THE REVERSE BIND FOR THE PATH COMPARISON. Without this, change 3 ships unproven.
+  //
+  // A bypass in a module file whose BASENAME matches an approved Platform file must not be cleared. Under
+  // the old `Path.GetFileName` projection it would have been; under repository-relative paths it cannot be,
+  // and this asserts the difference rather than trusting it.
+  [Fact]
+  public void A_module_file_sharing_an_approved_basename_is_not_pre_approved()
+  {
+    const string root = "/repo";
+    var approved = RepositoryRelative(root, "/repo/src/Platform/SSAS.Platform.Infrastructure/Persistence/Repositories/TenantUserRepository.cs");
+    var impostor = RepositoryRelative(root, "/repo/src/Modules/HR/SSAS.HR.Infrastructure/Persistence/TenantUserRepository.cs");
+
+    Assert.Equal(Path.GetFileName(approved), Path.GetFileName(impostor));
+    Assert.NotEqual(approved, impostor);
+    Assert.DoesNotContain(impostor, ApprovedQueryFilterBypassFiles);
+  }
+
+  [Fact]
+  public void A_commented_mention_is_not_a_bypass_and_a_real_call_is()
+  {
+    Assert.False(MentionsOutsideComments(["// IgnoreQueryFilters() removes the tenant filter"], "IgnoreQueryFilters"));
+    Assert.True(MentionsOutsideComments(["    var all = set.IgnoreQueryFilters().ToList();"], "IgnoreQueryFilters"));
+  }
+
+  [Fact]
+  public void Build_output_is_excluded_from_the_bypass_walk()
+  {
+    Assert.True(IsBuildOutput("/repo", "/repo/src/Platform/X/obj/Debug/net8.0/Generated.cs"));
+    Assert.True(IsBuildOutput("/repo", "/repo/src/Modules/HR/Y/bin/Debug/net8.0/Thing.cs"));
+    Assert.False(IsBuildOutput("/repo", "/repo/src/Platform/X/Persistence/Real.cs"));
   }
 
   [Fact]

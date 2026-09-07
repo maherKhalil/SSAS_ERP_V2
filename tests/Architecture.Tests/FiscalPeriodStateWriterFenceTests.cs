@@ -74,6 +74,32 @@ public sealed class FiscalPeriodStateWriterFenceTests
       "*.cs",
       SearchOption.AllDirectories))
     {
+      // ---- ⚠⚠⚠ BUILD OUTPUT, EXCLUDED — AND UNTIL T-188 IT WAS NOT (measured, two windows).
+      //
+      // `AllDirectories` under a PROJECT directory sees `obj/`. Measured 2026-09-07 on this root:
+      // ***`git ls-files` returns 14 `.cs` files and this walk returned 20*** — the six extra being
+      // `AssemblyInfo.cs`, `GlobalUsings.g.cs` and `.NETCoreApp,Version=v8.0.AssemblyAttributes.cs`, once
+      // under `obj/Debug/net8.0` and again under `obj/Release/net8.0`.
+      //
+      // ⚠⚠ **THE SHARPER OBJECTION IS NOT "A GENERATED FILE MIGHT ONE DAY MATCH A TOKEN". IT IS THAT THE
+      // POPULATION DEPENDED ON WHICH CONFIGURATIONS HAD EVER BEEN BUILT ON THE MACHINE** — 20 here, 17 on a
+      // box that never built Release, 14 on a clean clone in CI. *A guard whose population varies by build
+      // history is not deterministic across machines, and that was true every day, not one day.*
+      //
+      // ⚠ The clause is COPIED from `DepartmentReadScopeArchitectureTests`. *Not retyped:
+      // `Path.DirectorySeparatorChar` on both sides is what makes it match a path segment rather than the
+      // substring `bin` inside a word.*
+      //
+      // ⚠⚠ **THE FIRST DRAFT OF THIS COMMENT SAID "ONE OF TEN FILES". MEASURED 2026-09-07 IT IS 29 FILES
+      // UNDER `tests/`, THIS ONE AMONG THEM** — ten was what one instrument had listed for a different
+      // question, carried over as if it were a census. *The house form is far more established than the
+      // number claimed, which is the opposite of the error a low count usually causes.*
+      if (path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+          path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      {
+        continue;
+      }
+
       foreach (var (name, body) in Classes(File.ReadAllText(path)))
       {
         if (Regex.IsMatch(body, @"\.(Close|Reopen)\(\)"))

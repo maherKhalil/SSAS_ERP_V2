@@ -239,6 +239,29 @@ public sealed class JournalPostingOrderTests
       "*.cs",
       SearchOption.AllDirectories))
     {
+      // ---- ⚠⚠⚠ BUILD OUTPUT, EXCLUDED — AND ITS ABSENCE MATTERED MOST HERE (T-188).
+      //
+      // Measured 2026-09-07 on this root: ***`git ls-files` returns 14 `.cs` files and this walk returned
+      // 20*** — six generated files under `obj/Debug/net8.0` and `obj/Release/net8.0`.
+      //
+      // ⚠⚠ **THIS WALK FEEDS AN ALLOW-LIST, WHICH IS WHY IT IS THE WORSE OF THE TWO SITES: a spurious member
+      // does not merely enlarge the population, it reads as AN UNEXEMPTED POSTER** — a red naming a path
+      // nobody wrote, which is the failure that gets a guard deleted rather than fixed.
+      //
+      // ⚠ **And the population depended on build history**: 20 on a box that has built Debug and Release, 17
+      // on one that never built Release, 14 on a clean clone. *Not deterministic across machines, every day.*
+      //
+      // The clause is COPIED from `DepartmentReadScopeArchitectureTests` rather than retyped.
+      //
+      // ⚠⚠ **THIS COMMENT FIRST SAID "ONE OF TEN FILES". MEASURED 2026-09-07 IT IS 29 UNDER `tests/`, THIS
+      // ONE AMONG THEM** — ten was one instrument's list for a different question, reused as a census. *The
+      // twin note in `FiscalPeriodStateWriterFenceTests` carries the same correction.*
+      if (path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+          path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      {
+        continue;
+      }
+
       foreach (var (name, body) in Classes(File.ReadAllText(path)))
       {
         var readsPeriod = FirstIndexOfAny(

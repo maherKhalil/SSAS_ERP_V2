@@ -28,10 +28,21 @@ date: 2026-08-23
 > `| **Open** |` table rows — a second class, unquoted and unpreserved, which the sentence above never
 > mentioned and therefore never cleared.** ⚠ ***THEY ARE CLEARED HERE, AND THEY WERE STALE, NOT OPEN.***
 >
-> **Enumerated from the file rather than from reading — `:87 :99 :111 :123 :139 :151 :163 :175 :191 :203
-> :215 :231 :243 :255`. ELEVEN carry a decision id; THREE (`:99`, `:151`, `:163`) carry none.**
+> **Enumerated from the file rather than from reading. ELEVEN carry a decision id — `OD-GL-0002` (×2),
+> `OD-GL-0003` (×2), `OD-GL-0004` (×3), `OD-GL-0005` (×2), `OD-GL-0006`, `OD-GL-0007` (×2) and `OD-GL-0008`,
+> counting the row that cites `0002`, `0005` and `0007` together once. THREE carry none: two whose cell is
+> `—`, and the row reading *"Whether the code is immutable from creation or only once used — not settled by
+> any existing rule"*.**
+>
+> ⚠⚠⚠ ***THIS PARAGRAPH ORIGINALLY IDENTIFIED THE FOURTEEN ROWS BY LINE NUMBER, AND THE COMMIT THAT WROTE IT
+> FALSIFIED IT.*** **The twenty-eight lines inserted above them moved every row: the cited `:87` is now a
+> blank quoted line and the cited `:255` is a Business Rule row. *The citations were wrong the moment they
+> were committed — nothing had to be edited afterwards.*** **And the paragraph was arguing, in that same
+> breath, that ***naming the ids makes this note mechanically checkable*** — while identifying its own
+> subjects by the least durable handle in the file.** ***CITE THE ID AND THE QUOTED TEXT. A LINE NUMBER
+> SURVIVES NOTHING, INCLUDING THE EDIT THAT WRITES IT.*** *(Corrected 2026-09-07.)*
 > ***ALL ELEVEN NAME A DECISION THIS PACKAGE HAS ALREADY RULED AND RECORDED IN ITS OWN
-> [`README.md`](README.md) UNDER `## The nine rulings` (`:34`–`:43`), a live unquoted table.*** **So
+> [`README.md`](README.md) UNDER ITS HEADING `## The nine rulings`, a live unquoted table of nine rows.*** **So
 > `README.md` is authoritative over every cell in the tables below, and where the two disagree the README
 > wins.**
 >

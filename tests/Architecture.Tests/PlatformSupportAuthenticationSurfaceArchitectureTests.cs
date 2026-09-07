@@ -277,7 +277,13 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
     // ⚠ THE CONTROL ON THE MATCHER (T-263). The floor proves types were scanned. It cannot prove the name
     // test still selects anything, and a ban whose matcher matches nothing is green for the wrong reason.
     // So the same `Name.Contains` is run over the same collection for a term that MUST be present.
-    Assert.Contains(scanned, type => type.Name.Contains("PlatformSupport", StringComparison.Ordinal));
+    // ⚠ GROUNDED (T-119). `scanned` is every type across several assemblies; this was silent over it.
+    Assert.True(
+      scanned.Any(type => type.Name.Contains("PlatformSupport", StringComparison.Ordinal)),
+      $"scanned type count: {scanned.Length}, and not one name contains `PlatformSupport`. **This is the " +
+      "matcher control, so its failure means the BAN below is green for the wrong reason** — the same " +
+      "`Name.Contains` comparison it uses now matches nothing at all, and the deferred-surface check is " +
+      "asserting over a predicate that cannot fire rather than over a clean tree.");
 
     var deferred = scanned
       .Where(type => type.Name.Contains("PlatformAuthenticatedUser", StringComparison.Ordinal))

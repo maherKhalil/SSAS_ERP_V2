@@ -17,10 +17,24 @@ that of every guard in `tests/Architecture.Tests` for a night and never once of 
 | clean build | `dotnet build --no-incremental` piped to `grep -iE "warning\|error"` | ***two lines***: `0 Warning(s)` and `0 Error(s)` — **NEVER EMPTY** | yes |
 | test run | `dotnet test` piped to `grep -E "^(Passed!\|Failed!)\|error CS\|warning"` | one line, `Passed! …` | yes — ⚠ the summary's `0 Warning(s)` has a capital W and is deliberately outside this lowercase pattern |
 | suite total | `.claude/handoff/test-baseline.txt` | `Architecture\|Debug\|724`, from the 15:30 green gate | yes — ⚠⚠ **and it read `691` for six hours while nobody looked** |
-| TRX freshness | `ls --time-style=+%H:%M:%S TestResults/gate/*.trx` | every timestamp AFTER the run began | ⚠ **the directory ACCUMULATES** — `Integration-Debug.trx` sat at `10:17` beside a `15:30` run |
-| revert of a MODIFYING plant | `git diff --numstat` | pure additions, `N 0`; a live plant shows a deletion | yes |
+| TRX freshness | `ls -la --time-style=+%H:%M:%S TestResults/gate/*.trx` | every timestamp AFTER the run began | ⚠ **the directory ACCUMULATES** — `Integration-Debug.trx` sat at `10:17` beside a `15:30` run |
+| revert of a MODIFYING plant | `git diff --numstat` | pure additions, `N 0`; a live plant shows a deletion | yes — ⚠ *on a tree with ordinary work in progress this shows real edits and says nothing; it is a check for the moment after a revert, not a general one* |
 | revert of an ADDING plant | `git status --porcelain` | the one baseline line and nothing else | yes — ⚠ **the diff-shape check above cannot see an addition; these two do not cover each other** |
-| when a row was last written | `git log -S "<row text>" -- <file>` | the commit that last changed **that row** | yes |
+| when a row was last written | `git log -G "^<row prefix>" -- <file>` | the commits that CHANGED that row | yes |
+
+⚠⚠⚠ **TWO OF THESE WERE WRONG WHEN FIRST WRITTEN, AND BOTH FAILED IN THE DIRECTION THAT LOOKS LIKE A PASS.**
+
+**The TRX check was written without `-la`. `--time-style` HAS NO EFFECT WITHOUT `-l`, so it printed a clean
+list of FILENAMES AND NO TIMES.** ***A reader runs the freshness check, sees a tidy list, and concludes the
+files are fresh — told so by an instrument that cannot display a time.***
+
+**The provenance check was written with `-S`, which counts OCCURRENCES of a string: for a row whose text is
+always present, the count never changes, so it reports when the row was ADDED and not when its VALUE
+changed.** `-G` searches the diff and is the correct probe. ⚠ **This produced a wrong date in this
+repository's record — `Architecture|Release` last changed at `e7f29dd` on **2026-09-01**, not `144a10e` on
+2026-08-31 — and the conclusion it supported (that the Release rows are stale) survives unharmed.**
+***A FIGURE MEASURED CORRECTLY BY AN INSTRUMENT ANSWERING A DIFFERENT QUESTION — inside the very method
+proposed for detecting that.***
 
 ---
 
@@ -49,8 +63,14 @@ found` printed three times by a single command that then reported success.
 ## The method, which outlives the list
 
 ⚠⚠⚠ ***A FILE WITH NO TIMESTAMPS IS NOT NECESSARILY AN UNDATED FILE.*** The baseline carries no per-row
-dates, and `git log -S` supplies them per row in one command. **Before recording *"this artefact cannot tell
-you when"*, ask whether the repository can.**
+dates, and **`git log -G "^<row prefix>"`** supplies them per row in one command. **Before recording *"this
+artefact cannot tell you when"*, ask whether the repository can.** ⚠ *`-G`, not `-S` — see the correction
+above; the first version of this line named the wrong flag and produced a wrong date.*
+
+⚠⚠ ***AND THE CHECKLIST ITSELF WAS NEVER RUN BY ITS AUTHOR.*** Every expected output in it was transcribed
+from a report — **a join, by this repository's own definition** — and two of the nine were wrong. **The file
+argues that a check whose pass condition is unstated cannot be trusted, and shipped nine pass conditions
+nobody had executed.** *Re-run the list against a real tree before relying on a row of it.*
 
 ⚠ ***STATE THE EXPECTED OUTPUT, NOT "IT LOOKED FINE".*** Every failure above is safe the moment its pass
 condition is written down and unsafe for exactly as long as it lives in somebody's head.

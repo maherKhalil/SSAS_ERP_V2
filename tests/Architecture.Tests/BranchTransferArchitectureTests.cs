@@ -103,8 +103,24 @@ public sealed class BranchTransferArchitectureTests
       .Select(member => member.Name)
       .ToArray();
 
-    Assert.DoesNotContain(members, name => suspicious.Any(
-      candidate => name.Contains(candidate, StringComparison.OrdinalIgnoreCase)));
+    // ⚠⚠ GROUNDED (T-119). `members` is EVERY member of EVERY type in two assemblies — thousands — and this
+    // failed with *"Filter matched in collection"*, naming neither the member nor which of the five
+    // suspicious names it matched.
+    // ⚠ IT WAS INVISIBLE TO BOTH CENSUSES because the walk is bound to a local six lines above: they
+    // classify by the collection expression at the call site, which here reads only `members`.
+    var switches = members
+      .SelectMany(name => suspicious
+        .Where(candidate => name.Contains(candidate, StringComparison.OrdinalIgnoreCase))
+        .Select(candidate => $"{name} (matched `{candidate}`)"))
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(switches.Length == 0,
+      $"a general branch-change switch has appeared: {string.Join("; ", switches)}. ADR-024 decision 11 " +
+      "forbids one, because a boolean that can be turned on for convenience is the boundary's ABSENCE " +
+      "rather than its exception — the sanctioned channel requires a tracked entity precisely so that no " +
+      "flag can stand in for it.");
 
     // And no boolean anywhere on the transfer contracts, which is where such a switch would most naturally
     // be smuggled in.

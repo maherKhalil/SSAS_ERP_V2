@@ -270,12 +270,29 @@ public sealed class EmployeeArchitectureTests
     // The floor and the matcher control, for the reason given on `No_rehire_operation_exists` (B23): an
     // empty `types` satisfies this ban identically to compliance, and a comparison that can never match is
     // indistinguishable from one that is satisfied.
+    // ⚠ GROUNDED (T-119). Both of these read the type names of TWO WHOLE ASSEMBLIES, and both were silent.
+    // Invisible to the censuses because `types` is a local bound eight lines above.
     Assert.NotEmpty(types);
-    Assert.Contains(types, name => name.Contains("Employee", StringComparison.OrdinalIgnoreCase));
 
-    Assert.DoesNotContain(types, name =>
-      name.Contains("Sequence", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("NumberGenerator", StringComparison.OrdinalIgnoreCase));
+    Assert.True(
+      types.Any(name => name.Contains("Employee", StringComparison.OrdinalIgnoreCase)),
+      $"HR type-name count: {types.Length}, and not one contains `Employee`. The matcher itself is dead — " +
+      "so the ban below is comparing against a population that cannot match anything, and its green says " +
+      "nothing about generators.");
+
+    string[] generatorShapes = ["Sequence", "NumberGenerator"];
+
+    var generators = types
+      .SelectMany(name => generatorShapes
+        .Where(shape => name.Contains(shape, StringComparison.OrdinalIgnoreCase))
+        .Select(shape => $"{name} (matched `{shape}`)"))
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(generators.Length == 0,
+      $"an employee-number generator has appeared: {string.Join("; ", generators)}. `DEC-EMP-0011` defers " +
+      "automatic numbering and makes the number a required INPUT — so a generator is not a bug, it is an " +
+      "undeferred decision, and it belongs at that decision before it belongs in the code.");
 
     // The create command REQUIRES the number: it is not nullable and not optional.
     var parameter = typeof(CreateEmployeeCommand).GetConstructors().Single()
@@ -307,9 +324,24 @@ public sealed class EmployeeArchitectureTests
     // ⚠⚠ AND THE MATCHER CONTROL: `Contains(..., OrdinalIgnoreCase)` over THIS population is proven able to
     // fire, against a lifecycle method that really exists. Without it, a ban whose comparison never matches
     // anything is indistinguishable from a ban that is satisfied.
-    Assert.Contains(methodNames, name => name.Contains("Terminate", StringComparison.OrdinalIgnoreCase));
+    // ⚠ GROUNDED (T-119). `methodNames` is every method name in the HR domain assembly — thousands — and
+    // both assertions were silent over it.
+    Assert.True(
+      methodNames.Any(name => name.Contains("Terminate", StringComparison.OrdinalIgnoreCase)),
+      $"HR domain method-name count: {methodNames.Length}, and not one contains `Terminate`. The matcher " +
+      "is dead: `OrdinalIgnoreCase` `Contains` over this population now matches nothing, so the ban below " +
+      "is satisfied by a comparison that cannot fire rather than by the absence of rehire.");
 
-    Assert.DoesNotContain(methodNames, name => name.Contains("Rehire", StringComparison.OrdinalIgnoreCase));
+    var rehire = methodNames
+      .Where(name => name.Contains("Rehire", StringComparison.OrdinalIgnoreCase))
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(rehire.Length == 0,
+      $"a rehire operation has appeared: {string.Join(", ", rehire)}. Rehire is DEFERRED, not forgotten — " +
+      "so this is a deferral being undone in code rather than at the decision, and the question is whether " +
+      "a rehired employee is the same record or a new one, which nothing here answers.");
   }
 
   // ⚠⚠⚠ WHAT THE TWO CONTROLS ABOVE DO **NOT** CLOSE, SAID PLAINLY SO NOBODY CREDITS THEM WITH IT.

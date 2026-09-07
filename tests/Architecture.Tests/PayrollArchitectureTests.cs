@@ -173,13 +173,28 @@ public sealed class PayrollArchitectureTests
       .Select(type => type.Name)
       .ToArray();
 
+    // ⚠ GROUNDED (T-119). `types` is the type names of TWO Payroll assemblies, and both assertions were
+    // silent over it — invisible to the censuses because the walk is bound to a local above.
     Assert.NotEmpty(types);
-    Assert.Contains(types, name => name.Contains("PayElement", StringComparison.OrdinalIgnoreCase));
 
-    Assert.DoesNotContain(types, name =>
-      name.Contains("CodeGenerator", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("CodeSequence", StringComparison.OrdinalIgnoreCase) ||
-      name.Contains("CodeAllocator", StringComparison.OrdinalIgnoreCase));
+    Assert.True(
+      types.Any(name => name.Contains("PayElement", StringComparison.OrdinalIgnoreCase)),
+      $"Payroll type-name count: {types.Length}, and not one contains `PayElement`. The matcher is dead, " +
+      "so the ban below holds over a comparison that cannot fire.");
+
+    string[] generatorShapes = ["CodeGenerator", "CodeSequence", "CodeAllocator"];
+
+    var generators = types
+      .SelectMany(name => generatorShapes
+        .Where(shape => name.Contains(shape, StringComparison.OrdinalIgnoreCase))
+        .Select(shape => $"{name} (matched `{shape}`)"))
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(generators.Length == 0,
+      $"a pay-element code generator has appeared: {string.Join("; ", generators)}. The code is a required " +
+      "INPUT by decision; a generator makes it derived, which changes who owns the value and is a decision " +
+      "rather than an implementation detail.");
   }
 
   // ---- ⚠⚠⚠ THE LIMIT OF THIS ASSERTION, AND WHERE IT IS COVERED.

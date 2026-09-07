@@ -379,9 +379,26 @@ public sealed class PlatformSupportAuthorityArchitectureTests
       // ***THIS IS DELIBERATELY NOT "every forbidden name must resolve to a type" — that control would
       // redden on the two forward-looking entries above and outlaw a legitimate use of a ban list. WHEN TWO
       // CAUSES OF AN OBSERVATION CANNOT BE SEPARATED, VERIFY THE MECHANISM RATHER THAN ASSUMING A CAUSE.***
-      Assert.Contains(types, type => new[] { anchor }.Contains(type.Name, StringComparer.Ordinal));
+      // ⚠ GROUNDED (T-119). Both read every type in the assembly and both were silent — and this loop runs
+      // once per assembly, so a red named neither the type nor which assembly produced it.
+      Assert.True(
+        types.Any(type => string.Equals(type.Name, anchor, StringComparison.Ordinal)),
+        $"the anchor `{anchor}` is not among the {types.Length} types in " +
+        $"`{assembly.GetName().Name}`. **This is the matcher control**: without it, the ban below is " +
+        "satisfied by a name comparison that no longer resolves anything in this assembly, which is " +
+        "indistinguishable from the assembly being clean.");
 
-      Assert.DoesNotContain(types, type => forbidden.Contains(type.Name, StringComparer.Ordinal));
+      var present = types
+        .Where(type => forbidden.Contains(type.Name, StringComparer.Ordinal))
+        .Select(type => type.Name)
+        .OrderBy(value => value, StringComparer.Ordinal)
+        .ToArray();
+
+      Assert.True(present.Length == 0,
+        $"`{assembly.GetName().Name}` declares a forbidden platform construct: " +
+        $"{string.Join(", ", present)}. Note the list above deliberately contains FORWARD-LOOKING entries " +
+        "that resolve to nothing today — so a hit here is a type that has actually arrived, not a stale " +
+        "ban entry.");
     }
   }
 }

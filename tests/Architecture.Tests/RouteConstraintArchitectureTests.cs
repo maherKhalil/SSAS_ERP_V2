@@ -319,17 +319,116 @@ public sealed class RouteConstraintArchitectureTests
     return new string(buffer);
   }
 
+  // ================================================================================================
+  // THE ALLOWLIST'S OWN GUARDS, AND WHY THEY NEEDED A FIXTURE RATHER THAN A LIST (T-085)
+  // ================================================================================================
+  //
+  // ⚠⚠⚠ `Every_allowlist_entry_names_a_sibling_and_a_reason` ITERATED AN EMPTY LIST. It asserted nothing,
+  // had never fired, and nothing established that it COULD — the correct guard for this rule, vacuous by
+  // construction. **`Allowed` is empty and its emptiness is MEASURED rather than assumed**: every route in
+  // the product was enumerated with group prefixes resolved, 151 routes, and no method-and-shape group held
+  // two patterns differing only by a constraint. So there is nothing legitimate to put in the list, and
+  // therefore nothing for the check to exercise.
+  //
+  // **An empty population cannot be fixed by waiting for a real entry.** The validation is extracted here so
+  // a fixture can hand it a CONSTRUCTED entry, which is a property that ships in a file rather than a
+  // reassurance that lives in a transcript.
+  //
+  // ⚠ RETURNS THE DEFECTS RATHER THAN ASSERTING THEM, for two reasons. The caller can then use
+  // `Assert.Empty`, which PRINTS THE COLLECTION and so names every defect (T-082 measured that: of the
+  // assertion forms this suite uses, `Assert.Empty` is one of the three that identify the offender, while
+  // `Assert.DoesNotContain(collection, predicate)` reports only "Filter matched in collection"). And the
+  // two clauses become independent — as a pair of ordered `Assert.False` calls, a missing SIBLING masked a
+  // missing REASON, so an entry lacking both reported one problem and would have reported the second only
+  // after the first was fixed.
+  private static string[] EntryDefects((string Route, string Sibling, string Why) entry)
+  {
+    var defects = new List<string>();
+
+    if (string.IsNullOrWhiteSpace(entry.Sibling))
+    {
+      defects.Add($"{entry.Route} is allowlisted without naming the sibling route it disambiguates.");
+    }
+
+    if (string.IsNullOrWhiteSpace(entry.Why))
+    {
+      defects.Add($"{entry.Route} is allowlisted without a reason.");
+    }
+
+    return [.. defects];
+  }
+
   // Every allowlist entry must justify itself, or the list becomes a place to put inconvenient routes.
   [Fact]
   public void Every_allowlist_entry_names_a_sibling_and_a_reason()
   {
-    foreach (var (route, sibling, why) in Allowed)
+    foreach (var entry in Allowed)
     {
-      Assert.False(string.IsNullOrWhiteSpace(sibling),
-        $"{route} is allowlisted without naming the sibling route it disambiguates.");
-      Assert.False(string.IsNullOrWhiteSpace(why),
-        $"{route} is allowlisted without a reason.");
+      Assert.Empty(EntryDefects(entry));
     }
+  }
+
+  // ---- THE CONTROL, BOTH ARMS, THROUGH THE INSTRUMENT THE GUARD ABOVE USES.
+  //
+  // ⚠ ONE ARM IS THE SAME VACUITY ONE LEVEL UP. A fixture proving only that a malformed entry FAILS is
+  // satisfied by a predicate that rejects everything — including the well-formed entry the rule exists to
+  // permit. Both directions are asserted, and the middle case is asserted because it is the one the
+  // previous ordered-assertion form could not see.
+  [Fact]
+  public void The_allowlist_entry_check_accepts_a_justified_entry_and_rejects_a_bare_one()
+  {
+    Assert.Empty(EntryDefects(
+      ("/api/hr/employees/{id:guid}", "/api/hr/employees/{code}", "sibling differs only by the constraint")));
+
+    var missingReason = EntryDefects(("/api/hr/employees/{id:guid}", "/api/hr/employees/{code}", "  "));
+    Assert.Single(missingReason);
+    Assert.Contains("without a reason", missingReason[0], StringComparison.Ordinal);
+
+    var bare = EntryDefects(("/api/hr/employees/{id:guid}", "", ""));
+    Assert.Equal(2, bare.Length);
+    Assert.Contains(bare, defect => defect.Contains("without naming the sibling", StringComparison.Ordinal));
+    Assert.Contains(bare, defect => defect.Contains("without a reason", StringComparison.Ordinal));
+  }
+
+  // ================================================================================================
+  // ⚠⚠ INVERTED GUARD: THIS FIRES ON CORRECT BEHAVIOUR, AND THE MESSAGE IS THE RETIREMENT INSTRUCTION
+  // ================================================================================================
+  //
+  // Adding a genuinely load-bearing constraint to `Allowed` is a legitimate act, and this test reddens on
+  // it. That is only defensible where what is detected is A DIAGNOSIS GOING STALE, and here TWO expire on
+  // the same event:
+  //
+  //   * `No_route_parameter_carries_a_type_constraint` is honest TODAY **only because there are no
+  //     exclusions for its name to carry.** The first entry turns it into a claim wider than its predicate.
+  //   * This file's header states the emptiness as a MEASUREMENT — *151 routes, zero groups holding two
+  //     patterns.* The first entry falsifies that sentence, and a measured claim left standing after it
+  //     stops being true is read by the next person as still measured.
+  //
+  // ⚠ WHOEVER ADDS THE FIRST ENTRY IS THE ONE PERSON GUARANTEED TO SEE THIS, and for them the rename is a
+  // pure side effect — they are solving a routing problem sixty lines away from the test name they are
+  // invalidating. That is the case a tripwire is for; it pays where its author cannot see.
+  //
+  // ⚠⚠ PLANTED, BECAUSE AN ABSENCE GUARD THAT HAS NEVER FIRED IS INDISTINGUISHABLE FROM ONE THAT CANNOT.
+  // With `("/api/hr/planted/{id:guid}", "", "")` in the list, BOTH allowlist guards reddened: this one with
+  // the three-step retirement instruction rendered and the count reading "1 entry", and
+  // `Every_allowlist_entry_names_a_sibling_and_a_reason` for the first time in its existence, reporting both
+  // defects. That plant is also the only evidence that the grounds check runs at all — it had iterated an
+  // empty list since the day it was written.
+  [Fact]
+  [Trait("Tripwire", "route-constraint-allowlist-empty")]
+  public void The_route_constraint_allowlist_is_still_empty()
+  {
+    Assert.True(Allowed.Length == 0,
+      $"the route-constraint allowlist has gained {Allowed.Length} entr" +
+      (Allowed.Length == 1 ? "y" : "ies") + ", which is a legitimate change and NOT a failure of the rule. " +
+      "This test exists to stop two claims going stale silently, and you are the only person who will see " +
+      "it in time.\n" +
+      "  1. RENAME `No_route_parameter_carries_a_type_constraint` — it now excludes something, and the " +
+      "name must carry the narrowing rather than promise a total ban it no longer performs.\n" +
+      "  2. CORRECT THIS FILE'S HEADER — it states the empty list as a measurement over 151 routes, and " +
+      "that sentence is now false.\n" +
+      "  3. DELETE THIS TEST once both are done. It has served its purpose and has no second use; leaving " +
+      "it in place would make every further legitimate entry look like a violation.");
   }
 
   private static IEnumerable<string> EndpointFiles()

@@ -131,6 +131,73 @@ public sealed class TenantCutoverFlipArchitectureTests
       transitions);
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ THE HINGE THE MECHANISM TEST HANGS ON, ASSERTED BY NOTHING UNTIL T-091
+  // ================================================================================================
+  //
+  // `The_cutover_aggregate_assigns_status_on_exactly_these_six_transitions` reads the AGGREGATE'S SOURCE.
+  // That is only a statement about the system while **the aggregate is the sole writer of `Status`** —
+  // which is true today because the setter is private, and which that test does not assert.
+  //
+  // ⚠ WIDEN THE SETTER AND NOTHING BREAKS. The transition test keeps passing, having quietly narrowed
+  // from *these are the only status transitions* to *these are the only status transitions THE AGGREGATE
+  // PERFORMS*, while a repository or a handler writes the property directly. **A guard whose scope shrinks
+  // without its colour changing is the failure mode this whole night has been about**, and here it is in
+  // a test I wrote three hours ago.
+  //
+  // ⚠⚠ NAMED TRIGGER: whoever relaxes this setter will be doing it for something else entirely — an EF
+  // mapping that wants a settable property, a serializer, a test convenience, an interface like
+  // `IBranchOwnedEntity` that declares `{ get; set; }` and forces the shape. **The invalidation of the
+  // transition guard is a pure side effect they have no reason to think about**, which is exactly the
+  // case a tripwire is for: it pays where its author cannot see.
+  //
+  // ⚠ BY REFLECTION, NOT BY READING THE SOURCE. A source scan for `private set` is defeated by
+  // reformatting, by a comment, and by an explicit backing field — and the property's accessibility is a
+  // fact the runtime already knows.
+  //
+  // ⚠⚠⚠ PLANTED, AND THE PLANT MEASURED THE CLAIM RATHER THAN ILLUSTRATING IT. With the setter changed to
+  // `internal set`, the flip suite ran **9 passed, 1 failed** — this test alone. ***THE TRANSITION TEST
+  // STAYED GREEN.*** So the silent narrowing is not a hypothesis about what could happen: it is what does
+  // happen, and this tripwire is the only thing between that change and a guard that has quietly stopped
+  // bounding what its name says it bounds.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  [Trait("Tripwire", "cutover-status-private-setter")]
+  public void The_cutover_status_setter_is_private_to_the_aggregate()
+  {
+    var status = typeof(TenantCutoverOperation).GetProperty(nameof(TenantCutoverOperation.Status));
+    Assert.NotNull(status);
+
+    var setter = status!.GetSetMethod(nonPublic: true);
+    Assert.True(setter is not null,
+      "TenantCutoverOperation.Status has no setter at all any more. That is not a failure of ADR-020, but " +
+      "it does mean the transition list in " +
+      "`The_cutover_aggregate_assigns_status_on_exactly_these_six_transitions` can no longer be assigned " +
+      "the way that test parses, and that test is now asserting something about dead syntax.");
+
+    Assert.True(setter!.IsPrivate,
+      $"TenantCutoverOperation.Status now has a setter that is {Visibility(setter)}, so THE AGGREGATE IS " +
+      "NO LONGER THE ONLY THING THAT CAN WRITE IT.\n" +
+      "  This is not primarily a problem with this property. It is a problem with " +
+      "`The_cutover_aggregate_assigns_status_on_exactly_these_six_transitions`, which parses this file's " +
+      "source and derives the complete set of status transitions from it. THAT TEST HAS JUST STOPPED " +
+      "BOUNDING WHO CAN WRITE STATUS and now proves only that the aggregate itself is well behaved — while " +
+      "a repository, a handler or a mapping profile can set `RoutingFlipped` back to `Frozen` and neither " +
+      "test will say a word.\n" +
+      "  If the setter must widen, the transition test has to be replaced by something that reads every " +
+      "WRITER of the property rather than every assignment inside one file. Do not simply delete this.");
+  }
+
+  private static string Visibility(MethodInfo method) =>
+    method switch
+    {
+      { IsPublic: true } => "public",
+      { IsFamily: true } => "protected",
+      { IsAssembly: true } => "internal",
+      { IsFamilyOrAssembly: true } => "protected internal",
+      _ => "non-private"
+    };
+
   // ---- NO FLIPBACK EXISTS, at any layer. ADR-020 forbids a simple reversal once the target may have been
   // written to, and an API offering one would be reached for during exactly the incident where it is least
   // safe.

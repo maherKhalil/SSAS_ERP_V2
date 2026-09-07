@@ -341,11 +341,7 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // The population is now genuinely every tracked file kind under `src` — 33 `.csproj`, 6 `.json`, 1
     // `.md`, 7 `.gitkeep` and the `.cs` tree — because the cost of scanning them is nothing and the cost
     // of a name that promises more than it inspects is what this whole exercise has been about.
-    var sourceFiles = Directory
-      .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src"), "*", SearchOption.AllDirectories)
-      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-      .ToArray();
+    var sourceFiles = FilesUnderSrc();
     Assert.True(sourceFiles.Length >= 400,
       $"only {sourceFiles.Length} files were scanned; the walk has collapsed and the ban below " +
       "would pass over an empty set.");
@@ -367,12 +363,16 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // ordered checks hide all but the first.
     Assert.Contains(sourceFiles, path => path.EndsWith("appsettings.json", StringComparison.Ordinal));
 
-    const string symmetricSigning = @"(?:SymmetricSecurityKey|HmacSha(?:256|384|512)|""HS(?:256|384|512)"")";
     // The matcher control. Each alternative is asserted against the form it would really appear in.
-    Assert.Matches(symmetricSigning, "var key = new SymmetricSecurityKey(secret);");
-    Assert.Matches(symmetricSigning, "SecurityAlgorithms.HmacSha256");
-    Assert.Matches(symmetricSigning, @"ValidAlgorithms = [""HS256""],");
-    Assert.DoesNotMatch(symmetricSigning, "SecurityAlgorithms.RsaSha256");
+    Assert.Matches(SymmetricSigning, "var key = new SymmetricSecurityKey(secret);");
+    Assert.Matches(SymmetricSigning, "SecurityAlgorithms.HmacSha256");
+    Assert.Matches(SymmetricSigning, @"ValidAlgorithms = [""HS256""],");
+    Assert.DoesNotMatch(SymmetricSigning, "SecurityAlgorithms.RsaSha256");
+
+    // ⚠ THE CASE-INSENSITIVE ARM, ADDED IN T-092. `HMACSHA256` is the .NET TYPE NAME and the old
+    // case-sensitive match could not see it — a hand-rolled JWT signed by constructing it directly would
+    // have passed. This control is here rather than in prose because the widening is the whole change.
+    Assert.Matches(SymmetricSigning, "using var hmac = new HMACSHA256(key);");
 
     // ⚠⚠⚠ THE SCOPE IS `src/` AND WIDENING IT TO `tests/` WOULD BE A TRAP THAT LOOKS LIKE A TIGHTENING.
     // `JwtInfrastructureTests` FORGES symmetric tokens on purpose — `CreateToken` builds a
@@ -385,7 +385,7 @@ public sealed class AuthenticationMilestoneArchitectureTests
     // *The criterion says no symmetric path remains ACTIVE. A forgery in a test is not an active path; it
     // is the evidence that the path is closed.*
     var symmetric = sourceFiles
-      .Where(path => Regex.IsMatch(CodeOnly(path), symmetricSigning, RegexOptions.CultureInvariant))
+      .Where(path => Regex.IsMatch(WithExemptionsRemoved(path), SymmetricSigning))
       .ToArray();
     Assert.Empty(symmetric);
 
@@ -476,6 +476,109 @@ public sealed class AuthenticationMilestoneArchitectureTests
   // says so -- the second guard in this suite to need it is the point at which it stops being incidental.
   //
   // A false red is worse than a missing rule: it is what teaches people to weaken guards.
+  // ==================================================================================================
+  // THE SYMMETRIC VOCABULARY, ITS ONE EXEMPTION, AND THE BIND THAT KEEPS THE EXEMPTION HONEST (T-092)
+  // ==================================================================================================
+  //
+  // ⚠ CASE-INSENSITIVE, AND THAT IS THE WHOLE POINT OF T-092. It was case-SENSITIVE, so `HmacSha256` was
+  // caught and `HMACSHA256` — the .NET type name — was not. **A hand-rolled JWT signed by constructing
+  // `HMACSHA256` directly passed this guard**, and the only reason anyone noticed is that a `-i` grep run
+  // for a different purpose surfaced the one existing use.
+  //
+  // ⚠⚠ THE TWO ERRORS DO NOT COST THE SAME HERE, WHICH IS WHY THE WIDENING WINS. A false RED is one
+  // exemption entry, seen immediately, by whoever caused it. A false CLEAR is a symmetric signing path
+  // shipping undetected — and a symmetric key means anyone who can read it can mint tokens. *A false flag
+  // announces itself; a false clear does not.*
+  private const string SymmetricSigning =
+    @"(?i:SymmetricSecurityKey|HmacSha(?:256|384|512)|""HS(?:256|384|512)"")";
+
+  // ---- THE EXEMPTIONS. GROUNDS ENFORCED BY THE TYPE, NOT BY GOOD INTENTIONS.
+  //
+  // The tuple shape is taken from `RouteConstraintArchitectureTests`, which is the strongest exemption form
+  // in this suite: **an entry cannot be added without typing what it is and why**, because the compiler
+  // will not let you. A bare route — or here, a bare filename — is a blanket hole with extra steps.
+  //
+  // ⚠ `Snippet` IS THE EXACT TEXT NEUTRALISED, NOT THE FILE. Exempting a whole file would pre-approve
+  // every symmetric construct anyone adds to it later; this removes one expression and leaves the rest of
+  // that file under the ban exactly as before.
+  private static readonly (string File, string Snippet, string Why)[] SymmetricExemptions =
+  [
+    ("AuthenticationTransportServices.cs",
+      "new HMACSHA256(hmacKey)",
+      "A KEYED HASH, NOT A TOKEN SIGNATURE. It hashes rate-limiter partition keys — endpoint, partition " +
+      "material and IP — so raw client addresses are never held in memory. Nothing is signed and nothing " +
+      "is verified against it; the output is a dictionary key. Read the `Hash` method before widening this.")
+  ];
+
+  // ⚠⚠⚠ PLANTED THREE WAYS (T-092), AND THE OLD COLOUR NEEDED NO PLANT AT ALL.
+  //
+  //   OLD GUARD, no plant required -> GREEN with `new HMACSHA256(hmacKey)` sitting in the tree the whole
+  //     time. That is a REAL old-green, not a simulated one: the guard ran for its whole life over a line
+  //     it could not see, and its passes carried no information about that spelling.
+  //   The SAME exempted snippet planted in a DIFFERENT file (`appsettings.json`) -> RED. The exemption is
+  //     scoped to file AND text; it does not travel.
+  //   The exemption's `Snippet` altered so it no longer matches real code -> BOTH tests RED.
+  //
+  // ⚠ THAT LAST RESULT IS A DESIGN PROPERTY WORTH KEEPING: a rotted exemption does not open a hole, it
+  // makes NOISE. Because the entry stops neutralising the real line, the ban reddens too — so the failure
+  // mode of this allow-list is a false RED, never a silent false clear.
+  private static string WithExemptionsRemoved(string path)
+  {
+    var text = CodeOnly(path);
+
+    foreach (var exemption in SymmetricExemptions)
+    {
+      if (path.EndsWith(exemption.File, StringComparison.Ordinal))
+      {
+        text = text.Replace(exemption.Snippet, string.Empty, StringComparison.Ordinal);
+      }
+    }
+
+    return text;
+  }
+
+  // ---- ⚠⚠⚠ THE REVERSE BIND. AN EXEMPTION THAT STOPS DESCRIBING REAL CODE IS A LIVE HOLE.
+  //
+  // T-085 found a grounds-check that had never run because its list was empty. This one runs, and it
+  // asserts the thing that actually rots: **that each entry still names a real line.** If
+  // `AuthenticationTransportServices.cs` is renamed, or that expression is rewritten or deleted, the
+  // exemption keeps silently neutralising text in whatever file matches next — pre-approving code nobody
+  // examined. So an entry that stops being true must REDDEN rather than persist.
+  [Fact]
+  public void Every_symmetric_exemption_still_describes_a_real_line()
+  {
+    Assert.NotEmpty(SymmetricExemptions);
+
+    var files = FilesUnderSrc();
+
+    foreach (var (file, snippet, why) in SymmetricExemptions)
+    {
+      Assert.False(string.IsNullOrWhiteSpace(why), $"{file} is exempted without grounds.");
+
+      // ⚠ THE EXEMPTION MUST ACTUALLY EXEMPT SOMETHING. A snippet that does not match the ban neutralises
+      // nothing and is an approval with no subject — which reads, at a glance, exactly like a real one.
+      Assert.Matches(SymmetricSigning, snippet);
+
+      var matches = files.Where(path => path.EndsWith(file, StringComparison.Ordinal)).ToArray();
+      Assert.True(matches.Length == 1,
+        $"the exemption for {file} matches {matches.Length} files under src, not one. It neutralises " +
+        "text in every one of them, so a symmetric construct in any file sharing that name is " +
+        "pre-approved by an entry written about a different file.");
+
+      Assert.True(File.ReadAllText(matches[0]).Contains(snippet, StringComparison.Ordinal),
+        $"the exemption for {file} no longer describes a real line: `{snippet}` is not in that file any " +
+        "more. The code it approved has been changed, moved or deleted, and the entry is now a standing " +
+        "permission for whatever occupies that file next. Delete the entry, or update it to the line that " +
+        "replaced it AND re-read whether that line is still a keyed hash rather than a signature.");
+    }
+  }
+
+  private static string[] FilesUnderSrc() =>
+    [.. Directory
+      .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "src"), "*", SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))];
+
   private static string CodeOnly(string path) =>
     string.Join(
       "\n",

@@ -29,6 +29,92 @@ public sealed class PersistenceFoundationTests
     Assert.Equal(TimeSpan.Zero, aggregate.CreatedUtc.Offset);
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ TWO CHARACTERISATION TESTS. THEY RECORD WHAT THE CODE DOES TODAY AND RULE ON NOTHING.
+  // ================================================================================================
+  //
+  // ***NEITHER OF THESE IS A CHANGE REQUEST AND NEITHER RATIFIES THE BEHAVIOUR IT PINS.*** They exist
+  // because both mechanisms fail **silently** — no exception, no error code, wrong or absent data — and a
+  // silent behaviour that nothing asserts is indistinguishable from one nobody chose. *A reader six months
+  // from now should not read these as approval; if the behaviour is wrong, the test changes with it and the
+  // change will at least be visible in a diff.*
+  //
+  // Both were identified while mapping what a bulk data migration would have to reproduce by hand. The write
+  // path stamps, refuses and filters on the caller's behalf, and **a loader that goes around it inherits
+  // every one of those obligations without inheriting the enforcement.**
+
+  // ---- ⚠⚠⚠ A ROW WRITTEN UNDER THE WRONG *AMBIENT CONTEXT* IS NOT REFUSED. IT BECOMES INVISIBLE.
+  //
+  // ***THE PRECISION IN THAT HEADING IS THE WHOLE FINDING, AND THE LOOSER VERSION OF IT IS FALSE.***
+  // A row whose `TenantId` CONFLICTS with the trusted context is **refused, loudly**: `AssignTenant` throws
+  // *"Tenant ownership must match the trusted tenant context."* **So "a wrong `TenantId` is silently
+  // swallowed" is NOT true of this code**, and an earlier statement of this finding — including the first
+  // draft of this comment — said exactly that.
+  //
+  // The silent path is the OTHER one. `AssignTenant` fills an EMPTY `TenantId` from the ambient context, so
+  // a save made under the wrong trusted tenant produces a row that is ***wrong but internally consistent***
+  // — nothing to conflict with, nothing to throw. The global query filter
+  // (`CurrentTenantId.HasValue && entity.TenantId == CurrentTenantId.Value`) then hides it from every read.
+  // **Still in the table, unreachable through the application, permanently, with nothing raised at write
+  // time and nothing raised at read time.**
+  //
+  // ⚠⚠ AND THE LIMIT THAT MATTERS MOST TO ANYONE READING THIS FOR A DATA MIGRATION:
+  // ***BOTH TESTS IN THIS PAIR CHARACTERISE THE EF PATH ONLY.*** `ApplyPersistenceRules` runs from
+  // `SaveChanges`. **A raw `INSERT` reaches neither stamper, neither refusal and neither of these tests** —
+  // and raw SQL is one of the options on the table for a bulk load. *So these establish "if you go through
+  // EF, this happens" and say nothing whatever about the path most likely to be chosen for a large load.*
+  // ***ASK WHO CALLS THIS. THE MIGRATION MIGHT NOT.***
+  //
+  // ***THE ASSERTION PAIR IS THE POINT: `Empty` THROUGH THE FILTER AND `Single` THROUGH
+  // `IgnoreQueryFilters` — one of those alone would be indistinguishable from the row never being written.***
+  // The row exists; the reader simply cannot see it, and no instrument in the product will say so.
+  [Fact]
+  public async Task A_row_belonging_to_another_tenant_is_invisible_rather_than_refused()
+  {
+    await using var scope = await PersistenceTestScope.CreateAsync();
+    scope.Context.Aggregates.Add(new TestAggregate("owned-by-the-trusted-tenant"));
+    await scope.UnitOfWork.SaveChangesAsync();
+
+    // A second reader on the SAME database, acting as a different tenant.
+    await using var other = scope.CreateContext(Guid.NewGuid(), new RecordingDomainEventDispatcher());
+
+    Assert.Empty(await other.Aggregates.ToListAsync());
+    Assert.Single(await other.Aggregates.IgnoreQueryFilters().ToListAsync());
+  }
+
+  // ---- ⚠⚠⚠ AUDIT STAMPS ARE UNCONDITIONAL ON `Added`. A SUPPLIED VALUE IS OVERWRITTEN, NOT HONOURED.
+  //
+  // `ApplyPersistenceRules` assigns `CreatedUtc`/`CreatedBy` for every added `IAuditableEntity` with **no
+  // `if empty` guard** — unlike `AssignTenant` and `AssignCompany`, which confirm a supplied value and
+  // refuse a conflicting one. *The asymmetry is the whole finding:* two stampers on the same save path
+  // treat a caller-supplied value in opposite ways, and only one of them tells the caller.
+  //
+  // ***CONSEQUENCE, STATED BECAUSE IT IS WHY THIS TEST EXISTS: ANY LOAD THROUGH EF CANNOT CARRY A SOURCE
+  // SYSTEM'S CREATION HISTORY.*** Every migrated row would read "created today, by the migration user", and
+  // the original values would be discarded on the way in with no error. For hire dates and posting dates
+  // that is the substance rather than metadata.
+  [Fact]
+  public async Task Supplied_audit_stamps_are_overwritten_rather_than_confirmed_or_refused()
+  {
+    await using var scope = await PersistenceTestScope.CreateAsync();
+    var historical = new DateTimeOffset(2019, 3, 4, 9, 30, 0, TimeSpan.Zero);
+    var aggregate = new TestAggregate("carries-its-own-history")
+    {
+      CreatedUtc = historical,
+      ModifiedUtc = historical,
+      CreatedBy = "the-source-system",
+      ModifiedBy = "the-source-system",
+    };
+    scope.Context.Aggregates.Add(aggregate);
+
+    await scope.UnitOfWork.SaveChangesAsync();
+
+    Assert.NotEqual(historical, aggregate.CreatedUtc);
+    Assert.Equal(scope.Clock.UtcNow, aggregate.CreatedUtc);
+    Assert.NotEqual("the-source-system", aggregate.CreatedBy);
+    Assert.Equal("test-user", aggregate.CreatedBy);
+  }
+
   [Fact]
   public async Task Commit_persists_changes_then_dispatches_and_clears_domain_events()
   {

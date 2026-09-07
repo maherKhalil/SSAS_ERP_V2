@@ -253,6 +253,39 @@ bare `True` / `NotEmpty`) · does it name the collapse or restate the condition.
 seeing it render and does not close that gap — it establishes only that nobody shipped a defect visible on
 the page.**
 
+## ⚠⚠⚠ A plant proves ONE assertion — the one that FAILED. Record which.
+
+***`PLANT-BACKED` MEANS "THE METHOD WENT RED" AND READS AS "THIS METHOD IS PROVEN". THOSE ARE DIFFERENT
+CLAIMS AND THE MARKER CANNOT TELL YOU WHICH.*** Measured 2026-09-07 across 11 plant records: **5 were
+single-assertion and safe by construction; 6 were multi-assertion, and in 3 of those the plant reddened an
+early assertion and the later ones NEVER EXECUTED.**
+
+**AN ASSERTION HAS THREE STATES UNDER A PLANT, NOT TWO:**
+
+| state | what it proves about that assertion |
+|---|---|
+| **never executed** — an earlier assertion failed first | ***nothing*** |
+| ⚠ **executed and PASSED** | ***nothing about its detection*** |
+| **executed and FAILED** | proven |
+
+***"EXECUTED" IS NOT "EXERCISED".*** *A control whose first assertion fails proves that first assertion and
+leaves every later one exactly as unproven as before the plant ran.*
+
+**THE RECORD FORMAT, so the ambiguity cannot recur:**
+
+> `PLANT: <what changed>. RED at <assertion>, <verbatim failure text>. UNREACHED: <assertions after it>.
+> REVERT → GREEN.`
+
+⚠⚠ **A CONTROL WRITTEN TO PROVE TWO THINGS USUALLY PROVES ONE.** *A tripwire's control was built to pin both
+the comparison's direction AND the message's content; inverting the comparison failed the first assertion and
+the three message checks never ran. **It took a SECOND plant — leaving the predicate correct and corrupting
+the message — to reach them.*** **Two claims, two plants.**
+
+⚠ **AND THE AXIS THAT PREDICTS WHICH RECORDS NEED THIS MOST** — from the corpus, not from us:
+***AN ABSENCE GUARD CAN ONLY EVER BE SHOWN BY A PLANT, BECAUSE IT CANNOT FAIL WHILE THE ABSENCE HOLDS —
+"which is forever, until the one day it matters". A BIND OVER A LIVE TYPE can fail for its stated reason on
+any ordinary day.*** *The first kind's plant record is its only evidence; the second kind has other days.*
+
 ## How to choose
 
 | the assertion… | reach for |

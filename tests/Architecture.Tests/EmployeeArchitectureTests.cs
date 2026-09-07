@@ -214,7 +214,15 @@ public sealed class EmployeeArchitectureTests
     // "no property containing Position" assertion above must become the exact-membership assertion the
     // department half already uses — two named members and nothing else — so an Employee that grew a
     // position surface nobody agreed to still fails here.
-    Assert.Contains(HrDomainAssembly.GetTypes(), type => type.Name == "Position");
+    // ⚠ GROUNDED (T-118): this was `Assert.Contains(HrDomainAssembly.GetTypes(), …)`, silent over the whole
+    // HR domain assembly. The type it looks for is the one FP-008 Phase 1 introduced, so its absence means
+    // the supersession recorded above has been undone — not that a filter is misspelt.
+    Assert.True(
+      HrDomainAssembly.GetTypes().Any(type => type.Name == "Position"),
+      $"searched type count in `{HrDomainAssembly.GetName().Name}`: {HrDomainAssembly.GetTypes().Length}, " +
+      "and none is named `Position`. FP-008 Phase 1 introduced that aggregate and the clause above was " +
+      "SUPERSEDED on the strength of its existence — so this is the supersession going stale, and the " +
+      "replaced clause would need reinstating rather than this assertion deleting.");
 
     // NO POSITION TYPE REFERENCES EMPLOYEE (DEC-POS-0002). `Employee.PositionId -> Position` plus any
     // `Position.* -> Employee` key is a cycle in the foreign-key graph, and `TenantCutoverCopyPlan.Order`

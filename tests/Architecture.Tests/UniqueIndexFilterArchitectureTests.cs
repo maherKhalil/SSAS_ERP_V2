@@ -84,10 +84,18 @@ public sealed class UniqueIndexFilterArchitectureTests
   [InlineData("Account")]
   [InlineData("PayrollRun")]
   [InlineData("AttendanceRecord")]
-  public void The_tenant_model_carries_every_module(string entityName) =>
-    Assert.Contains(
-      TenantModel().GetEntityTypes(),
-      entity => string.Equals(entity.ShortName(), entityName, StringComparison.Ordinal));
+  // ⚠ GROUNDED (T-118). Silent over the whole tenant model, and it runs once per module — so a red named
+  // neither the absent entity nor which row produced it.
+  public void The_tenant_model_carries_every_module(string entityName)
+  {
+    var entities = TenantModel().GetEntityTypes().ToArray();
+
+    Assert.True(
+      entities.Any(entity => string.Equals(entity.ShortName(), entityName, StringComparison.Ordinal)),
+      $"the tenant model holds {entities.Length} entity types and none is `{entityName}`. This test is the " +
+      "population control for the unique-index guards below: they filter this same model, so a module " +
+      "missing here makes every one of them pass over a smaller set than its name claims.");
+  }
 
   // ---- ⚠ CONTROL 3: BOTH SIDES OF THE PREDICATE ARE LIVE.
   // A `GetFilter()` that never returns a filter, or an `IsNullable` that is never true, would make the

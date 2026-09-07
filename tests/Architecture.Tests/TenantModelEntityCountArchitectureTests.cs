@@ -104,10 +104,19 @@ public sealed class TenantModelEntityCountArchitectureTests
   [InlineData("Account")]
   [InlineData("PayrollRun")]
   [InlineData("AttendanceRecord")]
-  public void Every_module_is_represented_in_the_composed_model(string entityName) =>
-    Assert.Contains(
-      ComposedTenantModel().GetEntityTypes(),
-      entity => entity.ClrType.Name == entityName);
+  // ⚠ GROUNDED (T-118). This was `Assert.Contains(model.GetEntityTypes(), …)` — silent over the whole
+  // composed model, and it runs once per module, so a red named neither the missing entity NOR which
+  // module's row had failed.
+  public void Every_module_is_represented_in_the_composed_model(string entityName)
+  {
+    var entities = ComposedTenantModel().GetEntityTypes().ToArray();
+
+    Assert.True(
+      entities.Any(entity => entity.ClrType.Name == entityName),
+      $"the composed tenant model holds {entities.Length} entity types and none is `{entityName}`. That " +
+      "module's contributor is not registered in the composed model — so every guard deriving from this " +
+      "model is silently scoped to the remaining modules, while its name still claims the composition.");
+  }
 
   // ---- CONTRIBUTORS ARE DISCOVERED, NOT LISTED — AND HERE IS WHERE THE HARDCODING WENT.
   //

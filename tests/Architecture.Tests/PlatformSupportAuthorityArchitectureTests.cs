@@ -14,6 +14,29 @@ namespace SSAS.Architecture.Tests;
 // Durable Phase-2 platform-support authority invariants (ADR-015 / DEC-TEN-0018).
 public sealed class PlatformSupportAuthorityArchitectureTests
 {
+  // ⚠⚠⚠ NINE `Assert.Contains(assembly.GetTypes(), type => type.Name == …)` SITES BECAME THIS (T-118).
+  //
+  // Every one failed with xUnit's default — *"Assert.Contains() Failure: Filter not matched in collection"*
+  // — **over several hundred types, naming neither the type sought nor the assembly searched.** A reader met
+  // a red telling them that a filter did not match something, somewhere.
+  //
+  // ⚠ AND THEY WERE INVISIBLE TO THE CENSUS BUILT TO FIND THEM. The T-082 sweep counted `DoesNotContain`
+  // only — **while the file recording that sweep documents, three paragraphs above its own numbers, that
+  // `Assert.Contains` produces exactly the same silent failure.** *The rule and the measurement of the rule
+  // sat on one page and disagreed.* Found by putting a positive control on a zero, on the last task of the
+  // night, after the number had been committed twice.
+  private static void AssertTypeExists(Assembly assembly, string typeName)
+  {
+    var types = assembly.GetTypes();
+
+    Assert.True(
+      types.Any(type => type.Name == typeName),
+      $"`{typeName}` was not found in `{assembly.GetName().Name}` — searched type count: {types.Length}. " +
+      "Either it was renamed or removed, or it has moved to another assembly — in which case this test is " +
+      "now asserting the presence of a surface in the wrong place, which passes for the wrong reason the " +
+      "day something with that name reappears here.");
+  }
+
   [Fact]
   public void Platform_support_authority_is_global_and_not_tenant_or_company_owned()
   {
@@ -97,7 +120,7 @@ public sealed class PlatformSupportAuthorityArchitectureTests
       "GetActivePlatformSupportPermissionsQueryHandler",
     })
     {
-      Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == typeName);
+      AssertTypeExists(applicationAssembly, typeName);
     }
 
     // ...and Phase 4D exposes it over HTTP through a single authority transport, which must project
@@ -105,10 +128,9 @@ public sealed class PlatformSupportAuthorityArchitectureTests
     // Anchored on a PLATFORM-owned transport type. RowVersionCodec no longer identifies this assembly: it
     // moved to the shared API project in FP-006C5, and anchoring on it would silently retarget this test.
     var apiAssembly = typeof(ProblemResults).Assembly;
-    Assert.Contains(apiAssembly.GetTypes(), type =>
-      type.Name == "PlatformSupportAuthorityEndpointRouteBuilderExtensions");
-    Assert.Contains(apiAssembly.GetTypes(), type => type.Name == "PlatformSupportPrincipalResponse");
-    Assert.Contains(apiAssembly.GetTypes(), type => type.Name == "PlatformPermissionAssignmentResponse");
+    AssertTypeExists(apiAssembly, "PlatformSupportAuthorityEndpointRouteBuilderExtensions");
+    AssertTypeExists(apiAssembly, "PlatformSupportPrincipalResponse");
+    AssertTypeExists(apiAssembly, "PlatformPermissionAssignmentResponse");
   }
 
   [Fact]
@@ -116,23 +138,30 @@ public sealed class PlatformSupportAuthorityArchitectureTests
   {
     // Phase 3C persistence/orchestration + Phase 4A authorization primitives exist now.
     var domainAssembly = typeof(PlatformSupportPrincipal).Assembly;
-    Assert.Contains(domainAssembly.GetTypes(), type => type.Name == "PlatformAuthenticationSession");
-    Assert.Contains(domainAssembly.GetTypes(), type => type.Name == "PlatformRefreshTokenRecord");
+    AssertTypeExists(domainAssembly, "PlatformAuthenticationSession");
+    AssertTypeExists(domainAssembly, "PlatformRefreshTokenRecord");
 
     var applicationAssembly = typeof(PlatformSupportPermissionFilter).Assembly;
-    Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == "PlatformAuthenticationSessionCreator");
-    Assert.Contains(applicationAssembly.GetTypes(), type => type.Name == "RefreshPlatformAuthenticationSessionCommandHandler");
+    AssertTypeExists(applicationAssembly, "PlatformAuthenticationSessionCreator");
+    AssertTypeExists(applicationAssembly, "RefreshPlatformAuthenticationSessionCommandHandler");
 
     // Phase 4A adds the platform authorization handler + RequirePlatformPermission convention.
     var hostAssembly = typeof(SSAS.Host.API.Authorization.PermissionAuthorizationHandler).Assembly;
-    Assert.Contains(hostAssembly.GetTypes(), type => type.Name == "PlatformPermissionAuthorizationHandler");
+    AssertTypeExists(hostAssembly, "PlatformPermissionAuthorizationHandler");
 
     // The convention itself is module-neutral and moved to the shared API project in FP-006C5 — the platform
     // PLANE is expressed by which helper an endpoint calls, not by which assembly owns the helper.
     var sharedApiAssembly = typeof(PermissionEndpointConventions).Assembly;
-    Assert.Contains(
-      sharedApiAssembly.GetTypes().SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)),
-      method => method.Name == "RequirePlatformPermission");
+    var conventions = sharedApiAssembly.GetTypes()
+      .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance))
+      .ToArray();
+
+    Assert.True(
+      conventions.Any(method => method.Name == "RequirePlatformPermission"),
+      $"searched method count in `{sharedApiAssembly.GetName().Name}`: {conventions.Length}, and none is " +
+      "named `RequirePlatformPermission`. The convention has been renamed, moved to another assembly, or " +
+      "removed — and the platform PLANE is expressed by which helper an endpoint calls, so its absence " +
+      "means endpoints have no way to declare themselves platform-scoped.");
 
     // But no platform authentication/admin HTTP transport is exposed yet (Phase 4B/4D remain deferred): no
     // endpoint route builder maps the internal platform session creator or refresh handler. Checked in the

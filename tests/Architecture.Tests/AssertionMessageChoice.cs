@@ -15,6 +15,35 @@
 //
 // **It names no member.** A reader cannot tell which element matched.
 //
+// ==================================================================================================
+// ⚠⚠⚠ THE NUMBERS BELOW WERE WRONG FOR SIX HOURS, AND THIS FILE CONTAINED THE PROOF (T-118)
+// ==================================================================================================
+//
+// The census that produced them counted `Assert.DoesNotContain` ONLY. ***`Assert.Contains(collection,
+// predicate)` IS EQUALLY SILENT — "Assert.Contains() Failure: Filter not matched in collection" — AND THAT
+// CAPTURE IS THREE PARAGRAPHS ABOVE, IN THIS FILE, IN THE TABLE OF VERBATIM MESSAGES.***
+// **The rule and the measurement of the rule sat on one page and disagreed.**
+//
+//     lambda-form sites, tests/Architecture.Tests    156  ->  ***251***   (both forms)
+//     tier 1                                           0  ->  ***14***    (all now converted; 0 today)
+//
+// ⚠⚠ AND A SECOND BLIND SPOT, INDEPENDENT OF THE FIRST: the census classifies by the COLLECTION EXPRESSION
+// AT THE CALL SITE, so a walk bound to a variable first is invisible —
+//     var sharedApiTypes = typeof(ApiError).Assembly.GetTypes();   <- the walk
+//     Assert.DoesNotContain(sharedApiTypes, type => …);            <- the call site says only a name
+// **That one is a `DoesNotContain`, inside the census's own predicate, and was still missed.**
+//
+// ⚠⚠⚠ SO TREAT "14" AS A FLOOR WITH A NAMED CAUSE, NEVER A COUNT. Blind spot 2 is unfixed and will not be
+// fixed by a third regex: **resolving a variable to its walk needs the method body, which is a different
+// tool, and building one to rescue a census is how the census gets trusted again.** `sharedApiTypes` was
+// caught only because its NAME happens to contain a substring the matcher looks for. ***A walk bound to a
+// plainly-named local is still invisible to every instrument here.***
+//
+// ⚠ HOW IT WAS FOUND, because the method is the reusable part: a sweep of four other suites returned ZERO,
+// and a zero got a positive control — the same instrument run against a file known to hold such sites.
+// **It found THIRTEEN IN ONE FILE against a census reporting NINE FOR THE WHOLE SUITE.** *The control did
+// not validate the zero; it falsified the instrument.* `give any zero a positive control`.
+//
 // ---- THE NUMBER, AND ENOUGH PROVENANCE TO RE-DERIVE IT RATHER THAN TRUST IT.
 //
 // **166 call sites in 38 files**, measured 2026-09-07 (156 after the T-088/T-089 rewrites). CORPUS:

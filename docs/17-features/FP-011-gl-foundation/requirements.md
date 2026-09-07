@@ -84,7 +84,19 @@ date: 2026-08-23
 > ### ⚠⚠⚠ **AND THE STRONGER ARTEFACT: `GL.md` NOW EXISTS, SO THESE LINES ARE NOT MERELY RULED — THEY ARE RATIFIED**
 >
 > **[`docs/00-Master-Product-Specification/Requirement-Catalog/GL.md`](../../00-Master-Product-Specification/Requirement-Catalog/GL.md)
-> — 1,026 bytes, 96 lines, verified 2026-09-07 — carries ALL FOURTEEN `REQ-GL-` ids, `REQ-GL-0001` at `:15`,
+> — 1,026 bytes, 96 lines, verified 2026-09-07 — carries **`REQ-GL-0001`, `REQ-GL-0002`, `REQ-GL-0003`,
+> `REQ-GL-0004`, `REQ-GL-0005`, `REQ-GL-0006`, `REQ-GL-0007`, `REQ-GL-0008`, `REQ-GL-0009`, `REQ-GL-0010`,
+> `REQ-GL-0011`, `REQ-GL-0012`, `REQ-GL-0013` and `REQ-GL-0014` — all fourteen, each RATIFIED into the master
+> catalog under `OD-GL-0001`, and therefore each `OWNER-DECISION-REQUIRED` suffix on the headings below is
+> DISCHARGED**,
+>
+> ⚠⚠⚠ *(Enumerated 2026-09-07. This said "ALL FOURTEEN `REQ-GL-` ids, `REQ-GL-0001` at `:15`" — **a COUNT
+> plus ONE id plus a LINE NUMBER**, which is the same defect this very block corrects twice elsewhere for
+> `OD-GL`, committed by the same author on the same night, and it SURVIVED the commit that stripped line
+> numbers from this file.* ***THE `REQ-GL` MARKERS WERE DISCHARGED IN FACT AND NAMED AS DISCHARGED BY
+> NOTHING: every disposition in this package cited `OD-GL` ids, and the markers sit on `REQ-GL` headings —
+> TWO ID SPACES THAT NEVER MET.*** *Found by asking why this package was still classified as
+> self-contradictory.)*
 > grouped Journal Entry · Chart of Accounts · Fiscal Calendar · Read and Reporting, with an explicit
 > `Out of V1 Scope` block.** ***THE CATALOG GAP PRESERVED ABOVE UNDER "AS IT WAS" IS CLOSED. `OD-GL-0001`
 > WAS RULED AND EXECUTED.***

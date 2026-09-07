@@ -550,7 +550,7 @@ public sealed class EmployeeArchitectureTests
   // implemented, which is latent capability rather than behaviour — the same declared-versus-emitted split
   // recorded in `DeclaredDependencies`.
   [Fact]
-  public void No_hr_type_exposes_a_method_named_for_deleting_an_employee()
+  public void No_hr_type_declares_a_method_named_for_deleting_an_employee()
   {
     var types = new[] { HrDomainAssembly, HrApplicationAssembly, HrInfrastructureAssembly }
       .SelectMany(assembly => assembly.GetTypes())
@@ -565,9 +565,58 @@ public sealed class EmployeeArchitectureTests
       $"only {types.Length} types were found across the three HR assemblies; 548 were measured at T-099, " +
       "so an assembly has failed to load or been dropped from the array above.");
 
+    // ==================================================================================================
+    // ⚠⚠⚠ `NonPublic` IS HERE BECAUSE A PRIVATE METHOD DELETES JUST AS THOROUGHLY (T-104)
+    // ==================================================================================================
+    //
+    // This read `Public | Instance | Static | DeclaredOnly` and nothing else. **A `private async Task
+    // SoftDeleteEmployeeAsync(...)` was invisible to it**, and the test's name says `exposes`, which no
+    // reader decodes as *public-only*. The mechanism half of this pair reads SOURCE and ignores visibility
+    // entirely, so the two halves disagreed about what counts as HR's surface — and visibility is a
+    // compilation detail, not a safety property.
+    //
+    // ---- ⚠⚠ THE COST WAS MEASURED BEFORE THE CHANGE, NOT PREDICTED. 2026-09-07, three HR assemblies:
+    //
+    //     methods, PUBLIC only        2482
+    //     methods, WITH NonPublic     3516      (adds 1034)
+    //     of the added: COMPILER-GENERATED 842 · hand-written 192
+    //     deletion-vocabulary hits    0 public  ->  12 with NonPublic  ->  ***ALL TWELVE GENERATED***
+    //
+    // The twelve are `<>z__ReadOnlyArray`1.ICollection<T>.Remove`, `…IList.RemoveAt` and their siblings —
+    // the compiler's own collection-expression types implementing `IList`. ***SO ADDING `NonPublic`
+    // WITHOUT A FILTER WOULD HAVE PRODUCED TWELVE IMMEDIATE FALSE REDS ON THE COMPILER'S NAMING***, which
+    // is the `Remove` lesson and the `$(Configuration)` lesson in one: a guard that fires on correct code
+    // gets deleted rather than fixed.
+    //
+    // With the filter the population is **2,859** and the vocabulary hit count stays at ZERO. That is the
+    // whole gain, and it is measured rather than argued.
+    //
+    // ⚠ I FIRST WROTE 2,674 HERE, DERIVED AS 2482 + 192 FROM THE PROBE ABOVE, AND IT WAS WRONG. The probe's
+    // "generated" predicate included `[CompilerGenerated]` on the MEMBER; the filter that shipped tests the
+    // declaring TYPE. Different predicates classify different members, so the arithmetic did not carry
+    // across. **Every figure in this comment except that one was measured; that one was computed, and it
+    // was the only one that was false.**
+    //
+    // ⚠ SEARCHED FIRST, AS EVERY WIDENING HERE IS: **no hand-written private or internal method in the
+    // three HR assemblies carries a deletion verb today.** All twelve occupants of the blind spot were
+    // the compiler's. This closes a hole; it does not close a breach.
+    //
+    // ---- ⚠⚠⚠ REACH PROBE WITH THE ADVERSARIAL SUBJECT, BOTH COLOURS MEASURED.
+    //
+    // A **private** `PurgeEmployeeRecord` was planted on `EmployeeRepository` — private being precisely the
+    // case the old flags could not see:
+    //
+    //     OLD flags (no `NonPublic`)  -> GREEN. Blind to it, exactly as T-101 predicted.
+    //     THESE flags                 -> RED: "an HR type declares a method named for deletion:
+    //                                   EmployeeRepository.PurgeEmployeeRecord".
+    //
+    // The old colour was MEASURED by removing `NonPublic` and re-running against the same plant, not
+    // reasoned about.
     var methods = types
       .SelectMany(type => type.GetMethods(
-        BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static |
+        BindingFlags.DeclaredOnly))
+      .Where(method => !IsCompilerGenerated(method))
       .ToArray();
 
     // ⚠⚠⚠ 1800, DERIVED (T-099). Actual 2482, measured 2026-09-07. Discriminates the collapse this
@@ -578,9 +627,13 @@ public sealed class EmployeeArchitectureTests
     // disappeared**, so the message said "the METHOD layer has collapsed" while the floor could only
     // notice the layer being annihilated. I wrote that floor in T-088, in the hour I was auditing other
     // guards for exactly this, which is the whole of what `documentation-is-diagnosis-not-prevention` says.
+    // ⚠ THE FLOOR DID NOT MOVE AND THE ACTUAL DID (T-104). 2482 public at T-099; 2859 after `NonPublic`
+    // plus the compiler-generated filter. **1800 still discriminates the same collapse** — a refactor
+    // moving declarations onto a base class, out from under `DeclaredOnly` — and the population grew by
+    // 8%, which does not change what the number is sized against. Recorded rather than silently retained.
     Assert.True(methods.Length >= 1800,
-      $"{types.Length} HR types yielded only {methods.Length} declared methods; 2482 were measured at " +
-      "T-099. The METHOD layer has collapsed rather than the type layer — most likely a refactor moving " +
+      $"declared method count: {methods.Length}, across {types.Length} HR types; 2859 measured at T-104. " +
+      "The METHOD layer has collapsed rather than the type layer — most likely a refactor moving " +
       "declarations onto a base class, where `DeclaredOnly` stops seeing them — and the vocabulary below " +
       "now reads almost nothing.");
 
@@ -606,10 +659,31 @@ public sealed class EmployeeArchitectureTests
       .ToArray();
 
     Assert.True(named.Length == 0,
-      $"an HR type exposes a method named for deletion: {string.Join(", ", named)}. Employees are " +
+      $"an HR type declares a method named for deletion: {string.Join(", ", named)}. Employees are " +
       "terminated, never deleted — see `TerminateEmployeeCommand`. If this method deletes something that " +
       "is not an employee, the exclusion belongs here by name and with its reason.");
   }
+
+  // ⚠ THE FILTER THAT MAKES `NonPublic` SAFE (T-104). Checked on the METHOD and on its DECLARING TYPE,
+  // because the twelve real occupants were named innocently — `Remove`, `RemoveAt` — on types the compiler
+  // named `<>z__ReadOnlyArray\`1`. **The offending name was the type's, not the method's**, so a filter
+  // reading only the method name would have let all twelve through.
+  // ⚠⚠⚠ THE DECLARING TYPE ONLY, AND THE FIRST VERSION OF THIS FILTER WAS WRONG IN A WAY THE FLOOR CAUGHT.
+  //
+  // It also tested `method.IsDefined(CompilerGeneratedAttribute)`. ***PUBLIC AUTO-PROPERTY ACCESSORS CARRY
+  // THAT ATTRIBUTE***, so the filter deleted every `get_`/`set_` in three assemblies: the population fell
+  // from 3,516 to 493 and the METHOD FLOOR FIRED IMMEDIATELY. The floor was sized for a base-class refactor
+  // and it caught an over-broad filter instead — a collapse it was not designed for, detected because the
+  // number it guards is the number the filter changed.
+  //
+  // The intent was never "members the compiler marked"; it was **types the compiler synthesised** —
+  // `<>z__ReadOnlyArray\`1` and its siblings. Testing the declaring type gets exactly those and leaves
+  // hand-written members of every visibility in the population.
+  private static bool IsCompilerGenerated(MethodInfo method) =>
+    method.DeclaringType is { } declaring &&
+    (declaring.Name.Contains('<', StringComparison.Ordinal) ||
+      declaring.IsDefined(
+        typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), inherit: false));
 
   // HR source, excluding build output. `git ls-files` cannot see `bin`/`obj` by construction, but this
   // walk can, so the exclusion is explicit.

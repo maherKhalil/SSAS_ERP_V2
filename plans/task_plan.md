@@ -18,7 +18,7 @@
 - [x] **Task 4: Implement `IDepartmentHierarchyLock` Integration Test**
   Implement a real integration test for `IDepartmentHierarchyLock` with a second connection to prove lock contention. This is the missing behavioral evidence for the hierarchy lock.
 
-- [ ] **Task 5: Implement Subscription Billing (FP-014)**
+- [x] **Task 5: Implement Subscription Billing (FP-014)**
   Begin implementation of the missing billing half of FP-014 (Subscription).
-  - Define `Invoice`, `PaymentAttempt`, `Overage`, `Proration`, and `SeatUsage` models.
+  Define `Invoice`, `PaymentAttempt`, `Overage`, `Proration`, and `SeatUsage` models.
   - Write corresponding unit tests.

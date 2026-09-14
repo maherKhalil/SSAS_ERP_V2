@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using SSAS.HR.Application.Permissions;
 using SSAS.HR.Application.Positions;
 using SSAS.HR.Application.Positions.Reads;
@@ -700,9 +700,23 @@ public sealed class PositionApplicationArchitectureTests
     // catches the consequence** — and by then the boundary has already been crossed once.
     //
     // So the declared dependency is read from the project files, which is where "can see" is decided.
+    // ---- ⚠⚠ RECURSES UNDER `src/` WITH NO `bin`/`obj` EXCLUSION, SAFE BY SEARCH PATTERN ONLY (T-191).
+    //
+    // The walk descends into every HR project's `obj/` and `bin/`. What keeps generated files out is the
+    // pattern alone: **build output contains no `.csproj`.** *Measured 2026-09-07: zero `.csproj` under any
+    // `bin` or `obj` in `src/`; five under `src/Modules/HR`, matching the control below.*
+    //
+    // ⚠⚠⚠ **AND UNLIKE `DeclaredDependencies.ProjectFileOf`, WHICH RECURSES THE SAME WAY, THIS DOES NOT FAIL
+    // LOUD.** That one contracts on exactly one match and throws otherwise. Here an extra path would simply
+    // join `projects` and be read as another HR project — **the population would grow and the equality
+    // control below would fail with a count mismatch that says nothing about where the extra file came
+    // from.** *A pattern is a weaker mitigation than a filter because nothing states it; that is the whole
+    // reason this paragraph is here rather than a `.Where(...)` that has nothing to exclude today.*
     var projects = Directory
       .GetFiles(Path.Combine(RepositoryRootDirectory(), "src", "Modules", "HR"), "*.csproj",
         SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
       .OrderBy(path => path, StringComparer.Ordinal)
       .ToArray();
 

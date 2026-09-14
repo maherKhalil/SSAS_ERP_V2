@@ -187,7 +187,20 @@ public sealed class SubscriptionResidencyArchitectureTests
         Path.Combine(root, "src", "Platform", "SSAS.Platform.Domain", "Subscriptions"),
         Path.Combine(root, "src", "Platform", "SSAS.Platform.Application", "Subscriptions")
       }
+      // ---- ⚠⚠ NO `bin`/`obj` EXCLUSION HERE, AND THE REASON IS CONTAINMENT RATHER THAN A FILTER (T-191).
+      //
+      // `AllDirectories` under a path that CONTAINED build output would read generated `.cs` — that is what
+      // T-188 and T-192 fixed elsewhere in this suite. It does not apply here: **both roots are
+      // sub-directories of their project, and `obj/` and `bin/` are SIBLINGS of them at the project root, not
+      // children.** *Measured 2026-09-07: no `bin` or `obj` directory exists beneath either root.*
+      //
+      // ⚠⚠⚠ **THE SAFETY IS THE DIRECTORY SHAPE, AND THE DIRECTORY SHAPE IS NOT ASSERTED ANYWHERE.**
+      // Repoint either root one level up — to `SSAS.Platform.Domain` rather than its `Subscriptions` folder,
+      // the kind of widening that looks like an improvement — and this walk silently starts reading
+      // `obj/Debug/net8.0`. **The floor below would not notice: it would move UP, not down.**
       .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
       .ToArray();
 
     // The floor is 10 against 13 files today. ⚠ It is deliberately BELOW the count rather than at it: its

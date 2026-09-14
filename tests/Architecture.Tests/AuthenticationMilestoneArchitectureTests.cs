@@ -490,7 +490,21 @@ public sealed class AuthenticationMilestoneArchitectureTests
         Path.Combine(root, "src", "Platform", "SSAS.Platform.Application", "Authentication"),
         Path.Combine(root, "src", "Platform", "SSAS.Platform.API", "Authentication")
       }
+      // ---- ⚠⚠ NO `bin`/`obj` EXCLUSION, AND THE GROUNDS ARE CONTAINMENT RATHER THAN A FILTER (T-191).
+      //
+      // The walk two methods down — `FilesUnderSrc` — excludes build output, and so do the two walks this
+      // test's own `Milestone_four` uses. **This one does not, and does not need to: both roots are
+      // `Authentication` sub-directories of their projects, and `obj/`/`bin/` are SIBLINGS at the project
+      // root, not children.** *Measured 2026-09-07: no `bin` or `obj` directory exists beneath either root.*
+      //
+      // ⚠⚠⚠ **EVERY NUMBER BELOW RESTS ON THAT DIRECTORY SHAPE AND NOTHING ASSERTS IT.** The 64 · 5 counts
+      // and the floor of 40 were all measured against a build-output-free population. Repoint either root at
+      // its project root — a widening that reads as making the test stricter — and generated files join the
+      // count, the floor rises, and **the asymmetry argument below silently stops being true** because the
+      // five-file half would no longer be five.
       .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
       .ToArray();
 
     // `EnumerateFiles` throws on a missing directory, so a renamed project is an exception rather than a

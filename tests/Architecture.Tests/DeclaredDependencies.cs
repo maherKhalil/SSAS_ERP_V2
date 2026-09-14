@@ -218,8 +218,24 @@ internal static class DeclaredDependencies
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(assemblyName);
 
+    // ---- ⚠ RECURSES UNDER `src/` WITH NO `bin`/`obj` EXCLUSION, AND IS SAFE BY SEARCH PATTERN (T-191).
+    //
+    // This walk DOES descend into every project's `obj/` and `bin/`. What protects it is the pattern:
+    // **build output contains no `.csproj`** — `obj/` holds `.nuget.g.props`, `.AssemblyInfo.cs` and the
+    // like, never a project file. *Measured 2026-09-07: zero `.csproj` files exist under any `bin` or `obj`
+    // directory anywhere in `src/`.*
+    //
+    // ⚠⚠ **A SEARCH PATTERN IS A WEAKER MITIGATION THAN A FILTER BECAUSE NOTHING STATES IT** — which is the
+    // only reason this paragraph exists. Widen the pattern to `*.csproj` plus anything generated, or to
+    // `*.props`, and the protection is gone with no other line changing.
+    //
+    // ⚠ THIS ONE FAILS LOUD, WHICH THE SIBLING AT `PositionApplicationArchitectureTests` DOES NOT. The
+    // contract below is EXACTLY ONE match; two would throw rather than silently pick the first. So a stray
+    // project file appearing under build output would stop this class rather than quietly change an answer.
     var matches = Directory
       .GetFiles(Path.Combine(RepositoryRoot(), "src"), $"{assemblyName}.csproj", SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
       .OrderBy(path => path, StringComparer.Ordinal)
       .ToArray();
 

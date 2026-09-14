@@ -300,6 +300,10 @@ The **Branch foundation** (branch persistence, lifecycle, mandatory user branch 
 
 **FP-013 Attendance is delivered and merged** (PR #52, `f9b247a`), and is the most recent module on `main`. `src/Modules/Attendance/SSAS.Attendance.*` carries Calendars, Leave, Periods and Records, with the `20260825024834_AddAttendanceFoundation` migration, the `tests/Attendance.Tests/` suite, and `tests/Architecture.Tests/AttendanceArchitectureTests.cs` as its guard. Payroll consumes it across a contracts boundary and nowhere else — `SSAS.Payroll.Application` references `SSAS.Attendance.Contracts` and its `IAttendanceSummary` alone, which `DEC-ATT-0002` and `ADR-012` require and the project reference in `SSAS.Payroll.Application.csproj` holds in place.
 
+**FP-014 Subscription is PARTLY BUILT.** The entitlement half is built and tested; the billing half does not exist. All seventeen `OD-SUB` rulings are ratified.
+**FP-015 Employee Self Service is BUILT.** The self-service routes are live, and all fourteen acceptance criteria are pinned by named tests.
+**FP-016 Platform Support Surface is BUILT.** It describes a privileged cross-tenant administration plane that is already built and pinned by tests.
+
 Do not resume completed work on the basis of an older "current sprint" heading. The repository state and the approved Feature Packages are authoritative for what has been built and what comes next.
 
 ---

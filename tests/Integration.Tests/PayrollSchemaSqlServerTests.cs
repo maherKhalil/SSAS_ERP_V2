@@ -250,18 +250,24 @@ public sealed class PayrollSchemaSqlServerTests
   public async Task The_same_element_code_is_free_in_a_second_company()
   {
     await using var fixture = await PayrollFixture.CreateAsync();
-    await using var context = fixture.CreateContext();
+    await using (var contextA = fixture.CreateContext(fixture.CompanyA))
+    {
+      contextA.Set<PayElement>().Add(PayElement.Create(
+        fixture.CompanyA, "BASIC", "Basic", PayElementKind.Earning,
+        PayElementBehaviour.BaseSalary, 0m, 0).Value);
+      await contextA.SaveChangesAsync();
+    }
 
-    context.Set<PayElement>().Add(PayElement.Create(
-      fixture.CompanyA, "BASIC", "Basic", PayElementKind.Earning,
-      PayElementBehaviour.BaseSalary, 0m, 0).Value);
-    context.Set<PayElement>().Add(PayElement.Create(
-      fixture.CompanyB, "BASIC", "Basic", PayElementKind.Earning,
-      PayElementBehaviour.BaseSalary, 0m, 0).Value);
+    await using (var contextB = fixture.CreateContext(fixture.CompanyB))
+    {
+      contextB.Set<PayElement>().Add(PayElement.Create(
+        fixture.CompanyB, "BASIC", "Basic", PayElementKind.Earning,
+        PayElementBehaviour.BaseSalary, 0m, 0).Value);
+      // No throw: the key carries `CompanyId`, so these are two different rows and not a collision.
+      await contextB.SaveChangesAsync();
+    }
 
-    // No throw: the key carries `CompanyId`, so these are two different rows and not a collision.
-    await context.SaveChangesAsync();
-
+    await using var context = fixture.CreateContext(fixture.CompanyA);
     var stored = await context.Set<PayElement>()
       .Where(element => element.NormalizedCode == "BASIC")
       .ToListAsync();

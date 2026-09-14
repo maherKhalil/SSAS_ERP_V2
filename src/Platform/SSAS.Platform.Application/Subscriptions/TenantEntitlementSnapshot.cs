@@ -72,11 +72,14 @@ public sealed record TenantEntitlementSnapshot(
       return true;
     }
 
-    // Plan ∪ additive grants. A union, so a grant can only add (`OD-SUB-0011`).
-    return Grants.Any(grant =>
-      grant.Kind == EntitlementGrantKind.ModuleGrant &&
-      string.Equals(grant.ModuleKey, moduleKey, StringComparison.Ordinal) &&
-      grant.IsInForceAt(instant));
+    var latestGrant = Grants
+      .Where(grant =>
+        grant.Kind == EntitlementGrantKind.ModuleGrant &&
+        string.Equals(grant.ModuleKey, moduleKey, StringComparison.Ordinal) &&
+        grant.EffectiveFromUtc <= instant)
+      .MaxBy(grant => grant.EffectiveFromUtc);
+
+    return latestGrant != null && latestGrant.IsInForceAt(instant);
   }
 
   // ---- `max(plan, grants)`, SO A GRANT CANNOT LOWER A CAP WHATEVER WROTE IT.
@@ -93,16 +96,15 @@ public sealed record TenantEntitlementSnapshot(
 
     long? resolved = PlanLimits.TryGetValue(limitKey, out var planValue) ? planValue : null;
 
-    foreach (var grant in Grants)
-    {
-      if (grant.Kind != EntitlementGrantKind.LimitRaise ||
-        !string.Equals(grant.LimitKey, limitKey, StringComparison.Ordinal) ||
-        !grant.IsInForceAt(instant) ||
-        grant.LimitValue is not { } granted)
-      {
-        continue;
-      }
+    var latestGrant = Grants
+      .Where(grant =>
+        grant.Kind == EntitlementGrantKind.LimitRaise &&
+        string.Equals(grant.LimitKey, limitKey, StringComparison.Ordinal) &&
+        grant.EffectiveFromUtc <= instant)
+      .MaxBy(grant => grant.EffectiveFromUtc);
 
+    if (latestGrant != null && latestGrant.IsInForceAt(instant) && latestGrant.LimitValue is { } granted)
+    {
       resolved = resolved is { } current ? Math.Max(current, granted) : granted;
     }
 

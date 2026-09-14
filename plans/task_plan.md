@@ -23,7 +23,7 @@
   - `POST /api/platform/tenants/{tenantId}/subscriptions`
   - `GET /api/platform/subscriptions`
 
-- [ ] **Task 4: FP-014 Entitlement Grants API**
+- [x] **Task 4: FP-014 Entitlement Grants API**
   Implement the command/query handlers, HTTP routes, and unit tests for Entitlement Grants:
   - `GET /api/platform/tenants/{tenantId}/grants`
   - `POST /api/platform/tenants/{tenantId}/grants`

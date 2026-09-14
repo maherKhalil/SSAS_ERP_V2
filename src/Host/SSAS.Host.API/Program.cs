@@ -166,6 +166,7 @@ try
   app.MapPlatformCompanyEndpoints();
   app.MapPlatformPlansEndpoints();
   app.MapPlatformTenantSubscriptionsEndpoints();
+  app.MapPlatformEntitlementGrantsEndpoints();
   // HR module transport (ADR-012: the Host maps each module's own endpoints; modules never map each other's).
   app.MapHrEmployeeEndpoints();
   app.MapHrDepartmentEndpoints();

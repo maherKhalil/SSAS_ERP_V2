@@ -161,6 +161,45 @@ public sealed class TenantEntitlementGrant : Entity<Guid>, IAppendOnlyEntity
   public bool IsInForceAt(DateTimeOffset instant) =>
     EffectiveFromUtc <= instant && (ExpiresUtc is null || instant <= ExpiresUtc);
 
+  public static Result<TenantEntitlementGrant> RevokeModule(
+    Guid tenantId,
+    ModuleKey moduleKey,
+    DateTimeOffset effectiveFromUtc,
+    string actor,
+    string? reasonCode,
+    string? reasonText,
+    DateTimeOffset occurredUtc)
+  {
+    if (moduleKey is null) return Result.Failure<TenantEntitlementGrant>(SubscriptionErrors.InvalidModuleKey);
+    var validation = Validate(tenantId, effectiveFromUtc, effectiveFromUtc, actor, reasonCode, reasonText);
+    return validation.IsFailure
+      ? Result.Failure<TenantEntitlementGrant>(validation.Error)
+      : Result.Success(new TenantEntitlementGrant(
+        Guid.NewGuid(), tenantId, EntitlementGrantKind.ModuleGrant, moduleKey, null, null,
+        effectiveFromUtc, effectiveFromUtc, actor, Clean(reasonCode), Clean(reasonText), occurredUtc));
+  }
+
+  public static Result<TenantEntitlementGrant> RevokeLimit(
+    Guid tenantId,
+    string? limitKey,
+    DateTimeOffset effectiveFromUtc,
+    string actor,
+    string? reasonCode,
+    string? reasonText,
+    DateTimeOffset occurredUtc)
+  {
+    var trimmedKey = limitKey?.Trim();
+    if (string.IsNullOrWhiteSpace(trimmedKey) || trimmedKey.Length > PlanLimit.KeyMaximumLength)
+      return Result.Failure<TenantEntitlementGrant>(SubscriptionErrors.InvalidLimitKey);
+    
+    var validation = Validate(tenantId, effectiveFromUtc, effectiveFromUtc, actor, reasonCode, reasonText);
+    return validation.IsFailure
+      ? Result.Failure<TenantEntitlementGrant>(validation.Error)
+      : Result.Success(new TenantEntitlementGrant(
+        Guid.NewGuid(), tenantId, EntitlementGrantKind.LimitRaise, null, trimmedKey, 0, // 0 won't raise cap
+        effectiveFromUtc, effectiveFromUtc, actor, Clean(reasonCode), Clean(reasonText), occurredUtc));
+  }
+
   private static Result Validate(
     Guid tenantId,
     DateTimeOffset effectiveFromUtc,
@@ -179,7 +218,7 @@ public sealed class TenantEntitlementGrant : Entity<Guid>, IAppendOnlyEntity
       return Result.Failure(SubscriptionErrors.InvalidActor);
     }
 
-    if (expiresUtc is { } expires && expires <= effectiveFromUtc)
+    if (expiresUtc is { } expires && expires < effectiveFromUtc)
     {
       return Result.Failure(SubscriptionErrors.InvalidTerm);
     }

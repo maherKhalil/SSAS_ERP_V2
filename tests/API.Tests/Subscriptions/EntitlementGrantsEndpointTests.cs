@@ -32,7 +32,6 @@ using SSAS.Platform.Infrastructure.Persistence.Queries;
 using SSAS.Host.API.Authentication;
 using SSAS.Host.API.Authorization;
 using SSAS.Host.API.Configuration;
-using SSAS.Platform.API.RequestContext;
 using SSAS.Platform.Infrastructure.RequestContext;
 using SSAS.Platform.Application.Tenants;
 
@@ -66,7 +65,7 @@ public sealed class EntitlementGrantsEndpointTests : IAsyncLifetime
   [Fact]
   public async Task GrantEntitlement_authorized_returns_201()
   {
-    var body = $"{{\"grantKind\":\"ModuleGrant\",\"moduleKey\":\"Payroll\",\"effectiveFromUtc\":\"2026-01-01T00:00:00Z\"}}";
+    var body = $"{{\"grantKind\":\"moduleGrant\",\"moduleKey\":\"Payroll\",\"effectiveFromUtc\":\"2026-01-01T00:00:00Z\"}}";
     var response = await Client.SendAsync(Post($"/api/platform/tenants/{TenantId}/grants", body, AdministerToken()));
     
     Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -78,7 +77,7 @@ public sealed class EntitlementGrantsEndpointTests : IAsyncLifetime
   [Fact]
   public async Task RevokeEntitlement_authorized_returns_201()
   {
-    var body = $"{{\"grantKind\":\"ModuleGrant\",\"moduleKey\":\"Payroll\",\"effectiveFromUtc\":\"2026-01-01T00:00:00Z\"}}";
+    var body = $"{{\"grantKind\":\"moduleGrant\",\"moduleKey\":\"Payroll\",\"effectiveFromUtc\":\"2026-01-01T00:00:00Z\"}}";
     var response = await Client.SendAsync(Post($"/api/platform/tenants/{TenantId}/grants/revoke", body, AdministerToken()));
     
     Assert.Equal(HttpStatusCode.Created, response.StatusCode);

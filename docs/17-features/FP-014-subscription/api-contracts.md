@@ -113,9 +113,9 @@ violation leaking through.
 ### Entitlement grants — `Platform.EntitlementGrants.Administer`
 
 ```
-GET    /api/platform/tenants/{tenantId}/grants        Platform.Subscriptions.View  [NOT BUILT - domain + internal read]
-POST   /api/platform/tenants/{tenantId}/grants        Platform.EntitlementGrants.Administer  [NOT BUILT - domain + internal read]
-POST   /api/platform/tenants/{tenantId}/grants/revoke Platform.EntitlementGrants.Administer  [NOT BUILT - domain + internal read]
+GET    /api/platform/tenants/{tenantId}/grants        Platform.Subscriptions.View
+POST   /api/platform/tenants/{tenantId}/grants        Platform.EntitlementGrants.Administer
+POST   /api/platform/tenants/{tenantId}/grants/revoke Platform.EntitlementGrants.Administer
 ```
 
 `grants/revoke` as a **POST**, following HR's `manager/remove` and Attendance's `holidays/remove`:

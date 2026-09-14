@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -1436,6 +1436,11 @@ public sealed class PlatformAuthenticationPersistenceTests
       .AddHostPermissionAuthorization()
       .AddHostProblemDetails()
       .AddPlatformModule();
+
+    builder.Services.AddScoped<SSAS.Platform.Application.Subscriptions.ITenantEntitlementReader, SSAS.Platform.Infrastructure.Subscriptions.TenantEntitlementReader>();
+    builder.Services.AddSingleton<SSAS.Platform.Application.Subscriptions.ITenantEntitlementCache, SSAS.Platform.Infrastructure.Subscriptions.InMemoryTenantEntitlementCache>();
+    builder.Services.AddScoped<SSAS.BuildingBlocks.Api.Authorization.ITenantModuleEntitlement, SSAS.Platform.API.Subscriptions.TenantModuleEntitlement>();
+
     await using var application = builder.Build();
     application.UseExceptionHandler();
     application.UseCors(AuthenticationTransportServiceCollectionExtensions.CorsPolicy);

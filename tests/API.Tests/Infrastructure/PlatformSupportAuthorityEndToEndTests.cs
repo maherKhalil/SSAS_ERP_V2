@@ -384,6 +384,10 @@ public sealed class PlatformSupportAuthorityEndToEndHost : IAsyncLifetime
       .AddHostAuthenticationTransport(builder.Configuration, builder.Environment)
       .AddHostProblemDetails();
 
+    builder.Services.AddScoped<SSAS.Platform.Application.Subscriptions.ITenantEntitlementReader, SSAS.Platform.Infrastructure.Subscriptions.TenantEntitlementReader>();
+    builder.Services.AddSingleton<SSAS.Platform.Application.Subscriptions.ITenantEntitlementCache, SSAS.Platform.Infrastructure.Subscriptions.InMemoryTenantEntitlementCache>();
+    builder.Services.AddScoped<SSAS.BuildingBlocks.Api.Authorization.ITenantModuleEntitlement, SSAS.Platform.API.Subscriptions.TenantModuleEntitlement>();
+
     application = builder.Build();
     await using (var scope = application.Services.CreateAsyncScope())
     {

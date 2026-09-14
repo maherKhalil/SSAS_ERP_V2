@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
@@ -468,6 +468,11 @@ public sealed class EmployeeHostCompositionTests
       .AddPlatformModule()
       .AddHrModule()
       .AddHrInfrastructure();
+
+    // Register tenant entitlement cache which is required by PlatformModule handlers but registered in Program.cs
+    builder.Services.AddScoped<SSAS.Platform.Application.Subscriptions.ITenantEntitlementReader, SSAS.Platform.Infrastructure.Subscriptions.TenantEntitlementReader>();
+    builder.Services.AddSingleton<SSAS.Platform.Application.Subscriptions.ITenantEntitlementCache, SSAS.Platform.Infrastructure.Subscriptions.InMemoryTenantEntitlementCache>();
+    builder.Services.AddScoped<SSAS.BuildingBlocks.Api.Authorization.ITenantModuleEntitlement, SSAS.Platform.API.Subscriptions.TenantModuleEntitlement>();
 
     // ---- MIRRORS THE ONE LINE Program.cs USES TO REGISTER HR'S PERMISSION DEFINITIONS (FP-006P).
     //

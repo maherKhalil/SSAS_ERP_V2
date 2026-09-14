@@ -16,7 +16,7 @@
   - `PUT /api/platform/plans/{planId}/limits`
   - `PUT /api/platform/plans/{planId}/prices`
 
-- [ ] **Task 3: FP-014 Subscriptions API**
+- [x] **Task 3: FP-014 Subscriptions API**
   Implement the command/query handlers, HTTP routes, and unit tests for the Subscriptions API (using append-only semantics):
   - `GET /api/platform/tenants/{tenantId}/subscriptions`
   - `GET /api/platform/tenants/{tenantId}/subscriptions/current`

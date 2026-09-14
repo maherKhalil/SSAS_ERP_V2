@@ -352,8 +352,8 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
 
     var absent = all.Where(row => !live.Contains($"{row.Method} {row.Path}")).ToArray();
 
-    Assert.Equal(139, all.Length - absent.Length);
-    Assert.Equal(58, absent.Length);
+    Assert.Equal(143, all.Length - absent.Length);
+    Assert.Equal(54, absent.Length);
 
     // ⚠ CAPABILITY THAT EXISTS UNDER ANOTHER PATH, AND THE ROW SAYS SO. `[BUILT as ...]` and
     // `[SERVED BY ...]` are used consistently across these documents and explained in their own legend.
@@ -384,7 +384,7 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
       !row.Text.Contains("DEFERRED", StringComparison.Ordinal) &&
       !row.Text.Contains("SUPERSEDED", StringComparison.Ordinal)).ToArray();
 
-    Assert.Equal(33, undecided.Length);
+    Assert.Equal(29, undecided.Length);
   }
 
   // ================================================================================================

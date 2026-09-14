@@ -38,6 +38,7 @@ using SSAS.BuildingBlocks.Localization.Generated;
 using SSAS.Platform.Application.Localization;
 using SSAS.Platform.Application.Abstractions.Localization;
 using SSAS.Platform.Infrastructure.Localization;
+using SSAS.Platform.Application.Subscriptions.Plans;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
 
 namespace SSAS.Platform.Infrastructure;
@@ -608,6 +609,17 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<ListTenantLocalizationResourcesQueryHandler>();
     services.AddScoped<GetTenantLocalizationResourceQueryHandler>();
     services.AddScoped<PreviewTenantLocalizationOverrideCommandHandler>();
+
+    services.AddScoped<ISubscriptionPlanRepository, SubscriptionPlanRepository>();
+    services.AddScoped<IPlanQueries, PlanQueries>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Plans.CreateSubscriptionPlanCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Plans.UpdateSubscriptionPlanCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Plans.RetireSubscriptionPlanCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Plans.SetPlanModulesCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Plans.SetPlanLimitsCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Plans.SetPlanPricesCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Plans.GetSubscriptionPlansQueryHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Plans.GetSubscriptionPlanByIdQueryHandler>();
 
     return services;
   }

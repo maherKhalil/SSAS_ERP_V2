@@ -35,6 +35,7 @@ using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Infrastructure.Subscriptions;
 using SSAS.Platform.API.Subscriptions;
 using SSAS.Platform.API.TenantUsers;
+using SSAS.Platform.API.Subscriptions;
 
 Log.Logger = new LoggerConfiguration()
   .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
@@ -163,6 +164,7 @@ try
   app.MapPlatformTenantUserEndpoints();
   app.MapPlatformSupportAuthorityEndpoints();
   app.MapPlatformCompanyEndpoints();
+  app.MapPlatformPlansEndpoints();
   // HR module transport (ADR-012: the Host maps each module's own endpoints; modules never map each other's).
   app.MapHrEmployeeEndpoints();
   app.MapHrDepartmentEndpoints();

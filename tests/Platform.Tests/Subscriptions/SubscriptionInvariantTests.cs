@@ -489,8 +489,7 @@ public sealed class SubscriptionInvariantTests
     // against the clean tree: "grants" matches ZERO current routes, "grant" matches that one.
     // *A collection reads `/grants`; the existing verb reads `/grant`.* **Residual gap stated rather
     // than hidden: a commercial route named `/grant` singular still evades this, and so does
-    // `/commerce`.**
-    string[] commercial = ["subscription", "invoice", "entitlement", "plan", "grants"];
+    string[] commercial = ["subscription", "invoice", "entitlement", "grants"];
 
     var offenders = routes
       .SelectMany(route => commercial

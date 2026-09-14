@@ -352,8 +352,8 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
 
     var absent = all.Where(row => !live.Contains($"{row.Method} {row.Path}")).ToArray();
 
-    Assert.Equal(131, all.Length - absent.Length);
-    Assert.Equal(66, absent.Length);
+    Assert.Equal(139, all.Length - absent.Length);
+    Assert.Equal(58, absent.Length);
 
     // ⚠ CAPABILITY THAT EXISTS UNDER ANOTHER PATH, AND THE ROW SAYS SO. `[BUILT as ...]` and
     // `[SERVED BY ...]` are used consistently across these documents and explained in their own legend.
@@ -373,17 +373,18 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
 
     // ---- ⚠ WHAT IS LEFT IS THE HONEST CAPABILITY GAP, AND IT IS ALMOST ENTIRELY THE OWNER'S.
     //
-    // 24 are the commercial plane (owner decision 11), 16 the administration transport (decision 2), 1 the
-    // attendance bulk import (decision 5). **The permissions for the 16 are already catalogued and their
-    // handlers already built** — 28 platform permissions catalogued, 12 required by a live route, 16 by
-    // none — so that decision is about cost, not design.
+    // 16 are the administration transport (decision 2), 16 are the remaining commercial plane (owner
+    // decision 11 — subscriptions, entitlement grants, invoices, enabled-module list; the 8 Plans routes
+    // shipped as FP-014 Task 2), 1 the attendance bulk import (decision 5). **The permissions for the 16
+    // administration transport routes are already catalogued and their handlers already built** — 28 platform
+    // permissions catalogued, 20 required by a live route, 8 by none — so that decision is about cost, not design.
     var undecided = absent.Where(row =>
       !row.Text.Contains("BUILT as", StringComparison.Ordinal) &&
       !row.Text.Contains("SERVED BY", StringComparison.Ordinal) &&
       !row.Text.Contains("DEFERRED", StringComparison.Ordinal) &&
       !row.Text.Contains("SUPERSEDED", StringComparison.Ordinal)).ToArray();
 
-    Assert.Equal(41, undecided.Length);
+    Assert.Equal(33, undecided.Length);
   }
 
   // ================================================================================================

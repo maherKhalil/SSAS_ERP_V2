@@ -87,7 +87,7 @@ public sealed class PlatformAuthenticationEndToEndTests(PlatformSupportAuthentic
   // left to be re-derived. The identity partition (5 per 15 min) stays unreachable only because every test
   // below seeds a fresh email; reuse one and that limit binds instead.
   private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-  private static readonly DateTimeOffset Now = new(2026, 8, 12, 11, 0, 0, TimeSpan.Zero);
+  private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
 
   [Fact]
   public async Task Tenant_login_binds_a_camel_case_body_and_returns_the_single_eligible_tenant_session()

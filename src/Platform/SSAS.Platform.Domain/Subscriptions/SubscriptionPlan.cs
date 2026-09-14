@@ -204,6 +204,63 @@ public sealed class SubscriptionPlan : AggregateRoot<Guid>
   // True when this plan carries a price a tenant billed in the given currency could be charged. Checked by
   // the caller that assigns a subscription rather than by a constraint, because the check spans two
   // aggregates (`REQ-SUB-0023`).
+  public Result UpdateName(PlanName planName, string actor, DateTimeOffset occurredUtc)
+  {
+    if (planName is null)
+    {
+      return Result.Failure(SubscriptionErrors.InvalidPlanName);
+    }
+
+    PlanName = planName;
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  public Result ReplaceModules(IEnumerable<ModuleKey> modules, string actor, DateTimeOffset occurredUtc)
+  {
+    moduleGrants.Clear();
+    if (modules is not null)
+    {
+      foreach (var module in modules.Distinct())
+      {
+        var result = GrantModule(module, actor, occurredUtc);
+        if (result.IsFailure) return result;
+      }
+    }
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  public Result ReplaceLimits(IEnumerable<(string Key, long Value)> limits, string actor, DateTimeOffset occurredUtc)
+  {
+    this.limits.Clear();
+    if (limits is not null)
+    {
+      foreach (var limit in limits)
+      {
+        var result = SetLimit(limit.Key, limit.Value, actor, occurredUtc);
+        if (result.IsFailure) return result;
+      }
+    }
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
+  public Result ReplacePrices(IEnumerable<(string CurrencyCode, SubscriptionBillingPeriod BillingPeriod, decimal Amount)> prices, string actor, DateTimeOffset occurredUtc)
+  {
+    this.prices.Clear();
+    if (prices is not null)
+    {
+      foreach (var price in prices)
+      {
+        var result = SetPrice(price.CurrencyCode, price.BillingPeriod, price.Amount, actor, occurredUtc);
+        if (result.IsFailure) return result;
+      }
+    }
+    Touch(actor, occurredUtc);
+    return Result.Success();
+  }
+
   public bool HasPriceIn(string currencyCode) =>
     prices.Any(price => string.Equals(price.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase));
 

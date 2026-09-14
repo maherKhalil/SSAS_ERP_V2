@@ -15,8 +15,8 @@
   - The five `_race_is_409_rather_than_500` tests in Gl and Payroll.
   - The three constraint-named department tests (`D23_...`, `D24_...`, `D6_...`).
 
-- [ ] **Task 4: Implement IDepartmentHierarchyLock Integration Test**
-  As detailed in `T-191.md`, implement a real integration test for `IDepartmentHierarchyLock` with a second connection to prove lock contention. This is the missing behavioral evidence for the hierarchy lock.
+- [x] **Task 4: Implement `IDepartmentHierarchyLock` Integration Test**
+  Implement a real integration test for `IDepartmentHierarchyLock` with a second connection to prove lock contention. This is the missing behavioral evidence for the hierarchy lock.
 
 - [ ] **Task 5: Implement Subscription Billing (FP-014)**
   Begin implementation of the missing billing half of FP-014 (Subscription).

@@ -1,24 +1,44 @@
 # Task Plan
 
-## Phase 3: Test-Driven Delegation Loop
+## Phase 4: FP-014 Subscription Billing API Implementation
 
-- [x] **Task 1: Architecture Tests T-191 Fix**
-  Update `tests/Architecture.Tests/*.cs` (`AuthenticationMilestoneArchitectureTests.cs`, `DeclaredDependencies.cs`, `PositionApplicationArchitectureTests.cs`, `SubscriptionResidencyArchitectureTests.cs`) to explicitly exclude `bin` and `obj` directories from `Directory.GetFiles` and `Directory.EnumerateFiles` walks instead of relying on directory containment or file extension patterns.
+- [x] **Task 1: FP-014 Permissions & Authorization Configuration**
+  Add the missing permissions defined in `docs/17-features/FP-014-subscription/api-contracts.md`: `Platform.Plans.View`, `Platform.Plans.Administer`, `Platform.Subscriptions.View`, `Platform.Subscriptions.Administer`, `Platform.EntitlementGrants.Administer`, `Platform.Invoices.View`, and `Platform.Invoices.Administer`. Ensure they are registered in the authorization/permission catalogue.
 
-- [x] **Task 2: Fix Failing Integration Tests**
-  - Fix `CatalogLeakGuardTests.No_test_catalog_survived_a_previous_run` by dropping leaked test databases.
-  - Fix `PayrollSchemaSqlServerTests.The_same_element_code_is_free_in_a_second_company` which is currently failing (SQL exception / Uniqueness).
+- [ ] **Task 2: FP-014 Plans API**
+  Implement the MediatR command/query handlers, HTTP routes, and unit tests for the Plans API under `/api/platform/plans`:
+  - `GET /api/platform/plans`
+  - `GET /api/platform/plans/{planId}`
+  - `POST /api/platform/plans`
+  - `PUT /api/platform/plans/{planId}`
+  - `POST /api/platform/plans/{planId}/retire`
+  - `PUT /api/platform/plans/{planId}/modules`
+  - `PUT /api/platform/plans/{planId}/limits`
+  - `PUT /api/platform/plans/{planId}/prices`
 
-- [x] **Task 3: T-191 API Test Renaming**
-  Rename the tests in `tests/API.Tests` (and others) that claim a lock/race but only test a 409 mapping, as listed in `.claude/handoff/results/T-191.md`. Specifically:
-  - `A_busy_fiscal_calendar_is_409_and_names_a_retryable_condition`
-  - The five `_race_is_409_rather_than_500` tests in Gl and Payroll.
-  - The three constraint-named department tests (`D23_...`, `D24_...`, `D6_...`).
+- [ ] **Task 3: FP-014 Subscriptions API**
+  Implement the command/query handlers, HTTP routes, and unit tests for the Subscriptions API (using append-only semantics):
+  - `GET /api/platform/tenants/{tenantId}/subscriptions`
+  - `GET /api/platform/tenants/{tenantId}/subscriptions/current`
+  - `POST /api/platform/tenants/{tenantId}/subscriptions`
+  - `GET /api/platform/subscriptions`
 
-- [x] **Task 4: Implement `IDepartmentHierarchyLock` Integration Test**
-  Implement a real integration test for `IDepartmentHierarchyLock` with a second connection to prove lock contention. This is the missing behavioral evidence for the hierarchy lock.
+- [ ] **Task 4: FP-014 Entitlement Grants API**
+  Implement the command/query handlers, HTTP routes, and unit tests for Entitlement Grants:
+  - `GET /api/platform/tenants/{tenantId}/grants`
+  - `POST /api/platform/tenants/{tenantId}/grants`
+  - `POST /api/platform/tenants/{tenantId}/grants/revoke`
 
-- [x] **Task 5: Implement Subscription Billing (FP-014)**
-  Begin implementation of the missing billing half of FP-014 (Subscription).
-  Define `Invoice`, `PaymentAttempt`, `Overage`, `Proration`, and `SeatUsage` models.
-  - Write corresponding unit tests.
+- [ ] **Task 5: FP-014 Invoices API**
+  Implement the command/query handlers, HTTP routes, and unit tests for Invoices:
+  - `GET /api/platform/invoices`
+  - `GET /api/platform/invoices/{invoiceId}`
+  - `GET /api/platform/tenants/{tenantId}/invoices`
+  - `POST /api/platform/invoices`
+  - `PUT /api/platform/invoices/{invoiceId}` (draft edits only)
+  - `POST /api/platform/invoices/{invoiceId}/issue`
+  - `POST /api/platform/invoices/{invoiceId}/void`
+  - `GET /api/platform/invoices/{invoiceId}/attempts`
+
+- [ ] **Task 6: FP-014 Tenant Enabled Modules Read API**
+  Implement the handler and route for `GET /api/platform/modules/enabled`. This route must be exempt from module enablement checks and available to any authenticated tenant user.

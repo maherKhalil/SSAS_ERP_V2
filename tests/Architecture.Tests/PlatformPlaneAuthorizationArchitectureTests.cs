@@ -43,7 +43,19 @@ public sealed class PlatformPlaneAuthorizationArchitectureTests
     var catalog = new PlatformPermissionCatalog();
 
     Assert.Equal(
-      ["Platform.Support.Administer", "Platform.Tenants.Lifecycle", "Platform.Tenants.Manage", "Platform.Tenants.View"],
+      [
+        "Platform.EntitlementGrants.Administer",
+        "Platform.Invoices.Administer",
+        "Platform.Invoices.View",
+        "Platform.Plans.Administer",
+        "Platform.Plans.View",
+        "Platform.Subscriptions.Administer",
+        "Platform.Subscriptions.View",
+        "Platform.Support.Administer",
+        "Platform.Tenants.Lifecycle",
+        "Platform.Tenants.Manage",
+        "Platform.Tenants.View"
+      ],
       catalog.All.Where(permission => permission.Scope == PermissionScope.PlatformSupport)
         .Select(permission => permission.Name.Value)
         .OrderBy(value => value, StringComparer.Ordinal));

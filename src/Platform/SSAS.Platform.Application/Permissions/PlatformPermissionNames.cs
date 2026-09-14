@@ -60,4 +60,13 @@ public static class PlatformPermissionNames
   // Platform-authority administration permission (ADR-016, DEC-TEN-0021): governs platform-support
   // principal registration, permission grant/revoke, and Disable/Re-enable. PermissionScope.PlatformSupport.
   public const string AdministerPlatformSupport = "Platform.Support.Administer";
+
+  // FP-014: Subscription and commercial plane permissions (PermissionScope.PlatformSupport)
+  public const string ViewPlans = "Platform.Plans.View";
+  public const string AdministerPlans = "Platform.Plans.Administer";
+  public const string ViewSubscriptions = "Platform.Subscriptions.View";
+  public const string AdministerSubscriptions = "Platform.Subscriptions.Administer";
+  public const string AdministerEntitlementGrants = "Platform.EntitlementGrants.Administer";
+  public const string ViewInvoices = "Platform.Invoices.View";
+  public const string AdministerInvoices = "Platform.Invoices.Administer";
 }

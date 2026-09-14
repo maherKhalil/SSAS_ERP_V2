@@ -37,7 +37,14 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.ViewTenants, "View platform tenant lifecycle records", PermissionScope.PlatformSupport),
       Define(PlatformPermissionNames.ManageTenants, "Create platform tenants", PermissionScope.PlatformSupport),
       Define(PlatformPermissionNames.TenantLifecycle, "Change platform tenant lifecycle state", PermissionScope.PlatformSupport),
-      Define(PlatformPermissionNames.AdministerPlatformSupport, "Administer platform-support principals and their permission assignments", PermissionScope.PlatformSupport)
+      Define(PlatformPermissionNames.AdministerPlatformSupport, "Administer platform-support principals and their permission assignments", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.ViewPlans, "View subscription plans", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerPlans, "Administer subscription plans", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.ViewSubscriptions, "View tenant subscriptions", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerSubscriptions, "Administer tenant subscriptions", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerEntitlementGrants, "Administer tenant entitlement grants", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.ViewInvoices, "View invoices", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerInvoices, "Administer invoices", PermissionScope.PlatformSupport)
     }
     .ToDictionary(definition => definition.Name.Value, StringComparer.Ordinal);
 

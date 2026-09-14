@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Options;
 using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Subscriptions;
 using SSAS.BuildingBlocks.Application.Abstractions.Diagnostics;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -453,13 +454,16 @@ public sealed class PlatformInfrastructureRegistrationTests
   // unrelated permission addition — **a guard whose false positives outnumber its true ones is one somebody
   // switches off**, and this one needs to survive until FP-014 ships. The ban is scoped to the vocabulary
   // the criterion is about, and its matcher is exercised below so it cannot rot into matching nothing.
-  public void No_subscription_permission_exists_on_either_plane()
+  public void No_tenant_plane_subscription_permission_exists()
   {
     var catalog = new PlatformPermissionCatalog();
-    var names = catalog.All.Select(definition => definition.Name.Value).ToArray();
+    var tenantNames = catalog.All
+      .Where(p => p.Scope == PermissionScope.Tenant)
+      .Select(definition => definition.Name.Value)
+      .ToArray();
 
-    Assert.True(names.Length >= 20,
-      $"only {names.Length} permissions in the composed catalog; the enumeration collapsed and the ban " +
+    Assert.True(tenantNames.Length >= 20,
+      $"only {tenantNames.Length} tenant permissions in the composed catalog; the enumeration collapsed and the ban " +
       "below would be a claim about nothing.");
 
     // The matcher control: it must match what it is for, and not match what it is not for.
@@ -467,7 +471,7 @@ public sealed class PlatformInfrastructureRegistrationTests
     Assert.True(IsSubscriptionShaped("Tenant.Billing.Manage"));
     Assert.False(IsSubscriptionShaped("Platform.Support.Administer"));
 
-    Assert.Empty(names.Where(name => IsSubscriptionShaped(name)));
+    Assert.Empty(tenantNames.Where(name => IsSubscriptionShaped(name)));
   }
 
   // The vocabulary `AC-SUB-0008` is about, on EITHER plane — the criterion's own words are "no tenant-plane

@@ -6,7 +6,8 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "generate:api": "openapi-generator-cli generate -i http://localhost:5000/swagger/v1/swagger.json -g typescript-angular -o src/app/core/api/generated"
   },
   "private": true,
   "packageManager": "npm@11.17.0",
@@ -24,6 +25,7 @@
     "@angular/build": "^22.1.8",
     "@angular/cli": "^22.1.8",
     "@angular/compiler-cli": "^22.1.0",
+    "@openapitools/openapi-generator-cli": "^2.41.0",
     "autoprefixer": "^10.6.0",
     "jsdom": "^28.0.0",
     "postcss": "^8.5.28",

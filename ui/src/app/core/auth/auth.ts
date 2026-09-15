@@ -21,4 +21,8 @@ export class Auth {
   getCurrentUser(): { username: string } | null {
     return this._isAuthenticated ? { username: 'Admin' } : null;
   }
+
+  getToken(): string | null {
+    return localStorage.getItem('token');
+  }
 }

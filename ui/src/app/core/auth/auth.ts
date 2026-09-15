@@ -1,6 +1,8 @@
-import { Service } from '@angular/core';
+import { Injectable } from '@angular/core';
 
-@Service()
+@Injectable({
+  providedIn: 'root'
+})
 export class Auth {
   private _isAuthenticated = false;
 
@@ -13,7 +15,10 @@ export class Auth {
   }
 
   isAuthenticated(): boolean {
-    // Mock state
     return this._isAuthenticated;
+  }
+
+  getCurrentUser(): { username: string } | null {
+    return this._isAuthenticated ? { username: 'Admin' } : null;
   }
 }

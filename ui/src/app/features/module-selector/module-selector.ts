@@ -25,14 +25,14 @@ export class ModuleSelectorComponent {
     {
       title: 'HR & Employees',
       permission: 'Platform.HR.View',
-      route: '/hr',
+      route: '/hr/dashboard',
       icon: '👥',
       description: 'Manage employees, attendance, and HR operations.'
     },
     {
       title: 'Payroll & Compensation',
       permission: 'Payroll.Runs.View',
-      route: '/payroll',
+      route: '/payroll/dashboard',
       icon: '💰',
       description: 'Process payroll, bonuses, and compensation.'
     },

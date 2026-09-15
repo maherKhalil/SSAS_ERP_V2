@@ -2,7 +2,7 @@ import { Service } from '@angular/core';
 
 @Service()
 export class Permission {
-  private _permissions: string[] = ['Platform.HR.View']; // Mock state
+  private _permissions: string[] = ['Platform.HR.View', 'Payroll.Runs.View', 'Platform.GL.View', 'Platform.Subscriptions.View', 'HIS.Registration.Manage']; // Mock state
 
   getPermissions(): string[] {
     return this._permissions;

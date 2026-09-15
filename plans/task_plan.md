@@ -15,10 +15,11 @@
 - [x] **Task 3.2: HIS Application Setup API**
 
 ## Phase 4: HIS Frontend
-- [ ] **Task 4.1: HIS Patient Registration UI**
-  Create the Angular components for Patient Registration inside ui/src/app/features/his/registration/. Wire up the routing for /his/patients and integrate the UI into the ShellComponent layout.
-- [ ] **Task 4.2: HIS Module Integration**
-  Update the ModuleSelectorComponent to include a "Health Information System" card (secured by HIS.Registration.Manage). Update the SidebarMenuService to display HIS-specific links when the HIS dashboard is active.
+- [x] **Task 4.1: HIS Patient Registration UI**
+  Create the Angular components for Patient Registration inside `ui/src/app/features/his/registration/`. Wire up the routing for `/his/patients` and integrate the UI into the `ShellComponent` layout.
+- [x] **Task 4.2: HIS Module Integration**
+  Update the `ModuleSelectorComponent` to include a "Health Information System" card (secured by `HIS.Registration.Manage`). Update the `SidebarMenuService` to display HIS-specific links when the HIS dashboard is active.
 
 ## Phase 5: Complete Data Migration Script
 *(Tasks to be defined once Phase 4 is fully complete. Will combine both ERP and HIS data migrations into the final schema mappings.)*
+

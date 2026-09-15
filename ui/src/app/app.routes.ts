@@ -27,6 +27,18 @@ export const routes: Routes = [
         loadComponent: () => import('./features/payroll/dashboard/dashboard').then(m => m.Dashboard),
         canActivate: [permissionGuard],
         data: { permission: 'Payroll.Runs.View' }
+      },
+      {
+        path: 'his/dashboard',
+        loadComponent: () => import('./features/his/dashboard/dashboard').then(m => m.Dashboard),
+        canActivate: [permissionGuard],
+        data: { permission: 'HIS.Registration.Manage' }
+      },
+      {
+        path: 'his/patients',
+        loadComponent: () => import('./features/his/registration/patient-list/patient-list').then(m => m.PatientList),
+        canActivate: [permissionGuard],
+        data: { permission: 'HIS.Registration.Manage' }
       }
     ]
   }

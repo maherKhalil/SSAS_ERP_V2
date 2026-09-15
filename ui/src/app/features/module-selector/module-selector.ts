@@ -51,9 +51,9 @@ export class ModuleSelectorComponent {
       description: 'Manage recurring billing and subscriptions.'
     },
     {
-      title: 'HIS',
-      permission: 'Platform.HIS.View',
-      route: '/his',
+      title: 'Health Information System',
+      permission: 'HIS.Registration.Manage',
+      route: '/his/dashboard',
       icon: '🏥',
       description: 'Healthcare Information System for hospitals.'
     }

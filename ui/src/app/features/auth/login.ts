@@ -5,7 +5,7 @@ import { Auth } from '../../core/auth/auth';
 @Component({
   selector: 'app-login',
   standalone: true,
-  template: 
+  template: `
     <div class="min-h-screen flex items-center justify-center bg-gray-100">
       <div class="bg-white p-8 rounded-lg shadow-md w-96 text-center">
         <h2 class="text-2xl font-bold mb-6 text-gray-800">ERP Login</h2>
@@ -15,7 +15,7 @@ import { Auth } from '../../core/auth/auth';
         </button>
       </div>
     </div>
-  
+  `
 })
 export class LoginComponent {
   private auth = inject(Auth);

@@ -24,6 +24,13 @@ export class SidebarMenuService {
         { label: 'Runs', route: '/payroll/runs', icon: '🔄' },
         { label: 'Elements', route: '/payroll/elements', icon: '⚡' }
       ];
+    } else if (modulePrefix === 'his') {
+      return [
+        { label: 'Dashboard', route: '/his/dashboard', icon: '📊' },
+        { label: 'Patient Registration', route: '/his/patients', icon: '🏥' },
+        { label: 'Doctors', route: '/his/doctors', icon: '👨‍⚕️' },
+        { label: 'Specialties', route: '/his/specialties', icon: '🏷️' }
+      ];
     }
     return [];
   }

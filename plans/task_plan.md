@@ -1,25 +1,30 @@
 # SSAS_ERP_V2 Macro-Roadmap & Task Plan
 
-## Phase 1: ERP API Completion
-- [x] **Task 1: FP-001 & FP-003 Unrouted Endpoints**
+## Phase 1: All ERP Backend
+- [x] **Task 1: FP-001 & FP-003 Unrouted Endpoints** (Complete)
 
-## Phase 2: ERP FrontEnd (Angular + Tailwind)
-- [x] **Task 2.1: Initialize Angular Workspace & Tailwind**
-- [x] **Task 2.2: Global Auth & Permission Architecture**
-- [x] **Task 2.3: Module Selector (Card Layout)**
-- [x] **Task 2.4: Module Dashboards & Dynamic Menus**
-- [x] **Task 2.5: API Client Generation & Integration**
+## Phase 2: All ERP FrontEnd (Angular + Tailwind)
+- [x] **Tasks 2.1 - 2.5: UI Initialization, Auth, Layouts, API Generation** (Complete)
 
-## Phase 3: HIS API
+## Phase 3: All HIS Backend
+*(Strict Rule: Must complete ALL clinical domains before proceeding to Phase 4)*
 - [x] **Task 3.1: HIS Core Registration API**
 - [x] **Task 3.2: HIS Application Setup API**
+- [ ] **Task 3.3: Outpatient (OPD) & Inpatient (IPD) APIs**
+  Build MediatR handlers and Minimal APIs for OutPatient and InPatient schemas.
+- [ ] **Task 3.4: Pharmacy & ClinicalPharmacy APIs**
+  Build MediatR handlers and Minimal APIs for medication dispensing and inventory.
+- [ ] **Task 3.5: Laboratory & Radiology APIs**
+  Build MediatR handlers and Minimal APIs for lab tests and imaging.
+- [ ] **Task 3.6: Emergency & BloodBank APIs**
+  Build MediatR handlers and Minimal APIs for trauma and blood stock.
+- [ ] **Task 3.7: Billing & Insurance APIs**
+  Build MediatR handlers and Minimal APIs for clinical billing.
+- [ ] **Task 3.8: Remaining Ancillary Clinical APIs**
+  Build MediatR handlers and Minimal APIs for CSSD, Nursing, Operations, Nutrition, Laundry, Maintenance, etc.
 
-## Phase 4: HIS Frontend
-- [x] **Task 4.1: HIS Patient Registration UI**
-  Create the Angular components for Patient Registration inside `ui/src/app/features/his/registration/`. Wire up the routing for `/his/patients` and integrate the UI into the `ShellComponent` layout.
-- [x] **Task 4.2: HIS Module Integration**
-  Update the `ModuleSelectorComponent` to include a "Health Information System" card (secured by `HIS.Registration.Manage`). Update the `SidebarMenuService` to display HIS-specific links when the HIS dashboard is active.
+## Phase 4: All HIS Frontend
+- [ ] *(Locked until Phase 3 is 100% complete)*
 
 ## Phase 5: Complete Data Migration Script
-*(Tasks to be defined once Phase 4 is fully complete. Will combine both ERP and HIS data migrations into the final schema mappings.)*
-
+- [ ] *(Locked until Phase 4 is 100% complete)*

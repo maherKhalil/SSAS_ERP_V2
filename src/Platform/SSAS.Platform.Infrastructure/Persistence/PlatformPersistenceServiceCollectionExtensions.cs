@@ -632,6 +632,10 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<SSAS.Platform.Application.Subscriptions.EntitlementGrants.ITenantEntitlementGrantQueries, TenantEntitlementGrantQueries>();
     services.AddScoped<SSAS.Platform.Application.Subscriptions.EntitlementGrants.GetTenantGrantsQueryHandler>();
     services.AddScoped<SSAS.Platform.Application.Subscriptions.EntitlementGrants.EntitlementGrantsCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Invoices.InvoicesCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Invoices.InvoicesQueryHandler>();
+    services.AddScoped<SSAS.Platform.Application.Abstractions.Persistence.ISubscriptionInvoiceRepository, SSAS.Platform.Infrastructure.Subscriptions.SubscriptionInvoiceRepository>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.Invoices.ISubscriptionInvoiceQueries, SSAS.Platform.Infrastructure.Subscriptions.SubscriptionInvoiceQueries>();
 
     return services;
   }

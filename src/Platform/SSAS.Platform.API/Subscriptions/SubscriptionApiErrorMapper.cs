@@ -24,6 +24,9 @@ public static class SubscriptionApiErrorMapper
       "Subscription.InvalidAmount" => ProblemResults.RequestInvalid,
       "Subscription.DuplicatePrice" => ProblemResults.RequestInvalid,
       "Subscription.PlanRetired" => ProblemResults.RequestInvalid,
+      "Invoice.NotDraft" => ProblemResults.ConcurrencyConflict,
+      "Invoice.NotFound" => ProblemResults.RequestInvalid,
+      "Invoice.AlreadyVoided" => ProblemResults.ConcurrencyConflict,
       "Persistence.WriteFailure" => ProblemResults.WriteFailure,
       _ => ProblemResults.WriteFailure
     };

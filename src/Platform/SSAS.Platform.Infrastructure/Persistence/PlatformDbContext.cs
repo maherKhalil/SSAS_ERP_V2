@@ -73,6 +73,10 @@ public sealed class PlatformDbContext(
   public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
 
   public DbSet<TenantEntitlementGrant> TenantEntitlementGrants => Set<TenantEntitlementGrant>();
+  
+  public DbSet<SubscriptionInvoice> SubscriptionInvoices => Set<SubscriptionInvoice>();
+  
+  public DbSet<SubscriptionPaymentAttempt> SubscriptionPaymentAttempts => Set<SubscriptionPaymentAttempt>();
 
   public DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
 

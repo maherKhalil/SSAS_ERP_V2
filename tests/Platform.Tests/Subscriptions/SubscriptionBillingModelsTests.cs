@@ -37,7 +37,7 @@ public sealed class SubscriptionBillingModelsTests
     var result = draft.Issue("INV-1002");
 
     Assert.True(result.IsFailure);
-    Assert.Equal("Invoice.AlreadyIssued", result.Error.Code);
+    Assert.Equal("Invoice.NotDraft", result.Error.Code);
   }
 
   [Fact]

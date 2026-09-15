@@ -29,7 +29,7 @@
   - `POST /api/platform/tenants/{tenantId}/grants`
   - `POST /api/platform/tenants/{tenantId}/grants/revoke`
 
-- [ ] **Task 5: FP-014 Invoices API**
+- [x] **Task 5: FP-014 Invoices API**
   Implement the command/query handlers, HTTP routes, and unit tests for Invoices:
   - `GET /api/platform/invoices`
   - `GET /api/platform/invoices/{invoiceId}`

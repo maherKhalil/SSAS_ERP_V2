@@ -64,8 +64,14 @@ public static class EntitlementGrantsEndpointRouteBuilderExtensions
       new Dictionary<string, JsonValueKind[]>
       {
         ["grantKind"] = [JsonValueKind.String],
-        ["effectiveFromUtc"] = [JsonValueKind.String]
-      }, cancellationToken);
+        ["moduleKey"] = [JsonValueKind.String, JsonValueKind.Null],
+        ["limitKey"] = [JsonValueKind.String, JsonValueKind.Null],
+        ["limitValue"] = [JsonValueKind.Number, JsonValueKind.Null],
+        ["effectiveFromUtc"] = [JsonValueKind.String],
+        ["expiresUtc"] = [JsonValueKind.String, JsonValueKind.Null],
+        ["reasonCode"] = [JsonValueKind.String, JsonValueKind.Null],
+        ["reasonText"] = [JsonValueKind.String, JsonValueKind.Null]
+      }, cancellationToken, ["grantKind", "effectiveFromUtc"]);
     
     if (request is null) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
 
@@ -99,8 +105,12 @@ public static class EntitlementGrantsEndpointRouteBuilderExtensions
       new Dictionary<string, JsonValueKind[]>
       {
         ["grantKind"] = [JsonValueKind.String],
-        ["effectiveFromUtc"] = [JsonValueKind.String]
-      }, cancellationToken);
+        ["moduleKey"] = [JsonValueKind.String, JsonValueKind.Null],
+        ["limitKey"] = [JsonValueKind.String, JsonValueKind.Null],
+        ["effectiveFromUtc"] = [JsonValueKind.String],
+        ["reasonCode"] = [JsonValueKind.String, JsonValueKind.Null],
+        ["reasonText"] = [JsonValueKind.String, JsonValueKind.Null]
+      }, cancellationToken, ["grantKind", "effectiveFromUtc"]);
     
     if (request is null) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
 

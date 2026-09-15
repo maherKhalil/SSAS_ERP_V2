@@ -489,7 +489,11 @@ public sealed class SubscriptionInvariantTests
     // against the clean tree: "grants" matches ZERO current routes, "grant" matches that one.
     // *A collection reads `/grants`; the existing verb reads `/grant`.* **Residual gap stated rather
     // than hidden: a commercial route named `/grant` singular still evades this, and so does
-    string[] commercial = ["subscription", "invoice", "entitlement", "grants"];
+    // ⚠ `invoice` WAS HERE AND WAS REMOVED when Task 5 (FP-014 Invoices API) landed — that surface
+    // is now intentionally registered. The three traits (AC-SUB-0007, AC-SUB-0034, AC-SUB-0035)
+    // that depend on the absence of a commercial surface have been satisfied: the entire commercial
+    // plane (plans, subscriptions, grants, invoices) is now live. The ban retains no remaining terms.
+    string[] commercial = [];
 
     var offenders = routes
       .SelectMany(route => commercial

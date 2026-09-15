@@ -129,14 +129,14 @@ accepted. Both, on purpose.
 ### Invoices — `Platform.Invoices.*`
 
 ```
-GET    /api/platform/invoices                         Platform.Invoices.View  [NOT BUILT - nothing exists]
-GET    /api/platform/invoices/{invoiceId}             Platform.Invoices.View  [NOT BUILT - nothing exists]
-GET    /api/platform/tenants/{tenantId}/invoices      Platform.Invoices.View  [NOT BUILT - nothing exists]
-POST   /api/platform/invoices                         Platform.Invoices.Administer  [NOT BUILT - nothing exists]
-PUT    /api/platform/invoices/{invoiceId}             Platform.Invoices.Administer  [NOT BUILT - nothing exists]
-POST   /api/platform/invoices/{invoiceId}/issue       Platform.Invoices.Administer  [NOT BUILT - nothing exists]
-POST   /api/platform/invoices/{invoiceId}/void        Platform.Invoices.Administer  [NOT BUILT - nothing exists]
-GET    /api/platform/invoices/{invoiceId}/attempts    Platform.Invoices.View  [NOT BUILT - nothing exists]
+GET    /api/platform/invoices                         Platform.Invoices.View
+GET    /api/platform/invoices/{invoiceId}             Platform.Invoices.View
+GET    /api/platform/tenants/{tenantId}/invoices      Platform.Invoices.View
+POST   /api/platform/invoices                         Platform.Invoices.Administer
+PUT    /api/platform/invoices/{invoiceId}             Platform.Invoices.Administer
+POST   /api/platform/invoices/{invoiceId}/issue       Platform.Invoices.Administer
+POST   /api/platform/invoices/{invoiceId}/void        Platform.Invoices.Administer
+GET    /api/platform/invoices/{invoiceId}/attempts    Platform.Invoices.View
 ```
 
 `PUT` applies **only while `Draft`**; after `issue` the aggregate refuses it and the route answers a
